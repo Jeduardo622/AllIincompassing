@@ -211,6 +211,77 @@ const WeekView = React.memo(({
 
 WeekView.displayName = 'WeekView';
 
+// Memoized day view component
+const DayView = React.memo(({ 
+  selectedDate, 
+  timeSlots, 
+  sessions, 
+  onCreateSession, 
+  onEditSession,
+  showAvailability,
+  therapists,
+  clients 
+}: {
+  selectedDate: Date;
+  timeSlots: string[];
+  sessions: Session[];
+  onCreateSession: (timeSlot: { date: Date; time: string }) => void;
+  onEditSession: (session: Session) => void;
+  showAvailability: boolean;
+  therapists: Therapist[];
+  clients: Client[];
+}) => {
+  return (
+    <div className="bg-white dark:bg-dark-lighter rounded-lg shadow overflow-x-auto" data-testid="day-view">
+      <div className="grid grid-cols-2 border-b dark:border-gray-700">
+        <div className="py-4 px-2 text-center text-sm font-medium text-gray-500 dark:text-gray-400 border-r dark:border-gray-700">
+          Time
+        </div>
+        <div className="py-4 px-2 text-center text-sm font-medium text-gray-900 dark:text-white">
+          {format(selectedDate, 'EEEE, MMMM d, yyyy')}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2">
+        <div className="border-r dark:border-gray-700">
+          {timeSlots.map(time => (
+            <div
+              key={time}
+              className="h-10 border-b dark:border-gray-700 p-2 text-sm text-gray-500 dark:text-gray-400 flex items-center"
+            >
+              {time}
+            </div>
+          ))}
+        </div>
+
+        <div className="relative">
+          {showAvailability && (
+            <AvailabilityOverlay
+              therapists={therapists}
+              clients={clients}
+              selectedDate={selectedDate}
+              timeSlots={timeSlots}
+            />
+          )}
+          
+          {timeSlots.map(time => (
+            <TimeSlot
+              key={time}
+              time={time}
+              day={selectedDate}
+              sessions={sessions}
+              onCreateSession={onCreateSession}
+              onEditSession={onEditSession}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+DayView.displayName = 'DayView';
+
 const Schedule = React.memo(() => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [view, setView] = useState<'day' | 'week' | 'matrix'>('week');
@@ -425,8 +496,11 @@ const Schedule = React.memo(() => {
 
   // Memoized date range display
   const dateRangeDisplay = useMemo(() => {
+    if (view === 'day') {
+      return format(selectedDate, 'MMMM d, yyyy');
+    }
     return `${format(weekStart, 'MMM d')} - ${format(addDays(weekStart, 5), 'MMM d, yyyy')}`;
-  }, [weekStart]);
+  }, [weekStart, selectedDate, view]);
 
   const isLoading = isLoadingSessions || isLoadingTherapists || isLoadingClients;
 
@@ -537,6 +611,19 @@ const Schedule = React.memo(() => {
           selectedDate={selectedDate}
           onTimeSlotClick={(time) => handleCreateSession({ date: selectedDate, time })}
         />
+      ) : view === 'day' ? (
+        <DayView
+          selectedDate={selectedDate}
+          timeSlots={timeSlots}
+          sessions={sessions.filter(session => 
+            format(parseISO(session.start_time), 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd')
+          )}
+          onCreateSession={handleCreateSession}
+          onEditSession={handleEditSession}
+          showAvailability={showAvailability}
+          therapists={therapists}
+          clients={clients}
+        />
       ) : (
         <WeekView
           weekDays={weekDays}
@@ -545,8 +632,8 @@ const Schedule = React.memo(() => {
           onCreateSession={handleCreateSession}
           onEditSession={handleEditSession}
           showAvailability={showAvailability}
-                    therapists={therapists}
-                    clients={clients}
+          therapists={therapists}
+          clients={clients}
         />
       )}
 
@@ -556,9 +643,11 @@ const Schedule = React.memo(() => {
           onClose={() => setIsModalOpen(false)}
           onSubmit={handleSubmit}
           session={selectedSession}
-          timeSlot={selectedTimeSlot}
+          selectedDate={selectedTimeSlot?.date}
+          selectedTime={selectedTimeSlot?.time}
           therapists={therapists}
           clients={clients}
+          existingSessions={sessions}
         />
       )}
 

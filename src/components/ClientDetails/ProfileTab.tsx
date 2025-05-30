@@ -102,7 +102,7 @@ export default function ProfileTab({ client }: ProfileTabProps) {
     },
     onError: (error) => {
       showError(error);
-    }
+    },
   });
   
   const handleAddNote = () => {
@@ -275,6 +275,7 @@ export default function ProfileTab({ client }: ProfileTabProps) {
           <button
             onClick={() => setIsAddNoteModalOpen(true)}
             className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+            type="button"
           >
             <Plus className="w-4 h-4 mr-1" />
             Add Note
@@ -326,6 +327,7 @@ export default function ProfileTab({ client }: ProfileTabProps) {
           <button
             onClick={() => setIsAddIssueModalOpen(true)}
             className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+            type="button"
           >
             <Plus className="w-4 h-4 mr-1" />
             Add Issue
@@ -405,6 +407,7 @@ export default function ProfileTab({ client }: ProfileTabProps) {
                           <button
                             onClick={() => handleUpdateIssueStatus(issue.id, 'Open')}
                             className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                            type="button"
                           >
                             Open
                           </button>
@@ -413,6 +416,7 @@ export default function ProfileTab({ client }: ProfileTabProps) {
                           <button
                             onClick={() => handleUpdateIssueStatus(issue.id, 'In Progress')}
                             className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                            type="button"
                           >
                             In Progress
                           </button>
@@ -421,6 +425,7 @@ export default function ProfileTab({ client }: ProfileTabProps) {
                           <button
                             onClick={() => handleUpdateIssueStatus(issue.id, 'Resolved')}
                             className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                            type="button"
                           >
                             Resolve
                           </button>

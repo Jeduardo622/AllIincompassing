@@ -66,7 +66,15 @@ function App() {
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       console.log('Auth state changed:', _event, session?.user?.email);
-      setUser(session?.user ?? null);
+      
+      // Get current state from the store to compare
+      const currentUser = useAuth.getState().user;
+      const currentRoles = useAuth.getState().roles;
+      
+      // Only update user if it's different
+      if (JSON.stringify(currentUser) !== JSON.stringify(session?.user)) {
+        setUser(session?.user ?? null);
+      }
       
       if (session?.user) {
         // Fetch user roles
@@ -76,6 +84,11 @@ function App() {
         }
         const userRoles = rolesData?.[0]?.roles || [];
         console.log('User roles from auth change:', userRoles);
+        
+        // Only update roles if they're different
+        if (JSON.stringify(currentRoles) !== JSON.stringify(userRoles)) {
+          setRoles(userRoles);
+        }
         
         // If user has no roles, try to assign admin role via RPC
         if (userRoles.length === 0) {
@@ -112,9 +125,8 @@ function App() {
             console.error('Error in admin role assignment:', error);
           }
         }
-        
-        setRoles(userRoles);
-      } else {
+      } else if (currentRoles.length > 0) {
+        // Only clear roles if user is null and we have roles
         setRoles([]);
       }
     });

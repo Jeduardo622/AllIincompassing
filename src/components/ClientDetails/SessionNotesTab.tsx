@@ -172,6 +172,7 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
                 onClick={() => setIsAddNoteModalOpen(true)}
                 className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
                 disabled={!selectedAuth}
+                type="button"
               >
                 <Plus className="w-4 h-4 mr-1" />
                 New Note
@@ -181,6 +182,7 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
                 onClick={handleGeneratePDF}
                 disabled={selectedNotes.length === 0}
                 className="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-dark border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center disabled:opacity-50"
+                type="button"
               >
                 <Download className="w-4 h-4 mr-1" />
                 Generate PDF
@@ -270,7 +272,10 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
                         </div>
                         
                         {!note.is_locked && (
-                          <button className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm">
+                          <button 
+                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm"
+                            type="button"
+                          >
                             Edit
                           </button>
                         )}

@@ -62,19 +62,19 @@ function App() {
   const { setUser, setRoles, refreshSession } = useAuth();
   const { isDark } = useTheme();
 
+  // Initial session check - runs only once on mount
+  useEffect(() => {
+    refreshSession().catch(error => {
+      console.error('Error during initial session refresh:', error);
+    });
+  }, []);
+
+  // Set up auth state listener - runs only once on mount
   useEffect(() => {
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       console.log('Auth state changed:', _event, session?.user?.email);
-      
-      // Get current state from the store to compare
-      const currentUser = useAuth.getState().user;
-      const currentRoles = useAuth.getState().roles;
-      
-      // Only update user if it's different
-      if (JSON.stringify(currentUser) !== JSON.stringify(session?.user)) {
-        setUser(session?.user ?? null);
-      }
+      setUser(session?.user ?? null);
       
       if (session?.user) {
         // Fetch user roles
@@ -84,11 +84,6 @@ function App() {
         }
         const userRoles = rolesData?.[0]?.roles || [];
         console.log('User roles from auth change:', userRoles);
-        
-        // Only update roles if they're different
-        if (JSON.stringify(currentRoles) !== JSON.stringify(userRoles)) {
-          setRoles(userRoles);
-        }
         
         // If user has no roles, try to assign admin role via RPC
         if (userRoles.length === 0) {
@@ -125,14 +120,12 @@ function App() {
             console.error('Error in admin role assignment:', error);
           }
         }
-      } else if (currentRoles.length > 0) {
-        // Only clear roles if user is null and we have roles
+        
+        setRoles(userRoles);
+      } else {
         setRoles([]);
       }
     });
-
-    // Initial session check
-    refreshSession();
 
     // Set up periodic session refresh (every 5 minutes)
     const refreshInterval = setInterval(() => {
@@ -255,7 +248,7 @@ function App() {
                 } />
 
                 {/* Catch all - redirect to dashboard */}
-                  <Route path="*" element={<Navigate to="/\" replace />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
             </Routes>
             </Suspense>

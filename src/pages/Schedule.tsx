@@ -463,8 +463,12 @@ const Schedule = React.memo(() => {
   }, [createMultipleSessionsMutation]);
 
   const handleDateNavigation = useCallback((direction: 'prev' | 'next') => {
-    setSelectedDate(d => addDays(d, direction === 'prev' ? -7 : 7));
-  }, []);
+    setSelectedDate(d => {
+      // If in day view, move by 1 day; otherwise, move by 7 days (week)
+      const daysToAdd = view === 'day' ? 1 : 7;
+      return addDays(d, direction === 'prev' ? -daysToAdd : daysToAdd);
+    });
+  }, [view]);
 
   const handleViewChange = useCallback((newView: 'day' | 'week' | 'matrix') => {
     setView(newView);

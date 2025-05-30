@@ -248,7 +248,7 @@ function App() {
                 } />
 
                 {/* Catch all - redirect to dashboard */}
-                  <Route path="*" element={<Navigate to="/" replace />} />
+                  <Route path="*" element={<Navigate to="/\" replace />} />
               </Route>
             </Routes>
             </Suspense>

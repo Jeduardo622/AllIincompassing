@@ -81,7 +81,7 @@ export default function SchedulingMatrix({
     
     timeSlots.forEach(time => {
       const [hour, minute] = time.split(':').map(Number);
-      const entry = { therapists: new Set<string>(), clients: Set<string>() };
+      const entry = { therapists: new Set<string>(), clients: new Set<string>() };
       
       therapists.forEach(therapist => {
         const avail = therapist.availability_hours[dayName];

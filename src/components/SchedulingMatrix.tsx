@@ -81,7 +81,7 @@ export default function SchedulingMatrix({
     
     timeSlots.forEach(time => {
       const [hour, minute] = time.split(':').map(Number);
-      const entry = { therapists: new Set<string>(), clients: new Set<string>() };
+      const entry = { therapists: new Set<string>(), clients: Set<string>() };
       
       therapists.forEach(therapist => {
         const avail = therapist.availability_hours[dayName];
@@ -182,7 +182,7 @@ export default function SchedulingMatrix({
                 <div>
                   <div className="truncate">{therapist.full_name}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {therapist.service_type.join(', ')}
+                    {(therapist.service_type ?? []).join(', ')}
                   </div>
                   {therapist.latitude && therapist.longitude && (
                     <div className="text-xs text-gray-400 dark:text-gray-500 flex items-center justify-center mt-1">
@@ -201,7 +201,7 @@ export default function SchedulingMatrix({
                 <div>
                   <div className="truncate">{client.full_name}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {client.service_preference.join(', ')}
+                    {(client.service_preference ?? []).join(', ')}
                   </div>
                   {client.latitude && client.longitude && (
                     <div className="text-xs text-gray-400 dark:text-gray-500 flex items-center justify-center mt-1">

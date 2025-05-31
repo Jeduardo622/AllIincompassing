@@ -144,13 +144,17 @@ export const useAuth = create<AuthState>((set, get) => ({
 
       showSuccess('Successfully signed out');
 
-      // Force redirect to login page
-      window.location.href = '/login';
+      // Force redirect to login page with a slight delay to ensure everything is cleared
+      setTimeout(() => {
+        window.location.href = '/login';
+      }, 100);
     } catch (error) {
       console.error('Error signing out:', error);
       showError('Error signing out');
-      // Even if there's an error, try to force a reload
-      window.location.href = '/login';
+      // Even if there's an error, try to force a reload to login page
+      setTimeout(() => {
+        window.location.href = '/login';
+      }, 100);
       throw error;
     }
   },

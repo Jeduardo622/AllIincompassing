@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   Calendar, Users, FileText, CreditCard, LayoutDashboard, 
   UserCog, LogOut, Settings, MessageSquare, Sun, Moon, 
@@ -16,6 +16,7 @@ export default function Sidebar() {
   const [isSigningOut, setIsSigningOut] = React.useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const navigate = useNavigate();
 
   const handleSignOut = async () => {
     if (isSigningOut) return;
@@ -23,10 +24,12 @@ export default function Sidebar() {
     try {
       setIsSigningOut(true);
       await signOut();
-      // No need to navigate here as signOut function now handles redirection
+      // Navigate is handled in the signOut function
     } catch (error) {
       console.error('Error signing out:', error);
       setIsSigningOut(false);
+      // Force navigation to login page even if there's an error
+      navigate('/login');
     }
   };
 

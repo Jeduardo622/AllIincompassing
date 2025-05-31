@@ -8,37 +8,17 @@ import {
 import { supabase } from '../../lib/supabase';
 import { showSuccess, showError } from '../../lib/toast';
 import ClientModal from '../ClientModal';
+import AddGeneralNoteModal from '../AddGeneralNoteModal';
+import type { Note, Issue } from '../../types';
 
 interface ProfileTabProps {
   client: any;
-}
-
-interface Note {
-  id: string;
-  content: string;
-  author: string;
-  created_at: string;
-  is_visible_to_parent: boolean;
-  status: 'resolved' | 'open' | 'follow-up';
-}
-
-interface Issue {
-  id: string;
-  category: 'Authorization' | 'Scheduling' | 'Clinical' | 'Billing' | 'Other';
-  description: string;
-  status: 'Open' | 'In Progress' | 'Resolved';
-  priority: 'Low' | 'Medium' | 'High';
-  date_opened: string;
-  last_action: string;
 }
 
 export default function ProfileTab({ client }: ProfileTabProps) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
   const [isAddIssueModalOpen, setIsAddIssueModalOpen] = useState(false);
-  const [noteContent, setNoteContent] = useState('');
-  const [isVisibleToParent, setIsVisibleToParent] = useState(false);
-  const [noteStatus, setNoteStatus] = useState<'resolved' | 'open' | 'follow-up'>('open');
   
   // Mock data for notes and issues
   const [notes, setNotes] = useState<Note[]>([
@@ -105,20 +85,17 @@ export default function ProfileTab({ client }: ProfileTabProps) {
     },
   });
   
-  const handleAddNote = () => {
-    const newNote: Note = {
+  const handleAddNote = (newNote: Omit<Note, 'id' | 'created_at' | 'author'>) => {
+    const note: Note = {
       id: Date.now().toString(),
-      content: noteContent,
+      content: newNote.content,
       author: 'Current User', // This would be the actual logged-in user
       created_at: new Date().toISOString(),
-      is_visible_to_parent: isVisibleToParent,
-      status: noteStatus
+      is_visible_to_parent: newNote.is_visible_to_parent,
+      status: newNote.status
     };
     
-    setNotes([newNote, ...notes]);
-    setNoteContent('');
-    setIsVisibleToParent(false);
-    setNoteStatus('open');
+    setNotes([note, ...notes]);
     setIsAddNoteModalOpen(false);
   };
   
@@ -200,6 +177,7 @@ export default function ProfileTab({ client }: ProfileTabProps) {
           <button
             onClick={() => setIsEditModalOpen(true)}
             className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+            type="button"
           >
             <Edit2 className="w-4 h-4 mr-1" />
             Edit
@@ -451,105 +429,11 @@ export default function ProfileTab({ client }: ProfileTabProps) {
       )}
       
       {/* Add Note Modal */}
-      {isAddNoteModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-lg p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-              Add Note
-            </h2>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Note Content
-                </label>
-                <textarea
-                  value={noteContent}
-                  onChange={(e) => setNoteContent(e.target.value)}
-                  rows={5}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                  placeholder="Enter your note here..."
-                />
-              </div>
-              
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="visible-to-parent"
-                  checked={isVisibleToParent}
-                  onChange={(e) => setIsVisibleToParent(e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <label htmlFor="visible-to-parent" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                  Visible to parent
-                </label>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Status
-                </label>
-                <div className="flex space-x-4">
-                  <button
-                    type="button"
-                    onClick={() => setNoteStatus('resolved')}
-                    className={`flex items-center px-3 py-2 rounded-md ${
-                      noteStatus === 'resolved'
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300'
-                        : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
-                    }`}
-                  >
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    Resolved
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNoteStatus('open')}
-                    className={`flex items-center px-3 py-2 rounded-md ${
-                      noteStatus === 'open'
-                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300'
-                        : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
-                    }`}
-                  >
-                    <AlertTriangle className="w-4 h-4 mr-2" />
-                    Open Issue
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNoteStatus('follow-up')}
-                    className={`flex items-center px-3 py-2 rounded-md ${
-                      noteStatus === 'follow-up'
-                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300'
-                        : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
-                    }`}
-                  >
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Follow-up
-                  </button>
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex justify-end space-x-3 mt-6">
-              <button
-                type="button"
-                onClick={() => setIsAddNoteModalOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-dark border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleAddNote}
-                disabled={!noteContent.trim()}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Add Note
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AddGeneralNoteModal
+        isOpen={isAddNoteModalOpen}
+        onClose={() => setIsAddNoteModalOpen(false)}
+        onSubmit={handleAddNote}
+      />
       
       {/* Add Issue Modal */}
       {isAddIssueModalOpen && (

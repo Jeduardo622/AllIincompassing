@@ -3,6 +3,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { X } from 'lucide-react';
 import type { Client } from '../types';
 import AvailabilityEditor from './AvailabilityEditor';
+import { showError } from '../lib/toast';
 
 interface ClientModalProps {
   isOpen: boolean;
@@ -66,6 +67,80 @@ export default function ClientModal({
 
   if (!isOpen) return null;
 
+  const handleFormSubmit = async (data: Partial<Client>) => {
+    // Validate required fields
+    if (!data.first_name?.trim()) {
+      showError('First name is required');
+      return;
+    }
+    
+    if (!data.last_name?.trim()) {
+      showError('Last name is required');
+      return;
+    }
+    
+    if (!data.email?.trim()) {
+      showError('Email is required');
+      return;
+    }
+    
+    if (!data.date_of_birth) {
+      showError('Date of birth is required');
+      return;
+    }
+    
+    if (!data.client_id?.trim()) {
+      showError('Client ID is required');
+      return;
+    }
+    
+    // Validate parent/guardian information if this is a new client
+    if (!client) {
+      if (!data.parent1_first_name?.trim()) {
+        showError('Parent/guardian first name is required');
+        return;
+      }
+      
+      if (!data.parent1_last_name?.trim()) {
+        showError('Parent/guardian last name is required');
+        return;
+      }
+      
+      if (!data.parent1_phone?.trim()) {
+        showError('Parent/guardian phone is required');
+        return;
+      }
+      
+      if (!data.parent1_relationship?.trim()) {
+        showError('Parent/guardian relationship is required');
+        return;
+      }
+      
+      // Validate address information
+      if (!data.address_line1?.trim()) {
+        showError('Street address is required');
+        return;
+      }
+      
+      if (!data.city?.trim()) {
+        showError('City is required');
+        return;
+      }
+      
+      if (!data.state?.trim()) {
+        showError('State is required');
+        return;
+      }
+      
+      if (!data.zip_code?.trim()) {
+        showError('ZIP code is required');
+        return;
+      }
+    }
+    
+    await onSubmit(data);
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-4xl p-6 max-h-[90vh] overflow-y-auto">
@@ -81,7 +156,7 @@ export default function ClientModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
           {/* Demographics */}
           <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
             <h3 className="text-lg font-medium text-blue-900 dark:text-blue-100 mb-4">Demographics</h3>
@@ -92,7 +167,7 @@ export default function ClientModal({
                 </label>
                 <input
                   type="text"
-                  {...register('first_name', { required: 'First name is required' })}
+                  {...register('first_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.first_name && (
@@ -117,7 +192,7 @@ export default function ClientModal({
                 </label>
                 <input
                   type="text"
-                  {...register('last_name', { required: 'Last name is required' })}
+                  {...register('last_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.last_name && (
@@ -133,7 +208,7 @@ export default function ClientModal({
                 </label>
                 <input
                   type="date"
-                  {...register('date_of_birth', { required: 'Date of birth is required' })}
+                  {...register('date_of_birth')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.date_of_birth && (
@@ -146,7 +221,7 @@ export default function ClientModal({
                   Gender
                 </label>
                 <select
-                  {...register('gender', { required: 'Gender is required' })}
+                  {...register('gender')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
                   <option value="">Select gender</option>
@@ -165,13 +240,7 @@ export default function ClientModal({
                 </label>
                 <input
                   type="text"
-                  {...register('email', { 
-                    required: 'Email is required',
-                    pattern: {
-                      value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                      message: 'Invalid email address',
-                    },
-                  })}
+                  {...register('email')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.email && (
@@ -194,7 +263,7 @@ export default function ClientModal({
                   </label>
                   <input
                     type="text"
-                    {...register('parent1_first_name', { required: 'Parent/guardian first name is required' })}
+                    {...register('parent1_first_name')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                   {errors.parent1_first_name && (
@@ -207,7 +276,7 @@ export default function ClientModal({
                   </label>
                   <input
                     type="text"
-                    {...register('parent1_last_name', { required: 'Parent/guardian last name is required' })}
+                    {...register('parent1_last_name')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                   {errors.parent1_last_name && (
@@ -223,7 +292,7 @@ export default function ClientModal({
                   </label>
                   <input
                     type="tel"
-                    {...register('parent1_phone', { required: 'Parent/guardian phone is required' })}
+                    {...register('parent1_phone')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                   {errors.parent1_phone && (
@@ -247,7 +316,7 @@ export default function ClientModal({
                   Relationship to Client
                 </label>
                 <select
-                  {...register('parent1_relationship', { required: 'Relationship is required' })}
+                  {...register('parent1_relationship')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
                   <option value="">Select relationship</option>
@@ -341,7 +410,7 @@ export default function ClientModal({
                 </label>
                 <input
                   type="text"
-                  {...register('address_line1', { required: 'Street address is required' })}
+                  {...register('address_line1')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.address_line1 && (
@@ -367,7 +436,7 @@ export default function ClientModal({
                   </label>
                   <input
                     type="text"
-                    {...register('city', { required: 'City is required' })}
+                    {...register('city')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                   {errors.city && (
@@ -380,7 +449,7 @@ export default function ClientModal({
                   </label>
                   <input
                     type="text"
-                    {...register('state', { required: 'State is required' })}
+                    {...register('state')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                   {errors.state && (
@@ -393,7 +462,7 @@ export default function ClientModal({
                   </label>
                   <input
                     type="text"
-                    {...register('zip_code', { required: 'ZIP code is required' })}
+                    {...register('zip_code')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                   {errors.zip_code && (
@@ -438,7 +507,7 @@ export default function ClientModal({
                 </label>
                 <input
                   type="text"
-                  {...register('client_id', { required: 'Client ID is required' })}
+                  {...register('client_id')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.client_id && (
@@ -454,7 +523,6 @@ export default function ClientModal({
                   <input
                     type="number"
                     {...register('one_to_one_units', { 
-                      required: '1:1 units is required',
                       min: { value: 0, message: 'Must be 0 or greater' },
                     })}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -471,7 +539,6 @@ export default function ClientModal({
                   <input
                     type="number"
                     {...register('supervision_units', { 
-                      required: 'Supervision units is required',
                       min: { value: 0, message: 'Must be 0 or greater' },
                     })}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -488,7 +555,6 @@ export default function ClientModal({
                   <input
                     type="number"
                     {...register('parent_consult_units', { 
-                      required: 'Parent consult units is required',
                       min: { value: 0, message: 'Must be 0 or greater' },
                     })}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"

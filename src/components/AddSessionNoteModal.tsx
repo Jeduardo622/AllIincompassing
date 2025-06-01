@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Calendar, Clock, FileText, CheckCircle } from 'lucide-react';
 import type { SessionNote, Therapist } from '../types';
+import { showError } from '../lib/toast';
 
 interface AddSessionNoteModalProps {
   isOpen: boolean;
@@ -50,8 +51,39 @@ export default function AddSessionNoteModal({
     // Filter out empty goals
     const filteredGoals = goalsAddressed.filter(goal => goal.trim() !== '');
     
-    if (!date || !startTime || !endTime || !serviceCode || !therapistId || !narrative.trim() || filteredGoals.length === 0) {
-      alert('Please fill in all required fields');
+    // Validate required fields
+    if (!date) {
+      showError('Session date is required');
+      return;
+    }
+    
+    if (!startTime) {
+      showError('Start time is required');
+      return;
+    }
+    
+    if (!endTime) {
+      showError('End time is required');
+      return;
+    }
+    
+    if (!serviceCode) {
+      showError('Service code is required');
+      return;
+    }
+    
+    if (!therapistId) {
+      showError('Therapist is required');
+      return;
+    }
+    
+    if (filteredGoals.length === 0) {
+      showError('At least one goal must be addressed');
+      return;
+    }
+    
+    if (!narrative.trim()) {
+      showError('Session notes are required');
       return;
     }
     
@@ -109,7 +141,6 @@ export default function AddSessionNoteModal({
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                required
               />
             </div>
             
@@ -122,7 +153,6 @@ export default function AddSessionNoteModal({
                 value={serviceCode}
                 onChange={(e) => setServiceCode(e.target.value)}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                required
               >
                 <option value="">Select service code</option>
                 <option value="97151">97151 - Behavior identification assessment</option>
@@ -148,7 +178,6 @@ export default function AddSessionNoteModal({
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                required
               />
             </div>
             
@@ -162,7 +191,6 @@ export default function AddSessionNoteModal({
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                required
               />
             </div>
           </div>
@@ -175,7 +203,6 @@ export default function AddSessionNoteModal({
               value={therapistId}
               onChange={(e) => setTherapistId(e.target.value)}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-              required
             >
               <option value="">Select therapist</option>
               {therapists.map(therapist => (
@@ -198,7 +225,6 @@ export default function AddSessionNoteModal({
                   onChange={(e) => handleGoalChange(index, e.target.value)}
                   className="flex-1 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   placeholder="Enter goal"
-                  required
                 />
                 {goalsAddressed.length > 1 && (
                   <button
@@ -230,7 +256,6 @@ export default function AddSessionNoteModal({
               rows={5}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
               placeholder="Enter detailed session notes..."
-              required
             />
           </div>
           

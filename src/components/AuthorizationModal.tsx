@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { format } from 'date-fns';
 import { X } from 'lucide-react';
 import type { Authorization, AuthorizationService, Client, Therapist } from '../types';
+import { showError } from '../lib/toast';
 
 interface AuthorizationModalProps {
   isOpen: boolean;
@@ -104,6 +105,47 @@ export default function AuthorizationModal({
   if (!isOpen) return null;
 
   const handleFormSubmit = async (data: AuthorizationFormData) => {
+    // Validate required fields
+    if (!data.authorization_number?.trim()) {
+      showError('Authorization number is required');
+      return;
+    }
+    
+    if (!data.client_id) {
+      showError('Client is required');
+      return;
+    }
+    
+    if (!data.provider_id) {
+      showError('Provider is required');
+      return;
+    }
+    
+    if (!data.diagnosis_code?.trim()) {
+      showError('Diagnosis code is required');
+      return;
+    }
+    
+    if (!data.diagnosis_description?.trim()) {
+      showError('Diagnosis description is required');
+      return;
+    }
+    
+    if (!data.start_date) {
+      showError('Start date is required');
+      return;
+    }
+    
+    if (!data.end_date) {
+      showError('End date is required');
+      return;
+    }
+    
+    if (!data.member_cin?.trim()) {
+      showError('CIN number is required');
+      return;
+    }
+    
     // Validate services have required fields
     const validServices = data.services.filter(service => 
       service.code && 
@@ -114,7 +156,7 @@ export default function AuthorizationModal({
     );
 
     if (validServices.length === 0) {
-      alert('At least one service with all required fields is needed');
+      showError('At least one service with all required fields is needed');
       return;
     }
 
@@ -167,7 +209,7 @@ export default function AuthorizationModal({
                 </label>
                 <input
                   type="text"
-                  {...register('authorization_number', { required: 'Authorization number is required' })}
+                  {...register('authorization_number')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.authorization_number && (
@@ -181,7 +223,7 @@ export default function AuthorizationModal({
                 </label>
                 <input
                   type="text"
-                  {...register('member_cin', { required: 'CIN number is required' })}
+                  {...register('member_cin')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.member_cin && (
@@ -200,7 +242,7 @@ export default function AuthorizationModal({
                   Client
                 </label>
                 <select
-                  {...register('client_id', { required: 'Client is required' })}
+                  {...register('client_id')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
                   <option value="">Select client</option>
@@ -248,7 +290,7 @@ export default function AuthorizationModal({
                   Provider
                 </label>
                 <select
-                  {...register('provider_id', { required: 'Provider is required' })}
+                  {...register('provider_id')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
                   <option value="">Select provider</option>
@@ -275,7 +317,7 @@ export default function AuthorizationModal({
                 </label>
                 <input
                   type="text"
-                  {...register('diagnosis_code', { required: 'Diagnosis code is required' })}
+                  {...register('diagnosis_code')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.diagnosis_code && (
@@ -289,7 +331,7 @@ export default function AuthorizationModal({
                 </label>
                 <input
                   type="text"
-                  {...register('diagnosis_description', { required: 'Diagnosis description is required' })}
+                  {...register('diagnosis_description')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.diagnosis_description && (
@@ -309,7 +351,7 @@ export default function AuthorizationModal({
                 </label>
                 <input
                   type="date"
-                  {...register('start_date', { required: 'Start date is required' })}
+                  {...register('start_date')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.start_date && (
@@ -323,7 +365,7 @@ export default function AuthorizationModal({
                 </label>
                 <input
                   type="date"
-                  {...register('end_date', { required: 'End date is required' })}
+                  {...register('end_date')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.end_date && (
@@ -345,9 +387,7 @@ export default function AuthorizationModal({
                     </label>
                     <input
                       type="text"
-                      {...register(`services.${index}.code` as const, { 
-                        required: 'Service code is required' 
-                      })}
+                      {...register(`services.${index}.code` as const)}
                       defaultValue={service.code}
                       className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                     />
@@ -364,9 +404,7 @@ export default function AuthorizationModal({
                     </label>
                     <input
                       type="text"
-                      {...register(`services.${index}.description` as const, {
-                        required: 'Description is required'
-                      })}
+                      {...register(`services.${index}.description` as const)}
                       defaultValue={service.description}
                       className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                     />
@@ -383,9 +421,7 @@ export default function AuthorizationModal({
                     </label>
                     <input
                       type="date"
-                      {...register(`services.${index}.from_date` as const, { 
-                        required: 'From date is required' 
-                      })}
+                      {...register(`services.${index}.from_date` as const)}
                       className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                     />
                     {errors.services?.[index]?.from_date && (
@@ -401,9 +437,7 @@ export default function AuthorizationModal({
                     </label>
                     <input
                       type="date"
-                      {...register(`services.${index}.to_date` as const, { 
-                        required: 'To date is required' 
-                      })}
+                      {...register(`services.${index}.to_date` as const)}
                       className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                     />
                     {errors.services?.[index]?.to_date && (
@@ -420,7 +454,6 @@ export default function AuthorizationModal({
                     <input
                       type="number"
                       {...register(`services.${index}.requested_units` as const, { 
-                        required: 'Units are required',
                         min: { value: 1, message: 'Must be greater than 0' },
                         valueAsNumber: true
                       })}
@@ -439,9 +472,7 @@ export default function AuthorizationModal({
                     </label>
                     <input
                       type="text"
-                      {...register(`services.${index}.unit_type` as const, {
-                        required: 'Unit type is required'
-                      })}
+                      {...register(`services.${index}.unit_type` as const)}
                       defaultValue={service.unit_type}
                       className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                     />

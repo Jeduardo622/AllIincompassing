@@ -116,20 +116,20 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
       const formattedTherapist = {
         ...formattedData,
         service_type: Array.isArray(formattedData.service_type) 
-          ? (formattedData.service_type.length > 0 ? formattedData.service_type : null)
+          ? (formattedData.service_type.length > 0 ? formattedData.service_type : [])
           : typeof formattedData.service_type === 'string'
             ? formattedData.service_type.split(',').map(s => s.trim()).filter(Boolean)
-            : null,
+            : [],
         specialties: Array.isArray(formattedData.specialties)
-          ? (formattedData.specialties.length > 0 ? formattedData.specialties : null)
+          ? (formattedData.specialties.length > 0 ? formattedData.specialties : [])
           : typeof formattedData.specialties === 'string'
             ? formattedData.specialties.split(',').map(s => s.trim()).filter(Boolean)
-            : null,
+            : [],
         preferred_areas: Array.isArray(formattedData.preferred_areas)
-          ? (formattedData.preferred_areas.length > 0 ? formattedData.preferred_areas : null)
+          ? (formattedData.preferred_areas.length > 0 ? formattedData.preferred_areas : [])
           : typeof formattedData.preferred_areas === 'string'
             ? formattedData.preferred_areas.split(',').map(s => s.trim()).filter(Boolean)
-            : null,
+            : [],
         full_name: `${formattedData.first_name} ${formattedData.middle_name || ''} ${formattedData.last_name}`.trim()
       };
 
@@ -182,6 +182,32 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
   };
 
   const handleFormSubmit = async (data: OnboardingFormData) => {
+    // Validate required fields
+    if (!data.first_name?.trim()) {
+      showError('First name is required');
+      return;
+    }
+    
+    if (!data.last_name?.trim()) {
+      showError('Last name is required');
+      return;
+    }
+    
+    if (!data.email?.trim()) {
+      showError('Email is required');
+      return;
+    }
+    
+    // Ensure service_type is an array
+    if (!data.service_type || !Array.isArray(data.service_type) || data.service_type.length === 0) {
+      data.service_type = [];
+    }
+    
+    // Ensure specialties is an array
+    if (!data.specialties || !Array.isArray(data.specialties) || data.specialties.length === 0) {
+      data.specialties = [];
+    }
+    
     setIsSubmitting(true);
     try {
       await createTherapistMutation.mutateAsync(data);
@@ -213,7 +239,7 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
                 </label>
                 <input
                   type="text"
-                  {...register('first_name', { required: 'First name is required' })}
+                  {...register('first_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.first_name && (
@@ -238,7 +264,7 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
                 </label>
                 <input
                   type="text"
-                  {...register('last_name', { required: 'Last name is required' })}
+                  {...register('last_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.last_name && (
@@ -254,13 +280,7 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
                 </label>
                 <input
                   type="email"
-                  {...register('email', { 
-                    required: 'Email is required',
-                    pattern: {
-                      value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                      message: 'Invalid email address',
-                    },
-                  })}
+                  {...register('email')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.email && (

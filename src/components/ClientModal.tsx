@@ -29,9 +29,7 @@ export default function ClientModal({
       gender: client?.gender || '',
       client_id: client?.client_id || '',
       insurance_info: client?.insurance_info ? JSON.stringify(client.insurance_info) : '{}',
-      service_preference: Array.isArray(client?.service_preference) 
-        ? client.service_preference.join(', ') 
-        : '',
+      service_preference: client?.service_preference || [], // Initialize as empty array if no value
       one_to_one_units: client?.one_to_one_units || 0,
       supervision_units: client?.supervision_units || 0,
       parent_consult_units: client?.parent_consult_units || 0,
@@ -136,6 +134,11 @@ export default function ClientModal({
         showError('ZIP code is required');
         return;
       }
+    }
+
+    // Ensure service_preference is always an array
+    if (typeof data.service_preference === 'string') {
+      data.service_preference = data.service_preference ? [data.service_preference] : [];
     }
     
     await onSubmit(data);
@@ -570,15 +573,25 @@ export default function ClientModal({
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Service Preferences
               </label>
-              <select
-                {...register('service_preference')}
-                multiple
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-              >
-                <option value="In clinic">In clinic</option>
-                <option value="In home">In home</option>
-                <option value="Telehealth">Telehealth</option>
-              </select>
+              <Controller
+                name="service_preference"
+                control={control}
+                render={({ field }) => (
+                  <select
+                    multiple
+                    value={field.value}
+                    onChange={(e) => {
+                      const values = Array.from(e.target.selectedOptions, option => option.value);
+                      field.onChange(values);
+                    }}
+                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                  >
+                    <option value="In clinic">In clinic</option>
+                    <option value="In home">In home</option>
+                    <option value="Telehealth">Telehealth</option>
+                  </select>
+                )}
+              />
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Hold Ctrl/Cmd to select multiple options
               </p>

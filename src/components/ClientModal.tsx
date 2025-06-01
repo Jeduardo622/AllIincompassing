@@ -88,7 +88,7 @@ export default function ClientModal({
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  First Name*
+                  First Name
                 </label>
                 <input
                   type="text"
@@ -113,7 +113,7 @@ export default function ClientModal({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Last Name*
+                  Last Name
                 </label>
                 <input
                   type="text"
@@ -129,7 +129,7 @@ export default function ClientModal({
             <div className="grid grid-cols-3 gap-4 mt-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Date of Birth*
+                  Date of Birth
                 </label>
                 <input
                   type="date"
@@ -143,7 +143,7 @@ export default function ClientModal({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Gender*
+                  Gender
                 </label>
                 <select
                   {...register('gender', { required: 'Gender is required' })}
@@ -161,7 +161,7 @@ export default function ClientModal({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Email*
+                  Email
                 </label>
                 <input
                   type="text"
@@ -190,7 +190,7 @@ export default function ClientModal({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    First Name*
+                    First Name
                   </label>
                   <input
                     type="text"
@@ -203,7 +203,7 @@ export default function ClientModal({
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Last Name*
+                    Last Name
                   </label>
                   <input
                     type="text"
@@ -219,7 +219,7 @@ export default function ClientModal({
               <div className="grid grid-cols-2 gap-4 mt-2">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Phone*
+                    Phone
                   </label>
                   <input
                     type="tel"
@@ -244,7 +244,7 @@ export default function ClientModal({
               
               <div className="mt-2">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Relationship to Client*
+                  Relationship to Client
                 </label>
                 <select
                   {...register('parent1_relationship', { required: 'Relationship is required' })}
@@ -337,7 +337,7 @@ export default function ClientModal({
             <div className="grid grid-cols-1 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Street Address*
+                  Street Address
                 </label>
                 <input
                   type="text"
@@ -363,7 +363,7 @@ export default function ClientModal({
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    City*
+                    City
                   </label>
                   <input
                     type="text"
@@ -376,7 +376,7 @@ export default function ClientModal({
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    State*
+                    State
                   </label>
                   <input
                     type="text"
@@ -389,7 +389,7 @@ export default function ClientModal({
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    ZIP Code*
+                    ZIP Code
                   </label>
                   <input
                     type="text"
@@ -434,7 +434,7 @@ export default function ClientModal({
             <div className="grid grid-cols-1 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Client ID*
+                  Client ID
                 </label>
                 <input
                   type="text"

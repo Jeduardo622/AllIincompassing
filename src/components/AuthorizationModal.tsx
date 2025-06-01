@@ -163,7 +163,7 @@ export default function AuthorizationModal({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Authorization Number*
+                  Authorization Number
                 </label>
                 <input
                   type="text"
@@ -177,7 +177,7 @@ export default function AuthorizationModal({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  CIN Number*
+                  CIN Number
                 </label>
                 <input
                   type="text"
@@ -197,7 +197,7 @@ export default function AuthorizationModal({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Client*
+                  Client
                 </label>
                 <select
                   {...register('client_id', { required: 'Client is required' })}
@@ -245,7 +245,7 @@ export default function AuthorizationModal({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Provider*
+                  Provider
                 </label>
                 <select
                   {...register('provider_id', { required: 'Provider is required' })}
@@ -271,7 +271,7 @@ export default function AuthorizationModal({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Diagnosis Code*
+                  Diagnosis Code
                 </label>
                 <input
                   type="text"
@@ -285,7 +285,7 @@ export default function AuthorizationModal({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Diagnosis Description*
+                  Diagnosis Description
                 </label>
                 <input
                   type="text"
@@ -305,7 +305,7 @@ export default function AuthorizationModal({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Start Date*
+                  Start Date
                 </label>
                 <input
                   type="date"
@@ -319,7 +319,7 @@ export default function AuthorizationModal({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  End Date*
+                  End Date
                 </label>
                 <input
                   type="date"
@@ -341,7 +341,7 @@ export default function AuthorizationModal({
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Service Code*
+                      Service Code
                     </label>
                     <input
                       type="text"
@@ -360,7 +360,7 @@ export default function AuthorizationModal({
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Description*
+                      Description
                     </label>
                     <input
                       type="text"
@@ -379,7 +379,7 @@ export default function AuthorizationModal({
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      From Date*
+                      From Date
                     </label>
                     <input
                       type="date"
@@ -397,7 +397,7 @@ export default function AuthorizationModal({
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      To Date*
+                      To Date
                     </label>
                     <input
                       type="date"
@@ -415,7 +415,7 @@ export default function AuthorizationModal({
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Requested Units*
+                      Requested Units
                     </label>
                     <input
                       type="number"
@@ -435,7 +435,7 @@ export default function AuthorizationModal({
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Unit Type*
+                      Unit Type
                     </label>
                     <input
                       type="text"

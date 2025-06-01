@@ -82,7 +82,7 @@ export default function TherapistModal({
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  First Name*
+                  First Name
                 </label>
                 <input
                   type="text"
@@ -107,7 +107,7 @@ export default function TherapistModal({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Last Name*
+                  Last Name
                 </label>
                 <input
                   type="text"
@@ -123,7 +123,7 @@ export default function TherapistModal({
             <div className="grid grid-cols-2 gap-4 mt-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Email*
+                  Email
                 </label>
                 <input
                   type="text"
@@ -153,7 +153,7 @@ export default function TherapistModal({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mt-4">
+            <div className="grid grid-cols-3 gap-4 mt-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Staff ID
@@ -181,9 +181,7 @@ export default function TherapistModal({
                   <option value="Clinical Director">Clinical Director</option>
                 </select>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-4 mt-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Employee Type
@@ -198,7 +196,9 @@ export default function TherapistModal({
                   <option value="Contractor">Contractor</option>
                 </select>
               </div>
+            </div>
 
+            <div className="grid grid-cols-2 gap-4 mt-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Status
@@ -212,17 +212,17 @@ export default function TherapistModal({
                   <option value="on_leave">On Leave</option>
                 </select>
               </div>
-            </div>
 
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Supervisor
-              </label>
-              <input
-                type="text"
-                {...register('supervisor')}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Supervisor
+                </label>
+                <input
+                  type="text"
+                  {...register('supervisor')}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                />
+              </div>
             </div>
 
             <div className="mt-4">

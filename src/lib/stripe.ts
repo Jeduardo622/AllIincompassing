@@ -2,9 +2,16 @@ import { loadStripe } from '@stripe/stripe-js';
 import { supabase } from './supabase';
 
 // Initialize Stripe with your publishable key
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+const stripePromise = stripeKey ? loadStripe(stripeKey) : null;
 
-export const getStripe = () => stripePromise;
+export const getStripe = () => {
+  if (!stripePromise) {
+    console.warn('Stripe publishable key is missing. Please check your .env file.');
+    return Promise.resolve(null);
+  }
+  return stripePromise;
+};
 
 // Create a checkout session
 export const createCheckoutSession = async ({

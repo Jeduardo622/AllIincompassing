@@ -22,8 +22,7 @@ import InvoiceList from '../components/billing/InvoiceList';
 import { showSuccess, showError } from '../lib/toast';
 
 // Initialize Stripe
-const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
-const stripePromise = stripeKey ? loadStripe(stripeKey) : null;
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 
 // Billing plans
 const BILLING_PLANS = [
@@ -91,17 +90,6 @@ export default function Billing() {
   const [clientId, setClientId] = useState('current');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Check if Stripe is available
-  const [stripeAvailable, setStripeAvailable] = useState(!!stripePromise);
-
-  useEffect(() => {
-    // Check if Stripe key is available
-    if (!stripeKey) {
-      console.warn('Stripe publishable key is missing. Billing features will be limited.');
-      setStripeAvailable(false);
-    }
-  }, []);
-
   // Fetch payment methods
   const { 
     data: paymentMethods = [], 
@@ -110,8 +98,6 @@ export default function Billing() {
   } = useQuery({
     queryKey: ['payment-methods', clientId],
     queryFn: async () => {
-      if (!stripeAvailable) return [];
-      
       try {
         const data = await getClientPaymentMethods(clientId);
         return data.payment_methods || [];
@@ -120,7 +106,6 @@ export default function Billing() {
         return [];
       }
     },
-    enabled: stripeAvailable,
   });
 
   // Fetch invoices
@@ -131,8 +116,6 @@ export default function Billing() {
   } = useQuery({
     queryKey: ['invoices', clientId],
     queryFn: async () => {
-      if (!stripeAvailable) return [];
-      
       try {
         const data = await getClientInvoices(clientId);
         return data.invoices || [];
@@ -141,15 +124,12 @@ export default function Billing() {
         return [];
       }
     },
-    enabled: stripeAvailable,
   });
 
   // Fetch current subscription
   const { data: subscription, isLoading: isLoadingSubscription } = useQuery({
     queryKey: ['subscription', clientId],
     queryFn: async () => {
-      if (!stripeAvailable) return null;
-      
       try {
         const { data, error } = await supabase.functions.invoke('get-subscription', {
           body: { clientId },
@@ -161,7 +141,6 @@ export default function Billing() {
         return null;
       }
     },
-    enabled: stripeAvailable,
   });
 
   // Handle plan selection
@@ -171,11 +150,6 @@ export default function Billing() {
 
   // Handle payment method deletion
   const handleDeletePaymentMethod = async (paymentMethodId: string) => {
-    if (!stripeAvailable) {
-      showError('Stripe is not configured. Please check your environment variables.');
-      return;
-    }
-    
     if (!window.confirm('Are you sure you want to delete this payment method?')) {
       return;
     }
@@ -199,11 +173,6 @@ export default function Billing() {
 
   // Handle setting default payment method
   const handleSetDefaultPaymentMethod = async (paymentMethodId: string) => {
-    if (!stripeAvailable) {
-      showError('Stripe is not configured. Please check your environment variables.');
-      return;
-    }
-    
     setIsLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('set-default-payment-method', {
@@ -240,43 +209,6 @@ export default function Billing() {
   };
 
   const currentPlan = getCurrentPlan();
-
-  if (!stripeAvailable) {
-    return (
-      <div className="h-full">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Billing & Payments</h1>
-        </div>
-
-        <div className="bg-white dark:bg-dark-lighter rounded-lg shadow p-6">
-          <div className="flex items-center mb-4">
-            <AlertCircle className="h-6 w-6 text-amber-500 mr-3" />
-            <h2 className="text-lg font-medium text-gray-900 dark:text-white">
-              Stripe Configuration Required
-            </h2>
-          </div>
-          
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Billing features are currently unavailable because Stripe is not properly configured. 
-            Please add the required environment variables to enable billing functionality.
-          </p>
-          
-          <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg mb-4">
-            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Required Environment Variables:
-            </h3>
-            <ul className="list-disc list-inside text-sm text-gray-600 dark:text-gray-400">
-              <li>VITE_STRIPE_PUBLISHABLE_KEY</li>
-            </ul>
-          </div>
-          
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Add these variables to your .env file or deployment environment to enable Stripe integration.
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="h-full">

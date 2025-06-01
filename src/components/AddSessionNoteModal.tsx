@@ -102,7 +102,7 @@ export default function AddSessionNoteModal({
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 <Calendar className="w-4 h-4 inline-block mr-1" />
-                Session Date*
+                Session Date
               </label>
               <input
                 type="date"
@@ -116,7 +116,7 @@ export default function AddSessionNoteModal({
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 <FileText className="w-4 h-4 inline-block mr-1" />
-                Service Code*
+                Service Code
               </label>
               <select
                 value={serviceCode}
@@ -141,7 +141,7 @@ export default function AddSessionNoteModal({
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 <Clock className="w-4 h-4 inline-block mr-1" />
-                Start Time*
+                Start Time
               </label>
               <input
                 type="time"
@@ -155,7 +155,7 @@ export default function AddSessionNoteModal({
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 <Clock className="w-4 h-4 inline-block mr-1" />
-                End Time*
+                End Time
               </label>
               <input
                 type="time"
@@ -169,7 +169,7 @@ export default function AddSessionNoteModal({
           
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Therapist*
+              Therapist
             </label>
             <select
               value={therapistId}
@@ -188,7 +188,7 @@ export default function AddSessionNoteModal({
           
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Goals Addressed*
+              Goals Addressed
             </label>
             {goalsAddressed.map((goal, index) => (
               <div key={index} className="flex items-center mb-2">
@@ -222,7 +222,7 @@ export default function AddSessionNoteModal({
           
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Session Notes*
+              Session Notes
             </label>
             <textarea
               value={narrative}

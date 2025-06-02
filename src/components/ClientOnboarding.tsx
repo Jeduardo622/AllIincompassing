@@ -115,10 +115,12 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       // Prepare client data with proper formatting
       const formattedClient = {
         ...formattedData,
-        service_preference: formattedData.service_preference,
+        service_preference: formattedData.service_preference || [],
         insurance_info: formattedData.insurance_info || {},
         full_name: `${formattedData.first_name} ${formattedData.middle_name || ''} ${formattedData.last_name}`.trim()
       };
+
+      console.log("Submitting client data:", formattedClient);
 
       // Insert client data
       const { data: client, error } = await supabase
@@ -127,7 +129,12 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase insert error:", error);
+        throw error;
+      }
+
+      console.log("Client created successfully:", client);
 
       // Handle file uploads if any
       for (const [key, file] of Object.entries(uploadedFiles)) {
@@ -154,6 +161,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       }
     },
     onError: (error) => {
+      console.error("Mutation error:", error);
       showError(error);
       setIsSubmitting(false);
     }
@@ -169,6 +177,8 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
   };
 
   const handleFormSubmit = async (data: OnboardingFormData) => {
+    console.log("Form submitted with data:", data);
+    
     // Validate required fields
     if (!data.first_name?.trim()) {
       showError('First name is required');
@@ -231,12 +241,13 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
     }
     
     // Ensure service_preference is an array
-    if (!data.service_preference || !Array.isArray(data.service_preference)) {
+    if (!Array.isArray(data.service_preference)) {
       data.service_preference = [];
     }
     
     setIsSubmitting(true);
     try {
+      console.log("Starting client creation mutation");
       await createClientMutation.mutateAsync(data);
     } catch (error) {
       console.error('Error submitting form:', error);
@@ -557,17 +568,6 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                 {errors.address_line1 && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.address_line1.message}</p>
                 )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Address Line 2
-                </label>
-                <input
-                  type="text"
-                  {...register('address_line2')}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                />
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

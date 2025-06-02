@@ -87,11 +87,6 @@ export default function ClientModal({
       return;
     }
     
-    if (!data.client_id?.trim()) {
-      showError('Client ID is required');
-      return;
-    }
-    
     // Validate parent/guardian information if this is a new client
     if (!client) {
       if (!data.parent1_first_name?.trim()) {
@@ -137,8 +132,8 @@ export default function ClientModal({
     }
 
     // Ensure service_preference is always an array
-    if (typeof data.service_preference === 'string') {
-      data.service_preference = data.service_preference ? [data.service_preference] : [];
+    if (!Array.isArray(data.service_preference)) {
+      data.service_preference = [];
     }
     
     await onSubmit(data);

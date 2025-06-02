@@ -34,9 +34,6 @@ const LoadingSpinner = () => (
   </div>
 );
 
-// Session refresh interval (15 minutes)
-const SESSION_REFRESH_INTERVAL = 15 * 60 * 1000;
-
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -66,80 +63,76 @@ function App() {
   const { isDark } = useTheme();
 
   useEffect(() => {
-    let isSubscribed = true;
-    let refreshIntervalId: number | undefined;
-
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!isSubscribed) return;
-      
       console.log('Auth state changed:', _event, session?.user?.email);
       setUser(session?.user ?? null);
       
       if (session?.user) {
         // Fetch user roles
-        try {
-          const { data: rolesData, error: rolesError } = await supabase.rpc('get_user_roles');
-          if (rolesError) {
-            console.error('Error fetching roles on auth change:', rolesError);
-            setRoles([]);
-          } else {
-            const userRoles = rolesData?.[0]?.roles || [];
-            console.log('User roles from auth change:', userRoles);
-            setRoles(userRoles);
-            
-            // If user has no roles, try to assign admin role via RPC
-            // Only try once to avoid multiple calls
-            if (userRoles.length === 0) {
-              console.log('No roles found, attempting to assign via RPC...');
-              try {
-                // Only use one method to reduce API calls
-                const { error: assignError } = await supabase.rpc('assign_admin_role', {
-                  user_email: session.user.email
-                });
-                
-                if (assignError) {
-                  console.error('Error using assign_admin_role:', assignError);
-                } else {
-                  console.log('Admin role assigned successfully via assign_admin_role');
-                  // Refresh session to get updated roles
-                  if (isSubscribed) {
-                    await refreshSession();
-                  }
-                }
-              } catch (error) {
-                console.error('Error in admin role assignment:', error);
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Error handling auth state change:', error);
-          setRoles([]);
+        const { data: rolesData, error: rolesError } = await supabase.rpc('get_user_roles');
+        if (rolesError) {
+          console.error('Error fetching roles on auth change:', rolesError);
         }
+        const userRoles = rolesData?.[0]?.roles || [];
+        console.log('User roles from auth change:', userRoles);
+        
+        // If user has no roles, try to assign admin role via RPC
+        if (userRoles.length === 0) {
+          console.log('No roles found, attempting to assign via RPC...');
+          try {
+            // First try with manage_admin_users
+            const { error } = await supabase.rpc('manage_admin_users', {
+              operation: 'add',
+              target_user_id: session.user.id,
+              metadata: { is_admin: true }
+            });
+            
+            if (error) {
+              console.error('Error assigning admin role via manage_admin_users:', error);
+              
+              // Try with the simplified function
+              const { error: assignError } = await supabase.rpc('assign_admin_role', {
+                user_email: session.user.email
+              });
+              
+              if (assignError) {
+                console.error('Error using assign_admin_role:', assignError);
+              } else {
+                console.log('Admin role assigned successfully via assign_admin_role');
+                // Refresh session to get updated roles
+                await refreshSession();
+              }
+            } else {
+              console.log('Admin role assigned successfully via manage_admin_users');
+              // Refresh session to get updated roles
+              await refreshSession();
+            }
+          } catch (error) {
+            console.error('Error in admin role assignment:', error);
+          }
+        }
+        
+        setRoles(userRoles);
       } else {
         setRoles([]);
       }
     });
 
     // Initial session check
-    refreshSession().catch(error => {
-      console.error('Error during initial session refresh:', error);
-    });
+    refreshSession();
 
-    // Set up periodic session refresh (every 15 minutes instead of 5)
-    refreshIntervalId = window.setInterval(() => {
+    // Set up periodic session refresh (every 5 minutes)
+    const refreshInterval = setInterval(() => {
       console.log('Refreshing session...');
       refreshSession().catch(error => {
         console.error('Error during scheduled session refresh:', error);
       });
-    }, SESSION_REFRESH_INTERVAL);
+    }, 5 * 60 * 1000); // 5 minutes
 
     return () => {
-      isSubscribed = false;
       subscription.unsubscribe();
-      if (refreshIntervalId) {
-        clearInterval(refreshIntervalId);
-      }
+      clearInterval(refreshInterval);
     };
   }, [setUser, setRoles, refreshSession]);
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { Calendar, AlertCircle, RefreshCw } from 'lucide-react';
+import { Calendar, AlertCircle } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { showError } from '../lib/toast';
 import { verifyConnection } from '../lib/supabase';
@@ -12,7 +12,6 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [connectionVerified, setConnectionVerified] = useState(false);
   const [connectionChecking, setConnectionChecking] = useState(true);
-  const [connectionRetries, setConnectionRetries] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
   const { signIn, user } = useAuth();
@@ -28,18 +27,8 @@ export default function Login() {
     const checkConnection = async () => {
       try {
         setConnectionChecking(true);
-        const isConnected = await verifyConnection();
-        setConnectionVerified(isConnected);
-        
-        if (!isConnected && connectionRetries < 3) {
-          // Retry connection check after a delay
-          console.log(`Connection check failed, retrying (${connectionRetries + 1}/3)...`);
-          setTimeout(() => {
-            setConnectionRetries(prev => prev + 1);
-          }, 2000);
-        } else if (!isConnected) {
-          setError('Unable to connect to the server. Please check your internet connection and try again.');
-        }
+        await verifyConnection();
+        setConnectionVerified(true);
       } catch (err) {
         console.error('Connection error:', err);
         setError('Unable to connect to the server. Please check your internet connection and try again.');
@@ -49,7 +38,7 @@ export default function Login() {
     };
 
     checkConnection();
-  }, [user, navigate, connectionRetries]);
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,11 +64,6 @@ export default function Login() {
     }
   };
 
-  const handleRetryConnection = () => {
-    setConnectionRetries(0);
-    setError('');
-  };
-
   if (connectionChecking) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-dark flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -90,9 +74,6 @@ export default function Login() {
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">
             Connecting to server...
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
-            Please wait while we establish a connection
-          </p>
         </div>
       </div>
     );
@@ -117,26 +98,9 @@ export default function Login() {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white dark:bg-dark-lighter py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          {!connectionVerified && !connectionChecking && (
-            <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg">
-              <div className="flex items-center">
-                <AlertCircle className="h-5 w-5 mr-2" />
-                <span className="font-medium">Connection Error</span>
-              </div>
-              <p className="mt-2">Unable to connect to the server. Please check your internet connection.</p>
-              <button 
-                onClick={handleRetryConnection}
-                className="mt-2 flex items-center px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
-              >
-                <RefreshCw className="w-4 h-4 mr-1" />
-                Retry Connection
-              </button>
-            </div>
-          )}
-
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg flex items-start" role="alert">
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg flex items-start\" role="alert">
                 <AlertCircle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
                 <span className="block">{error}</span>
               </div>
@@ -184,14 +148,7 @@ export default function Login() {
                 disabled={loading || !connectionVerified}
                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 cursor-pointer dark:bg-blue-700 dark:hover:bg-blue-800"
               >
-                {loading ? (
-                  <>
-                    <RefreshCw className="animate-spin h-4 w-4 mr-2" />
-                    Signing in...
-                  </>
-                ) : (
-                  'Sign in'
-                )}
+                {loading ? 'Signing in...' : 'Sign in'}
               </button>
             </div>
 

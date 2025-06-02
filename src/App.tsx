@@ -7,7 +7,6 @@ import { useAuth } from './lib/auth';
 import { useTheme } from './lib/theme';
 import ErrorBoundary from './components/ErrorBoundary';
 import PrivateRoute from './components/PrivateRoute';
-import { showError } from './lib/toast';
 
 // Lazy load components
 const Login = React.lazy(() => import('./pages/Login'));
@@ -37,8 +36,6 @@ const LoadingSpinner = () => (
 
 // Session refresh interval (15 minutes)
 const SESSION_REFRESH_INTERVAL = 15 * 60 * 1000;
-// Maximum consecutive session refresh failures before notifying user
-const MAX_REFRESH_FAILURES = 3;
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -67,7 +64,6 @@ const queryClient = new QueryClient({
 function App() {
   const { setUser, setRoles, refreshSession } = useAuth();
   const { isDark } = useTheme();
-  const [refreshFailures, setRefreshFailures] = React.useState(0);
 
   useEffect(() => {
     let isSubscribed = true;
@@ -125,47 +121,17 @@ function App() {
       }
     });
 
-    // Initial session check with logging
-    const initialSessionCheck = async () => {
-      console.log('Performing initial session check...');
-      try {
-        await refreshSession();
-        console.log('Initial session check completed successfully');
-        setRefreshFailures(0); // Reset failure counter on success
-      } catch (error) {
-        console.error('Error during initial session refresh:', error);
-        setRefreshFailures(prev => prev + 1);
-        
-        // Notify user if we've had multiple failures
-        if (refreshFailures >= MAX_REFRESH_FAILURES) {
-          showError('Session refresh is failing. You may need to sign out and back in.');
-        }
-      }
-    };
+    // Initial session check
+    refreshSession().catch(error => {
+      console.error('Error during initial session refresh:', error);
+    });
 
-    initialSessionCheck();
-
-    // Set up periodic session refresh with improved logging and error handling
+    // Set up periodic session refresh (every 15 minutes instead of 5)
     refreshIntervalId = window.setInterval(() => {
-      console.log('Scheduled session refresh starting...');
-      refreshSession()
-        .then(() => {
-          console.log('Scheduled session refresh completed successfully');
-          setRefreshFailures(0); // Reset failure counter on success
-        })
-        .catch(error => {
-          console.error('Error during scheduled session refresh:', error);
-          setRefreshFailures(prev => {
-            const newCount = prev + 1;
-            
-            // Notify user if we've had multiple consecutive failures
-            if (newCount >= MAX_REFRESH_FAILURES) {
-              showError('Session refresh is failing. You may need to sign out and back in.');
-            }
-            
-            return newCount;
-          });
-        });
+      console.log('Refreshing session...');
+      refreshSession().catch(error => {
+        console.error('Error during scheduled session refresh:', error);
+      });
     }, SESSION_REFRESH_INTERVAL);
 
     return () => {
@@ -175,7 +141,7 @@ function App() {
         clearInterval(refreshIntervalId);
       }
     };
-  }, [setUser, setRoles, refreshSession, refreshFailures]);
+  }, [setUser, setRoles, refreshSession]);
 
   useEffect(() => {
     // Update dark mode class on document

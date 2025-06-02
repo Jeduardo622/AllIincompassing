@@ -18,7 +18,7 @@ interface AuthState {
 }
 
 // Constants for timeouts and retry logic
-const AUTH_REQUEST_TIMEOUT = 30000; // Increased from 20000 to 30000 (30 seconds)
+const AUTH_REQUEST_TIMEOUT = 60000; // Increased from 30000 to 60000 (60 seconds)
 const SESSION_REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes
 const MAX_RETRIES = 2;
 
@@ -305,7 +305,8 @@ export const useAuth = create<AuthState>((set, get) => ({
       }
     } catch (error) {
       console.error('Error refreshing session:', error);
-      set({ user: null, roles: [], loading: false });
+      set({ loading: false });
+      throw error;
     }
   }
 }));

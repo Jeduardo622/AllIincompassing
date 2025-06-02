@@ -18,7 +18,7 @@ interface AuthState {
 }
 
 // Constants for timeouts and retry logic
-const AUTH_REQUEST_TIMEOUT = 20000; // Increased from 10000 to 20000 (20 seconds)
+const AUTH_REQUEST_TIMEOUT = 30000; // Increased from 20000 to 30000 (30 seconds)
 const SESSION_REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes
 const MAX_RETRIES = 2;
 

@@ -18,9 +18,9 @@ export default function PrivateRoute({ children, requiredRoles }: PrivateRoutePr
     
     if (loading) {
       timeoutId = window.setTimeout(() => {
-        console.warn('Authentication loading timed out after 10 seconds');
+        console.warn('Authentication loading timed out after 20 seconds');
         setAuthTimeout(true);
-      }, 10000); // 10 second timeout
+      }, 20000); // Increased from 10000 to 20000 (20 seconds)
     }
     
     return () => {

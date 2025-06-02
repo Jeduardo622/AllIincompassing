@@ -52,6 +52,27 @@ export const useAuth = create<AuthState>((set, get) => ({
       
       set({ roles: userRoles, loading: false });
 
+      // If no roles found, try to assign admin role
+      if (userRoles.length === 0) {
+        console.log('No roles found during sign in, attempting to assign admin role...');
+        try {
+          const { error: assignError } = await supabase.rpc('assign_admin_role', {
+            user_email: email
+          });
+          
+          if (assignError) {
+            console.error('Error assigning admin role during sign in:', assignError);
+          } else {
+            console.log('Admin role assigned successfully during sign in');
+            
+            // Refresh session to get updated roles
+            await get().refreshSession();
+          }
+        } catch (assignError) {
+          console.error('Error in admin role assignment during sign in:', assignError);
+        }
+      }
+
       showSuccess('Successfully signed in');
     } catch (error) {
       console.error('Sign in error:', error);
@@ -162,7 +183,14 @@ export const useAuth = create<AuthState>((set, get) => ({
   setRoles: (roles) => set({ roles }),
   hasRole: (role) => {
     const roles = get().roles;
-    return roles.includes(role) || roles.includes('admin'); // Admins have access to everything
+    const hasSpecificRole = roles.includes(role);
+    const isAdmin = roles.includes('admin');
+    console.log(`Checking for role '${role}':`, { 
+      hasSpecificRole, 
+      isAdmin, 
+      userRoles: roles 
+    });
+    return hasSpecificRole || isAdmin; // Admins have access to everything
   },
   refreshSession: async () => {
     try {

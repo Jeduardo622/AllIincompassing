@@ -66,17 +66,82 @@ export default function ClientModal({
   if (!isOpen) return null;
 
   const handleFormSubmit = async (data: Partial<Client>) => {
-    try {
-      console.log("Form data being submitted:", data);
-      await onSubmit(data);
-    } catch (error) {
-      console.error("Error in form submission:", error);
-      if (error instanceof Error) {
-        showError(`Error saving client: ${error.message}`);
-      } else {
-        showError('An unknown error occurred while saving the client');
+    // Validate required fields
+    if (!data.first_name?.trim()) {
+      showError('First name is required');
+      return;
+    }
+    
+    if (!data.last_name?.trim()) {
+      showError('Last name is required');
+      return;
+    }
+    
+    if (!data.email?.trim()) {
+      showError('Email is required');
+      return;
+    }
+    
+    if (!data.date_of_birth) {
+      showError('Date of birth is required');
+      return;
+    }
+    
+    if (!data.client_id?.trim()) {
+      showError('Client ID is required');
+      return;
+    }
+    
+    // Validate parent/guardian information if this is a new client
+    if (!client) {
+      if (!data.parent1_first_name?.trim()) {
+        showError('Parent/guardian first name is required');
+        return;
+      }
+      
+      if (!data.parent1_last_name?.trim()) {
+        showError('Parent/guardian last name is required');
+        return;
+      }
+      
+      if (!data.parent1_phone?.trim()) {
+        showError('Parent/guardian phone is required');
+        return;
+      }
+      
+      if (!data.parent1_relationship?.trim()) {
+        showError('Parent/guardian relationship is required');
+        return;
+      }
+      
+      // Validate address information
+      if (!data.address_line1?.trim()) {
+        showError('Street address is required');
+        return;
+      }
+      
+      if (!data.city?.trim()) {
+        showError('City is required');
+        return;
+      }
+      
+      if (!data.state?.trim()) {
+        showError('State is required');
+        return;
+      }
+      
+      if (!data.zip_code?.trim()) {
+        showError('ZIP code is required');
+        return;
       }
     }
+
+    // Ensure service_preference is always an array
+    if (typeof data.service_preference === 'string') {
+      data.service_preference = data.service_preference ? [data.service_preference] : [];
+    }
+    
+    await onSubmit(data);
   };
 
   return (

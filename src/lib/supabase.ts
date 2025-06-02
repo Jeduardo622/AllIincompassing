@@ -28,7 +28,7 @@ const testConnection = async () => {
     }
     console.log('Auth connection verified:', session ? 'Session exists' : 'No active session');
 
-    // Test database access
+    // Test database access with a public table query that doesn't require auth
     const { data: rolesCount, error: rolesError } = await supabase
       .from('roles')
       .select('count');
@@ -38,16 +38,21 @@ const testConnection = async () => {
     }
     console.log('Database connection verified');
 
-    // Test RPC function
-    const { data: roles, error: rpcError } = await supabase.rpc('get_user_roles');
-    if (rpcError) {
-      throw rpcError;
+    // Only test RPC functions if we have an authenticated session
+    if (session) {
+      const { data: roles, error: rpcError } = await supabase.rpc('get_user_roles');
+      if (rpcError) {
+        throw rpcError;
+      }
+      console.log('RPC functions verified');
     }
-    console.log('RPC functions verified');
 
   } catch (error) {
     console.error('Supabase connection error:', error);
-    throw error;
+    // Don't throw the error if it's just an authentication issue
+    if (error instanceof Error && !error.message.includes('No authenticated user found')) {
+      throw error;
+    }
   }
 };
 

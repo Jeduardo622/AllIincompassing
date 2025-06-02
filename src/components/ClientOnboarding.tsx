@@ -110,7 +110,9 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
   const createClientMutation = useMutation({
     mutationFn: async (data: Partial<Client>) => {
       // Format data for submission
+      console.log("Raw form data before formatting:", data);
       const formattedData = prepareFormData(data);
+      console.log("Formatted data after prepareFormData:", formattedData);
       
       // Prepare client data with proper formatting
       const formattedClient = {
@@ -119,6 +121,8 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
         insurance_info: formattedData.insurance_info || {},
         full_name: `${formattedData.first_name} ${formattedData.middle_name || ''} ${formattedData.last_name}`.trim()
       };
+      
+      console.log("Final client data being sent to Supabase:", formattedClient);
 
       // Insert client data
       const { data: client, error } = await supabase
@@ -127,7 +131,15 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase insert error details:", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        throw error;
+      }
 
       // Handle file uploads if any
       for (const [key, file] of Object.entries(uploadedFiles)) {
@@ -154,7 +166,12 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       }
     },
     onError: (error) => {
-      showError(error);
+      console.error("Client creation mutation error:", error);
+      if (error instanceof Error) {
+        showError(`Error creating client: ${error.message}`);
+      } else {
+        showError('An unknown error occurred while creating the client');
+      }
       setIsSubmitting(false);
     }
   });
@@ -169,74 +186,106 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
   };
 
   const handleFormSubmit = async (data: OnboardingFormData) => {
-    // Validate required fields
+    console.log("Form submission started with data:", data);
+    
+    // Validate required fields with more detailed error messages
+    const requiredFieldErrors: string[] = [];
+    
     if (!data.first_name?.trim()) {
-      showError('First name is required');
-      return;
+      requiredFieldErrors.push('First name is required');
     }
     
     if (!data.last_name?.trim()) {
-      showError('Last name is required');
-      return;
+      requiredFieldErrors.push('Last name is required');
     }
     
     if (!data.email?.trim()) {
-      showError('Email is required');
-      return;
+      requiredFieldErrors.push('Email is required');
     }
     
     if (!data.date_of_birth) {
-      showError('Date of birth is required');
-      return;
+      requiredFieldErrors.push('Date of birth is required');
     }
     
     if (!data.parent1_first_name?.trim()) {
-      showError('Parent/guardian first name is required');
-      return;
+      requiredFieldErrors.push('Parent/guardian first name is required');
     }
     
     if (!data.parent1_last_name?.trim()) {
-      showError('Parent/guardian last name is required');
-      return;
+      requiredFieldErrors.push('Parent/guardian last name is required');
     }
     
     if (!data.parent1_phone?.trim()) {
-      showError('Parent/guardian phone is required');
-      return;
+      requiredFieldErrors.push('Parent/guardian phone is required');
     }
     
     if (!data.parent1_relationship?.trim()) {
-      showError('Parent/guardian relationship is required');
-      return;
+      requiredFieldErrors.push('Parent/guardian relationship is required');
     }
     
     if (!data.address_line1?.trim()) {
-      showError('Street address is required');
-      return;
+      requiredFieldErrors.push('Street address is required');
     }
     
     if (!data.city?.trim()) {
-      showError('City is required');
-      return;
+      requiredFieldErrors.push('City is required');
     }
     
     if (!data.state?.trim()) {
-      showError('State is required');
-      return;
+      requiredFieldErrors.push('State is required');
     }
     
     if (!data.zip_code?.trim()) {
-      showError('ZIP code is required');
+      requiredFieldErrors.push('ZIP code is required');
+    }
+    
+    // Display all validation errors at once if there are any
+    if (requiredFieldErrors.length > 0) {
+      const errorMessage = `Please fix the following errors:\n${requiredFieldErrors.join('\n')}`;
+      console.error("Validation errors:", requiredFieldErrors);
+      showError(errorMessage);
       return;
     }
     
     // Ensure service_preference is an array
     if (!data.service_preference || !Array.isArray(data.service_preference)) {
+      console.log("service_preference is not an array, setting to empty array");
       data.service_preference = [];
+    } else {
+      console.log("service_preference is an array with values:", data.service_preference);
+    }
+    
+    // Ensure insurance_info is an object
+    if (typeof data.insurance_info === 'string') {
+      try {
+        console.log("insurance_info is a string, attempting to parse:", data.insurance_info);
+        data.insurance_info = JSON.parse(data.insurance_info);
+      } catch (e) {
+        console.error("Failed to parse insurance_info string:", e);
+        data.insurance_info = {};
+      }
+    } else if (!data.insurance_info) {
+      console.log("insurance_info is falsy, setting to empty object");
+      data.insurance_info = {};
+    }
+    
+    // Ensure availability_hours is properly formatted
+    if (typeof data.availability_hours === 'string') {
+      try {
+        console.log("availability_hours is a string, attempting to parse:", data.availability_hours);
+        data.availability_hours = JSON.parse(data.availability_hours);
+      } catch (e) {
+        console.error("Failed to parse availability_hours string:", e);
+        data.availability_hours = DEFAULT_AVAILABILITY;
+      }
+    } else if (!data.availability_hours) {
+      console.log("availability_hours is falsy, setting to default");
+      data.availability_hours = DEFAULT_AVAILABILITY;
     }
     
     setIsSubmitting(true);
     try {
+      console.log("Submitting client data to mutation...");
       await createClientMutation.mutateAsync(data);
     } catch (error) {
       console.error('Error submitting form:', error);
@@ -262,7 +311,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  First Name
+                  First Name *
                 </label>
                 <input
                   type="text"
@@ -287,7 +336,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Last Name
+                  Last Name *
                 </label>
                 <input
                   type="text"
@@ -303,7 +352,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Date of Birth
+                  Date of Birth *
                 </label>
                 <input
                   type="date"
@@ -332,7 +381,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Email
+                  Email *
                 </label>
                 <input
                   type="email"
@@ -394,11 +443,11 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Parent/Guardian Information</h2>
             
             <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg mb-6">
-              <h3 className="text-md font-medium text-blue-800 dark:text-blue-200 mb-2">Primary Parent/Guardian</h3>
+              <h3 className="text-md font-medium text-blue-800 dark:text-blue-200 mb-2">Primary Parent/Guardian *</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    First Name
+                    First Name *
                   </label>
                   <input
                     type="text"
@@ -411,7 +460,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Last Name
+                    Last Name *
                   </label>
                   <input
                     type="text"
@@ -427,7 +476,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Phone
+                    Phone *
                   </label>
                   <input
                     type="tel"
@@ -452,7 +501,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Relationship to Client
+                  Relationship to Client *
                 </label>
                 <select
                   {...register('parent1_relationship')}
@@ -547,7 +596,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             <div className="grid grid-cols-1 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Street Address
+                  Street Address *
                 </label>
                 <input
                   type="text"
@@ -573,7 +622,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    City
+                    City *
                   </label>
                   <input
                     type="text"
@@ -586,7 +635,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    State
+                    State *
                   </label>
                   <input
                     type="text"
@@ -599,7 +648,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    ZIP Code
+                    ZIP Code *
                   </label>
                   <input
                     type="text"

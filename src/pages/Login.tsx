@@ -28,6 +28,7 @@ export default function Login() {
     const checkConnection = async () => {
       try {
         setConnectionChecking(true);
+        console.log('Verifying connection to Supabase...');
         const isConnected = await verifyConnection();
         setConnectionVerified(isConnected);
         
@@ -38,7 +39,10 @@ export default function Login() {
             setConnectionRetries(prev => prev + 1);
           }, 2000);
         } else if (!isConnected) {
+          console.error('Connection verification failed after retries');
           setError('Unable to connect to the server. Please check your internet connection and try again.');
+        } else {
+          console.log('Connection to Supabase verified successfully');
         }
       } catch (err) {
         console.error('Connection error:', err);
@@ -60,16 +64,18 @@ export default function Login() {
     try {
       setError('');
       setLoading(true);
+      console.log('Attempting to sign in...');
       await signIn(email, password);
+      console.log('Sign in successful');
       
       // Get the redirect path from location state or default to home
       const from = location.state?.from?.pathname || '/';
       navigate(from, { replace: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Invalid email or password';
+      console.error('Login error details:', err);
       setError(message);
       showError(message);
-      console.error('Login error:', err);
     } finally {
       setLoading(false);
     }
@@ -78,6 +84,7 @@ export default function Login() {
   const handleRetryConnection = () => {
     setConnectionRetries(0);
     setError('');
+    console.log('Manually retrying connection...');
   };
 
   if (connectionChecking) {

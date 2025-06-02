@@ -21,6 +21,7 @@ interface AuthState {
 const AUTH_REQUEST_TIMEOUT = 60000; // Increased from 30000 to 60000 (60 seconds)
 const SESSION_REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes
 const MAX_RETRIES = 2;
+const INITIAL_RETRY_DELAY = 1000; // 1 second initial delay
 
 // Helper function to add timeout to promises
 const withTimeout = <T>(promise: Promise<T>, ms: number, errorMessage: string): Promise<T> => {
@@ -32,6 +33,50 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, errorMessage: string): 
   ]) as Promise<T>;
 };
 
+// Helper function for exponential backoff retry
+const withRetry = async <T>(
+  fn: () => Promise<T>, 
+  maxRetries: number = MAX_RETRIES,
+  initialDelay: number = INITIAL_RETRY_DELAY,
+  timeoutMs: number = AUTH_REQUEST_TIMEOUT,
+  timeoutMessage: string = 'Operation timed out'
+): Promise<T> => {
+  let retries = 0;
+  let lastError: Error | null = null;
+  
+  while (retries <= maxRetries) {
+    try {
+      // If not the first attempt, log retry information
+      if (retries > 0) {
+        console.log(`Retry attempt ${retries}/${maxRetries} after ${initialDelay * Math.pow(2, retries - 1)}ms delay`);
+      }
+      
+      // Execute the function with timeout
+      return await withTimeout(fn(), timeoutMs, timeoutMessage);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.warn(`Attempt ${retries + 1}/${maxRetries + 1} failed:`, lastError.message);
+      
+      // If we've reached max retries, throw the last error
+      if (retries >= maxRetries) {
+        throw lastError;
+      }
+      
+      // Calculate delay with exponential backoff: initialDelay * 2^retries
+      const delay = initialDelay * Math.pow(2, retries);
+      console.log(`Waiting ${delay}ms before next retry...`);
+      
+      // Wait before next retry
+      await new Promise(resolve => setTimeout(resolve, delay));
+      retries++;
+    }
+  }
+  
+  // This should never be reached due to the throw in the loop,
+  // but TypeScript needs it for type safety
+  throw lastError || new Error('Unexpected error in retry logic');
+};
+
 export const useAuth = create<AuthState>((set, get) => ({
   user: null,
   roles: [],
@@ -40,11 +85,13 @@ export const useAuth = create<AuthState>((set, get) => ({
     try {
       // Don't sign out first - this was causing extra network requests
       // Just sign in directly
-      const { data: authData, error: authError } = await withTimeout(
-        supabase.auth.signInWithPassword({
+      const { data: authData, error: authError } = await withRetry(
+        () => supabase.auth.signInWithPassword({
           email,
           password,
         }),
+        MAX_RETRIES,
+        INITIAL_RETRY_DELAY,
         AUTH_REQUEST_TIMEOUT,
         'Sign in request timed out'
       );
@@ -58,8 +105,10 @@ export const useAuth = create<AuthState>((set, get) => ({
       
       // Fetch user roles with timeout
       try {
-        const { data: rolesData, error: rolesError } = await withTimeout(
-          supabase.rpc('get_user_roles'),
+        const { data: rolesData, error: rolesError } = await withRetry(
+          () => supabase.rpc('get_user_roles'),
+          MAX_RETRIES,
+          INITIAL_RETRY_DELAY,
           AUTH_REQUEST_TIMEOUT,
           'Fetching roles timed out'
         );
@@ -94,8 +143,8 @@ export const useAuth = create<AuthState>((set, get) => ({
         throw new Error('Invalid email format');
       }
       
-      const { data, error: signUpError } = await withTimeout(
-        supabase.auth.signUp({
+      const { data, error: signUpError } = await withRetry(
+        () => supabase.auth.signUp({
           email,
           password,
           options: {
@@ -106,6 +155,8 @@ export const useAuth = create<AuthState>((set, get) => ({
             },
           },
         }),
+        MAX_RETRIES,
+        INITIAL_RETRY_DELAY,
         AUTH_REQUEST_TIMEOUT,
         'Sign up request timed out'
       );
@@ -126,10 +177,12 @@ export const useAuth = create<AuthState>((set, get) => ({
       if (isAdmin) {
         try {
           // Only try one RPC function to reduce potential timeouts
-          const { error } = await withTimeout(
-            supabase.rpc('assign_admin_role', {
+          const { error } = await withRetry(
+            () => supabase.rpc('assign_admin_role', {
               user_email: email
             }),
+            MAX_RETRIES,
+            INITIAL_RETRY_DELAY,
             AUTH_REQUEST_TIMEOUT,
             'Admin role assignment timed out'
           );
@@ -172,8 +225,10 @@ export const useAuth = create<AuthState>((set, get) => ({
       
       // Clear Supabase session with timeout
       try {
-        await withTimeout(
-          supabase.auth.signOut(),
+        await withRetry(
+          () => supabase.auth.signOut(),
+          MAX_RETRIES,
+          INITIAL_RETRY_DELAY,
           AUTH_REQUEST_TIMEOUT,
           'Sign out request timed out'
         );
@@ -213,9 +268,11 @@ export const useAuth = create<AuthState>((set, get) => ({
     try {
       console.log('Starting session refresh...');
       
-      // Add timeout to getSession call
-      const { data: { session }, error: sessionError } = await withTimeout(
-        supabase.auth.getSession(),
+      // Add timeout and retry to getSession call
+      const { data: { session }, error: sessionError } = await withRetry(
+        () => supabase.auth.getSession(),
+        MAX_RETRIES,
+        INITIAL_RETRY_DELAY,
         AUTH_REQUEST_TIMEOUT,
         'Session refresh timed out'
       );
@@ -230,10 +287,12 @@ export const useAuth = create<AuthState>((set, get) => ({
         console.log('Session found for user:', session.user.email);
         set({ user: session.user });
         
-        // Fetch user roles with timeout
+        // Fetch user roles with timeout and retry
         try {
-          const { data: rolesData, error: rolesError } = await withTimeout(
-            supabase.rpc('get_user_roles'),
+          const { data: rolesData, error: rolesError } = await withRetry(
+            () => supabase.rpc('get_user_roles'),
+            MAX_RETRIES,
+            INITIAL_RETRY_DELAY,
             AUTH_REQUEST_TIMEOUT,
             'Fetching roles timed out'
           );
@@ -255,10 +314,12 @@ export const useAuth = create<AuthState>((set, get) => ({
             
             // Try to assign admin role if no roles found - only use one method
             try {
-              const { error: adminError } = await withTimeout(
-                supabase.rpc('assign_admin_role', {
+              const { error: adminError } = await withRetry(
+                () => supabase.rpc('assign_admin_role', {
                   user_email: session.user.email
                 }),
+                MAX_RETRIES,
+                INITIAL_RETRY_DELAY,
                 AUTH_REQUEST_TIMEOUT,
                 'Admin role assignment timed out'
               );
@@ -271,8 +332,10 @@ export const useAuth = create<AuthState>((set, get) => ({
                 
                 // Fetch roles again after assignment
                 try {
-                  const { data: updatedRolesData, error: updatedRolesError } = await withTimeout(
-                    supabase.rpc('get_user_roles'),
+                  const { data: updatedRolesData, error: updatedRolesError } = await withRetry(
+                    () => supabase.rpc('get_user_roles'),
+                    MAX_RETRIES,
+                    INITIAL_RETRY_DELAY,
                     AUTH_REQUEST_TIMEOUT,
                     'Fetching updated roles timed out'
                   );

@@ -29,7 +29,7 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
       // Set a 60-second timeout for all requests (increased from 15 seconds)
       const timeoutId = setTimeout(() => controller.abort(), 60000);
       
-      return fetch(url, { ...options, signal })
+      return fetch(url, { ...options, signal, keepalive: true })
         .finally(() => clearTimeout(timeoutId));
     },
   },

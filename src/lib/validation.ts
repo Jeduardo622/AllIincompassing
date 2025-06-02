@@ -46,11 +46,45 @@ export const isValidPhone = (phone: string): boolean => {
 };
 
 /**
+ * List of fields that should be treated as dates
+ */
+const DATE_FIELDS = [
+  'date_of_birth',
+  'start_date',
+  'end_date',
+  'issue_date',
+  'expiry_date',
+  'created_at',
+  'updated_at',
+  'last_hit_at',
+  'submitted_at'
+];
+
+/**
+ * Handles date field validation and formatting
+ * Converts empty strings to null for date fields
+ */
+const handleDateField = (value: string | null | undefined): string | null => {
+  if (!value || value.trim() === '') {
+    return null;
+  }
+  return value;
+};
+
+/**
  * Prepares form data for submission by formatting URLs
  */
 export const prepareFormData = <T extends Record<string, any>>(data: T): T => {
   console.log("prepareFormData received:", data);
   const result = { ...data };
+  
+  // Handle date fields
+  for (const field of DATE_FIELDS) {
+    if (field in result) {
+      result[field] = handleDateField(result[field]);
+      console.log(`Processed date field ${field}:`, result[field]);
+    }
+  }
   
   // Format URL fields if they exist
   if ('website' in result && result.website) {

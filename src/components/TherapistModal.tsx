@@ -78,15 +78,10 @@ export default function TherapistModal({
       return;
     }
     
-    // Ensure service_type is an array
-    if (!data.service_type || !Array.isArray(data.service_type) || data.service_type.length === 0) {
-      data.service_type = [];
-    }
-    
-    // Ensure specialties is an array
-    if (!data.specialties || !Array.isArray(data.specialties) || data.specialties.length === 0) {
-      data.specialties = [];
-    }
+    // Ensure array fields are always arrays, not null
+    data.service_type = data.service_type || [];
+    data.specialties = data.specialties || [];
+    data.preferred_areas = data.preferred_areas || [];
     
     await onSubmit(data);
   };

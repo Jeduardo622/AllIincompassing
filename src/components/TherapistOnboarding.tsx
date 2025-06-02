@@ -115,21 +115,9 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
       // Prepare therapist data with proper formatting
       const formattedTherapist = {
         ...formattedData,
-        service_type: Array.isArray(formattedData.service_type) 
-          ? (formattedData.service_type.length > 0 ? formattedData.service_type : [])
-          : typeof formattedData.service_type === 'string'
-            ? formattedData.service_type.split(',').map(s => s.trim()).filter(Boolean)
-            : [],
-        specialties: Array.isArray(formattedData.specialties)
-          ? (formattedData.specialties.length > 0 ? formattedData.specialties : [])
-          : typeof formattedData.specialties === 'string'
-            ? formattedData.specialties.split(',').map(s => s.trim()).filter(Boolean)
-            : [],
-        preferred_areas: Array.isArray(formattedData.preferred_areas)
-          ? (formattedData.preferred_areas.length > 0 ? formattedData.preferred_areas : [])
-          : typeof formattedData.preferred_areas === 'string'
-            ? formattedData.preferred_areas.split(',').map(s => s.trim()).filter(Boolean)
-            : [],
+        service_type: formattedData.service_type,
+        specialties: formattedData.specialties,
+        preferred_areas: formattedData.preferred_areas,
         full_name: `${formattedData.first_name} ${formattedData.middle_name || ''} ${formattedData.last_name}`.trim()
       };
 
@@ -199,12 +187,12 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
     }
     
     // Ensure service_type is an array
-    if (!data.service_type || !Array.isArray(data.service_type) || data.service_type.length === 0) {
+    if (!data.service_type || !Array.isArray(data.service_type)) {
       data.service_type = [];
     }
     
     // Ensure specialties is an array
-    if (!data.specialties || !Array.isArray(data.specialties) || data.specialties.length === 0) {
+    if (!data.specialties || !Array.isArray(data.specialties)) {
       data.specialties = [];
     }
     

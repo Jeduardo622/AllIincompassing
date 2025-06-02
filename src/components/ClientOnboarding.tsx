@@ -115,11 +115,8 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       // Prepare client data with proper formatting
       const formattedClient = {
         ...formattedData,
-        service_preference: Array.isArray(formattedData.service_preference) 
-          ? (formattedData.service_preference.length > 0 ? formattedData.service_preference : [])
-          : typeof formattedData.service_preference === 'string'
-            ? formattedData.service_preference.split(',').map(s => s.trim()).filter(Boolean)
-            : [],
+        service_preference: formattedData.service_preference,
+        insurance_info: formattedData.insurance_info || {},
         full_name: `${formattedData.first_name} ${formattedData.middle_name || ''} ${formattedData.last_name}`.trim()
       };
 
@@ -234,7 +231,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
     }
     
     // Ensure service_preference is an array
-    if (!data.service_preference || !Array.isArray(data.service_preference) || data.service_preference.length === 0) {
+    if (!data.service_preference || !Array.isArray(data.service_preference)) {
       data.service_preference = [];
     }
     
@@ -626,6 +623,50 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Service Types
+                </label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="in_clinic"
+                      value="In clinic"
+                      {...register('service_preference')}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="in_clinic" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
+                      In Clinic
+                    </label>
+                  </div>
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="in_home"
+                      value="In home"
+                      {...register('service_preference')}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="in_home" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
+                      In Home
+                    </label>
+                  </div>
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="telehealth"
+                      value="Telehealth"
+                      {...register('service_preference')}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="telehealth" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
+                      Telehealth
+                    </label>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Insurance Provider
                 </label>
                 <input
@@ -633,61 +674,6 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                   {...register('insurance_info.provider')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Referral Source
-                </label>
-                <input
-                  type="text"
-                  {...register('referral_source')}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                />
-              </div>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Service Preferences
-              </label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="in_clinic"
-                    value="In clinic"
-                    {...register('service_preference')}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="in_clinic" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                    In Clinic
-                  </label>
-                </div>
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="in_home"
-                    value="In home"
-                    {...register('service_preference')}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="in_home" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                    In Home
-                  </label>
-                </div>
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="telehealth"
-                    value="Telehealth"
-                    {...register('service_preference')}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="telehealth" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                    Telehealth
-                  </label>
-                </div>
               </div>
             </div>
             

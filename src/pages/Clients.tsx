@@ -70,15 +70,9 @@ const Clients = () => {
       // Prepare client data with proper formatting
       const parsedClient = {
         ...formattedClient,
-        service_preference: typeof formattedClient.service_preference === 'string'
-          ? (formattedClient.service_preference as string).split(',').map(s => s.trim()).filter(Boolean)
-          : (Array.isArray(formattedClient.service_preference) && formattedClient.service_preference.length > 0)
-            ? formattedClient.service_preference
-            : null,
-        insurance_info: typeof formattedClient.insurance_info === 'string'
-          ? JSON.parse(formattedClient.insurance_info as string)
-          : formattedClient.insurance_info || {},
-        full_name: `${formattedClient.first_name} ${formattedClient.middle_name ?? ''} ${formattedClient.last_name}`.trim()
+        service_preference: formattedClient.service_preference,
+        insurance_info: formattedClient.insurance_info || {},
+        full_name: `${formattedClient.first_name} ${formattedClient.middle_name || ''} ${formattedClient.last_name}`.trim()
       };
 
       // Insert the new client
@@ -107,15 +101,9 @@ const Clients = () => {
       // Prepare client data with proper formatting
       const parsedClient = {
         ...updatedClient,
-        service_preference: typeof updatedClient.service_preference === 'string'
-          ? (updatedClient.service_preference as string).split(',').map(s => s.trim()).filter(Boolean)
-          : (Array.isArray(updatedClient.service_preference) && updatedClient.service_preference.length > 0)
-            ? updatedClient.service_preference
-            : null,
-        insurance_info: typeof updatedClient.insurance_info === 'string'
-          ? JSON.parse(updatedClient.insurance_info as string)
-          : updatedClient.insurance_info || {},
-        full_name: `${updatedClient.first_name} ${updatedClient.middle_name ?? ''} ${updatedClient.last_name}`.trim()
+        service_preference: updatedClient.service_preference,
+        insurance_info: updatedClient.insurance_info || {},
+        full_name: `${updatedClient.first_name} ${updatedClient.middle_name || ''} ${updatedClient.last_name}`.trim()
       };
 
       // Update the client

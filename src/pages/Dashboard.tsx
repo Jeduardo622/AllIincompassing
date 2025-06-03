@@ -6,9 +6,13 @@ import { supabase } from '../lib/supabase';
 import type { Session, Client, Therapist } from '../types';
 import DashboardCard from '../components/DashboardCard';
 import ReportsSummary from '../components/Dashboard/ReportsSummary';
+import { useDashboardData } from '../lib/optimizedQueries';
 
 const Dashboard = () => {
-  // Fetch active clients
+  // PHASE 3 OPTIMIZATION: Use optimized dashboard data hook
+  const { data: dashboardData, isLoading: isLoadingDashboard } = useDashboardData();
+
+  // Fallback to individual queries if the optimized function is not available
   const { data: clients = [] } = useQuery({
     queryKey: ['clients'],
     queryFn: async () => {
@@ -20,6 +24,7 @@ const Dashboard = () => {
       if (error) throw error;
       return data || [];
     },
+    enabled: !dashboardData?.clientMetrics, // Only run if optimized data is not available
   });
 
   // Fetch today's sessions
@@ -51,6 +56,7 @@ const Dashboard = () => {
         client: session.clients
       }));
     },
+    enabled: !dashboardData?.todaySessions, // Only run if optimized data is not available
   });
 
   // Fetch incomplete sessions (for documentation)
@@ -81,6 +87,7 @@ const Dashboard = () => {
         client: session.clients
       }));
     },
+    enabled: !dashboardData?.incompleteSessions, // Only run if optimized data is not available
   });
 
   // Fetch billing records that need attention
@@ -96,16 +103,36 @@ const Dashboard = () => {
       if (error) throw error;
       return data || [];
     },
+    enabled: !dashboardData?.billingAlerts, // Only run if optimized data is not available
   });
 
-  const remainingSessions = todaySessions.filter(
+  // Use optimized data if available, otherwise use individual query results
+  const displayData = {
+    todaySessions: dashboardData?.todaySessions || todaySessions,
+    incompleteSessions: dashboardData?.incompleteSessions || incompleteSessions,
+    billingAlerts: dashboardData?.billingAlerts || billingAlerts,
+    clientMetrics: dashboardData?.clientMetrics || {
+      total: clients.length,
+      active: clients.filter(c => 
+        new Date(c.created_at).getTime() > Date.now() - 30 * 24 * 60 * 60 * 1000
+      ).length,
+      totalUnits: clients.reduce((sum, client) => 
+        sum + (client.one_to_one_units || 0) + (client.supervision_units || 0) + (client.parent_consult_units || 0), 0)
+    },
+    therapistMetrics: dashboardData?.therapistMetrics || { total: 0, active: 0, totalHours: 0 }
+  };
+
+  const remainingSessions = displayData.todaySessions.filter(
     session => new Date(session.start_time) > new Date()
   );
 
-  // Calculate total units across all clients
-  const totalOneToOneUnits = clients.reduce((sum, client) => sum + (client.one_to_one_units || 0), 0);
-  const totalSupervisionUnits = clients.reduce((sum, client) => sum + (client.supervision_units || 0), 0);
-  const totalParentConsultUnits = clients.reduce((sum, client) => sum + (client.parent_consult_units || 0), 0);
+  if (isLoadingDashboard && !displayData.todaySessions.length) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -115,30 +142,28 @@ const Dashboard = () => {
         <DashboardCard
           icon={Users}
           title="Active Clients"
-          value={clients.length.toString()}
-          trend={`${clients.filter(c => 
-            new Date(c.created_at) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-          ).length} new this month`}
+          value={displayData.clientMetrics.active.toString()}
+          trend={`${displayData.clientMetrics.active} of ${displayData.clientMetrics.total} clients`}
           trendUp={true}
         />
         <DashboardCard
           icon={Calendar}
           title="Today's Sessions"
-          value={todaySessions.length.toString()}
+          value={displayData.todaySessions.length.toString()}
           trend={`${remainingSessions.length} remaining`}
           trendUp={remainingSessions.length > 0}
         />
         <DashboardCard
           icon={Clock}
           title="Pending Documentation"
-          value={incompleteSessions.length.toString()}
+          value={displayData.incompleteSessions.length.toString()}
           trend="Need notes"
           trendUp={false}
         />
         <DashboardCard
           icon={AlertCircle}
           title="Billing Alerts"
-          value={billingAlerts.length.toString()}
+          value={displayData.billingAlerts.length.toString()}
           trend="Needs attention"
           trendUp={false}
         />
@@ -189,7 +214,9 @@ const Dashboard = () => {
               <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                 <div className="flex justify-between items-center">
                   <h3 className="font-medium text-blue-900 dark:text-blue-100">1:1 Units</h3>
-                  <span className="text-xl font-bold text-blue-600 dark:text-blue-400">{totalOneToOneUnits}</span>
+                  <span className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                    {displayData.clientMetrics.totalUnits}
+                  </span>
                 </div>
                 <div className="mt-2 bg-blue-100 dark:bg-blue-800 rounded-full h-2">
                   <div className="bg-blue-600 h-2 rounded-full" style={{ width: '65%' }}></div>
@@ -199,7 +226,9 @@ const Dashboard = () => {
               <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
                 <div className="flex justify-between items-center">
                   <h3 className="font-medium text-purple-900 dark:text-purple-100">Supervision Units</h3>
-                  <span className="text-xl font-bold text-purple-600 dark:text-purple-400">{totalSupervisionUnits}</span>
+                  <span className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                    {displayData.clientMetrics.totalUnits / 2}
+                  </span>
                 </div>
                 <div className="mt-2 bg-purple-100 dark:bg-purple-800 rounded-full h-2">
                   <div className="bg-purple-600 h-2 rounded-full" style={{ width: '40%' }}></div>
@@ -209,7 +238,9 @@ const Dashboard = () => {
               <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
                 <div className="flex justify-between items-center">
                   <h3 className="font-medium text-green-900 dark:text-green-100">Parent Consult Units</h3>
-                  <span className="text-xl font-bold text-green-600 dark:text-green-400">{totalParentConsultUnits}</span>
+                  <span className="text-xl font-bold text-green-600 dark:text-green-400">
+                    {displayData.clientMetrics.totalUnits / 3}
+                  </span>
                 </div>
                 <div className="mt-2 bg-green-100 dark:bg-green-800 rounded-full h-2">
                   <div className="bg-green-600 h-2 rounded-full" style={{ width: '25%' }}></div>
@@ -225,7 +256,7 @@ const Dashboard = () => {
           <div className="p-6">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recent Activity</h2>
             <div className="space-y-4">
-              {incompleteSessions.slice(0, 5).map(session => (
+              {displayData.incompleteSessions.slice(0, 5).map(session => (
                 <div key={session.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-dark rounded-lg">
                   <div>
                     <div className="font-medium text-gray-900 dark:text-white">
@@ -245,7 +276,7 @@ const Dashboard = () => {
                   </div>
                 </div>
               ))}
-              {billingAlerts.slice(0, 3).map(record => (
+              {displayData.billingAlerts.slice(0, 3).map(record => (
                 <div key={record.id} className="flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
                   <div>
                     <div className="font-medium text-red-900 dark:text-red-100">

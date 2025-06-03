@@ -53,25 +53,11 @@ const Therapists = () => {
       // Prepare therapist data with proper formatting
       const parsedTherapist = {
         ...formattedTherapist,
-        service_type: typeof formattedTherapist.service_type === 'string'
-          ? (formattedTherapist.service_type as string).split(',').map(s => s.trim()).filter(Boolean)
-          : (Array.isArray(formattedTherapist.service_type) && formattedTherapist.service_type.length > 0)
-            ? formattedTherapist.service_type
-            : null,
-        specialties: typeof formattedTherapist.specialties === 'string'
-          ? (formattedTherapist.specialties as string).split(',').map(s => s.trim()).filter(Boolean)
-          : (Array.isArray(formattedTherapist.specialties) && formattedTherapist.specialties.length > 0)
-            ? formattedTherapist.specialties
-            : null,
-        preferred_areas: typeof formattedTherapist.preferred_areas === 'string'
-          ? (formattedTherapist.preferred_areas as string).split(',').map(s => s.trim()).filter(Boolean)
-          : (Array.isArray(formattedTherapist.preferred_areas) && formattedTherapist.preferred_areas.length > 0)
-            ? formattedTherapist.preferred_areas
-            : null,
-        availability_hours: typeof formattedTherapist.availability_hours === 'string'
-          ? JSON.parse(formattedTherapist.availability_hours as string)
-          : formattedTherapist.availability_hours || {},
-        full_name: `${formattedTherapist.first_name} ${formattedTherapist.middle_name ?? ''} ${formattedTherapist.last_name}`.trim()
+        service_type: formattedTherapist.service_type,
+        specialties: formattedTherapist.specialties,
+        preferred_areas: formattedTherapist.preferred_areas,
+        availability_hours: formattedTherapist.availability_hours || {},
+        full_name: `${formattedTherapist.first_name} ${formattedTherapist.middle_name || ''} ${formattedTherapist.last_name}`.trim()
       };
 
       // Insert the new therapist
@@ -100,25 +86,11 @@ const Therapists = () => {
       // Prepare therapist data with proper formatting
       const parsedTherapist = {
         ...updatedTherapist,
-        service_type: typeof updatedTherapist.service_type === 'string'
-          ? (updatedTherapist.service_type as string).split(',').map(s => s.trim()).filter(Boolean)
-          : (Array.isArray(updatedTherapist.service_type) && updatedTherapist.service_type.length > 0)
-            ? updatedTherapist.service_type
-            : null,
-        specialties: typeof updatedTherapist.specialties === 'string'
-          ? (updatedTherapist.specialties as string).split(',').map(s => s.trim()).filter(Boolean)
-          : (Array.isArray(updatedTherapist.specialties) && updatedTherapist.specialties.length > 0)
-            ? updatedTherapist.specialties
-            : null,
-        preferred_areas: typeof updatedTherapist.preferred_areas === 'string'
-          ? (updatedTherapist.preferred_areas as string).split(',').map(s => s.trim()).filter(Boolean)
-          : (Array.isArray(updatedTherapist.preferred_areas) && updatedTherapist.preferred_areas.length > 0)
-            ? updatedTherapist.preferred_areas
-            : null,
-        availability_hours: typeof updatedTherapist.availability_hours === 'string'
-          ? JSON.parse(updatedTherapist.availability_hours as string)
-          : updatedTherapist.availability_hours || {},
-        full_name: `${updatedTherapist.first_name} ${updatedTherapist.middle_name ?? ''} ${updatedTherapist.last_name}`.trim()
+        service_type: updatedTherapist.service_type,
+        specialties: updatedTherapist.specialties,
+        preferred_areas: updatedTherapist.preferred_areas,
+        availability_hours: updatedTherapist.availability_hours || {},
+        full_name: `${updatedTherapist.first_name} ${updatedTherapist.middle_name || ''} ${updatedTherapist.last_name}`.trim()
       };
 
       // Update the therapist

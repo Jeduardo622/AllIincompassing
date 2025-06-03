@@ -115,13 +115,12 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       // Prepare client data with proper formatting
       const formattedClient = {
         ...formattedData,
-        service_preference: Array.isArray(formattedData.service_preference) 
-          ? (formattedData.service_preference.length > 0 ? formattedData.service_preference : null)
-          : typeof formattedData.service_preference === 'string'
-            ? formattedData.service_preference.split(',').map(s => s.trim()).filter(Boolean)
-            : null,
+        service_preference: formattedData.service_preference || [],
+        insurance_info: formattedData.insurance_info || {},
         full_name: `${formattedData.first_name} ${formattedData.middle_name || ''} ${formattedData.last_name}`.trim()
       };
+
+      console.log("Submitting client data:", formattedClient);
 
       // Insert client data
       const { data: client, error } = await supabase
@@ -130,7 +129,12 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase insert error:", error);
+        throw error;
+      }
+
+      console.log("Client created successfully:", client);
 
       // Handle file uploads if any
       for (const [key, file] of Object.entries(uploadedFiles)) {
@@ -157,6 +161,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       }
     },
     onError: (error) => {
+      console.error("Mutation error:", error);
       showError(error);
       setIsSubmitting(false);
     }
@@ -172,8 +177,77 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
   };
 
   const handleFormSubmit = async (data: OnboardingFormData) => {
+    console.log("Form submitted with data:", data);
+    
+    // Validate required fields
+    if (!data.first_name?.trim()) {
+      showError('First name is required');
+      return;
+    }
+    
+    if (!data.last_name?.trim()) {
+      showError('Last name is required');
+      return;
+    }
+    
+    if (!data.email?.trim()) {
+      showError('Email is required');
+      return;
+    }
+    
+    if (!data.date_of_birth) {
+      showError('Date of birth is required');
+      return;
+    }
+    
+    if (!data.parent1_first_name?.trim()) {
+      showError('Parent/guardian first name is required');
+      return;
+    }
+    
+    if (!data.parent1_last_name?.trim()) {
+      showError('Parent/guardian last name is required');
+      return;
+    }
+    
+    if (!data.parent1_phone?.trim()) {
+      showError('Parent/guardian phone is required');
+      return;
+    }
+    
+    if (!data.parent1_relationship?.trim()) {
+      showError('Parent/guardian relationship is required');
+      return;
+    }
+    
+    if (!data.address_line1?.trim()) {
+      showError('Street address is required');
+      return;
+    }
+    
+    if (!data.city?.trim()) {
+      showError('City is required');
+      return;
+    }
+    
+    if (!data.state?.trim()) {
+      showError('State is required');
+      return;
+    }
+    
+    if (!data.zip_code?.trim()) {
+      showError('ZIP code is required');
+      return;
+    }
+    
+    // Ensure service_preference is an array
+    if (!Array.isArray(data.service_preference)) {
+      data.service_preference = [];
+    }
+    
     setIsSubmitting(true);
     try {
+      console.log("Starting client creation mutation");
       await createClientMutation.mutateAsync(data);
     } catch (error) {
       console.error('Error submitting form:', error);
@@ -199,11 +273,11 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  First Name*
+                  First Name
                 </label>
                 <input
                   type="text"
-                  {...register('first_name', { required: 'First name is required' })}
+                  {...register('first_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.first_name && (
@@ -224,11 +298,11 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Last Name*
+                  Last Name
                 </label>
                 <input
                   type="text"
-                  {...register('last_name', { required: 'Last name is required' })}
+                  {...register('last_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.last_name && (
@@ -240,11 +314,11 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Date of Birth*
+                  Date of Birth
                 </label>
                 <input
                   type="date"
-                  {...register('date_of_birth', { required: 'Date of birth is required' })}
+                  {...register('date_of_birth')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.date_of_birth && (
@@ -269,17 +343,11 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Email*
+                  Email
                 </label>
                 <input
                   type="email"
-                  {...register('email', { 
-                    required: 'Email is required',
-                    pattern: {
-                      value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                      message: 'Invalid email address',
-                    },
-                  })}
+                  {...register('email')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.email && (
@@ -341,11 +409,11 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    First Name*
+                    First Name
                   </label>
                   <input
                     type="text"
-                    {...register('parent1_first_name', { required: 'Parent/guardian first name is required' })}
+                    {...register('parent1_first_name')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                   {errors.parent1_first_name && (
@@ -354,11 +422,11 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Last Name*
+                    Last Name
                   </label>
                   <input
                     type="text"
-                    {...register('parent1_last_name', { required: 'Parent/guardian last name is required' })}
+                    {...register('parent1_last_name')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                   {errors.parent1_last_name && (
@@ -370,11 +438,11 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Phone*
+                    Phone
                   </label>
                   <input
                     type="tel"
-                    {...register('parent1_phone', { required: 'Parent/guardian phone is required' })}
+                    {...register('parent1_phone')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                   {errors.parent1_phone && (
@@ -395,10 +463,10 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Relationship to Client*
+                  Relationship to Client
                 </label>
                 <select
-                  {...register('parent1_relationship', { required: 'Relationship is required' })}
+                  {...register('parent1_relationship')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
                   <option value="">Select relationship</option>
@@ -490,11 +558,11 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             <div className="grid grid-cols-1 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Street Address*
+                  Street Address
                 </label>
                 <input
                   type="text"
-                  {...register('address_line1', { required: 'Street address is required' })}
+                  {...register('address_line1')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.address_line1 && (
@@ -502,25 +570,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                 )}
               </div>
               
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Address Line 2
-                </label>
-                <input
-                  type="text"
-                  {...register('address_line2')}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                />
-              </div>
-              
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    City*
+                    City
                   </label>
                   <input
                     type="text"
-                    {...register('city', { required: 'City is required' })}
+                    {...register('city')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                   {errors.city && (
@@ -529,11 +586,11 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    State*
+                    State
                   </label>
                   <input
                     type="text"
-                    {...register('state', { required: 'State is required' })}
+                    {...register('state')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                   {errors.state && (
@@ -542,11 +599,11 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    ZIP Code*
+                    ZIP Code
                   </label>
                   <input
                     type="text"
-                    {...register('zip_code', { required: 'ZIP code is required' })}
+                    {...register('zip_code')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                   {errors.zip_code && (
@@ -566,6 +623,50 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Service Types
+                </label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="in_clinic"
+                      value="In clinic"
+                      {...register('service_preference')}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="in_clinic" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
+                      In Clinic
+                    </label>
+                  </div>
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="in_home"
+                      value="In home"
+                      {...register('service_preference')}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="in_home" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
+                      In Home
+                    </label>
+                  </div>
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="telehealth"
+                      value="Telehealth"
+                      {...register('service_preference')}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="telehealth" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
+                      Telehealth
+                    </label>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Insurance Provider
                 </label>
                 <input
@@ -573,61 +674,6 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                   {...register('insurance_info.provider')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Referral Source
-                </label>
-                <input
-                  type="text"
-                  {...register('referral_source')}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                />
-              </div>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Service Preferences
-              </label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="in_clinic"
-                    value="In clinic"
-                    {...register('service_preference')}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="in_clinic" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                    In Clinic
-                  </label>
-                </div>
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="in_home"
-                    value="In home"
-                    {...register('service_preference')}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="in_home" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                    In Home
-                  </label>
-                </div>
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="telehealth"
-                    value="Telehealth"
-                    {...register('service_preference')}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="telehealth" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                    Telehealth
-                  </label>
-                </div>
               </div>
             </div>
             

@@ -115,21 +115,9 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
       // Prepare therapist data with proper formatting
       const formattedTherapist = {
         ...formattedData,
-        service_type: Array.isArray(formattedData.service_type) 
-          ? (formattedData.service_type.length > 0 ? formattedData.service_type : null)
-          : typeof formattedData.service_type === 'string'
-            ? formattedData.service_type.split(',').map(s => s.trim()).filter(Boolean)
-            : null,
-        specialties: Array.isArray(formattedData.specialties)
-          ? (formattedData.specialties.length > 0 ? formattedData.specialties : null)
-          : typeof formattedData.specialties === 'string'
-            ? formattedData.specialties.split(',').map(s => s.trim()).filter(Boolean)
-            : null,
-        preferred_areas: Array.isArray(formattedData.preferred_areas)
-          ? (formattedData.preferred_areas.length > 0 ? formattedData.preferred_areas : null)
-          : typeof formattedData.preferred_areas === 'string'
-            ? formattedData.preferred_areas.split(',').map(s => s.trim()).filter(Boolean)
-            : null,
+        service_type: formattedData.service_type,
+        specialties: formattedData.specialties,
+        preferred_areas: formattedData.preferred_areas,
         full_name: `${formattedData.first_name} ${formattedData.middle_name || ''} ${formattedData.last_name}`.trim()
       };
 
@@ -182,6 +170,32 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
   };
 
   const handleFormSubmit = async (data: OnboardingFormData) => {
+    // Validate required fields
+    if (!data.first_name?.trim()) {
+      showError('First name is required');
+      return;
+    }
+    
+    if (!data.last_name?.trim()) {
+      showError('Last name is required');
+      return;
+    }
+    
+    if (!data.email?.trim()) {
+      showError('Email is required');
+      return;
+    }
+    
+    // Ensure service_type is an array
+    if (!data.service_type || !Array.isArray(data.service_type)) {
+      data.service_type = [];
+    }
+    
+    // Ensure specialties is an array
+    if (!data.specialties || !Array.isArray(data.specialties)) {
+      data.specialties = [];
+    }
+    
     setIsSubmitting(true);
     try {
       await createTherapistMutation.mutateAsync(data);
@@ -209,11 +223,11 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  First Name*
+                  First Name
                 </label>
                 <input
                   type="text"
-                  {...register('first_name', { required: 'First name is required' })}
+                  {...register('first_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.first_name && (
@@ -234,11 +248,11 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Last Name*
+                  Last Name
                 </label>
                 <input
                   type="text"
-                  {...register('last_name', { required: 'Last name is required' })}
+                  {...register('last_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.last_name && (
@@ -250,17 +264,11 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Email*
+                  Email
                 </label>
                 <input
                   type="email"
-                  {...register('email', { 
-                    required: 'Email is required',
-                    pattern: {
-                      value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                      message: 'Invalid email address',
-                    },
-                  })}
+                  {...register('email')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.email && (

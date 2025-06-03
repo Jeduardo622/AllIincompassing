@@ -347,4 +347,4 @@ export default {
   useOptimizedQuery,
   useCachePreloading,
   createOptimizedQueryClient
-}; 
+};

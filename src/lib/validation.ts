@@ -62,47 +62,19 @@ export const prepareFormData = <T extends Record<string, any>>(data: T): T => {
   
   // Ensure arrays are properly formatted
   if ('service_preference' in result) {
-    if (typeof result.service_preference === 'string') {
-      result.service_preference = result.service_preference
-        .split(',')
-        .map((s: string) => s.trim())
-        .filter(Boolean);
-    } else if (!Array.isArray(result.service_preference)) {
-      result.service_preference = [];
-    }
+    result.service_preference = processArrayField(result.service_preference);
   }
   
   if ('service_type' in result) {
-    if (typeof result.service_type === 'string') {
-      result.service_type = result.service_type
-        .split(',')
-        .map((s: string) => s.trim())
-        .filter(Boolean);
-    } else if (!Array.isArray(result.service_type)) {
-      result.service_type = [];
-    }
+    result.service_type = processArrayField(result.service_type);
   }
   
   if ('specialties' in result) {
-    if (typeof result.specialties === 'string') {
-      result.specialties = result.specialties
-        .split(',')
-        .map((s: string) => s.trim())
-        .filter(Boolean);
-    } else if (!Array.isArray(result.specialties)) {
-      result.specialties = [];
-    }
+    result.specialties = processArrayField(result.specialties);
   }
   
   if ('preferred_areas' in result) {
-    if (typeof result.preferred_areas === 'string') {
-      result.preferred_areas = result.preferred_areas
-        .split(',')
-        .map((s: string) => s.trim())
-        .filter(Boolean);
-    } else if (!Array.isArray(result.preferred_areas)) {
-      result.preferred_areas = [];
-    }
+    result.preferred_areas = processArrayField(result.preferred_areas);
   }
   
   // Handle JSON fields
@@ -133,3 +105,20 @@ export const prepareFormData = <T extends Record<string, any>>(data: T): T => {
   
   return result;
 };
+
+/**
+ * Process array fields to ensure they are properly formatted
+ * Returns an empty array instead of null if the field is empty
+ */
+function processArrayField(field: unknown): string[] {
+  if (typeof field === 'string') {
+    const items = field
+      .split(',')
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+    return items.length > 0 ? items : [];
+  } else if (Array.isArray(field)) {
+    return field.length > 0 ? field : [];
+  }
+  return [];
+}

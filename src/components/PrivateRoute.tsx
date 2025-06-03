@@ -54,7 +54,7 @@ export default function PrivateRoute({ children, requiredRoles }: PrivateRoutePr
     
     if (!hasRequiredRole) {
       console.log('User lacks required role, redirecting to unauthorized');
-      return <Navigate to="/unauthorized" replace />;
+      return <Navigate to="/unauthorized\" replace />;
     }
   }
 

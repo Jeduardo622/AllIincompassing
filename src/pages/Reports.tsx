@@ -17,7 +17,8 @@ import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { showError } from '../lib/toast';
 import { useDebounce } from '../lib/performance';
-import { CACHE_STRATEGIES, generateCacheKey } from '../lib/cacheStrategy';
+import { CACHE_STRATEGIES, generateCacheKey } from './cacheStrategy';
+import { useDropdownData, useSessionMetrics } from '../lib/optimizedQueries';
 
 // Report types
 type ReportType = 'sessions' | 'clients' | 'therapists' | 'authorizations' | 'billing';
@@ -104,71 +105,18 @@ const Reports = React.memo(() => {
   const debouncedFilters = useDebounce(filters, 300);
 
   // PHASE 3 OPTIMIZATION: Use optimized dropdown data with smart caching
-  const { data: dropdownData } = useQuery({
-    queryKey: generateCacheKey.dropdowns(),
-    queryFn: async () => {
-      // Try to use the optimized RPC function first, fallback to individual queries
-      try {
-        const { data, error } = await supabase.rpc('get_dropdown_data');
-      if (error) throw error;
-      return data;
-      } catch (error) {
-        console.warn('RPC function not available, using fallback queries:', error);
-        // Fallback to individual queries
-        const [therapistsResult, clientsResult] = await Promise.all([
-          supabase.from('therapists').select('id, full_name').order('full_name'),
-          supabase.from('clients').select('id, full_name').order('full_name')
-        ]);
-        
-        return {
-          therapists: therapistsResult.data || [],
-          clients: clientsResult.data || []
-        };
-      }
-    },
-    staleTime: CACHE_STRATEGIES.ENTITIES.dropdowns,
-    refetchOnWindowFocus: false,
-  });
+  const { data: dropdownData } = useDropdownData();
 
   const therapists = dropdownData?.therapists || [];
   const clients = dropdownData?.clients || [];
 
   // PHASE 3 OPTIMIZATION: Use optimized session metrics RPC function
-  const useOptimizedSessionMetrics = useCallback((
-    startDate: string,
-    endDate: string,
-    therapistId?: string,
-    clientId?: string
-  ) => {
-    return useQuery({
-      queryKey: generateCacheKey.sessionMetrics(
-        startDate,
-        endDate,
-        therapistId,
-        clientId
-      ),
-    queryFn: async () => {
-        try {
-          // Try optimized RPC function first
-          const { data, error } = await supabase.rpc('get_session_metrics', {
-            p_start_date: startDate,
-            p_end_date: endDate,
-            p_therapist_id: therapistId || null,
-            p_client_id: clientId || null
-          });
-      
-      if (error) throw error;
-      return data;
-        } catch (error) {
-          console.warn('Optimized session metrics not available, using fallback:', error);
-          // Fallback to original query logic
-          return generateSessionsReport();
-    }
-      },
-      staleTime: CACHE_STRATEGIES.REPORTS.session_metrics,
-      enabled: !!startDate && !!endDate,
-    });
-  }, []);
+  const { data: sessionMetricsData, isLoading: isLoadingMetrics } = useSessionMetrics(
+    debouncedFilters.startDate,
+    debouncedFilters.endDate,
+    debouncedFilters.therapistId,
+    debouncedFilters.clientId
+  );
 
   // Fallback function for session report generation
   const generateSessionsReport = useCallback(async (): Promise<ReportData> => {
@@ -250,21 +198,9 @@ const Reports = React.memo(() => {
       switch (reportType) {
         case 'sessions':
           // Use optimized session metrics if available
-          try {
-            const optimizedResult = await supabase.rpc('get_session_metrics', {
-              p_start_date: debouncedFilters.startDate,
-              p_end_date: debouncedFilters.endDate,
-              p_therapist_id: debouncedFilters.therapistId || null,
-              p_client_id: debouncedFilters.clientId || null
-            });
-            
-            if (optimizedResult.data) {
-              data = optimizedResult.data;
-            } else {
-              data = await generateSessionsReport();
-            }
-          } catch (error) {
-            console.warn('Optimized report generation failed, using fallback:', error);
+          if (sessionMetricsData) {
+            data = sessionMetricsData;
+          } else {
             data = await generateSessionsReport();
           }
           break;
@@ -281,7 +217,7 @@ const Reports = React.memo(() => {
     } finally {
       setIsGenerating(false);
     }
-  }, [reportType, debouncedFilters, generateSessionsReport]);
+  }, [reportType, sessionMetricsData, generateSessionsReport]);
 
   // Memoized date range update effect
   const updateDateRange = useCallback(() => {
@@ -468,64 +404,101 @@ const Reports = React.memo(() => {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Start Date
                   </label>
-                  <input
-                    type="date"
-                    value={filters.startDate}
-                    onChange={(e) => setFilters({...filters, startDate: e.target.value})}
-                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                  />
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <input
+                      type="date"
+                      value={filters.startDate}
+                      onChange={(e) => setFilters({...filters, startDate: e.target.value})}
+                      className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                    />
+                  </div>
                 </div>
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     End Date
                   </label>
-                  <input
-                    type="date"
-                    value={filters.endDate}
-                    onChange={(e) => setFilters({...filters, endDate: e.target.value})}
-                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                  />
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <input
+                      type="date"
+                      value={filters.endDate}
+                      onChange={(e) => setFilters({...filters, endDate: e.target.value})}
+                      className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                    />
+                  </div>
                 </div>
               </>
             )}
             
+            {(reportType === 'sessions' || reportType === 'authorizations') && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                <Filter className="w-4 h-4 inline mr-1" />
                   Therapist
                 </label>
-                <select
-                  value={filters.therapistId || ''}
-                  onChange={(e) => setFilters({...filters, therapistId: e.target.value || undefined})}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                >
-                  <option value="">All Therapists</option>
-                  {therapists.map(therapist => (
-                    <option key={therapist.id} value={therapist.id}>
-                      {therapist.full_name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <select
+                    value={filters.therapistId || ''}
+                    onChange={(e) => setFilters({...filters, therapistId: e.target.value || undefined})}
+                    className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                  >
+                    <option value="">All Therapists</option>
+                    {therapists.map(therapist => (
+                      <option key={therapist.id} value={therapist.id}>
+                        {therapist.full_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
+            )}
             
+            {(reportType === 'sessions' || reportType === 'authorizations' || reportType === 'billing') && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Client
                 </label>
-                <select
-                  value={filters.clientId || ''}
-                  onChange={(e) => setFilters({...filters, clientId: e.target.value || undefined})}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                >
-                  <option value="">All Clients</option>
-                  {clients.map(client => (
-                    <option key={client.id} value={client.id}>
-                      {client.full_name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <select
+                    value={filters.clientId || ''}
+                    onChange={(e) => setFilters({...filters, clientId: e.target.value || undefined})}
+                    className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                  >
+                    <option value="">All Clients</option>
+                    {clients.map(client => (
+                      <option key={client.id} value={client.id}>
+                        {client.full_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
+            )}
+            
+            {reportType === 'sessions' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Status
+                </label>
+                <div className="relative">
+                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <select
+                    value={filters.status || ''}
+                    onChange={(e) => setFilters({...filters, status: e.target.value || undefined})}
+                    className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                  >
+                    <option value="">All Statuses</option>
+                    <option value="scheduled">Scheduled</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                    <option value="no-show">No Show</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
           
           <div className="flex justify-end">

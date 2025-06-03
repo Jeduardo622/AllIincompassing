@@ -371,19 +371,3 @@ export const useSmartPrefetch = () => {
   
   return { prefetchNextWeek, prefetchReportData };
 };
-
-// ============================================================================
-// EXPORTS
-// ============================================================================
-
-export {
-  useScheduleDataBatch,
-  useSessionsOptimized,
-  useDropdownData,
-  useSessionMetrics,
-  useDashboardData,
-  useCursorPagination,
-  useOptimizedSessionMutations,
-  useQueryPerformanceMonitor,
-  useSmartPrefetch
-}; 

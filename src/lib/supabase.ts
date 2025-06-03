@@ -41,7 +41,7 @@ const testConnection = async () => {
     }
     console.log('Auth connection verified:', session ? 'Session exists' : 'No active session');
 
-    // Test database access
+    // Test database access with a public table query that doesn't require auth
     const { error: rolesError } = await supabase
       .from('roles')
       .select('count');
@@ -51,17 +51,20 @@ const testConnection = async () => {
     }
     console.log('Database connection verified');
 
-    // Test RPC function
-    const { error: rpcError } = await supabase.rpc('get_user_roles');
-    if (rpcError) {
-      throw rpcError;
+    // Only test RPC functions if we have an authenticated session
+    if (session) {
+      const { error: rpcError } = await supabase.rpc('get_user_roles');
+      if (rpcError) {
+        throw rpcError;
+      }
+      console.log('RPC functions verified');
     }
-    console.log('RPC functions verified');
 
   } catch (error) {
     console.error('Supabase connection error:', error);
     // Don't throw error in bolt.new environment to prevent app crashes
-    if (import.meta.env.DEV) {
+    // Also don't throw if it's just an authentication issue
+    if (import.meta.env.DEV && error instanceof Error && !error.message.includes('No authenticated user found')) {
       throw error;
     }
   }

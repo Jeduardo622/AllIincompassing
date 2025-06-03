@@ -1,46 +1,20 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { 
-  FileText, Calendar, Clock, User, 
-  CheckCircle, Download, Plus, Filter
+  FileText, Calendar, DollarSign, FileCheck, Plus, Download, ChevronDown, ChevronUp, 
+  Clock, CheckCircle, X, AlertTriangle, User
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import type { SessionNote, Therapist } from '../../types';
+import AddSessionNoteModal from '../AddSessionNoteModal';
 
 interface SessionNotesTabProps {
   client: any;
 }
 
-interface Authorization {
-  id: string;
-  authorization_number: string;
-  start_date: string;
-  end_date: string;
-  status: string;
-  services: {
-    id: string;
-    service_code: string;
-    service_description: string;
-    requested_units: number;
-    approved_units: number;
-    unit_type: string;
-  }[];
-}
-
-interface SessionNote {
-  id: string;
-  date: string;
-  start_time: string;
-  end_time: string;
-  service_code: string;
-  therapist_name: string;
-  goals_addressed: string[];
-  narrative: string;
-  is_locked: boolean;
-}
-
 export default function SessionNotesTab({ client }: SessionNotesTabProps) {
-  const [selectedAuth, setSelectedAuth] = useState<string | null>(null);
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
+  const [selectedAuth, setSelectedAuth] = useState<string | null>(null);
   const [selectedNotes, setSelectedNotes] = useState<string[]>([]);
   
   // Fetch authorizations
@@ -57,7 +31,21 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
         .eq('status', 'approved');
         
       if (error) throw error;
-      return data as Authorization[];
+      return data as any[];
+    },
+  });
+
+  // Fetch therapists for the session note modal
+  const { data: therapists = [] } = useQuery({
+    queryKey: ['therapists'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('therapists')
+        .select('*')
+        .order('full_name');
+      
+      if (error) throw error;
+      return data as Therapist[];
     },
   });
   
@@ -106,6 +94,16 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
   const handleGeneratePDF = () => {
     // This would call a function to generate and download a PDF of the selected notes
     alert(`Generating PDF for notes: ${selectedNotes.join(', ')}`);
+  };
+
+  const handleAddSessionNote = (newNote: Omit<SessionNote, 'id'>) => {
+    const note: SessionNote = {
+      ...newNote,
+      id: Date.now().toString(),
+    };
+    
+    setSessionNotes([note, ...sessionNotes]);
+    setIsAddNoteModalOpen(false);
   };
   
   return (
@@ -172,6 +170,7 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
                 onClick={() => setIsAddNoteModalOpen(true)}
                 className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
                 disabled={!selectedAuth}
+                type="button"
               >
                 <Plus className="w-4 h-4 mr-1" />
                 New Note
@@ -181,6 +180,7 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
                 onClick={handleGeneratePDF}
                 disabled={selectedNotes.length === 0}
                 className="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-dark border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center disabled:opacity-50"
+                type="button"
               >
                 <Download className="w-4 h-4 mr-1" />
                 Generate PDF
@@ -203,7 +203,6 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
             </div>
             
             <div className="flex items-center">
-              <Filter className="w-4 h-4 text-gray-400 mr-1" />
               <select
                 className="text-sm border-none bg-transparent focus:ring-0 text-gray-700 dark:text-gray-300"
                 defaultValue="all"
@@ -270,7 +269,10 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
                         </div>
                         
                         {!note.is_locked && (
-                          <button className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm">
+                          <button 
+                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm"
+                            type="button"
+                          >
                             Edit
                           </button>
                         )}
@@ -308,6 +310,16 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
           </div>
         </div>
       </div>
+
+      {/* Add Session Note Modal */}
+      <AddSessionNoteModal
+        isOpen={isAddNoteModalOpen}
+        onClose={() => setIsAddNoteModalOpen(false)}
+        onSubmit={handleAddSessionNote}
+        clientId={client.id}
+        therapists={therapists}
+        selectedAuth={selectedAuth || undefined}
+      />
     </div>
   );
 }

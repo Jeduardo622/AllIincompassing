@@ -3,6 +3,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { X } from 'lucide-react';
 import type { Therapist } from '../types';
 import AvailabilityEditor from './AvailabilityEditor';
+import { showError } from '../lib/toast';
 
 interface TherapistModalProps {
   isOpen: boolean;
@@ -60,6 +61,31 @@ export default function TherapistModal({
 
   if (!isOpen) return null;
 
+  const handleFormSubmit = async (data: Partial<Therapist>) => {
+    // Validate required fields
+    if (!data.first_name?.trim()) {
+      showError('First name is required');
+      return;
+    }
+    
+    if (!data.last_name?.trim()) {
+      showError('Last name is required');
+      return;
+    }
+    
+    if (!data.email?.trim()) {
+      showError('Email is required');
+      return;
+    }
+    
+    // Ensure array fields are always arrays, not null
+    data.service_type = data.service_type || [];
+    data.specialties = data.specialties || [];
+    data.preferred_areas = data.preferred_areas || [];
+    
+    await onSubmit(data);
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-4xl p-6 max-h-[90vh] overflow-y-auto">
@@ -75,18 +101,18 @@ export default function TherapistModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
           {/* General Information */}
           <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
             <h3 className="text-lg font-medium text-blue-900 dark:text-blue-100 mb-4">General Information</h3>
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  First Name*
+                  First Name
                 </label>
                 <input
                   type="text"
-                  {...register('first_name', { required: 'First name is required' })}
+                  {...register('first_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.first_name && (
@@ -107,11 +133,11 @@ export default function TherapistModal({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Last Name*
+                  Last Name
                 </label>
                 <input
                   type="text"
-                  {...register('last_name', { required: 'Last name is required' })}
+                  {...register('last_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.last_name && (
@@ -123,17 +149,11 @@ export default function TherapistModal({
             <div className="grid grid-cols-2 gap-4 mt-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Email*
+                  Email
                 </label>
                 <input
                   type="text"
-                  {...register('email', { 
-                    required: 'Email is required',
-                    pattern: {
-                      value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                      message: 'Invalid email address',
-                    },
-                  })}
+                  {...register('email')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.email && (
@@ -153,7 +173,7 @@ export default function TherapistModal({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mt-4">
+            <div className="grid grid-cols-3 gap-4 mt-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Staff ID
@@ -181,9 +201,7 @@ export default function TherapistModal({
                   <option value="Clinical Director">Clinical Director</option>
                 </select>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-4 mt-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Employee Type
@@ -198,7 +216,9 @@ export default function TherapistModal({
                   <option value="Contractor">Contractor</option>
                 </select>
               </div>
+            </div>
 
+            <div className="grid grid-cols-2 gap-4 mt-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Status
@@ -212,17 +232,17 @@ export default function TherapistModal({
                   <option value="on_leave">On Leave</option>
                 </select>
               </div>
-            </div>
 
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Supervisor
-              </label>
-              <input
-                type="text"
-                {...register('supervisor')}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Supervisor
+                </label>
+                <input
+                  type="text"
+                  {...register('supervisor')}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                />
+              </div>
             </div>
 
             <div className="mt-4">
@@ -439,7 +459,6 @@ export default function TherapistModal({
                 <input
                   type="number"
                   {...register('weekly_hours_min', { 
-                    required: 'Minimum hours is required',
                     min: { value: 0, message: 'Must be 0 or greater' },
                   })}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -456,7 +475,6 @@ export default function TherapistModal({
                 <input
                   type="number"
                   {...register('weekly_hours_max', { 
-                    required: 'Maximum hours is required',
                     min: { value: 0, message: 'Must be 0 or greater' },
                   })}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"

@@ -14,10 +14,10 @@ interface SessionModalProps {
   onClose: () => void;
   onSubmit: (data: Partial<Session>) => Promise<void>;
   session?: Session;
-  therapists: Therapist[];
-  clients: Client[];
   selectedDate?: Date;
   selectedTime?: string;
+  therapists: Therapist[];
+  clients: Client[];
   existingSessions: Session[];
 }
 
@@ -26,10 +26,10 @@ export default function SessionModal({
   onClose,
   onSubmit,
   session,
-  therapists,
-  clients,
   selectedDate,
   selectedTime,
+  therapists,
+  clients,
   existingSessions,
 }: SessionModalProps) {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
@@ -46,12 +46,19 @@ export default function SessionModal({
     return format(endTime, "yyyy-MM-dd'T'HH:mm");
   };
   
+  // Prepare default start time from selectedDate and selectedTime
+  const getDefaultStartTime = () => {
+    if (selectedDate && selectedTime) {
+      return `${format(selectedDate, 'yyyy-MM-dd')}T${selectedTime}`;
+    }
+    return session?.start_time || '';
+  };
+  
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm({
     defaultValues: {
       therapist_id: session?.therapist_id || '',
       client_id: session?.client_id || '',
-      start_time: session?.start_time || (selectedDate && selectedTime ? 
-        `${format(selectedDate, 'yyyy-MM-dd')}T${selectedTime}` : ''),
+      start_time: getDefaultStartTime(),
       end_time: session?.end_time || (selectedDate && selectedTime ? 
         getDefaultEndTime(`${format(selectedDate, 'yyyy-MM-dd')}T${selectedTime}`) : ''),
       notes: session?.notes || '',

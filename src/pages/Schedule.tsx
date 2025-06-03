@@ -19,6 +19,7 @@ import AvailabilityOverlay from '../components/AvailabilityOverlay';
 import SessionFilters from '../components/SessionFilters';
 import SchedulingMatrix from '../components/SchedulingMatrix';
 import { useDebounce } from '../lib/performance';
+import { useScheduleDataBatch, useSessionsOptimized, useDropdownData } from '../lib/optimizedQueries';
 
 // Memoized time slot component
 const TimeSlot = React.memo(({ 
@@ -166,13 +167,13 @@ const WeekView = React.memo(({
   return (
     <div className="bg-white dark:bg-dark-lighter rounded-lg shadow overflow-x-auto">
       <div className="grid grid-cols-7 border-b dark:border-gray-700 min-w-[800px]">
-        <div className="py-4 px-2 text-center text-sm font-medium text-gray-500 dark:text-gray-400 border-r dark:border-gray-700">
+        <div className="py-2 px-2 text-center text-sm font-medium text-gray-500 dark:text-gray-400 border-r dark:border-gray-700">
           Time
         </div>
         {weekDays.map(day => (
           <div
             key={day.toISOString()}
-            className="py-4 px-2 text-center text-sm font-medium text-gray-900 dark:text-white"
+            className="py-2 px-2 text-center text-sm font-medium text-gray-900 dark:text-white"
           >
             {format(day, 'EEE MMM d')}
           </div>
@@ -211,6 +212,77 @@ const WeekView = React.memo(({
 
 WeekView.displayName = 'WeekView';
 
+// Memoized day view component
+const DayView = React.memo(({ 
+  selectedDate, 
+  timeSlots, 
+  sessions, 
+  onCreateSession, 
+  onEditSession,
+  showAvailability,
+  therapists,
+  clients 
+}: {
+  selectedDate: Date;
+  timeSlots: string[];
+  sessions: Session[];
+  onCreateSession: (timeSlot: { date: Date; time: string }) => void;
+  onEditSession: (session: Session) => void;
+  showAvailability: boolean;
+  therapists: Therapist[];
+  clients: Client[];
+}) => {
+  return (
+    <div className="bg-white dark:bg-dark-lighter rounded-lg shadow overflow-x-auto" data-testid="day-view">
+      <div className="grid grid-cols-2 border-b dark:border-gray-700">
+        <div className="py-4 px-2 text-center text-sm font-medium text-gray-500 dark:text-gray-400 border-r dark:border-gray-700">
+          Time
+        </div>
+        <div className="py-4 px-2 text-center text-sm font-medium text-gray-900 dark:text-white">
+          {format(selectedDate, 'EEEE, MMMM d, yyyy')}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2">
+        <div className="border-r dark:border-gray-700">
+          {timeSlots.map(time => (
+            <div
+              key={time}
+              className="h-10 border-b dark:border-gray-700 p-2 text-sm text-gray-500 dark:text-gray-400 flex items-center"
+            >
+              {time}
+            </div>
+          ))}
+        </div>
+
+        <div className="relative">
+          {showAvailability && (
+            <AvailabilityOverlay
+              therapists={therapists}
+              clients={clients}
+              selectedDate={selectedDate}
+              timeSlots={timeSlots}
+            />
+          )}
+          
+          {timeSlots.map(time => (
+            <TimeSlot
+              key={time}
+              time={time}
+              day={selectedDate}
+              sessions={sessions}
+              onCreateSession={onCreateSession}
+              onEditSession={onEditSession}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+DayView.displayName = 'DayView';
+
 const Schedule = React.memo(() => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [view, setView] = useState<'day' | 'week' | 'matrix'>('week');
@@ -232,64 +304,26 @@ const Schedule = React.memo(() => {
   const debouncedTherapist = useDebounce(selectedTherapist, 300);
   const debouncedClient = useDebounce(selectedClient, 300);
 
-  // Fetch sessions with optimized caching
-  const { data: sessions = [], isLoading: isLoadingSessions } = useQuery({
-    queryKey: ['sessions', format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd'), debouncedTherapist, debouncedClient],
-    queryFn: async () => {
-      let query = supabase
-        .from('sessions')
-        .select(`
-          *,
-          therapist:therapists(id, full_name),
-          client:clients(id, full_name)
-        `)
-        .gte('start_time', weekStart.toISOString())
-        .lte('start_time', weekEnd.toISOString())
-        .order('start_time');
+  // PHASE 3 OPTIMIZATION: Use batched schedule data
+  const { data: batchedData, isLoading: isLoadingBatch } = useScheduleDataBatch(weekStart, weekEnd);
 
-      if (debouncedTherapist) {
-        query = query.eq('therapist_id', debouncedTherapist);
-      }
+  // Fallback to individual queries if batched data is not available
+  const { data: sessions = [], isLoading: isLoadingSessions } = useSessionsOptimized(
+    weekStart,
+    weekEnd,
+    debouncedTherapist,
+    debouncedClient
+  );
 
-      if (debouncedClient) {
-        query = query.eq('client_id', debouncedClient);
-      }
+  // Use dropdown data hook for therapists and clients
+  const { data: dropdownData, isLoading: isLoadingDropdowns } = useDropdownData();
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
-    },
-    staleTime: 2 * 60 * 1000, // 2 minutes for schedule data
-  });
-
-  // Fetch therapists and clients with longer cache time
-  const { data: therapists = [], isLoading: isLoadingTherapists } = useQuery({
-    queryKey: ['therapists'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('therapists')
-        .select('*')
-        .order('full_name');
-      
-      if (error) throw error;
-      return data || [];
-    },
-    staleTime: 10 * 60 * 1000, // 10 minutes for therapist data
-  });
-
-  const { data: clients = [], isLoading: isLoadingClients } = useQuery({
-    queryKey: ['clients'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('clients')
-        .select('*')
-        .order('full_name');
-      
-      if (error) throw error;
-      return data || [];
-    },
-    staleTime: 10 * 60 * 1000, // 10 minutes for client data
-  });
+  // Use batched data if available, otherwise use individual query results
+  const displayData = {
+    sessions: batchedData?.sessions || sessions,
+    therapists: batchedData?.therapists || dropdownData?.therapists || [],
+    clients: batchedData?.clients || dropdownData?.clients || []
+  };
 
   // Optimized mutations with proper error handling
   const createSessionMutation = useMutation({
@@ -305,6 +339,7 @@ const Schedule = React.memo(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['sessions-batch'] });
       setIsModalOpen(false);
       setSelectedSession(undefined);
       setSelectedTimeSlot(undefined);
@@ -323,6 +358,7 @@ const Schedule = React.memo(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['sessions-batch'] });
       setIsAutoScheduleModalOpen(false);
     },
   });
@@ -341,6 +377,7 @@ const Schedule = React.memo(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['sessions-batch'] });
       setIsModalOpen(false);
       setSelectedSession(undefined);
     },
@@ -357,6 +394,7 @@ const Schedule = React.memo(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['sessions-batch'] });
     },
   });
 
@@ -392,8 +430,12 @@ const Schedule = React.memo(() => {
   }, [createMultipleSessionsMutation]);
 
   const handleDateNavigation = useCallback((direction: 'prev' | 'next') => {
-    setSelectedDate(d => addDays(d, direction === 'prev' ? -7 : 7));
-  }, []);
+    setSelectedDate(d => {
+      // If in day view, move by 1 day; otherwise, move by 7 days (week)
+      const daysToAdd = view === 'day' ? 1 : 7;
+      return addDays(d, direction === 'prev' ? -daysToAdd : daysToAdd);
+    });
+  }, [view]);
 
   const handleViewChange = useCallback((newView: 'day' | 'week' | 'matrix') => {
     setView(newView);
@@ -425,10 +467,13 @@ const Schedule = React.memo(() => {
 
   // Memoized date range display
   const dateRangeDisplay = useMemo(() => {
+    if (view === 'day') {
+      return format(selectedDate, 'MMMM d, yyyy');
+    }
     return `${format(weekStart, 'MMM d')} - ${format(addDays(weekStart, 5), 'MMM d, yyyy')}`;
-  }, [weekStart]);
+  }, [weekStart, selectedDate, view]);
 
-  const isLoading = isLoadingSessions || isLoadingTherapists || isLoadingClients;
+  const isLoading = isLoadingBatch || isLoadingSessions || isLoadingDropdowns;
 
   if (isLoading) {
     return (
@@ -522,8 +567,8 @@ const Schedule = React.memo(() => {
       </div>
 
       <SessionFilters
-        therapists={therapists}
-        clients={clients}
+        therapists={displayData.therapists}
+        clients={displayData.clients}
         selectedTherapist={selectedTherapist}
         selectedClient={selectedClient}
         onTherapistChange={setSelectedTherapist}
@@ -532,21 +577,34 @@ const Schedule = React.memo(() => {
 
       {view === 'matrix' ? (
         <SchedulingMatrix
-          therapists={therapists}
-          clients={clients}
+          therapists={displayData.therapists}
+          clients={displayData.clients}
           selectedDate={selectedDate}
           onTimeSlotClick={(time) => handleCreateSession({ date: selectedDate, time })}
+        />
+      ) : view === 'day' ? (
+        <DayView
+          selectedDate={selectedDate}
+          timeSlots={timeSlots}
+          sessions={displayData.sessions.filter(session => 
+            format(parseISO(session.start_time), 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd')
+          )}
+          onCreateSession={handleCreateSession}
+          onEditSession={handleEditSession}
+          showAvailability={showAvailability}
+          therapists={displayData.therapists}
+          clients={displayData.clients}
         />
       ) : (
         <WeekView
           weekDays={weekDays}
           timeSlots={timeSlots}
-          sessions={sessions}
+          sessions={displayData.sessions}
           onCreateSession={handleCreateSession}
           onEditSession={handleEditSession}
           showAvailability={showAvailability}
-                    therapists={therapists}
-                    clients={clients}
+          therapists={displayData.therapists}
+          clients={displayData.clients}
         />
       )}
 
@@ -556,9 +614,11 @@ const Schedule = React.memo(() => {
           onClose={() => setIsModalOpen(false)}
           onSubmit={handleSubmit}
           session={selectedSession}
-          timeSlot={selectedTimeSlot}
-          therapists={therapists}
-          clients={clients}
+          selectedDate={selectedTimeSlot?.date}
+          selectedTime={selectedTimeSlot?.time}
+          therapists={displayData.therapists}
+          clients={displayData.clients}
+          existingSessions={displayData.sessions}
         />
       )}
 
@@ -567,9 +627,9 @@ const Schedule = React.memo(() => {
           isOpen={isAutoScheduleModalOpen}
           onClose={() => setIsAutoScheduleModalOpen(false)}
           onSchedule={handleAutoSchedule}
-          therapists={therapists}
-          clients={clients}
-          existingSessions={sessions}
+          therapists={displayData.therapists}
+          clients={displayData.clients}
+          existingSessions={displayData.sessions}
         />
       )}
     </div>

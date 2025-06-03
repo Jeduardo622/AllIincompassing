@@ -134,6 +134,9 @@ export interface Client {
   city?: string;
   state?: string;
   zip_code?: string;
+  diagnosis?: string[];
+  preferred_language?: string;
+  address?: string;
 }
 
 export interface Session {
@@ -145,6 +148,8 @@ export interface Session {
   status: 'scheduled' | 'completed' | 'cancelled' | 'no-show';
   notes: string;
   created_at: string;
+  therapist?: { id: string; full_name: string };
+  client?: { id: string; full_name: string };
 }
 
 export interface BillingRecord {
@@ -199,4 +204,39 @@ export interface InsuranceProvider {
   website: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// New interfaces for notes
+export interface Note {
+  id: string;
+  content: string;
+  author: string;
+  created_at: string;
+  is_visible_to_therapist?: boolean;
+  is_visible_to_parent?: boolean;
+  status: 'resolved' | 'open' | 'follow-up';
+}
+
+export interface SessionNote {
+  id: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  service_code: string;
+  therapist_name: string;
+  therapist_id?: string;
+  goals_addressed: string[];
+  narrative: string;
+  is_locked: boolean;
+  client_id?: string;
+}
+
+export interface Issue {
+  id: string;
+  category: 'Certification' | 'Scheduling' | 'Training' | 'Performance' | 'Other' | 'Authorization' | 'Clinical' | 'Billing';
+  description: string;
+  status: 'Open' | 'In Progress' | 'Resolved';
+  priority: 'Low' | 'Medium' | 'High';
+  date_opened: string;
+  last_action: string;
 }

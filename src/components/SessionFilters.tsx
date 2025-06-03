@@ -36,7 +36,7 @@ export default function SessionFilters({
             <option value="">All Therapists ({therapists.length})</option>
             {therapists.map(therapist => (
               <option key={therapist.id} value={therapist.id}>
-                {therapist.full_name} - {therapist.service_type.join(', ')}
+                {therapist.full_name} - {(therapist.service_type ?? []).join(', ')}
               </option>
             ))}
           </select>
@@ -55,7 +55,7 @@ export default function SessionFilters({
             <option value="">All Clients ({clients.length})</option>
             {clients.map(client => (
               <option key={client.id} value={client.id}>
-                {client.full_name} - {client.service_preference.join(', ')}
+                {client.full_name} - {(client.service_preference ?? []).join(', ')}
               </option>
             ))}
           </select>

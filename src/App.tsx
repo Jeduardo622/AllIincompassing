@@ -81,30 +81,30 @@ function App() {
         if (userRoles.length === 0) {
           console.log('No roles found, attempting to assign via RPC...');
           try {
-            // First try with manage_admin_users
-            const { error } = await supabase.rpc('manage_admin_users', {
-              operation: 'add',
-              target_user_id: session.user.id,
-              metadata: { is_admin: true }
+            // First try with assign_admin_role
+            const { error } = await supabase.rpc('assign_admin_role', {
+              user_email: session.user.email
             });
             
             if (error) {
-              console.error('Error assigning admin role via manage_admin_users:', error);
+              console.error('Error assigning admin role via assign_admin_role:', error);
               
-              // Try with the simplified function
-              const { error: assignError } = await supabase.rpc('assign_admin_role', {
-                user_email: session.user.email
+              // Try with the manage_admin_users as fallback
+              const { error: manageError } = await supabase.rpc('manage_admin_users', {
+                operation: 'add',
+                target_user_id: session.user.id,
+                metadata: { is_admin: true }
               });
               
-              if (assignError) {
-                console.error('Error using assign_admin_role:', assignError);
+              if (manageError) {
+                console.error('Error using manage_admin_users:', manageError);
               } else {
-                console.log('Admin role assigned successfully via assign_admin_role');
+                console.log('Admin role assigned successfully via manage_admin_users');
                 // Refresh session to get updated roles
                 await refreshSession();
               }
             } else {
-              console.log('Admin role assigned successfully via manage_admin_users');
+              console.log('Admin role assigned successfully via assign_admin_role');
               // Refresh session to get updated roles
               await refreshSession();
             }
@@ -243,7 +243,7 @@ function App() {
                 } />
 
                 {/* Catch all - redirect to dashboard */}
-                  <Route path="*" element={<Navigate to="/" replace />} />
+                  <Route path="*" element={<Navigate to="/\" replace />} />
               </Route>
             </Routes>
             </Suspense>

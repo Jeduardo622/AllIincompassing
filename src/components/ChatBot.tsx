@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Send, AlertCircle, Loader } from 'lucide-react';
+import { MessageSquare, Send, AlertCircle, Loader, CheckCircle, XCircle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { processMessage } from '../lib/ai';
 import { supabase } from '../lib/supabase';
@@ -10,7 +10,7 @@ import type { Session, Client, Therapist, Authorization, AuthorizationService } 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
-  status?: 'sending' | 'processing' | 'complete' | 'error';
+  status?: 'sending' | 'processing' | 'complete' | 'error' | 'action_success' | 'action_failed';
 }
 
 export default function ChatBot() {
@@ -57,9 +57,15 @@ export default function ChatBot() {
     try {
       // Process the message
       const response = await processMessage(userMessage, {
-        url: window.location.href,
-        userAgent: navigator.userAgent
+        url: window.location.href, 
+        userAgent: navigator.userAgent,
+        conversationId: localStorage.getItem('chatConversationId') || undefined
       });
+
+      // Store the conversation ID for future messages
+      if (response.conversationId) {
+        localStorage.setItem('chatConversationId', response.conversationId);
+      }
 
       // Update assistant message with initial response
       setMessages(prev => [
@@ -73,11 +79,14 @@ export default function ChatBot() {
 
       // Handle actions returned by the AI
       if (response.action) {
+        console.log(`Executing action: ${response.action.type}`, response.action.data);
+
         try {
           switch (response.action.type) {
             case 'cancel_sessions': {
               const { date, reason } = response.action.data;
-              
+              console.log(`Cancelling sessions for date: ${date}`, {reason});
+
               // Update message to show processing
               setMessages(prev => [
                 ...prev.slice(0, -1),
@@ -89,32 +98,40 @@ export default function ChatBot() {
               ]);
               
               // Cancel all sessions for the given date
-              const { error } = await supabase
-                .from('sessions')
-                .update({ 
-                  status: 'cancelled',
-                  notes: reason || 'Staff development day'
-                })
-                .gte('start_time', `${date}T00:00:00`)
-                .lt('start_time', `${date}T23:59:59`);
+              try {
+                const { data, error } = await supabase
+                  .from('sessions')
+                  .update({ 
+                    status: 'cancelled',
+                    notes: reason || 'Staff development day'
+                  })
+                  .gte('start_time', `${date}T00:00:00`)
+                  .lt('start_time', `${date}T23:59:59`)
+                  .select('id');
+                
+                if (error) throw error;
+
+                console.log(`Successfully cancelled ${data.length} sessions for ${date}`);
+                // Invalidate sessions query to refresh the UI
+                await queryClient.invalidateQueries({ queryKey: ['sessions'] });
+
+                showSuccess(`${data.length} sessions cancelled successfully`);
+
+                // Update message to show completion
+                setMessages(prev => [
+                  ...prev.slice(0, -1),
+                  {
+                    role: 'assistant',
+                    content: response.response + "\n\n✅ All sessions for " + 
+                      new Date(date).toLocaleDateString() + " have been cancelled.",
+                    status: 'action_success'
+                  }
+                ]);
+              } catch (dbError) {
+                console.error("Database error cancelling sessions:", dbError);
+                throw dbError;
+              }
               
-              if (error) throw error;
-
-              // Invalidate sessions query to refresh the UI
-              await queryClient.invalidateQueries({ queryKey: ['sessions'] });
-
-              showSuccess('Sessions cancelled successfully');
-
-              // Update message to show completion
-              setMessages(prev => [
-                ...prev.slice(0, -1),
-                {
-                  role: 'assistant',
-                  content: response.response + "\n\n✅ All sessions for " + 
-                    new Date(date).toLocaleDateString() + " have been cancelled.",
-                  status: 'complete'
-                }
-              ]);
               break;
             }
 
@@ -436,7 +453,7 @@ export default function ChatBot() {
           showError(actionError);
           if (actionError instanceof Error) {
             errorTracker.trackAIError(actionError, {
-              functionCalled: `ChatBot_${response.action.type}`,
+              functionCalled: `ChatBot_${response.action?.type}`,
               errorType: 'function_error',
             });
           }
@@ -446,8 +463,8 @@ export default function ChatBot() {
             ...prev.slice(0, -1),
             {
               role: 'assistant',
-              content: response.response + "\n\n❌ Error: Unable to complete the requested action. Please try again or use the manual interface.",
-              status: 'error'
+              content: response.response + "\n\n❌ Error: " + (actionError instanceof Error ? actionError.message : "Unable to complete the requested action. Please try again or use the manual interface."),
+              status: 'action_failed'
             }
           ]);
         }
@@ -510,7 +527,7 @@ export default function ChatBot() {
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.length === 0 && (
                 <div className="text-center text-gray-500 dark:text-gray-400 py-8">
-                  <MessageSquare className="h-8 w-8 mx-auto mb-3 opacity-50" />
+                  <MessageSquare className="h-8 w-8 mx-auto mb-3 opacity-50" data-testid="empty-state-icon" />
                   <p>Hi! I'm your scheduling assistant. How can I help you today?</p>
                   <p className="text-sm mt-2">You can ask me about:</p>
                   <ul className="text-sm mt-1 space-y-1">
@@ -534,7 +551,7 @@ export default function ChatBot() {
                         : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
                     }`}
                   >
-                    {message.content}
+                    <div className="whitespace-pre-wrap">{message.content}</div>
                     {message.status === 'sending' && (
                       <div className="absolute -right-6 top-1/2 -translate-y-1/2">
                         <Loader className="w-4 h-4 animate-spin text-blue-600" />
@@ -543,6 +560,16 @@ export default function ChatBot() {
                     {message.status === 'processing' && (
                       <div className="absolute -right-6 top-1/2 -translate-y-1/2">
                         <Loader className="w-4 h-4 animate-spin text-yellow-600" />
+                      </div>
+                    )}
+                    {message.status === 'action_success' && (
+                      <div className="absolute -right-6 top-1/2 -translate-y-1/2">
+                        <CheckCircle className="w-4 h-4 text-green-600" />
+                      </div>
+                    )}
+                    {message.status === 'action_failed' && (
+                      <div className="absolute -right-6 top-1/2 -translate-y-1/2">
+                        <XCircle className="w-4 h-4 text-red-600" />
                       </div>
                     )}
                   </div>
@@ -566,11 +593,13 @@ export default function ChatBot() {
                   placeholder="Type your message..."
                   className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                   disabled={isLoading}
+                  data-testid="ai-chat-input"
                 />
                 <button
                   type="submit"
                   disabled={isLoading || !input.trim()}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  data-testid="send-message"
                 >
                   <Send className="h-5 w-5" />
                 </button>

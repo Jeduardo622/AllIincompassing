@@ -1,6 +1,5 @@
 import { supabase } from './supabase';
 import { errorTracker } from './errorTracking';
-import type { Therapist, Client, Session } from '../types';
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -20,11 +19,10 @@ interface ChatHistory {
 
 interface AIResponse {
   response: string;
-  action?: {
-    type: 'schedule_session' | 'cancel_sessions' | 'modify_session' | 'create_client' | 'create_therapist';
-    data: Record<string, any>;
-  };
+  action?: any;
   conversationId?: string;
+  cacheHit?: boolean;
+  responseTime?: number;
 }
 
 export async function processMessage(
@@ -33,10 +31,12 @@ export async function processMessage(
     url: string;
     userAgent: string;
     conversationId?: string;
+    conversationId?: string;
   }
 ): Promise<AIResponse> {
   try {
-    const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-message`;
+    // First try the optimized ai-agent endpoint
+    const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent-optimized`;
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -45,9 +45,25 @@ export async function processMessage(
       },
       body: JSON.stringify({ message, context }),
     });
-
+    
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      console.warn(`Optimized AI agent failed with status: ${response.status}, falling back to process-message`);
+      // Fall back to the original process-message function
+      const fallbackUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-message`;
+      const fallbackResponse = await fetch(fallbackUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ message, context }),
+      });
+      
+      if (!fallbackResponse.ok) {
+        throw new Error(`HTTP error! status: ${fallbackResponse.status}`);
+      }
+      
+      return await fallbackResponse.json();
     }
 
     const data = await response.json();
@@ -55,14 +71,16 @@ export async function processMessage(
   } catch (error) {
     console.error('Error processing message:', error);
     if (error instanceof Error) {
+      console.error('Error details:', error.stack);
       errorTracker.trackAIError(error, {
         functionCalled: 'processMessage',
         errorType: 'network_error',
       });
     }
     return {
-      response: "I apologize, but I'm having trouble processing your request right now. " +
-        "Please try again in a moment or use the manual interface instead."
+      response: "I apologize, but I'm having trouble processing your request right now. Please try again in a moment or use the manual interface instead.",
+      responseTime: 0,
+      error: error instanceof Error ? error.message : 'Unknown error'
     };
   }
 }

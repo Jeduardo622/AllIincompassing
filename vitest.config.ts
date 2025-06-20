@@ -22,5 +22,8 @@ export default defineConfig({
     deps: {
       inline: ['@supabase/supabase-js'],
     },
+    env: {
+      VITEST: 'true',
+    },
   },
 });

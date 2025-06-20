@@ -7,6 +7,7 @@ import {
   Calendar, 
   Filter, 
   Users, 
+  User,
   Clock, 
   PieChart,
   TrendingUp,

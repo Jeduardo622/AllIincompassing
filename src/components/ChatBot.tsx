@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { processMessage } from '../lib/ai';
 import { supabase } from '../lib/supabase';
 import { showSuccess, showError } from '../lib/toast';
+import { errorTracker } from '../lib/errorTracking';
 import type { Session, Client, Therapist, Authorization, AuthorizationService } from '../types';
 
 interface Message {
@@ -433,6 +434,12 @@ export default function ChatBot() {
         } catch (actionError) {
           console.error('Error executing action:', actionError);
           showError(actionError);
+          if (actionError instanceof Error) {
+            errorTracker.trackAIError(actionError, {
+              functionCalled: `ChatBot_${response.action.type}`,
+              errorType: 'function_error',
+            });
+          }
 
           // Update message to show error
           setMessages(prev => [
@@ -447,9 +454,15 @@ export default function ChatBot() {
       }
     } catch (error) {
       console.error('Error processing message:', error);
-      
+
       const errorMessage = error instanceof Error ? error.message : 'An error occurred';
       showError(errorMessage);
+      if (error instanceof Error) {
+        errorTracker.trackAIError(error, {
+          functionCalled: 'ChatBot_processMessage',
+          errorType: 'invalid_response',
+        });
+      }
       
       setMessages(prev => [
         ...prev.slice(0, -1),

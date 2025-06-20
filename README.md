@@ -78,6 +78,7 @@ npm run dev
 - 70+ database migrations
 - Row Level Security (RLS)
 - 16 Edge Functions with OpenAI
+- Updated to `@supabase/supabase-js@2.50.0` and `openai@5.5.1` for full edge compatibility
 
 ### **Testing & Monitoring**
 - Vitest for unit testing

@@ -78,6 +78,13 @@ npm run dev
 - 70+ database migrations
 - Row Level Security (RLS)
 - 16 Edge Functions with OpenAI
+- Updated to `@supabase/supabase-js@2.50.0` and `openai@5.5.1` for full edge compatibility
+- Use a Supabase personal access token for CLI commands. Run `supabase login --token YOUR_TOKEN` or set `SUPABASE_ACCESS_TOKEN`.
+
+### **Database Setup**
+Run migrations with a superuser (e.g. `supabase admin` or `postgres`) because the
+SQL scripts create functions in the `auth` schema. Without these privileges the
+migrations will fail with `permission denied for schema auth`.
 
 ### **Testing & Monitoring**
 - Vitest for unit testing

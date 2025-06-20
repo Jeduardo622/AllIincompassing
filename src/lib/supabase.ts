@@ -74,6 +74,8 @@ const testConnection = async () => {
 export const verifyConnection = testConnection;
 
 // Only run connection test in development or when proper credentials exist
-if (supabaseUrl && !supabaseUrl.includes('placeholder')) {
+if (supabaseUrl &&
+    !supabaseUrl.includes('placeholder') &&
+    !process.env.VITEST) {
   testConnection();
 }

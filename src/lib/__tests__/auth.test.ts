@@ -1,6 +1,19 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAuth } from '../auth';
+
+vi.mock('../supabase', () => ({
+  supabase: {
+    auth: {
+      signOut: vi.fn().mockResolvedValue({ error: null }),
+      signInWithPassword: vi.fn().mockResolvedValue({
+        data: { user: { id: '123', email: 'test@example.com' }, session: {} },
+        error: null,
+      }),
+    },
+    rpc: vi.fn().mockResolvedValue({ data: [{ roles: ['user'] }], error: null }),
+  },
+}));
 
 describe('useAuth', () => {
   beforeEach(() => {
@@ -11,11 +24,11 @@ describe('useAuth', () => {
     });
   });
 
-  it('initializes with null user and loading true', () => {
+  it('initializes with null user and loading false after reset', () => {
     const { result } = renderHook(() => useAuth());
-    
+
     expect(result.current.user).toBeNull();
-    expect(result.current.loading).toBe(true);
+    expect(result.current.loading).toBe(false);
   });
 
   it('updates user state when setUser is called', () => {
@@ -37,7 +50,8 @@ describe('useAuth', () => {
       await result.current.signIn('test@example.com', 'password');
     });
 
-    expect(result.current.loading).toBe(true);
+    expect(result.current.user?.email).toBe('test@example.com');
+    expect(result.current.loading).toBe(false);
   });
 
   it('handles sign out', async () => {

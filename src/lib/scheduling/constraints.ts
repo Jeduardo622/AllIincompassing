@@ -1,4 +1,3 @@
-```typescript
 // Scheduling constraints and configuration
 export const CONSTRAINTS = {
   // Time constraints
@@ -65,4 +64,3 @@ export const SERVICE_AREAS = {
     radiusKm: 10
   }
 };
-```

@@ -31,7 +31,11 @@ export async function checkSchedulingConflicts(
 
   // Check therapist availability
   const therapistAvailability = therapist.availability_hours[dayName];
-  if (therapistAvailability.start && therapistAvailability.end) {
+  if (
+    therapistAvailability &&
+    therapistAvailability.start &&
+    therapistAvailability.end
+  ) {
     const [availStartHour] = therapistAvailability.start.split(':').map(Number);
     const [availEndHour] = therapistAvailability.end.split(':').map(Number);
     const sessionStartHour = startDate.getHours();
@@ -52,7 +56,11 @@ export async function checkSchedulingConflicts(
 
   // Check client availability
   const clientAvailability = client.availability_hours[dayName];
-  if (clientAvailability.start && clientAvailability.end) {
+  if (
+    clientAvailability &&
+    clientAvailability.start &&
+    clientAvailability.end
+  ) {
     const [availStartHour] = clientAvailability.start.split(':').map(Number);
     const [availEndHour] = clientAvailability.end.split(':').map(Number);
     const sessionStartHour = startDate.getHours();

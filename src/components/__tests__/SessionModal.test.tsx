@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent } from '../../test/utils';
+import { fireEvent } from '@testing-library/react';
 import SessionModal from '../SessionModal';
 
 describe('SessionModal', () => {
@@ -47,8 +48,8 @@ describe('SessionModal', () => {
   it('shows validation errors for required fields', async () => {
     renderWithProviders(<SessionModal {...defaultProps} />);
     
-    const submitButton = screen.getByRole('button', { name: /Create Session/i });
-    await userEvent.click(submitButton);
+    const form = document.querySelector('form');
+    fireEvent.submit(form!);
 
     expect(screen.getByText(/Therapist is required/)).toBeInTheDocument();
     expect(screen.getByText(/Client is required/)).toBeInTheDocument();

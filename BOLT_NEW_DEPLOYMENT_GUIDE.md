@@ -40,8 +40,6 @@ Your 16 Edge Functions will be deployed automatically:
 - `ai-agent-optimized` (Phase 4 AI core)
 - `process-message` 
 - `suggest-alternative-times`
-- `create-subscription`, `get-subscription`
-- `create-payment-intent`, `create-checkout-session`
 - `generate-report`, `get-authorization-details`
 - And 7 more functions...
 

@@ -36,9 +36,6 @@ export default defineConfig({
             if (id.includes('@supabase')) {
               return 'supabase';
             }
-            if (id.includes('@stripe')) {
-              return 'stripe';
-            }
           }
           
           // Feature chunks

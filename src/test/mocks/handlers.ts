@@ -155,4 +155,12 @@ export const handlers = [
       time_format: '12h',
     }]);
   }),
+  // Additional RPC handlers used in tests
+  http.post("*/rest/v1/rpc/get_user_roles", () => HttpResponse.json([{ roles: ["admin"] }])),
+  http.post("*/rest/v1/rpc/assign_admin_role", () => HttpResponse.json({ success: true })),
+  http.post("*/rest/v1/rpc/manage_admin_users", () => HttpResponse.json({ success: true })),
+  http.post("*/rest/v1/rpc/reset_user_password", () => HttpResponse.json({ success: true })),
+  http.post("*/rest/v1/rpc/get_sessions_optimized", () => HttpResponse.json([{ session_data: { id: "opt-session-1", client_id: "test-client-1", therapist_id: "test-therapist-1", start_time: "2025-03-18T10:00:00Z", end_time: "2025-03-18T11:00:00Z", status: "scheduled" } }])),
+  http.post("*/rest/v1/rpc/get_dropdown_data", () => HttpResponse.json({ therapists: [{ id: "test-therapist-1", full_name: "Test Therapist 1" }], clients: [{ id: "test-client-1", full_name: "Test Client 1" }] })),
+  http.post("*/rest/v1/rpc/get_admin_users", () => HttpResponse.json([{ id: "admin-1", email: "admin@example.com" }])),
 ];

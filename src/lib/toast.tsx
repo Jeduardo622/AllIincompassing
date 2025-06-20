@@ -12,7 +12,12 @@ export const showSuccess = (message: string) => {
 };
 
 export const showError = (error: unknown) => {
-  const message = error instanceof Error ? error.message : 'An error occurred';
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : 'An error occurred';
   toast.error(message, {
     duration: 5000,
     position: 'top-right',

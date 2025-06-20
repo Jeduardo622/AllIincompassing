@@ -9,7 +9,7 @@ describe('Schedule', () => {
     renderWithProviders(<Schedule />);
     
     // Check for main elements
-    expect(screen.getByText(/Schedule/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Schedule/i)).toBeInTheDocument();
     expect(await screen.findByText(/Auto Schedule/i)).toBeInTheDocument();
   });
 

@@ -106,6 +106,45 @@ export const handlers = [
     });
   }),
 
+  // RPC handler for batched schedule data
+  http.post('*/rest/v1/rpc/get_schedule_data_batch', () => {
+    return HttpResponse.json({
+      sessions: [
+        {
+          id: 'test-session-1',
+          client_id: 'test-client-1',
+          therapist_id: 'test-therapist-1',
+          start_time: '2025-03-18T10:00:00Z',
+          end_time: '2025-03-18T11:00:00Z',
+          status: 'scheduled',
+          therapist: { id: 'test-therapist-1', full_name: 'Test Therapist' },
+          client: { id: 'test-client-1', full_name: 'Test Client' },
+        },
+      ],
+      therapists: [
+        {
+          id: 'test-therapist-1',
+          full_name: 'Test Therapist 1',
+          email: 'therapist1@example.com',
+          specialties: ['ABA Therapy'],
+          service_type: ['In clinic'],
+          availability_hours: { monday: { start: '09:00', end: '17:00' } },
+        },
+      ],
+      clients: [
+        {
+          id: 'test-client-1',
+          full_name: 'Test Client 1',
+          email: 'client1@example.com',
+          date_of_birth: '2020-01-01',
+          service_preference: ['In clinic'],
+          authorized_hours: 10,
+          availability_hours: { monday: { start: '09:00', end: '17:00' } },
+        },
+      ],
+    });
+  }),
+
   // Company settings
   http.get('*/rest/v1/company_settings*', () => {
     return HttpResponse.json([{

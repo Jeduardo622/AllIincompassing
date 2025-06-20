@@ -1,4 +1,3 @@
-```typescript
 import { differenceInMinutes, parseISO } from 'date-fns';
 import { getDistance } from 'geolib';
 import type { Therapist, Client, Session } from '../../types';
@@ -124,4 +123,3 @@ export function calculateTravelScore(
   // Score based on travel time (lower is better)
   return Math.max(0, 1 - (travelTimeMinutes / CONSTRAINTS.MAX_DAILY_TRAVEL_TIME));
 }
-```

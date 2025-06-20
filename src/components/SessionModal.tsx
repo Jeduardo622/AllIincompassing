@@ -229,10 +229,14 @@ export default function SessionModal({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="therapist-select"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Therapist
                 </label>
                 <select
+                  id="therapist-select"
                   {...register('therapist_id', { required: 'Therapist is required' })}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                 >
@@ -249,10 +253,14 @@ export default function SessionModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="client-select"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Client
                 </label>
                 <select
+                  id="client-select"
                   {...register('client_id', { required: 'Client is required' })}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                 >
@@ -294,13 +302,17 @@ export default function SessionModal({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="start-time-input"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Start Time
                 </label>
                 <div className="relative">
                   <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="datetime-local"
+                    id="start-time-input"
                     {...register('start_time', { required: 'Start time is required' })}
                     className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                     onChange={(e) => handleTimeChange(e, 'start_time')}
@@ -313,13 +325,17 @@ export default function SessionModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="end-time-input"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   End Time
                 </label>
                 <div className="relative">
                   <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="datetime-local"
+                    id="end-time-input"
                     {...register('end_time', { required: 'End time is required' })}
                     className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                     onChange={(e) => handleTimeChange(e, 'end_time')}
@@ -342,10 +358,14 @@ export default function SessionModal({
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="status-select"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Status
               </label>
               <select
+                id="status-select"
                 {...register('status')}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
               >
@@ -357,11 +377,15 @@ export default function SessionModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="notes-input"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 <FileText className="w-4 h-4 inline mr-2" />
                 Notes
               </label>
               <textarea
+                id="notes-input"
                 {...register('notes')}
                 rows={3}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"

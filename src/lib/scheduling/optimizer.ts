@@ -1,4 +1,3 @@
-```typescript
 import { getDistance } from 'geolib';
 import type { Location } from '../../types';
 
@@ -87,4 +86,3 @@ function getTwoRandomIndices(length: number): [number, number] {
   }
   return [i, j];
 }
-```

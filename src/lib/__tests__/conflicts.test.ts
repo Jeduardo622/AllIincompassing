@@ -61,14 +61,24 @@ describe('checkSchedulingConflicts', () => {
     const startTime = '2025-05-20T08:00:00Z'; // 8 AM, before therapist availability
     const endTime = '2025-05-20T09:00:00Z';
 
+    // Use a client that is available during this time so only the therapist is unavailable
+    const availableClient = {
+      ...mockClient,
+      availability_hours: {
+        ...mockClient.availability_hours,
+        monday: { start: '08:00', end: '17:00' },
+        tuesday: { start: '08:00', end: '17:00' },
+      },
+    };
+
     const conflicts = await checkSchedulingConflicts(
       startTime,
       endTime,
       mockTherapist.id,
-      mockClient.id,
+      availableClient.id,
       mockExistingSessions,
       mockTherapist,
-      mockClient
+      availableClient
     );
 
     expect(conflicts).toHaveLength(1);

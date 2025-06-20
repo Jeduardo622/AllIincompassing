@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { errorTracker } from './errorTracking';
 import type { Therapist, Client, Session } from '../types';
 
 interface Message {
@@ -53,6 +54,12 @@ export async function processMessage(
     return data;
   } catch (error) {
     console.error('Error processing message:', error);
+    if (error instanceof Error) {
+      errorTracker.trackAIError(error, {
+        functionCalled: 'processMessage',
+        errorType: 'network_error',
+      });
+    }
     return {
       response: "I apologize, but I'm having trouble processing your request right now. " +
         "Please try again in a moment or use the manual interface instead."

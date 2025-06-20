@@ -472,13 +472,13 @@ export const withErrorTracking = <P extends object>(
         return () => window.removeEventListener('error', handleError);
       }, []);
 
-      return <>{children}</>;
+      return React.createElement(React.Fragment, null, children);
     };
 
-    return (
-      <ErrorBoundary>
-        <WrappedComponent ref={ref} {...props} />
-      </ErrorBoundary>
+    return React.createElement(
+      ErrorBoundary,
+      null,
+      React.createElement(WrappedComponent, { ...props, ref })
     );
   });
 };

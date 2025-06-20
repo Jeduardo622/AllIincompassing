@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO, startOfWeek, addDays, endOfWeek } from 'date-fns';
 import { 
@@ -295,6 +295,21 @@ const Schedule = React.memo(() => {
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
   
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      if (detail.start_time) {
+        const date = parseISO(detail.start_time);
+        setSelectedDate(date);
+        setSelectedTimeSlot({ date, time: format(date, 'HH:mm') });
+      }
+      setSelectedSession(undefined);
+      setIsModalOpen(true);
+    };
+    document.addEventListener('openScheduleModal', handler as EventListener);
+    return () => document.removeEventListener('openScheduleModal', handler as EventListener);
+  }, []);
 
   // Memoized date calculations
   const weekStart = useMemo(() => startOfWeek(selectedDate, { weekStartsOn: 1 }), [selectedDate]);

@@ -79,6 +79,7 @@ npm run dev
 - Row Level Security (RLS)
 - 16 Edge Functions with OpenAI
 - Updated to `@supabase/supabase-js@2.50.0` and `openai@5.5.1` for full edge compatibility
+- Use a Supabase personal access token for CLI commands. Run `supabase login --token YOUR_TOKEN` or set `SUPABASE_ACCESS_TOKEN`.
 
 ### **Database Setup**
 Run migrations with a superuser (e.g. `supabase admin` or `postgres`) because the

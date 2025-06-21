@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, Send, AlertCircle, Loader, CheckCircle, XCircle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { processMessage } from '../lib/ai';
+import { processMessage } from '../lib/ai'; 
 import { supabase } from '../lib/supabase';
 import { showSuccess, showError } from '../lib/toast';
 import { errorTracker } from '../lib/errorTracking';
@@ -20,7 +20,17 @@ export default function ChatBot() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  // Load conversation ID from localStorage on component mount
+  useEffect(() => {
+    const savedConversationId = localStorage.getItem('chatConversationId');
+    if (savedConversationId) {
+      setConversationId(savedConversationId);
+      console.log("Loaded existing conversation ID:", savedConversationId);
+    }
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -58,13 +68,15 @@ export default function ChatBot() {
       // Process the message
       const response = await processMessage(userMessage, {
         url: window.location.href, 
-        userAgent: navigator.userAgent,
-        conversationId: localStorage.getItem('chatConversationId') || undefined
+        userAgent: navigator.userAgent, 
+        conversationId: conversationId || undefined
       });
 
       // Store the conversation ID for future messages
       if (response.conversationId) {
         localStorage.setItem('chatConversationId', response.conversationId);
+        setConversationId(response.conversationId);
+        console.log("Received and stored conversation ID:", response.conversationId);
       }
 
       // Update assistant message with initial response

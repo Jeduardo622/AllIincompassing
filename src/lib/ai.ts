@@ -31,7 +31,6 @@ export async function processMessage(
     url: string;
     userAgent: string;
     conversationId?: string;
-    conversationId?: string;
   }
 ): Promise<AIResponse> {
   try {
@@ -41,7 +40,7 @@ export async function processMessage(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
       },
       body: JSON.stringify({ message, context }),
     });

@@ -422,9 +422,14 @@ const supabaseClient = createClient(
 
 async function processOptimizedMessage(
   message: string,
-  context: Record<string, unknown>
+  context: Record<string, unknown> 
 ): Promise<OptimizedAIResponse> {
   const startTime = performance.now();
+  console.log("Processing message with context:", JSON.stringify({
+    message_length: message.length,
+    has_conversation_id: !!context.conversationId,
+    conversation_id: context.conversationId
+  }));
   
   try {
     // Step 1: Check cache for similar queries
@@ -441,6 +446,7 @@ async function processOptimizedMessage(
     
     // Step 2: Build optimized context
     const optimizedContext = await buildOptimizedContext(context.userRoles as string[] || [], context.conversationId as string);
+    console.log("Built optimized context with history items:", optimizedContext.recentActions?.length || 0);
     
     // Step 3: Generate proactive suggestions
     const suggestions = await generateProactiveSuggestions(optimizedContext);
@@ -463,6 +469,10 @@ TIME: ${optimizedContext.currentTime}`;
     
     const responseMessage = completion.choices[0].message;
     const responseTime = performance.now() - startTime;
+    
+    // Get conversation ID - either from incoming context or create a new one
+    const conversationId = context.conversationId as string || 
+                          (await saveChatMessage('user', message, context)).toString();
     
     // Step 6: Process function calls
     let action;
@@ -489,6 +499,7 @@ TIME: ${optimizedContext.currentTime}`;
       action,
       cacheHit: false,
       responseTime,
+      conversationId,
       tokenUsage: completion.usage ? {
         prompt: completion.usage.prompt_tokens,
         completion: completion.usage.completion_tokens,
@@ -509,10 +520,10 @@ TIME: ${optimizedContext.currentTime}`;
     // Step 8: Save to chat history
     await saveChatMessage(
       'user',
-      message,
-      context,
+      message, 
+      context, 
       undefined,
-      context.conversationId as string
+      conversationId
     );
     
     await saveChatMessage(
@@ -520,7 +531,7 @@ TIME: ${optimizedContext.currentTime}`;
       responseMessage.content || "I'll help you with that.",
       { optimized: true, cacheHit: false, responseTime },
       action,
-      context.conversationId as string
+      conversationId
     );
     
     return response;
@@ -530,6 +541,7 @@ TIME: ${optimizedContext.currentTime}`;
     
     return {
       response: "I apologize, but I'm experiencing technical difficulties. Please try again or use the manual interface.",
+      conversationId: context.conversationId as string,
       responseTime: performance.now() - startTime
     };
   }
@@ -541,9 +553,23 @@ async function saveChatMessage(
   context: Record<string, unknown> = {},
   action?: { type: string; data: Record<string, unknown> },
   conversationId?: string
-): Promise<string | undefined> {
+): Promise<string> {
   try {
-    const { data, error } = await supabaseClient
+    // If no conversation ID, create a new conversation first
+    let actualConversationId = conversationId;
+    if (!actualConversationId) {
+      const { data: convData, error: convError } = await supabaseClient
+        .from('conversations')
+        .insert({ user_id: null, title: "New Conversation" })
+        .select('id')
+        .single();
+      
+      if (convError) throw convError;
+      actualConversationId = convData.id;
+    }
+    
+    // Now insert the message with the conversation ID
+    const { data: msgData, error: msgError } = await supabaseClient
       .from('chat_history')
       .insert({
         role,
@@ -551,16 +577,16 @@ async function saveChatMessage(
         context,
         action_type: action?.type,
         action_data: action?.data,
-        conversation_id: conversationId || undefined
+        conversation_id: actualConversationId
       })
       .select('conversation_id')
       .single();
 
-    if (error) throw error;
-    return data?.conversation_id;
+    if (msgError) throw msgError;
+    return msgData.conversation_id;
   } catch (error) {
     console.error('Error saving chat message:', error);
-    return undefined;
+    return conversationId || crypto.randomUUID();
   }
 }
 

@@ -16,6 +16,9 @@ npm install
 npm run dev
 ```
 
+Copy `.env.example` to `.env` and fill in real Supabase and OpenAI keys before running
+Supabase CLI commands or starting the app.
+
 ## 🏗️ **Architecture Overview**
 
 ### **Phase 1: Foundation**

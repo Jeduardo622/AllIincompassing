@@ -1,134 +1,183 @@
-# Healthcare Practice Management System
+# Supabase CLI
 
-A comprehensive healthcare practice management platform built with React, TypeScript, and Supabase. Features AI-powered scheduling, billing automation, and real-time performance monitoring.
+[![Coverage Status](https://coveralls.io/repos/github/supabase/cli/badge.svg?branch=main)](https://coveralls.io/github/supabase/cli?branch=main) [![Bitbucket Pipelines](https://img.shields.io/bitbucket/pipelines/supabase-cli/setup-cli/master?style=flat-square&label=Bitbucket%20Canary)](https://bitbucket.org/supabase-cli/setup-cli/pipelines) [![Gitlab Pipeline Status](https://img.shields.io/gitlab/pipeline-status/sweatybridge%2Fsetup-cli?label=Gitlab%20Canary)
+](https://gitlab.com/sweatybridge/setup-cli/-/pipelines)
 
-## 🚀 **Quick Start with bolt.new**
+[Supabase](https://supabase.io) is an open source Firebase alternative. We're building the features of Firebase using enterprise-grade open source tools.
 
-### **Deploy to bolt.new** (Recommended)
-1. Visit [bolt.new](https://bolt.new)
-2. Upload this project or copy the code
-3. Click "Connect to Supabase" and select project: `wnnjeqheqxxyrgsjmygy`
-4. Your app will be live with full database and AI functionality!
+This repository contains all the functionality for Supabase CLI.
 
-### **Local Development**
+- [x] Running Supabase locally
+- [x] Managing database migrations
+- [x] Creating and deploying Supabase Functions
+- [x] Generating types directly from your database schema
+- [x] Making authenticated HTTP requests to [Management API](https://supabase.com/docs/reference/api/introduction)
+
+## Getting started
+
+### Install the CLI
+
+Available via [NPM](https://www.npmjs.com) as dev dependency. To install:
+
 ```bash
-npm install
-npm run dev
+npm i supabase --save-dev
 ```
 
-Copy `.env.example` to `.env` and fill in real Supabase and OpenAI keys before running
-Supabase CLI commands or starting the app.
+To install the beta release channel:
 
-## 🏗️ **Architecture Overview**
+```bash
+npm i supabase@beta --save-dev
+```
 
-### **Phase 1: Foundation**
-- React 18 + TypeScript + Vite
-- Supabase authentication & database
-- Role-based access control
+When installing with yarn 4, you need to disable experimental fetch with the following nodejs config.
 
-### **Phase 2: Component Optimization** 
-- 64% bundle size reduction
-- React.memo optimization patterns
-- Debounced user interactions
+```
+NODE_OPTIONS=--no-experimental-fetch yarn add supabase
+```
 
-### **Phase 3: Database Performance**
-- 11 strategic database indexes
-- 6 custom RPC functions  
-- 50-70% query performance improvement
+> **Note**
+For Bun versions below v1.0.17, you must add `supabase` as a [trusted dependency](https://bun.sh/guides/install/trusted) before running `bun add -D supabase`.
 
-### **Phase 4: AI Agent Optimization**
-- 16 Edge Functions with OpenAI integration
-- Smart scheduling with conflict detection
-- 75% faster AI responses, 65% token reduction
+<details>
+  <summary><b>macOS</b></summary>
 
-### **Phase 5: Testing & Monitoring**
-- Comprehensive E2E test coverage
-- Real-time performance dashboard
-- Error tracking and alerting system
+  Available via [Homebrew](https://brew.sh). To install:
 
-## 🎯 **Key Features**
+  ```sh
+  brew install supabase/tap/supabase
+  ```
 
-### **Healthcare Management**
-- **Therapist Management**: Profiles, specialties, availability
-- **Client Management**: Demographics, insurance, treatment plans
-- **Session Scheduling**: AI-powered conflict detection
-- **Authorization Tracking**: Insurance pre-authorization workflow
-- **Billing Integration**: Automated claim processing
+  To install the beta release channel:
+  
+  ```sh
+  brew install supabase/tap/supabase-beta
+  brew link --overwrite supabase-beta
+  ```
+  
+  To upgrade:
 
-### **AI-Powered Features**
-- **Smart Scheduling**: Bulk operations with conflict resolution
-- **Intelligent Chat**: Context-aware healthcare assistant
-- **Performance Analytics**: Real-time optimization suggestions
-- **Predictive Insights**: Workload analysis and recommendations
+  ```sh
+  brew upgrade supabase
+  ```
+</details>
 
-### **Enterprise Features**
-- **Real-time Monitoring**: Performance dashboards and alerts
-- **Role-based Security**: Therapist, admin, and client roles
-- **Audit Logging**: Complete activity tracking
-- **Data Export**: Comprehensive reporting tools
+<details>
+  <summary><b>Windows</b></summary>
 
-## 🛠️ **Technology Stack**
+  Available via [Scoop](https://scoop.sh). To install:
 
-### **Frontend**
-- React 18 with TypeScript
-- Tailwind CSS for styling
-- TanStack Query for state management
-- React Router for navigation
-- Zustand for client state
+  ```powershell
+  scoop bucket add supabase https://github.com/supabase/scoop-bucket.git
+  scoop install supabase
+  ```
 
-### **Backend** 
-- Supabase PostgreSQL database
-- 70+ database migrations
-- Row Level Security (RLS)
-- 16 Edge Functions with OpenAI
-- Updated to `@supabase/supabase-js@2.50.0` and `openai@5.5.1` for full edge compatibility
-- Use a Supabase personal access token for CLI commands. Run `supabase login --token YOUR_TOKEN` or set `SUPABASE_ACCESS_TOKEN`.
+  To upgrade:
 
-### **Database Setup**
-Run migrations with a superuser (e.g. `supabase admin` or `postgres`) because the
-SQL scripts create functions in the `auth` schema. Without these privileges the
-migrations will fail with `permission denied for schema auth`.
+  ```powershell
+  scoop update supabase
+  ```
+</details>
 
-### **Testing & Monitoring**
-- Vitest for unit testing
-- Cypress for E2E testing
-- Real-time performance monitoring
-- Error tracking and alerting
+<details>
+  <summary><b>Linux</b></summary>
 
-## 📊 **Performance Metrics**
+  Available via [Homebrew](https://brew.sh) and Linux packages.
 
-### **Optimizations Achieved**
-- **Bundle Size**: 64% reduction (Phase 2)
-- **Database Queries**: 50-70% faster (Phase 3)  
-- **AI Response Time**: 75% improvement (Phase 4)
-- **Cache Hit Rate**: 80%+ (Phase 4)
-- **Test Coverage**: 90%+ (Phase 5)
+  #### via Homebrew
 
-### **Production Ready**
-- Enterprise-grade security
-- Scalable architecture
-- Comprehensive monitoring
-- Professional deployment
+  To install:
 
-## 🚀 **Deployment**
+  ```sh
+  brew install supabase/tap/supabase
+  ```
 
-### **bolt.new (Recommended)**
-Follow the [BOLT_NEW_DEPLOYMENT_GUIDE.md](./BOLT_NEW_DEPLOYMENT_GUIDE.md) for complete deployment instructions.
+  To upgrade:
 
-### **Alternative Platforms**
-- **Netlify**: `npm run build` + deploy `dist` folder
-- **Vercel**: Connect GitHub repository
-- **StackBlitz**: Use Instablitz extension (basic version)
+  ```sh
+  brew upgrade supabase
+  ```
 
-## 📞 **Support**
+  #### via Linux packages
 
-For deployment assistance or technical questions:
-- **bolt.new Issues**: Check deployment guide
-- **Supabase Issues**: Verify Edge Functions and database connection
-- **Performance Issues**: Review Phase 3-5 optimizations
+  Linux packages are provided in [Releases](https://github.com/supabase/cli/releases). To install, download the `.apk`/`.deb`/`.rpm`/`.pkg.tar.zst` file depending on your package manager and run the respective commands.
 
----
+  ```sh
+  sudo apk add --allow-untrusted <...>.apk
+  ```
 
-**Built with ❤️ for healthcare professionals**
+  ```sh
+  sudo dpkg -i <...>.deb
+  ```
 
-*This system demonstrates enterprise-grade development practices with AI integration, suitable for real-world healthcare practice management.* 
+  ```sh
+  sudo rpm -i <...>.rpm
+  ```
+
+  ```sh
+  sudo pacman -U <...>.pkg.tar.zst
+  ```
+</details>
+
+<details>
+  <summary><b>Other Platforms</b></summary>
+
+  You can also install the CLI via [go modules](https://go.dev/ref/mod#go-install) without the help of package managers.
+
+  ```sh
+  go install github.com/supabase/cli@latest
+  ```
+
+  Add a symlink to the binary in `$PATH` for easier access:
+
+  ```sh
+  ln -s "$(go env GOPATH)/bin/cli" /usr/bin/supabase
+  ```
+
+  This works on other non-standard Linux distros.
+</details>
+
+<details>
+  <summary><b>Community Maintained Packages</b></summary>
+
+  Available via [pkgx](https://pkgx.sh/). Package script [here](https://github.com/pkgxdev/pantry/blob/main/projects/supabase.com/cli/package.yml).
+  To install in your working directory:
+
+  ```bash
+  pkgx install supabase
+  ```
+
+  Available via [Nixpkgs](https://nixos.org/). Package script [here](https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/tools/supabase-cli/default.nix).
+</details>
+
+### Run the CLI
+
+```bash
+supabase bootstrap
+```
+
+Or using npx:
+
+```bash
+npx supabase bootstrap
+```
+
+The bootstrap command will guide you through the process of setting up a Supabase project using one of the [starter](https://github.com/supabase-community/supabase-samples/blob/main/samples.json) templates.
+
+## Docs
+
+Command & config reference can be found [here](https://supabase.com/docs/reference/cli/about).
+
+## Breaking changes
+
+We follow semantic versioning for changes that directly impact CLI commands, flags, and configurations.
+
+However, due to dependencies on other service images, we cannot guarantee that schema migrations, seed.sql, and generated types will always work for the same CLI major version. If you need such guarantees, we encourage you to pin a specific version of CLI in package.json.
+
+## Developing
+
+To run from source:
+
+```sh
+# Go >= 1.22
+go run . help
+```

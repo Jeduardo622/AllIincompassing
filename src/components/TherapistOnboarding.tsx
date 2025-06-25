@@ -1,16 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
-  User, Mail, Calendar, Phone, MapPin, 
-  FileText, CheckCircle, ArrowRight, ArrowLeft,
-  Upload, Shield, AlertCircle, RefreshCw,
-  Briefcase, Award, Building2
+import {
+  CheckCircle,
+  ArrowRight,
+  ArrowLeft,
+  Upload,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { showSuccess, showError } from '../lib/toast';
 import AvailabilityEditor from './AvailabilityEditor';
+import { OnboardingSteps } from './OnboardingSteps';
 import type { Therapist } from '../types';
 import { prepareFormData } from '../lib/validation';
 
@@ -92,7 +95,7 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
   // Parse query parameters
   const queryParams = new URLSearchParams(location.search);
   
-  const { register, handleSubmit, control, setValue, watch, formState: { errors } } = useForm<OnboardingFormData>({
+  const { register, handleSubmit, control, formState: { errors } } = useForm<OnboardingFormData>({
     defaultValues: {
       email: queryParams.get('email') || '',
       first_name: queryParams.get('first_name') || '',
@@ -790,36 +793,10 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
       <div className="bg-white dark:bg-dark-lighter shadow rounded-lg p-6 mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Therapist Onboarding</h1>
         
-        {/* Progress Steps */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            {[1, 2, 3, 4, 5].map(step => (
-              <div 
-                key={step}
-                className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                  step < currentStep
-                    ? 'bg-blue-600 text-white'
-                    : step === currentStep
-                      ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200 border-2 border-blue-600'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
-                }`}
-              >
-                {step < currentStep ? (
-                  <CheckCircle className="w-6 h-6" />
-                ) : (
-                  <span>{step}</span>
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-between mt-2 text-xs text-gray-500 dark:text-gray-400">
-            <span>Basic Info</span>
-            <span>Professional</span>
-            <span>Address</span>
-            <span>Services</span>
-            <span>Documents</span>
-          </div>
-        </div>
+        <OnboardingSteps
+          labels={['Basic Info', 'Professional', 'Address', 'Services', 'Documents']}
+          currentStep={currentStep}
+        />
         
         <form onSubmit={handleSubmit(handleFormSubmit)}>
           {renderStepContent()}

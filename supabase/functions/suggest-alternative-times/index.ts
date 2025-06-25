@@ -129,56 +129,59 @@ Deno.serve(async (req) => {
           Please suggest 3-5 alternative time slots that would work for both the therapist and client.`
         }
       ],
-      functions: [
+      tools: [
         {
-          name: "suggest_alternative_times",
-          description: "Suggest alternative time slots for the therapy session",
-          parameters: {
-            type: "object",
-            properties: {
-              alternatives: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    startTime: {
-                      type: "string",
-                      format: "date-time",
-                      description: "The start time of the alternative slot in ISO format"
+          type: "function",
+          function: {
+            name: "suggest_alternative_times",
+            description: "Suggest alternative time slots for the therapy session",
+            parameters: {
+              type: "object",
+              properties: {
+                alternatives: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      startTime: {
+                        type: "string",
+                        format: "date-time",
+                        description: "The start time of the alternative slot in ISO format"
+                      },
+                      endTime: {
+                        type: "string",
+                        format: "date-time",
+                        description: "The end time of the alternative slot in ISO format"
+                      },
+                      score: {
+                        type: "number",
+                        description: "Confidence score between 0 and 1, with 1 being the highest confidence"
+                      },
+                      reason: {
+                        type: "string",
+                        description: "Brief reason why this time slot is suggested"
+                      }
                     },
-                    endTime: {
-                      type: "string",
-                      format: "date-time",
-                      description: "The end time of the alternative slot in ISO format"
-                    },
-                    score: {
-                      type: "number",
-                      description: "Confidence score between 0 and 1, with 1 being the highest confidence"
-                    },
-                    reason: {
-                      type: "string",
-                      description: "Brief reason why this time slot is suggested"
-                    }
-                  },
-                  required: ["startTime", "endTime", "score", "reason"]
+                    required: ["startTime", "endTime", "score", "reason"]
+                  }
                 }
-              }
-            },
-            required: ["alternatives"]
+              },
+              required: ["alternatives"]
+            }
           }
         }
       ],
-      function_call: { name: "suggest_alternative_times" }
+      tool_choice: { type: "function", function: { name: "suggest_alternative_times" } }
     });
 
     // Extract the function call result
-    const functionCallResult = completion.choices[0].message.function_call;
+    const toolCall = completion.choices[0].message.tool_calls?.[0];
     
-    if (!functionCallResult) {
-      throw new Error("No function call result returned from OpenAI");
+    if (!toolCall) {
+      throw new Error("No tool call result returned from OpenAI");
     }
     
-    const alternativeTimes = JSON.parse(functionCallResult.arguments).alternatives;
+    const alternativeTimes = JSON.parse(toolCall.function.arguments).alternatives;
 
     return new Response(
       JSON.stringify({ 

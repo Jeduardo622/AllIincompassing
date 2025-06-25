@@ -1,6 +1,17 @@
 import { OpenAI } from "npm:openai@5.5.1";
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
 
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: Deno.env.get("OPENAI_API_KEY"),
+});
+
+// Initialize Supabase client
+const supabaseClient = createClient(
+  Deno.env.get("SUPABASE_URL") ?? '',
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? '',
+);
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -408,17 +419,6 @@ async function generateProactiveSuggestions(context: { summary?: { userRole?: st
 // ============================================================================
 // OPTIMIZED AI PROCESSING
 // ============================================================================
-
-// Initialize OpenAI with optimized configuration
-const openai = new OpenAI({
-  apiKey: Deno.env.get("OPENAI_API_KEY"),
-});
-
-// Initialize Supabase client
-const supabaseClient = createClient(
-  Deno.env.get("SUPABASE_URL") ?? '',
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? '',
-);
 
 async function processOptimizedMessage(
   message: string,

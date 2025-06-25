@@ -1,4 +1,3 @@
-import React from 'react';
 import { CheckCircle } from 'lucide-react';
 
 interface OnboardingStepsProps {
@@ -9,8 +8,8 @@ interface OnboardingStepsProps {
 export function OnboardingSteps({ labels, currentStep }: OnboardingStepsProps) {
   return (
     <div className="mb-8">
-      <div className="flex items-center justify-between">
-        {labels.map((_, index) => {
+      <ol className="flex items-center justify-between" aria-label="Onboarding steps">
+        {labels.map((label, index) => {
           const step = index + 1;
           let stepClass = '';
           if (step < currentStep) {
@@ -23,8 +22,10 @@ export function OnboardingSteps({ labels, currentStep }: OnboardingStepsProps) {
               'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400';
           }
           return (
-            <div
+            <li
               key={step}
+              aria-current={step === currentStep ? 'step' : undefined}
+              aria-label={label}
               className={`flex items-center justify-center w-10 h-10 rounded-full ${stepClass}`}
             >
               {step < currentStep ? (
@@ -32,10 +33,10 @@ export function OnboardingSteps({ labels, currentStep }: OnboardingStepsProps) {
               ) : (
                 <span>{step}</span>
               )}
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ol>
       <div className="flex justify-between mt-2 text-xs text-gray-500 dark:text-gray-400">
         {labels.map((label) => (
           <span key={label}>{label}</span>

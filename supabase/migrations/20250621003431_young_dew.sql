@@ -43,8 +43,12 @@ CREATE OR REPLACE FUNCTION get_cached_ai_response(
   p_cache_key text
 )
 RETURNS TABLE (
+  cache_key text,
+  query_text text,
   response_text text,
-  metadata jsonb
+  metadata jsonb,
+  hit_count integer,
+  expires_at timestamptz
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -58,7 +62,13 @@ BEGIN
   WHERE 
     cache_key = p_cache_key
     AND expires_at > now()
-  RETURNING response_text, metadata;
+  RETURNING 
+    cache_key,
+    query_text,
+    response_text,
+    metadata,
+    hit_count,
+    expires_at;
 END;
 $$;
 

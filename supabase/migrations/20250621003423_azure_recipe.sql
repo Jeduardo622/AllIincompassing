@@ -15,7 +15,6 @@ CREATE OR REPLACE FUNCTION get_recent_chat_history(
 )
 RETURNS TABLE (
   id uuid,
-  conversation_id uuid,
   role text,
   content text,
   context jsonb,
@@ -30,7 +29,6 @@ BEGIN
   RETURN QUERY
   SELECT 
     ch.id,
-    ch.conversation_id,
     ch.role,
     ch.content,
     ch.context,
@@ -55,7 +53,6 @@ CREATE OR REPLACE FUNCTION get_recent_chat_history(
 )
 RETURNS TABLE (
   id uuid,
-  conversation_id uuid,
   role text,
   content text,
   context jsonb,
@@ -70,7 +67,6 @@ BEGIN
   RETURN QUERY
   SELECT 
     ch.id,
-    ch.conversation_id,
     ch.role,
     ch.content,
     ch.context,

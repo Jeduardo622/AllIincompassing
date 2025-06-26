@@ -1,31 +1,52 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Send, AlertCircle, Loader, CheckCircle, XCircle } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
-import { processMessage } from '../lib/ai'; 
-import { supabase } from '../lib/supabase';
-import { showSuccess, showError } from '../lib/toast';
-import { errorTracker } from '../lib/errorTracking';
-import type { Session, Client, Therapist, Authorization, AuthorizationService } from '../types';
+import React, { useState, useRef, useEffect } from "react";
+import {
+  MessageSquare,
+  Send,
+  AlertCircle,
+  Loader,
+  CheckCircle,
+  XCircle,
+} from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { processMessage } from "../lib/ai";
+import { supabase } from "../lib/supabase";
+import { showSuccess, showError } from "../lib/toast";
+import { errorTracker } from "../lib/errorTracking";
+import type {
+  Session,
+  Client,
+  Therapist,
+  Authorization,
+  AuthorizationService,
+} from "../types";
 
 interface Message {
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
-  status?: 'sending' | 'processing' | 'complete' | 'error' | 'action_success' | 'action_failed';
+  status?:
+    | "sending"
+    | "processing"
+    | "complete"
+    | "error"
+    | "action_success"
+    | "action_failed";
 }
 
 export default function ChatBot() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // Load conversation ID from localStorage on component mount
   useEffect(() => {
-    const savedConversationId = localStorage.getItem('chatConversationId');
+    const savedConversationId = localStorage.getItem("chatConversationId");
     if (savedConversationId) {
       setConversationId(savedConversationId);
       console.log("Loaded existing conversation ID:", savedConversationId);
@@ -45,294 +66,329 @@ export default function ChatBot() {
     if (!input.trim() || isLoading) return;
 
     const userMessage = input.trim();
-    setInput('');
+    setInput("");
     setError(null);
-    
+
     // Add user message
-    setMessages(prev => [...prev, { 
-      role: 'user', 
-      content: userMessage,
-      status: 'complete'
-    }]);
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: userMessage,
+        status: "complete",
+      },
+    ]);
 
     // Add placeholder for assistant response
-    setMessages(prev => [...prev, {
-      role: 'assistant',
-      content: 'Thinking...',
-      status: 'sending'
-    }]);
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        content: "Thinking...",
+        status: "sending",
+      },
+    ]);
 
     setIsLoading(true);
 
     try {
       // Process the message
       const response = await processMessage(userMessage, {
-        url: window.location.href, 
-        userAgent: navigator.userAgent, 
-        conversationId: conversationId || undefined
+        url: window.location.href,
+        userAgent: navigator.userAgent,
+        conversationId: conversationId || undefined,
       });
 
       // Store the conversation ID for future messages
       if (response.conversationId) {
-        localStorage.setItem('chatConversationId', response.conversationId);
+        localStorage.setItem("chatConversationId", response.conversationId);
         setConversationId(response.conversationId);
-        console.log("Received and stored conversation ID:", response.conversationId);
+        console.log(
+          "Received and stored conversation ID:",
+          response.conversationId,
+        );
       }
 
       // Update assistant message with initial response
-      setMessages(prev => [
+      setMessages((prev) => [
         ...prev.slice(0, -1),
-        { 
-          role: 'assistant', 
+        {
+          role: "assistant",
           content: response.response,
-          status: response.action ? 'processing' : 'complete'
-        }
+          status: response.action ? "processing" : "complete",
+        },
       ]);
 
       // Handle actions returned by the AI
       if (response.action) {
-        console.log(`Executing action: ${response.action.type}`, response.action.data);
+        console.log(
+          `Executing action: ${response.action.type}`,
+          response.action.data,
+        );
 
         try {
           switch (response.action.type) {
-            case 'cancel_sessions': {
+            case "cancel_sessions": {
               const { date, reason } = response.action.data;
-              console.log(`Cancelling sessions for date: ${date}`, {reason});
+              console.log(`Cancelling sessions for date: ${date}`, { reason });
 
               // Update message to show processing
-              setMessages(prev => [
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
+                  role: "assistant",
                   content: response.response + "\n\n⏳ Cancelling sessions...",
-                  status: 'processing'
-                }
+                  status: "processing",
+                },
               ]);
-              
+
               // Cancel all sessions for the given date
               try {
                 const { data, error } = await supabase
-                  .from('sessions')
-                  .update({ 
-                    status: 'cancelled',
-                    notes: reason || 'Staff development day'
+                  .from("sessions")
+                  .update({
+                    status: "cancelled",
+                    notes: reason || "Staff development day",
                   })
-                  .gte('start_time', `${date}T00:00:00`)
-                  .lt('start_time', `${date}T23:59:59`)
-                  .select('id');
-                
+                  .gte("start_time", `${date}T00:00:00`)
+                  .lt("start_time", `${date}T23:59:59`)
+                  .select("id");
+
                 if (error) throw error;
 
-                console.log(`Successfully cancelled ${data.length} sessions for ${date}`);
+                console.log(
+                  `Successfully cancelled ${data.length} sessions for ${date}`,
+                );
                 // Invalidate sessions query to refresh the UI
-                await queryClient.invalidateQueries({ queryKey: ['sessions'] });
+                await queryClient.invalidateQueries({ queryKey: ["sessions"] });
 
                 showSuccess(`${data.length} sessions cancelled successfully`);
 
                 // Update message to show completion
-                setMessages(prev => [
+                setMessages((prev) => [
                   ...prev.slice(0, -1),
                   {
-                    role: 'assistant',
-                    content: response.response + "\n\n✅ All sessions for " + 
-                      new Date(date).toLocaleDateString() + " have been cancelled.",
-                    status: 'action_success'
-                  }
+                    role: "assistant",
+                    content:
+                      response.response +
+                      "\n\n✅ All sessions for " +
+                      new Date(date).toLocaleDateString() +
+                      " have been cancelled.",
+                    status: "action_success",
+                  },
                 ]);
               } catch (dbError) {
                 console.error("Database error cancelling sessions:", dbError);
                 throw dbError;
               }
-              
+
               break;
             }
 
-            case 'schedule_session': {
-              // Trigger scheduling modal
-              document.dispatchEvent(new CustomEvent('openScheduleModal', {
-                detail: response.action.data
-              }));
+            case "schedule_session": {
+              const detail = response.action.data;
+              localStorage.setItem("pendingSchedule", JSON.stringify(detail));
+              document.dispatchEvent(
+                new CustomEvent("openScheduleModal", {
+                  detail,
+                }),
+              );
+              navigate("/schedule");
               break;
             }
 
-            case 'modify_session': {
+            case "modify_session": {
               const { session_id, ...updates } = response.action.data;
-              
-              setMessages(prev => [
+
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
+                  role: "assistant",
                   content: response.response + "\n\n⏳ Updating session...",
-                  status: 'processing'
-                }
+                  status: "processing",
+                },
               ]);
 
               const { error } = await supabase
-                .from('sessions')
+                .from("sessions")
                 .update(updates)
-                .eq('id', session_id);
+                .eq("id", session_id);
 
               if (error) throw error;
 
-              await queryClient.invalidateQueries({ queryKey: ['sessions'] });
-              showSuccess('Session updated successfully');
+              await queryClient.invalidateQueries({ queryKey: ["sessions"] });
+              showSuccess("Session updated successfully");
 
-              setMessages(prev => [
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
-                  content: response.response + "\n\n✅ Session has been updated.",
-                  status: 'complete'
-                }
+                  role: "assistant",
+                  content:
+                    response.response + "\n\n✅ Session has been updated.",
+                  status: "complete",
+                },
               ]);
               break;
             }
 
-            case 'create_client': {
-              setMessages(prev => [
+            case "create_client": {
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
-                  content: response.response + "\n\n⏳ Creating client profile...",
-                  status: 'processing'
-                }
+                  role: "assistant",
+                  content:
+                    response.response + "\n\n⏳ Creating client profile...",
+                  status: "processing",
+                },
               ]);
 
               const { data, error } = await supabase
-                .from('clients')
+                .from("clients")
                 .insert([response.action.data])
                 .select()
                 .single();
 
               if (error) throw error;
 
-              await queryClient.invalidateQueries({ queryKey: ['clients'] });
-              showSuccess('Client created successfully');
+              await queryClient.invalidateQueries({ queryKey: ["clients"] });
+              showSuccess("Client created successfully");
 
-              setMessages(prev => [
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
-                  content: response.response + "\n\n✅ Client profile has been created.",
-                  status: 'complete'
-                }
+                  role: "assistant",
+                  content:
+                    response.response +
+                    "\n\n✅ Client profile has been created.",
+                  status: "complete",
+                },
               ]);
               break;
             }
 
-            case 'update_client': {
+            case "update_client": {
               const { client_id, ...updates } = response.action.data;
 
-              setMessages(prev => [
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
-                  content: response.response + "\n\n⏳ Updating client profile...",
-                  status: 'processing'
-                }
+                  role: "assistant",
+                  content:
+                    response.response + "\n\n⏳ Updating client profile...",
+                  status: "processing",
+                },
               ]);
 
               const { error } = await supabase
-                .from('clients')
+                .from("clients")
                 .update(updates)
-                .eq('id', client_id);
+                .eq("id", client_id);
 
               if (error) throw error;
 
-              await queryClient.invalidateQueries({ queryKey: ['clients'] });
-              showSuccess('Client updated successfully');
+              await queryClient.invalidateQueries({ queryKey: ["clients"] });
+              showSuccess("Client updated successfully");
 
-              setMessages(prev => [
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
-                  content: response.response + "\n\n✅ Client profile has been updated.",
-                  status: 'complete'
-                }
+                  role: "assistant",
+                  content:
+                    response.response +
+                    "\n\n✅ Client profile has been updated.",
+                  status: "complete",
+                },
               ]);
               break;
             }
 
-            case 'create_therapist': {
-              setMessages(prev => [
+            case "create_therapist": {
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
-                  content: response.response + "\n\n⏳ Creating therapist profile...",
-                  status: 'processing'
-                }
+                  role: "assistant",
+                  content:
+                    response.response + "\n\n⏳ Creating therapist profile...",
+                  status: "processing",
+                },
               ]);
 
               const { data, error } = await supabase
-                .from('therapists')
+                .from("therapists")
                 .insert([response.action.data])
                 .select()
                 .single();
 
               if (error) throw error;
 
-              await queryClient.invalidateQueries({ queryKey: ['therapists'] });
-              showSuccess('Therapist created successfully');
+              await queryClient.invalidateQueries({ queryKey: ["therapists"] });
+              showSuccess("Therapist created successfully");
 
-              setMessages(prev => [
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
-                  content: response.response + "\n\n✅ Therapist profile has been created.",
-                  status: 'complete'
-                }
+                  role: "assistant",
+                  content:
+                    response.response +
+                    "\n\n✅ Therapist profile has been created.",
+                  status: "complete",
+                },
               ]);
               break;
             }
 
-            case 'update_therapist': {
+            case "update_therapist": {
               const { therapist_id, ...updates } = response.action.data;
 
-              setMessages(prev => [
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
-                  content: response.response + "\n\n⏳ Updating therapist profile...",
-                  status: 'processing'
-                }
+                  role: "assistant",
+                  content:
+                    response.response + "\n\n⏳ Updating therapist profile...",
+                  status: "processing",
+                },
               ]);
 
               const { error } = await supabase
-                .from('therapists')
+                .from("therapists")
                 .update(updates)
-                .eq('id', therapist_id);
+                .eq("id", therapist_id);
 
               if (error) throw error;
 
-              await queryClient.invalidateQueries({ queryKey: ['therapists'] });
-              showSuccess('Therapist updated successfully');
+              await queryClient.invalidateQueries({ queryKey: ["therapists"] });
+              showSuccess("Therapist updated successfully");
 
-              setMessages(prev => [
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
-                  content: response.response + "\n\n✅ Therapist profile has been updated.",
-                  status: 'complete'
-                }
+                  role: "assistant",
+                  content:
+                    response.response +
+                    "\n\n✅ Therapist profile has been updated.",
+                  status: "complete",
+                },
               ]);
               break;
             }
 
-            case 'create_authorization': {
-              setMessages(prev => [
+            case "create_authorization": {
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
-                  content: response.response + "\n\n⏳ Creating authorization...",
-                  status: 'processing'
-                }
+                  role: "assistant",
+                  content:
+                    response.response + "\n\n⏳ Creating authorization...",
+                  status: "processing",
+                },
               ]);
 
               const { services, ...authData } = response.action.data;
 
               // First create the authorization
               const { data: auth, error: authError } = await supabase
-                .from('authorizations')
+                .from("authorizations")
                 .insert([authData])
                 .select()
                 .single();
@@ -342,48 +398,54 @@ export default function ChatBot() {
               // Then create all services
               if (services && services.length > 0) {
                 const { error: servicesError } = await supabase
-                  .from('authorization_services')
+                  .from("authorization_services")
                   .insert(
-                    services.map(service => ({
+                    services.map((service) => ({
                       ...service,
-                      authorization_id: auth.id
-                    }))
+                      authorization_id: auth.id,
+                    })),
                   );
 
                 if (servicesError) throw servicesError;
               }
 
-              await queryClient.invalidateQueries({ queryKey: ['authorizations'] });
-              showSuccess('Authorization created successfully');
+              await queryClient.invalidateQueries({
+                queryKey: ["authorizations"],
+              });
+              showSuccess("Authorization created successfully");
 
-              setMessages(prev => [
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
-                  content: response.response + "\n\n✅ Authorization has been created.",
-                  status: 'complete'
-                }
+                  role: "assistant",
+                  content:
+                    response.response +
+                    "\n\n✅ Authorization has been created.",
+                  status: "complete",
+                },
               ]);
               break;
             }
 
-            case 'update_authorization': {
-              const { authorization_id, services, ...updates } = response.action.data;
-              
-              setMessages(prev => [
+            case "update_authorization": {
+              const { authorization_id, services, ...updates } =
+                response.action.data;
+
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
-                  content: response.response + "\n\n⏳ Updating authorization...",
-                  status: 'processing'
-                }
+                  role: "assistant",
+                  content:
+                    response.response + "\n\n⏳ Updating authorization...",
+                  status: "processing",
+                },
               ]);
 
               // Update authorization status
               const { error: authError } = await supabase
-                .from('authorizations')
+                .from("authorizations")
                 .update(updates)
-                .eq('id', authorization_id);
+                .eq("id", authorization_id);
 
               if (authError) throw authError;
 
@@ -392,118 +454,148 @@ export default function ChatBot() {
                 for (const service of services) {
                   const { service_id, ...serviceUpdates } = service;
                   const { error: serviceError } = await supabase
-                    .from('authorization_services')
+                    .from("authorization_services")
                     .update(serviceUpdates)
-                    .eq('id', service_id);
+                    .eq("id", service_id);
 
                   if (serviceError) throw serviceError;
                 }
               }
 
-              await queryClient.invalidateQueries({ queryKey: ['authorizations'] });
-              showSuccess('Authorization updated successfully');
+              await queryClient.invalidateQueries({
+                queryKey: ["authorizations"],
+              });
+              showSuccess("Authorization updated successfully");
 
-              setMessages(prev => [
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
-                  content: response.response + "\n\n✅ Authorization has been updated.",
-                  status: 'complete'
-                }
+                  role: "assistant",
+                  content:
+                    response.response +
+                    "\n\n✅ Authorization has been updated.",
+                  status: "complete",
+                },
               ]);
               break;
             }
 
-            case 'initiate_client_onboarding': {
-              const { client_name, client_email, date_of_birth, insurance_provider, referral_source, service_preference } = response.action.data;
-              
+            case "initiate_client_onboarding": {
+              const {
+                client_name,
+                client_email,
+                date_of_birth,
+                insurance_provider,
+                referral_source,
+                service_preference,
+              } = response.action.data;
+
               // Update message to show processing
-              setMessages(prev => [
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
-                  content: response.response + "\n\n⏳ Initiating client onboarding...",
-                  status: 'processing'
-                }
+                  role: "assistant",
+                  content:
+                    response.response +
+                    "\n\n⏳ Initiating client onboarding...",
+                  status: "processing",
+                },
               ]);
 
               // Redirect to client onboarding page with pre-filled data
               const queryParams = new URLSearchParams();
               if (client_name) {
-                const nameParts = client_name.split(' ');
-                if (nameParts.length > 0) queryParams.append('first_name', nameParts[0]);
-                if (nameParts.length > 1) queryParams.append('last_name', nameParts.slice(1).join(' '));
+                const nameParts = client_name.split(" ");
+                if (nameParts.length > 0)
+                  queryParams.append("first_name", nameParts[0]);
+                if (nameParts.length > 1)
+                  queryParams.append("last_name", nameParts.slice(1).join(" "));
               }
-              if (client_email) queryParams.append('email', client_email);
-              if (date_of_birth) queryParams.append('date_of_birth', date_of_birth);
-              if (insurance_provider) queryParams.append('insurance_provider', insurance_provider);
-              if (referral_source) queryParams.append('referral_source', referral_source);
+              if (client_email) queryParams.append("email", client_email);
+              if (date_of_birth)
+                queryParams.append("date_of_birth", date_of_birth);
+              if (insurance_provider)
+                queryParams.append("insurance_provider", insurance_provider);
+              if (referral_source)
+                queryParams.append("referral_source", referral_source);
               if (service_preference && Array.isArray(service_preference)) {
-                queryParams.append('service_preference', service_preference.join(','));
+                queryParams.append(
+                  "service_preference",
+                  service_preference.join(","),
+                );
               }
 
               // Construct the URL
               const onboardingUrl = `/clients/new?${queryParams.toString()}`;
 
               // Update message to show completion
-              setMessages(prev => [
+              setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
-                  role: 'assistant',
-                  content: response.response + "\n\n✅ Client onboarding initiated. You can complete the process by clicking the link below.",
-                  status: 'complete'
-                }
+                  role: "assistant",
+                  content:
+                    response.response +
+                    "\n\n✅ Client onboarding initiated. You can complete the process by clicking the link below.",
+                  status: "complete",
+                },
               ]);
 
               // Open the onboarding page in a new tab
-              window.open(onboardingUrl, '_blank');
+              window.open(onboardingUrl, "_blank");
               break;
             }
           }
         } catch (actionError) {
-          console.error('Error executing action:', actionError);
+          console.error("Error executing action:", actionError);
           showError(actionError);
           if (actionError instanceof Error) {
             errorTracker.trackAIError(actionError, {
               functionCalled: `ChatBot_${response.action?.type}`,
-              errorType: 'function_error',
+              errorType: "function_error",
             });
           }
 
           // Update message to show error
-          setMessages(prev => [
+          setMessages((prev) => [
             ...prev.slice(0, -1),
             {
-              role: 'assistant',
-              content: response.response + "\n\n❌ Error: " + (actionError instanceof Error ? actionError.message : "Unable to complete the requested action. Please try again or use the manual interface."),
-              status: 'action_failed'
-            }
+              role: "assistant",
+              content:
+                response.response +
+                "\n\n❌ Error: " +
+                (actionError instanceof Error
+                  ? actionError.message
+                  : "Unable to complete the requested action. Please try again or use the manual interface."),
+              status: "action_failed",
+            },
           ]);
         }
       }
     } catch (error) {
-      console.error('Error processing message:', error);
+      console.error("Error processing message:", error);
 
-      const errorMessage = error instanceof Error ? error.message : 'An error occurred';
+      const errorMessage =
+        error instanceof Error ? error.message : "An error occurred";
       showError(errorMessage);
       if (error instanceof Error) {
         errorTracker.trackAIError(error, {
-          functionCalled: 'ChatBot_processMessage',
-          errorType: 'invalid_response',
+          functionCalled: "ChatBot_processMessage",
+          errorType: "invalid_response",
         });
       }
-      
-      setMessages(prev => [
+
+      setMessages((prev) => [
         ...prev.slice(0, -1),
-        { 
-          role: 'assistant', 
-          content: "I apologize, but I encountered an error while processing your request. " +
+        {
+          role: "assistant",
+          content:
+            "I apologize, but I encountered an error while processing your request. " +
             "Please try again or use the manual interface instead.",
-          status: 'error'
-        }
+          status: "error",
+        },
       ]);
 
-      setError('Unable to process your request. Please try again.');
+      setError("Unable to process your request. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -530,8 +622,18 @@ export default function ChatBot() {
                 className="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400"
               >
                 <span className="sr-only">Close</span>
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <svg
+                  className="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
@@ -539,8 +641,13 @@ export default function ChatBot() {
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.length === 0 && (
                 <div className="text-center text-gray-500 dark:text-gray-400 py-8">
-                  <MessageSquare className="h-8 w-8 mx-auto mb-3 opacity-50" data-testid="empty-state-icon" />
-                  <p>Hi! I'm your scheduling assistant. How can I help you today?</p>
+                  <MessageSquare
+                    className="h-8 w-8 mx-auto mb-3 opacity-50"
+                    data-testid="empty-state-icon"
+                  />
+                  <p>
+                    Hi! I'm your scheduling assistant. How can I help you today?
+                  </p>
                   <p className="text-sm mt-2">You can ask me about:</p>
                   <ul className="text-sm mt-1 space-y-1">
                     <li>• Scheduling new sessions</li>
@@ -554,32 +661,32 @@ export default function ChatBot() {
               {messages.map((message, index) => (
                 <div
                   key={index}
-                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <div
                     className={`rounded-lg px-4 py-2 max-w-[80%] relative ${
-                      message.role === 'user'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+                      message.role === "user"
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                     }`}
                   >
                     <div className="whitespace-pre-wrap">{message.content}</div>
-                    {message.status === 'sending' && (
+                    {message.status === "sending" && (
                       <div className="absolute -right-6 top-1/2 -translate-y-1/2">
                         <Loader className="w-4 h-4 animate-spin text-blue-600" />
                       </div>
                     )}
-                    {message.status === 'processing' && (
+                    {message.status === "processing" && (
                       <div className="absolute -right-6 top-1/2 -translate-y-1/2">
                         <Loader className="w-4 h-4 animate-spin text-yellow-600" />
                       </div>
                     )}
-                    {message.status === 'action_success' && (
+                    {message.status === "action_success" && (
                       <div className="absolute -right-6 top-1/2 -translate-y-1/2">
                         <CheckCircle className="w-4 h-4 text-green-600" />
                       </div>
                     )}
-                    {message.status === 'action_failed' && (
+                    {message.status === "action_failed" && (
                       <div className="absolute -right-6 top-1/2 -translate-y-1/2">
                         <XCircle className="w-4 h-4 text-red-600" />
                       </div>
@@ -596,7 +703,10 @@ export default function ChatBot() {
               <div ref={messagesEndRef} />
             </div>
 
-            <form onSubmit={handleSubmit} className="p-4 border-t dark:border-gray-700">
+            <form
+              onSubmit={handleSubmit}
+              className="p-4 border-t dark:border-gray-700"
+            >
               <div className="flex space-x-4">
                 <input
                   type="text"

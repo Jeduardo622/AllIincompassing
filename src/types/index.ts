@@ -137,6 +137,7 @@ export interface Client {
   diagnosis?: string[];
   preferred_language?: string;
   address?: string;
+  notes?: string;
 }
 
 export interface Session {

@@ -138,6 +138,7 @@ export interface Client {
   preferred_language?: string;
   address?: string;
   notes?: string;
+  // Note: status field removed as it doesn't exist in current database schema
 }
 
 export interface Session {

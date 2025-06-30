@@ -32,7 +32,6 @@ const Clients = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | undefined>();
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterEmail, setFilterEmail] = useState<string>('all');
   const [filterService, setFilterService] = useState<string>('all');
   const [filterUnits, setFilterUnits] = useState<string>('all');
@@ -238,9 +237,6 @@ const Clients = () => {
       (client?.client_id?.toLowerCase() || '').includes(searchQuery.toLowerCase())
     );
 
-    // Status filter
-    const matchesStatus = filterStatus === 'all' ? true : true; // Placeholder for status filter
-    
     // Email domain filter
     const matchesEmail = filterEmail === 'all' ? true : 
       client.email && client.email.endsWith('@' + filterEmail);
@@ -260,7 +256,7 @@ const Clients = () => {
       matchesUnits = totalUnits < 10;
     }
     
-    return matchesSearch && matchesStatus && matchesEmail && matchesService && matchesUnits;
+    return matchesSearch && matchesEmail && matchesService && matchesUnits;
   });
 
   // Sort the filtered clients
@@ -327,18 +323,6 @@ const Clients = () => {
             <div className="flex flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <Filter className="w-5 h-5 text-gray-400" />
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
-                >
-                  <option value="all">All Clients</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-              
-              <div className="flex items-center gap-2">
                 <Mail className="w-5 h-5 text-gray-400" />
                 <select
                   value={filterEmail}

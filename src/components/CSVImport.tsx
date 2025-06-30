@@ -97,7 +97,6 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose }) => {
       else if (normalizedHeader.includes('client id')) initialMap[index.toString()] = 'client_id';
       else if (normalizedHeader.includes('uci')) initialMap[index.toString()] = 'cin_number';
       else if (normalizedHeader.includes('notes')) initialMap[index.toString()] = 'notes';
-      else if (normalizedHeader.includes('status')) initialMap[index.toString()] = 'status';
     });
     
     setHeaderMap(initialMap);
@@ -328,6 +327,8 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose }) => {
                       <option value="service_preference">Service Preference</option>
                       <option value="email">Email</option>
                       <option value="notes">Notes</option>
+                      <option value="diagnosis">Diagnosis</option>
+                      <option value="preferred_language">Preferred Language</option>
                     </select>
                   </div>
                 ))}

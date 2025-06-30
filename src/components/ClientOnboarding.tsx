@@ -232,7 +232,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
   const handleFormSubmit = async (data: OnboardingFormData) => {
     console.log("Form submitted with data:", data);
     
-    // Check for email validation error
+    // Only check email validation error if an email was provided
     if (emailValidationError) {
       showError('Please resolve the email validation error before submitting');
       return;
@@ -246,67 +246,6 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
         showError('A client with this email address already exists');
         return;
       }
-    }
-    
-    // Validate required fields
-    if (!data.first_name?.trim()) {
-      showError('First name is required');
-      return;
-    }
-    
-    if (!data.last_name?.trim()) {
-      showError('Last name is required');
-      return;
-    }
-    
-    if (!data.email?.trim()) {
-      showError('Email is required');
-      return;
-    }
-    
-    if (!data.date_of_birth) {
-      showError('Date of birth is required');
-      return;
-    }
-    
-    if (!data.parent1_first_name?.trim()) {
-      showError('Parent/guardian first name is required');
-      return;
-    }
-    
-    if (!data.parent1_last_name?.trim()) {
-      showError('Parent/guardian last name is required');
-      return;
-    }
-    
-    if (!data.parent1_phone?.trim()) {
-      showError('Parent/guardian phone is required');
-      return;
-    }
-    
-    if (!data.parent1_relationship?.trim()) {
-      showError('Parent/guardian relationship is required');
-      return;
-    }
-    
-    if (!data.address_line1?.trim()) {
-      showError('Street address is required');
-      return;
-    }
-    
-    if (!data.city?.trim()) {
-      showError('City is required');
-      return;
-    }
-    
-    if (!data.state?.trim()) {
-      showError('State is required');
-      return;
-    }
-    
-    if (!data.zip_code?.trim()) {
-      showError('ZIP code is required');
-      return;
     }
     
     // Ensure service_preference is an array
@@ -939,8 +878,8 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                 <input
                   id="consent"
                   type="checkbox"
+                  defaultChecked={true}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  required
                 />
               </div>
               <div className="ml-3 text-sm">

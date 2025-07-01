@@ -89,7 +89,7 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose, entityType = 'client' })
       if (normalizedHeader.includes('first name')) initialMap[index.toString()] = 'first_name';
       else if (normalizedHeader.includes('middle name')) initialMap[index.toString()] = 'middle_name';
       else if (normalizedHeader.includes('last name')) initialMap[index.toString()] = 'last_name';
-      else if (normalizedHeader.includes('dob') || normalizedHeader.includes('birth')) initialMap[index.toString()] = 'date_of_birth';
+      else if ((normalizedHeader.includes('dob') || normalizedHeader.includes('birth')) && entityType === 'client') initialMap[index.toString()] = 'date_of_birth';
       else if (normalizedHeader.includes('gender')) initialMap[index.toString()] = 'gender';
       else if (normalizedHeader.includes('street')) {
         initialMap[index.toString()] = entityType === 'client' ? 'address_line1' : 'street';

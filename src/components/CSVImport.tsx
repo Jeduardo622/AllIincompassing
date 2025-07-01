@@ -147,14 +147,14 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose, entityType = 'client' })
 
   const createEntityMutation = useMutation({
     mutationFn: async (data: Partial<Client> | Partial<Therapist>) => {
-      const { data, error } = await supabase
+      const { data: insertedData, error } = await supabase
         .from(entityType === 'client' ? 'clients' : 'therapists')
         .insert([data])
         .select('id')
         .single();
       
       if (error) throw error;
-      return data;
+      return insertedData;
     }
   });
   

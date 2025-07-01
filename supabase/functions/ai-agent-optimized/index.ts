@@ -215,7 +215,7 @@ const compressedFunctionSchemas = [
         required: ["action", "data"]
       }
     }
-  }
+  },
   {
     type: "function",
     function: {

@@ -91,7 +91,9 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose, entityType = 'client' })
       else if (normalizedHeader.includes('last name')) initialMap[index.toString()] = 'last_name';
       else if (normalizedHeader.includes('dob') || normalizedHeader.includes('birth')) initialMap[index.toString()] = 'date_of_birth';
       else if (normalizedHeader.includes('gender')) initialMap[index.toString()] = 'gender';
-      else if (normalizedHeader.includes('street')) initialMap[index.toString()] = 'address_line1';
+      else if (normalizedHeader.includes('street')) {
+        initialMap[index.toString()] = entityType === 'client' ? 'address_line1' : 'street';
+      }
       else if (normalizedHeader.includes('city')) initialMap[index.toString()] = 'city';
       else if (normalizedHeader.includes('state')) initialMap[index.toString()] = 'state';
       else if (normalizedHeader.includes('postal') || normalizedHeader.includes('zip')) initialMap[index.toString()] = 'zip_code';
@@ -359,7 +361,11 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose, entityType = 'client' })
                           <option value="weekly_hours_max">Max Weekly Hours</option>
                         </>
                       )}
-                      <option value="address_line1">Street Address</option>
+                      {entityType === 'client' ? (
+                        <option value="address_line1">Street Address</option>
+                      ) : (
+                        <option value="street">Street Address</option>
+                      )}
                       <option value="city">City</option>
                       <option value="state">State</option>
                       <option value="zip_code">Postal/ZIP Code</option>

@@ -40,7 +40,45 @@ const Therapists = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('therapists')
-        .select('*')
+        .select(`
+          id,
+          email,
+          full_name,
+          first_name,
+          middle_name,
+          last_name,
+          title,
+          facility,
+          employee_type,
+          staff_id,
+          supervisor,
+          status,
+          specialties,
+          service_type,
+          npi_number,
+          medicaid_id,
+          practitioner_id,
+          taxonomy_code,
+          time_zone,
+          phone,
+          street,
+          city,
+          state,
+          zip_code,
+          latitude,
+          longitude,
+          service_radius_km,
+          max_daily_travel_minutes,
+          preferred_areas,
+          avoid_rush_hour,
+          rbt_number,
+          bcba_number,
+          weekly_hours_min,
+          weekly_hours_max,
+          availability_hours,
+          max_clients,
+          created_at
+        `)
         .order('full_name');
       
       if (error) throw error;

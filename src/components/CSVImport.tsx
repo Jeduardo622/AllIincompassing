@@ -3,10 +3,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { AlertCircle, Upload, CheckCircle, X } from 'lucide-react';
 import { showSuccess, showError } from '../lib/toast';
-import type { Client } from '../types';
+import type { Client, Therapist } from '../types';
 
 interface CSVImportProps {
   onClose: () => void;
+  entityType?: 'client' | 'therapist';
 }
 
 interface ImportStatus {
@@ -18,7 +19,7 @@ interface ImportStatus {
   errors: { row: number; message: string }[];
 }
 
-const CSVImport: React.FC<CSVImportProps> = ({ onClose }) => {
+const CSVImport: React.FC<CSVImportProps> = ({ onClose, entityType = 'client' }) => {
   const [file, setFile] = useState<File | null>(null);
   const [csvData, setCsvData] = useState<string[][]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -88,14 +89,22 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose }) => {
       if (normalizedHeader.includes('first name')) initialMap[index.toString()] = 'first_name';
       else if (normalizedHeader.includes('middle name')) initialMap[index.toString()] = 'middle_name';
       else if (normalizedHeader.includes('last name')) initialMap[index.toString()] = 'last_name';
-      else if (normalizedHeader.includes('dob')) initialMap[index.toString()] = 'date_of_birth';
+      else if (normalizedHeader.includes('dob') || normalizedHeader.includes('birth')) initialMap[index.toString()] = 'date_of_birth';
       else if (normalizedHeader.includes('gender')) initialMap[index.toString()] = 'gender';
       else if (normalizedHeader.includes('street')) initialMap[index.toString()] = 'address_line1';
       else if (normalizedHeader.includes('city')) initialMap[index.toString()] = 'city';
       else if (normalizedHeader.includes('state')) initialMap[index.toString()] = 'state';
       else if (normalizedHeader.includes('postal') || normalizedHeader.includes('zip')) initialMap[index.toString()] = 'zip_code';
-      else if (normalizedHeader.includes('client id')) initialMap[index.toString()] = 'client_id';
-      else if (normalizedHeader.includes('uci')) initialMap[index.toString()] = 'cin_number';
+      else if ((entityType === 'client' && normalizedHeader.includes('client id')) || 
+               (entityType === 'therapist' && normalizedHeader.includes('staff id'))) {
+        initialMap[index.toString()] = entityType === 'client' ? 'client_id' : 'staff_id';
+      }
+      else if (entityType === 'client' && normalizedHeader.includes('uci')) initialMap[index.toString()] = 'cin_number';
+      else if (entityType === 'therapist' && normalizedHeader.includes('npi')) initialMap[index.toString()] = 'npi_number';
+      else if (entityType === 'therapist' && normalizedHeader.includes('facility')) initialMap[index.toString()] = 'facility';
+      else if (entityType === 'therapist' && normalizedHeader.includes('title')) initialMap[index.toString()] = 'title';
+      else if (normalizedHeader.includes('email')) initialMap[index.toString()] = 'email';
+      else if (normalizedHeader.includes('phone')) initialMap[index.toString()] = 'phone';
       else if (normalizedHeader.includes('notes')) initialMap[index.toString()] = 'notes';
     });
     
@@ -136,11 +145,11 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose }) => {
     setStep('preview');
   }, []);
 
-  const createClientMutation = useMutation({
-    mutationFn: async (clientData: Partial<Client>) => {
+  const createEntityMutation = useMutation({
+    mutationFn: async (data: Partial<Client> | Partial<Therapist>) => {
       const { data, error } = await supabase
-        .from('clients')
-        .insert([clientData])
+        .from(entityType === 'client' ? 'clients' : 'therapists')
+        .insert([data])
         .select('id')
         .single();
       
@@ -168,8 +177,8 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose }) => {
       const promises = batch.map(async (row, rowIndex) => {
         const actualRowIndex = i + rowIndex;
         try {
-          // Map CSV data to client object
-          const clientData: Partial<Client> = {};
+          // Map CSV data to entity object
+          const entityData: Partial<Client> | Partial<Therapist> = {};
           
           // Map fields according to headerMap
           for (const [index, field] of Object.entries(headerMap)) {
@@ -187,22 +196,26 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose }) => {
               
               // Handle service preferences
               if (field === 'service_preference' && value) {
-                clientData.service_preference = value.split(',').map(s => s.trim());
+                entityData.service_preference = value.split(',').map(s => s.trim());
+              } else if (field === 'service_type' && value) {
+                entityData.service_type = value.split(',').map(s => s.trim());
+              } else if (field === 'specialties' && value) {
+                entityData.specialties = value.split(',').map(s => s.trim());
               } else {
-                clientData[field] = value || null;
+                entityData[field] = value || null;
               }
             }
           }
           
           // Ensure we have a full_name
-          if (clientData.first_name || clientData.last_name) {
-            clientData.full_name = [clientData.first_name, clientData.middle_name, clientData.last_name]
+          if (entityData.first_name || entityData.last_name) {
+            entityData.full_name = [entityData.first_name, entityData.middle_name, entityData.last_name]
               .filter(Boolean)
               .join(' ');
           }
           
-          // Create client
-          await createClientMutation.mutateAsync(clientData);
+          // Create entity
+          await createEntityMutation.mutateAsync(entityData);
           
           setImportStatus(prev => ({
             ...prev,
@@ -232,12 +245,12 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose }) => {
     }));
     
     // Refresh client data
-    queryClient.invalidateQueries({ queryKey: ['clients'] });
+    queryClient.invalidateQueries({ queryKey: [entityType === 'client' ? 'clients' : 'therapists'] });
     
     if (importStatus.failed === 0) {
-      showSuccess(`Successfully imported ${importStatus.success} clients`);
+      showSuccess(`Successfully imported ${importStatus.success} ${entityType}s`);
     } else {
-      showError(`Imported ${importStatus.success} clients with ${importStatus.failed} failures`);
+      showError(`Imported ${importStatus.success} ${entityType}s with ${importStatus.failed} failures`);
     }
   };
 
@@ -245,7 +258,9 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose }) => {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Import Clients from CSV</h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+            Import {entityType === 'client' ? 'Clients' : 'Therapists'} from CSV
+          </h2>
           <button 
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
@@ -262,7 +277,8 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose }) => {
                   <AlertCircle className="h-5 w-5 text-blue-500 mr-2 flex-shrink-0" />
                   <div>
                     <p className="text-sm text-blue-700 dark:text-blue-300">
-                      Upload a CSV file containing client information. The file should include columns for client information such as names, contact details, etc.
+                      Upload a CSV file containing {entityType === 'client' ? 'client' : 'therapist'} information. 
+                      The file should include columns for information such as names, contact details, etc.
                     </p>
                   </div>
                 </div>
@@ -284,9 +300,11 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose }) => {
           
           {step === 'map' && headers.length > 0 && (
             <div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Map CSV Headers to Client Fields</h3>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                Map CSV Headers to {entityType === 'client' ? 'Client' : 'Therapist'} Fields
+              </h3>
               <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
-                Please map the CSV headers to the corresponding client fields. We've made some suggestions based on the header names.
+                Please map the CSV headers to the corresponding {entityType} fields. We've made some suggestions based on the header names.
               </p>
               
               <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg mb-6">
@@ -315,20 +333,37 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose }) => {
                       <option value="first_name">First Name</option>
                       <option value="middle_name">Middle Name</option>
                       <option value="last_name">Last Name</option>
-                      <option value="date_of_birth">Date of Birth</option>
-                      <option value="gender">Gender</option>
+                      <option value="email">Email</option>
+                      <option value="phone">Phone</option>
+                      {entityType === 'client' ? (
+                        <>
+                          <option value="date_of_birth">Date of Birth</option>
+                          <option value="gender">Gender</option>
+                          <option value="client_id">Client ID</option>
+                          <option value="cin_number">UCI/CIN Number</option>
+                          <option value="service_preference">Service Preference</option>
+                          <option value="diagnosis">Diagnosis</option>
+                          <option value="preferred_language">Preferred Language</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="title">Title/Position</option>
+                          <option value="staff_id">Staff ID</option>
+                          <option value="npi_number">NPI Number</option>
+                          <option value="medicaid_id">Medicaid ID</option>
+                          <option value="service_type">Service Types</option>
+                          <option value="specialties">Specialties</option>
+                          <option value="facility">Facility/Location</option>
+                          <option value="supervisor">Supervisor</option>
+                          <option value="weekly_hours_min">Min Weekly Hours</option>
+                          <option value="weekly_hours_max">Max Weekly Hours</option>
+                        </>
+                      )}
                       <option value="address_line1">Street Address</option>
                       <option value="city">City</option>
                       <option value="state">State</option>
                       <option value="zip_code">Postal/ZIP Code</option>
-                      <option value="client_id">Client ID</option>
-                      <option value="cin_number">UCI/CIN Number</option>
-                      <option value="phone">Phone</option>
-                      <option value="service_preference">Service Preference</option>
-                      <option value="email">Email</option>
                       <option value="notes">Notes</option>
-                      <option value="diagnosis">Diagnosis</option>
-                      <option value="preferred_language">Preferred Language</option>
                     </select>
                   </div>
                 ))}
@@ -347,9 +382,11 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose }) => {
           
           {step === 'preview' && (
             <div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Preview Import Data</h3>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                Preview Import Data
+              </h3>
               <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
-                Review the data that will be imported. {csvData.length} clients will be created.
+                Review the data that will be imported. {csvData.length} {entityType}s will be created.
               </p>
               
               <div className="overflow-x-auto">
@@ -402,7 +439,9 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose }) => {
           
           {step === 'import' && (
             <div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Importing Clients</h3>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                Importing {entityType === 'client' ? 'Clients' : 'Therapists'}
+              </h3>
               
               <div className="mb-6">
                 <div className="mb-2 flex justify-between">

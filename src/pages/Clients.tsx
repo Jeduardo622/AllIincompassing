@@ -3,20 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
-  Search, 
-  Edit2, 
-  Trash2, 
-  User,
-  Mail,
-  Activity,
-  MapPin,
-  Calendar,
-  Heart,
-  Clock,
-  Filter,
-  ChevronUp,
-  ChevronDown,
-  Eye,
+  Search, Edit2, Trash2, User, Mail, Activity, MapPin, Calendar, Heart,
+  Clock, Filter, ChevronUp, ChevronDown, Eye, Settings, Star,
   UserPlus,
   FileUp
 } from 'lucide-react';
@@ -149,8 +137,7 @@ const Clients = () => {
   });
 
   const handleCreateClient = () => {
-    setSelectedClient(undefined);
-    setIsModalOpen(true);
+    navigate('/clients/new');
   };
 
   const handleEditClient = (client: Client) => {
@@ -290,6 +277,13 @@ const Clients = () => {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Clients</h1>
         <div className="flex space-x-3">
+          <button
+            onClick={handleCreateClient}
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <Plus className="w-5 h-5 mr-2 inline-block" />
+            New Client
+          </button>
           <button
             onClick={() => setIsImportModalOpen(true)}
             className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md shadow-sm hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
@@ -467,19 +461,19 @@ const Clients = () => {
                     <td className="px-6 py-4">
                       <div className="space-y-2">
                         <div className="flex items-center">
-                          <Activity className="w-4 h-4 text-blue-500 mr-2" />
+                          <Star className="w-4 h-4 text-blue-500 mr-2" />
                           <span className="text-sm text-gray-900 dark:text-gray-200">
                             {client.one_to_one_units || 0} 1:1 units
                           </span>
                         </div>
                         <div className="flex items-center">
-                          <Activity className="w-4 h-4 text-purple-500 mr-2" />
+                          <Settings className="w-4 h-4 text-purple-500 mr-2" />
                           <span className="text-sm text-gray-900 dark:text-gray-200">
                             {client.supervision_units || 0} supervision units
                           </span>
                         </div>
                         <div className="flex items-center">
-                          <Activity className="w-4 h-4 text-green-500 mr-2" />
+                          <Activity className="w-4 h-4 text-green-500 mr-2" /> 
                           <span className="text-sm text-gray-900 dark:text-gray-200">
                             {client.parent_consult_units || 0} parent consult units
                           </span>
@@ -494,13 +488,13 @@ const Clients = () => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-3">
-                        <button
+                        <Link
                           onClick={() => handleViewClient(client)}
                           className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
                           title="View client details"
                         >
                           <Eye className="w-4 h-4" />
-                        </button>
+                        </Link>
                         <button
                           onClick={() => handleEditClient(client)}
                           className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
@@ -536,12 +530,8 @@ const Clients = () => {
           client={selectedClient}
         />
       )}
-      
-      {isImportModalOpen && (
-        <CSVImport
-          onClose={() => setIsImportModalOpen(false)}
-        />
-      )}
+
+      {isImportModalOpen && <CSVImport onClose={() => setIsImportModalOpen(false)} />}
     </div>
   );
 };

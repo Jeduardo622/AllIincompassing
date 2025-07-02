@@ -58,12 +58,6 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
         .eq('therapist_id', therapist.id)
         .order('start_time', { ascending: false })
         .limit(10);
-        
-      if (error) throw error;
-      return data || [];
-    },
-  });
-  
   // Get status badge
   const getStatusBadge = (status: string) => {
     switch (status) {

@@ -36,9 +36,6 @@ interface Issue {
 export default function ProfileTab({ therapist }: ProfileTabProps) {
   const { hasRole, user } = useAuth();
   
-  // Check if the logged-in user is this therapist
-  const isOwnProfile = user?.user_metadata?.therapist_id === therapist.id;
-  
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
   const [isAddIssueModalOpen, setIsAddIssueModalOpen] = useState(false);

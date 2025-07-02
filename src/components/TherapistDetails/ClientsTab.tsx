@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { 
@@ -63,12 +63,6 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
       return data || [];
     },
   });
-  
-  // Filter clients based on search query
-  const filteredClients = assignedClients.filter(client => 
-    client.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    client.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
   
   // Get status badge
   const getStatusBadge = (status: string) => {

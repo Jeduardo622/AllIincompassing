@@ -58,6 +58,12 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
         .eq('therapist_id', therapist.id)
         .order('start_time', { ascending: false })
         .limit(10);
+
+      if (error) throw error;
+      return data || [];
+    }
+  });
+
   // Get status badge
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -254,9 +260,9 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
                   </div>
                   
                   {getStatusBadge(session.status)}
-                 </div>
-                 <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-700 pt-2">
-                   {session.notes || 'No session notes'}
+                </div>
+                <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-700 pt-2">
+                  {session.notes || 'No session notes'}
                 </div>
               </div>
             ))}

@@ -98,17 +98,6 @@ export const useAuth = create<AuthState>((set, get) => ({
         metadata.therapist_id = therapistId;
       }
       
-      // Prepare metadata with additional fields
-      const metadata: Record<string, any> = {
-        is_admin: isAdmin,
-        email_confirmed: true // Auto-confirm for testing
-      };
-      
-      // Add therapist ID if provided
-      if (therapistId && !isAdmin) {
-        metadata.therapist_id = therapistId;
-      }
-      
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -169,26 +158,6 @@ export const useAuth = create<AuthState>((set, get) => ({
         }
       }
       
-      // If registering with therapist, assign therapist role
-      if (!isAdmin && therapistId && data.user) {
-        try {
-          const { error } = await supabase.rpc('assign_therapist_role', {
-            user_email: email,
-            therapist_id: therapistId
-          });
-          
-          if (error) {
-            console.error('Error assigning therapist role:', error);
-            // Continue anyway, the UI can still work without the role
-          } else {
-            console.log('Therapist role assigned successfully');
-          }
-        } catch (error) {
-          console.error('Error in therapist role assignment:', error);
-          // Continue anyway, don't throw
-        }
-      }
-
       showSuccess('Account created successfully! Please check your email to confirm your account.');
     } catch (error) {
       console.error('Sign up error:', error);

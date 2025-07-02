@@ -13,6 +13,9 @@ export default function PrivateRoute({ children, requiredRoles }: PrivateRoutePr
   // Get therapist ID from user metadata if available
   const therapistId = user?.user_metadata?.therapist_id;
 
+  // Get therapist ID from user metadata if available
+  const therapistId = user?.user_metadata?.therapist_id;
+
   // Add logging to help debug role issues
   console.log('PrivateRoute check:', {
     path: location.pathname,
@@ -25,6 +28,7 @@ export default function PrivateRoute({ children, requiredRoles }: PrivateRoutePr
       hasRole: hasRole(role) 
     })) : 'No roles required',
     userEmail: user?.email,
+    therapistId
     therapistId
   });
 
@@ -52,6 +56,13 @@ export default function PrivateRoute({ children, requiredRoles }: PrivateRoutePr
       return hasRole(role);
     });
     
+    const hasRequiredRole = requiredRoles.some(role => {
+      if (role === 'therapist') {
+        return hasRole(role) || !!therapistId;
+      }
+      return hasRole(role);
+    });
+    
     console.log('Role check result:', { 
       hasRequiredRole, 
       userRoles: roles, 
@@ -65,7 +76,7 @@ export default function PrivateRoute({ children, requiredRoles }: PrivateRoutePr
     
     if (!hasRequiredRole) {
       console.log('User lacks required role, redirecting to unauthorized');
-      return <Navigate to="/unauthorized" replace />;
+      return <Navigate to="/unauthorized\" replace />;
     }
   }
 

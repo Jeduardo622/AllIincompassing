@@ -6,8 +6,7 @@ import {
   Search, Edit2, Trash2, User, Mail, Activity, MapPin, Calendar, Heart,
   Clock, Filter, ChevronUp, ChevronDown, Eye, Settings, Star,
   UserPlus,
-  FileUp,
-  Plus
+  FileUp
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Client } from '../types';

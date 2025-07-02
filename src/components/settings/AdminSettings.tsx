@@ -113,7 +113,7 @@ export default function AdminSettings() {
       const { error } = await supabase.rpc('manage_admin_users', {
         operation: 'remove',
         target_user_id: userId,
-        metadata: null
+        metadata: {}
         metadata: {}
       });
       

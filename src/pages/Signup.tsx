@@ -187,41 +187,27 @@ export default function Signup() {
                   Select Your Therapist
                 </label>
                 <div className="mt-1">
-                  <div className="relative">
-                    <select
-                      id="therapist"
-                      name="therapist"
-                      required
-                      value={therapistId}
-                      onChange={(e) => setTherapistId(e.target.value)}
-                      disabled={therapistsLoading}
-                      className="appearance-none block w-full pl-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    >
-                      <option value="">Please select your therapist</option>
-                      {therapists.map(therapist => (
-                        <option key={therapist.id} value={therapist.id}>
-                          {therapist.full_name} {therapist.title ? `(${therapist.title})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 dark:text-gray-300">
-                      <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                  </div>
+                  <select
+                    id="therapist"
+                    name="therapist"
+                    required
+                    value={therapistId}
+                    onChange={(e) => setTherapistId(e.target.value)}
+                    disabled={therapistsLoading}
+                    className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:text-white sm:text-sm"
+                  >
+                    <option value="">Select a therapist</option>
+                    {therapists.map(therapist => (
+                      <option key={therapist.id} value={therapist.id}>
+                        {therapist.full_name} {therapist.title ? `(${therapist.title})` : ''}
+                      </option>
+                    ))}
+                  </select>
                   {therapistsLoading && (
-                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 flex items-center">
-                      <svg className="animate-spin -ml-1 mr-2 h-3 w-3 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                       Loading therapists...
                     </p>
                   )}
-                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    This will connect your account to your assigned therapist.
-                  </p>
                 </div>
               </div>
             )}

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Calendar, Shield } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { supabase } from '../lib/supabase';
 import { showError, showSuccess } from '../lib/toast';
 import { verifyConnection } from '../lib/supabase';
 
@@ -10,11 +12,27 @@ export default function Signup() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [therapistId, setTherapistId] = useState<string>('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [connectionVerified, setConnectionVerified] = useState(false);
   const navigate = useNavigate();
   const { signUp } = useAuth();
+
+  // Fetch therapists for dropdown
+  const { data: therapists = [], isLoading: therapistsLoading } = useQuery({
+    queryKey: ['therapists'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('therapists')
+        .select('id, full_name, title')
+        .eq('status', 'active')
+        .order('full_name');
+      
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
   useEffect(() => {
     // Verify Supabase connection
@@ -44,10 +62,16 @@ export default function Signup() {
       return;
     }
 
+    // Validate therapist selection unless admin
+    if (!isAdmin && !therapistId) {
+      setError('Please select a therapist');
+      return;
+    }
+
     try {
       setError('');
       setLoading(true);
-      await signUp(email, password, isAdmin);
+      await signUp(email, password, isAdmin, therapistId);
       showSuccess('Account created successfully! Please check your email to confirm your account.');
       navigate('/login', { 
         state: { message: 'Please check your email to confirm your account' }
@@ -156,6 +180,37 @@ export default function Signup() {
                 Register as Administrator
               </label>
             </div>
+
+            {!isAdmin && (
+              <div>
+                <label htmlFor="therapist" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Select Your Therapist
+                </label>
+                <div className="mt-1">
+                  <select
+                    id="therapist"
+                    name="therapist"
+                    required
+                    value={therapistId}
+                    onChange={(e) => setTherapistId(e.target.value)}
+                    disabled={therapistsLoading}
+                    className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:text-white sm:text-sm"
+                  >
+                    <option value="">Select a therapist</option>
+                    {therapists.map(therapist => (
+                      <option key={therapist.id} value={therapist.id}>
+                        {therapist.full_name} {therapist.title ? `(${therapist.title})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {therapistsLoading && (
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Loading therapists...
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div>
               <button

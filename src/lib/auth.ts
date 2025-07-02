@@ -9,7 +9,7 @@ interface AuthState {
   roles: string[];
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, isAdmin?: boolean) => Promise<void>;
+  signUp: (email: string, password: string, isAdmin?: boolean, therapistId?: string) => Promise<void>;
   signOut: () => Promise<void>;
   setUser: (user: User | null) => void;
   setRoles: (roles: string[]) => void;
@@ -80,11 +80,22 @@ export const useAuth = create<AuthState>((set, get) => ({
       throw error;
     }
   },
-  signUp: async (email: string, password: string, isAdmin = false) => {
+  signUp: async (email: string, password: string, isAdmin = false, therapistId = '') => {
     try {
       // Validate email format
       if (!isValidEmail(email)) {
         throw new Error('Invalid email format');
+      }
+      
+      // Prepare metadata with additional fields
+      const metadata: Record<string, any> = {
+        is_admin: isAdmin,
+        email_confirmed: true // Auto-confirm for testing
+      };
+      
+      // Add therapist ID if provided
+      if (therapistId && !isAdmin) {
+        metadata.therapist_id = therapistId;
       }
       
       const { data, error: signUpError } = await supabase.auth.signUp({
@@ -92,10 +103,7 @@ export const useAuth = create<AuthState>((set, get) => ({
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
-          data: {
-            is_admin: isAdmin,
-            email_confirmed: true // Auto-confirm for testing
-          },
+          data: metadata,
         },
       });
       
@@ -112,7 +120,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       // If registering as admin, assign admin role using RPC
-      if (isAdmin) {
+      if (isAdmin && data.user) {
         try {
           const { error } = await supabase.rpc('assign_admin_role', {
             user_email: email
@@ -127,6 +135,26 @@ export const useAuth = create<AuthState>((set, get) => ({
         } catch (error) {
           console.error('Error in admin role assignment:', error);
           throw error;
+        }
+      }
+      
+      // If registering with therapist, assign therapist role
+      if (!isAdmin && therapistId && data.user) {
+        try {
+          const { error } = await supabase.rpc('assign_therapist_role', {
+            user_email: email,
+            therapist_id: therapistId
+          });
+          
+          if (error) {
+            console.error('Error assigning therapist role:', error);
+            // Continue anyway, the UI can still work without the role
+          } else {
+            console.log('Therapist role assigned successfully');
+          }
+        } catch (error) {
+          console.error('Error in therapist role assignment:', error);
+          // Continue anyway, don't throw
         }
       }
 

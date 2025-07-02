@@ -88,14 +88,14 @@ export const useAuth = create<AuthState>((set, get) => ({
       }
       
       // Prepare metadata with additional fields
-      const metadata: Record<string, any> = {
+      const userMetadata: Record<string, any> = {
         is_admin: isAdmin,
         email_confirmed: true // Auto-confirm for testing
       };
       
       // Add therapist ID if provided
       if (therapistId && !isAdmin) {
-        metadata.therapist_id = therapistId;
+        userMetadata.therapist_id = therapistId;
       }
       
       const { data, error: signUpError } = await supabase.auth.signUp({
@@ -103,7 +103,7 @@ export const useAuth = create<AuthState>((set, get) => ({
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
-          data: metadata,
+          data: userMetadata,
         }
       }
       )

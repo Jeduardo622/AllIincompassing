@@ -114,7 +114,6 @@ export default function AdminSettings() {
         operation: 'remove',
         target_user_id: userId,
         metadata: {}
-        metadata: {}
       });
       
       if (error) {

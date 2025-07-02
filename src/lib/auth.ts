@@ -115,6 +115,9 @@ export const useAuth = create<AuthState>((set, get) => ({
         options: {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
           data: metadata,
+        }
+      }
+      )
       if (signUpError) {
         console.error('Signup error:', signUpError);
         throw signUpError;

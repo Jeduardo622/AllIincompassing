@@ -34,7 +34,11 @@ interface Issue {
 }
 
 export default function ProfileTab({ therapist }: ProfileTabProps) {
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
+  
+  // Check if the logged-in user is this therapist
+  const isOwnProfile = user?.user_metadata?.therapist_id === therapist.id;
+  
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
   const [isAddIssueModalOpen, setIsAddIssueModalOpen] = useState(false);
@@ -199,7 +203,7 @@ export default function ProfileTab({ therapist }: ProfileTabProps) {
               </p>
             </div>
           </div>
-          {hasRole('admin') && (
+          {(hasRole('admin') || isOwnProfile) && (
             <button
               onClick={() => setIsEditModalOpen(true)}
               className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"

@@ -803,10 +803,12 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
           
           <div className="mt-8 flex justify-between">
             <button
-              type="button"
-              onClick={prevStep}
-              disabled={currentStep === 1}
+             type="button"
+             onClick={onClose}
+             className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-dark border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+             aria-label="Cancel"
               className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-dark border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 flex items-center"
+              aria-label="Add Certification"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Previous

@@ -16,6 +16,7 @@ export default function Signup() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [connectionVerified, setConnectionVerified] = useState(false);
+  const [connectionChecking, setConnectionChecking] = useState(true);
   const navigate = useNavigate();
   const { signUp } = useAuth();
 
@@ -36,16 +37,29 @@ export default function Signup() {
 
   useEffect(() => {
     // Verify Supabase connection
-    verifyConnection()
-      .then(() => setConnectionVerified(true))
-      .catch((err) => {
+    const checkConnection = async () => {
+      try {
+        setConnectionChecking(true);
+        await verifyConnection();
+        setConnectionVerified(true);
+      } catch (err) {
         console.error('Connection error:', err);
         setError('Unable to connect to the server. Please try again later.');
-      });
+      } finally {
+        setConnectionChecking(false);
+      }
+    };
+
+    checkConnection();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (connectionChecking) {
+      setError('Still checking connection to the server. Please wait.');
+      return;
+    }
 
     if (!connectionVerified) {
       setError('Please wait for server connection to be established');
@@ -194,9 +208,9 @@ export default function Signup() {
                     value={therapistId}
                     onChange={(e) => setTherapistId(e.target.value)}
                     disabled={therapistsLoading}
-                    className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:text-white sm:text-sm"
+                    className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-dark dark:text-white sm:text-sm"
                   >
-                    <option value="">Select a therapist</option>
+                    <option value="">Select your therapist</option>
                     {therapists.map(therapist => (
                       <option key={therapist.id} value={therapist.id}>
                         {therapist.full_name} {therapist.title ? `(${therapist.title})` : ''}

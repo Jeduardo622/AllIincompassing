@@ -12,17 +12,20 @@ import {
   Clock,
   Filter,
   Building,
-  UserPlus,
-  Eye
+  UserPlus, 
+  Eye,
+  FileUp
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Therapist } from '../types';
 import TherapistModal from '../components/TherapistModal';
+import CSVImport from '../components/CSVImport';
 import { prepareFormData } from '../lib/validation';
 import { showSuccess, showError } from '../lib/toast';
 
 const Therapists = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedTherapist, setSelectedTherapist] = useState<Therapist | undefined>();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterLocation, setFilterLocation] = useState('all');
@@ -37,7 +40,45 @@ const Therapists = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('therapists')
-        .select('*')
+        .select(`
+          id,
+          email,
+          full_name,
+          first_name,
+          middle_name,
+          last_name,
+          title,
+          facility,
+          employee_type,
+          staff_id,
+          supervisor,
+          status,
+          specialties,
+          service_type,
+          npi_number,
+          medicaid_id,
+          practitioner_id,
+          taxonomy_code,
+          time_zone,
+          phone,
+          street,
+          city,
+          state,
+          zip_code,
+          latitude,
+          longitude,
+          service_radius_km,
+          max_daily_travel_minutes,
+          preferred_areas,
+          avoid_rush_hour,
+          rbt_number,
+          bcba_number,
+          weekly_hours_min,
+          weekly_hours_max,
+          availability_hours,
+          max_clients,
+          created_at
+        `)
         .order('full_name');
       
       if (error) throw error;
@@ -186,13 +227,22 @@ const Therapists = () => {
     <div className="h-full">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Staff Members</h1>
-        <button
-          onClick={handleOnboardTherapist}
-          className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-        >
-          <UserPlus className="w-5 h-5 mr-2 inline-block" />
-          Onboard Therapist
-        </button>
+        <div className="flex space-x-3">
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md shadow-sm hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+          >
+            <FileUp className="w-5 h-5 mr-2 inline-block" />
+            Import CSV
+          </button>
+          <button
+            onClick={handleOnboardTherapist}
+            className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          >
+            <UserPlus className="w-5 h-5 mr-2 inline-block" />
+            Onboard Therapist
+          </button>
+        </div>
       </div>
 
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow mb-6">
@@ -333,20 +383,6 @@ const Therapists = () => {
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-3">
                         <button
-                          onClick={() => handleViewTherapist(therapist)}
-                          className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
-                          title="View therapist details"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleEditTherapist(therapist)}
-                          className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
-                          title="Edit therapist"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
                           onClick={() => handleDeleteTherapist(therapist.id)}
                           className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
                           title="Delete therapist"
@@ -372,6 +408,13 @@ const Therapists = () => {
           }}
           onSubmit={handleSubmit}
           therapist={selectedTherapist}
+        />
+      )}
+      
+      {isImportModalOpen && (
+        <CSVImport
+          onClose={() => setIsImportModalOpen(false)}
+          entityType="therapist"
         />
       )}
     </div>

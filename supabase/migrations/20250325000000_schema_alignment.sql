@@ -256,49 +256,21 @@ ALTER TABLE authorization_services ENABLE ROW LEVEL SECURITY;
 ALTER TABLE service_areas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scheduling_preferences ENABLE ROW LEVEL SECURITY;
 
--- Basic policies for authenticated users (with IF NOT EXISTS handling)
+-- Drop policy if it exists
 DO $$
 BEGIN
-  -- Insurance providers policy
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies 
-    WHERE tablename = 'insurance_providers' 
-    AND policyname = 'Insurance providers are viewable by authenticated users'
+  IF EXISTS (
+    SELECT 1 FROM pg_policies WHERE policyname = 'Service areas are viewable by authenticated users' AND tablename = 'service_areas'
   ) THEN
-    CREATE POLICY "Insurance providers are viewable by authenticated users"
-      ON insurance_providers FOR SELECT TO authenticated USING (true);
-  END IF;
-
-  -- Authorization services policy
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies 
-    WHERE tablename = 'authorization_services' 
-    AND policyname = 'Authorization services are viewable by authenticated users'
-  ) THEN
-    CREATE POLICY "Authorization services are viewable by authenticated users"
-      ON authorization_services FOR SELECT TO authenticated USING (true);
-  END IF;
-
-  -- Service areas policy
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies 
-    WHERE tablename = 'service_areas' 
-    AND policyname = 'Service areas are viewable by authenticated users'
-  ) THEN
-    CREATE POLICY "Service areas are viewable by authenticated users"
-      ON service_areas FOR SELECT TO authenticated USING (true);
-  END IF;
-
-  -- Scheduling preferences policy
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies 
-    WHERE tablename = 'scheduling_preferences' 
-    AND policyname = 'Scheduling preferences are viewable by authenticated users'
-  ) THEN
-    CREATE POLICY "Scheduling preferences are viewable by authenticated users"
-      ON scheduling_preferences FOR SELECT TO authenticated USING (true);
+    EXECUTE 'DROP POLICY "Service areas are viewable by authenticated users" ON service_areas';
   END IF;
 END $$;
+
+CREATE POLICY "Service areas are viewable by authenticated users"
+  ON service_areas
+  FOR SELECT
+  TO authenticated
+  USING (true);
 
 -- ============================================================================
 -- UPDATED_AT TRIGGERS

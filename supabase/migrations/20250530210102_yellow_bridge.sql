@@ -1,4 +1,6 @@
 -- Create the get_user_roles function
+DROP FUNCTION IF EXISTS get_user_roles();
+
 CREATE OR REPLACE FUNCTION get_user_roles()
 RETURNS TABLE (
   user_id uuid,

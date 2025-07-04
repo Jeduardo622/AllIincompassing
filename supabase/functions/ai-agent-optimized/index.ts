@@ -215,6 +215,24 @@ const compressedFunctionSchemas = [
         required: ["action", "data"]
       }
     }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_monthly_session_count",
+      description: "Get total number of sessions for a specified date range",
+      parameters: {
+        type: "object",
+        properties: {
+          start_date: { type: "string", format: "date", description: "Start date (YYYY-MM-DD)" },
+          end_date: { type: "string", format: "date", description: "End date (YYYY-MM-DD)" },
+          therapist_id: { type: "string", description: "Optional filter by therapist" },
+          client_id: { type: "string", description: "Optional filter by client" },
+          status: { type: "string", description: "Optional filter by status" }
+        },
+        required: ["start_date", "end_date"]
+      }
+    }
   }
 ];
 
@@ -488,10 +506,61 @@ TIME: ${optimizedContext.currentTime}`;
         functionArgs.date = new Date(Date.now() + 86400000).toISOString().split('T')[0];
       }
       
-      action = {
-        type: functionName,
-        data: functionArgs
-      };
+      // Handle get_monthly_session_count function call
+      if (functionName === "get_monthly_session_count") {
+        try {
+          const { start_date, end_date, therapist_id, client_id, status } = functionArgs;
+          
+          // Call the session metrics RPC to get the data
+          const { data: sessionData, error } = await supabaseClient.rpc('get_session_metrics', {
+            p_start_date: start_date,
+            p_end_date: end_date,
+            p_therapist_id: therapist_id || null,
+            p_client_id: client_id || null,
+            p_status: status || null
+          });
+          
+          if (error) throw error;
+          
+          // Calculate date range description
+          const startDateObj = new Date(start_date);
+          const endDateObj = new Date(end_date);
+          const sameMonth = startDateObj.getMonth() === endDateObj.getMonth() && 
+                            startDateObj.getFullYear() === endDateObj.getFullYear();
+          
+          const monthName = startDateObj.toLocaleString('default', { month: 'long' });
+          const dateRangeText = sameMonth 
+            ? `${monthName} ${startDateObj.getFullYear()}`
+            : `${startDateObj.toLocaleDateString('default', { month: 'short', day: 'numeric' })} to ${endDateObj.toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+          
+          // Generate natural language response
+          const totalSessions = sessionData?.totalSessions || 0;
+          const completedSessions = sessionData?.completedSessions || 0;
+          const pendingSessions = sessionData?.scheduledSessions || 0;
+          
+          // Update the response message
+          responseMessage.content = `For ${dateRangeText}, there ${totalSessions === 1 ? 'is' : 'are'} ${totalSessions} ${totalSessions === 1 ? 'session' : 'sessions'} ${
+            therapist_id ? 'for this therapist' : 
+            client_id ? 'for this client' : 
+            'scheduled'
+          }.${
+            completedSessions > 0 ? ` ${completedSessions} ${completedSessions === 1 ? 'session has' : 'sessions have'} been completed.` : ''
+          }${
+            pendingSessions > 0 ? ` ${pendingSessions} ${pendingSessions === 1 ? 'session is' : 'sessions are'} still pending.` : ''
+          }`;
+        } catch (error) {
+          console.error('Error getting session counts:', error);
+          responseMessage.content = "I'm sorry, I couldn't retrieve the session counts. There might be an issue with the database connection.";
+        }
+        
+        // Don't set action since we've directly updated the response
+        action = null;
+      } else {
+        action = {
+          type: functionName,
+          data: functionArgs
+        };
+      }
     }
     
     const response: OptimizedAIResponse = {

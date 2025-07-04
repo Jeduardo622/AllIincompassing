@@ -34,7 +34,8 @@ interface Issue {
 }
 
 export default function ProfileTab({ therapist }: ProfileTabProps) {
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
+  
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
   const [isAddIssueModalOpen, setIsAddIssueModalOpen] = useState(false);
@@ -199,7 +200,7 @@ export default function ProfileTab({ therapist }: ProfileTabProps) {
               </p>
             </div>
           </div>
-          {hasRole('admin') && (
+          {(hasRole('admin') || isOwnProfile) && (
             <button
               onClick={() => setIsEditModalOpen(true)}
               className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
@@ -228,7 +229,7 @@ export default function ProfileTab({ therapist }: ProfileTabProps) {
           </div>
           
           <div className="flex items-start">
-            <Award className="w-5 h-5 text-gray-400 mt-0.5 mr-2" />
+            <Award className="w-5 h-5 text-blue-500 mt-0.5 mr-2" />
             <div>
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Specialties</p>
               <p className="text-sm text-gray-900 dark:text-white">
@@ -274,15 +275,22 @@ export default function ProfileTab({ therapist }: ProfileTabProps) {
       
       {/* Notes Panel */}
       <div className="bg-white dark:bg-dark-lighter rounded-lg border dark:border-gray-700 p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-medium text-gray-900 dark:text-white">Notes</h2>
-          <button
-            onClick={() => setIsAddNoteModalOpen(true)}
-            className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
-          >
-            <Plus className="w-4 h-4 mr-1" />
-            Add Note
-          </button>
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white">Professional Notes</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Internal notes about this therapist's practice and performance
+            </p>
+          </div>
+          {hasRole('admin') && (
+            <button
+              onClick={() => setIsAddNoteModalOpen(true)}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              Add Note
+            </button>
+          )}
         </div>
         
         <div className="space-y-4">
@@ -325,18 +333,34 @@ export default function ProfileTab({ therapist }: ProfileTabProps) {
       
       {/* Issues Log */}
       <div className="bg-white dark:bg-dark-lighter rounded-lg border dark:border-gray-700 p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-medium text-gray-900 dark:text-white">Issues Log</h2>
-          <button
-            onClick={() => setIsAddIssueModalOpen(true)}
-            className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
-          >
-            <Plus className="w-4 h-4 mr-1" />
-            Add Issue
-          </button>
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white">Issues Log</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Track and resolve issues related to this therapist
+            </p>
+          </div>
+          {hasRole('admin') && (
+            <button
+              onClick={() => setIsAddIssueModalOpen(true)}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              Add Issue
+            </button>
+          )}
         </div>
         
-        <div className="overflow-x-auto">
+        {issues.length === 0 ? (
+          <div className="text-center py-8 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <CheckCircle className="mx-auto h-8 w-8 text-green-500 mb-2" />
+            <h3 className="text-sm font-medium text-gray-900 dark:text-white">No issues</h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              No issues currently logged for this therapist
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead className="bg-gray-50 dark:bg-gray-800">
               <tr>
@@ -437,6 +461,7 @@ export default function ProfileTab({ therapist }: ProfileTabProps) {
             </tbody>
           </table>
         </div>
+        )}
       </div>
       
       {/* Edit Therapist Modal */}
@@ -652,7 +677,6 @@ function AddIssueModal({ onClose, onSubmit }: AddIssueModalProps) {
                 onClick={() => setPriority('High')}
                 className={`flex-1 py-2 rounded-md ${
                   priority === 'High'
-                    
                     ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300'
                     : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
                 }`}

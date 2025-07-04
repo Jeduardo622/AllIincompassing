@@ -137,6 +137,8 @@ export interface Client {
   diagnosis?: string[];
   preferred_language?: string;
   address?: string;
+  notes?: string;
+  // Note: status field removed as it doesn't exist in current database schema
 }
 
 export interface Session {
@@ -239,4 +241,37 @@ export interface Issue {
   priority: 'Low' | 'Medium' | 'High';
   date_opened: string;
   last_action: string;
+}
+
+// Database Performance Monitoring Types
+export interface DatabaseMetric {
+  id: string;
+  timestamp: string;
+  query_type: string;
+  execution_time_ms: number;
+  rows_affected: number;
+  cache_hit: boolean;
+  table_name?: string;
+  slow_query: boolean;
+}
+
+export interface SlowQuery {
+  id: string;
+  table_name?: string;
+  execution_time_ms: number;
+  query: string;
+  timestamp: string;
+}
+
+export interface Alert {
+  id: string;
+  alert_type: string;
+  metric_name: string;
+  current_value: number;
+  threshold_value: number;
+  message: string;
+  resolved: boolean;
+  created_at: string;
+  resolved_at: string | null;
+  escalated: boolean;
 }

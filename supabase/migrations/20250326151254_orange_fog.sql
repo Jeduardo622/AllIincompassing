@@ -43,7 +43,16 @@ CREATE TABLE IF NOT EXISTS service_areas (
 -- Enable RLS on service_areas
 ALTER TABLE service_areas ENABLE ROW LEVEL SECURITY;
 
--- Add RLS policies for service_areas
+-- Drop policy if it exists
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_policies WHERE policyname = 'Service areas are viewable by authenticated users' AND tablename = 'service_areas'
+  ) THEN
+    EXECUTE 'DROP POLICY "Service areas are viewable by authenticated users" ON service_areas';
+  END IF;
+END $$;
+
 CREATE POLICY "Service areas are viewable by authenticated users"
   ON service_areas
   FOR SELECT
@@ -57,10 +66,17 @@ CREATE INDEX IF NOT EXISTS idx_therapists_location_lat ON therapists(latitude);
 CREATE INDEX IF NOT EXISTS idx_therapists_location_lon ON therapists(longitude);
 
 -- Add trigger for updated_at
-CREATE TRIGGER update_service_areas_updated_at
-  BEFORE UPDATE ON service_areas
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'update_service_areas_updated_at'
+  ) THEN
+    CREATE TRIGGER update_service_areas_updated_at
+      BEFORE UPDATE ON service_areas
+      FOR EACH ROW
+      EXECUTE FUNCTION update_updated_at_column();
+  END IF;
+END $$;
 
 -- Insert default service areas
 INSERT INTO service_areas (

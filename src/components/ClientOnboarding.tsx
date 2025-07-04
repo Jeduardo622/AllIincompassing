@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, useFormState } from 'react-hook-form';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -88,6 +88,8 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, File>>({});
+  const [emailValidationError, setEmailValidationError] = useState<string>('');
+  const [isValidatingEmail, setIsValidatingEmail] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -110,6 +112,53 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       availability_hours: DEFAULT_AVAILABILITY,
     }
   });
+
+  // Check if email already exists in database
+  const checkEmailExists = async (email: string): Promise<boolean> => {
+    if (!email.trim()) return false;
+    
+    try {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('email', email.toLowerCase().trim())
+        .limit(1);
+      
+      if (error) {
+        console.error('Error checking email:', error);
+        return false;
+      }
+      
+      return data && data.length > 0;
+    } catch (error) {
+      console.error('Error checking email:', error);
+      return false;
+    }
+  };
+
+  const validateEmail = async (email: string) => {
+    if (!email || !email.trim()) {
+      setEmailValidationError('');
+      return;
+    }
+
+    setIsValidatingEmail(true);
+    setEmailValidationError('');
+
+    try {
+      const exists = await checkEmailExists(email);
+      if (exists) {
+        setEmailValidationError('A client with this email address already exists');
+      } else {
+        setEmailValidationError('');
+      }
+    } catch (error) {
+      console.error('Error validating email:', error);
+      setEmailValidationError('Unable to validate email. Please try again.');
+    } finally {
+      setIsValidatingEmail(false);
+    }
+  };
 
   const createClientMutation = useMutation({
     mutationFn: async (data: Partial<Client>) => {
@@ -183,65 +232,20 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
   const handleFormSubmit = async (data: OnboardingFormData) => {
     console.log("Form submitted with data:", data);
     
-    // Validate required fields
-    if (!data.first_name?.trim()) {
-      showError('First name is required');
+    // Only check email validation error if an email was provided
+    if (emailValidationError) {
+      showError('Please resolve the email validation error before submitting');
       return;
     }
     
-    if (!data.last_name?.trim()) {
-      showError('Last name is required');
-      return;
-    }
-    
-    if (!data.email?.trim()) {
-      showError('Email is required');
-      return;
-    }
-    
-    if (!data.date_of_birth) {
-      showError('Date of birth is required');
-      return;
-    }
-    
-    if (!data.parent1_first_name?.trim()) {
-      showError('Parent/guardian first name is required');
-      return;
-    }
-    
-    if (!data.parent1_last_name?.trim()) {
-      showError('Parent/guardian last name is required');
-      return;
-    }
-    
-    if (!data.parent1_phone?.trim()) {
-      showError('Parent/guardian phone is required');
-      return;
-    }
-    
-    if (!data.parent1_relationship?.trim()) {
-      showError('Parent/guardian relationship is required');
-      return;
-    }
-    
-    if (!data.address_line1?.trim()) {
-      showError('Street address is required');
-      return;
-    }
-    
-    if (!data.city?.trim()) {
-      showError('City is required');
-      return;
-    }
-    
-    if (!data.state?.trim()) {
-      showError('State is required');
-      return;
-    }
-    
-    if (!data.zip_code?.trim()) {
-      showError('ZIP code is required');
-      return;
+    // Double-check email uniqueness before submission
+    if (data.email && data.email.trim()) {
+      const emailExists = await checkEmailExists(data.email);
+      if (emailExists) {
+        setEmailValidationError('A client with this email address already exists');
+        showError('A client with this email address already exists');
+        return;
+      }
     }
     
     // Ensure service_preference is an array
@@ -352,8 +356,18 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                 <input
                   type="email"
                   {...register('email')}
+                  onBlur={(e) => validateEmail(e.target.value)}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
+                {isValidatingEmail && (
+                  <p className="mt-1 text-sm text-blue-600 dark:text-blue-400 flex items-center">
+                    <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                    Checking email availability...
+                  </p>
+                )}
+                {emailValidationError && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{emailValidationError}</p>
+                )}
                 {errors.email && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.email.message}</p>
                 )}
@@ -864,8 +878,8 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                 <input
                   id="consent"
                   type="checkbox"
+                  defaultChecked={true}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  required
                 />
               </div>
               <div className="ml-3 text-sm">
@@ -921,7 +935,8 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               <button
                 type="button"
                 onClick={nextStep}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+                disabled={emailValidationError !== ''}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
                 Next
                 <ArrowRight className="w-4 h-4 ml-2" />
@@ -929,8 +944,8 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             ) : (
               <button
                 type="submit"
-                disabled={isSubmitting}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 flex items-center"
+                disabled={isSubmitting || emailValidationError !== '' || isValidatingEmail}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
                 {isSubmitting ? (
                   <>

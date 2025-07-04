@@ -2,7 +2,6 @@ import React, { useEffect, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
-import { supabase } from './lib/supabase';
 import { useAuth } from './lib/auth';
 import { useTheme } from './lib/theme';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -20,6 +19,7 @@ const ClientOnboardingPage = React.lazy(() => import('./pages/ClientOnboardingPa
 const Therapists = React.lazy(() => import('./pages/Therapists'));
 const TherapistOnboardingPage = React.lazy(() => import('./pages/TherapistOnboardingPage'));
 const TherapistDetails = React.lazy(() => import('./pages/TherapistDetails'));
+const MonitoringDashboard = React.lazy(() => import('./pages/MonitoringDashboard'));
 const Documentation = React.lazy(() => import('./pages/Documentation'));
 const Billing = React.lazy(() => import('./pages/Billing'));
 const Settings = React.lazy(() => import('./pages/Settings'));
@@ -59,82 +59,15 @@ const queryClient = new QueryClient({
 });
 
 function App() {
-  const { setUser, setRoles, refreshSession } = useAuth();
+  const { initialized, initialize } = useAuth();
   const { isDark } = useTheme();
 
   useEffect(() => {
-    // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      console.log('Auth state changed:', _event, session?.user?.email);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        // Fetch user roles
-        const { data: rolesData, error: rolesError } = await supabase.rpc('get_user_roles');
-        if (rolesError) {
-          console.error('Error fetching roles on auth change:', rolesError);
-        }
-        const userRoles = rolesData?.[0]?.roles || [];
-        console.log('User roles from auth change:', userRoles);
-        
-        // If user has no roles, try to assign admin role via RPC
-        if (userRoles.length === 0) {
-          console.log('No roles found, attempting to assign via RPC...');
-          try {
-            // First try with assign_admin_role
-            const { error } = await supabase.rpc('assign_admin_role', {
-              user_email: session.user.email
-            });
-            
-            if (error) {
-              console.error('Error assigning admin role via assign_admin_role:', error);
-              
-              // Try with the manage_admin_users as fallback
-              const { error: manageError } = await supabase.rpc('manage_admin_users', {
-                operation: 'add',
-                target_user_id: session.user.id,
-                metadata: { is_admin: true }
-              });
-              
-              if (manageError) {
-                console.error('Error using manage_admin_users:', manageError);
-              } else {
-                console.log('Admin role assigned successfully via manage_admin_users');
-                // Refresh session to get updated roles
-                await refreshSession();
-              }
-            } else {
-              console.log('Admin role assigned successfully via assign_admin_role');
-              // Refresh session to get updated roles
-              await refreshSession();
-            }
-          } catch (error) {
-            console.error('Error in admin role assignment:', error);
-          }
-        }
-        
-        setRoles(userRoles);
-      } else {
-        setRoles([]);
-      }
-    });
-
-    // Initial session check
-    refreshSession();
-
-    // Set up periodic session refresh (every 5 minutes)
-    const refreshInterval = setInterval(() => {
-      console.log('Refreshing session...');
-      refreshSession().catch(error => {
-        console.error('Error during scheduled session refresh:', error);
-      });
-    }, 5 * 60 * 1000); // 5 minutes
-
-    return () => {
-      subscription.unsubscribe();
-      clearInterval(refreshInterval);
-    };
-  }, [setUser, setRoles, refreshSession]);
+    // Initialize auth system on app start
+    if (!initialized) {
+      initialize().catch(console.error);
+    }
+  }, [initialized, initialize]);
 
   useEffect(() => {
     // Update dark mode class on document
@@ -169,30 +102,30 @@ function App() {
                 {/* Schedule - accessible to all authenticated users */}
                 <Route path="schedule" element={<Schedule />} />
 
-                {/* Clients - accessible to admins and assigned therapists */}
+                {/* Clients - accessible to users with view_clients permission */}
                 <Route path="clients" element={
-                  <PrivateRoute>
+                  <PrivateRoute requiredPermission="view_clients">
                     <Clients />
                   </PrivateRoute>
                 } />
                 
-                {/* Client Details - accessible to admins and assigned therapists */}
+                {/* Client Details - accessible to users with view_clients permission */}
                 <Route path="clients/:clientId" element={
-                  <PrivateRoute>
+                  <PrivateRoute requiredPermission="view_clients">
                     <ClientDetails />
                   </PrivateRoute>
                 } />
 
-                {/* Client Onboarding - accessible to admins and therapists */}
+                {/* Client Onboarding - accessible to therapists and admins */}
                 <Route path="clients/new" element={
-                  <PrivateRoute>
+                  <PrivateRoute requiredRoles={['therapist', 'admin']}>
                     <ClientOnboardingPage />
                   </PrivateRoute>
                 } />
 
                 {/* Therapists - admin only */}
                 <Route path="therapists" element={
-                  <PrivateRoute>
+                  <PrivateRoute requiredRole="admin">
                     <Therapists />
                   </PrivateRoute>
                 } />
@@ -228,6 +161,13 @@ function App() {
                   </PrivateRoute>
                 } />
 
+                {/* Monitoring Dashboard - admin only */}
+                <Route path="monitoring" element={
+                  <PrivateRoute>
+                    <MonitoringDashboard />
+                  </PrivateRoute>
+                } />
+                
                 {/* Reports - admin only */}
                 <Route path="reports" element={
                   <PrivateRoute>

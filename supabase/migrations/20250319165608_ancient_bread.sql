@@ -13,6 +13,7 @@
 */
 
 -- Drop existing view if it exists
+DROP FUNCTION IF EXISTS get_admin_users();
 DROP VIEW IF EXISTS admin_users;
 
 -- Create secure view for admin users

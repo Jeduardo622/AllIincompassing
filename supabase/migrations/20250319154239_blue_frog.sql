@@ -69,6 +69,7 @@ BEGIN
       user_id,
       identity_data,
       provider,
+      provider_id,
       last_sign_in_at,
       created_at,
       updated_at
@@ -77,6 +78,7 @@ BEGIN
       v_user_id,
       format('{"sub":"%s","email":"test@example.com"}', v_user_id)::jsonb,
       'email',
+      v_user_id,
       now(),
       now(),
       now()

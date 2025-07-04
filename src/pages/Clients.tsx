@@ -3,33 +3,23 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
-  Search, 
-  Edit2, 
-  Trash2, 
-  User,
-  Mail,
-  Activity,
-  MapPin,
-  Calendar,
-  Heart,
-  Clock,
-  Filter,
-  ChevronUp,
-  ChevronDown,
-  Eye,
-  UserPlus
+  Search, Edit2, Trash2, User, Mail, Activity, MapPin, Calendar, Heart, Plus,
+  Clock, Filter, ChevronUp, ChevronDown, Eye, Settings, Star,
+  UserPlus,
+  FileUp
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Client } from '../types';
 import ClientModal from '../components/ClientModal';
+import CSVImport from '../components/CSVImport';
 import { prepareFormData } from '../lib/validation';
 import { showSuccess, showError } from '../lib/toast';
 
 const Clients = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | undefined>();
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterEmail, setFilterEmail] = useState<string>('all');
   const [filterService, setFilterService] = useState<string>('all');
   const [filterUnits, setFilterUnits] = useState<string>('all');
@@ -147,8 +137,7 @@ const Clients = () => {
   });
 
   const handleCreateClient = () => {
-    setSelectedClient(undefined);
-    setIsModalOpen(true);
+    navigate('/clients/new');
   };
 
   const handleEditClient = (client: Client) => {
@@ -235,9 +224,6 @@ const Clients = () => {
       (client?.client_id?.toLowerCase() || '').includes(searchQuery.toLowerCase())
     );
 
-    // Status filter
-    const matchesStatus = filterStatus === 'all' ? true : true; // Placeholder for status filter
-    
     // Email domain filter
     const matchesEmail = filterEmail === 'all' ? true : 
       client.email && client.email.endsWith('@' + filterEmail);
@@ -257,7 +243,7 @@ const Clients = () => {
       matchesUnits = totalUnits < 10;
     }
     
-    return matchesSearch && matchesStatus && matchesEmail && matchesService && matchesUnits;
+    return matchesSearch && matchesEmail && matchesService && matchesUnits;
   });
 
   // Sort the filtered clients
@@ -292,6 +278,13 @@ const Clients = () => {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Clients</h1>
         <div className="flex space-x-3">
           <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md shadow-sm hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+          >
+            <FileUp className="w-5 h-5 mr-2 inline-block" />
+            Import CSV
+          </button>
+          <button
             onClick={handleOnboardClient}
             className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
           >
@@ -317,18 +310,6 @@ const Clients = () => {
             <div className="flex flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <Filter className="w-5 h-5 text-gray-400" />
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
-                >
-                  <option value="all">All Clients</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-              
-              <div className="flex items-center gap-2">
                 <Mail className="w-5 h-5 text-gray-400" />
                 <select
                   value={filterEmail}
@@ -473,19 +454,19 @@ const Clients = () => {
                     <td className="px-6 py-4">
                       <div className="space-y-2">
                         <div className="flex items-center">
-                          <Activity className="w-4 h-4 text-blue-500 mr-2" />
+                          <Star className="w-4 h-4 text-blue-500 mr-2" />
                           <span className="text-sm text-gray-900 dark:text-gray-200">
                             {client.one_to_one_units || 0} 1:1 units
                           </span>
                         </div>
                         <div className="flex items-center">
-                          <Activity className="w-4 h-4 text-purple-500 mr-2" />
+                          <Settings className="w-4 h-4 text-purple-500 mr-2" />
                           <span className="text-sm text-gray-900 dark:text-gray-200">
                             {client.supervision_units || 0} supervision units
                           </span>
                         </div>
                         <div className="flex items-center">
-                          <Activity className="w-4 h-4 text-green-500 mr-2" />
+                          <Activity className="w-4 h-4 text-green-500 mr-2" /> 
                           <span className="text-sm text-gray-900 dark:text-gray-200">
                             {client.parent_consult_units || 0} parent consult units
                           </span>
@@ -500,20 +481,6 @@ const Clients = () => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-3">
-                        <button
-                          onClick={() => handleViewClient(client)}
-                          className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
-                          title="View client details"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleEditClient(client)}
-                          className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
-                          title="Edit client"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
                         <button
                           onClick={() => handleDeleteClient(client.id)}
                           className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
@@ -542,6 +509,8 @@ const Clients = () => {
           client={selectedClient}
         />
       )}
+
+      {isImportModalOpen && <CSVImport onClose={() => setIsImportModalOpen(false)} />}
     </div>
   );
 };

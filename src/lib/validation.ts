@@ -51,6 +51,11 @@ export const isValidPhone = (phone: string): boolean => {
 export const prepareFormData = <T extends Record<string, any>>(data: T): T => {
   const result = { ...data };
   
+  // Handle empty strings for nullable fields
+  if ('client_id' in result && result.client_id === '') {
+    result.client_id = null;
+  }
+  
   // Format URL fields if they exist
   if ('website' in result && result.website) {
     result.website = formatUrl(result.website);
@@ -72,6 +77,18 @@ export const prepareFormData = <T extends Record<string, any>>(data: T): T => {
   if ('specialties' in result) {
     result.specialties = processArrayField(result.specialties);
   }
+
+  // Handle empty strings for client fields
+  const nullableFields = [
+    'cin_number', 'phone', 'address_line1', 'city', 'state', 'zip_code',
+    'parent1_first_name', 'parent1_last_name', 'parent1_phone', 'parent1_relationship'
+  ];
+  
+  nullableFields.forEach(field => {
+    if (field in result && (result[field] === '' || result[field] === undefined)) {
+      result[field] = null;
+    }
+  });
   
   if ('preferred_areas' in result) {
     result.preferred_areas = processArrayField(result.preferred_areas);

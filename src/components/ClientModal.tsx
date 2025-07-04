@@ -67,69 +67,6 @@ export default function ClientModal({
 
   const handleFormSubmit = async (data: Partial<Client>) => {
     // Validate required fields
-    if (!data.first_name?.trim()) {
-      showError('First name is required');
-      return;
-    }
-    
-    if (!data.last_name?.trim()) {
-      showError('Last name is required');
-      return;
-    }
-    
-    if (!data.email?.trim()) {
-      showError('Email is required');
-      return;
-    }
-    
-    if (!data.date_of_birth) {
-      showError('Date of birth is required');
-      return;
-    }
-    
-    // Validate parent/guardian information if this is a new client
-    if (!client) {
-      if (!data.parent1_first_name?.trim()) {
-        showError('Parent/guardian first name is required');
-        return;
-      }
-      
-      if (!data.parent1_last_name?.trim()) {
-        showError('Parent/guardian last name is required');
-        return;
-      }
-      
-      if (!data.parent1_phone?.trim()) {
-        showError('Parent/guardian phone is required');
-        return;
-      }
-      
-      if (!data.parent1_relationship?.trim()) {
-        showError('Parent/guardian relationship is required');
-        return;
-      }
-      
-      // Validate address information
-      if (!data.address_line1?.trim()) {
-        showError('Street address is required');
-        return;
-      }
-      
-      if (!data.city?.trim()) {
-        showError('City is required');
-        return;
-      }
-      
-      if (!data.state?.trim()) {
-        showError('State is required');
-        return;
-      }
-      
-      if (!data.zip_code?.trim()) {
-        showError('ZIP code is required');
-        return;
-      }
-    }
 
     // Ensure service_preference is always an array
     if (!Array.isArray(data.service_preference)) {
@@ -144,7 +81,7 @@ export default function ClientModal({
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-4xl p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-            {client ? 'Edit Client' : 'New Client'}
+            {client ? 'Edit Client Profile' : 'New Client'}
           </h2>
           <button
             onClick={onClose}
@@ -632,8 +569,9 @@ export default function ClientModal({
               type="submit"
               disabled={isSubmitting}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label={client ? "Update Client" : "Create Client"}
             >
-              {isSubmitting ? 'Saving...' : client ? 'Update Client' : 'Create Client'}
+              {isSubmitting ? 'Saving...' : client ? 'Save Changes' : 'Create Client'}
             </button>
           </div>
         </form>

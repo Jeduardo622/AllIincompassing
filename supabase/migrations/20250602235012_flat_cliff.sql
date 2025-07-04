@@ -266,7 +266,7 @@ $$;
 -- DASHBOARD OPTIMIZATION
 -- ============================================================================
 
--- Daily dashboard data (replaces multiple separate queries)
+DROP FUNCTION IF EXISTS get_dashboard_data();
 CREATE OR REPLACE FUNCTION get_dashboard_data()
 RETURNS jsonb
 LANGUAGE plpgsql

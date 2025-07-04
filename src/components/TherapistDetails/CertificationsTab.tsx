@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
-  Award, Calendar, FileText, Plus, Download, 
+  Award, Calendar, FileText, Plus, Download, Inbox,
   CheckCircle, AlertTriangle, Trash2, Upload
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -72,6 +72,10 @@ export default function CertificationsTab({ therapist }: CertificationsTabProps)
     const now = new Date();
     const expiryDate = certification.expiry_date ? new Date(certification.expiry_date) : null;
     
+    // Add more visible warning for certifications expiring soon
+    const daysUntilExpiry = expiryDate ? 
+      Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+    
     if (certification.status === 'pending') {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300">
@@ -95,7 +99,7 @@ export default function CertificationsTab({ therapist }: CertificationsTabProps)
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-300">
           <AlertTriangle className="w-3 h-3 mr-1" />
-          Expiring Soon
+          Expiring in {daysUntilExpiry} days
         </span>
       );
     }
@@ -113,8 +117,9 @@ export default function CertificationsTab({ therapist }: CertificationsTabProps)
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-medium text-gray-900 dark:text-white">Certifications & Credentials</h2>
         <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+          onClick={() => setIsAddModalOpen(true)} 
+          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+          aria-label="Add Certification"
         >
           <Plus className="w-4 h-4 mr-1" />
           Add Certification
@@ -122,15 +127,19 @@ export default function CertificationsTab({ therapist }: CertificationsTabProps)
       </div>
       
       {isLoading ? (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="flex justify-center items-center py-20">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+          <span className="ml-3 text-gray-600 dark:text-gray-300">Loading certifications...</span>
         </div>
       ) : certifications.length === 0 ? (
-        <div className="bg-white dark:bg-dark-lighter rounded-lg border dark:border-gray-700 p-6 text-center">
-          <Award className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No Certifications</h3>
-          <p className="text-gray-500 dark:text-gray-400 mb-4">
-            No certifications or credentials have been added yet.
+        <div className="bg-white dark:bg-dark-lighter rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 p-8 text-center">
+          <Award className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-xl font-medium text-gray-900 dark:text-white mb-2">
+            No Certifications Found
+          </h3>
+          <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto">
+            You haven't added any certifications or credentials yet. Add your professional 
+            certifications to enhance your profile.
           </p>
           <button
             onClick={() => setIsAddModalOpen(true)}
@@ -142,11 +151,23 @@ export default function CertificationsTab({ therapist }: CertificationsTabProps)
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {certifications.map(certification => (
-            <div 
+            <div
               key={certification.id}
-              className="bg-white dark:bg-dark-lighter rounded-lg border dark:border-gray-700 shadow-sm overflow-hidden"
+              className={`bg-white dark:bg-dark-lighter rounded-lg border ${
+                certification.status === 'expired' 
+                  ? 'border-red-200 dark:border-red-800' 
+                  : certification.status === 'pending'
+                  ? 'border-yellow-200 dark:border-yellow-800'
+                  : 'border-green-200 dark:border-green-800'
+              } shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md`}
             >
-              <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
+              <div className={`p-4 ${
+                certification.status === 'expired'
+                  ? 'bg-red-50 dark:bg-red-900/10 border-b border-red-200 dark:border-red-800'
+                  : certification.status === 'pending'
+                  ? 'bg-yellow-50 dark:bg-yellow-900/10 border-b border-yellow-200 dark:border-yellow-800'
+                  : 'bg-green-50 dark:bg-green-900/10 border-b border-green-200 dark:border-green-800'
+              } flex justify-between items-center`}>
                 <div className="flex items-center">
                   <Award className="h-5 w-5 text-blue-600 dark:text-blue-400 mr-2" />
                   <h3 className="font-medium text-gray-900 dark:text-white">{certification.name}</h3>
@@ -157,17 +178,17 @@ export default function CertificationsTab({ therapist }: CertificationsTabProps)
               <div className="p-4">
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Type</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Type</p>
                     <p className="text-sm text-gray-900 dark:text-white">{certification.type}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Issue Date</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Issue Date</p>
                     <p className="text-sm text-gray-900 dark:text-white">
                       {new Date(certification.issue_date).toLocaleDateString()}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Expiry Date</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Expiry Date</p>
                     <p className="text-sm text-gray-900 dark:text-white">
                       {certification.expiry_date 
                         ? new Date(certification.expiry_date).toLocaleDateString() 
@@ -175,7 +196,7 @@ export default function CertificationsTab({ therapist }: CertificationsTabProps)
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">File Type</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">File Type</p>
                     <p className="text-sm text-gray-900 dark:text-white">{certification.file_type}</p>
                   </div>
                 </div>

@@ -356,6 +356,7 @@ END;
 $$;
 
 -- Function to get dashboard data
+DROP FUNCTION IF EXISTS get_dashboard_data();
 CREATE OR REPLACE FUNCTION get_dashboard_data()
 RETURNS JSONB
 LANGUAGE plpgsql

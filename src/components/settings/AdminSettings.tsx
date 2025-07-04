@@ -112,7 +112,7 @@ export default function AdminSettings() {
       console.log('Attempting to remove admin role for user ID:', userId);
       const { error } = await supabase.rpc('manage_admin_users', {
         operation: 'remove',
-        target_user_id: userId
+        metadata: {}
       });
       
       if (error) {

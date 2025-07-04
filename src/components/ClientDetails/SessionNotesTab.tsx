@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { format } from 'date-fns';
 import { 
-  FileText, Calendar, DollarSign, FileCheck, Plus, Download, ChevronDown, ChevronUp, 
-  Clock, CheckCircle, X, AlertTriangle, User
+  FileText, Calendar, DollarSign, Plus, Download, ChevronDown, ChevronUp, Inbox,
+  Clock, CheckCircle, X, AlertTriangle, User, Search
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { SessionNote, Therapist } from '../../types';
@@ -15,7 +16,9 @@ interface SessionNotesTabProps {
 export default function SessionNotesTab({ client }: SessionNotesTabProps) {
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
   const [selectedAuth, setSelectedAuth] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedNotes, setSelectedNotes] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState('all');
   
   // Fetch authorizations
   const { data: authorizations = [], isLoading: isLoadingAuths } = useQuery({
@@ -74,12 +77,28 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
       is_locked: false
     }
   ]);
+
+  // Filter session notes based on search and status
+  const filteredNotes = sessionNotes.filter(note => {
+    const matchesSearch = 
+      note.narrative.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      note.therapist_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      note.service_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      note.goals_addressed.some(goal => goal.toLowerCase().includes(searchQuery.toLowerCase()));
+    
+    const matchesStatus = 
+      statusFilter === 'all' || 
+      (statusFilter === 'locked' && note.is_locked) ||
+      (statusFilter === 'unlocked' && !note.is_locked);
+      
+    return matchesSearch && matchesStatus;
+  });
   
   const handleSelectAllNotes = () => {
-    if (selectedNotes.length === sessionNotes.length) {
+    if (selectedNotes.length === filteredNotes.length) {
       setSelectedNotes([]);
     } else {
-      setSelectedNotes(sessionNotes.map(note => note.id));
+      setSelectedNotes(filteredNotes.map(note => note.id));
     }
   };
   
@@ -160,11 +179,16 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
         </div>
         
         {/* Session Notes (Center) */}
-        <div className="md:col-span-3 bg-white dark:bg-dark-lighter rounded-lg border dark:border-gray-700 p-4">
+        <div className="md:col-span-3 bg-white dark:bg-dark-lighter rounded-lg border dark:border-gray-700 p-6">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-              Session Notes
-            </h3>
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                Session Notes
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Review and manage client session documentation
+              </p>
+            </div>
             <div className="flex space-x-2">
               <button
                 onClick={() => setIsAddNoteModalOpen(true)}
@@ -188,39 +212,65 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
             </div>
           </div>
           
-          <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg mb-4 flex items-center justify-between">
-            <div className="flex items-center">
+          <div className="mb-4 space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input
-                type="checkbox"
-                id="select-all"
-                checked={selectedNotes.length === sessionNotes.length && sessionNotes.length > 0}
-                onChange={handleSelectAllNotes}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                type="text"
+                placeholder="Search session notes..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-dark dark:text-gray-200"
               />
-              <label htmlFor="select-all" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                Select All
-              </label>
             </div>
-            
-            <div className="flex items-center">
-              <select
-                className="text-sm border-none bg-transparent focus:ring-0 text-gray-700 dark:text-gray-300"
-                defaultValue="all"
-              >
-                <option value="all">All Notes</option>
-                <option value="locked">Locked Only</option>
-                <option value="unlocked">Unlocked Only</option>
-              </select>
+
+            <div className="flex flex-wrap gap-3 justify-between items-center bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="select-all"
+                  checked={selectedNotes.length === filteredNotes.length && filteredNotes.length > 0}
+                  onChange={handleSelectAllNotes}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="select-all" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                  Select All ({filteredNotes.length} notes)
+                </label>
+              </div>
+              
+              <div className="flex items-center">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 py-1 px-2 text-gray-700 dark:text-gray-300"
+                >
+                  <option value="all">All Notes</option>
+                  <option value="locked">Signed Only</option>
+                  <option value="unlocked">Unsigned Only</option>
+                </select>
+              </div>
             </div>
           </div>
           
           <div className="space-y-4">
             {sessionNotes.length === 0 ? (
-              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                No session notes found
+              <div className="text-center py-12 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                <Inbox className="mx-auto h-12 w-12 text-gray-400" />
+                <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No session notes</h3>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  No session notes have been created for this client yet
+                </p>
+              </div>
+            ) : filteredNotes.length === 0 ? (
+              <div className="text-center py-8 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <AlertTriangle className="mx-auto h-8 w-8 text-amber-500 mb-2" />
+                <h3 className="text-sm font-medium text-gray-900 dark:text-white">No matching notes</h3>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Try adjusting your search criteria or filters
+                </p>
               </div>
             ) : (
-              sessionNotes.map(note => (
+              filteredNotes.map(note => (
                 <div 
                   key={note.id} 
                   className={`p-4 rounded-lg border ${
@@ -243,7 +293,7 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
                           <div className="flex items-center">
                             <Calendar className="w-4 h-4 text-gray-400 mr-1" />
                             <span className="text-sm font-medium text-gray-900 dark:text-white">
-                              {new Date(note.date).toLocaleDateString()}
+                              {format(new Date(note.date), 'MMMM d, yyyy')}
                             </span>
                             <Clock className="w-4 h-4 text-gray-400 ml-3 mr-1" />
                             <span className="text-sm text-gray-700 dark:text-gray-300">

@@ -22,6 +22,8 @@
     "@supabase/auth-ui-shared": "^0.1.8",
     "@supabase/supabase-js": "^2.50.0",
     "@tanstack/react-query": "^5.24.1",
+    "chart.js": "^4.4.1",
+    "react-chartjs-2": "^5.2.0",
     "date-fns": "^3.3.1",
     "dotenv": "^16.5.0",
     "geolib": "^3.3.4",
@@ -57,6 +59,7 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.3.0",
+    "supabase": "^1.200.3",
     "vite": "^6.3.5",
     "vitest": "^3.2.4"
   }

@@ -18,9 +18,9 @@ DROP COLUMN IF EXISTS authorized_hours;
 
 -- Add new unit categories
 ALTER TABLE clients
-ADD COLUMN one_to_one_units integer DEFAULT 0,
-ADD COLUMN supervision_units integer DEFAULT 0,
-ADD COLUMN parent_consult_units integer DEFAULT 0;
+ADD COLUMN IF NOT EXISTS one_to_one_units integer DEFAULT 0,
+ADD COLUMN IF NOT EXISTS supervision_units integer DEFAULT 0,
+ADD COLUMN IF NOT EXISTS parent_consult_units integer DEFAULT 0;
 
 -- Add comments
 COMMENT ON COLUMN clients.one_to_one_units IS 'Authorized 1:1 service units';

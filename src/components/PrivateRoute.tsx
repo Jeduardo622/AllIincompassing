@@ -1,62 +1,60 @@
-import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../lib/auth';
+import React, { useEffect } from 'react'
+import { Navigate, useLocation } from 'react-router-dom'
+import { useAuth } from '../lib/auth'
 
 interface PrivateRouteProps {
-  children: React.ReactNode;
-  requiredRoles?: string[];
+  children: React.ReactNode
+  requiredRole?: string
+  requiredRoles?: string[]
+  requiredPermission?: string
 }
 
-export default function PrivateRoute({ children, requiredRoles }: PrivateRouteProps) {
-  const { user, loading, hasRole, roles } = useAuth();
-  const location = useLocation();
+export const PrivateRoute: React.FC<PrivateRouteProps> = ({
+  children,
+  requiredRole,
+  requiredRoles = [],
+  requiredPermission,
+}) => {
+  const { user, loading, initialized, hasRole, hasAnyRole, hasPermission, initialize } = useAuth()
+  const location = useLocation()
 
-  // Add logging to help debug role issues
-  console.log('PrivateRoute check:', {
-    path: location.pathname,
-    isLoading: loading,
-    isLoggedIn: !!user,
-    userRoles: roles,
-    requiredRoles,
-    hasRequiredRoles: requiredRoles ? requiredRoles.map(role => ({ 
-      role, 
-      hasRole: hasRole(role) 
-    })) : 'No roles required',
-    userEmail: user?.email
-  });
+  // Initialize auth on mount
+  useEffect(() => {
+    if (!initialized) {
+      initialize()
+    }
+  }, [initialized, initialize])
 
-  if (loading) {
+  // Show loading while auth is initializing
+  if (!initialized || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
-    );
+    )
   }
 
-  // If not logged in, redirect to login
+  // Redirect to login if not authenticated
   if (!user) {
-    console.log('User not logged in, redirecting to login');
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/login" state={{ from: location }} replace />
   }
 
-  // If roles are required, check if user has at least one of them
-  if (requiredRoles && requiredRoles.length > 0) {
-    const hasRequiredRole = requiredRoles.some(role => hasRole(role));
-    console.log('Role check result:', { 
-      hasRequiredRole, 
-      userRoles: roles, 
-      requiredRoles,
-      individualChecks: requiredRoles.map(role => ({
-        role,
-        hasRole: hasRole(role),
-        isAdmin: roles.includes('admin')
-      }))
-    });
-    
-    if (!hasRequiredRole) {
-      console.log('User lacks required role, redirecting to unauthorized');
-      return <Navigate to="/unauthorized\" replace />;
-    }
+  // Check role requirements
+  if (requiredRole && !hasRole(requiredRole)) {
+    return <Navigate to="/unauthorized" replace />
   }
 
-  return <>{children}</>;
+  if (requiredRoles.length > 0 && !hasAnyRole(requiredRoles)) {
+    return <Navigate to="/unauthorized" replace />
+  }
+
+  // Check permission requirements
+  if (requiredPermission && !hasPermission(requiredPermission)) {
+    return <Navigate to="/unauthorized" replace />
+  }
+
+  // All checks passed, render the protected content
+  return <>{children}</>
 }
+
+export default PrivateRoute

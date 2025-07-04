@@ -63,6 +63,7 @@ BEGIN
       user_id,
       identity_data,
       provider,
+      provider_id,
       last_sign_in_at,
       created_at,
       updated_at
@@ -71,6 +72,7 @@ BEGIN
       '00000000-0000-0000-0000-000000000000',
       '{"sub":"00000000-0000-0000-0000-000000000000","email":"test@example.com"}',
       'email',
+      '00000000-0000-0000-0000-000000000000',
       now(),
       now(),
       now()

@@ -1,0 +1,230 @@
+{
+  "scenarios": [
+    {
+      "name": "Discrete Trial Training Session",
+      "description": "Typical DTT session with clear instructions and responses",
+      "duration": 300,
+      "participants": ["therapist", "client"],
+      "transcript": "Therapist: Touch the red card. Good job! That's correct. Let's try another one. Touch the blue circle. Excellent work! Client: [touches red card] [touches blue circle] I did it!",
+      "expected_markers": [
+        {
+          "type": "positive_behavior",
+          "description": "Client followed instruction correctly",
+          "aba_terminology": "compliance"
+        },
+        {
+          "type": "skill_demonstration",
+          "description": "Client demonstrated receptive labeling",
+          "aba_terminology": "receptive labeling"
+        }
+      ],
+      "expected_confidence": 0.92,
+      "california_compliant": true
+    },
+    {
+      "name": "Challenging Behavior Episode",
+      "description": "Session with challenging behaviors and interventions",
+      "duration": 240,
+      "participants": ["therapist", "client", "caregiver"],
+      "transcript": "Therapist: It's time to work on math. Client: No! I don't want to! [throws materials] [screams] Therapist: I understand you're upset. Let's take a break and try again. Caregiver: He had a difficult morning at home.",
+      "expected_markers": [
+        {
+          "type": "challenging_behavior",
+          "description": "Client exhibited aggression and vocal disruption",
+          "aba_terminology": "aggression"
+        },
+        {
+          "type": "intervention_response",
+          "description": "De-escalation technique applied",
+          "aba_terminology": "crisis intervention"
+        }
+      ],
+      "expected_confidence": 0.85,
+      "california_compliant": true
+    },
+    {
+      "name": "Social Skills Training",
+      "description": "Group session focusing on social interaction skills",
+      "duration": 450,
+      "participants": ["therapist", "client", "peer"],
+      "transcript": "Therapist: Today we're practicing sharing. Can you give the toy to your friend? Client: Here you go! Peer: Thank you! My turn now. Client: Okay, I'll wait. Therapist: Great job sharing and waiting your turn!",
+      "expected_markers": [
+        {
+          "type": "positive_behavior",
+          "description": "Client demonstrated appropriate sharing behavior",
+          "aba_terminology": "social interaction"
+        },
+        {
+          "type": "skill_demonstration",
+          "description": "Client showed turn-taking skills",
+          "aba_terminology": "social skills"
+        }
+      ],
+      "expected_confidence": 0.89,
+      "california_compliant": true
+    },
+    {
+      "name": "Functional Communication Training",
+      "description": "Session focused on communication skill development",
+      "duration": 360,
+      "participants": ["therapist", "client"],
+      "transcript": "Therapist: What do you want? Show me with your words. Client: I want cookie please. Therapist: Nice asking! Here's your cookie. Client: Thank you! More please? Therapist: You used your words perfectly!",
+      "expected_markers": [
+        {
+          "type": "skill_demonstration",
+          "description": "Client used appropriate requesting language",
+          "aba_terminology": "expressive language"
+        },
+        {
+          "type": "positive_behavior",
+          "description": "Client demonstrated polite requesting",
+          "aba_terminology": "appropriate requesting"
+        }
+      ],
+      "expected_confidence": 0.94,
+      "california_compliant": true
+    },
+    {
+      "name": "Low Audio Quality Test",
+      "description": "Test scenario with background noise and unclear speech",
+      "duration": 180,
+      "participants": ["therapist", "client"],
+      "transcript": "[background noise] Therapist: Can you... [unclear] ...the blue... Client: [mumbled response] ...don't know... Therapist: Let's try again...",
+      "expected_markers": [],
+      "expected_confidence": 0.45,
+      "california_compliant": false,
+      "quality_issues": ["background_noise", "unclear_speech", "audio_distortion"]
+    },
+    {
+      "name": "Multi-Speaker Rapid Exchange",
+      "description": "Fast-paced conversation with multiple speakers",
+      "duration": 200,
+      "participants": ["therapist", "client", "caregiver"],
+      "transcript": "Therapist: How was school today? Client: Good! We played games. Caregiver: He had a great day. No incidents. Therapist: That's wonderful! Client: Can we play now? Caregiver: After we finish here. Therapist: Let's work on homework first.",
+      "expected_markers": [
+        {
+          "type": "positive_behavior",
+          "description": "Client engaged in conversation appropriately",
+          "aba_terminology": "social interaction"
+        }
+      ],
+      "expected_confidence": 0.87,
+      "california_compliant": true
+    },
+    {
+      "name": "Academic Skills Session",
+      "description": "Session focused on academic skill development",
+      "duration": 420,
+      "participants": ["therapist", "client"],
+      "transcript": "Therapist: Let's count to ten. Client: One, two, three, four, five, six, seven, eight, nine, ten! Therapist: Perfect! Now let's try addition. What's two plus three? Client: Five! Therapist: Excellent math skills!",
+      "expected_markers": [
+        {
+          "type": "skill_demonstration",
+          "description": "Client demonstrated counting and addition skills",
+          "aba_terminology": "academic skills"
+        },
+        {
+          "type": "positive_behavior",
+          "description": "Client engaged in academic tasks",
+          "aba_terminology": "task engagement"
+        }
+      ],
+      "expected_confidence": 0.96,
+      "california_compliant": true
+    },
+    {
+      "name": "Generalization Training",
+      "description": "Session testing skill generalization across settings",
+      "duration": 330,
+      "participants": ["therapist", "client"],
+      "transcript": "Therapist: We practiced this at the table. Can you do it here on the floor? Client: [demonstrates skill] Like this? Therapist: Yes! You can do it anywhere. That's generalization. Client: I remember! I can do it at home too.",
+      "expected_markers": [
+        {
+          "type": "skill_demonstration",
+          "description": "Client demonstrated skill generalization",
+          "aba_terminology": "generalization"
+        },
+        {
+          "type": "intervention_response",
+          "description": "Client responded to generalization training",
+          "aba_terminology": "skill transfer"
+        }
+      ],
+      "expected_confidence": 0.91,
+      "california_compliant": true
+    }
+  ],
+  "test_parameters": {
+    "audio_formats": ["wav", "mp3", "m4a"],
+    "sample_rates": [16000, 22050, 44100],
+    "bit_depths": [16, 24],
+    "channels": [1, 2],
+    "noise_levels": ["none", "low", "medium", "high"],
+    "compression_rates": ["none", "low", "medium", "high"]
+  },
+  "behavioral_marker_patterns": {
+    "positive_behavior": [
+      "followed instruction",
+      "completed task",
+      "good job",
+      "excellent work",
+      "nice asking",
+      "great sharing",
+      "waited turn",
+      "used words"
+    ],
+    "challenging_behavior": [
+      "threw materials",
+      "screamed",
+      "hit",
+      "refused",
+      "tantrum",
+      "ran away",
+      "no! I don't want to"
+    ],
+    "skill_demonstration": [
+      "counted to ten",
+      "labeled correctly",
+      "matched items",
+      "sorted by color",
+      "identified picture",
+      "demonstrated skill"
+    ],
+    "intervention_response": [
+      "responded to prompt",
+      "needed help",
+      "required assistance",
+      "independent completion",
+      "with support"
+    ]
+  },
+  "speaker_identification_cues": {
+    "therapist": [
+      "let's try",
+      "good job",
+      "can you",
+      "show me",
+      "what do you want",
+      "nice work",
+      "excellent",
+      "that's correct"
+    ],
+    "client": [
+      "I want",
+      "I don't want to",
+      "help me",
+      "more please",
+      "all done",
+      "I did it",
+      "can we play"
+    ],
+    "caregiver": [
+      "how was school",
+      "at home",
+      "yesterday",
+      "usually",
+      "he had a",
+      "no incidents"
+    ]
+  }
+} 

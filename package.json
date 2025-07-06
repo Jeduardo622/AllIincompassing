@@ -14,7 +14,14 @@
     "test:e2e": "cypress run",
     "test:e2e:open": "cypress open",
     "bolt:dev": "vite --host 0.0.0.0",
-    "bolt:build": "tsc && vite build --mode production"
+    "bolt:build": "tsc && vite build --mode production",
+    "db:branch:create": "node scripts/create-supabase-branch.js",
+    "db:branch:cleanup": "node scripts/cleanup-supabase-branch.js",
+    "db:check:security": "node scripts/check-database-security.js",
+    "db:check:performance": "node scripts/check-database-performance.js",
+    "db:health:report": "node scripts/generate-health-report.js",
+    "db:health:production": "node scripts/production-health-check.js",
+    "pipeline:health": "npm run db:check:security && npm run db:check:performance && npm run db:health:report"
   },
   "dependencies": {
     "@headlessui/react": "^1.7.18",

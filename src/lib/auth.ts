@@ -35,6 +35,7 @@ export interface AuthState {
   permissions: string[]
   loading: boolean
   initialized: boolean
+  initializing: boolean
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
   signUp: (email: string, password: string, metadata?: Record<string, unknown>) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
@@ -56,6 +57,7 @@ export const useAuth = create<AuthState>()(
       permissions: [],
       loading: false,
       initialized: false,
+      initializing: false,
 
                    signIn: async (email: string, password: string) => {
         set({ loading: true })
@@ -257,37 +259,63 @@ export const useAuth = create<AuthState>()(
       },
 
       initialize: async () => {
-        if (get().initialized) return
+        // Guard against multiple initializations or initialization in progress
+        if (get().initialized || get().initializing) return;
 
-        set({ loading: true })
+        // Set initializing flag to prevent concurrent initialization
+        set({ initializing: true, loading: true });
         
         // Get initial session
-        const { data: { session } } = await supabase.auth.getSession()
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
         
-        if (session?.user) {
-          await get().refreshUserData()
-        }
-
-        // Listen for auth changes
-       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-          if (event === 'SIGNED_IN' && session?.user) {
-            await get().refreshUserData()
-          } else if (event === 'SIGNED_OUT') {
-            set({
-              user: null,
-              profile: null,
-              roles: [],
-              permissions: [],
-            })
+          if (session?.user) {
+            await get().refreshUserData();
           }
-        })
 
-        set({ loading: false, initialized: true })
-       
-       // Clean up subscription to prevent memory leaks
-       return () => {
-         subscription.unsubscribe();
-       };
+          // Listen for auth changes but avoid setup if we're already initialized
+          const authListener = supabase.auth.onAuthStateChange(async (event, session) => {
+            if (event === 'SIGNED_IN' && session?.user) {
+              await get().refreshUserData();
+            } else if (event === 'SIGNED_OUT') {
+              set({
+                user: null,
+                profile: null,
+                roles: [],
+                permissions: [],
+              });
+            }
+          });
+          
+          // Store the unsubscribe function in localStorage to ensure we clean it up later
+          const prevListenerJson = localStorage.getItem('auth-listener');
+          if (prevListenerJson) {
+            try {
+              const prevListener = JSON.parse(prevListenerJson);
+              if (prevListener.id) {
+                // Clean up old listener if it exists
+                supabase.removeChannel(prevListener.id);
+              }
+            } catch (e) {
+              console.warn('Failed to parse previous auth listener', e);
+            }
+          }
+          
+          // Store new listener reference (safely)
+          try {
+            localStorage.setItem('auth-listener', JSON.stringify({
+              id: authListener.subscription.id,
+              timestamp: Date.now()
+            }));
+          } catch (e) {
+            console.warn('Failed to store auth listener reference', e);
+          }
+        } catch (error) {
+          console.error('Error during auth initialization:', error);
+        } finally {
+          // Always mark as initialized and not loading, even if there was an error
+          set({ initializing: false, loading: false, initialized: true });
+        }
       },
     }),
     {
@@ -315,8 +343,12 @@ export const canViewSchedule = () => useAuth.getState().hasPermission('view_sche
 export const canSuperviseTherapists = () => useAuth.getState().hasPermission('supervise_therapists')
 
 // Initialize auth on app start
-export const initializeAuth = async () => {
-  await useAuth.getState().initialize()
+export const initializeAuth = () => {
+  const state = useAuth.getState();
+  if (!state.initialized && !state.initializing) {
+    return state.initialize();
+  }
+  return Promise.resolve();
 }
 
 // Helper function to validate authentication state

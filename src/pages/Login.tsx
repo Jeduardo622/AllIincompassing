@@ -19,6 +19,8 @@ export default function Login() {
   const { signIn, user } = useAuth();
 
   useEffect(() => {
+    let isMounted = true;
+
     // Check if user is already logged in
     if (user) {
       navigate('/', { replace: true });
@@ -28,19 +30,24 @@ export default function Login() {
     // Verify Supabase connection
     const checkConnection = async () => {
       try {
-        setConnectionChecking(true);
+        if (isMounted) setConnectionChecking(true);
         await verifyConnection();
-        setConnectionVerified(true);
+        if (isMounted) setConnectionVerified(true);
       } catch (err) {
         console.error('Connection error:', err);
-        setError('Unable to connect to the server. Please check your internet connection and try again.');
+        if (isMounted) setError('Unable to connect to the server. Please check your internet connection and try again.');
       } finally {
-        setConnectionChecking(false);
+        if (isMounted) setConnectionChecking(false);
       }
     };
 
     checkConnection();
-  }, [user, navigate]); // Ensure we're not depending on state variables that are set within the effect
+    
+    // Cleanup function to prevent updates after unmount
+    return () => {
+      isMounted = false;
+    };
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

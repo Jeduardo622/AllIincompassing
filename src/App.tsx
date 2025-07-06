@@ -62,11 +62,19 @@ function App() {
   const { initialized, initialize } = useAuth();
   const { isDark } = useTheme();
 
+  // Initialize auth once on component mount
   useEffect(() => {
-    // Initialize auth system on app start
-    if (!initialized) {
-      initialize().catch(console.error);
-    }
+    const initAuth = async () => {
+      try {
+        if (!initialized) {
+          await initialize();
+        }
+      } catch (error) {
+        console.error("Auth initialization error:", error);
+      }
+    };
+    
+    initAuth();
   }, [initialized, initialize]);
 
   useEffect(() => {

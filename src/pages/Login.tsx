@@ -40,7 +40,7 @@ export default function Login() {
     };
 
     checkConnection();
-  }, [user, navigate]);
+  }, [user, navigate]); // Ensure we're not depending on state variables that are set within the effect
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

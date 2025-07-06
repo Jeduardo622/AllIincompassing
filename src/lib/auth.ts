@@ -269,7 +269,7 @@ export const useAuth = create<AuthState>()(
         }
 
         // Listen for auth changes
-        supabase.auth.onAuthStateChange(async (event, session) => {
+       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
           if (event === 'SIGNED_IN' && session?.user) {
             await get().refreshUserData()
           } else if (event === 'SIGNED_OUT') {
@@ -283,6 +283,11 @@ export const useAuth = create<AuthState>()(
         })
 
         set({ loading: false, initialized: true })
+       
+       // Clean up subscription to prevent memory leaks
+       return () => {
+         subscription.unsubscribe();
+       };
       },
     }),
     {

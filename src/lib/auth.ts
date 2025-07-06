@@ -310,7 +310,9 @@ export const useAuth = create<AuthState>()(
           } catch (e) {
             console.warn('Failed to store auth listener reference', e);
           }
-        } catch (error) {
+       } catch (error) {
+         console.error('Error during auth initialization:', error);
+       } finally {
           console.error('Error during auth initialization:', error);
         } finally {
           // Always mark as initialized and not loading, even if there was an error

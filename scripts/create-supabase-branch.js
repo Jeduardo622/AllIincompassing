@@ -45,7 +45,7 @@ function ensureCacheDir() {
  */
 function checkBranchExists(branchName) {
   try {
-    const output = execSync('supabase branches list --format json', {
+    const output = execSync('supabase branches list --experimental --output json', {
       encoding: 'utf8',
       stdio: 'pipe'
     });
@@ -81,7 +81,7 @@ async function createBranch(branchName) {
     
     // Create the branch using Supabase CLI
     // Note: This assumes cost confirmation is handled elsewhere or auto-approved
-    const createCommand = `supabase branches create ${branchName} --project-ref ${PROJECT_REF}`;
+    const createCommand = `supabase branches create ${branchName} --experimental --project-ref ${PROJECT_REF}`;
     
     logger.info(`Executing: ${createCommand}`);
     const output = execSync(createCommand, {
@@ -118,7 +118,7 @@ async function createBranch(branchName) {
 async function handleCostConfirmation(branchName) {
   try {
     // First, get the cost confirmation ID
-    const costCommand = `supabase branches create ${branchName} --project-ref ${PROJECT_REF} --dry-run`;
+    const costCommand = `supabase branches create ${branchName} --experimental --project-ref ${PROJECT_REF} --dry-run`;
     const costOutput = execSync(costCommand, {
       encoding: 'utf8',
       stdio: 'pipe'
@@ -130,7 +130,7 @@ async function handleCostConfirmation(branchName) {
       logger.info(`Cost confirmation ID: ${costConfirmId}`);
       
       // Now create the branch with cost confirmation
-      const createCommand = `supabase branches create ${branchName} --project-ref ${PROJECT_REF} --confirm-cost ${costConfirmId}`;
+      const createCommand = `supabase branches create ${branchName} --experimental --project-ref ${PROJECT_REF} --confirm-cost ${costConfirmId}`;
       const output = execSync(createCommand, {
         encoding: 'utf8',
         stdio: 'pipe'

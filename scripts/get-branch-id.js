@@ -57,7 +57,7 @@ function getBranchFromAPI(branchName) {
   try {
     logger.info(`Querying Supabase for branch: ${branchName}`);
     
-    const output = execSync('supabase branches list --experimental --output json', {
+    const output = execSync(`supabase branches list --experimental --output json --project-ref ${PROJECT_REF}`, {
       encoding: 'utf8',
       stdio: 'pipe'
     });

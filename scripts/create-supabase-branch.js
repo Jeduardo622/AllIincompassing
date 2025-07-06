@@ -131,7 +131,7 @@ async function cleanupExistingBranch(branchName) {
     logger.info(`Cleaning up existing branch: ${branchName}`);
     
     // Try to delete the branch
-    const deleteCommand = `supabase branches delete ${branchName} --experimental --force --project-ref ${PROJECT_REF}`;
+    const deleteCommand = `supabase branches delete ${branchName} --experimental --project-ref ${PROJECT_REF}`;
     execSync(deleteCommand, {
       encoding: 'utf8',
       stdio: 'pipe'

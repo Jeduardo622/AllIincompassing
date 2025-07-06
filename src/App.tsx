@@ -75,9 +75,6 @@ function App() {
     };
     
     initAuth();
-  }, []); // Empty dependency array ensures this only runs once
-    
-    initAuth();
   }, [initialized, initialize]);
 
   useEffect(() => {

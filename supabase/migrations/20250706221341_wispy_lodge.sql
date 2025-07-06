@@ -1,15 +1,14 @@
 /*
-  # Fix Infinite Recursion in User Profiles RLS Policy
+  # Fix user_profiles RLS policies with correct JSON syntax
   
   1. Changes
-    - Drops the problematic user_profiles_unified_access policy
-    - Creates separate policies for each operation with non-recursive checks
-    - Eliminates circular dependencies in RLS policy evaluation
-  
+     - Drops problematic policies causing infinite recursion
+     - Recreates policies with proper JSON syntax (no escaping needed in single quotes)
+     - Maintains same access control logic with non-recursive structure
+     
   2. Security
-    - Maintains same access control logic
-    - Users can still view/edit their own profiles
-    - Admins retain full access to all profiles
+     - Users can view and update their own profiles
+     - Admins maintain full access to all profiles
 */
 
 -- Drop the problematic policy causing infinite recursion
@@ -42,7 +41,7 @@ USING (
     JOIN roles r ON ur.role_id = r.id
     WHERE ur.user_id = auth.uid() 
     AND ur.is_active = true
-    AND r.permissions @> '[\"*\"]'::jsonb
+    AND r.permissions @> '["*"]'::jsonb
   )
 );
 
@@ -58,7 +57,7 @@ USING (
     JOIN roles r ON ur.role_id = r.id
     WHERE ur.user_id = auth.uid() 
     AND ur.is_active = true
-    AND r.permissions @> '[\"*\"]'::jsonb
+    AND r.permissions @> '["*"]'::jsonb
   )
 );
 
@@ -74,7 +73,7 @@ WITH CHECK (
     JOIN roles r ON ur.role_id = r.id
     WHERE ur.user_id = auth.uid() 
     AND ur.is_active = true
-    AND r.permissions @> '[\"*\"]'::jsonb
+    AND r.permissions @> '["*"]'::jsonb
   )
 );
 
@@ -90,6 +89,6 @@ USING (
     JOIN roles r ON ur.role_id = r.id
     WHERE ur.user_id = auth.uid() 
     AND ur.is_active = true
-    AND r.permissions @> '[\"*\"]'::jsonb
+    AND r.permissions @> '["*"]'::jsonb
   )
 );

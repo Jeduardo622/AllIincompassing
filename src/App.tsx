@@ -75,9 +75,7 @@ function App() {
     };
     
     initAuth();
-  });
-
-  useEffect(() => {
+  }, []);
 
   useEffect(() => {
     // Update dark mode class on document

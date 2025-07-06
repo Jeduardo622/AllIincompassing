@@ -52,7 +52,7 @@ const queryClient = new QueryClient({
       networkMode: 'online',
     },
     mutations: {
-      retry: 1,
+     const initAuth = async () => {
       networkMode: 'online',
     },
   },
@@ -63,7 +63,7 @@ function App() {
   const { isDark } = useTheme();
 
   // Initialize auth once on component mount
-  useEffect(() => {
+   }, [initialized]);
     const initAuth = async () => {
       try {
         if (!initialized) {

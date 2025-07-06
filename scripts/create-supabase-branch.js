@@ -73,8 +73,8 @@ async function createBranch(branchName) {
     // Check if branch already exists
     const existingBranch = checkBranchExists(branchName);
     if (existingBranch) {
-      saveBranchInfo(branchName, existingBranch);
-      return existingBranch;
+      logger.info(`Branch '${branchName}' already exists, cleaning up first...`);
+      await cleanupExistingBranch(branchName);
     }
 
     logger.info(`Creating new branch: ${branchName}`);
@@ -102,13 +102,49 @@ async function createBranch(branchName) {
   } catch (error) {
     logger.error(`Failed to create branch: ${error.message}`);
     
-    // If creation fails, try to handle specific error cases
+    // Handle specific error cases
     if (error.message.includes('cost confirmation')) {
       logger.info('Attempting to handle cost confirmation...');
       return await handleCostConfirmation(branchName);
     }
     
+    if (error.message.includes('Failed to insert preview branch') || 
+        error.message.includes('already exists')) {
+      logger.info('Branch already exists, attempting cleanup and retry...');
+      await cleanupExistingBranch(branchName);
+      
+      // Retry with a unique name
+      const uniqueBranchName = `${branchName}-${Date.now()}`;
+      logger.info(`Retrying with unique name: ${uniqueBranchName}`);
+      return await createBranch(uniqueBranchName);
+    }
+    
     throw error;
+  }
+}
+
+/**
+ * Clean up an existing branch
+ */
+async function cleanupExistingBranch(branchName) {
+  try {
+    logger.info(`Cleaning up existing branch: ${branchName}`);
+    
+    // Try to delete the branch
+    const deleteCommand = `supabase branches delete ${branchName} --experimental --force --project-ref ${PROJECT_REF}`;
+    execSync(deleteCommand, {
+      encoding: 'utf8',
+      stdio: 'pipe'
+    });
+    
+    logger.success(`Existing branch '${branchName}' cleaned up successfully`);
+    
+    // Wait a moment for the deletion to propagate
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+  } catch (error) {
+    logger.warn(`Could not cleanup existing branch: ${error.message}`);
+    // Continue anyway - the new branch creation might still work
   }
 }
 
@@ -287,5 +323,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 export {
   createBranch,
   checkBranchExists,
-  saveBranchInfo
+  saveBranchInfo,
+  cleanupExistingBranch
 }; 

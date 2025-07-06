@@ -9,9 +9,13 @@
  * Usage: node scripts/cleanup-supabase-branch.js <branch-name>
  */
 
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Configuration
 const BRANCH_CACHE_DIR = path.join(__dirname, '..', '.cache', 'supabase-branches');
@@ -251,11 +255,11 @@ async function main() {
 }
 
 // Run the script
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   main();
 }
 
-module.exports = {
+export {
   cleanupBranch,
   cleanupBranchesByPattern,
   deleteBranch,

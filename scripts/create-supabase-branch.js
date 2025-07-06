@@ -161,29 +161,66 @@ function parseCostConfirmation(output) {
  */
 function parseBranchOutput(output) {
   try {
+    logger.info(`Parsing branch output: ${output}`);
+    
     // Try to parse as JSON first
     const jsonMatch = output.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+      const parsed = JSON.parse(jsonMatch[0]);
+      logger.info(`Parsed JSON: ${JSON.stringify(parsed)}`);
+      return parsed;
     }
     
-    // Fallback to regex parsing
-    const idMatch = output.match(/id:\s*([a-zA-Z0-9-]+)/);
-    const nameMatch = output.match(/name:\s*([a-zA-Z0-9-]+)/);
+    // Try multiple regex patterns for different CLI output formats
+    const patterns = [
+      // Pattern 1: id: name:
+      { id: /id:\s*([a-zA-Z0-9-]+)/, name: /name:\s*([a-zA-Z0-9-]+)/ },
+      // Pattern 2: Branch ID: Branch Name:
+      { id: /Branch ID:\s*([a-zA-Z0-9-]+)/, name: /Branch Name:\s*([a-zA-Z0-9-]+)/ },
+      // Pattern 3: "branch_id": "branch_name":
+      { id: /"branch_id":\s*"([a-zA-Z0-9-]+)"/, name: /"branch_name":\s*"([a-zA-Z0-9-]+)"/ },
+      // Pattern 4: Extract from any line containing branch info
+      { id: /([a-zA-Z0-9]{8}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{12})/, name: null }
+    ];
     
-    if (idMatch && nameMatch) {
-      return {
-        id: idMatch[1],
-        name: nameMatch[1],
-        database_url: `https://${idMatch[1]}.supabase.co`,
+    for (const pattern of patterns) {
+      const idMatch = output.match(pattern.id);
+      const nameMatch = pattern.name ? output.match(pattern.name) : null;
+      
+      if (idMatch) {
+        const branchInfo = {
+          id: idMatch[1],
+          name: nameMatch ? nameMatch[1] : process.argv[2], // Use provided branch name as fallback
+          database_url: `https://${idMatch[1]}.supabase.co`,
+          created_at: new Date().toISOString()
+        };
+        
+        logger.success(`Parsed branch info: ${JSON.stringify(branchInfo)}`);
+        return branchInfo;
+      }
+    }
+    
+    // If no patterns match, try to extract UUID-like strings (branch IDs are usually UUIDs)
+    const uuidPattern = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+    const uuidMatch = output.match(uuidPattern);
+    
+    if (uuidMatch) {
+      const branchInfo = {
+        id: uuidMatch[1],
+        name: process.argv[2], // Use provided branch name
+        database_url: `https://${uuidMatch[1]}.supabase.co`,
         created_at: new Date().toISOString()
       };
+      
+      logger.success(`Extracted UUID as branch ID: ${JSON.stringify(branchInfo)}`);
+      return branchInfo;
     }
     
     throw new Error('Could not parse branch information from output');
     
   } catch (error) {
     logger.error(`Failed to parse branch output: ${error.message}`);
+    logger.error(`Raw output was: ${output}`);
     throw error;
   }
 }

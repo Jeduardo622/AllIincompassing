@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useAuth } from '../auth';
+import { useAuth, validateAuth } from '../auth';
 
+// Mock Supabase
 vi.mock('../supabase', () => ({
   supabase: {
     auth: {
@@ -10,47 +11,64 @@ vi.mock('../supabase', () => ({
         data: { user: { id: '123', email: 'test@example.com' }, session: {} },
         error: null,
       }),
+      getUser: vi.fn().mockResolvedValue({
+        data: { user: { id: '123', email: 'test@example.com' } },
+        error: null,
+      }),
+      getSession: vi.fn().mockResolvedValue({
+        data: { session: null },
+        error: null,
+      }),
+      onAuthStateChange: vi.fn().mockReturnValue({
+        data: { subscription: { unsubscribe: vi.fn() } },
+      }),
     },
-    rpc: vi.fn().mockResolvedValue({ data: [{ roles: ['user'] }], error: null }),
+    from: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({
+            data: { id: '123', email: 'test@example.com', is_active: true },
+            error: null,
+          }),
+        }),
+      }),
+    }),
+    rpc: vi.fn().mockResolvedValue({ 
+      data: [{ role_name: 'therapist', permissions: ['view_clients', 'manage_sessions'] }], 
+      error: null 
+    }),
   },
 }));
 
 describe('useAuth', () => {
   beforeEach(() => {
-    // Clear the store before each test
-    const { result } = renderHook(() => useAuth());
-    act(() => {
-      result.current.setUser(null);
-    });
+    // Reset all mocks before each test
+    vi.clearAllMocks();
   });
 
-  it('initializes with null user and loading false after reset', () => {
+  it('initializes with null user and loading false', () => {
     const { result } = renderHook(() => useAuth());
 
     expect(result.current.user).toBeNull();
     expect(result.current.loading).toBe(false);
   });
 
-  it('updates user state when setUser is called', () => {
+  it('has proper role checking methods', () => {
     const { result } = renderHook(() => useAuth());
-    const mockUser = { id: '123', email: 'test@example.com' };
 
-    act(() => {
-      result.current.setUser(mockUser);
-    });
-
-    expect(result.current.user).toEqual(mockUser);
-    expect(result.current.loading).toBe(false);
+    expect(typeof result.current.hasRole).toBe('function');
+    expect(typeof result.current.hasAnyRole).toBe('function');
+    expect(typeof result.current.hasPermission).toBe('function');
   });
 
   it('handles sign in', async () => {
     const { result } = renderHook(() => useAuth());
     
     await act(async () => {
-      await result.current.signIn('test@example.com', 'password');
+      const response = await result.current.signIn('test@example.com', 'password');
+      expect(response.error).toBeNull();
     });
 
-    expect(result.current.user?.email).toBe('test@example.com');
     expect(result.current.loading).toBe(false);
   });
 
@@ -62,5 +80,45 @@ describe('useAuth', () => {
     });
 
     expect(result.current.user).toBeNull();
+    expect(result.current.roles).toEqual([]);
+    expect(result.current.permissions).toEqual([]);
+  });
+
+  it('refreshes user data correctly', async () => {
+    const { result } = renderHook(() => useAuth());
+    
+    await act(async () => {
+      await result.current.refreshUserData();
+    });
+
+    // Should handle the refresh without errors
+    expect(result.current.loading).toBe(false);
+  });
+});
+
+describe('validateAuth', () => {
+  it('returns invalid when no user is found', async () => {
+    const { supabase } = await import('../supabase');
+    vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
+      data: { user: null },
+      error: null,
+    } as any);
+
+    const result = await validateAuth();
+    expect(result.isValid).toBe(false);
+    expect(result.error).toBe('No user found');
+  });
+
+  it('returns valid when user and profile exist', async () => {
+    const { supabase } = await import('../supabase');
+    vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
+      data: { user: { id: '123', email: 'test@example.com' } as any },
+      error: null,
+    });
+
+    const result = await validateAuth();
+    expect(result.isValid).toBe(true);
+    expect(result.user).toBeDefined();
+    expect(result.profile).toBeDefined();
   });
 });

@@ -1,0 +1,132 @@
+#!/usr/bin/env node
+
+/**
+ * Get Supabase Branch ID Script
+ * 
+ * This script retrieves the branch ID for a given branch name.
+ * It first checks the cache, then falls back to querying Supabase.
+ * 
+ * Usage: node scripts/get-branch-id.js <branch-name>
+ */
+
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+// Configuration
+const BRANCH_CACHE_DIR = path.join(__dirname, '..', '.cache', 'supabase-branches');
+
+/**
+ * Logger utility
+ */
+const logger = {
+  info: (msg) => console.log(`ℹ️  ${msg}`),
+  success: (msg) => console.log(`✅ ${msg}`),
+  error: (msg) => console.error(`❌ ${msg}`),
+  warn: (msg) => console.warn(`⚠️  ${msg}`)
+};
+
+/**
+ * Get branch ID from cache
+ */
+function getBranchFromCache(branchName) {
+  try {
+    const cacheFile = path.join(BRANCH_CACHE_DIR, `${branchName}.json`);
+    
+    if (fs.existsSync(cacheFile)) {
+      const branchInfo = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+      logger.info(`Found branch in cache: ${branchInfo.id}`);
+      return branchInfo.id;
+    }
+    
+    return null;
+  } catch (error) {
+    logger.warn(`Could not read from cache: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Get branch ID from Supabase API
+ */
+function getBranchFromAPI(branchName) {
+  try {
+    logger.info(`Querying Supabase for branch: ${branchName}`);
+    
+    const output = execSync('supabase branches list --format json', {
+      encoding: 'utf8',
+      stdio: 'pipe'
+    });
+    
+    const branches = JSON.parse(output);
+    const branch = branches.find(b => b.name === branchName);
+    
+    if (branch) {
+      logger.success(`Found branch: ${branch.id}`);
+      return branch.id;
+    }
+    
+    return null;
+  } catch (error) {
+    logger.error(`Failed to query Supabase: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Get branch ID by name
+ */
+function getBranchId(branchName) {
+  // First try cache
+  let branchId = getBranchFromCache(branchName);
+  
+  if (branchId) {
+    return branchId;
+  }
+  
+  // Fallback to API
+  branchId = getBranchFromAPI(branchName);
+  
+  if (branchId) {
+    return branchId;
+  }
+  
+  throw new Error(`Branch not found: ${branchName}`);
+}
+
+/**
+ * Main execution
+ */
+function main() {
+  try {
+    const branchName = process.argv[2];
+    
+    if (!branchName) {
+      logger.error('Branch name is required');
+      logger.info('Usage: node scripts/get-branch-id.js <branch-name>');
+      process.exit(1);
+    }
+    
+    logger.info(`Getting branch ID for: ${branchName}`);
+    
+    const branchId = getBranchId(branchName);
+    
+    // Output for GitHub Actions
+    console.log(branchId);
+    
+  } catch (error) {
+    logger.error(`Failed to get branch ID: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+// Run the script
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  getBranchId,
+  getBranchFromCache,
+  getBranchFromAPI
+}; 

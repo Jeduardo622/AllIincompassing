@@ -1,0 +1,95 @@
+/*
+  # Fix Infinite Recursion in User Profiles RLS Policy
+  
+  1. Changes
+    - Drops the problematic user_profiles_unified_access policy
+    - Creates separate policies for each operation with non-recursive checks
+    - Eliminates circular dependencies in RLS policy evaluation
+  
+  2. Security
+    - Maintains same access control logic
+    - Users can still view/edit their own profiles
+    - Admins retain full access to all profiles
+*/
+
+-- Drop the problematic policy causing infinite recursion
+DROP POLICY IF EXISTS "user_profiles_unified_access" ON public.user_profiles;
+
+-- Create separate, non-recursive policies for each operation
+-- Allow users to view their own profile
+CREATE POLICY "users_can_view_own_profile" 
+ON public.user_profiles 
+FOR SELECT 
+TO public
+USING (id = auth.uid());
+
+-- Allow users to update their own profile
+CREATE POLICY "users_can_update_own_profile" 
+ON public.user_profiles 
+FOR UPDATE 
+TO public
+USING (id = auth.uid());
+
+-- Allow users with admin role to view any profile
+CREATE POLICY "admins_can_view_all_profiles" 
+ON public.user_profiles 
+FOR SELECT 
+TO public
+USING (
+  EXISTS (
+    SELECT 1
+    FROM user_roles ur
+    JOIN roles r ON ur.role_id = r.id
+    WHERE ur.user_id = auth.uid() 
+    AND ur.is_active = true
+    AND r.permissions @> '[\"*\"]'::jsonb
+  )
+);
+
+-- Allow users with admin role to update any profile
+CREATE POLICY "admins_can_update_all_profiles" 
+ON public.user_profiles 
+FOR UPDATE 
+TO public
+USING (
+  EXISTS (
+    SELECT 1
+    FROM user_roles ur
+    JOIN roles r ON ur.role_id = r.id
+    WHERE ur.user_id = auth.uid() 
+    AND ur.is_active = true
+    AND r.permissions @> '[\"*\"]'::jsonb
+  )
+);
+
+-- Allow users with admin role to insert profiles
+CREATE POLICY "admins_can_insert_profiles" 
+ON public.user_profiles 
+FOR INSERT 
+TO public
+WITH CHECK (
+  EXISTS (
+    SELECT 1
+    FROM user_roles ur
+    JOIN roles r ON ur.role_id = r.id
+    WHERE ur.user_id = auth.uid() 
+    AND ur.is_active = true
+    AND r.permissions @> '[\"*\"]'::jsonb
+  )
+);
+
+-- Allow users with admin role to delete profiles
+CREATE POLICY "admins_can_delete_profiles" 
+ON public.user_profiles 
+FOR DELETE 
+TO public
+USING (
+  EXISTS (
+    SELECT 1
+    FROM user_roles ur
+    JOIN roles r ON ur.role_id = r.id
+    WHERE ur.user_id = auth.uid() 
+    AND ur.is_active = true
+    AND r.permissions @> '[\"*\"]'::jsonb
+  )
+);

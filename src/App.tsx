@@ -52,7 +52,6 @@ const queryClient = new QueryClient({
       networkMode: 'online',
     },
     mutations: {
-     const initAuth = async () => {
       networkMode: 'online',
     },
   },
@@ -63,7 +62,7 @@ function App() {
   const { isDark } = useTheme();
 
   // Initialize auth once on component mount
-   }, [initialized]);
+  useEffect(() => {
     const initAuth = async () => {
       try {
         if (!initialized) {
@@ -191,7 +190,7 @@ function App() {
                 } />
 
                 {/* Catch all - redirect to dashboard */}
-                  <Route path="*" element={<Navigate to="/\" replace />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
             </Routes>
             </Suspense>

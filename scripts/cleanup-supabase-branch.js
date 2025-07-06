@@ -57,7 +57,7 @@ function getBranchFromAPI(branchName) {
   try {
     logger.info(`Querying Supabase for branch: ${branchName}`);
     
-    const output = execSync('supabase branches list --experimental --output json', {
+    const output = execSync(`supabase branches list --experimental --output json --project-ref ${PROJECT_REF}`, {
       encoding: 'utf8',
       stdio: 'pipe'
     });
@@ -84,7 +84,7 @@ function deleteBranch(branchInfo) {
   try {
     logger.info(`Deleting branch: ${branchInfo.name} (${branchInfo.id})`);
     
-    const deleteCommand = `supabase branches delete ${branchInfo.id} --experimental --force`;
+    const deleteCommand = `supabase branches delete ${branchInfo.id} --experimental --project-ref ${PROJECT_REF}`;
     
     logger.info(`Executing: ${deleteCommand}`);
     const output = execSync(deleteCommand, {
@@ -200,7 +200,7 @@ async function cleanupBranchesByPattern(pattern) {
   try {
     logger.info(`Cleaning up branches matching pattern: ${pattern}`);
     
-    const output = execSync('supabase branches list --experimental --output json', {
+    const output = execSync(`supabase branches list --experimental --output json --project-ref ${PROJECT_REF}`, {
       encoding: 'utf8',
       stdio: 'pipe'
     });

@@ -63,6 +63,7 @@ function App() {
 
   // Initialize auth once on component mount
   useEffect(() => {
+    // Use empty dependency array to run only once on mount
     const initAuth = async () => {
       try {
         if (!initialized) {
@@ -72,6 +73,9 @@ function App() {
         console.error("Auth initialization error:", error);
       }
     };
+    
+    initAuth();
+  }, []); // Empty dependency array ensures this only runs once
     
     initAuth();
   }, [initialized, initialize]);

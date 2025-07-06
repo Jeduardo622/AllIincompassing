@@ -36,6 +36,7 @@ export interface AuthState {
   loading: boolean
   initialized: boolean
   initializing: boolean
+  demoMode: boolean
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
   signUp: (email: string, password: string, metadata?: Record<string, unknown>) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
@@ -45,7 +46,14 @@ export interface AuthState {
   hasPermission: (permission: string) => boolean
   refreshUserData: () => Promise<void>
   initialize: () => Promise<void>
+  enableDemoMode: () => void
 }
+
+// Check if we're in a demo/development environment
+const isDemoMode = () => {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  return !supabaseUrl || supabaseUrl.includes('placeholder');
+};
 
 // Create auth store with new clean architecture
 export const useAuth = create<AuthState>()(
@@ -58,39 +66,89 @@ export const useAuth = create<AuthState>()(
       loading: false,
       initialized: false,
       initializing: false,
+      demoMode: isDemoMode(),
 
-                   signIn: async (email: string, password: string) => {
-        set({ loading: true })
+      enableDemoMode: () => {
+        set({ 
+          demoMode: true,
+          initialized: true,
+          user: {
+            id: 'demo-user',
+            email: 'demo@example.com',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            app_metadata: {},
+            user_metadata: {},
+            aud: 'authenticated',
+            role: 'authenticated'
+          } as User,
+          profile: {
+            id: 'demo-user',
+            email: 'demo@example.com',
+            first_name: 'Demo',
+            last_name: 'User',
+            full_name: 'Demo User',
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          },
+          roles: ['admin', 'therapist'],
+          permissions: ['*']
+        });
+      },
+
+      signIn: async (email: string, password: string) => {
+        set({ loading: true });
+        
+        if (get().demoMode) {
+          // Demo mode sign in
+          setTimeout(() => {
+            get().enableDemoMode();
+            set({ loading: false });
+          }, 1000);
+          return { error: null };
+        }
+
         try {
           const { error } = await supabase.auth.signInWithPassword({
             email,
             password,
-          })
+          });
 
           if (error) {
-            set({ loading: false })
-            return { error }
+            set({ loading: false });
+            return { error };
           }
 
           // Validate authentication state after sign in
-          const validation = await validateAuth()
+          const validation = await validateAuth();
           if (!validation.isValid) {
-            set({ loading: false })
-            return { error: new Error(validation.error || 'Authentication validation failed') }
+            set({ loading: false });
+            return { error: new Error(validation.error || 'Authentication validation failed') };
           }
 
           // Refresh user data after successful sign in
-          await get().refreshUserData()
-          set({ loading: false })
-          return { error: null }
+          await get().refreshUserData();
+          set({ loading: false });
+          return { error: null };
         } catch (error) {
-          set({ loading: false })
-          return { error: error instanceof Error ? error : new Error('Sign in failed') }
+          set({ loading: false });
+          return { error: error instanceof Error ? error : new Error('Sign in failed') };
         }
       },
 
       signUp: async (email: string, password: string, metadata = {}) => {
-        set({ loading: true })
+        set({ loading: true });
+        
+        if (get().demoMode) {
+          // Demo mode sign up
+          setTimeout(() => {
+            get().enableDemoMode();
+            set({ loading: false });
+          }, 1000);
+          return { error: null };
+        }
+
         try {
           const { error } = await supabase.auth.signUp({
             email,
@@ -98,41 +156,63 @@ export const useAuth = create<AuthState>()(
             options: {
               data: metadata,
             },
-          })
+          });
 
           if (error) {
-            set({ loading: false })
-            return { error }
+            set({ loading: false });
+            return { error };
           }
 
-          set({ loading: false })
-          return { error: null }
+          set({ loading: false });
+          return { error: null };
         } catch (error) {
-          set({ loading: false })
-          return { error: error instanceof Error ? error : new Error('Sign up failed') }
+          set({ loading: false });
+          return { error: error instanceof Error ? error : new Error('Sign up failed') };
         }
       },
 
       signOut: async () => {
-        set({ loading: true })
-        try {
-          await supabase.auth.signOut()
+        set({ loading: true });
+        
+        if (get().demoMode) {
           set({
             user: null,
             profile: null,
             roles: [],
             permissions: [],
             loading: false,
-          })
+            demoMode: true,
+            initialized: true
+          });
+          return;
+        }
+
+        try {
+          await supabase.auth.signOut();
+          set({
+            user: null,
+            profile: null,
+            roles: [],
+            permissions: [],
+            loading: false,
+          });
         } catch (error) {
-          console.error('Sign out error:', error)
-          set({ loading: false })
+          console.error('Sign out error:', error);
+          set({ loading: false });
         }
       },
 
       updateProfile: async (updates: Partial<UserProfile>) => {
-        const { user } = get()
-        if (!user) return { error: new Error('Not authenticated') }
+        const { user, demoMode } = get();
+        if (!user) return { error: new Error('Not authenticated') };
+
+        if (demoMode) {
+          // Demo mode - just update local state
+          set(state => ({
+            profile: state.profile ? { ...state.profile, ...updates } : null
+          }));
+          return { error: null };
+        }
 
         try {
           const { data, error } = await supabase
@@ -140,55 +220,60 @@ export const useAuth = create<AuthState>()(
             .update(updates)
             .eq('id', user.id)
             .select()
-            .single()
+            .single();
 
-          if (error) return { error }
+          if (error) return { error };
 
-          set({ profile: data })
-          return { error: null }
+          set({ profile: data });
+          return { error: null };
         } catch (error) {
-          return { error: error instanceof Error ? error : new Error('Update profile failed') }
+          return { error: error instanceof Error ? error : new Error('Update profile failed') };
         }
       },
 
       hasRole: (role: string) => {
-        const { roles } = get()
-        return roles.includes(role)
+        const { roles } = get();
+        return roles.includes(role);
       },
 
       hasAnyRole: (roles: string[]) => {
-        const { roles: userRoles } = get()
-        return roles.some(role => userRoles.includes(role))
+        const { roles: userRoles } = get();
+        return roles.some(role => userRoles.includes(role));
       },
 
       hasPermission: (permission: string) => {
-        const { permissions } = get()
-        return permissions.includes('*') || permissions.includes(permission)
+        const { permissions } = get();
+        return permissions.includes('*') || permissions.includes(permission);
       },
 
       refreshUserData: async () => {
-        const { data: { user } } = await supabase.auth.getUser()
-        
-        if (!user) {
-          set({
-            user: null,
-            profile: null,
-            roles: [],
-            permissions: [],
-          })
-          return
+        if (get().demoMode) {
+          get().enableDemoMode();
+          return;
         }
 
         try {
+          const { data: { user } } = await supabase.auth.getUser();
+          
+          if (!user) {
+            set({
+              user: null,
+              profile: null,
+              roles: [],
+              permissions: [],
+            });
+            return;
+          }
+
           // Get user profile
           const { data: profile, error: profileError } = await supabase
             .from('user_profiles')
             .select('*')
             .eq('id', user.id)
-            .single()
+            .single();
 
           if (profileError) {
-            console.error('Profile fetch error:', profileError)
+            console.error('Profile fetch error:', profileError);
             // If profile doesn't exist, create it
             if (profileError.code === 'PGRST116') {
               const { data: newProfile, error: createError } = await supabase
@@ -201,11 +286,11 @@ export const useAuth = create<AuthState>()(
                   is_active: true,
                 })
                 .select()
-                .single()
+                .single();
 
               if (createError) {
-                console.error('Profile creation error:', createError)
-                return
+                console.error('Profile creation error:', createError);
+                return;
               }
               
               // Use the newly created profile
@@ -214,47 +299,47 @@ export const useAuth = create<AuthState>()(
                 profile: newProfile,
                 roles: [],
                 permissions: [],
-              })
+              });
             }
-            return
+            return;
           }
 
           // Get user roles and permissions using the new comprehensive function
           const { data: userRolesData, error: rolesError } = await supabase
-            .rpc('get_user_roles_comprehensive', { user_uuid: user.id })
+            .rpc('get_user_roles_comprehensive', { user_uuid: user.id });
 
           if (rolesError) {
-            console.error('Roles fetch error:', rolesError)
+            console.error('Roles fetch error:', rolesError);
             // Continue with just the profile, no roles
             set({
               user,
               profile,
               roles: [],
               permissions: [],
-            })
-            return
+            });
+            return;
           }
 
           // Extract role names and permissions
-          const roles = userRolesData?.map((ur: { role_name: string; permissions: string[] }) => ur.role_name) || []
-          const allPermissions = userRolesData?.flatMap((ur: { role_name: string; permissions: string[] }) => ur.permissions) || []
-          const uniquePermissions = [...new Set(allPermissions)] as string[]
+          const roles = userRolesData?.map((ur: { role_name: string; permissions: string[] }) => ur.role_name) || [];
+          const allPermissions = userRolesData?.flatMap((ur: { role_name: string; permissions: string[] }) => ur.permissions) || [];
+          const uniquePermissions = [...new Set(allPermissions)] as string[];
 
           set({
             user,
             profile,
             roles,
             permissions: uniquePermissions,
-          })
+          });
         } catch (error) {
-          console.error('Error refreshing user data:', error)
+          console.error('Error refreshing user data:', error);
           // Set user but with minimal data
           set({
-            user,
+            user: get().user,
             profile: null,
             roles: [],
             permissions: [],
-          })
+          });
         }
       },
 
@@ -265,6 +350,13 @@ export const useAuth = create<AuthState>()(
         // Set initializing flag to prevent concurrent initialization
         set({ initializing: true, loading: true });
         
+        if (isDemoMode()) {
+          console.log('🚀 Running in demo mode - Supabase not connected');
+          get().enableDemoMode();
+          set({ initializing: false, loading: false });
+          return;
+        }
+
         // Get initial session
         try {
           const { data: { session } } = await supabase.auth.getSession();
@@ -304,7 +396,7 @@ export const useAuth = create<AuthState>()(
           // Store new listener reference (safely)
           try {
             localStorage.setItem('auth-listener', JSON.stringify({
-              id: authListener.subscription.id,
+              id: authListener.data.subscription.id,
               timestamp: Date.now()
             }));
           } catch (e) {
@@ -312,6 +404,8 @@ export const useAuth = create<AuthState>()(
           }
         } catch (error) {
           console.error('Error during auth initialization:', error);
+          // Fallback to demo mode if initialization fails
+          get().enableDemoMode();
         } finally { 
           // Always mark as initialized and not loading, even if there was an error
           set({ initializing: false, loading: false, initialized: true });
@@ -325,10 +419,12 @@ export const useAuth = create<AuthState>()(
         profile: state.profile,
         roles: state.roles,
         permissions: state.permissions,
+        demoMode: state.demoMode,
+        initialized: state.initialized,
       }),
     }
   )
-)
+);
 
 // Helper functions for role checking
 export const isAdmin = () => useAuth.getState().hasRole('admin')

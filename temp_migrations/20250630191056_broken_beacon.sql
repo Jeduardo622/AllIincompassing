@@ -22,6 +22,7 @@ WITH CHECK (
 );
 
 -- Create policy for client documents with explicit table references
+DROP POLICY IF EXISTS "Client documents can be uploaded by admin and assigned therapis" ON storage.objects;
 CREATE POLICY "Client documents can be uploaded by admin and assigned therapis" 
 ON storage.objects 
 FOR INSERT 
@@ -48,6 +49,7 @@ WITH CHECK (
 );
 
 -- Create similar policies for other operations
+DROP POLICY IF EXISTS "Client documents can be updated by admin and assigned therapis" ON storage.objects;
 CREATE POLICY "Client documents can be updated by admin and assigned therapis" 
 ON storage.objects 
 FOR UPDATE
@@ -71,6 +73,7 @@ USING (
   )
 );
 
+DROP POLICY IF EXISTS "Client documents can be deleted by admin and assigned therapis" ON storage.objects;
 CREATE POLICY "Client documents can be deleted by admin and assigned therapis" 
 ON storage.objects 
 FOR DELETE
@@ -120,6 +123,7 @@ USING (
 );
 
 -- Allow clients to manage their own documents
+DROP POLICY IF EXISTS "Clients can upload their own documents" ON storage.objects;
 CREATE POLICY "Clients can upload their own documents" 
 ON storage.objects 
 FOR INSERT 

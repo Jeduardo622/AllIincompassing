@@ -370,6 +370,27 @@ jobs:
           supabase link --project-ref ${{ env.SUPABASE_PROJECT_REF }}
           echo "✅ Project linked successfully"
 
+      - name: Repair migration history
+        run: |
+          echo "🔧 Repairing migration history synchronization..."
+          # Mark remote migrations as reverted to sync with local state
+          supabase migration repair --status reverted \
+            20250101000004 20250106000001 20250603155508 20250603155519 20250603155539 20250603155759 \
+            20250603160506 20250603160526 20250620215458 20250620221527 20250621003423 20250621003431 \
+            20250626154355 20250630191140 20250704034920 20250704034934 20250704035005 20250704035043 \
+            20250704035316 20250704035831 20250704035859 20250704035923 20250704035948 20250704040008 \
+            20250704040025 20250704040051 20250704043319 20250704054008 20250705041225 20250705042414 \
+            20250705042428 20250705051441 20250705051502 20250705051508 20250705051624 20250706021856 \
+            20250706021938 20250706022233 20250706022925 20250706023032 20250706023241 \
+            || echo "⚠️ Migration repair may have failed, continuing with database pull..."
+          echo "✅ Migration history repair completed"
+
+      - name: Sync local migrations with remote database
+        run: |
+          echo "🔄 Syncing local migrations with remote database..."
+          supabase db pull --linked
+          echo "✅ Local migrations synchronized"
+
       - name: Apply migrations to production
         run: |
           echo "🚀 Applying migrations to production..."

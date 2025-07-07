@@ -382,12 +382,13 @@ async function main() {
   }
 }
 
-// Run the script
-if (require.main === module) {
+// Run the script if called directly
+if (import.meta.url === `file://${process.argv[1]}`) {
   main();
 }
 
-module.exports = {
+// ES module exports
+export {
   runSecurityAdvisors,
   checkRLSPolicies,
   checkExposedFunctions,

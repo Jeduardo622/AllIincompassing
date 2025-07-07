@@ -9,10 +9,15 @@
  * Usage: node scripts/generate-health-report.js <branch-id>
  */
 
-const fs = require('fs');
-const path = require('path');
-const { runSecurityAdvisors, checkRLSPolicies, checkExposedFunctions } = require('./check-database-security');
-const { runPerformanceAdvisors, checkSlowQueries, checkMissingIndexes, checkTableSizes } = require('./check-database-performance');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import { runSecurityAdvisors, checkRLSPolicies, checkExposedFunctions } from './check-database-security.js';
+import { runPerformanceAdvisors, checkSlowQueries, checkMissingIndexes, checkTableSizes } from './check-database-performance.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Configuration
 const REPORTS_DIR = path.join(__dirname, '..', '.reports');
@@ -408,7 +413,7 @@ async function main() {
 }
 
 // Run the script
-if (require.main === module) {
+if (process.argv[1] === __filename) {
   main();
 }
 

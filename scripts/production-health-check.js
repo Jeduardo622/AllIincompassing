@@ -9,9 +9,14 @@
  * Usage: node scripts/production-health-check.js
  */
 
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Configuration
 const PROJECT_REF = process.env.SUPABASE_PROJECT_REF || 'wnnjeqheqxxyrgsjmygy';
@@ -544,7 +549,7 @@ async function main() {
 }
 
 // Run the script
-if (require.main === module) {
+if (process.argv[1] === __filename) {
   main();
 }
 

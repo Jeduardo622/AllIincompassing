@@ -105,8 +105,13 @@ jobs:
             echo "📝 No type changes to commit"
           else
             git commit -m "🤖 Auto-update database types [skip ci]"
-            git push origin HEAD
-            echo "✅ Types committed and pushed"
+            # Skip push during PR builds to avoid permission issues
+            if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+              git push origin HEAD
+              echo "✅ Types committed and pushed"
+            else
+              echo "📝 Types committed (skipping push for PR build)"
+            fi
           fi
 
   # ============================================================================

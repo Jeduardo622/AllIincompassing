@@ -75,7 +75,7 @@ async function runSecurityAdvisors(branchId) {
     logger.info(`Running security advisors for branch: ${branchId}`);
     
     const projectRef = branchId || PROJECT_REF;
-    const command = `supabase advisors --type security --project-id ${projectRef} --experimental`;
+    const command = `supabase advisors --type security --project-ref ${projectRef} --experimental`;
     
     const output = execSync(command, {
       encoding: 'utf8',
@@ -173,7 +173,7 @@ async function checkRLSPolicies(branchId) {
       AND n.nspname = 'public';
     `;
     
-    const command = `supabase db query '${tablesQuery}' --project-id ${projectRef} --experimental`;
+    const command = `supabase db query '${tablesQuery}' --project-ref ${projectRef} --experimental`;
     const output = execSync(command, {
       encoding: 'utf8',
       stdio: 'pipe',
@@ -222,7 +222,7 @@ async function checkExposedFunctions(branchId) {
       AND p.prokind = 'f';
     `;
     
-    const command = `supabase db query '${functionsQuery}' --project-id ${projectRef} --experimental`;
+    const command = `supabase db query '${functionsQuery}' --project-ref ${projectRef} --experimental`;
     const output = execSync(command, {
       encoding: 'utf8',
       stdio: 'pipe',

@@ -75,7 +75,7 @@ async function runPerformanceAdvisors(branchId) {
     logger.info(`Running performance advisors for branch: ${branchId}`);
     
     const projectRef = branchId || PROJECT_REF;
-    const command = `supabase advisors --type performance --project-id ${projectRef} --experimental`;
+    const command = `supabase advisors --type performance --project-ref ${projectRef} --experimental`;
     
     const output = execSync(command, {
       encoding: 'utf8',
@@ -177,7 +177,7 @@ async function checkSlowQueries(branchId) {
       LIMIT 10;
     `;
     
-    const command = `supabase db query '${slowQueriesQuery}' --project-id ${projectRef} --experimental`;
+    const command = `supabase db query '${slowQueriesQuery}' --project-ref ${projectRef} --experimental`;
     const output = execSync(command, {
       encoding: 'utf8',
       stdio: 'pipe'
@@ -223,7 +223,7 @@ async function checkMissingIndexes(branchId) {
       ORDER BY seq_tup_read DESC;
     `;
     
-    const command = `supabase db query '${missingIndexesQuery}' --project-id ${projectRef} --experimental`;
+    const command = `supabase db query '${missingIndexesQuery}' --project-ref ${projectRef} --experimental`;
     const output = execSync(command, {
       encoding: 'utf8',
       stdio: 'pipe'
@@ -269,7 +269,7 @@ async function checkTableSizes(branchId) {
       ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
     `;
     
-    const command = `supabase db query '${tableSizesQuery}' --project-id ${projectRef} --experimental`;
+    const command = `supabase db query '${tableSizesQuery}' --project-ref ${projectRef} --experimental`;
     const output = execSync(command, {
       encoding: 'utf8',
       stdio: 'pipe'
@@ -306,7 +306,7 @@ async function checkConnections(branchId) {
       ORDER BY connection_count DESC;
     `;
     
-    const command = `supabase db query '${connectionsQuery}' --project-id ${projectRef} --experimental`;
+    const command = `supabase db query '${connectionsQuery}' --project-ref ${projectRef} --experimental`;
     const output = execSync(command, {
       encoding: 'utf8',
       stdio: 'pipe'

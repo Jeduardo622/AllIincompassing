@@ -553,7 +553,7 @@ if (process.argv[1] === __filename) {
   main();
 }
 
-module.exports = {
+export {
   checkDatabaseConnectivity,
   checkCriticalTables,
   checkDatabaseFunctions,

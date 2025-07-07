@@ -155,7 +155,7 @@ jobs:
         if: matrix.test-type == 'integration'
         run: |
           echo "🔗 Running integration tests..."
-          npm run test -- --testPathPattern=integration
+          npm run test -- --run **/*integration*
           echo "✅ Integration tests completed"
 
       - name: Run E2E tests

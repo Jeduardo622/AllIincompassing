@@ -20,15 +20,16 @@ const __dirname = path.dirname(__filename);
 // Configuration
 const PROJECT_REF = process.env.SUPABASE_PROJECT_REF || 'wnnjeqheqxxyrgsjmygy';
 const BRANCH_CACHE_DIR = path.join(__dirname, '..', '.cache', 'supabase-branches');
+const PROJECT_REF = process.env.SUPABASE_PROJECT_REF || 'wnnjeqheqxxyrgsjmygy';
 
 /**
- * Logger utility
+ * Logger utility - sends debug messages to stderr, not stdout
  */
 const logger = {
-  info: (msg) => console.log(`ℹ️  ${msg}`),
-  success: (msg) => console.log(`✅ ${msg}`),
+  info: (msg) => console.error(`ℹ️  ${msg}`),
+  success: (msg) => console.error(`✅ ${msg}`),
   error: (msg) => console.error(`❌ ${msg}`),
-  warn: (msg) => console.warn(`⚠️  ${msg}`)
+  warn: (msg) => console.error(`⚠️  ${msg}`)
 };
 
 /**
@@ -116,7 +117,7 @@ function main() {
     
     const branchId = getBranchId(branchName);
     
-    // Output for GitHub Actions
+    // Output ONLY the branch ID to stdout for GitHub Actions
     console.log(branchId);
     
   } catch (error) {
@@ -134,4 +135,4 @@ export {
   getBranchId,
   getBranchFromCache,
   getBranchFromAPI
-}; 
+};

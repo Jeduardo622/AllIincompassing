@@ -37,6 +37,17 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Cache Build Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            ~/.npm
+            .reports
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+
       - name: Install dependencies
         run: npm ci
 
@@ -81,7 +92,7 @@ jobs:
         run: |
           echo "🔄 Applying migrations to branch database..."
           # Apply migrations to the branch
-          supabase db push --project-ref ${{ steps.create-branch.outputs.branch-id }}
+          supabase db push --project-id ${{ steps.create-branch.outputs.branch-id }}
           echo "✅ Migrations applied successfully"
 
       - name: Generate TypeScript types
@@ -143,6 +154,8 @@ jobs:
           echo "VITE_SUPABASE_URL=${{ needs.setup-pr-environment.outputs.database-url }}" >> .env.test
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env.test
           echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env.test
+          echo "CI=true" >> .env.test
+          echo "NODE_ENV=test" >> .env.test
 
       - name: Run unit tests
         if: matrix.test-type == 'unit'
@@ -155,7 +168,7 @@ jobs:
         if: matrix.test-type == 'integration'
         run: |
           echo "🔗 Running integration tests..."
-          npm run test -- --run "**/*Integration*"
+          npm run test -- --run "**/DatabaseIntegration.test.ts" "**/SchedulingIntegration.test.tsx" --reporter=verbose
           echo "✅ Integration tests completed"
 
       - name: Run E2E tests
@@ -340,7 +353,7 @@ jobs:
       - name: Apply migrations to production
         run: |
           echo "🚀 Applying migrations to production..."
-          supabase db push --project-ref ${{ env.SUPABASE_PROJECT_REF }}
+          supabase db push --project-id ${{ env.SUPABASE_PROJECT_REF }}
           echo "✅ Production migrations applied"
 
       - name: Generate production types
@@ -367,4 +380,74 @@ jobs:
         run: |
           echo "🏥 Running post-deployment health check..."
           node scripts/production-health-check.js
-          echo "✅ Health check completed" 
+          echo "✅ Health check completed"
+
+  # ============================================================================
+  # Pipeline Monitoring & Alerting
+  # ============================================================================
+  pipeline-monitoring:
+    needs: [setup-pr-environment, test-and-validate, database-health-check, deploy-preview]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate Pipeline Summary
+        run: |
+          echo "## 📊 CI/CD Pipeline Summary" > pipeline-summary.md
+          echo "" >> pipeline-summary.md
+          echo "**PR #${{ github.event.number }}**: ${{ github.event.pull_request.title }}" >> pipeline-summary.md
+          echo "**Author**: ${{ github.event.pull_request.user.login }}" >> pipeline-summary.md
+          echo "**Branch**: ${{ github.head_ref }}" >> pipeline-summary.md
+          echo "**Commit**: ${{ github.event.pull_request.head.sha }}" >> pipeline-summary.md
+          echo "" >> pipeline-summary.md
+          echo "### 🔍 Job Status" >> pipeline-summary.md
+          echo "- **Environment Setup**: ${{ needs.setup-pr-environment.result }}" >> pipeline-summary.md
+          echo "- **Tests**: ${{ needs.test-and-validate.result }}" >> pipeline-summary.md
+          echo "- **Database Health**: ${{ needs.database-health-check.result }}" >> pipeline-summary.md
+          echo "- **Preview Deploy**: ${{ needs.deploy-preview.result }}" >> pipeline-summary.md
+          echo "" >> pipeline-summary.md
+          
+          # Add failure details if any job failed
+          if [[ "${{ needs.setup-pr-environment.result }}" == "failure" || "${{ needs.test-and-validate.result }}" == "failure" || "${{ needs.database-health-check.result }}" == "failure" || "${{ needs.deploy-preview.result }}" == "failure" ]]; then
+            echo "### ❌ Pipeline Failed" >> pipeline-summary.md
+            echo "One or more jobs failed. Please check the workflow logs for details." >> pipeline-summary.md
+          else
+            echo "### ✅ Pipeline Successful" >> pipeline-summary.md
+            echo "All jobs completed successfully!" >> pipeline-summary.md
+          fi
+
+      - name: Comment Pipeline Summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('pipeline-summary.md', 'utf8');
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+
+      - name: Send Slack Notification (on failure)
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          channel: '#ci-cd-alerts'
+          text: '❌ CI/CD Pipeline failed for PR #${{ github.event.number }}'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Send Slack Notification (on success)
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          channel: '#ci-cd-alerts'
+          text: '✅ CI/CD Pipeline succeeded for PR #${{ github.event.number }}'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

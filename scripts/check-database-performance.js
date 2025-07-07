@@ -9,9 +9,13 @@
  * Usage: node scripts/check-database-performance.js <branch-id>
  */
 
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Configuration
 const REPORTS_DIR = path.join(__dirname, '..', '.reports');
@@ -28,6 +32,33 @@ const logger = {
 };
 
 /**
+ * Retry utility with exponential backoff
+ */
+async function withRetry(operation, maxRetries = 3, baseDelay = 1000) {
+  let lastError;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      
+      const delay = baseDelay * Math.pow(2, attempt - 1);
+      logger.warn(`Attempt ${attempt}/${maxRetries} failed: ${error.message}`);
+      logger.info(`Retrying in ${delay}ms...`);
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw lastError;
+}
+
+/**
  * Ensure reports directory exists
  */
 function ensureReportsDir() {
@@ -40,29 +71,29 @@ function ensureReportsDir() {
  * Run Supabase performance advisors
  */
 async function runPerformanceAdvisors(branchId) {
-  try {
+  return withRetry(async () => {
     logger.info(`Running performance advisors for branch: ${branchId}`);
     
     const projectRef = branchId || PROJECT_REF;
-    const command = `supabase advisors get --type performance --project-ref ${projectRef}`;
+    const command = `supabase advisors --type performance --project-id ${projectRef} --experimental`;
     
     const output = execSync(command, {
       encoding: 'utf8',
-      stdio: 'pipe'
+      stdio: 'pipe',
+      timeout: 60000 // 60 second timeout
     });
     
     logger.success('Performance advisors completed');
     return parseAdvisorOutput(output);
-    
-  } catch (error) {
-    logger.error(`Performance advisors failed: ${error.message}`);
+  }, 3, 2000).catch(error => {
+    logger.error(`Performance advisors failed after all retries: ${error.message}`);
     
     // Return a default structure if advisors fail
     return {
       advisors: [],
       errors: [error.message]
     };
-  }
+  });
 }
 
 /**
@@ -146,7 +177,7 @@ async function checkSlowQueries(branchId) {
       LIMIT 10;
     `;
     
-    const command = `supabase db query '${slowQueriesQuery}' --project-ref ${projectRef}`;
+    const command = `supabase db query '${slowQueriesQuery}' --project-id ${projectRef} --experimental`;
     const output = execSync(command, {
       encoding: 'utf8',
       stdio: 'pipe'
@@ -192,7 +223,7 @@ async function checkMissingIndexes(branchId) {
       ORDER BY seq_tup_read DESC;
     `;
     
-    const command = `supabase db query '${missingIndexesQuery}' --project-ref ${projectRef}`;
+    const command = `supabase db query '${missingIndexesQuery}' --project-id ${projectRef} --experimental`;
     const output = execSync(command, {
       encoding: 'utf8',
       stdio: 'pipe'
@@ -238,7 +269,7 @@ async function checkTableSizes(branchId) {
       ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
     `;
     
-    const command = `supabase db query '${tableSizesQuery}' --project-ref ${projectRef}`;
+    const command = `supabase db query '${tableSizesQuery}' --project-id ${projectRef} --experimental`;
     const output = execSync(command, {
       encoding: 'utf8',
       stdio: 'pipe'
@@ -275,7 +306,7 @@ async function checkConnections(branchId) {
       ORDER BY connection_count DESC;
     `;
     
-    const command = `supabase db query '${connectionsQuery}' --project-ref ${projectRef}`;
+    const command = `supabase db query '${connectionsQuery}' --project-id ${projectRef} --experimental`;
     const output = execSync(command, {
       encoding: 'utf8',
       stdio: 'pipe'
@@ -468,7 +499,7 @@ if (require.main === module) {
   main();
 }
 
-module.exports = {
+export {
   runPerformanceAdvisors,
   checkSlowQueries,
   checkMissingIndexes,

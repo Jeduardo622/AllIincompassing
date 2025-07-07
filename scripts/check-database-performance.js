@@ -495,7 +495,7 @@ async function main() {
 }
 
 // Run the script
-if (require.main === module) {
+if (process.argv[1] === __filename) {
   main();
 }
 

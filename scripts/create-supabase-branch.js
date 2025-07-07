@@ -68,7 +68,7 @@ function checkBranchExists(branchName) {
 /**
  * Create a new Supabase branch
  */
-async function createBranch(branchName) {
+async function createBranch(branchName, originalBranchName = null) {
   try {
     // Check if branch already exists
     const existingBranch = checkBranchExists(branchName);
@@ -95,7 +95,7 @@ async function createBranch(branchName) {
     const branchInfo = parseBranchOutput(output);
     
     // Save branch info to cache
-    saveBranchInfo(branchName, branchInfo);
+    saveBranchInfo(branchName, branchInfo, originalBranchName);
     
     return branchInfo;
     
@@ -116,7 +116,7 @@ async function createBranch(branchName) {
       // Retry with a unique name
       const uniqueBranchName = `${branchName}-${Date.now()}`;
       logger.info(`Retrying with unique name: ${uniqueBranchName}`);
-      return await createBranch(uniqueBranchName);
+      return await createBranch(uniqueBranchName, branchName); // Pass original branch name
     }
     
     throw error;
@@ -264,7 +264,7 @@ function parseBranchOutput(output) {
 /**
  * Save branch information to cache
  */
-function saveBranchInfo(branchName, branchInfo) {
+function saveBranchInfo(branchName, branchInfo, originalBranchName = null) {
   try {
     ensureCacheDir();
     
@@ -272,6 +272,14 @@ function saveBranchInfo(branchName, branchInfo) {
     fs.writeFileSync(cacheFile, JSON.stringify(branchInfo, null, 2));
     
     logger.success(`Branch info saved to cache: ${cacheFile}`);
+    
+    // If this is a unique branch name created due to collision, 
+    // also save under the original branch name for lookup
+    if (originalBranchName && originalBranchName !== branchName) {
+      const originalCacheFile = path.join(BRANCH_CACHE_DIR, `${originalBranchName}.json`);
+      fs.writeFileSync(originalCacheFile, JSON.stringify(branchInfo, null, 2));
+      logger.success(`Branch info also saved under original name: ${originalCacheFile}`);
+    }
     
   } catch (error) {
     logger.warn(`Could not save branch info to cache: ${error.message}`);

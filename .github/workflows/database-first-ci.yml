@@ -89,7 +89,7 @@ jobs:
           echo "🔧 Generating TypeScript types..."
           # Generate types from branch database
           supabase gen types typescript \
-            --project-ref ${{ steps.create-branch.outputs.branch-id }} \
+            --project-id ${{ steps.create-branch.outputs.branch-id }} \
             --schema public > src/lib/generated/database.types.ts
           echo "✅ Types generated successfully"
 
@@ -339,7 +339,7 @@ jobs:
         run: |
           echo "🔧 Generating production TypeScript types..."
           supabase gen types typescript \
-            --project-ref ${{ env.SUPABASE_PROJECT_REF }} \
+            --project-id ${{ env.SUPABASE_PROJECT_REF }} \
             --schema public > src/lib/generated/database.types.ts
           echo "✅ Production types generated"
 

@@ -1,0 +1,467 @@
+name: Database-First CI/CD Pipeline
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: read
+  checks: read
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, closed]
+  push:
+    branches: [main]
+
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  SUPABASE_PROJECT_REF: wnnjeqheqxxyrgsjmygy
+  SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+  NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+
+jobs:
+  # ============================================================================
+  # PR Database Environment Setup
+  # ============================================================================
+  setup-pr-environment:
+    if: github.event.action != 'closed' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      branch-id: ${{ steps.create-branch.outputs.branch-id }}
+      database-url: ${{ steps.create-branch.outputs.database-url }}
+      has-migrations: ${{ steps.check-migrations.outputs.has-migrations }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cache Build Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            ~/.npm
+            .reports
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Check for migration changes
+        id: check-migrations
+        run: |
+          # Check if there are migration file changes
+          if git diff --name-only origin/main...HEAD | grep -q "supabase/migrations/"; then
+            echo "has-migrations=true" >> $GITHUB_OUTPUT
+            echo "📊 Migration changes detected"
+          else
+            echo "has-migrations=false" >> $GITHUB_OUTPUT
+            echo "📊 No migration changes detected"
+          fi
+
+      - name: Create Supabase development branch
+        id: create-branch
+        run: |
+          # Create branch name from PR number
+          BRANCH_NAME="pr-${{ github.event.number }}"
+          echo "🌿 Creating Supabase branch: $BRANCH_NAME"
+          
+          # Create branch using script that handles MCP integration
+          BRANCH_OUTPUT=$(node scripts/create-supabase-branch.js "$BRANCH_NAME")
+          
+          # Parse the output to get branch details
+          BRANCH_ID=$(echo "$BRANCH_OUTPUT" | grep "BRANCH_ID=" | cut -d'=' -f2)
+          DATABASE_URL=$(echo "$BRANCH_OUTPUT" | grep "BRANCH_URL=" | cut -d'=' -f2)
+          
+          # Fallback to individual scripts if output parsing fails
+          if [ -z "$BRANCH_ID" ] || [ -z "$DATABASE_URL" ]; then
+            echo "⚠️  Fallback to individual scripts for branch details"
+            BRANCH_ID=$(node scripts/get-branch-id.js "$BRANCH_NAME")
+            DATABASE_URL=$(node scripts/get-branch-url.js "$BRANCH_ID")
+          fi
+          
+          echo "branch-id=$BRANCH_ID" >> $GITHUB_OUTPUT
+          echo "database-url=$DATABASE_URL" >> $GITHUB_OUTPUT
+          echo "✅ Branch created successfully: $BRANCH_ID"
+
+      - name: Apply migrations to branch
+        if: steps.check-migrations.outputs.has-migrations == 'true'
+        run: |
+          echo "🔄 Applying migrations to branch database..."
+          # Apply migrations to the branch
+          supabase db push --project-ref ${{ steps.create-branch.outputs.branch-id }}
+          echo "✅ Migrations applied successfully"
+
+      - name: Generate TypeScript types
+        run: |
+          echo "🔧 Generating TypeScript types..."
+          # Set database URL to point to branch database
+          export SUPABASE_DB_URL="postgresql://postgres:${{ env.SUPABASE_DB_PASSWORD }}@db.${{ steps.create-branch.outputs.branch-id }}.supabase.co:5432/postgres"
+          
+          # Generate types from branch database using main project ref
+          supabase gen types typescript \
+            --project-ref ${{ env.SUPABASE_PROJECT_REF }} \
+            --schema public > src/lib/generated/database.types.ts
+          echo "✅ Types generated successfully"
+
+      - name: Commit generated types
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add src/lib/generated/database.types.ts
+          if git diff --staged --quiet; then
+            echo "📝 No type changes to commit"
+          else
+            git commit -m "🤖 Auto-update database types [skip ci]"
+            # Skip push during PR builds to avoid permission issues
+            if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+              git push origin HEAD
+              echo "✅ Types committed and pushed"
+            else
+              echo "📝 Types committed (skipping push for PR build)"
+            fi
+          fi
+
+  # ============================================================================
+  # Testing & Validation
+  # ============================================================================
+  test-and-validate:
+    needs: setup-pr-environment
+    if: github.event.action != 'closed' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        test-type: [unit, integration, e2e]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup test environment
+        run: |
+          # Set up environment variables for testing
+          echo "VITE_SUPABASE_URL=${{ needs.setup-pr-environment.outputs.database-url }}" >> .env.test
+          echo "VITE_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env.test
+          echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env.test
+          echo "CI=true" >> .env.test
+          echo "NODE_ENV=test" >> .env.test
+
+      - name: Run unit tests
+        if: matrix.test-type == 'unit'
+        run: |
+          echo "🧪 Running unit tests..."
+          npm run test:coverage
+          echo "✅ Unit tests completed"
+
+      - name: Run integration tests
+        if: matrix.test-type == 'integration'
+        run: |
+          echo "🔗 Running integration tests..."
+          npm run test -- --run "src/lib/__tests__/DatabaseIntegration.test.ts" "src/components/__tests__/SchedulingIntegration.test.tsx" --reporter=verbose
+          echo "✅ Integration tests completed"
+
+      - name: Run E2E tests
+        if: matrix.test-type == 'e2e'
+        run: |
+          echo "🎭 Running E2E tests..."
+          npm run test:e2e
+          echo "✅ E2E tests completed"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.test-type }}
+          path: |
+            coverage/
+            cypress/videos/
+            cypress/screenshots/
+
+  # ============================================================================
+  # Database Health & Security Checks
+  # ============================================================================
+  database-health-check:
+    needs: setup-pr-environment
+    if: github.event.action != 'closed' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+
+      - name: Run security advisors
+        run: |
+          echo "🔒 Running security analysis..."
+          node scripts/check-database-security.js ${{ needs.setup-pr-environment.outputs.branch-id }}
+          echo "✅ Security check completed"
+
+      - name: Run performance analysis
+        run: |
+          echo "⚡ Running performance analysis..."
+          node scripts/check-database-performance.js ${{ needs.setup-pr-environment.outputs.branch-id }}
+          echo "✅ Performance check completed"
+
+      - name: Generate health report
+        run: |
+          echo "📊 Generating health report..."
+          node scripts/generate-health-report.js ${{ needs.setup-pr-environment.outputs.branch-id }} > health-report.md
+          echo "✅ Health report generated"
+
+      - name: Comment health report on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const healthReport = fs.readFileSync('health-report.md', 'utf8');
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🏥 Database Health Report\n\n${healthReport}`
+            });
+
+  # ============================================================================
+  # Preview Deployment
+  # ============================================================================
+  deploy-preview:
+    needs: [setup-pr-environment, test-and-validate]
+    if: github.event.action != 'closed' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: |
+          echo "🏗️ Building application for preview..."
+          # Set environment variables for preview build
+          echo "VITE_SUPABASE_URL=${{ needs.setup-pr-environment.outputs.database-url }}" > .env.production
+          echo "VITE_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env.production
+          
+          npm run build
+          echo "✅ Build completed"
+
+      - name: Deploy to Netlify
+        run: |
+          echo "🚀 Deploying preview to Netlify..."
+          npx netlify-cli deploy \
+            --build \
+            --context branch-deploy \
+            --alias pr-${{ github.event.number }} \
+            --message "Preview deployment for PR #${{ github.event.number }}"
+          echo "✅ Preview deployed successfully"
+
+      - name: Comment deployment URL
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const deployUrl = `https://pr-${{ github.event.number }}--${{ secrets.NETLIFY_SITE_ID }}.netlify.app`;
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🚀 Preview Deployment Ready!\n\n📱 **Preview URL**: [${deployUrl}](${deployUrl})\n🗄️ **Database Branch**: \`pr-${{ github.event.number }}\`\n\n> This preview uses an isolated database environment for safe testing.`
+            });
+
+  # ============================================================================
+  # Cleanup PR Environment
+  # ============================================================================
+  cleanup-pr-environment:
+    if: github.event.action == 'closed' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cleanup Supabase branch
+        run: |
+          echo "🧹 Cleaning up Supabase branch for PR #${{ github.event.number }}..."
+          BRANCH_NAME="pr-${{ github.event.number }}"
+          node scripts/cleanup-supabase-branch.js "$BRANCH_NAME"
+          echo "✅ Supabase branch cleaned up"
+
+      - name: Cleanup Netlify deployment
+        run: |
+          echo "🧹 Cleaning up Netlify preview deployment..."
+          npx netlify-cli sites:delete --name pr-${{ github.event.number }} --force || true
+          echo "✅ Netlify deployment cleaned up"
+
+  # ============================================================================
+  # Production Deployment (main branch)
+  # ============================================================================
+  production-deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+
+      - name: Apply migrations to production
+        run: |
+          echo "🚀 Applying migrations to production..."
+          supabase db push --project-ref ${{ env.SUPABASE_PROJECT_REF }}
+          echo "✅ Production migrations applied"
+
+      - name: Generate production types
+        run: |
+          echo "🔧 Generating production TypeScript types..."
+          supabase gen types typescript \
+            --project-ref ${{ env.SUPABASE_PROJECT_REF }} \
+            --schema public > src/lib/generated/database.types.ts
+          echo "✅ Production types generated"
+
+      - name: Build production application
+        run: |
+          echo "🏗️ Building production application..."
+          npm run build
+          echo "✅ Production build completed"
+
+      - name: Deploy to production
+        run: |
+          echo "🚀 Deploying to production..."
+          npx netlify-cli deploy --prod --build
+          echo "✅ Production deployment completed"
+
+      - name: Post-deployment health check
+        run: |
+          echo "🏥 Running post-deployment health check..."
+          node scripts/production-health-check.js
+          echo "✅ Health check completed"
+
+  # ============================================================================
+  # Pipeline Monitoring & Alerting
+  # ============================================================================
+  pipeline-monitoring:
+    needs: [setup-pr-environment, test-and-validate, database-health-check, deploy-preview]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate Pipeline Summary
+        run: |
+          echo "## 📊 CI/CD Pipeline Summary" > pipeline-summary.md
+          echo "" >> pipeline-summary.md
+          echo "**PR #${{ github.event.number }}**: ${{ github.event.pull_request.title }}" >> pipeline-summary.md
+          echo "**Author**: ${{ github.event.pull_request.user.login }}" >> pipeline-summary.md
+          echo "**Branch**: ${{ github.head_ref }}" >> pipeline-summary.md
+          echo "**Commit**: ${{ github.event.pull_request.head.sha }}" >> pipeline-summary.md
+          echo "" >> pipeline-summary.md
+          echo "### 🔍 Job Status" >> pipeline-summary.md
+          echo "- **Environment Setup**: ${{ needs.setup-pr-environment.result }}" >> pipeline-summary.md
+          echo "- **Tests**: ${{ needs.test-and-validate.result }}" >> pipeline-summary.md
+          echo "- **Database Health**: ${{ needs.database-health-check.result }}" >> pipeline-summary.md
+          echo "- **Preview Deploy**: ${{ needs.deploy-preview.result }}" >> pipeline-summary.md
+          echo "" >> pipeline-summary.md
+          
+          # Add failure details if any job failed
+          if [[ "${{ needs.setup-pr-environment.result }}" == "failure" || "${{ needs.test-and-validate.result }}" == "failure" || "${{ needs.database-health-check.result }}" == "failure" || "${{ needs.deploy-preview.result }}" == "failure" ]]; then
+            echo "### ❌ Pipeline Failed" >> pipeline-summary.md
+            echo "One or more jobs failed. Please check the workflow logs for details." >> pipeline-summary.md
+          else
+            echo "### ✅ Pipeline Successful" >> pipeline-summary.md
+            echo "All jobs completed successfully!" >> pipeline-summary.md
+          fi
+
+      - name: Comment Pipeline Summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('pipeline-summary.md', 'utf8');
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+
+      - name: Send Slack Notification (on failure)
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          channel: '#ci-cd-alerts'
+          text: '❌ CI/CD Pipeline failed for PR #${{ github.event.number }}'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Send Slack Notification (on success)
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          channel: '#ci-cd-alerts'
+          text: '✅ CI/CD Pipeline succeeded for PR #${{ github.event.number }}'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

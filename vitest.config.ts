@@ -7,7 +7,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.{test,spec}.{js,jsx,ts,tsx}'],
+    include: ['src/**/*.{test,spec}.{js,jsx,ts,tsx}', 'src/**/*Integration*.test.{js,jsx,ts,tsx}'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
@@ -19,8 +19,10 @@ export default defineConfig({
         '**/index.{js,ts}',
       ],
     },
-    deps: {
-      inline: ['@supabase/supabase-js'],
+    server: {
+      deps: {
+        inline: ['@supabase/supabase-js'],
+      },
     },
     env: {
       VITEST: 'true',

@@ -32,6 +32,33 @@ const logger = {
 };
 
 /**
+ * Retry utility with exponential backoff
+ */
+async function withRetry(operation, maxRetries = 3, baseDelay = 1000) {
+  let lastError;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      
+      const delay = baseDelay * Math.pow(2, attempt - 1);
+      logger.warn(`Attempt ${attempt}/${maxRetries} failed: ${error.message}`);
+      logger.info(`Retrying in ${delay}ms...`);
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw lastError;
+}
+
+/**
  * Ensure reports directory exists
  */
 function ensureReportsDir() {
@@ -44,29 +71,29 @@ function ensureReportsDir() {
  * Run Supabase security advisors
  */
 async function runSecurityAdvisors(branchId) {
-  try {
+  return withRetry(async () => {
     logger.info(`Running security advisors for branch: ${branchId}`);
     
     const projectRef = branchId || PROJECT_REF;
-    const command = `supabase advisors get --type security --project-ref ${projectRef}`;
+    const command = `supabase advisors --type security --project-id ${projectRef} --experimental`;
     
     const output = execSync(command, {
       encoding: 'utf8',
-      stdio: 'pipe'
+      stdio: 'pipe',
+      timeout: 60000 // 60 second timeout
     });
     
     logger.success('Security advisors completed');
     return parseAdvisorOutput(output);
-    
-  } catch (error) {
-    logger.error(`Security advisors failed: ${error.message}`);
+  }, 3, 2000).catch(error => {
+    logger.error(`Security advisors failed after all retries: ${error.message}`);
     
     // Return a default structure if advisors fail
     return {
       advisors: [],
       errors: [error.message]
     };
-  }
+  });
 }
 
 /**
@@ -127,7 +154,7 @@ function parseAdvisorOutput(output) {
  * Check RLS policies
  */
 async function checkRLSPolicies(branchId) {
-  try {
+  return withRetry(async () => {
     logger.info('Checking RLS policies...');
     
     const projectRef = branchId || PROJECT_REF;
@@ -146,10 +173,11 @@ async function checkRLSPolicies(branchId) {
       AND n.nspname = 'public';
     `;
     
-    const command = `supabase db query '${tablesQuery}' --project-ref ${projectRef}`;
+    const command = `supabase db query '${tablesQuery}' --project-id ${projectRef} --experimental`;
     const output = execSync(command, {
       encoding: 'utf8',
-      stdio: 'pipe'
+      stdio: 'pipe',
+      timeout: 30000 // 30 second timeout
     });
     
     const tables = parseQueryOutput(output);
@@ -167,18 +195,17 @@ async function checkRLSPolicies(branchId) {
     
     logger.success(`RLS check completed. Found ${rlsIssues.length} issues`);
     return rlsIssues;
-    
-  } catch (error) {
-    logger.error(`RLS check failed: ${error.message}`);
+  }, 3, 1500).catch(error => {
+    logger.error(`RLS check failed after all retries: ${error.message}`);
     return [];
-  }
+  });
 }
 
 /**
  * Check for exposed functions
  */
 async function checkExposedFunctions(branchId) {
-  try {
+  return withRetry(async () => {
     logger.info('Checking for exposed functions...');
     
     const projectRef = branchId || PROJECT_REF;
@@ -195,10 +222,11 @@ async function checkExposedFunctions(branchId) {
       AND p.prokind = 'f';
     `;
     
-    const command = `supabase db query '${functionsQuery}' --project-ref ${projectRef}`;
+    const command = `supabase db query '${functionsQuery}' --project-id ${projectRef} --experimental`;
     const output = execSync(command, {
       encoding: 'utf8',
-      stdio: 'pipe'
+      stdio: 'pipe',
+      timeout: 30000 // 30 second timeout
     });
     
     const functions = parseQueryOutput(output);
@@ -216,11 +244,10 @@ async function checkExposedFunctions(branchId) {
     
     logger.success(`Function check completed. Found ${exposedFunctions.length} issues`);
     return exposedFunctions;
-    
-  } catch (error) {
-    logger.error(`Function check failed: ${error.message}`);
+  }, 3, 1500).catch(error => {
+    logger.error(`Function check failed after all retries: ${error.message}`);
     return [];
-  }
+  });
 }
 
 /**

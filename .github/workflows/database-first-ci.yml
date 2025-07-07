@@ -105,19 +105,19 @@ jobs:
         if: steps.check-migrations.outputs.has-migrations == 'true'
         run: |
           echo "🔄 Applying migrations to branch database..."
-          # Apply migrations to the branch
-          supabase db push --project-ref ${{ steps.create-branch.outputs.branch-id }}
+          # Apply migrations to the branch using database URL
+          BRANCH_DB_URL="postgresql://postgres:${{ env.SUPABASE_DB_PASSWORD }}@db.${{ steps.create-branch.outputs.branch-id }}.supabase.co:5432/postgres"
+          supabase db push --db-url "$BRANCH_DB_URL"
           echo "✅ Migrations applied successfully"
 
       - name: Generate TypeScript types
         run: |
           echo "🔧 Generating TypeScript types..."
-          # Set database URL to point to branch database
-          export SUPABASE_DB_URL="postgresql://postgres:${{ env.SUPABASE_DB_PASSWORD }}@db.${{ steps.create-branch.outputs.branch-id }}.supabase.co:5432/postgres"
+          # Generate types from branch database using database URL
+          BRANCH_DB_URL="postgresql://postgres:${{ env.SUPABASE_DB_PASSWORD }}@db.${{ steps.create-branch.outputs.branch-id }}.supabase.co:5432/postgres"
           
-          # Generate types from branch database using main project ref
           supabase gen types typescript \
-            --project-ref ${{ env.SUPABASE_PROJECT_REF }} \
+            --db-url "$BRANCH_DB_URL" \
             --schema public > src/lib/generated/database.types.ts
           echo "✅ Types generated successfully"
 
@@ -364,17 +364,23 @@ jobs:
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
 
+      - name: Link to Supabase project
+        run: |
+          echo "🔗 Linking to Supabase project..."
+          supabase link --project-ref ${{ env.SUPABASE_PROJECT_REF }}
+          echo "✅ Project linked successfully"
+
       - name: Apply migrations to production
         run: |
           echo "🚀 Applying migrations to production..."
-          supabase db push --project-ref ${{ env.SUPABASE_PROJECT_REF }}
+          supabase db push --linked
           echo "✅ Production migrations applied"
 
       - name: Generate production types
         run: |
           echo "🔧 Generating production TypeScript types..."
           supabase gen types typescript \
-            --project-ref ${{ env.SUPABASE_PROJECT_REF }} \
+            --linked \
             --schema public > src/lib/generated/database.types.ts
           echo "✅ Production types generated"
 

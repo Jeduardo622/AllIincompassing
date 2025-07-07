@@ -227,7 +227,7 @@ export const useAuth = create<AuthState>()(
           set({ profile: data });
           return { error: null };
         } catch (error) {
-          return { error: error instanceof Error ? error : new Error('Update profile failed') };
+          return { error: error instanceof Error ? error : new Error('Update failed') };
         }
       },
 

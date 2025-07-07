@@ -1,4 +1,12 @@
 name: Database-First CI/CD Pipeline
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: read
+  checks: read
+
 on:
   pull_request:
     branches: [main, develop]
@@ -75,13 +83,19 @@ jobs:
           BRANCH_NAME="pr-${{ github.event.number }}"
           echo "🌿 Creating Supabase branch: $BRANCH_NAME"
           
-          # Create branch using CLI (will need to implement cost confirmation)
-          # For now, we'll use a script that handles the MCP integration
-          node scripts/create-supabase-branch.js "$BRANCH_NAME"
+          # Create branch using script that handles MCP integration
+          BRANCH_OUTPUT=$(node scripts/create-supabase-branch.js "$BRANCH_NAME")
           
-          # Get branch details
-          BRANCH_ID=$(node scripts/get-branch-id.js "$BRANCH_NAME")
-          DATABASE_URL=$(node scripts/get-branch-url.js "$BRANCH_ID")
+          # Parse the output to get branch details
+          BRANCH_ID=$(echo "$BRANCH_OUTPUT" | grep "BRANCH_ID=" | cut -d'=' -f2)
+          DATABASE_URL=$(echo "$BRANCH_OUTPUT" | grep "BRANCH_URL=" | cut -d'=' -f2)
+          
+          # Fallback to individual scripts if output parsing fails
+          if [ -z "$BRANCH_ID" ] || [ -z "$DATABASE_URL" ]; then
+            echo "⚠️  Fallback to individual scripts for branch details"
+            BRANCH_ID=$(node scripts/get-branch-id.js "$BRANCH_NAME")
+            DATABASE_URL=$(node scripts/get-branch-url.js "$BRANCH_ID")
+          fi
           
           echo "branch-id=$BRANCH_ID" >> $GITHUB_OUTPUT
           echo "database-url=$DATABASE_URL" >> $GITHUB_OUTPUT
@@ -92,7 +106,7 @@ jobs:
         run: |
           echo "🔄 Applying migrations to branch database..."
           # Apply migrations to the branch
-          supabase db push --project-id ${{ steps.create-branch.outputs.branch-id }}
+          supabase db push --project-ref ${{ steps.create-branch.outputs.branch-id }}
           echo "✅ Migrations applied successfully"
 
       - name: Generate TypeScript types
@@ -103,7 +117,7 @@ jobs:
           
           # Generate types from branch database using main project ref
           supabase gen types typescript \
-            --project-id ${{ env.SUPABASE_PROJECT_REF }} \
+            --project-ref ${{ env.SUPABASE_PROJECT_REF }} \
             --schema public > src/lib/generated/database.types.ts
           echo "✅ Types generated successfully"
 
@@ -168,7 +182,7 @@ jobs:
         if: matrix.test-type == 'integration'
         run: |
           echo "🔗 Running integration tests..."
-          npm run test -- --run "**/DatabaseIntegration.test.ts" "**/SchedulingIntegration.test.tsx" --reporter=verbose
+          npm run test -- --run "src/lib/__tests__/DatabaseIntegration.test.ts" "src/components/__tests__/SchedulingIntegration.test.tsx" --reporter=verbose
           echo "✅ Integration tests completed"
 
       - name: Run E2E tests
@@ -353,14 +367,14 @@ jobs:
       - name: Apply migrations to production
         run: |
           echo "🚀 Applying migrations to production..."
-          supabase db push --project-id ${{ env.SUPABASE_PROJECT_REF }}
+          supabase db push --project-ref ${{ env.SUPABASE_PROJECT_REF }}
           echo "✅ Production migrations applied"
 
       - name: Generate production types
         run: |
           echo "🔧 Generating production TypeScript types..."
           supabase gen types typescript \
-            --project-id ${{ env.SUPABASE_PROJECT_REF }} \
+            --project-ref ${{ env.SUPABASE_PROJECT_REF }} \
             --schema public > src/lib/generated/database.types.ts
           echo "✅ Production types generated"
 

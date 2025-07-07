@@ -18,6 +18,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Configuration
+const PROJECT_REF = process.env.SUPABASE_PROJECT_REF || 'wnnjeqheqxxyrgsjmygy';
 const BRANCH_CACHE_DIR = path.join(__dirname, '..', '.cache', 'supabase-branches');
 
 /**

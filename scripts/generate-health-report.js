@@ -417,7 +417,7 @@ if (process.argv[1] === __filename) {
   main();
 }
 
-module.exports = {
+export {
   generateHealthReport,
   formatAsMarkdown,
   calculateHealthScores,

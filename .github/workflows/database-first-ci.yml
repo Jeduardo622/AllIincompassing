@@ -87,9 +87,12 @@ jobs:
       - name: Generate TypeScript types
         run: |
           echo "🔧 Generating TypeScript types..."
-          # Generate types from branch database
+          # Set database URL to point to branch database
+          export SUPABASE_DB_URL="postgresql://postgres:${{ env.SUPABASE_DB_PASSWORD }}@db.${{ steps.create-branch.outputs.branch-id }}.supabase.co:5432/postgres"
+          
+          # Generate types from branch database using main project ref
           supabase gen types typescript \
-            --project-id ${{ steps.create-branch.outputs.branch-id }} \
+            --project-id ${{ env.SUPABASE_PROJECT_REF }} \
             --schema public > src/lib/generated/database.types.ts
           echo "✅ Types generated successfully"
 

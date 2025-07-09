@@ -1,269 +1,268 @@
 #!/usr/bin/env node
 
 /**
- * Cleanup Supabase Branch Script
- * 
- * This script deletes a Supabase development branch and cleans up associated resources.
- * Used when PRs are closed to prevent resource accumulation.
- * 
- * Usage: node scripts/cleanup-supabase-branch.js <branch-name>
+ * Supabase Branch Cleanup Script
+ * Simple script to clean up old Supabase branches
+ * Based on real-world usage patterns
  */
 
-import { execSync } from 'child_process';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 // Configuration
-const PROJECT_REF = process.env.SUPABASE_PROJECT_REF || 'wnnjeqheqxxyrgsjmygy';
-const BRANCH_CACHE_DIR = path.join(__dirname, '..', '.cache', 'supabase-branches');
-
-/**
- * Logger utility
- */
-const logger = {
-  info: (msg) => console.log(`ℹ️  ${msg}`),
-  success: (msg) => console.log(`✅ ${msg}`),
-  error: (msg) => console.error(`❌ ${msg}`),
-  warn: (msg) => console.warn(`⚠️  ${msg}`)
+const CONFIG = {
+  MAX_AGE_DAYS: 7,
+  BATCH_SIZE: 5,
+  DRY_RUN: false,
+  PATTERN: null,
+  VERBOSE: false
 };
 
-/**
- * Get branch info from cache
- */
-function getBranchFromCache(branchName) {
-  try {
-    const cacheFile = path.join(BRANCH_CACHE_DIR, `${branchName}.json`);
+// Parse command line arguments
+function parseArgs() {
+  const args = process.argv.slice(2);
+  
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
     
-    if (fs.existsSync(cacheFile)) {
-      const branchInfo = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
-      logger.info(`Found branch in cache: ${branchInfo.id}`);
-      return branchInfo;
+    switch (arg) {
+      case '--max-age':
+        CONFIG.MAX_AGE_DAYS = parseInt(args[++i]);
+        break;
+      case '--pattern':
+        CONFIG.PATTERN = args[++i];
+        break;
+      case '--dry-run':
+        CONFIG.DRY_RUN = true;
+        break;
+      case '--verbose':
+        CONFIG.VERBOSE = true;
+        break;
+      case '--help':
+        showHelp();
+        process.exit(0);
+        break;
+      default:
+        console.error(`Unknown argument: ${arg}`);
+        showHelp();
+        process.exit(1);
     }
-    
-    return null;
-  } catch (error) {
-    logger.warn(`Could not read from cache: ${error.message}`);
-    return null;
   }
 }
 
-/**
- * Get branch info from Supabase API
- */
-function getBranchFromAPI(branchName) {
+function showHelp() {
+  console.log(`
+Supabase Branch Cleanup Script
+
+Usage: node cleanup-supabase-branch.js [options]
+
+Options:
+  --max-age <days>    Clean up branches older than N days (default: 7)
+  --pattern <regex>   Clean up branches matching pattern (e.g., "^pr-")
+  --dry-run          Preview changes without deleting
+  --verbose          Show detailed output
+  --help             Show this help message
+
+Examples:
+  node cleanup-supabase-branch.js --max-age 14
+  node cleanup-supabase-branch.js --pattern "^feature-"
+  node cleanup-supabase-branch.js --dry-run --max-age 7
+  `);
+}
+
+function log(message, level = 'info') {
+  const timestamp = new Date().toISOString();
+  const prefix = CONFIG.DRY_RUN ? '[DRY RUN] ' : '';
+  
+  if (level === 'verbose' && !CONFIG.VERBOSE) return;
+  
+  console.log(`${timestamp} ${prefix}${message}`);
+}
+
+function executeCommand(command, suppressOutput = false) {
   try {
-    logger.info(`Querying Supabase for branch: ${branchName}`);
-    
-    const output = execSync(`supabase branches list --experimental --output json --project-ref ${PROJECT_REF}`, {
+    const result = execSync(command, { 
       encoding: 'utf8',
-      stdio: 'pipe'
+      stdio: suppressOutput ? 'pipe' : 'inherit'
     });
-    
-    const branches = JSON.parse(output);
-    const branch = branches.find(b => b.name === branchName);
-    
-    if (branch) {
-      logger.success(`Found branch: ${branch.id}`);
-      return branch;
-    }
-    
-    return null;
+    return result.trim();
   } catch (error) {
-    logger.error(`Failed to query Supabase: ${error.message}`);
+    if (!suppressOutput) {
+      console.error(`Error executing command: ${command}`);
+      console.error(error.message);
+    }
     return null;
   }
 }
 
-/**
- * Delete branch from Supabase
- */
-function deleteBranch(branchInfo) {
-  try {
-    logger.info(`Deleting branch: ${branchInfo.name} (${branchInfo.id})`);
-    
-    const deleteCommand = `supabase branches delete ${branchInfo.id} --experimental --project-ref ${PROJECT_REF}`;
-    
-    logger.info(`Executing: ${deleteCommand}`);
-    const output = execSync(deleteCommand, {
-      encoding: 'utf8',
-      stdio: 'pipe'
-    });
-    
-    logger.success(`Branch deleted successfully: ${branchInfo.name}`);
-    logger.info(`Delete output: ${output}`);
-    
-    return true;
-  } catch (error) {
-    logger.error(`Failed to delete branch: ${error.message}`);
-    
-    // Log the error but don't fail - the branch might already be deleted
-    if (error.message.includes('not found') || error.message.includes('does not exist')) {
-      logger.warn(`Branch may already be deleted: ${branchInfo.name}`);
-      return true;
-    }
-    
-    return false;
-  }
-}
-
-/**
- * Clean up cache files
- */
-function cleanupCache(branchName) {
-  try {
-    const cacheFile = path.join(BRANCH_CACHE_DIR, `${branchName}.json`);
-    
-    if (fs.existsSync(cacheFile)) {
-      fs.unlinkSync(cacheFile);
-      logger.success(`Cache file deleted: ${cacheFile}`);
-    } else {
-      logger.info(`No cache file found for: ${branchName}`);
-    }
-    
-    return true;
-  } catch (error) {
-    logger.error(`Failed to cleanup cache: ${error.message}`);
-    return false;
-  }
-}
-
-/**
- * Clean up related resources
- */
-function cleanupRelatedResources(branchInfo) {
-  try {
-    logger.info(`Cleaning up related resources for: ${branchInfo.name}`);
-    
-    // Here you could add additional cleanup logic:
-    // - Remove temporary files
-    // - Clean up logging entries
-    // - Remove monitoring configurations
-    // - etc.
-    
-    logger.success(`Related resources cleaned up for: ${branchInfo.name}`);
-    return true;
-  } catch (error) {
-    logger.error(`Failed to cleanup related resources: ${error.message}`);
-    return false;
-  }
-}
-
-/**
- * Main cleanup function
- */
-async function cleanupBranch(branchName) {
-  try {
-    logger.info(`Starting cleanup for branch: ${branchName}`);
-    
-    // Get branch info
-    let branchInfo = getBranchFromCache(branchName);
-    if (!branchInfo) {
-      branchInfo = getBranchFromAPI(branchName);
-    }
-    
-    if (!branchInfo) {
-      logger.warn(`Branch not found, cleaning up cache only: ${branchName}`);
-      cleanupCache(branchName);
-      return true;
-    }
-    
-    // Delete the branch
-    const deleteSuccess = deleteBranch(branchInfo);
-    
-    // Clean up cache regardless of delete success
-    cleanupCache(branchName);
-    
-    // Clean up related resources
-    cleanupRelatedResources(branchInfo);
-    
-    if (deleteSuccess) {
-      logger.success(`Branch cleanup completed successfully: ${branchName}`);
-      return true;
-    } else {
-      logger.warn(`Branch cleanup completed with warnings: ${branchName}`);
-      return false;
-    }
-    
-  } catch (error) {
-    logger.error(`Branch cleanup failed: ${error.message}`);
-    throw error;
-  }
-}
-
-/**
- * Cleanup multiple branches by pattern
- */
-async function cleanupBranchesByPattern(pattern) {
-  try {
-    logger.info(`Cleaning up branches matching pattern: ${pattern}`);
-    
-    const output = execSync(`supabase branches list --experimental --output json --project-ref ${PROJECT_REF}`, {
-      encoding: 'utf8',
-      stdio: 'pipe'
-    });
-    
-    const branches = JSON.parse(output);
-    const matchingBranches = branches.filter(b => b.name.match(pattern));
-    
-    logger.info(`Found ${matchingBranches.length} branches matching pattern`);
-    
-    for (const branch of matchingBranches) {
-      await cleanupBranch(branch.name);
-    }
-    
-    logger.success(`Pattern cleanup completed: ${pattern}`);
-    return true;
-    
-  } catch (error) {
-    logger.error(`Pattern cleanup failed: ${error.message}`);
-    return false;
-  }
-}
-
-/**
- * Main execution
- */
-async function main() {
-  try {
-    const branchName = process.argv[2];
-    const pattern = process.argv[3];
-    
-    if (!branchName && !pattern) {
-      logger.error('Branch name or pattern is required');
-      logger.info('Usage: node scripts/cleanup-supabase-branch.js <branch-name>');
-      logger.info('       node scripts/cleanup-supabase-branch.js --pattern <regex-pattern>');
-      process.exit(1);
-    }
-    
-    if (branchName === '--pattern' && pattern) {
-      // Cleanup by pattern
-      await cleanupBranchesByPattern(pattern);
-    } else {
-      // Cleanup single branch
-      await cleanupBranch(branchName);
-    }
-    
-    logger.success('Cleanup operation completed');
-    
-  } catch (error) {
-    logger.error(`Cleanup failed: ${error.message}`);
+function checkSupabaseAuth() {
+  log('Checking Supabase authentication...', 'verbose');
+  
+  const result = executeCommand('supabase projects list', true);
+  if (!result) {
+    log('❌ Supabase authentication failed. Please run: supabase login');
     process.exit(1);
+  }
+  
+  log('✅ Supabase authentication verified');
+  return true;
+}
+
+function listSupabaseBranches() {
+  log('Fetching Supabase branches...', 'verbose');
+  
+  const result = executeCommand('supabase branches list --format json', true);
+  if (!result) {
+    log('❌ Failed to fetch branches');
+    return [];
+  }
+  
+  try {
+    const branches = JSON.parse(result);
+    log(`Found ${branches.length} branches`, 'verbose');
+    return branches;
+  } catch (error) {
+    log('❌ Failed to parse branches JSON');
+    return [];
+  }
+}
+
+function getBranchAge(branch) {
+  const createdAt = new Date(branch.created_at);
+  const now = new Date();
+  const ageInDays = (now - createdAt) / (1000 * 60 * 60 * 24);
+  return ageInDays;
+}
+
+function shouldCleanupBranch(branch) {
+  // Don't delete main/production branches
+  if (branch.name === 'main' || branch.name === 'production') {
+    return false;
+  }
+  
+  // Check pattern if provided
+  if (CONFIG.PATTERN) {
+    const regex = new RegExp(CONFIG.PATTERN);
+    return regex.test(branch.name);
+  }
+  
+  // Check age
+  const age = getBranchAge(branch);
+  return age > CONFIG.MAX_AGE_DAYS;
+}
+
+function cleanupBranch(branch) {
+  const age = getBranchAge(branch).toFixed(1);
+  
+  if (CONFIG.DRY_RUN) {
+    log(`Would delete branch: ${branch.name} (${age} days old)`);
+    return true;
+  }
+  
+  log(`Deleting branch: ${branch.name} (${age} days old)`);
+  
+  const result = executeCommand(`supabase branches delete ${branch.id} --confirm`, true);
+  if (result !== null) {
+    log(`✅ Successfully deleted branch: ${branch.name}`);
+    return true;
+  } else {
+    log(`❌ Failed to delete branch: ${branch.name}`);
+    return false;
+  }
+}
+
+async function main() {
+  console.log('🧹 Supabase Branch Cleanup Tool\n');
+  
+  parseArgs();
+  
+  // Validate configuration
+  if (CONFIG.MAX_AGE_DAYS < 1) {
+    console.error('❌ Max age must be at least 1 day');
+    process.exit(1);
+  }
+  
+  log(`Configuration:
+    Max Age: ${CONFIG.MAX_AGE_DAYS} days
+    Pattern: ${CONFIG.PATTERN || 'None'}
+    Dry Run: ${CONFIG.DRY_RUN}
+    Batch Size: ${CONFIG.BATCH_SIZE}
+  `);
+  
+  // Check authentication
+  if (!checkSupabaseAuth()) {
+    process.exit(1);
+  }
+  
+  // List branches
+  const branches = listSupabaseBranches();
+  if (branches.length === 0) {
+    log('ℹ️  No branches found');
+    return;
+  }
+  
+  // Filter branches for cleanup
+  const branchesToCleanup = branches.filter(shouldCleanupBranch);
+  
+  if (branchesToCleanup.length === 0) {
+    log('ℹ️  No branches match cleanup criteria');
+    return;
+  }
+  
+  log(`Found ${branchesToCleanup.length} branches for cleanup:`);
+  branchesToCleanup.forEach(branch => {
+    const age = getBranchAge(branch).toFixed(1);
+    log(`  - ${branch.name} (${age} days old)`, 'verbose');
+  });
+  
+  // Cleanup branches in batches
+  let successful = 0;
+  let failed = 0;
+  
+  for (let i = 0; i < branchesToCleanup.length; i += CONFIG.BATCH_SIZE) {
+    const batch = branchesToCleanup.slice(i, i + CONFIG.BATCH_SIZE);
+    
+    log(`\nProcessing batch ${Math.floor(i / CONFIG.BATCH_SIZE) + 1}/${Math.ceil(branchesToCleanup.length / CONFIG.BATCH_SIZE)}`);
+    
+    for (const branch of batch) {
+      if (cleanupBranch(branch)) {
+        successful++;
+      } else {
+        failed++;
+      }
+    }
+    
+    // Small delay between batches
+    if (i + CONFIG.BATCH_SIZE < branchesToCleanup.length) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  
+  // Summary
+  log(`\n🎉 Cleanup complete!
+    Total branches: ${branches.length}
+    Cleaned up: ${successful}
+    Failed: ${failed}
+    Skipped: ${branches.length - branchesToCleanup.length}
+  `);
+  
+  if (CONFIG.DRY_RUN) {
+    log('\n💡 This was a dry run. Run without --dry-run to actually delete branches.');
   }
 }
 
 // Run the script
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+if (require.main === module) {
+  main().catch(error => {
+    console.error('❌ Script failed:', error.message);
+    process.exit(1);
+  });
 }
 
-export {
+module.exports = {
   cleanupBranch,
-  cleanupBranchesByPattern,
-  deleteBranch,
-  cleanupCache,
-  cleanupRelatedResources
-}; 
+  listSupabaseBranches,
+  getBranchAge,
+  CONFIG
+};

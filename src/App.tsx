@@ -2,10 +2,11 @@ import React, { useEffect, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
-import { useAuth } from './lib/auth';
+import { AuthProvider } from './lib/authContext';
 import { useTheme } from './lib/theme';
 import ErrorBoundary from './components/ErrorBoundary';
 import PrivateRoute from './components/PrivateRoute';
+import RoleGuard from './components/RoleGuard';
 
 // Lazy load components
 const Login = React.lazy(() => import('./pages/Login'));
@@ -58,24 +59,7 @@ const queryClient = new QueryClient({
 });
 
 function App() {
-  const { initialized, initialize } = useAuth();
   const { isDark } = useTheme();
-
-  // Initialize auth once on component mount
-  useEffect(() => {
-    // Use empty dependency array to run only once on mount
-    const initAuth = async () => {
-      try {
-        if (!initialized) {
-          await initialize();
-        }
-      } catch (error) {
-        console.error("Auth initialization error:", error);
-      }
-    };
-    
-    initAuth();
-  }, []);
 
   useEffect(() => {
     // Update dark mode class on document
@@ -89,115 +73,117 @@ function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <div className="min-h-screen bg-gray-50 dark:bg-dark text-gray-900 dark:text-gray-100 transition-colors">
-          <Router>
-            <Suspense fallback={<LoadingSpinner />}>
-            <Routes>
-              {/* Public Routes */}
-              <Route path="/login" element={<Login />} />
-              <Route path="/signup" element={<Signup />} />
-              <Route path="/unauthorized" element={<Unauthorized />} />
+        <AuthProvider>
+          <div className="min-h-screen bg-gray-50 dark:bg-dark text-gray-900 dark:text-gray-100 transition-colors">
+            <Router>
+              <Suspense fallback={<LoadingSpinner />}>
+                <Routes>
+                  {/* Public Routes */}
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/signup" element={<Signup />} />
+                  <Route path="/unauthorized" element={<Unauthorized />} />
 
-              {/* Protected Routes */}
-              <Route path="/" element={
-                <PrivateRoute>
-                  <Layout />
-                </PrivateRoute>
-              }>
-                {/* Dashboard - accessible to all authenticated users */}
-                <Route index element={<Dashboard />} />
+                  {/* Protected Routes */}
+                  <Route path="/" element={
+                    <PrivateRoute>
+                      <Layout />
+                    </PrivateRoute>
+                  }>
+                    {/* Dashboard - accessible to all authenticated users */}
+                    <Route index element={<Dashboard />} />
 
-                {/* Schedule - accessible to all authenticated users */}
-                <Route path="schedule" element={<Schedule />} />
+                    {/* Schedule - accessible to all authenticated users */}
+                    <Route path="schedule" element={<Schedule />} />
 
-                {/* Clients - accessible to users with view_clients permission */}
-                <Route path="clients" element={
-                  <PrivateRoute requiredPermission="view_clients">
-                    <Clients />
-                  </PrivateRoute>
-                } />
-                
-                {/* Client Details - accessible to users with view_clients permission */}
-                <Route path="clients/:clientId" element={
-                  <PrivateRoute requiredPermission="view_clients">
-                    <ClientDetails />
-                  </PrivateRoute>
-                } />
+                    {/* Clients - accessible to therapists and above */}
+                    <Route path="clients" element={
+                      <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                        <Clients />
+                      </RoleGuard>
+                    } />
+                    
+                    {/* Client Details - accessible to therapists and above */}
+                    <Route path="clients/:clientId" element={
+                      <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                        <ClientDetails />
+                      </RoleGuard>
+                    } />
 
-                {/* Client Onboarding - accessible to therapists and admins */}
-                <Route path="clients/new" element={
-                  <PrivateRoute requiredRoles={['therapist', 'admin']}>
-                    <ClientOnboardingPage />
-                  </PrivateRoute>
-                } />
+                    {/* Client Onboarding - accessible to therapists and above */}
+                    <Route path="clients/new" element={
+                      <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                        <ClientOnboardingPage />
+                      </RoleGuard>
+                    } />
 
-                {/* Therapists - admin only */}
-                <Route path="therapists" element={
-                  <PrivateRoute requiredRole="admin">
-                    <Therapists />
-                  </PrivateRoute>
-                } />
+                    {/* Therapists - admin and super_admin only */}
+                    <Route path="therapists" element={
+                      <RoleGuard roles={['admin', 'super_admin']}>
+                        <Therapists />
+                      </RoleGuard>
+                    } />
 
-                {/* Therapist Details - accessible to admins and the therapist themselves */}
-                <Route path="therapists/:therapistId" element={
-                  <PrivateRoute>
-                    <TherapistDetails />
-                  </PrivateRoute>
-                } />
+                    {/* Therapist Details - accessible to admins and the therapist themselves */}
+                    <Route path="therapists/:therapistId" element={
+                      <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                        <TherapistDetails />
+                      </RoleGuard>
+                    } />
 
-                {/* Therapist Onboarding - admin only */}
-                <Route path="therapists/new" element={
-                  <PrivateRoute>
-                    <TherapistOnboardingPage />
-                  </PrivateRoute>
-                } />
+                    {/* Therapist Onboarding - admin and super_admin only */}
+                    <Route path="therapists/new" element={
+                      <RoleGuard roles={['admin', 'super_admin']}>
+                        <TherapistOnboardingPage />
+                      </RoleGuard>
+                    } />
 
-                {/* Documentation - accessible to all authenticated users */}
-                <Route path="documentation" element={<Documentation />} />
+                    {/* Documentation - accessible to all authenticated users */}
+                    <Route path="documentation" element={<Documentation />} />
 
-                {/* Authorizations - accessible to admins and therapists */}
-                <Route path="authorizations" element={
-                  <PrivateRoute>
-                    <Authorizations />
-                  </PrivateRoute>
-                } />
+                    {/* Authorizations - accessible to therapists and above */}
+                    <Route path="authorizations" element={
+                      <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                        <Authorizations />
+                      </RoleGuard>
+                    } />
 
-                {/* Billing - admin only */}
-                <Route path="billing" element={
-                  <PrivateRoute>
-                    <Billing />
-                  </PrivateRoute>
-                } />
+                    {/* Billing - admin and super_admin only */}
+                    <Route path="billing" element={
+                      <RoleGuard roles={['admin', 'super_admin']}>
+                        <Billing />
+                      </RoleGuard>
+                    } />
 
-                {/* Monitoring Dashboard - admin only */}
-                <Route path="monitoring" element={
-                  <PrivateRoute>
-                    <MonitoringDashboard />
-                  </PrivateRoute>
-                } />
-                
-                {/* Reports - admin only */}
-                <Route path="reports" element={
-                  <PrivateRoute>
-                    <Reports />
-                  </PrivateRoute>
-                } />
+                    {/* Monitoring Dashboard - admin and super_admin only */}
+                    <Route path="monitoring" element={
+                      <RoleGuard roles={['admin', 'super_admin']}>
+                        <MonitoringDashboard />
+                      </RoleGuard>
+                    } />
+                    
+                    {/* Reports - admin and super_admin only */}
+                    <Route path="reports" element={
+                      <RoleGuard roles={['admin', 'super_admin']}>
+                        <Reports />
+                      </RoleGuard>
+                    } />
 
-                {/* Settings - admin only */}
-                <Route path="settings" element={
-                  <PrivateRoute>
-                    <Settings />
-                  </PrivateRoute>
-                } />
+                    {/* Settings - admin and super_admin only */}
+                    <Route path="settings" element={
+                      <RoleGuard roles={['admin', 'super_admin']}>
+                        <Settings />
+                      </RoleGuard>
+                    } />
 
-                {/* Catch all - redirect to dashboard */}
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Route>
-            </Routes>
-            </Suspense>
-          </Router>
-        </div>
-        <Toaster />
+                    {/* Catch all - redirect to dashboard */}
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Route>
+                </Routes>
+              </Suspense>
+            </Router>
+          </div>
+          <Toaster />
+        </AuthProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

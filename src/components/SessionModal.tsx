@@ -3,11 +3,15 @@ import { useForm } from 'react-hook-form';
 import { format, addHours, addMinutes, parseISO } from 'date-fns';
 import { 
   X, AlertCircle, Calendar, Clock, User, 
-  FileText, CheckCircle2, AlertTriangle 
+  FileText, CheckCircle2, AlertTriangle, Info
 } from 'lucide-react';
 import type { Session, Therapist, Client } from '../types';
 import { checkSchedulingConflicts, suggestAlternativeTimes, type Conflict, type AlternativeTime } from '../lib/conflicts';
+import { cn, typography, patterns } from '../lib/design-system';
 import AlternativeTimes from './AlternativeTimes';
+import Modal, { ModalBody, ModalFooter } from './ui/Modal';
+import Button from './ui/Button';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 
 interface SessionModalProps {
   isOpen: boolean;
@@ -35,6 +39,7 @@ export default function SessionModal({
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [alternativeTimes, setAlternativeTimes] = useState<AlternativeTime[]>([]);
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   
   // Calculate default end time (15-minute intervals)
   const getDefaultEndTime = (startTimeStr: string) => {
@@ -186,246 +191,330 @@ export default function SessionModal({
     setValue('end_time', newEndTime);
   };
 
-  if (!isOpen) return null;
+  const resetForm = () => {
+    const defaultValues = {
+      therapist_id: session?.therapist_id || '',
+      client_id: session?.client_id || '',
+      start_time: getDefaultStartTime(),
+      end_time: session?.end_time || (selectedDate && selectedTime ? 
+        getDefaultEndTime(`${format(selectedDate, 'yyyy-MM-dd')}T${selectedTime}`) : ''),
+      notes: session?.notes || '',
+      status: session?.status || 'scheduled',
+    };
+    
+    Object.entries(defaultValues).forEach(([key, value]) => {
+      setValue(key as keyof typeof defaultValues, value);
+    });
+  };
+
+  const statusOptions = [
+    { value: 'scheduled', label: 'Scheduled', color: 'text-primary-600' },
+    { value: 'completed', label: 'Completed', color: 'text-success-600' },
+    { value: 'cancelled', label: 'Cancelled', color: 'text-error-600' },
+    { value: 'no-show', label: 'No Show', color: 'text-warning-600' },
+  ];
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-            <Calendar className="w-6 h-6 mr-2 text-blue-600" />
-            {session ? 'Edit Session' : 'New Session'}
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={session ? 'Edit Session' : 'New Session'}
+      size="xl"
+      className="max-w-2xl"
+    >
+      <ModalBody className="space-y-6">
+        {/* Quick Info Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
+              <Calendar className="h-4 w-4 mr-2" />
+              {selectedDate ? format(selectedDate, 'EEEE, MMMM d, yyyy') : 'Select date'}
+            </div>
+            {selectedTime && (
+              <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
+                <Clock className="h-4 w-4 mr-2" />
+                {selectedTime}
+              </div>
+            )}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowDetails(!showDetails)}
           >
-            <X className="w-5 h-5" />
-          </button>
+            {showDetails ? 'Hide' : 'Show'} Details
+          </Button>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
-          <form id="session-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
-            {conflicts.length > 0 && (
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 rounded-lg p-4">
-                <div className="flex items-center mb-2">
-                  <AlertTriangle className="w-5 h-5 text-amber-500 dark:text-amber-400 mr-2 flex-shrink-0" />
-                  <h3 className="font-medium text-amber-800 dark:text-amber-200">
+        {/* Conflicts Alert */}
+        {conflicts.length > 0 && (
+          <Card variant="bordered" className="border-warning-200 bg-warning-50 dark:bg-warning-900/20">
+            <CardContent className="p-4">
+              <div className="flex items-start">
+                <AlertTriangle className="h-5 w-5 text-warning-600 mr-3 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <h4 className="font-medium text-warning-800 dark:text-warning-200 mb-2">
                     Scheduling Conflicts
-                  </h3>
+                  </h4>
+                  <ul className="space-y-1 text-sm text-warning-700 dark:text-warning-300">
+                    {conflicts.map((conflict, index) => (
+                      <li key={index} className="flex items-start">
+                        <span className="w-2 h-2 bg-warning-400 rounded-full mr-2 mt-1.5 flex-shrink-0" />
+                        {conflict.message}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <ul className="space-y-2 text-sm text-amber-700 dark:text-amber-300">
-                  {conflicts.map((conflict, index) => (
-                    <li key={index} className="flex items-start">
-                      <AlertCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                      <span>{conflict.message}</span>
-                    </li>
-                  ))}
-                </ul>
               </div>
-            )}
+            </CardContent>
+          </Card>
+        )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label
-                  htmlFor="therapist-select"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                >
-                  Therapist
-                </label>
-                <select
-                  id="therapist-select"
-                  {...register('therapist_id', { required: 'Therapist is required' })}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
-                >
-                  <option value="">Select a therapist</option>
-                  {therapists.map(therapist => (
-                    <option key={therapist.id} value={therapist.id}>
-                      {therapist.full_name}
-                    </option>
-                  ))}
-                </select>
-                {errors.therapist_id && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.therapist_id.message}</p>
+        <form id="session-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+          {/* Participant Selection */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className={patterns['form-group']}>
+              <label htmlFor="therapist-select" className={patterns['form-label']}>
+                Therapist *
+              </label>
+              <select
+                id="therapist-select"
+                {...register('therapist_id', { required: 'Please select a therapist' })}
+                className={cn(
+                  patterns['form-input'],
+                  'dark:bg-dark dark:border-gray-600 dark:text-gray-200',
+                  errors.therapist_id && 'border-error-300 focus:border-error-500 focus:ring-error-500'
                 )}
-              </div>
-
-              <div>
-                <label
-                  htmlFor="client-select"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                >
-                  Client
-                </label>
-                <select
-                  id="client-select"
-                  {...register('client_id', { required: 'Client is required' })}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
-                >
-                  <option value="">Select a client</option>
-                  {clients.map(client => (
-                    <option key={client.id} value={client.id}>
-                      {client.full_name}
-                    </option>
-                  ))}
-                </select>
-                {errors.client_id && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.client_id.message}</p>
-                )}
-              </div>
-            </div>
-
-            {selectedTherapist && selectedClient && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <div>
-                  <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
-                    <User className="w-4 h-4 mr-2 text-blue-500" />
-                    <span>{selectedTherapist.full_name}</span>
-                  </div>
-                  <div className="mt-1 text-xs text-gray-500">
-                    {selectedTherapist.service_type.join(', ')}
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
-                    <User className="w-4 h-4 mr-2 text-green-500" />
-                    <span>{selectedClient.full_name}</span>
-                  </div>
-                  <div className="mt-1 text-xs text-gray-500">
-                    {selectedClient.service_preference.join(', ')}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label
-                  htmlFor="start-time-input"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                >
-                  Start Time
-                </label>
-                <div className="relative">
-                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="datetime-local"
-                    id="start-time-input"
-                    {...register('start_time', { required: 'Start time is required' })}
-                    className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
-                    onChange={(e) => handleTimeChange(e, 'start_time')}
-                    step="900" // 15 minutes in seconds
-                  />
-                </div>
-                {errors.start_time && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.start_time.message}</p>
-                )}
-              </div>
-
-              <div>
-                <label
-                  htmlFor="end-time-input"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                >
-                  End Time
-                </label>
-                <div className="relative">
-                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="datetime-local"
-                    id="end-time-input"
-                    {...register('end_time', { required: 'End time is required' })}
-                    className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
-                    onChange={(e) => handleTimeChange(e, 'end_time')}
-                    step="900" // 15 minutes in seconds
-                  />
-                </div>
-                {errors.end_time && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.end_time.message}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Alternative Times Section */}
-            {conflicts.length > 0 && (
-              <AlternativeTimes 
-                alternatives={alternativeTimes}
-                isLoading={isLoadingAlternatives}
-                onSelectTime={handleSelectAlternativeTime}
-              />
-            )}
-
-            <div>
-              <label
-                htmlFor="status-select"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
               >
+                <option value="">Select a therapist</option>
+                {therapists.map(therapist => (
+                  <option key={therapist.id} value={therapist.id}>
+                    {therapist.full_name}
+                  </option>
+                ))}
+              </select>
+              {errors.therapist_id && (
+                <p className={patterns['form-error']}>{errors.therapist_id.message}</p>
+              )}
+            </div>
+
+            <div className={patterns['form-group']}>
+              <label htmlFor="client-select" className={patterns['form-label']}>
+                Client *
+              </label>
+              <select
+                id="client-select"
+                {...register('client_id', { required: 'Please select a client' })}
+                className={cn(
+                  patterns['form-input'],
+                  'dark:bg-dark dark:border-gray-600 dark:text-gray-200',
+                  errors.client_id && 'border-error-300 focus:border-error-500 focus:ring-error-500'
+                )}
+              >
+                <option value="">Select a client</option>
+                {clients.map(client => (
+                  <option key={client.id} value={client.id}>
+                    {client.full_name}
+                  </option>
+                ))}
+              </select>
+              {errors.client_id && (
+                <p className={patterns['form-error']}>{errors.client_id.message}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Selected Participants Info */}
+          {selectedTherapist && selectedClient && (
+            <Card variant="soft" className="bg-gray-50 dark:bg-gray-800/50">
+              <CardContent className="p-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center">
+                      <User className="h-5 w-5 text-primary-600 dark:text-primary-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white">
+                        {selectedTherapist.full_name}
+                      </p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {selectedTherapist.service_type.join(', ')}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-success-100 dark:bg-success-900 rounded-full flex items-center justify-center">
+                      <User className="h-5 w-5 text-success-600 dark:text-success-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white">
+                        {selectedClient.full_name}
+                      </p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {selectedClient.service_preference.join(', ')}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Time Selection */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className={patterns['form-group']}>
+              <label htmlFor="start-time-input" className={patterns['form-label']}>
+                Start Time *
+              </label>
+              <div className="relative">
+                <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="datetime-local"
+                  id="start-time-input"
+                  {...register('start_time', { required: 'Please select a start time' })}
+                  className={cn(
+                    patterns['form-input'],
+                    'pl-10 dark:bg-dark dark:border-gray-600 dark:text-gray-200',
+                    errors.start_time && 'border-error-300 focus:border-error-500 focus:ring-error-500'
+                  )}
+                  onChange={(e) => handleTimeChange(e, 'start_time')}
+                  step="900" // 15 minutes in seconds
+                />
+              </div>
+              {errors.start_time && (
+                <p className={patterns['form-error']}>{errors.start_time.message}</p>
+              )}
+            </div>
+
+            <div className={patterns['form-group']}>
+              <label htmlFor="end-time-input" className={patterns['form-label']}>
+                End Time *
+              </label>
+              <div className="relative">
+                <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="datetime-local"
+                  id="end-time-input"
+                  {...register('end_time', { required: 'Please select an end time' })}
+                  className={cn(
+                    patterns['form-input'],
+                    'pl-10 dark:bg-dark dark:border-gray-600 dark:text-gray-200',
+                    errors.end_time && 'border-error-300 focus:border-error-500 focus:ring-error-500'
+                  )}
+                  onChange={(e) => handleTimeChange(e, 'end_time')}
+                  step="900" // 15 minutes in seconds
+                />
+              </div>
+              {errors.end_time && (
+                <p className={patterns['form-error']}>{errors.end_time.message}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Alternative Times */}
+          {conflicts.length > 0 && (
+            <AlternativeTimes 
+              alternatives={alternativeTimes}
+              isLoading={isLoadingAlternatives}
+              onSelectTime={handleSelectAlternativeTime}
+            />
+          )}
+
+          {/* Status and Notes */}
+          <div className="space-y-4">
+            <div className={patterns['form-group']}>
+              <label htmlFor="status-select" className={patterns['form-label']}>
                 Status
               </label>
               <select
                 id="status-select"
                 {...register('status')}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                className={cn(
+                  patterns['form-input'],
+                  'dark:bg-dark dark:border-gray-600 dark:text-gray-200'
+                )}
               >
-                <option value="scheduled">Scheduled</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-                <option value="no-show">No Show</option>
+                {statusOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
 
-            <div>
-              <label
-                htmlFor="notes-input"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                <FileText className="w-4 h-4 inline mr-2" />
-                Notes
+            <div className={patterns['form-group']}>
+              <label htmlFor="notes-input" className={patterns['form-label']}>
+                Session Notes
               </label>
               <textarea
                 id="notes-input"
                 {...register('notes')}
                 rows={3}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                className={cn(
+                  patterns['form-input'],
+                  'dark:bg-dark dark:border-gray-600 dark:text-gray-200',
+                  'resize-vertical'
+                )}
                 placeholder="Add any session notes here..."
               />
+              <p className={patterns['form-help']}>
+                Optional notes about the session, preparation, or follow-up
+              </p>
             </div>
-          </form>
-        </div>
-
-        {/* Footer */}
-        <div className="border-t dark:border-gray-700 p-4">
-          <div className="flex flex-col-reverse sm:flex-row justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-dark border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              form="session-form"
-              disabled={isSubmitting}
-              className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-4 h-4 mr-2" />
-                  {session ? 'Update Session' : 'Create Session'}
-                </>
-              )}
-            </button>
           </div>
-        </div>
-      </div>
-    </div>
+
+          {/* Additional Details */}
+          {showDetails && (
+            <Card variant="bordered">
+              <CardHeader>
+                <CardTitle as="h4">Additional Details</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-center text-gray-600 dark:text-gray-400">
+                    <Info className="h-4 w-4 mr-2" />
+                    Sessions are scheduled in 15-minute intervals
+                  </div>
+                  <div className="flex items-center text-gray-600 dark:text-gray-400">
+                    <Info className="h-4 w-4 mr-2" />
+                    Conflicts are automatically checked against therapist and client availability
+                  </div>
+                  <div className="flex items-center text-gray-600 dark:text-gray-400">
+                    <Info className="h-4 w-4 mr-2" />
+                    All times are displayed in your local timezone
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </form>
+      </ModalBody>
+
+      <ModalFooter>
+        <Button
+          variant="outline"
+          onClick={onClose}
+          disabled={isSubmitting}
+        >
+          Cancel
+        </Button>
+        <Button
+          variant="outline"
+          onClick={resetForm}
+          disabled={isSubmitting}
+        >
+          Reset
+        </Button>
+        <Button
+          type="submit"
+          form="session-form"
+          isLoading={isSubmitting}
+          loadingText="Saving..."
+          leftIcon={<CheckCircle2 className="h-4 w-4" />}
+        >
+          {session ? 'Update Session' : 'Create Session'}
+        </Button>
+      </ModalFooter>
+    </Modal>
   );
 }

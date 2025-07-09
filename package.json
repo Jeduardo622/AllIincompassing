@@ -33,6 +33,7 @@
     "@supabase/supabase-js": "^2.50.0",
     "@tanstack/react-query": "^5.24.1",
     "chart.js": "^4.4.1",
+    "clsx": "^2.1.1",
     "date-fns": "^3.3.1",
     "dotenv": "^16.5.0",
     "geolib": "^3.3.4",
@@ -45,6 +46,7 @@
     "react-hook-form": "^7.50.1",
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^6.22.1",
+    "tailwind-merge": "^3.3.1",
     "zod": "^3.25.74",
     "zustand": "^4.5.1"
   },

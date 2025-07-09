@@ -9,6 +9,7 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "test": "vitest",
+    "test:auth": "vitest run --reporter=verbose --config vitest.config.ts src/lib/__tests__/auth.test.ts",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "cypress run",
@@ -21,7 +22,8 @@
     "db:check:performance": "node scripts/check-database-performance.js",
     "db:health:report": "node scripts/generate-health-report.js",
     "db:health:production": "node scripts/production-health-check.js",
-    "pipeline:health": "npm run db:check:security && npm run db:check:performance && npm run db:health:report"
+    "pipeline:health": "npm run db:check:security && npm run db:check:performance && npm run db:health:report",
+    "verify-auth": "node scripts/verify-auth-system.js"
   },
   "dependencies": {
     "@headlessui/react": "^1.7.18",

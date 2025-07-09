@@ -7,6 +7,7 @@ import type { User } from '@supabase/supabase-js'
 export interface UserProfile {
   id: string
   email: string
+  role: 'client' | 'therapist' | 'admin' | 'super_admin'
   first_name?: string
   last_name?: string
   full_name?: string
@@ -20,19 +21,9 @@ export interface UserProfile {
   updated_at: string
 }
 
-export interface UserRole {
-  id: string
-  name: string
-  description?: string
-  permissions: string[]
-  is_system_role: boolean
-}
-
 export interface AuthState {
   user: User | null
   profile: UserProfile | null
-  roles: string[]
-  permissions: string[]
   loading: boolean
   initialized: boolean
   initializing: boolean
@@ -41,9 +32,10 @@ export interface AuthState {
   signUp: (email: string, password: string, metadata?: Record<string, unknown>) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
   updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: Error | null }>
-  hasRole: (role: string) => boolean
-  hasAnyRole: (roles: string[]) => boolean
-  hasPermission: (permission: string) => boolean
+  hasRole: (role: 'client' | 'therapist' | 'admin' | 'super_admin') => boolean
+  hasAnyRole: (roles: ('client' | 'therapist' | 'admin' | 'super_admin')[]) => boolean
+  isAdmin: () => boolean
+  isSuperAdmin: () => boolean
   refreshUserData: () => Promise<void>
   initialize: () => Promise<void>
   enableDemoMode: () => void
@@ -85,15 +77,14 @@ export const useAuth = create<AuthState>()(
           profile: {
             id: 'demo-user',
             email: 'demo@example.com',
+            role: 'admin',
             first_name: 'Demo',
             last_name: 'User',
             full_name: 'Demo User',
             is_active: true,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
-          },
-          roles: ['admin', 'therapist'],
-          permissions: ['*']
+          }
         });
       },
 
@@ -175,27 +166,23 @@ export const useAuth = create<AuthState>()(
         set({ loading: true });
         
         if (get().demoMode) {
-          set({
-            user: null,
-            profile: null,
-            roles: [],
-            permissions: [],
-            loading: false,
-            demoMode: true,
-            initialized: true
-          });
+                  set({
+          user: null,
+          profile: null,
+          loading: false,
+          demoMode: true,
+          initialized: true
+        });
           return;
         }
 
         try {
           await supabase.auth.signOut();
-          set({
-            user: null,
-            profile: null,
-            roles: [],
-            permissions: [],
-            loading: false,
-          });
+                  set({
+          user: null,
+          profile: null,
+          loading: false,
+        });
         } catch (error) {
           console.error('Sign out error:', error);
           set({ loading: false });
@@ -216,7 +203,7 @@ export const useAuth = create<AuthState>()(
 
         try {
           const { data, error } = await supabase
-            .from('user_profiles')
+            .from('profiles')
             .update(updates)
             .eq('id', user.id)
             .select()
@@ -231,19 +218,44 @@ export const useAuth = create<AuthState>()(
         }
       },
 
-      hasRole: (role: string) => {
-        const { roles } = get();
-        return roles.includes(role);
+      hasRole: (role: 'client' | 'therapist' | 'admin' | 'super_admin') => {
+        const { profile } = get();
+        if (!profile) return false;
+        
+        // Role hierarchy: super_admin > admin > therapist > client
+        const roleHierarchy: Record<string, number> = {
+          'super_admin': 4,
+          'admin': 3,
+          'therapist': 2,
+          'client': 1,
+        };
+        
+        return roleHierarchy[profile.role] >= roleHierarchy[role];
       },
 
-      hasAnyRole: (roles: string[]) => {
-        const { roles: userRoles } = get();
-        return roles.some(role => userRoles.includes(role));
+      hasAnyRole: (roles: ('client' | 'therapist' | 'admin' | 'super_admin')[]) => {
+        const { profile } = get();
+        if (!profile) return false;
+        
+        const roleHierarchy: Record<string, number> = {
+          'super_admin': 4,
+          'admin': 3,
+          'therapist': 2,
+          'client': 1,
+        };
+        
+        const userLevel = roleHierarchy[profile.role];
+        return roles.some(role => userLevel >= roleHierarchy[role]);
       },
 
-      hasPermission: (permission: string) => {
-        const { permissions } = get();
-        return permissions.includes('*') || permissions.includes(permission);
+      isAdmin: () => {
+        const { profile } = get();
+        return profile?.role === 'admin' || profile?.role === 'super_admin';
+      },
+
+      isSuperAdmin: () => {
+        const { profile } = get();
+        return profile?.role === 'super_admin';
       },
 
       refreshUserData: async () => {
@@ -265,81 +277,34 @@ export const useAuth = create<AuthState>()(
             return;
           }
 
-          // Get user profile
-          const { data: profile, error: profileError } = await supabase
-            .from('user_profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single();
+                  // Get user profile with role
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
 
-          if (profileError) {
-            console.error('Profile fetch error:', profileError);
-            // If profile doesn't exist, create it
-            if (profileError.code === 'PGRST116') {
-              const { data: newProfile, error: createError } = await supabase
-                .from('user_profiles')
-                .insert({
-                  id: user.id,
-                  email: user.email,
-                  first_name: user.user_metadata?.first_name || '',
-                  last_name: user.user_metadata?.last_name || '',
-                  is_active: true,
-                })
-                .select()
-                .single();
-
-              if (createError) {
-                console.error('Profile creation error:', createError);
-                return;
-              }
-              
-              // Use the newly created profile
-              set({
-                user,
-                profile: newProfile,
-                roles: [],
-                permissions: [],
-              });
-            }
-            return;
-          }
-
-          // Get user roles and permissions using the new comprehensive function
-          const { data: userRolesData, error: rolesError } = await supabase
-            .rpc('get_user_roles_comprehensive', { user_uuid: user.id });
-
-          if (rolesError) {
-            console.error('Roles fetch error:', rolesError);
-            // Continue with just the profile, no roles
-            set({
-              user,
-              profile,
-              roles: [],
-              permissions: [],
-            });
-            return;
-          }
-
-          // Extract role names and permissions
-          const roles = userRolesData?.map((ur: { role_name: string; permissions: string[] }) => ur.role_name) || [];
-          const allPermissions = userRolesData?.flatMap((ur: { role_name: string; permissions: string[] }) => ur.permissions) || [];
-          const uniquePermissions = [...new Set(allPermissions)] as string[];
-
+        if (profileError) {
+          console.error('Profile fetch error:', profileError);
+          // Profile should be created by trigger, but if it doesn't exist, something is wrong
           set({
-            user,
-            profile,
-            roles,
-            permissions: uniquePermissions,
+            user: null,
+            profile: null,
           });
+          return;
+        }
+
+        set({
+          user,
+          profile,
+        });
         } catch (error) {
           console.error('Error refreshing user data:', error);
-          // Set user but with minimal data
-          set({
-            user: get().user,
-            profile: null,
-            roles: [],
-            permissions: [],
-          });
+                  // Set user but with minimal data
+        set({
+          user: get().user,
+          profile: null,
+        });
         }
       },
 
@@ -417,8 +382,6 @@ export const useAuth = create<AuthState>()(
       partialize: (state) => ({
         user: state.user,
         profile: state.profile,
-        roles: state.roles,
-        permissions: state.permissions,
         demoMode: state.demoMode,
         initialized: state.initialized,
       }),
@@ -427,16 +390,17 @@ export const useAuth = create<AuthState>()(
 );
 
 // Helper functions for role checking
-export const isAdmin = () => useAuth.getState().hasRole('admin')
+export const isAdmin = () => useAuth.getState().isAdmin()
 export const isTherapist = () => useAuth.getState().hasRole('therapist')
-export const isSupervisor = () => useAuth.getState().hasRole('supervisor')
-export const isStaff = () => useAuth.getState().hasRole('staff')
+export const isSuperAdmin = () => useAuth.getState().isSuperAdmin()
+export const isClient = () => useAuth.getState().hasRole('client')
 
-// Permission helpers
-export const canViewClients = () => useAuth.getState().hasPermission('view_clients')
-export const canManageSessions = () => useAuth.getState().hasPermission('manage_sessions')
-export const canViewSchedule = () => useAuth.getState().hasPermission('view_schedule')
-export const canSuperviseTherapists = () => useAuth.getState().hasPermission('supervise_therapists')
+// Permission helpers based on role hierarchy
+export const canViewClients = () => useAuth.getState().hasRole('therapist')
+export const canManageSessions = () => useAuth.getState().hasRole('therapist')
+export const canViewSchedule = () => useAuth.getState().hasRole('client')
+export const canManageUsers = () => useAuth.getState().hasRole('admin')
+export const canManageRoles = () => useAuth.getState().hasRole('super_admin')
 
 // Initialize auth on app start
 export const initializeAuth = () => {
@@ -455,8 +419,8 @@ export const validateAuth = async () => {
 
     // Check if user profile exists
     const { data: profile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id, email, is_active')
+      .from('profiles')
+      .select('id, email, role, is_active')
       .eq('id', user.id)
       .single()
 
@@ -468,19 +432,10 @@ export const validateAuth = async () => {
       return { isValid: false, error: 'User account is inactive' }
     }
 
-    // Check if user has any roles
-    const { data: roles, error: rolesError } = await supabase
-      .rpc('get_user_roles', { user_uuid: user.id })
-
-    if (rolesError) {
-      return { isValid: false, error: 'Unable to fetch user roles' }
-    }
-
     return { 
       isValid: true, 
       user, 
-      profile, 
-      roles: roles || [],
+      profile,
       error: null 
     }
   } catch (error) {

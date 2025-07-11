@@ -9,9 +9,9 @@
  * Usage: node scripts/verify-auth-system.js
  */
 
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 
 // Configuration
 const REQUIRED_TABLES = [
@@ -441,11 +441,11 @@ async function runVerification() {
 }
 
 // Run the verification if this script is executed directly
-if (require.main === module) {
+if (import.meta.url === new URL(process.argv[1], 'file:').href) {
   runVerification();
 }
 
-module.exports = {
+export {
   runVerification,
   verifyRLSEnabled,
   verifyRoleSystem,

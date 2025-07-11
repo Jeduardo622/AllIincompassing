@@ -321,12 +321,12 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Function to verify all required roles exist
 CREATE OR REPLACE FUNCTION public.verify_role_system()
-RETURNS TABLE(role_name text, exists boolean) AS $$
+RETURNS TABLE(role_name text, "exists" boolean) AS $$
 BEGIN
   RETURN QUERY
   SELECT 
     unnest(ARRAY['client', 'therapist', 'admin', 'super_admin']) AS role_name,
-    unnest(ARRAY['client', 'therapist', 'admin', 'super_admin']) = ANY(enum_range(NULL::role_type)::text[]) AS exists;
+    unnest(ARRAY['client', 'therapist', 'admin', 'super_admin']) = ANY(enum_range(NULL::role_type)::text[]) AS "exists";
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

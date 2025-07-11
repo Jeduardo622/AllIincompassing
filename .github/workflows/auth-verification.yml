@@ -18,6 +18,12 @@ on:
       - 'cypress/e2e/auth-**'
       - 'scripts/verify-auth-system.js'
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  actions: read
+
 env:
   SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
   SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}

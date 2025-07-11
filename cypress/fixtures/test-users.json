@@ -1,0 +1,42 @@
+{
+  "client": {
+    "email": "client@test.com",
+    "password": "testpass123",
+    "role": "client",
+    "profile": {
+      "first_name": "Test",
+      "last_name": "Client",
+      "phone": "555-0101"
+    }
+  },
+  "therapist": {
+    "email": "therapist@test.com",
+    "password": "testpass123",
+    "role": "therapist",
+    "profile": {
+      "first_name": "Test",
+      "last_name": "Therapist",
+      "phone": "555-0102"
+    }
+  },
+  "admin": {
+    "email": "admin@test.com",
+    "password": "testpass123",
+    "role": "admin",
+    "profile": {
+      "first_name": "Test",
+      "last_name": "Admin",
+      "phone": "555-0103"
+    }
+  },
+  "super_admin": {
+    "email": "superadmin@test.com",
+    "password": "testpass123",
+    "role": "super_admin",
+    "profile": {
+      "first_name": "Test",
+      "last_name": "SuperAdmin",
+      "phone": "555-0104"
+    }
+  }
+}

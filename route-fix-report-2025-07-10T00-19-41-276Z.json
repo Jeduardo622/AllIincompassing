@@ -1,0 +1,71 @@
+{
+  "timestamp": "2025-07-10T00:19:41.276Z",
+  "summary": {
+    "totalFixes": 7,
+    "fixTypes": {
+      "rpc_functions": 1,
+      "edge_functions": 5,
+      "route_typos": 0,
+      "api_endpoints": 0,
+      "test_data": 1,
+      "test_ids": 0
+    }
+  },
+  "fixes": [
+    {
+      "type": "rpc_functions",
+      "description": "Created stub RPC functions",
+      "file": "temp_migrations/route_fix_2025-07-10T00-19-41-268Z.sql",
+      "functions": [
+        "get_schedule_data_batch",
+        "get_sessions_optimized",
+        "get_dropdown_data",
+        "get_session_metrics",
+        "get_dashboard_data",
+        "get_ai_cache_metrics",
+        "get_admin_users",
+        "assign_admin_role",
+        "reset_user_password",
+        "manage_admin_users",
+        "get_user_roles",
+        "get_user_roles_comprehensive"
+      ]
+    },
+    {
+      "type": "edge_function",
+      "description": "Created stub edge function: get_schedule_data_batch",
+      "file": "supabase/functions/get-schedule-data-batch/index.ts"
+    },
+    {
+      "type": "edge_function",
+      "description": "Created stub edge function: get_sessions_optimized",
+      "file": "supabase/functions/get-sessions-optimized/index.ts"
+    },
+    {
+      "type": "edge_function",
+      "description": "Created stub edge function: get_dropdown_data",
+      "file": "supabase/functions/get-dropdown-data/index.ts"
+    },
+    {
+      "type": "edge_function",
+      "description": "Created stub edge function: get_session_metrics",
+      "file": "supabase/functions/get-session-metrics/index.ts"
+    },
+    {
+      "type": "edge_function",
+      "description": "Created stub edge function: get_dashboard_data",
+      "file": "supabase/functions/get-dashboard-data/index.ts"
+    },
+    {
+      "type": "test_data",
+      "description": "Created test user data for all roles",
+      "file": "cypress/fixtures/test-users.json"
+    }
+  ],
+  "nextSteps": [
+    "Run `supabase db push` to apply database migrations",
+    "Deploy edge functions with `supabase functions deploy`",
+    "Run route integrity tests with `npm run cypress:run`",
+    "Review and implement stub functions with actual logic"
+  ]
+}

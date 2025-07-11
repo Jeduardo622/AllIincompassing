@@ -82,7 +82,7 @@ ALTER TABLE billing_records ENABLE ROW LEVEL SECURITY;
 -- ============================================================================
 
 -- Function to check if user has a specific role
-CREATE OR REPLACE FUNCTION auth.has_role(role_name role_type)
+CREATE OR REPLACE FUNCTION public.has_role(role_name role_type)
 RETURNS boolean AS $$
 BEGIN
   RETURN EXISTS (
@@ -95,7 +95,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Function to check if user has any of the specified roles
-CREATE OR REPLACE FUNCTION auth.has_any_role(role_names role_type[])
+CREATE OR REPLACE FUNCTION public.has_any_role(role_names role_type[])
 RETURNS boolean AS $$
 BEGIN
   RETURN EXISTS (
@@ -108,7 +108,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Function to get user's current role
-CREATE OR REPLACE FUNCTION auth.get_user_role()
+CREATE OR REPLACE FUNCTION public.get_user_role()
 RETURNS role_type AS $$
 DECLARE
   user_role role_type;
@@ -123,10 +123,10 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Function to check if user is admin or super_admin
-CREATE OR REPLACE FUNCTION auth.is_admin()
+CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS boolean AS $$
 BEGIN
-  RETURN auth.has_any_role(ARRAY['admin', 'super_admin']::role_type[]);
+  RETURN public.has_any_role(ARRAY['admin', 'super_admin']::role_type[]);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -145,7 +145,7 @@ CREATE POLICY "profiles_select" ON profiles FOR SELECT
 TO authenticated 
 USING (
   CASE 
-    WHEN auth.is_admin() THEN true
+    WHEN public.is_admin() THEN true
     ELSE id = auth.uid()
   END
 );
@@ -154,7 +154,7 @@ CREATE POLICY "profiles_insert" ON profiles FOR INSERT
 TO authenticated 
 WITH CHECK (
   CASE 
-    WHEN auth.is_admin() THEN true
+    WHEN public.is_admin() THEN true
     ELSE id = auth.uid()
   END
 );
@@ -163,14 +163,14 @@ CREATE POLICY "profiles_update" ON profiles FOR UPDATE
 TO authenticated 
 USING (
   CASE 
-    WHEN auth.is_admin() THEN true
+    WHEN public.is_admin() THEN true
     ELSE id = auth.uid()
   END
 );
 
 CREATE POLICY "profiles_delete" ON profiles FOR DELETE 
 TO authenticated 
-USING (auth.has_role('super_admin'::role_type));
+USING (public.has_role('super_admin'::role_type));
 
 -- Clients table policies
 DROP POLICY IF EXISTS "clients_access" ON clients;
@@ -178,14 +178,14 @@ CREATE POLICY "clients_access" ON clients FOR ALL
 TO authenticated 
 USING (
   CASE 
-    WHEN auth.is_admin() THEN true
-    WHEN auth.has_role('therapist'::role_type) THEN 
+    WHEN public.is_admin() THEN true
+    WHEN public.has_role('therapist'::role_type) THEN 
       EXISTS (
         SELECT 1 FROM sessions s 
         WHERE s.client_id = clients.id 
         AND s.therapist_id = auth.uid()
       )
-    WHEN auth.has_role('client'::role_type) THEN id = auth.uid()
+    WHEN public.has_role('client'::role_type) THEN id = auth.uid()
     ELSE false
   END
 );
@@ -196,9 +196,9 @@ CREATE POLICY "therapists_access" ON therapists FOR ALL
 TO authenticated 
 USING (
   CASE 
-    WHEN auth.is_admin() THEN true
-    WHEN auth.has_role('therapist'::role_type) THEN id = auth.uid()
-    WHEN auth.has_role('client'::role_type) THEN 
+    WHEN public.is_admin() THEN true
+    WHEN public.has_role('therapist'::role_type) THEN id = auth.uid()
+    WHEN public.has_role('client'::role_type) THEN 
       EXISTS (
         SELECT 1 FROM sessions s 
         WHERE s.therapist_id = therapists.id 
@@ -214,25 +214,14 @@ CREATE POLICY "sessions_access" ON sessions FOR ALL
 TO authenticated 
 USING (
   CASE 
-    WHEN auth.is_admin() THEN true
-    WHEN auth.has_role('therapist'::role_type) THEN therapist_id = auth.uid()
-    WHEN auth.has_role('client'::role_type) THEN client_id = auth.uid()
+    WHEN public.is_admin() THEN true
+    WHEN public.has_role('therapist'::role_type) THEN therapist_id = auth.uid()
+    WHEN public.has_role('client'::role_type) THEN client_id = auth.uid()
     ELSE false
   END
 );
 
--- Authorizations table policies
-DROP POLICY IF EXISTS "authorizations_access" ON authorizations;
-CREATE POLICY "authorizations_access" ON authorizations FOR ALL 
-TO authenticated 
-USING (
-  CASE 
-    WHEN auth.is_admin() THEN true
-    WHEN auth.has_role('therapist'::role_type) THEN provider_id = auth.uid()
-    WHEN auth.has_role('client'::role_type) THEN client_id = auth.uid()
-    ELSE false
-  END
-);
+-- NOTE: Authorizations table policies handled in 20250324180437_plain_sky.sql
 
 -- Billing records table policies
 DROP POLICY IF EXISTS "billing_records_access" ON billing_records;
@@ -240,14 +229,14 @@ CREATE POLICY "billing_records_access" ON billing_records FOR ALL
 TO authenticated 
 USING (
   CASE 
-    WHEN auth.is_admin() THEN true
-    WHEN auth.has_role('therapist'::role_type) THEN 
+    WHEN public.is_admin() THEN true
+    WHEN public.has_role('therapist'::role_type) THEN 
       EXISTS (
         SELECT 1 FROM sessions s 
         WHERE s.id = billing_records.session_id 
         AND s.therapist_id = auth.uid()
       )
-    WHEN auth.has_role('client'::role_type) THEN 
+    WHEN public.has_role('client'::role_type) THEN 
       EXISTS (
         SELECT 1 FROM sessions s 
         WHERE s.id = billing_records.session_id 
@@ -262,7 +251,7 @@ USING (
 -- ============================================================================
 
 -- Function to create profile on user signup
-CREATE OR REPLACE FUNCTION auth.handle_new_user()
+CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
   INSERT INTO profiles (id, email, role, first_name, last_name, created_at)
@@ -283,7 +272,7 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW
-  EXECUTE FUNCTION auth.handle_new_user();
+  EXECUTE FUNCTION public.handle_new_user();
 
 -- Function to update profile timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -305,18 +294,18 @@ CREATE TRIGGER update_profiles_updated_at
 -- STEP 7: GRANT PERMISSIONS
 -- ============================================================================
 
--- Grant execute permissions on auth functions
-GRANT EXECUTE ON FUNCTION auth.has_role(role_type) TO authenticated;
-GRANT EXECUTE ON FUNCTION auth.has_any_role(role_type[]) TO authenticated;
-GRANT EXECUTE ON FUNCTION auth.get_user_role() TO authenticated;
-GRANT EXECUTE ON FUNCTION auth.is_admin() TO authenticated;
+-- Grant execute permissions on role functions
+GRANT EXECUTE ON FUNCTION public.has_role(role_type) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.has_any_role(role_type[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_user_role() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
 
 -- ============================================================================
 -- STEP 8: CI SAFEGUARDS - RLS VERIFICATION
 -- ============================================================================
 
 -- Function to verify RLS is enabled on all user-facing tables
-CREATE OR REPLACE FUNCTION auth.verify_rls_enabled()
+CREATE OR REPLACE FUNCTION public.verify_rls_enabled()
 RETURNS TABLE(table_name text, rls_enabled boolean) AS $$
 BEGIN
   RETURN QUERY
@@ -325,13 +314,13 @@ BEGIN
     t.row_security::boolean
   FROM information_schema.tables t
   WHERE t.table_schema = 'public'
-    AND t.table_name IN ('profiles', 'clients', 'therapists', 'sessions', 'authorizations', 'billing_records')
+    AND t.table_name IN ('profiles', 'clients', 'therapists', 'sessions', 'billing_records')
   ORDER BY t.table_name;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Function to verify all required roles exist
-CREATE OR REPLACE FUNCTION auth.verify_role_system()
+CREATE OR REPLACE FUNCTION public.verify_role_system()
 RETURNS TABLE(role_name text, exists boolean) AS $$
 BEGIN
   RETURN QUERY
@@ -388,14 +377,14 @@ DECLARE
   role_status record;
 BEGIN
   -- Verify RLS is enabled
-  FOR rls_status IN SELECT * FROM auth.verify_rls_enabled() LOOP
+  FOR rls_status IN SELECT * FROM public.verify_rls_enabled() LOOP
     IF NOT rls_status.rls_enabled THEN
       RAISE EXCEPTION 'RLS not enabled on table: %', rls_status.table_name;
     END IF;
   END LOOP;
   
   -- Verify role system
-  FOR role_status IN SELECT * FROM auth.verify_role_system() LOOP
+  FOR role_status IN SELECT * FROM public.verify_role_system() LOOP
     IF NOT role_status.exists THEN
       RAISE EXCEPTION 'Role not found: %', role_status.role_name;
     END IF;

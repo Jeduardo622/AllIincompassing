@@ -74,7 +74,7 @@ ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE therapists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE authorizations ENABLE ROW LEVEL SECURITY;
+-- NOTE: authorizations table RLS handled in 20250324180437_plain_sky.sql
 ALTER TABLE billing_records ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================

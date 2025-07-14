@@ -29,7 +29,9 @@
     "audit:routes": "node scripts/route-audit.js",
     "fix:routes": "node scripts/fix-route-mismatches.js",
     "test:routes": "cypress run --spec cypress/e2e/routes_integrity.cy.ts",
-    "test:routes:open": "cypress open --spec cypress/e2e/routes_integrity.cy.ts"
+    "test:routes:open": "cypress open --spec cypress/e2e/routes_integrity.cy.ts",
+    "bolt:sync:create": "node scripts/bolt-new-sync.js create",
+    "bolt:sync:from": "node scripts/bolt-new-sync.js sync"
   },
   "dependencies": {
     "@headlessui/react": "^1.7.18",

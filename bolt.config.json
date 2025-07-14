@@ -1,0 +1,19 @@
+{
+  "name": "AllIncompassing-UI",
+  "description": "Therapy Practice Management - UI Layer",
+  "framework": "react-ts",
+  "mainCommand": "npm run bolt:dev",
+  "buildCommand": "npm run bolt:build",
+  "installCommand": "npm install",
+  "env": {
+    "VITE_SUPABASE_URL": "https://wnnjeqheqxxyrgsjmygy.supabase.co",
+    "VITE_SUPABASE_ANON_KEY": "$SUPABASE_ANON_KEY"
+  },
+  "ignore": [
+    "supabase/**/*",
+    ".github/**/*",
+    "scripts/**/*",
+    "cypress/**/*",
+    "node_modules/**/*"
+  ]
+}

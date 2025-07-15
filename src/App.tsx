@@ -75,7 +75,7 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <div className="min-h-screen bg-gray-50 dark:bg-dark text-gray-900 dark:text-gray-100 transition-colors">
-            <Router>
+            <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
               <Suspense fallback={<LoadingSpinner />}>
                 <Routes>
                   {/* Public Routes */}

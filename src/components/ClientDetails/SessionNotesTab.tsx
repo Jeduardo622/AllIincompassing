@@ -2,15 +2,15 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { 
-  FileText, Calendar, DollarSign, Plus, Download, ChevronDown, ChevronUp, Inbox,
-  Clock, CheckCircle, X, AlertTriangle, User, Search
+  Calendar, Plus, Download, Inbox,
+  Clock, CheckCircle, AlertTriangle, User, Search
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { SessionNote, Therapist } from '../../types';
 import AddSessionNoteModal from '../AddSessionNoteModal';
 
 interface SessionNotesTabProps {
-  client: any;
+  client: { id: string };
 }
 
 export default function SessionNotesTab({ client }: SessionNotesTabProps) {
@@ -34,7 +34,7 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
         .eq('status', 'approved');
         
       if (error) throw error;
-      return data as any[];
+      return data as Array<{ id: string; authorization_number: string; start_date: string; end_date: string; services: Array<{ id: string; service_code: string; approved_units: number; requested_units: number; unit_type: string }>; }>;
     },
   });
 

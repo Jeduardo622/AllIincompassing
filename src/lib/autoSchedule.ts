@@ -1,5 +1,5 @@
-import { format, parseISO, addMinutes, isWithinInterval, isSameDay, startOfWeek, endOfWeek, differenceInMinutes, addDays, isBefore, isAfter, getHours } from 'date-fns';
-import { getDistance, getBounds, isPointInBounds } from 'geolib';
+import { format, parseISO, addMinutes, isWithinInterval, isSameDay, startOfWeek, endOfWeek, differenceInMinutes, addDays } from 'date-fns';
+import { getDistance } from 'geolib';
 import type { Therapist, Client, Session } from '../types';
 
 // Performance optimizations
@@ -239,7 +239,7 @@ const calculateTravelScore = memoize(
 
     if (sameDay.length === 0) return 1; // First session of the day
 
-    const lastSession = sameDay[sameDay.length - 1];
+    const _lastSession = sameDay[sameDay.length - 1];
     // In a real implementation, you'd get the location from the last session's client
     // For now, assume a base location
     const lastLocation = { latitude: 40.7128, longitude: -74.0060 };

@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { 
-  Calendar, Clock, User, MapPin, 
-  ChevronLeft, ChevronRight, Calendar as CalendarIcon,
-  Plus, Edit2, Trash2
+  Clock, User, 
+  ChevronLeft, ChevronRight, Calendar as CalendarIcon
 } from 'lucide-react';
 import { format, addDays, startOfWeek, endOfWeek, isSameDay, parseISO } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 
 interface ScheduleTabProps {
-  therapist: any;
+  therapist: { id: string; availability_hours?: Record<string, { start: string | null; end: string | null }> };
 }
 
 export default function ScheduleTab({ therapist }: ScheduleTabProps) {
@@ -240,7 +239,7 @@ export default function ScheduleTab({ therapist }: ScheduleTabProps) {
         </p>
         
         <div className="space-y-4">
-          {Object.entries(therapist.availability_hours || {}).map(([day, hours]: [string, any]) => (
+          {Object.entries(therapist.availability_hours || {}).map(([day, hours]: [string, { start: string | null; end: string | null }]) => (
             <div key={day} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
               <div className="font-medium text-gray-900 dark:text-white capitalize">
                 {day}

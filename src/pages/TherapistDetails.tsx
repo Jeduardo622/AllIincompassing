@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { User, FileText, ClipboardCheck, Calendar, AlertCircle, Clock, Award, MapPin } from 'lucide-react';
+import { User, FileText, Calendar, AlertCircle, Clock, Award, MapPin } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import ProfileTab from '../components/TherapistDetails/ProfileTab';
 import CertificationsTab from '../components/TherapistDetails/CertificationsTab';

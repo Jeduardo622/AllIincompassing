@@ -6,7 +6,7 @@ on:
     paths:
       - 'supabase/migrations/**'
       - 'supabase/functions/**'
-      - 'src/lib/auth.ts'
+      - 'src/lib/authContext.tsx'
       - 'cypress/e2e/auth-**'
       - 'scripts/verify-auth-system.js'
   pull_request:
@@ -14,7 +14,7 @@ on:
     paths:
       - 'supabase/migrations/**'
       - 'supabase/functions/**'
-      - 'src/lib/auth.ts'
+      - 'src/lib/authContext.tsx'
       - 'cypress/e2e/auth-**'
       - 'scripts/verify-auth-system.js'
 

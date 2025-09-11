@@ -3,17 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
   Search, 
-  Edit2, 
   Trash2, 
   User,
   Mail,
   MapPin,
   Briefcase,
-  Clock,
-  Filter,
   Building,
   UserPlus, 
-  Eye,
   FileUp
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -174,17 +170,17 @@ const Therapists = () => {
     },
   });
 
-  const handleCreateTherapist = () => {
+  const _handleCreateTherapist = () => {
     setSelectedTherapist(undefined);
     setIsModalOpen(true);
   };
 
-  const handleEditTherapist = (therapist: Therapist) => {
+  const _handleEditTherapist = (therapist: Therapist) => {
     setSelectedTherapist(therapist);
     setIsModalOpen(true);
   };
 
-  const handleViewTherapist = (therapist: Therapist) => {
+  const _handleViewTherapist = (therapist: Therapist) => {
     navigate(`/therapists/${therapist.id}`);
   };
 

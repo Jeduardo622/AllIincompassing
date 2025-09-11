@@ -1,0 +1,38 @@
+warning: in the working copy of 'src/components/Layout.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/Sidebar.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/TherapistDetails/ProfileTab.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/__tests__/SessionModal.test.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/settings/UserSettings.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/main.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/pages/Signup.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'supabase/functions/assign-therapist-user/index.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'supabase/functions/generate-report/index.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'supabase/functions/get-client-details/index.ts', LF will be replaced by CRLF the next time Git touches it
+.github/workflows/auth-verification.yml
+package.json
+scripts/bolt-new-sync.js
+scripts/fix-route-mismatches.js
+src/App.tsx
+src/components/Layout.tsx
+src/components/Sidebar.tsx
+src/components/TherapistDetails/ProfileTab.tsx
+src/components/__tests__/SessionModal.test.tsx
+src/components/settings/UserSettings.tsx
+src/lib/__tests__/ai-documentation.test.ts
+src/lib/__tests__/auth.test.ts
+src/lib/ai-documentation.ts
+src/lib/auth.ts
+src/lib/authContext.tsx
+src/main.tsx
+src/pages/Login.tsx
+src/pages/Signup.tsx
+src/test/setup.ts
+src/test/utils.tsx
+supabase/functions/assign-therapist-user/index.ts
+supabase/functions/generate-report/index.ts
+supabase/functions/get-client-details/index.ts
+supabase/functions/get-dashboard-data/index.ts
+supabase/functions/get-dropdown-data/index.ts
+supabase/functions/get-schedule-data-batch/index.ts
+supabase/functions/get-session-metrics/index.ts
+supabase/functions/get-sessions-optimized/index.ts

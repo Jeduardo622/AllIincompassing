@@ -13,7 +13,7 @@ export default function AddGeneralNoteModal({
   isOpen,
   onClose,
   onSubmit,
-  currentUser = 'Current User'
+  currentUser: _currentUser = 'Current User'
 }: AddGeneralNoteModalProps) {
   const [noteContent, setNoteContent] = useState('');
   const [isVisibleToParent, setIsVisibleToParent] = useState(false);

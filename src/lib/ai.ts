@@ -1,28 +1,13 @@
-import { supabase } from './supabase';
+// import { supabase } from './supabase';
 import { errorTracker } from './errorTracking';
-
-interface Message {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  context?: Record<string, any>;
-}
-
-interface ChatHistory {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  context: Record<string, any>;
-  action_type?: string;
-  action_data?: Record<string, any>;
-  created_at: string;
-}
 
 interface AIResponse {
   response: string;
-  action?: any;
+  action?: unknown;
   conversationId?: string;
   cacheHit?: boolean;
   responseTime?: number;
+  error?: string;
 }
 
 export async function processMessage(

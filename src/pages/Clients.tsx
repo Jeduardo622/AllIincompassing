@@ -3,10 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
-  Search, Edit2, Trash2, User, Mail, Activity, MapPin, Calendar, Heart, Plus,
-  Clock, Filter, ChevronUp, ChevronDown, Eye, Settings, Star,
+  Search, Trash2, User, Mail, Activity, MapPin, Calendar, Heart,
+  Filter, ChevronUp, ChevronDown, Settings, Star,
   UserPlus,
-  FileUp
+  FileUp,
+  Clock
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Client } from '../types';
@@ -136,16 +137,16 @@ const Clients = () => {
     },
   });
 
-  const handleCreateClient = () => {
+  const _handleCreateClient = () => {
     navigate('/clients/new');
   };
 
-  const handleEditClient = (client: Client) => {
+  const _handleEditClient = (client: Client) => {
     setSelectedClient(client);
     setIsModalOpen(true);
   };
 
-  const handleViewClient = (client: Client) => {
+  const _handleViewClient = (client: Client) => {
     navigate(`/clients/${client.id}`);
   };
 
@@ -257,15 +258,17 @@ const Clients = () => {
       case 'contact':
         return multiplier * (a.email || '').localeCompare(b.email || '');
 
-      case 'service_preference':
+      case 'service_preference': {
         const prefA = a.service_preference?.join(', ') || '';
         const prefB = b.service_preference?.join(', ') || '';
         return multiplier * prefA.localeCompare(prefB);
+      }
 
-      case 'units':
+      case 'units': {
         const unitsA = getTotalUnits(a);
         const unitsB = getTotalUnits(b);
         return multiplier * (unitsA - unitsB);
+      }
 
       default:
         return 0;

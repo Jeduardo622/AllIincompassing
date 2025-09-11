@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
-import { Clock, Zap, Server, BarChart3, LineChart } from 'lucide-react';
+import { Clock, Zap, Server, BarChart3 } from 'lucide-react';
 import MetricCard from './MetricCard';
 import TimeSeriesChart from './TimeSeriesChart';
 import AlertsList from './AlertsList';

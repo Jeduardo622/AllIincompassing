@@ -104,7 +104,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
 
       // Validate phone number format if provided
       if (filteredData.phone) {
-        const phoneRegex = /^\+?[\d\s\-\(\)]+$/;
+        const phoneRegex = /^\+?[\d\s\-()]+$/;
         if (!phoneRegex.test(filteredData.phone)) {
           return new Response(
             JSON.stringify({ error: 'Invalid phone number format' }),

@@ -409,7 +409,7 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose, entityType = 'client' })
                   <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     {csvData.slice(0, 5).map((row, rowIndex) => (
                       <tr key={rowIndex}>
-                        {Object.entries(headerMap).filter(([_, field]) => field).map(([index, _]) => (
+                        {Object.entries(headerMap).filter(([_, field]) => field).map(([index]) => (
                           <td key={index} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                             {row[parseInt(index)] || '-'}
                           </td>

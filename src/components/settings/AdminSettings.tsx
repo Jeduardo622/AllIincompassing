@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit2, Trash2, Shield, Mail, User, Calendar, Key } from 'lucide-react';
+import { Plus, Trash2, Shield, Mail, Calendar, Key } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showSuccess, showError } from '../../lib/toast';
 

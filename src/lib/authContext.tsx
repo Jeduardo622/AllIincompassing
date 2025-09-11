@@ -1,19 +1,23 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
-import { supabase } from './supabaseClient';
+import { supabase } from './supabaseClient'; // Use consistent client
 
+// User profile interface - moved from legacy auth.ts
 export interface UserProfile {
   id: string;
   email: string;
   role: 'client' | 'therapist' | 'admin' | 'super_admin';
-  full_name?: string;
   first_name?: string;
   last_name?: string;
+  full_name?: string;
   phone?: string;
   avatar_url?: string;
+  time_zone?: string;
+  preferences?: Record<string, unknown>;
+  is_active: boolean;
+  last_login_at?: string;
   created_at: string;
   updated_at: string;
-  is_active: boolean;
 }
 
 interface AuthContextType {
@@ -68,12 +72,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const withTimeout = async <T,>(p: Promise<T>, label: string, ms = 10000): Promise<T> => {
+    return Promise.race([
+      p,
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`Timeout: ${label}`)), ms)),
+    ]) as Promise<T>;
+  };
+
   const initializeAuth = useCallback(async () => {
     try {
       setLoading(true);
       
       // Get initial session
-      const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+      const { data: { session: initialSession }, error } = await withTimeout(
+        supabase.auth.getSession(),
+        'supabase.auth.getSession()'
+      );
       
       if (error) {
         console.error('Error getting session:', error);
@@ -85,7 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSession(initialSession);
         
         // Fetch profile
-        const profileData = await fetchProfile(initialSession.user.id);
+        const profileData = await withTimeout(fetchProfile(initialSession.user.id), 'fetchProfile');
         setProfile(profileData);
       }
     } catch (error) {
@@ -167,6 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signUp = async (email: string, password: string, metadata = {}) => {
     try {
       setLoading(true);
+      
       const { error } = await supabase.auth.signUp({
         email,
         password,
@@ -174,13 +189,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           data: metadata,
         },
       });
-
+      
       if (error) {
+        console.error('Signup error:', error);
         return { error };
       }
 
       return { error: null };
     } catch (error) {
+      console.error('Signup catch error:', error);
       return { error: error instanceof Error ? error : new Error('Sign up failed') };
     } finally {
       setLoading(false);
@@ -190,9 +207,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     try {
       setLoading(true);
-      await supabase.auth.signOut();
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        console.error('Sign out error:', error);
+        throw error;
+      }
+
+      // Clear local state
+      setUser(null);
+      setProfile(null);
+      setSession(null);
     } catch (error) {
-      console.error('Sign out error:', error);
+      console.error('Sign out catch error:', error);
+      throw error instanceof Error ? error : new Error('Sign out failed');
     } finally {
       setLoading(false);
     }
@@ -200,9 +228,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resetPassword = async (email: string) => {
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email);
-      return { error };
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/login`,
+      });
+      
+      if (error) {
+        console.error('Reset password error:', error);
+        return { error };
+      }
+
+      return { error: null };
     } catch (error) {
+      console.error('Reset password catch error:', error);
       return { error: error instanceof Error ? error : new Error('Password reset failed') };
     }
   };
@@ -218,11 +255,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .select()
         .single();
 
-      if (error) return { error };
+      if (error) {
+        console.error('Update profile error:', error);
+        return { error };
+      }
 
       setProfile(data);
       return { error: null };
     } catch (error) {
+      console.error('Update profile catch error:', error);
       return { error: error instanceof Error ? error : new Error('Update failed') };
     }
   };

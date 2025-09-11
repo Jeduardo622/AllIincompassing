@@ -13,13 +13,7 @@ import { processMessage } from "../lib/ai";
 import { supabase } from "../lib/supabase";
 import { showSuccess, showError } from "../lib/toast";
 import { errorTracker } from "../lib/errorTracking";
-import type {
-  Session,
-  Client,
-  Therapist,
-  Authorization,
-  AuthorizationService,
-} from "../types";
+// import type { Session, Client, Therapist, Authorization, AuthorizationService } from "../types";
 
 interface Message {
   role: "user" | "assistant";
@@ -242,7 +236,7 @@ export default function ChatBot() {
                 },
               ]);
 
-              const { data, error } = await supabase
+              const { error } = await supabase
                 .from("clients")
                 .insert([response.action.data])
                 .select()
@@ -313,7 +307,7 @@ export default function ChatBot() {
                 },
               ]);
 
-              const { data, error } = await supabase
+              const { error } = await supabase
                 .from("therapists")
                 .insert([response.action.data])
                 .select()

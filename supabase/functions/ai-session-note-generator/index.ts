@@ -1,4 +1,6 @@
 import { OpenAI } from "npm:openai@5.5.1";
+import { z } from "npm:zod@3.23.8";
+import { errorEnvelope, getRequestId, rateLimit } from "./lib/http/error.ts";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -11,14 +13,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-interface SessionNoteRequest {
-  prompt: string;
-  model?: string;
-  max_tokens?: number;
-  temperature?: number;
-  session_data?: Record<string, unknown>;
-  transcript_data?: Record<string, unknown>;
-}
+const NoteSchema = z.object({
+  prompt: z.string().min(1),
+  model: z.string().optional(),
+  max_tokens: z.number().int().positive().max(4000).optional(),
+  temperature: z.number().min(0).max(1).optional(),
+  session_data: z.record(z.unknown()).optional(),
+  transcript_data: z.record(z.unknown()).optional(),
+});
 
 interface SessionNoteResponse {
   content: string;
@@ -171,21 +173,25 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const requestId = getRequestId(req);
     if (req.method !== "POST") {
-      throw new Error(`Method ${req.method} not allowed`);
+      return errorEnvelope({ requestId, code: "method_not_allowed", message: `Method ${req.method} not allowed`, status: 405, headers: corsHeaders });
+    }
+
+    // Token-bucket rate limit 30 req/min per IP
+    const ip = req.headers.get("x-forwarded-for") || "unknown";
+    const rl = rateLimit(`ai-session-note-generator:${ip}`, 30, 60_000);
+    if (!rl.allowed) {
+      return errorEnvelope({ requestId, code: "rate_limited", message: "Too many requests", status: 429, headers: { ...corsHeaders, "Retry-After": String(rl.retryAfter ?? 60) } });
     }
 
     const startTime = Date.now();
-    const { 
-      prompt, 
-      model = "gpt-4", 
-      max_tokens = 2000, 
-      temperature = 0.3
-    }: SessionNoteRequest = await req.json();
-
-    if (!prompt) {
-      throw new Error("Prompt is required");
+    const body = await req.json();
+    const parsed = NoteSchema.safeParse(body);
+    if (!parsed.success) {
+      return errorEnvelope({ requestId, code: "invalid_body", message: "Invalid request body", status: 400, headers: corsHeaders });
     }
+    const { prompt, model = "gpt-4", max_tokens = 2000, temperature = 0.3 } = parsed.data;
 
     // Enhance prompt with California compliance requirements
     const enhancedPrompt = `${CALIFORNIA_COMPLIANCE_PROMPT}\n\nSESSION DATA:\n${prompt}`;
@@ -238,31 +244,10 @@ Deno.serve(async (req) => {
       }
     };
 
-    return new Response(
-      JSON.stringify(response),
-      {
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders,
-        },
-      }
-    );
+    return new Response(JSON.stringify(response), { headers: { "Content-Type": "application/json", ...corsHeaders } });
   } catch (error) {
+    const requestId = getRequestId(req);
     console.error('Session note generation error:', error);
-    
-    return new Response(
-      JSON.stringify({
-        error: "Session note generation failed",
-        message: error.message,
-        processing_time: Date.now()
-      }),
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders,
-        },
-      }
-    );
+    return errorEnvelope({ requestId, code: 'internal_error', message: 'Unexpected error', status: 500, headers: corsHeaders });
   }
 }); 

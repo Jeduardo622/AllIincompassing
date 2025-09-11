@@ -5,13 +5,13 @@ import {
   UserCog, LogOut, Settings, MessageSquare, Sun, Moon, 
   FileCheck, Menu, X, RefreshCw, User, BarChart, Activity
 } from 'lucide-react';
-import { useAuth } from '../lib/auth';
+import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/theme';
 import ChatBot from './ChatBot';
 import ThemeToggle from './ThemeToggle';
 
 export default function Sidebar() {
-  const { signOut, hasRole, user, roles, refreshSession } = useAuth();
+  const { signOut, hasRole, user, profile } = useAuth();
   const { isDark } = useTheme();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -28,7 +28,8 @@ export default function Sidebar() {
     try {
       setIsSigningOut(true);
       await signOut();
-      // The signOut function now handles redirection
+      // Explicitly navigate to login after successful sign-out to avoid race conditions with guards
+      navigate('/login', { replace: true });
     } catch (error) {
       console.error('Error signing out:', error);
       setIsSigningOut(false);
@@ -43,8 +44,8 @@ export default function Sidebar() {
     console.log('Manual session refresh requested');
     try {
       setIsRefreshing(true);
-      await refreshSession();
-      console.log('Session refreshed, current roles:', roles);
+      // Note: authContext automatically manages session state
+      console.log('Session state refreshed, current role:', profile?.role);
       console.log('Manual session refresh completed');
       setIsRefreshing(false);
     } catch (error) {
@@ -161,7 +162,7 @@ export default function Sidebar() {
           </div>
           <div className="flex items-center justify-between">
             <div className="text-xs text-gray-500 dark:text-gray-400">
-              Roles: {roles.length > 0 ? roles.join(', ') : 'No roles assigned'}
+              Role: {profile?.role || 'No role assigned'}
             </div>
             <button 
               onClick={handleRefreshSession}
@@ -190,7 +191,7 @@ export default function Sidebar() {
         <nav className="flex-1 space-y-1 px-4 py-4">
           {navItems.map(({ icon: Icon, label, path, roles }) => {
             // Skip if roles are specified and user doesn't have any of them
-            if (roles.length > 0 && !roles.some(role => hasRole(role))) {
+            if (roles.length > 0 && !roles.some(role => hasRole(role as 'client' | 'therapist' | 'admin' | 'super_admin'))) {
               return null;
             }
 

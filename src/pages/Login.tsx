@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { Calendar, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Calendar, AlertCircle, Eye, EyeOff, CheckCircle } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { showError, showSuccess } from '../lib/toast';
 
@@ -11,11 +11,22 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
   const { signIn, resetPassword, user } = useAuth();
 
   useEffect(() => {
+    // Check for success message from signup
+    const stateMessage = location.state?.message;
+    if (stateMessage) {
+      setSuccessMessage(stateMessage);
+      // Set email from signup if provided
+      if (location.state?.email) {
+        setEmail(location.state.email);
+      }
+    }
+    
     // Redirect if user is already logged in
     if (user) {
       const from = location.state?.from?.pathname || '/';
@@ -26,21 +37,43 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccessMessage('');
     setLoading(true);
+
+    // Validation
+    if (!email || !password) {
+      setError('Please enter both email and password');
+      showError('Please enter both email and password');
+      setLoading(false);
+      return;
+    }
 
     try {
       const { error } = await signIn(email, password);
       
       if (error) {
-        setError(error.message);
-        showError(error.message);
+        console.error('Login error:', error);
+        
+        // Provide more specific error messages
+        let errorMessage = error.message;
+        if (error.message.includes('Invalid login credentials')) {
+          errorMessage = 'Invalid email or password. Please check your credentials and try again.';
+        } else if (error.message.includes('Email not confirmed')) {
+          errorMessage = 'Please check your email and click the confirmation link before signing in.';
+        } else if (error.message.includes('Too many requests')) {
+          errorMessage = 'Too many login attempts. Please wait a moment and try again.';
+        }
+        
+        setError(errorMessage);
+        showError(errorMessage);
         return;
       }
 
       // Success - navigation will happen automatically via useEffect
       showSuccess('Successfully signed in!');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'An error occurred';
+      console.error('Login catch error:', err);
+      const message = err instanceof Error ? err.message : 'An unexpected error occurred';
       setError(message);
       showError(message);
     } finally {
@@ -50,8 +83,12 @@ export default function Login() {
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+    setSuccessMessage('');
+    
     if (!email) {
       setError('Please enter your email address');
+      showError('Please enter your email address');
       return;
     }
 
@@ -60,14 +97,17 @@ export default function Login() {
       const { error } = await resetPassword(email);
       
       if (error) {
+        console.error('Reset password error:', error);
         setError(error.message);
         showError(error.message);
         return;
       }
 
+      setSuccessMessage('Password reset email sent! Check your inbox for instructions.');
       showSuccess('Password reset email sent!');
       setShowForgotPassword(false);
     } catch (err) {
+      console.error('Reset password catch error:', err);
       const message = err instanceof Error ? err.message : 'An error occurred';
       setError(message);
       showError(message);
@@ -101,6 +141,13 @@ export default function Login() {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white dark:bg-dark-lighter py-8 px-4 shadow sm:rounded-lg sm:px-10 transition-colors">
           <form onSubmit={showForgotPassword ? handleForgotPassword : handleSubmit} className="space-y-6">
+            {successMessage && (
+              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 px-4 py-3 rounded-lg flex items-start" role="alert">
+                <CheckCircle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
+                <span className="block">{successMessage}</span>
+              </div>
+            )}
+            
             {error && (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg flex items-start" role="alert">
                 <AlertCircle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
@@ -177,7 +224,11 @@ export default function Login() {
             <div className="flex items-center justify-between">
               <button
                 type="button"
-                onClick={() => setShowForgotPassword(!showForgotPassword)}
+                onClick={() => {
+                  setShowForgotPassword(!showForgotPassword);
+                  setError('');
+                  setSuccessMessage('');
+                }}
                 className="text-sm font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
               >
                 {showForgotPassword ? 'Back to sign in' : 'Forgot your password?'}

@@ -1,24 +1,18 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+// import { useQuery } from '@tanstack/react-query';
 import { 
   BarChart, 
-  FileText, 
   Download, 
   Calendar, 
-  Filter, 
-  Users, 
   User,
   Clock, 
-  PieChart,
-  TrendingUp,
-  Layers,
   RefreshCw
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { showError } from '../lib/toast';
 import { useDebounce } from '../lib/performance';
-import { CACHE_STRATEGIES, generateCacheKey } from './cacheStrategy';
+// import { CACHE_STRATEGIES, generateCacheKey } from './cacheStrategy';
 import { useDropdownData, useSessionMetrics } from '../lib/optimizedQueries';
 
 // Report types
@@ -112,7 +106,7 @@ const Reports = React.memo(() => {
   const clients = dropdownData?.clients || [];
 
   // PHASE 3 OPTIMIZATION: Use optimized session metrics RPC function
-  const { data: sessionMetricsData, isLoading: isLoadingMetrics } = useSessionMetrics(
+  const { data: sessionMetricsData } = useSessionMetrics(
     debouncedFilters.startDate,
     debouncedFilters.endDate,
     debouncedFilters.therapistId,
@@ -388,7 +382,7 @@ const Reports = React.memo(() => {
               </label>
               <select
                 value={filters.dateRange}
-                onChange={(e) => setFilters({...filters, dateRange: e.target.value as any})}
+                onChange={(e) => setFilters({...filters, dateRange: e.target.value as ReportFilters['dateRange']})}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
               >
                 <option value="current_month">Current Month</option>

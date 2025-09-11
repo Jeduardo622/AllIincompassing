@@ -1,5 +1,7 @@
 import { OpenAI } from "npm:openai@5.5.1";
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
+import { z } from "npm:zod@3.23.8";
+import { errorEnvelope, getRequestId, rateLimit } from "./lib/http/error.ts";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -18,14 +20,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-interface TranscriptionRequest {
-  audio: string; // base64 encoded audio
-  model?: string;
-  language?: string;
-  prompt?: string;
-  session_id?: string;
-  chunk_index?: number;
-}
+const TranscriptionSchema = z.object({
+  audio: z.string().min(1), // base64 encoded audio
+  model: z.string().optional(),
+  language: z.string().optional(),
+  prompt: z.string().optional(),
+  session_id: z.string().optional(),
+  chunk_index: z.number().int().nonnegative().optional(),
+});
 
 interface TranscriptionResponse {
   text: string;
@@ -51,16 +53,25 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const requestId = getRequestId(req);
     if (req.method !== "POST") {
-      throw new Error(`Method ${req.method} not allowed`);
+      return errorEnvelope({ requestId, code: "method_not_allowed", message: `Method ${req.method} not allowed`, status: 405, headers: corsHeaders });
+    }
+
+    // Token-bucket rate limit 60 req/min per IP
+    const ip = req.headers.get("x-forwarded-for") || "unknown";
+    const rl = rateLimit(`ai-transcription:${ip}`, 60, 60_000);
+    if (!rl.allowed) {
+      return errorEnvelope({ requestId, code: "rate_limited", message: "Too many requests", status: 429, headers: { ...corsHeaders, "Retry-After": String(rl.retryAfter ?? 60) } });
     }
 
     const startTime = Date.now();
-    const { audio, model = "whisper-1", language = "en", prompt, session_id, chunk_index }: TranscriptionRequest = await req.json();
-
-    if (!audio) {
-      throw new Error("Audio data is required");
+    const body = await req.json();
+    const parsed = TranscriptionSchema.safeParse(body);
+    if (!parsed.success) {
+      return errorEnvelope({ requestId, code: "invalid_body", message: "Invalid request body", status: 400, headers: corsHeaders });
     }
+    const { audio, model = "whisper-1", language = "en", prompt, session_id, chunk_index } = parsed.data;
 
     // Convert base64 to blob for OpenAI API
     const audioBuffer = Uint8Array.from(atob(audio), c => c.charCodeAt(0));
@@ -135,21 +146,8 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error) {
+    const requestId = getRequestId(req);
     console.error('Transcription error:', error);
-    
-    return new Response(
-      JSON.stringify({
-        error: "Transcription failed",
-        message: error.message,
-        processing_time: Date.now()
-      }),
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders,
-        },
-      }
-    );
+    return errorEnvelope({ requestId, code: 'internal_error', message: 'Unexpected error', status: 500, headers: corsHeaders });
   }
 }); 

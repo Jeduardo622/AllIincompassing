@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { User, Mail, Lock, Save } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../lib/auth';
+import { useAuth } from '../../lib/authContext';
 import { showSuccess, showError } from '../../lib/toast';
 
 interface UserSettingsForm {
@@ -16,7 +16,7 @@ interface UserSettingsForm {
 }
 
 export default function UserSettings() {
-  const { user, refreshSession } = useAuth();
+  const { user } = useAuth();
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   const { register, handleSubmit, watch, reset, formState: { errors, isDirty, isSubmitting } } = useForm<UserSettingsForm>({
@@ -56,8 +56,7 @@ export default function UserSettings() {
         if (passwordError) throw passwordError;
       }
 
-      // Refresh session to get updated user data
-      await refreshSession();
+      // Note: authContext automatically manages user data updates
 
       showSuccess('Profile updated successfully');
       setIsChangingPassword(false);

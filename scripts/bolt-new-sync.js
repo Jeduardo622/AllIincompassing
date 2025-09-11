@@ -27,7 +27,6 @@ const BOLT_SYNC_CONFIG = {
     '.github/**/*',
     'scripts/**/*',
     'cypress/**/*',
-    'src/lib/auth.ts',
     'src/lib/supabase.ts',
     'src/lib/authContext.tsx'
   ],

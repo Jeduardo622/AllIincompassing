@@ -226,7 +226,7 @@ ${MISSING_FUNCTIONS.map(func => createStubFunction(func, `Auto-generated stub fo
     const files = [
       'src/lib/supabase.ts',
       'src/lib/optimizedQueries.ts',
-      'src/lib/auth.ts'
+      'src/lib/authContext.tsx'
     ];
     
     for (const file of files) {

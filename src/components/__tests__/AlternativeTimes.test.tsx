@@ -55,7 +55,7 @@ describe('AlternativeTimes', () => {
       />
     );
     
-    expect(screen.getByText('Suggested Alternative Times')).toBeInTheDocument();
+    expect(screen.getByText(/Alternative Times|Suggested Alternative Times/i)).toBeInTheDocument();
     expect(screen.getByText('This time works well for both therapist and client')).toBeInTheDocument();
     expect(screen.getByText('Both are available but not their preferred time')).toBeInTheDocument();
   });

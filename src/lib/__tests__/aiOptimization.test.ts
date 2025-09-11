@@ -281,12 +281,10 @@ describe('AI Optimization Utilities', () => {
         recordMetric: vi.fn()
       };
 
-      const startTime = mockPerformanceTracker.startTimer();
-      
-      // Simulate AI processing
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      const responseTime = mockPerformanceTracker.endTimer(startTime);
+      const startTime = performance.now();
+      // Simulate AI processing with real timers (Date-only fake timers in setup)
+      await new Promise(resolve => setTimeout(resolve, 120));
+      const responseTime = performance.now() - startTime;
       mockPerformanceTracker.recordMetric('ai_response_time', responseTime);
 
       expect(responseTime).toBeGreaterThan(90);

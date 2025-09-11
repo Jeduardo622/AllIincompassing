@@ -26,12 +26,20 @@ async function isTestEnvironmentValid(): Promise<boolean> {
   }
 }
 
+// Only run these against a real test environment (CI or explicit opt-in)
+const SHOULD_RUN_DB_IT = !!(import.meta.env.CI || (import.meta as any).env?.RUN_DB_IT === '1');
+
 describe('Database Integration Tests', () => {
   let testEnvironmentValid = false;
 
   beforeAll(async () => {
     // Setup test data if needed
     console.log('🔧 Setting up database integration tests...');
+    if (!SHOULD_RUN_DB_IT) {
+      testEnvironmentValid = false;
+      console.warn('⚠️  Skipping DB integration checks (SHOULD_RUN_DB_IT=false)');
+      return;
+    }
     testEnvironmentValid = await isTestEnvironmentValid();
     
     if (!testEnvironmentValid) {

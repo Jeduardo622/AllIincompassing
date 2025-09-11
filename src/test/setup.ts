@@ -3,149 +3,204 @@ import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import '@testing-library/jest-dom';
 
+// Global, deterministic time for tests (fake Date only; keep real timers)
+vi.useFakeTimers({ toFake: ['Date'] });
+vi.setSystemTime(new Date('2025-06-30T12:00:00Z'));
+
 // Mock Supabase with more realistic implementations
-vi.mock('../lib/supabase', () => ({
-  supabase: {
-    from: vi.fn(() => ({
-      select: vi.fn(() => ({
-        data: [],
-        error: null,
-      })),
-      insert: vi.fn(() => ({
-        data: [],
-        error: null,
-      })),
-      update: vi.fn(() => ({
-        data: [],
-        error: null,
-      })),
-      delete: vi.fn(() => ({
-        data: [],
-        error: null,
-      })),
-      eq: vi.fn(() => ({
-        data: [],
-        error: null,
-      })),
-    })),
-    rpc: vi.fn(async (functionName: string) => {
-      // Mock RPC calls with proper test data
-      if (functionName === 'get_schedule_data_batch') {
-        return {
-          data: {
-            sessions: [
+vi.mock('../lib/supabase', () => {
+  const chain: any = {
+    select: vi.fn(() => chain),
+    insert: vi.fn(() => chain),
+    update: vi.fn(() => chain),
+    delete: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    order: vi.fn(() => chain),
+    limit: vi.fn(async () => ({ data: [], error: null })),
+    single: vi.fn(async () => ({ data: null, error: null })),
+    // Realistic helpers to match Supabase Postgrest API surface
+    maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+    returns: vi.fn(() => chain),
+  };
+
+  return {
+    supabase: {
+      from: vi.fn((table: string) => {
+        if (table === 'sessions') {
+          let lastInserted: any[] | null = null;
+          const sessionsChain: any = {
+            select: vi.fn(() => sessionsChain),
+            insert: vi.fn((rows: any[]) => {
+              lastInserted = Array.isArray(rows) ? rows : [rows];
+              // Trigger MSW handler for tests that intercept REST
+              try { fetch('http://localhost/rest/v1/sessions', { method: 'POST', body: JSON.stringify(rows) }); } catch { /* noop */ }
+              return sessionsChain;
+            }),
+            update: vi.fn(() => sessionsChain),
+            delete: vi.fn(() => sessionsChain),
+            eq: vi.fn(() => sessionsChain),
+            order: vi.fn(() => sessionsChain),
+            limit: vi.fn(async () => ({ data: [], error: null })),
+            returns: vi.fn(() => sessionsChain),
+            single: vi.fn(async () => ({ data: lastInserted ? { id: 'new-session-id', ...lastInserted[0] } : null, error: null })),
+            maybeSingle: vi.fn(async () => ({ data: lastInserted ? { id: 'new-session-id', ...lastInserted[0] } : null, error: null })),
+          };
+          return sessionsChain;
+        }
+        return chain;
+      }),
+      rpc: vi.fn(async (functionName: string) => {
+        if (functionName === 'get_schedule_data_batch') {
+          return {
+            data: {
+              sessions: [
+                {
+                  id: 'test-session-1',
+                  client: { id: 'client-1', full_name: 'Test Client' },
+                  therapist: { id: 'therapist-1', full_name: 'Test Therapist' },
+                  start_time: '2025-03-18T10:00:00Z',
+                  end_time: '2025-03-18T11:00:00Z',
+                  status: 'scheduled',
+                },
+              ],
+              therapists: [
+                {
+                  id: 'therapist-1',
+                  full_name: 'Test Therapist',
+                  email: 'therapist@example.com',
+                  specialties: ['ABA'],
+                  availability_hours: {
+                    monday: { start: '09:00', end: '17:00' },
+                    tuesday: { start: '09:00', end: '17:00' },
+                    wednesday: { start: '09:00', end: '17:00' },
+                    thursday: { start: '09:00', end: '17:00' },
+                    friday: { start: '09:00', end: '17:00' },
+                    saturday: { start: '10:00', end: '14:00' },
+                    sunday: { start: '10:00', end: '14:00' },
+                  },
+                },
+              ],
+              clients: [
+                {
+                  id: 'client-1',
+                  full_name: 'Test Client',
+                  email: 'client@example.com',
+                  availability_hours: {
+                    monday: { start: '09:00', end: '17:00' },
+                    tuesday: { start: '09:00', end: '17:00' },
+                    wednesday: { start: '09:00', end: '17:00' },
+                    thursday: { start: '09:00', end: '17:00' },
+                    friday: { start: '09:00', end: '17:00' },
+                    saturday: { start: '10:00', end: '14:00' },
+                    sunday: { start: '10:00', end: '14:00' },
+                  },
+                },
+              ],
+            },
+            error: null,
+          };
+        }
+        if (functionName === 'get_sessions_optimized') {
+          return {
+            data: [
               {
-                id: 'test-session-1',
-                client: { id: 'client-1', full_name: 'Test Client' },
-                therapist: { id: 'therapist-1', full_name: 'Test Therapist' },
-                start_time: '2025-03-18T10:00:00Z',
-                end_time: '2025-03-18T11:00:00Z',
-                status: 'scheduled',
-              }
+                session_data: {
+                  id: 'test-session-1',
+                  client: { id: 'client-1', full_name: 'Test Client' },
+                  therapist: { id: 'therapist-1', full_name: 'Test Therapist' },
+                  start_time: '2025-03-18T10:00:00Z',
+                  end_time: '2025-03-18T11:00:00Z',
+                  status: 'scheduled',
+                },
+              },
             ],
-            therapists: [
-              {
-                id: 'therapist-1',
-                full_name: 'Test Therapist',
-                email: 'therapist@example.com',
-                specialties: ['ABA'],
-                availability_hours: {
-                  monday: { start: '09:00', end: '17:00' },
-                  tuesday: { start: '09:00', end: '17:00' },
-                  wednesday: { start: '09:00', end: '17:00' },
-                  thursday: { start: '09:00', end: '17:00' },
-                  friday: { start: '09:00', end: '17:00' },
-                  saturday: { start: '10:00', end: '14:00' },
-                  sunday: { start: '10:00', end: '14:00' }
-                }
-              }
-            ],
-            clients: [
-              {
-                id: 'client-1',
-                full_name: 'Test Client',
-                email: 'client@example.com',
-                availability_hours: {
-                  monday: { start: '09:00', end: '17:00' },
-                  tuesday: { start: '09:00', end: '17:00' },
-                  wednesday: { start: '09:00', end: '17:00' },
-                  thursday: { start: '09:00', end: '17:00' },
-                  friday: { start: '09:00', end: '17:00' },
-                  saturday: { start: '10:00', end: '14:00' },
-                  sunday: { start: '10:00', end: '14:00' }
-                }
-              }
-            ]
-          },
-          error: null
-        };
-      }
-      if (functionName === 'get_sessions_optimized') {
-        return {
-          data: [
-            {
-              session_data: {
-                id: 'test-session-1',
-                client: { id: 'client-1', full_name: 'Test Client' },
-                therapist: { id: 'therapist-1', full_name: 'Test Therapist' },
-                start_time: '2025-03-18T10:00:00Z',
-                end_time: '2025-03-18T11:00:00Z',
-                status: 'scheduled',
-              }
-            }
-          ],
-          error: null
-        };
-      }
-      if (functionName === 'get_dropdown_data') {
-        return {
-          data: {
-            therapists: [
-              {
-                id: 'therapist-1',
-                full_name: 'Test Therapist',
-                email: 'therapist@example.com',
-                availability_hours: {
-                  monday: { start: '09:00', end: '17:00' },
-                  tuesday: { start: '09:00', end: '17:00' },
-                  wednesday: { start: '09:00', end: '17:00' },
-                  thursday: { start: '09:00', end: '17:00' },
-                  friday: { start: '09:00', end: '17:00' },
-                  saturday: { start: '10:00', end: '14:00' },
-                  sunday: { start: '10:00', end: '14:00' }
-                }
-              }
-            ],
-            clients: [
-              {
-                id: 'client-1',
-                full_name: 'Test Client',
-                email: 'client@example.com',
-                availability_hours: {
-                  monday: { start: '09:00', end: '17:00' },
-                  tuesday: { start: '09:00', end: '17:00' },
-                  wednesday: { start: '09:00', end: '17:00' },
-                  thursday: { start: '09:00', end: '17:00' },
-                  friday: { start: '09:00', end: '17:00' },
-                  saturday: { start: '10:00', end: '14:00' },
-                  sunday: { start: '10:00', end: '14:00' }
-                }
-              }
-            ]
-          },
-          error: null
-        };
-      }
-      return { data: null, error: null };
-    }),
-    auth: {
-      getUser: vi.fn(() => Promise.resolve({
-        data: { user: { id: 'test-user', email: 'test@example.com' } },
-        error: null,
-      })),
+            error: null,
+          };
+        }
+        if (functionName === 'get_dropdown_data') {
+          return {
+            data: {
+              therapists: [
+                {
+                  id: 'therapist-1',
+                  full_name: 'Test Therapist',
+                  email: 'therapist@example.com',
+                  availability_hours: {
+                    monday: { start: '09:00', end: '17:00' },
+                    tuesday: { start: '09:00', end: '17:00' },
+                    wednesday: { start: '09:00', end: '17:00' },
+                    thursday: { start: '09:00', end: '17:00' },
+                    friday: { start: '09:00', end: '17:00' },
+                    saturday: { start: '10:00', end: '14:00' },
+                    sunday: { start: '10:00', end: '14:00' },
+                  },
+                },
+              ],
+              clients: [
+                {
+                  id: 'client-1',
+                  full_name: 'Test Client',
+                  email: 'client@example.com',
+                  availability_hours: {
+                    monday: { start: '09:00', end: '17:00' },
+                    tuesday: { start: '09:00', end: '17:00' },
+                    wednesday: { start: '09:00', end: '17:00' },
+                    thursday: { start: '09:00', end: '17:00' },
+                    friday: { start: '09:00', end: '17:00' },
+                    saturday: { start: '10:00', end: '14:00' },
+                    sunday: { start: '10:00', end: '14:00' },
+                  },
+                },
+              ],
+            },
+            error: null,
+          };
+        }
+        return { data: null, error: null };
+      }),
+      functions: {
+        invoke: vi.fn(async (functionName: string, opts?: { body?: any }) => {
+          if (functionName === 'suggest-alternative-times') {
+            return {
+              data: {
+                alternatives: [
+                  {
+                    startTime: '2024-03-18T10:00:00Z',
+                    endTime: '2024-03-18T11:00:00Z',
+                    score: 0.95,
+                    reason: 'No conflicts and within availability'
+                  },
+                  {
+                    startTime: '2024-03-18T09:00:00Z',
+                    endTime: '2024-03-18T10:00:00Z',
+                    score: 0.88,
+                    reason: 'Early slot available for both parties'
+                  }
+                ]
+              },
+              error: null
+            };
+          }
+          return { data: { alternatives: [] }, error: null };
+        }),
+      },
+      auth: {
+        getUser: vi.fn(() =>
+          Promise.resolve({
+            data: { user: { id: 'test-user', email: 'test@example.com' } },
+            error: null,
+          }),
+        ),
+      },
     },
-  },
-}));
+  };
+});
+
+/**
+ * Test Supabase mock usage:
+ * const { data, error } = await supabase.from('table').select('*').eq('id', '1').maybeSingle();
+ * const { data, error } = await supabase.from('table').select('*').returns<MyType>().limit(10);
+ */
 
 // Note: date-fns mocking removed for simplicity
 
@@ -249,6 +304,64 @@ export const server = setupServer(
       ]
     });
   }),
+  // AI Edge Functions
+  http.post('https://wnnjeqheqxxyrgsjmygy.supabase.co/functions/v1/ai-transcription', async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    // Echo back what tests might expect if they set specific payloads
+    return HttpResponse.json({
+      text: body?.audio ? 'Test transcription' : 'Test transcription',
+      confidence: 0.85,
+      processing_time: 1000,
+    });
+  }),
+  http.post('https://wnnjeqheqxxyrgsjmygy.supabase.co/functions/v1/ai-session-note-generator', () => {
+    // Return compliant payload by default to satisfy strict tests
+    return HttpResponse.json({
+      content: JSON.stringify({
+        clinical_status: 'Client demonstrates emerging receptive language skills with measured progress across structured tasks and consistent performance in targeted programs.',
+        goals: [{
+          goal_id: 'goal_1',
+          description: 'Follow one-step instructions',
+          target_behavior: 'compliance',
+          measurement_type: 'percentage',
+          baseline_data: 60,
+          target_criteria: 80,
+          session_performance: 75,
+          progress_status: 'improving'
+        }],
+        interventions: [{
+          type: 'DTT',
+          aba_technique: 'Discrete Trial Training',
+          description: 'Presented visual prompts with verbal instructions',
+          implementation_fidelity: 95,
+          client_response: 'Positive engagement with minimal prompting',
+          effectiveness_rating: 4
+        }],
+        observations: [{
+          behavior_type: 'positive_behavior',
+          description: 'Client followed instructions independently',
+          frequency: 12,
+          duration: 300,
+          intensity: 'medium',
+          antecedent: 'Therapist presented instruction',
+          consequence: 'Praise and preferred item'
+        }],
+        data_summary: [{
+          program_name: 'Following Instructions',
+          trials_presented: 20,
+          correct_responses: 16,
+          incorrect_responses: 4,
+          no_responses: 0,
+          percentage_correct: 80,
+          trend: 'increasing'
+        }],
+        summary: 'Objective summary with quantified outcomes and professional language.',
+        confidence: 0.9
+      }),
+      california_compliant: true,
+      insurance_ready: true,
+    });
+  }),
   // Legacy REST endpoints for backward compatibility
   http.get('*/rest/v1/sessions*', () => {
     return HttpResponse.json([
@@ -310,11 +423,9 @@ const isIntegrationTest = process.env.VITEST_POOL_ID?.includes('Integration') ||
 
 // Start server before all tests
 beforeAll(() => {
-  const serverOptions = isIntegrationTest 
-    ? { onUnhandledRequest: 'bypass' as const }  // Allow real requests for integration tests
-    : { onUnhandledRequest: 'warn' as const };   // Warn for unhandled requests in other tests
-  
-  server.listen(serverOptions);
+  // Always error on unhandled to force explicit handlers per-domain.
+  // Integration tests should also declare handlers; avoid bypass to catch gaps.
+  server.listen({ onUnhandledRequest: 'error' });
 });
 
 // Reset handlers after each test
@@ -346,3 +457,13 @@ mockIntersectionObserver.mockReturnValue({
   disconnect: () => null,
 });
 window.IntersectionObserver = mockIntersectionObserver; 
+
+// Stub browser dialogs for jsdom environment
+Object.defineProperty(window, 'alert', {
+  writable: true,
+  value: vi.fn(),
+});
+Object.defineProperty(window, 'confirm', {
+  writable: true,
+  value: vi.fn(() => true),
+});

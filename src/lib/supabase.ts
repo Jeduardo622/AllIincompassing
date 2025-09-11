@@ -1,43 +1,9 @@
-import { createClient } from '@supabase/supabase-js';
-
-// bolt.new will inject these automatically when connected to Supabase
-// Fallback to import.meta.env for local development
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase environment variables not found. This is expected in bolt.new before Supabase connection.');
-  // In bolt.new, these will be injected after connecting to Supabase
-  // For now, we'll create a placeholder client that will be replaced
-}
-
-// Performance-optimized Supabase client with connection pooling
-export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co', 
-  supabaseAnonKey || 'placeholder-key',
-  {
-    auth: {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true,
-      storageKey: 'auth-storage',
-      flowType: 'pkce',
-    },
-    db: {
-      schema: 'public',
-    },
-    realtime: {
-      params: {
-        eventsPerSecond: 10,
-      },
-    },
-    global: {
-      headers: {
-        'x-my-custom-header': 'therapy-practice-management',
-      },
-    },
-  }
-);
+// IMPORTANT: Use a single Supabase client across the app to avoid
+// multiple GoTrue instances (which can cause session/cookie conflicts).
+// Re-use the canonical client from supabaseClient.ts.
+import { supabase } from './supabaseClient';
+// Re-export for modules importing from './supabase'
+export { supabase };
 
 // Performance monitoring for database operations
 const monitorDatabaseOperation = async <T>(
@@ -174,12 +140,6 @@ export const supabaseClient = new PerformanceSupabaseClient();
 // Connection verification function for development
 const testConnection = async () => {
   try {
-    // Skip connection test if using placeholder values (bolt.new pre-connection)
-    if (supabaseUrl?.includes('placeholder')) {
-      console.log('Supabase connection pending - connect via bolt.new interface');
-      return;
-    }
-
     // Test auth connection
     const { data: { session }, error: authError } = await supabase.auth.getSession();
     if (authError) {
@@ -224,8 +184,25 @@ const testConnection = async () => {
 export const verifyConnection = testConnection;
 
 // Only run connection test in development or when proper credentials exist
-if (supabaseUrl &&
-    !supabaseUrl.includes('placeholder') &&
-    !import.meta.env.VITEST) {
+if (!import.meta.env.VITEST) {
   testConnection();
 }
+
+// Edge Function helper - attaches user's JWT automatically
+export async function callEdge(path: string, init: RequestInit = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const headers = new Headers(init.headers || {});
+  if (session?.access_token) headers.set('Authorization', `Bearer ${session.access_token}`);
+
+  type ViteEnv = { VITE_SUPABASE_EDGE_URL?: string; VITE_SUPABASE_URL?: string };
+  const env = (import.meta.env as unknown as ViteEnv) || {};
+  const base = env.VITE_SUPABASE_EDGE_URL ?? `${env.VITE_SUPABASE_URL}/functions/v1/`;
+  const url = new URL(path, base).toString();
+  return fetch(url, { ...init, headers });
+}
+
+/**
+ * Testing guidance:
+ * - Mock `supabase` with a chainable shape: from().select().eq().order().limit().single().maybeSingle().
+ * - Ensure the module returns the same `supabase` instance across imports.
+ */

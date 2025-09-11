@@ -3,7 +3,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { X } from 'lucide-react';
 import type { Client } from '../types';
 import AvailabilityEditor from './AvailabilityEditor';
-import { showError } from '../lib/toast';
+// import { showError } from '../lib/toast';
 
 interface ClientModalProps {
   isOpen: boolean;

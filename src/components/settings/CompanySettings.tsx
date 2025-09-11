@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
-import { Building2, Mail, Phone, Globe, MapPin, Clock, Palette } from 'lucide-react';
+import { Building2, Mail, MapPin, Clock, Palette } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { isValidEmail, isValidUrl, prepareFormData } from '../../lib/validation';
 

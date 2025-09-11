@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, MapPin, Phone, Mail, Clock, Building2, Edit2, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase'; 
-import { isValidEmail, prepareFormData } from '../../lib/validation';
+import { prepareFormData } from '../../lib/validation';
 
 interface Location {
   id: string;

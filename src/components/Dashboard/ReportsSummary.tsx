@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { BarChart, TrendingUp, Users, Calendar, ArrowRight } from 'lucide-react';
+import { BarChart, TrendingUp, ArrowRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 

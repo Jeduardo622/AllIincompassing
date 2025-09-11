@@ -9,7 +9,7 @@ import { format, parseISO } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 
 interface ClientsTabProps {
-  therapist: any;
+  therapist: { id: string };
 }
 
 export default function ClientsTab({ therapist }: ClientsTabProps) {

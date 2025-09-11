@@ -398,7 +398,7 @@ export const usePerformanceMonitoring = () => {
     }
   };
 
-  const trackPagePerformance = (pageName: string) => {
+  const trackPagePerformance = (_pageName: string) => {
     const observer = new PerformanceObserver((list) => {
       const entries = list.getEntries();
       

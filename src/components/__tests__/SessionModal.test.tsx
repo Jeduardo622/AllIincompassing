@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { renderWithProviders, screen, userEvent } from '../../test/utils';
+import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { fireEvent } from '@testing-library/react';
 import SessionModal from '../SessionModal';
 
@@ -13,6 +13,7 @@ describe('SessionModal', () => {
       service_type: ['In clinic'],
       availability_hours: {
         monday: { start: '09:00', end: '17:00' },
+        tuesday: { start: '09:00', end: '17:00' },
       },
     },
   ];
@@ -27,6 +28,7 @@ describe('SessionModal', () => {
       authorized_hours: 10,
       availability_hours: {
         monday: { start: '09:00', end: '17:00' },
+        tuesday: { start: '09:00', end: '17:00' },
       },
     },
   ];
@@ -51,8 +53,10 @@ describe('SessionModal', () => {
     const form = document.querySelector('form');
     fireEvent.submit(form!);
 
-    expect(screen.getByText(/Therapist is required/)).toBeInTheDocument();
-    expect(screen.getByText(/Client is required/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/Therapist is required/)).toBeInTheDocument();
+      expect(screen.getByText(/Client is required/)).toBeInTheDocument();
+    });
   });
 
   it('calls onSubmit with form data when valid', async () => {
@@ -71,20 +75,60 @@ describe('SessionModal', () => {
     // Set start and end times
     const startTime = screen.getByLabelText(/Start Time/i);
     const endTime = screen.getByLabelText(/End Time/i);
-    await userEvent.type(startTime, '2025-03-18T10:00');
-    await userEvent.type(endTime, '2025-03-18T11:00');
+    fireEvent.change(startTime, { target: { value: '2025-03-18T10:00' } });
+    fireEvent.change(endTime, { target: { value: '2025-03-18T11:00' } });
 
-    // Submit the form
+    // Submit the form (no conflicts path)
     const submitButton = screen.getByRole('button', { name: /Create Session/i });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     await userEvent.click(submitButton);
 
-    expect(defaultProps.onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+    await waitFor(() => {
+      expect(defaultProps.onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        therapist_id: 'test-therapist-1',
+        client_id: 'test-client-1',
+        start_time: '2025-03-18T10:00',
+        end_time: '2025-03-18T11:00',
+        status: 'scheduled',
+      }));
+    });
+  });
+
+  it('shows conflict banner and proceeds after user confirmation', async () => {
+    // Existing overlapping session to trigger conflict
+    const existingSessions = [{
+      id: 'conflict-1',
       therapist_id: 'test-therapist-1',
       client_id: 'test-client-1',
-      start_time: '2025-03-18T10:00',
-      end_time: '2025-03-18T11:00',
+      start_time: '2025-03-18T10:15',
+      end_time: '2025-03-18T10:45',
       status: 'scheduled',
-    }));
+    } as any];
+
+    renderWithProviders(<SessionModal {...defaultProps} existingSessions={existingSessions} />);
+
+    // Fill out the form
+    await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    // Use change events for datetime-local inputs to ensure value is set reliably
+    const startInput = screen.getByLabelText(/Start Time/i);
+    const endInput = screen.getByLabelText(/End Time/i);
+    fireEvent.change(startInput, { target: { value: '2025-03-18T10:00' } });
+    fireEvent.change(endInput, { target: { value: '2025-03-18T11:00' } });
+
+    // Conflict banner should render
+    await waitFor(() => {
+      expect(screen.getByText(/Scheduling Conflicts/i)).toBeInTheDocument();
+    });
+
+    // User chooses to proceed
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await userEvent.click(screen.getByRole('button', { name: /Create Session/i }));
+
+    await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalled();
+      expect(defaultProps.onSubmit).toHaveBeenCalled();
+    });
   });
 
   it('closes modal when cancel button is clicked', async () => {

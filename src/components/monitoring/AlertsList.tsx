@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertCircle, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+import { CheckCircle, Clock, AlertTriangle } from 'lucide-react';
 import type { Alert } from '../../types';
 
 interface AlertsListProps {

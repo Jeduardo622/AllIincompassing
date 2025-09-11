@@ -21,7 +21,7 @@ export default function SchedulingMatrix({
   onTimeSlotClick,
 }: SchedulingMatrixProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [scrollTop, setScrollTop] = useState(0);
+  const [_scrollTop, setScrollTop] = useState(0);
 
   // Generate time slots in 15-minute intervals from 8 AM to 6 PM
   const timeSlots = useMemo(() => {
@@ -90,25 +90,27 @@ export default function SchedulingMatrix({
     return map;
   }, [therapists, clients, dayName, timeSlots]);
 
-  // Handle scroll events for virtual scrolling
+  // Handle scroll events for virtual scrolling (use hook's onScroll to update internal state)
+  // Keep local scrollTop for potential future use/sync, but primary virtualization uses hook state
   useEffect(() => {
-    const handleScroll = () => {
-      if (containerRef.current) {
-        setScrollTop(containerRef.current.scrollTop);
-      }
-    };
-
     const container = containerRef.current;
-    if (container) {
-      container.addEventListener('scroll', handleScroll);
-      return () => container.removeEventListener('scroll', handleScroll);
-    }
+    if (!container) return;
+    const handleScroll = (e: Event) => {
+      const target = e.currentTarget as HTMLDivElement;
+      setScrollTop(target.scrollTop);
+    };
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Get visible time slots based on scroll position
+  // Get visible time slots using hook output
   const visibleTimeSlots = useMemo(() => {
-    return virtualizedTimeSlots.getVisibleItems(scrollTop);
-  }, [virtualizedTimeSlots, scrollTop]);
+    return {
+      items: virtualizedTimeSlots.visibleItems,
+      offsetY: virtualizedTimeSlots.offsetY,
+      endIndex: virtualizedTimeSlots.visibleRange.end,
+    };
+  }, [virtualizedTimeSlots.visibleItems, virtualizedTimeSlots.offsetY, virtualizedTimeSlots.visibleRange.end]);
 
   if (!therapists.length || !clients.length) {
     return (
@@ -146,6 +148,7 @@ export default function SchedulingMatrix({
             ref={containerRef}
             className="overflow-y-auto"
             style={{ height: CONTAINER_HEIGHT }}
+            onScroll={virtualizedTimeSlots.onScroll}
           >
             {/* Virtual scrolling spacer */}
             <div style={{ height: visibleTimeSlots.offsetY }} />
@@ -170,7 +173,7 @@ export default function SchedulingMatrix({
 
         {/* Availability grid */}
         <div className="relative">
-          <div className="overflow-y-auto" style={{ height: CONTAINER_HEIGHT }}>
+          <div className="overflow-y-auto" style={{ height: CONTAINER_HEIGHT }} onScroll={virtualizedTimeSlots.onScroll}>
             {/* Virtual scrolling spacer */}
             <div style={{ height: visibleTimeSlots.offsetY }} />
             

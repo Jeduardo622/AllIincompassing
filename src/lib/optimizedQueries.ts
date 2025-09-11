@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
 import { CACHE_STRATEGIES, generateCacheKey, useSmartInvalidation } from './cacheStrategy';
 import { useDebounce } from './performance';
-import type { Session, Therapist, Client } from '../types';
+import type { Session } from '../types';
 
 // ============================================================================
 // BATCHED SCHEDULE QUERIES (Replaces N+1 queries)
@@ -210,7 +210,7 @@ export const useCursorPagination = <T extends { created_at: string; id: string }
  * Session mutations with intelligent cache invalidation
  */
 export const useOptimizedSessionMutations = () => {
-  const queryClient = useQueryClient();
+  const _queryClient = useQueryClient();
   const { invalidateRelated } = useSmartInvalidation();
   
   const createSession = useMutation({

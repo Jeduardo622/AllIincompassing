@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { 
-  User, Mail, Calendar, Phone, MapPin, 
+  User, Mail, Phone, MapPin, 
   Edit2, Plus, Award, CheckCircle, AlertTriangle, RefreshCw,
-  FileText, Briefcase, Building2
+  Briefcase, Building2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../lib/auth';
+import { useAuth } from '../../lib/authContext';
 import { showSuccess, showError } from '../../lib/toast';
 import TherapistModal from '../TherapistModal';
 
 interface ProfileTabProps {
-  therapist: any;
+  therapist: { id: string; full_name: string; title?: string; email?: string; phone?: string; specialties?: string[]; street?: string; city?: string; state?: string; zip_code?: string; facility?: string; employee_type?: string; availability_hours?: Record<string, { start: string | null; end: string | null }>; };
 }
 
 interface Note {
@@ -34,7 +34,7 @@ interface Issue {
 }
 
 export default function ProfileTab({ therapist }: ProfileTabProps) {
-  const { hasRole, user } = useAuth();
+  const { hasRole } = useAuth();
   
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
@@ -87,7 +87,7 @@ export default function ProfileTab({ therapist }: ProfileTabProps) {
   const queryClient = useQueryClient();
   
   const updateTherapistMutation = useMutation({
-    mutationFn: async (updatedTherapist: any) => {
+    mutationFn: async (updatedTherapist: Partial<ProfileTabProps['therapist']>) => {
       const { data, error } = await supabase
         .from('therapists')
         .update(updatedTherapist)

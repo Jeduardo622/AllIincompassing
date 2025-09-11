@@ -1,4 +1,4 @@
-import React from 'react';
+// import React from 'react';
 
 export interface Location {
   latitude: number;
@@ -85,7 +85,7 @@ export interface Client {
   email: string;
   full_name: string;
   date_of_birth: string;
-  insurance_info: Record<string, any>;
+  insurance_info: Record<string, unknown>;
   service_preference: string[];
   one_to_one_units: number;
   supervision_units: number;

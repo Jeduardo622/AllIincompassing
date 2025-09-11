@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { 
   User, Mail, Calendar, Phone, MapPin, 
-  Edit2, Plus, Flag, CheckCircle, AlertTriangle, RefreshCw,
+  Edit2, Plus, CheckCircle, AlertTriangle, RefreshCw,
   FileText
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -12,7 +12,7 @@ import AddGeneralNoteModal from '../AddGeneralNoteModal';
 import type { Note, Issue } from '../../types';
 
 interface ProfileTabProps {
-  client: any;
+  client: { id: string; full_name: string; client_id?: string; date_of_birth?: string; email?: string; phone?: string; street_address?: string; city?: string; state?: string; zip_code?: string; gender?: string; cin_number?: string };
 }
 
 export default function ProfileTab({ client }: ProfileTabProps) {
@@ -64,7 +64,7 @@ export default function ProfileTab({ client }: ProfileTabProps) {
   const queryClient = useQueryClient();
   
   const updateClientMutation = useMutation({
-    mutationFn: async (updatedClient: any) => {
+    mutationFn: async (updatedClient: Partial<ProfileTabProps['client']>) => {
       const { data, error } = await supabase
         .from('clients')
         .update(updatedClient)

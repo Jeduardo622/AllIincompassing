@@ -2,13 +2,13 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { 
   ClipboardCheck, Calendar, AlertCircle, 
-  FileText, Plus, Download, ArrowRight,
+  FileText, Plus, ArrowRight,
   CheckCircle
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface PreAuthTabProps {
-  client: any;
+  client: { id: string };
 }
 
 interface Authorization {

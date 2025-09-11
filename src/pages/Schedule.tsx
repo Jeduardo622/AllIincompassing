@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, startOfWeek, addDays, endOfWeek } from "date-fns";
 import {
   Calendar as CalendarIcon,
@@ -8,7 +8,6 @@ import {
   Clock,
   Plus,
   Edit2,
-  Trash2,
   Wand2,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
@@ -487,7 +486,7 @@ const Schedule = React.memo(() => {
     setIsModalOpen(true);
   }, []);
 
-  const handleDeleteSession = useCallback(
+  const _handleDeleteSession = useCallback(
     async (sessionId: string) => {
       if (window.confirm("Are you sure you want to delete this session?")) {
         await deleteSessionMutation.mutateAsync(sessionId);

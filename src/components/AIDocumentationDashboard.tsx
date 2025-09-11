@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
+// import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
@@ -15,9 +15,9 @@ import {
   FileText, 
   CheckCircle, 
   AlertCircle, 
-  Clock, 
+  // Clock, 
   Mic, 
-  MicOff,
+  // MicOff,
   Download,
   Edit,
   Save,
@@ -27,12 +27,12 @@ import {
   Target,
   BarChart3,
   Calendar,
-  User,
+  // User,
   MapPin,
   Timer,
   Template
 } from 'lucide-react';
-import { aiDocumentation, SessionNote, SessionTranscript, AudioSegment } from '@/lib/ai-documentation';
+import { aiDocumentation, SessionNote, AudioSegment } from '@/lib/ai-documentation';
 import { toast } from '@/lib/toast';
 
 // Add interface for templates
@@ -41,8 +41,8 @@ interface SessionNoteTemplate {
   template_name: string;
   description: string;
   template_type: string;
-  template_structure: any;
-  compliance_requirements: any;
+  template_structure: Record<string, unknown>;
+  compliance_requirements: Record<string, unknown>;
   is_california_compliant: boolean;
 }
 
@@ -56,7 +56,7 @@ interface AIDocumentationDashboardProps {
 export function AIDocumentationDashboard({
   sessionId,
   clientId,
-  therapistId,
+  therapistId: _therapistId,
   onSessionNoteGenerated
 }: AIDocumentationDashboardProps) {
   const [isRecording, setIsRecording] = useState(false);
@@ -66,7 +66,7 @@ export function AIDocumentationDashboard({
   const [selectedNote, setSelectedNote] = useState<SessionNote | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingNote, setEditingNote] = useState<SessionNote | null>(null);
-  const [complianceStatus, setComplianceStatus] = useState<{
+  const [_complianceStatus, _setComplianceStatus] = useState<{
     compliant: boolean;
     issues: string[];
   } | null>(null);
@@ -74,7 +74,7 @@ export function AIDocumentationDashboard({
   // Add template state
   const [templates, setTemplates] = useState<SessionNoteTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
-  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  const [_isLoadingTemplates, _setIsLoadingTemplates] = useState(false);
   
   // Add performance metrics state
   const [performanceMetrics, setPerformanceMetrics] = useState({
@@ -341,9 +341,9 @@ export function AIDocumentationDashboard({
     }, {} as Record<string, number>);
   };
 
-  const getComplianceColor = (compliant: boolean) => {
-    return compliant ? 'text-green-600' : 'text-red-600';
-  };
+  // const getComplianceColor = (compliant: boolean) => {
+  //   return compliant ? 'text-green-600' : 'text-red-600';
+  // };
 
   const getComplianceBadge = (compliant: boolean) => {
     return compliant ? (

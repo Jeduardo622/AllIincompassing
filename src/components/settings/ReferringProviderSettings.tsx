@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Edit2, Trash2, User, Phone, Mail, Building2, Award, MapPin } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { isValidEmail, prepareFormData } from '../../lib/validation';
+import { prepareFormData } from '../../lib/validation';
 import { showSuccess, showError } from '../../lib/toast';
 
 interface ReferringProvider {

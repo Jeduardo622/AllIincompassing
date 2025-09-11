@@ -1,38 +1,32 @@
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
+import { createProtectedRoute, corsHeaders, logApiAccess, RouteOptions, UserContext } from "../_shared/auth-middleware.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+const supabase = createClient(
+  Deno.env.get("SUPABASE_URL") ?? "",
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+);
 
-const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+interface ReportRequest {
+  reportType: string;
+  startDate: string;
+  endDate: string;
+  therapistId?: string;
+  clientId?: string;
+  status?: string;
+}
 
-Deno.serve(async (req) => {
-  // Handle CORS preflight request
-  if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: corsHeaders,
-    });
+export default createProtectedRoute(async (req: Request, userContext) => {
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }),
+      {
+        status: 405,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    );
   }
 
   try {
-    // Get the JWT token from the request
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      throw new Error("Missing Authorization header");
-    }
-
-    // Verify the JWT token
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    
-    if (authError || !user) {
-      throw new Error("Invalid token or user not found");
-    }
-
     // Parse the request body
     const { 
       reportType,
@@ -41,303 +35,230 @@ Deno.serve(async (req) => {
       therapistId,
       clientId,
       status
-    } = await req.json();
+    }: ReportRequest = await req.json();
 
     if (!reportType || !startDate || !endDate) {
-      throw new Error("Report type, start date, and end date are required");
+      return new Response(
+        JSON.stringify({ error: 'Report type, start date, and end date are required' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     let reportData;
 
     switch (reportType) {
-      case 'sessions':
-        reportData = await generateSessionsReport(startDate, endDate, therapistId, clientId, status);
+      case "sessions":
+        reportData = await generateSessionsReport(startDate, endDate, therapistId, clientId, status, userContext);
         break;
-      case 'clients':
-        reportData = await generateClientsReport(startDate, endDate);
+      case "clients":
+        reportData = await generateClientsReport(startDate, endDate, userContext);
         break;
-      case 'therapists':
-        reportData = await generateTherapistsReport(startDate, endDate);
+      case "therapists":
+        reportData = await generateTherapistsReport(startDate, endDate, userContext);
         break;
-      case 'authorizations':
-        reportData = await generateAuthorizationsReport(startDate, endDate);
-        break;
-      case 'billing':
-        reportData = await generateBillingReport(startDate, endDate);
+      case "billing":
+        reportData = await generateBillingReport(startDate, endDate, therapistId, clientId, userContext);
         break;
       default:
-        throw new Error(`Invalid report type: ${reportType}`);
+        return new Response(
+          JSON.stringify({ error: `Unsupported report type: ${reportType}` }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
     }
 
+    logApiAccess('POST', '/generate-report', userContext, 200);
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: true,
-        data: reportData
+        reportType,
+        data: reportData,
+        generatedAt: new Date().toISOString(),
+        filters: { startDate, endDate, therapistId, clientId, status }
       }),
       {
-        headers: { 
-          ...corsHeaders,
-          "Content-Type": "application/json" 
-        },
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
+
   } catch (error) {
     console.error("Error generating report:", error);
+    logApiAccess('POST', '/generate-report', userContext, 500);
+    
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error.message || "An error occurred while generating the report"
+        error: error.message || 'Failed to generate report' 
       }),
       {
-        status: 400,
-        headers: { 
-          ...corsHeaders,
-          "Content-Type": "application/json" 
-        },
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
   }
-});
+}, RouteOptions.admin); // Require admin role for report generation
 
-// Generate sessions report
+// Helper functions with role-based access control
 async function generateSessionsReport(
   startDate: string, 
   endDate: string, 
   therapistId?: string, 
   clientId?: string, 
-  status?: string
+  status?: string,
+  userContext: UserContext
 ) {
-  const { data, error } = await supabase.rpc(
-    'get_sessions_report',
-    {
-      p_start_date: startDate,
-      p_end_date: endDate,
-      p_therapist_id: therapistId,
-      p_client_id: clientId,
-      p_status: status
-    }
-  );
+  let query = supabase
+    .from("sessions")
+    .select(`
+      *,
+      therapists!inner (id, full_name),
+      clients!inner (id, full_name)
+    `)
+    .gte("start_time", startDate)
+    .lte("start_time", endDate);
 
-  if (error) throw error;
+  // Apply role-based filtering
+  if (userContext.profile.role === 'therapist') {
+    // Therapists can only see their own sessions
+    query = query.eq('therapist_id', userContext.user.id);
+  }
 
-  // Process data for report
-  const sessions = data || [];
-  
-  // Calculate metrics
-  const totalSessions = sessions.length;
-  const completedSessions = sessions.filter(s => s.status === 'completed').length;
-  const cancelledSessions = sessions.filter(s => s.status === 'cancelled').length;
-  const noShowSessions = sessions.filter(s => s.status === 'no-show').length;
-  const completionRate = totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 0;
-  
-  // Group by therapist
-  const sessionsByTherapist = sessions.reduce((acc, session) => {
-    const therapistName = session.therapist_name || 'Unknown';
-    acc[therapistName] = (acc[therapistName] || 0) + 1;
-    return acc;
-  }, {});
-  
-  // Group by client
-  const sessionsByClient = sessions.reduce((acc, session) => {
-    const clientName = session.client_name || 'Unknown';
-    acc[clientName] = (acc[clientName] || 0) + 1;
-    return acc;
-  }, {});
-  
-  // Group by day of week
-  const sessionsByDayOfWeek = sessions.reduce((acc, session) => {
-    const date = new Date(session.start_time);
-    const dayOfWeek = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(date);
-    acc[dayOfWeek] = (acc[dayOfWeek] || 0) + 1;
-    return acc;
-  }, {});
+  if (therapistId) {
+    query = query.eq("therapist_id", therapistId);
+  }
+
+  if (clientId) {
+    query = query.eq("client_id", clientId);
+  }
+
+  if (status) {
+    query = query.eq("status", status);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(`Error fetching sessions: ${error.message}`);
+  }
 
   return {
-    totalSessions,
-    completedSessions,
-    cancelledSessions,
-    noShowSessions,
-    completionRate,
-    sessionsByTherapist,
-    sessionsByClient,
-    sessionsByDayOfWeek,
-    rawData: sessions
+    sessions: data,
+    summary: {
+      totalSessions: data.length,
+      completedSessions: data.filter(s => s.status === "completed").length,
+      cancelledSessions: data.filter(s => s.status === "cancelled").length,
+      scheduledSessions: data.filter(s => s.status === "scheduled").length,
+    }
   };
 }
 
-// Generate clients report
-async function generateClientsReport(startDate: string, endDate: string) {
-  // Get client metrics
-  const { data: metrics, error: metricsError } = await supabase.rpc(
-    'get_client_metrics',
-    {
-      p_start_date: startDate,
-      p_end_date: endDate
-    }
-  );
+async function generateClientsReport(startDate: string, endDate: string, userContext: UserContext) {
+  let query = supabase
+    .from("clients")
+    .select("*")
+    .gte("created_at", startDate)
+    .lte("created_at", endDate);
 
-  if (metricsError) throw metricsError;
+  // Apply role-based filtering  
+  if (userContext.profile.role === 'therapist') {
+    // Therapists can only see their assigned clients
+    query = query.eq('therapist_id', userContext.user.id);
+  }
 
-  // Get all clients
-  const { data: clients, error: clientsError } = await supabase
-    .from('clients')
-    .select('*');
+  const { data, error } = await query;
 
-  if (clientsError) throw clientsError;
-
-  // Get sessions in date range
-  const { data: sessions, error: sessionsError } = await supabase.rpc(
-    'get_sessions_report',
-    {
-      p_start_date: startDate,
-      p_end_date: endDate,
-      p_therapist_id: null,
-      p_client_id: null,
-      p_status: null
-    }
-  );
-
-  if (sessionsError) throw sessionsError;
+  if (error) {
+    throw new Error(`Error fetching clients: ${error.message}`);
+  }
 
   return {
-    ...metrics[0],
-    rawData: clients
+    clients: data,
+    summary: {
+      totalClients: data.length,
+      activeClients: data.filter(c => c.is_active).length,
+      newClients: data.length
+    }
   };
 }
 
-// Generate therapists report
-async function generateTherapistsReport(startDate: string, endDate: string) {
-  try {
-    // Get therapist metrics
-    const { data: therapists, error: therapistsError } = await supabase
-      .from('therapists')
-      .select('*');
-
-    if (therapistsError) throw therapistsError;
-
-    // Get sessions in date range for therapists
-    const { data: sessions, error: sessionsError } = await supabase.rpc(
-      'get_sessions_report',
-      {
-        p_start_date: startDate,
-        p_end_date: endDate,
-        p_therapist_id: null,
-        p_client_id: null,
-        p_status: null
-      }
-    );
-
-    if (sessionsError) throw sessionsError;
-
-    // Calculate therapist-specific metrics
-    const therapistMetrics = therapists.map(therapist => {
-      const therapistSessions = sessions.filter(s => s.therapist_id === therapist.id);
-      const totalSessions = therapistSessions.length;
-      const completedSessions = therapistSessions.filter(s => s.status === 'completed').length;
-      const cancelledSessions = therapistSessions.filter(s => s.status === 'cancelled').length;
-      const noShowSessions = therapistSessions.filter(s => s.status === 'no-show').length;
-      const completionRate = totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 0;
-
-      return {
-        therapist_id: therapist.id,
-        therapist_name: therapist.full_name,
-        total_sessions: totalSessions,
-        completed_sessions: completedSessions,
-        cancelled_sessions: cancelledSessions,
-        no_show_sessions: noShowSessions,
-        completion_rate: completionRate,
-        service_types: therapist.service_type || []
-      };
-    });
-
-    return {
-      totalTherapists: therapists.length,
-      therapistMetrics,
-      dateRange: { startDate, endDate }
-    };
-  } catch (error) {
-    console.error('Error generating therapists report:', error);
-    throw new Error(`Failed to generate therapists report: ${error.message}`);
+async function generateTherapistsReport(startDate: string, endDate: string, userContext: UserContext) {
+  // Only admins can generate therapist reports
+  if (!['admin', 'super_admin'].includes(userContext.profile.role)) {
+    throw new Error('Insufficient permissions to generate therapist reports');
   }
+
+  const { data, error } = await supabase
+    .from("therapists")
+    .select("*")
+    .gte("created_at", startDate)
+    .lte("created_at", endDate);
+
+  if (error) {
+    throw new Error(`Error fetching therapists: ${error.message}`);
+  }
+
+  return {
+    therapists: data,
+    summary: {
+      totalTherapists: data.length,
+      activeTherapists: data.filter(t => t.is_active).length,
+    }
+  };
 }
 
-// Generate authorizations report
-async function generateAuthorizationsReport(startDate: string, endDate: string) {
-  try {
-    const { data: authorizations, error } = await supabase
-      .from('authorizations')
-      .select(`
-        *,
-        client:clients(id, full_name),
-        provider:therapists(id, full_name)
-      `)
-      .gte('created_at', startDate)
-      .lte('created_at', endDate);
-
-    if (error) throw error;
-
-    // Calculate authorization metrics
-    const totalAuthorizations = authorizations.length;
-    const activeAuthorizations = authorizations.filter(a => a.status === 'active').length;
-    const expiredAuthorizations = authorizations.filter(a => a.status === 'expired').length;
-    const pendingAuthorizations = authorizations.filter(a => a.status === 'pending').length;
-
-    // Group by provider
-    const authorizationsByProvider = authorizations.reduce((acc, auth) => {
-      const providerName = auth.provider?.full_name || 'Unknown';
-      acc[providerName] = (acc[providerName] || 0) + 1;
-      return acc;
-    }, {});
-
-    return {
-      totalAuthorizations,
-      activeAuthorizations,
-      expiredAuthorizations,
-      pendingAuthorizations,
-      authorizationsByProvider,
-      rawData: authorizations
-    };
-  } catch (error) {
-    console.error('Error generating authorizations report:', error);
-    throw new Error(`Failed to generate authorizations report: ${error.message}`);
+async function generateBillingReport(
+  startDate: string, 
+  endDate: string, 
+  therapistId?: string, 
+  clientId?: string,
+  userContext: UserContext
+) {
+  // Only admins can generate billing reports
+  if (!['admin', 'super_admin'].includes(userContext.profile.role)) {
+    throw new Error('Insufficient permissions to generate billing reports');
   }
-}
 
-// Generate billing report
-async function generateBillingReport(startDate: string, endDate: string) {
-  try {
-    // Note: This assumes you have a billing table or can derive billing from sessions
-    const { data: sessions, error } = await supabase.rpc(
-      'get_sessions_report',
-      {
-        p_start_date: startDate,
-        p_end_date: endDate,
-        p_therapist_id: null,
-        p_client_id: null,
-        p_status: 'completed' // Only completed sessions for billing
-      }
-    );
+  let query = supabase
+    .from("sessions")
+    .select(`
+      *,
+      therapists!inner (id, full_name, hourly_rate),
+      clients!inner (id, full_name)
+    `)
+    .gte("start_time", startDate)
+    .lte("start_time", endDate)
+    .eq("status", "completed");
 
-    if (error) throw error;
+  if (therapistId) {
+    query = query.eq("therapist_id", therapistId);
+  }
 
-    // Calculate billing metrics (assuming basic rate structure)
-    const completedSessions = sessions || [];
-    const totalRevenue = completedSessions.length * 150; // Placeholder rate
-    const sessionsByMonth = completedSessions.reduce((acc, session) => {
-      const month = new Date(session.start_time).toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
-      acc[month] = (acc[month] || 0) + 1;
-      return acc;
-    }, {});
+  if (clientId) {
+    query = query.eq("client_id", clientId);
+  }
 
-    return {
-      totalSessions: completedSessions.length,
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(`Error fetching billing data: ${error.message}`);
+  }
+
+  const totalRevenue = data.reduce((sum, session) => {
+    return sum + (session.therapists.hourly_rate || 0);
+  }, 0);
+
+  return {
+    sessions: data,
+    summary: {
+      totalSessions: data.length,
       totalRevenue,
-      averageRevenuePerSession: completedSessions.length > 0 ? totalRevenue / completedSessions.length : 0,
-      sessionsByMonth,
-      dateRange: { startDate, endDate }
-    };
-  } catch (error) {
-    console.error('Error generating billing report:', error);
-    throw new Error(`Failed to generate billing report: ${error.message}`);
-  }
+      averageSessionValue: data.length > 0 ? totalRevenue / data.length : 0,
+    }
+  };
 }

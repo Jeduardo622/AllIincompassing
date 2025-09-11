@@ -7,11 +7,7 @@ import {
   Plus,
   Edit2,
   Trash2,
-  Calendar,
-  User,
-  Activity,
-  Clock,
-  AlertCircle
+  Calendar
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Authorization, AuthorizationService } from '../types';
@@ -319,7 +315,7 @@ export default function Authorizations() {
     }
   };
 
-  const getTotalUnits = (services: AuthorizationService[]) => {
+  const _getTotalUnits = (services: AuthorizationService[]) => {
     return services.reduce((total, service) => total + (service.approved_units || 0), 0);
   };
 

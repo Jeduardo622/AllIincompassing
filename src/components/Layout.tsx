@@ -1,10 +1,10 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
-import { useAuth } from '../lib/auth';
+import { useAuth } from '../lib/authContext';
 
 export default function Layout() {
-  const { user, roles } = useAuth();
+  const { user, profile } = useAuth();
 
   return (
     <div className="flex min-h-screen bg-gray-50 dark:bg-dark">
@@ -14,7 +14,7 @@ export default function Layout() {
         {user && (
           <div className="mb-4 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm">
             <span className="font-medium">Logged in as:</span> {user.email}
-            <span className="ml-2 font-medium">Roles:</span> {roles.length > 0 ? roles.join(', ') : 'No roles assigned'}
+            <span className="ml-2 font-medium">Role:</span> {profile?.role || 'No role assigned'}
           </div>
         )}
         <Outlet />

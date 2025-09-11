@@ -268,7 +268,7 @@ export default function MonitoringDashboard() {
   );
 
   const CacheManagementTab = () => {
-    const [cleanupStats, setCleanupStats] = useState<any>(null);
+    const [cleanupStats, setCleanupStats] = useState<ReturnType<typeof getCleanupStats> | null>(null);
     const [isRunningCleanup, setIsRunningCleanup] = useState(false);
 
     const loadCleanupStats = async () => {
@@ -410,8 +410,8 @@ export default function MonitoringDashboard() {
   };
 
   const QueryPerformanceTab = () => {
-    const [queryAnalysis, setQueryAnalysis] = useState<any>(null);
-    const [queryStats, setQueryStats] = useState<any>(null);
+    const [queryAnalysis, setQueryAnalysis] = useState<Awaited<ReturnType<typeof getAnalysis>> | null>(null);
+    const [queryStats, setQueryStats] = useState<ReturnType<typeof getQueryStats> | null>(null);
 
     const loadQueryData = async () => {
       try {
@@ -488,7 +488,7 @@ export default function MonitoringDashboard() {
           <div className="bg-white dark:bg-dark-lighter p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Slow Query Patterns</h3>
             <div className="space-y-3">
-              {queryAnalysis.patterns.slice(0, 5).map((pattern: any, index: number) => (
+              {queryAnalysis.patterns.slice(0, 5).map((pattern, index: number) => (
                 <div key={index} className="flex items-start space-x-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                   <AlertTriangle className={`w-5 h-5 mt-0.5 ${
                     pattern.impact === 'critical' ? 'text-red-500' : 
@@ -527,7 +527,7 @@ export default function MonitoringDashboard() {
           <div className="bg-white dark:bg-dark-lighter p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance Recommendations</h3>
             <div className="space-y-3">
-              {queryAnalysis.recommendations.map((rec: any, index: number) => (
+              {queryAnalysis.recommendations.map((rec, index: number) => (
                 <div key={index} className="flex items-start space-x-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                   <CheckCircle className={`w-5 h-5 mt-0.5 ${
                     rec.priority === 'critical' ? 'text-red-500' : 

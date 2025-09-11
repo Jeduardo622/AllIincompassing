@@ -298,7 +298,7 @@ export class QueryPerformanceTracker {
 
     // Store error pattern for analysis
     if (this.config.analysis.patternDetection) {
-      const errorKey = `error::${metric.queryKey}`;
+      const _errorKey = `error::${metric.queryKey}`;
       // Process error patterns similar to slow queries
     }
   }
@@ -596,10 +596,10 @@ export class QueryPerformanceTracker {
 // REACT HOOKS
 // ============================================================================
 
-let performanceTracker: QueryPerformanceTracker | null = null;
+let _performanceTracker: QueryPerformanceTracker | null = null;
 
 export function useQueryPerformanceTracking(config?: Partial<QueryPerformanceConfig>) {
-  const queryClient = useQueryClient();
+  const _queryClient = useQueryClient();
   const trackerRef = useRef<QueryPerformanceTracker | null>(null);
   const [isActive, setIsActive] = useState(false);
 
@@ -608,7 +608,7 @@ export function useQueryPerformanceTracking(config?: Partial<QueryPerformanceCon
     if (!trackerRef.current) {
       const finalConfig = config ? { ...DEFAULT_PERFORMANCE_CONFIG, ...config } : DEFAULT_PERFORMANCE_CONFIG;
       trackerRef.current = new QueryPerformanceTracker(finalConfig);
-      performanceTracker = trackerRef.current;
+      _performanceTracker = trackerRef.current;
       setIsActive(true);
     }
 
@@ -616,7 +616,7 @@ export function useQueryPerformanceTracking(config?: Partial<QueryPerformanceCon
       if (trackerRef.current) {
         trackerRef.current.destroy();
         trackerRef.current = null;
-        performanceTracker = null;
+        _performanceTracker = null;
         setIsActive(false);
       }
     };

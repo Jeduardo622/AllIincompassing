@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Contact as FileContract, Calendar, DollarSign, FileText, Plus, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { Contact as FileContract, FileText, Plus, Download, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface ServiceContractsTabProps {
-  client: any;
+  client: { id: string };
 }
 
 interface Contract {
@@ -26,12 +26,12 @@ interface Contract {
   }[];
 }
 
-export default function ServiceContractsTab({ client }: ServiceContractsTabProps) {
+export default function ServiceContractsTab({ client: _client }: ServiceContractsTabProps) {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [expandedContract, setExpandedContract] = useState<string | null>(null);
   
   // Mock contracts data
-  const [contracts, setContracts] = useState<Contract[]>([
+  const [contracts, _setContracts] = useState<Contract[]>([
     {
       id: '1',
       payer_name: 'CalOptima Health',

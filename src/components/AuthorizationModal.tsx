@@ -1,6 +1,6 @@
 import React from 'react';
 import { useForm } from 'react-hook-form';
-import { format } from 'date-fns';
+// import { format } from 'date-fns';
 import { X } from 'lucide-react';
 import type { Authorization, AuthorizationService, Client, Therapist } from '../types';
 import { showError } from '../lib/toast';

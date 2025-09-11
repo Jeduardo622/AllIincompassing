@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { format, parseISO, addDays } from 'date-fns';
 import { 
-  MapPin, Clock, AlertCircle, Calendar, ArrowRight, Car, 
+  // MapPin, 
+  Clock, AlertCircle, Calendar, ArrowRight, Car, 
   User, X, ChevronLeft, ChevronRight 
 } from 'lucide-react';
 import type { Therapist, Client, Session } from '../types';

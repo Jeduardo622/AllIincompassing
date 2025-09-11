@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { Users, Calendar, Clock, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import type { Session, Client, Therapist } from '../types';
+// import type { Session } from '../types';
 import DashboardCard from '../components/DashboardCard';
 import ReportsSummary from '../components/Dashboard/ReportsSummary';
 import { useDashboardData } from '../lib/optimizedQueries';

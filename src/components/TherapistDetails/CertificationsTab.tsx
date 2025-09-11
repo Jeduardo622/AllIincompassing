@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
-  Award, Calendar, FileText, Plus, Download, Inbox,
-  CheckCircle, AlertTriangle, Trash2, Upload
+  Award, Plus, Download,
+  CheckCircle, AlertTriangle, Trash2, Upload, Clock
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showSuccess, showError } from '../../lib/toast';
 
 interface CertificationsTabProps {
-  therapist: any;
+  therapist: { id: string };
 }
 
 interface Certification {
@@ -285,7 +285,7 @@ function AddCertificationModal({ therapistId, onClose, onSuccess }: AddCertifica
       const fileName = `${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
       const filePath = `therapists/${therapistId}/certifications/${fileName}`;
       
-      const { error: uploadError, data: uploadData } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('therapist-documents')
         .upload(filePath, file);
         

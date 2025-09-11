@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { toast } from './toast';
+import { showSuccess, showError } from './toast';
 
 // Types for AI Documentation System
 export interface SessionTranscript {
@@ -171,10 +171,10 @@ export class AIDocumentationService {
       this.mediaRecorder.start(5000); // Capture 5-second chunks
       this.isRecording = true;
       
-      toast.success('Session recording started');
+      showSuccess('Session recording started');
     } catch (error) {
       console.error('Error starting recording:', error);
-      toast.error('Failed to start session recording');
+      showError('Failed to start session recording');
       throw error;
     }
   }
@@ -185,10 +185,16 @@ export class AIDocumentationService {
       this.mediaRecorder.stop();
       this.isRecording = false;
       
-      // Stop all audio tracks
-      this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+      // Stop all audio tracks (guard for tests without real stream)
+      const stream: MediaStream | undefined = (this.mediaRecorder as any).stream;
+      if (stream && typeof stream.getTracks === 'function') {
+        stream.getTracks().forEach(track => track.stop());
+      }
       
-      toast.success('Session recording stopped');
+      // Clear the session id immediately after stopping to reflect stopped state
+      this.currentSessionId = null;
+      
+      showSuccess('Session recording stopped');
     }
   }
 
@@ -267,7 +273,6 @@ export class AIDocumentationService {
   private identifySpeaker(text: string): 'therapist' | 'client' | 'caregiver' {
     // Simple keyword-based speaker identification
     const therapistKeywords = ['let\'s try', 'good job', 'can you', 'show me', 'first then'];
-    const clientKeywords = ['I want', 'no', 'help', 'more', 'all done'];
     const caregiverKeywords = ['how did', 'at home', 'yesterday', 'usually'];
 
     const lowerText = text.toLowerCase();
@@ -358,7 +363,7 @@ export class AIDocumentationService {
   }
 
   // Generate comprehensive session note using AI
-  async generateSessionNote(sessionId: string, transcriptId: string, templateOptions?: {
+  async generateSessionNote(sessionId: string, transcriptId: string, _templateOptions?: {
     templateId?: string;
     templateType?: string;
     complianceRequirements?: any;
@@ -533,14 +538,14 @@ Focus on measurable outcomes and professional clinical language appropriate for 
     
     // Check for objective language
     const subjectiveWords = ['seemed', 'appeared', 'felt', 'looked like', 'probably', 'maybe'];
-    const summaryText = sessionNote.summary.toLowerCase();
+    const summaryText = (sessionNote.summary ?? '').toLowerCase();
     
     if (subjectiveWords.some(word => summaryText.includes(word))) {
       issues.push('Contains subjective language - use objective observations only');
     }
     
     // Check for quantified data
-    const hasQuantifiedData = sessionNote.data_summary.some((data: any) => 
+    const hasQuantifiedData = Array.isArray(sessionNote.data_summary) && sessionNote.data_summary.some((data: any) => 
       data.percentage_correct !== undefined || data.frequency !== undefined
     );
     
@@ -548,9 +553,12 @@ Focus on measurable outcomes and professional clinical language appropriate for 
       issues.push('Missing quantified performance data');
     }
     
+    // Strict policy: compliant only if no issues remain after checks
+    const strictlyCompliant = issues.length === 0;
+
     return {
-      compliant: issues.length === 0,
-      insurance_ready: issues.length === 0,
+      compliant: strictlyCompliant,
+      insurance_ready: strictlyCompliant,
       issues
     };
   }
@@ -610,12 +618,12 @@ Focus on measurable outcomes and professional clinical language appropriate for 
       
       // Clean up
       this.audioChunks = [];
-      this.currentSessionId = null;
+      // currentSessionId set to null on stop
       
-      toast.success('Session transcript generated successfully');
+      showSuccess('Session transcript generated successfully');
     } catch (error) {
       console.error('Error finalizing recording:', error);
-      toast.error('Failed to generate session transcript');
+      showError('Failed to generate session transcript');
     }
   }
 
@@ -727,7 +735,7 @@ Focus on measurable outcomes and professional clinical language appropriate for 
       throw error;
     }
 
-    toast.success('Session note signed successfully');
+    showSuccess('Session note signed successfully');
   }
 
   // Export session note for insurance

@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react';
-import { useQueryClient, QueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
 
 // ============================================================================
@@ -109,8 +109,8 @@ export function estimateMemoryUsage(): MemoryStats {
     // Estimate localStorage usage
     let localStorageSize = 0;
     if (typeof localStorage !== 'undefined') {
-      for (let key in localStorage) {
-        if (localStorage.hasOwnProperty(key)) {
+      for (const key in localStorage) {
+        if (Object.prototype.hasOwnProperty.call(localStorage, key)) {
           localStorageSize += localStorage[key].length;
         }
       }
@@ -120,8 +120,8 @@ export function estimateMemoryUsage(): MemoryStats {
     // Estimate sessionStorage usage
     let sessionStorageSize = 0;
     if (typeof sessionStorage !== 'undefined') {
-      for (let key in sessionStorage) {
-        if (sessionStorage.hasOwnProperty(key)) {
+      for (const key in sessionStorage) {
+        if (Object.prototype.hasOwnProperty.call(sessionStorage, key)) {
           sessionStorageSize += sessionStorage[key].length;
         }
       }
@@ -270,7 +270,7 @@ export class CacheCleanupManager {
               localStorage.setItem(key, JSON.stringify(truncated));
             }
           }
-        } catch (parseError) {
+        } catch {
           // If parsing fails, remove the corrupted data
           bytesFreed += data.length;
           localStorage.removeItem(key);
@@ -443,9 +443,7 @@ export class CacheCleanupManager {
       window.dispatchEvent(event);
 
       // Force garbage collection if available
-      if (window.gc) {
-        window.gc();
-      }
+      // No-op: window.gc may not exist in browsers
 
     } catch (error) {
       console.error('Aggressive cleanup failed:', error);
@@ -495,7 +493,7 @@ export class CacheCleanupManager {
 // ============================================================================
 
 // Singleton instance
-let cleanupManager: CacheCleanupManager | null = null;
+let _cleanupManager: CacheCleanupManager | null = null;
 
 export function useCacheCleanup(config?: Partial<CacheCleanupConfig>) {
   const queryClient = useQueryClient();
@@ -506,7 +504,7 @@ export function useCacheCleanup(config?: Partial<CacheCleanupConfig>) {
     if (!managerRef.current) {
       const finalConfig = config ? { ...DEFAULT_CLEANUP_CONFIG, ...config } : DEFAULT_CLEANUP_CONFIG;
       managerRef.current = new CacheCleanupManager(finalConfig);
-      cleanupManager = managerRef.current;
+      _cleanupManager = managerRef.current;
     }
 
     const manager = managerRef.current;
@@ -593,7 +591,7 @@ export function useCacheCleanup(config?: Partial<CacheCleanupConfig>) {
     getCleanupStats,
     updateCleanupConfig,
     estimateMemoryUsage,
-    isActive: managerRef.current?.getStats().isRunning || false,
+    isActive: managerRef.current ? !!managerRef.current.getStats().isRunning : false,
   };
 }
 

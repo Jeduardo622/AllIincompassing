@@ -209,7 +209,7 @@ export function DatabasePerformance() {
   }, [metrics]);
 
   // Calculate metrics for slow queries
-  const slowQueriesData = React.useMemo(() => {
+  const _slowQueriesData = React.useMemo(() => {
     if (!slowQueries || !slowQueries.length) return {
       labels: [],
       datasets: [{

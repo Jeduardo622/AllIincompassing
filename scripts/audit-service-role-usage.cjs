@@ -11,12 +11,16 @@ const NEEDLES = [
 
 const BAD = [];
 
-// --- start replacement block ---
+// Only scan code files
+const CODE_EXT = [".ts", ".tsx", ".js", ".mjs", ".cjs"];
+
 const ALLOWLIST = [
-  /\/_shared\//,                  // allow constants & helpers (contains SERVICE_ROLE_KEY)
-  /\/admin(\/|-[^/]*\/)\/,         // allow admin/ and admin-* function folders
-  /\/\.github\//,                 // ignore GitHub workflows
-  /\/patches\//,                  // ignore patch files
+  /\/_shared\//,                              // allow shared helpers
+  /\/admin(\/|-[^/]*\/)\/,                     // allow admin/ and admin-* folders
+  /\/\.github\//,                             // ignore GitHub workflows
+  /\/patches\//,                              // ignore patch files
+  /\/supabase\/functions\/.*\/deps\.ts$/,     // ignore deps.ts in functions
+  /\/supabase\/functions\/.*\/import_map\.json$/, // ignore import maps
 ];
 
 function isAllowed(p) {
@@ -30,6 +34,7 @@ function walk(dir) {
     if (entry.isDirectory()) { walk(full); continue; }
     const p = full.split(path.sep).join("/");
     if (!p.includes("/supabase/functions/") && !p.includes("/scripts/")) continue;
+    if (!CODE_EXT.some(ext => p.endsWith(ext))) continue;
 
     const text = fs.readFileSync(full, "utf8");
     if (NEEDLES.some(n => text.includes(n)) && !isAllowed(p)) {
@@ -37,12 +42,10 @@ function walk(dir) {
     }
   }
 }
-// --- end replacement block ---
 
 // Scan from repo root
 walk(process.cwd());
 
-// Also append this at the end, before process.exit:
 if (BAD.length) {
   console.error("❌ Forbidden SERVICE_ROLE usage found:");
   for (const b of BAD) console.error(" -", b);

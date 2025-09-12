@@ -1,0 +1,32 @@
+name: CI (minimal)
+on:
+  pull_request:
+  push:
+    branches: [ main, develop ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci
+      - uses: supabase/setup-cli@v1
+
+      # Always run the SERVICE_ROLE audit
+      - run: npm run audit:service-role
+
+      # Typegen/Typecheck only if the secret exists; otherwise skip (don’t fail PRs)
+      - name: Generate DB types (conditional)
+        if: ${{ secrets.SUPABASE_PROJECT_ID != '' }}
+        run: npm run typegen
+        env:
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+
+      - name: Typecheck (conditional)
+        if: ${{ secrets.SUPABASE_PROJECT_ID != '' }}
+        run: npm run typecheck
+
+      - name: Skipped typegen/typecheck (secret missing)
+        if: ${{ secrets.SUPABASE_PROJECT_ID == '' }}
+        run: echo "SUPABASE_PROJECT_ID not set; skipping typegen/typecheck."

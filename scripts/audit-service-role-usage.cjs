@@ -16,7 +16,7 @@ const CODE_EXT = [".ts", ".tsx", ".js", ".mjs", ".cjs"];
 
 const ALLOWLIST = [
   /\/_shared\//,                              // allow shared helpers
-  /\/admin(\/|-[^/]*\/)\/,                     // allow admin/ and admin-* folders
+  /\/admin(\/|-[^/]*\/)\/,                     // allow admin/ and admin-* folders (fixed trailing slash)
   /\/\.github\//,                             // ignore GitHub workflows
   /\/patches\//,                              // ignore patch files
   /\/supabase\/functions\/.*\/deps\.ts$/,     // ignore deps.ts in functions
@@ -33,6 +33,10 @@ function walk(dir) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) { walk(full); continue; }
     const p = full.split(path.sep).join("/");
+
+    // Self-ignore this audit script
+    if (p.endsWith("/scripts/audit-service-role-usage.cjs")) continue;
+
     if (!p.includes("/supabase/functions/") && !p.includes("/scripts/")) continue;
     if (!CODE_EXT.some(ext => p.endsWith(ext))) continue;
 

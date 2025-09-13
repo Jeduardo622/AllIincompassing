@@ -14,16 +14,19 @@ const BAD = [];
 // Only scan code files
 const CODE_EXT = [".ts", ".tsx", ".js", ".mjs", ".cjs"];
 
+// Allowlisted paths/files we intentionally permit or ignore
 const ALLOWLIST = [
   /\/_shared\//,                              // allow shared helpers
-  /\/admin(\/|-[^/]*\/)\/,                     // allow admin/ and admin-* folders (fixed trailing slash)
+  /\/admin(\/|-[^/]*\/)\/?/,                   // allow admin and admin-* subfolders
   /\/\.github\//,                             // ignore GitHub workflows
   /\/patches\//,                              // ignore patch files
   /\/supabase\/functions\/.*\/deps\.ts$/,     // ignore deps.ts in functions
-  /\/supabase\/functions\/.*\/import_map\.json$/, // ignore import maps
+  /\/supabase\/functions\/.*\/import_map\.json$/, // ignore import_map.json
 ];
 
 function isAllowed(p) {
+  // self-ignore
+  if (p.replaceAll("\\", "/").endsWith("/scripts/audit-service-role-usage.cjs")) return true;
   return ALLOWLIST.some(rx => rx.test(p));
 }
 
@@ -32,11 +35,7 @@ function walk(dir) {
     if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) { walk(full); continue; }
-    const p = full.split(path.sep).join("/");
-
-    // Self-ignore this audit script
-    if (p.endsWith("/scripts/audit-service-role-usage.cjs")) continue;
-
+    const p = full.replaceAll("\\", "/");
     if (!p.includes("/supabase/functions/") && !p.includes("/scripts/")) continue;
     if (!CODE_EXT.some(ext => p.endsWith(ext))) continue;
 
@@ -47,7 +46,6 @@ function walk(dir) {
   }
 }
 
-// Scan from repo root
 walk(process.cwd());
 
 if (BAD.length) {

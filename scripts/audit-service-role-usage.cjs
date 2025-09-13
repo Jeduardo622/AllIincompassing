@@ -11,14 +11,14 @@ const NEEDLES = [
 
 const BAD = [];
 
-// scan only runtime edge functions
+// Only scan runtime edge functions, and only code files
 const CODE_EXT = [".ts", ".tsx", ".js", ".mjs", ".cjs"];
 
 const ALLOWLIST = [
-  /\/_shared\//,
-  /\/admin(\/|-[^/]*\/)\//,
-  /\/\.github\//,
-  /\/patches\//,
+  /\/_shared\//,                  // shared helpers
+  /\/admin(\/|-[^/]*\/)\/?/,       // admin and admin-* subfolders
+  /\/\.github\//,                 // ignore GitHub workflows
+  /\/patches\//,                  // ignore patch files
 ];
 
 function isAllowed(p) {
@@ -29,16 +29,14 @@ function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      walk(full);
-      continue;
-    }
+    if (entry.isDirectory()) { walk(full); continue; }
+
     const p = full.replaceAll("\\", "/");
 
     // scan only runtime edge functions
     if (!p.includes("/supabase/functions/")) continue;
 
-    // also restrict to code files
+    // restrict to code files
     if (!CODE_EXT.some((ext) => p.endsWith(ext))) continue;
 
     if (isAllowed(p)) continue;

@@ -1,10 +1,8 @@
-import { createClient } from "npm:@supabase/supabase-js@2.50.0";
 import { createProtectedRoute, corsHeaders, logApiAccess, RouteOptions, UserContext } from "../_shared/auth-middleware.ts";
+import { supabaseAdmin, createRequestClient } from "../_shared/database.ts";
+import { assertAdmin } from "../_shared/auth.ts";
 
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL") ?? "",
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-);
+const supabase = supabaseAdmin;
 
 interface ReportRequest {
   reportType: string;
@@ -27,8 +25,10 @@ export default createProtectedRoute(async (req: Request, userContext) => {
   }
 
   try {
-    // Parse the request body
-    const { 
+    const caller = createRequestClient(req);
+    await assertAdmin(caller);
+
+    const {
       reportType,
       startDate,
       endDate,
@@ -90,11 +90,11 @@ export default createProtectedRoute(async (req: Request, userContext) => {
   } catch (error) {
     console.error("Error generating report:", error);
     logApiAccess('POST', '/generate-report', userContext, 500);
-    
+
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: false,
-        error: error.message || 'Failed to generate report' 
+        error: error.message || 'Failed to generate report'
       }),
       {
         status: 500,
@@ -106,10 +106,10 @@ export default createProtectedRoute(async (req: Request, userContext) => {
 
 // Helper functions with role-based access control
 async function generateSessionsReport(
-  startDate: string, 
-  endDate: string, 
-  therapistId?: string, 
-  clientId?: string, 
+  startDate: string,
+  endDate: string,
+  therapistId?: string,
+  clientId?: string,
   status?: string,
   userContext: UserContext
 ) {
@@ -165,7 +165,7 @@ async function generateClientsReport(startDate: string, endDate: string, userCon
     .gte("created_at", startDate)
     .lte("created_at", endDate);
 
-  // Apply role-based filtering  
+  // Apply role-based filtering
   if (userContext.profile.role === 'therapist') {
     // Therapists can only see their assigned clients
     query = query.eq('therapist_id', userContext.user.id);
@@ -188,11 +188,7 @@ async function generateClientsReport(startDate: string, endDate: string, userCon
 }
 
 async function generateTherapistsReport(startDate: string, endDate: string, userContext: UserContext) {
-  // Only admins can generate therapist reports
-  if (!['admin', 'super_admin'].includes(userContext.profile.role)) {
-    throw new Error('Insufficient permissions to generate therapist reports');
-  }
-
+  // Only admins can generate therapist reports (enforced by assertAdmin)
   const { data, error } = await supabase
     .from("therapists")
     .select("*")
@@ -213,17 +209,13 @@ async function generateTherapistsReport(startDate: string, endDate: string, user
 }
 
 async function generateBillingReport(
-  startDate: string, 
-  endDate: string, 
-  therapistId?: string, 
+  startDate: string,
+  endDate: string,
+  therapistId?: string,
   clientId?: string,
   userContext: UserContext
 ) {
-  // Only admins can generate billing reports
-  if (!['admin', 'super_admin'].includes(userContext.profile.role)) {
-    throw new Error('Insufficient permissions to generate billing reports');
-  }
-
+  // Only admins can generate billing reports (enforced by assertAdmin)
   let query = supabase
     .from("sessions")
     .select(`
@@ -249,7 +241,7 @@ async function generateBillingReport(
     throw new Error(`Error fetching billing data: ${error.message}`);
   }
 
-  const totalRevenue = data.reduce((sum, session) => {
+  const totalRevenue = data.reduce((sum: number, session: any) => {
     return sum + (session.therapists.hourly_rate || 0);
   }, 0);
 

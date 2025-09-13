@@ -1,10 +1,6 @@
-import { createClient } from "npm:@supabase/supabase-js@2.50.0";
+import { createRequestClient } from "../_shared/database.ts";
 import { createProtectedRoute, corsHeaders, logApiAccess, RouteOptions } from "../_shared/auth-middleware.ts";
-
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL") ?? "",
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-);
+import { getUserOrThrow } from "../_shared/auth.ts";
 
 export default createProtectedRoute(async (req: Request, userContext) => {
   if (req.method !== 'POST') {
@@ -18,6 +14,9 @@ export default createProtectedRoute(async (req: Request, userContext) => {
   }
 
   try {
+    const db = createRequestClient(req);
+    await getUserOrThrow(db);
+
     const { clientId } = await req.json();
 
     if (!clientId) {
@@ -32,7 +31,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
 
     // Verify user has permission to view client details
     // Therapists can only see their assigned clients, admins can see all
-    let query = supabase
+    let query = db
       .from("clients")
       .select("*")
       .eq("id", clientId);
@@ -52,7 +51,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
     if (error) {
       console.error('Error fetching client details:', error);
       logApiAccess('POST', '/get-client-details', userContext, 500);
-      
+
       return new Response(
         JSON.stringify({ error: `Error fetching client: ${error.message}` }),
         {
@@ -84,7 +83,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
   } catch (error) {
     console.error("Error fetching client details:", error);
     logApiAccess('POST', '/get-client-details', userContext, 500);
-    
+
     return new Response(
       JSON.stringify({ error: error.message || 'Internal server error' }),
       {

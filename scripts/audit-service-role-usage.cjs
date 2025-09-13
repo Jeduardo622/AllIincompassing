@@ -15,10 +15,10 @@ const BAD = [];
 const CODE_EXT = [".ts", ".tsx", ".js", ".mjs", ".cjs"];
 
 const ALLOWLIST = [
-  /\/_shared\//,                  // shared helpers
-  /\/admin(\/|-[^/]*\/)\/?/,       // admin and admin-* subfolders
-  /\/\.github\//,                 // ignore GitHub workflows
-  /\/patches\//,                  // ignore patch files
+  /\/_shared\//,
+  /\/admin(\/|-[^/]*\/)\/?/,
+  /\/\.github\//,
+  /\/patches\//,
 ];
 
 function isAllowed(p) {
@@ -29,26 +29,24 @@ function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) { walk(full); continue; }
-
     const p = full.replaceAll("\\", "/");
+
+    if (entry.isDirectory()) { walk(full); continue; }
 
     // scan only runtime edge functions
     if (!p.includes("/supabase/functions/")) continue;
 
-    // restrict to code files
-    if (!CODE_EXT.some((ext) => p.endsWith(ext))) continue;
-
-    if (isAllowed(p)) continue;
+    // only code files
+    if (!CODE_EXT.some(ext => p.endsWith(ext))) continue;
 
     const text = fs.readFileSync(full, "utf8");
-    if (NEEDLES.some((n) => text.includes(n))) {
+    if (NEEDLES.some((n) => text.includes(n)) && !isAllowed(p)) {
       BAD.push(p);
     }
   }
 }
 
-walk(process.cwd());
+walk(path.join(__dirname, ".."));
 
 if (BAD.length) {
   console.error("❌ Forbidden SERVICE_ROLE usage found:");

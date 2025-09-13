@@ -18,17 +18,17 @@ jobs:
       # Always run the SERVICE_ROLE audit
       - run: npm run audit:service-role
 
-      # Typegen/Typecheck only if the secret exists; otherwise skip (don’t fail PRs)
+      # Typegen/Typecheck only if the repo variable exists; otherwise skip (don’t fail PRs)
       - name: Generate DB types (conditional)
-        if: ${{ secrets.SUPABASE_PROJECT_ID != '' }}
+        if: ${{ vars.SUPABASE_PROJECT_ID != '' }}
         run: npm run typegen
         env:
-          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          SUPABASE_PROJECT_ID: ${{ vars.SUPABASE_PROJECT_ID }}
 
       - name: Typecheck (conditional)
-        if: ${{ secrets.SUPABASE_PROJECT_ID != '' }}
+        if: ${{ vars.SUPABASE_PROJECT_ID != '' }}
         run: npm run typecheck
 
-      - name: Skipped typegen/typecheck (secret missing)
-        if: ${{ secrets.SUPABASE_PROJECT_ID == '' }}
-        run: echo "SUPABASE_PROJECT_ID not set; skipping typegen/typecheck."
+      - name: Skipped typegen/typecheck (repo var missing)
+        if: ${{ vars.SUPABASE_PROJECT_ID == '' }}
+        run: echo "SUPABASE_PROJECT_ID repo variable not set; skipping typegen/typecheck."

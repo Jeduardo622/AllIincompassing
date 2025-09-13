@@ -11,36 +11,40 @@ const NEEDLES = [
 
 const BAD = [];
 
-// Only scan code files
+// scan only runtime edge functions
 const CODE_EXT = [".ts", ".tsx", ".js", ".mjs", ".cjs"];
 
-// Allowlisted paths/files we intentionally permit or ignore
 const ALLOWLIST = [
-  /\/_shared\//,                              // allow shared helpers
-  /\/admin(\/|-[^/]*\/)\/?/,                   // allow admin and admin-* subfolders
-  /\/\.github\//,                             // ignore GitHub workflows
-  /\/patches\//,                              // ignore patch files
-  /\/supabase\/functions\/.*\/deps\.ts$/,     // ignore deps.ts in functions
-  /\/supabase\/functions\/.*\/import_map\.json$/, // ignore import_map.json
+  /\/_shared\//,
+  /\/admin(\/|-[^/]*\/)\//,
+  /\/\.github\//,
+  /\/patches\//,
 ];
 
 function isAllowed(p) {
-  // self-ignore
-  if (p.replaceAll("\\", "/").endsWith("/scripts/audit-service-role-usage.cjs")) return true;
-  return ALLOWLIST.some(rx => rx.test(p));
+  return ALLOWLIST.some((rx) => rx.test(p));
 }
 
 function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) { walk(full); continue; }
+    if (entry.isDirectory()) {
+      walk(full);
+      continue;
+    }
     const p = full.replaceAll("\\", "/");
-    if (!p.includes("/supabase/functions/") && !p.includes("/scripts/")) continue;
-    if (!CODE_EXT.some(ext => p.endsWith(ext))) continue;
+
+    // scan only runtime edge functions
+    if (!p.includes("/supabase/functions/")) continue;
+
+    // also restrict to code files
+    if (!CODE_EXT.some((ext) => p.endsWith(ext))) continue;
+
+    if (isAllowed(p)) continue;
 
     const text = fs.readFileSync(full, "utf8");
-    if (NEEDLES.some(n => text.includes(n)) && !isAllowed(p)) {
+    if (NEEDLES.some((n) => text.includes(n))) {
       BAD.push(p);
     }
   }

@@ -1,16 +1,11 @@
 import { OpenAI } from "npm:openai@5.5.1";
-import { createClient } from "npm:@supabase/supabase-js@2.50.0";
+import { createRequestClient } from "../_shared/database.ts";
+import { getUserOrThrow } from "../_shared/auth.ts";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: Deno.env.get("OPENAI_API_KEY"),
 });
-
-// Initialize Supabase client
-const supabaseClient = createClient(
-  Deno.env.get("SUPABASE_URL") ?? '',
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? '',
-);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,7 +42,7 @@ interface OptimizedAIResponse {
 // Enhanced GPT-4o configuration for business logic
 const OPTIMIZED_AI_CONFIG = {
   model: "gpt-4o",                    // Full GPT-4o for complex reasoning
-  temperature: 0.3,                   // Lower temperature for consistent business decisions  
+  temperature: 0.3,                   // Lower temperature for consistent business decisions
   max_tokens: 1000,                   // Increased token allocation
   top_p: 0.9,                         // Nucleus sampling for quality
   frequency_penalty: 0.1,             // Reduce repetitive responses
@@ -87,7 +82,7 @@ const compressedFunctionSchemas = [
           sessions: {
             type: "array",
             items: {
-              type: "object", 
+              type: "object",
               properties: {
                 therapist: { type: "string", description: "Name or ID" },
                 client: { type: "string", description: "Name or ID" },
@@ -147,15 +142,14 @@ const compressedFunctionSchemas = [
         type: "object",
         properties: {
           type: { type: "string", enum: ["conflict_resolution", "load_balancing", "efficiency"] },
-          date_range: { type: "string", description: "Date range to optimize" },
-          constraints: { type: "object", description: "Constraints" }
+          date_range: { type: "string", description: "Date range to optimize" },          constraints: { type: "object", description: "Constraints" }
         },
         required: ["type"]
       }
     }
   },
   {
-    type: "function", 
+    type: "function",
     function: {
       name: "predict_conflicts",
       description: "Detect upcoming scheduling conflicts",
@@ -244,7 +238,7 @@ const AI_CACHE_CONFIG = {
   // Cache durations by query type
   FUNCTION_RESULTS: {
     schedule_operations: 5 * 60 * 1000,      // 5 minutes
-    data_lookups: 15 * 60 * 1000,           // 15 minutes  
+    data_lookups: 15 * 60 * 1000,           // 15 minutes
     workload_analysis: 30 * 60 * 1000,      // 30 minutes
   },
   RESPONSE_PATTERNS: {
@@ -258,30 +252,34 @@ const AI_CACHE_CONFIG = {
 };
 
 async function generateSemanticCacheKey(
-  query: string, 
+  query: string,
   context: Record<string, unknown>
 ): Promise<string> {
   const contextHash = JSON.stringify({
-    userRole: context.userRole || 'user',
-    page: context.currentPage || 'unknown'
+    userRole: (context as any).userRole || 'user',
+    page: (context as any).currentPage || 'unknown'
   });
-  
-  // Use database function for consistent key generation
-  const { data } = await supabaseClient.rpc('generate_semantic_cache_key', {
+
+  // Use per-request client for DB calls
+  const db = createRequestClient((globalThis as any).currentRequest);
+  await getUserOrThrow(db);
+  const { data } = await db.rpc('generate_semantic_cache_key', {
     p_query_text: query,
     p_context_hash: contextHash
-  });
-  
-  return data || `ai_${Date.now()}`;
+  } as any);
+
+  return (data as any) || `ai_${Date.now()}`;
 }
 
 async function checkCachedResponse(cacheKey: string): Promise<string | null> {
   try {
-    const { data } = await supabaseClient.rpc('get_cached_ai_response', {
+    const db = createRequestClient((globalThis as any).currentRequest);
+    await getUserOrThrow(db);
+    const { data } = await db.rpc('get_cached_ai_response', {
       p_cache_key: cacheKey
-    });
-    
-    return data?.[0]?.response_text || null;
+    } as any);
+
+    return (data as any)?.[0]?.response_text || null;
   } catch (error) {
     console.warn('Cache check failed:', error);
     return null;
@@ -290,18 +288,20 @@ async function checkCachedResponse(cacheKey: string): Promise<string | null> {
 
 async function cacheAIResponse(
   cacheKey: string,
-  query: string, 
+  query: string,
   response: string,
   metadata: Record<string, unknown>
 ): Promise<void> {
   try {
-    await supabaseClient.rpc('cache_ai_response', {
+    const db = createRequestClient((globalThis as any).currentRequest);
+    await getUserOrThrow(db);
+    await db.rpc('cache_ai_response', {
       p_cache_key: cacheKey,
       p_query_text: query,
       p_response_text: response,
       p_metadata: metadata,
       p_expires_at: new Date(Date.now() + AI_CACHE_CONFIG.RESPONSE_PATTERNS.common_queries)
-    });
+    } as any);
   } catch (error) {
     console.warn('Cache storage failed:', error);
   }
@@ -329,62 +329,67 @@ async function buildOptimizedContext(userRoles: string[], conversationId?: strin
       getCompressedContextData(),
       getOptimizedChatHistory(conversationId)
     ]);
-    
+
     return {
       summary: {
-        therapists: contextData.therapists?.length || 0,
-        clients: contextData.clients?.length || 0,
-        todaySessions: contextData.todaySessions?.length || 0,
+        therapists: (contextData as any).therapists?.length || 0,
+        clients: (contextData as any).clients?.length || 0,
+        todaySessions: (contextData as any).todaySessions?.length || 0,
         userRole: userRoles[0] || 'user'
       },
-      recentActions: recentHistory.slice(0, 3), // Last 3 interactions only
+      recentActions: (recentHistory as any).slice(0, 3),
       currentTime: new Date().toISOString(),
-    };
+    } as any;
   } catch (error) {
     console.warn('Context building failed:', error);
-    return { summary: { userRole: 'user' }, recentActions: [] };
+    return { summary: { userRole: 'user' }, recentActions: [] } as any;
   }
 }
 
 async function getCompressedContextData(): Promise<ContextData> {
-  // Use Phase 3 optimized queries for efficiency
+  // Use optimized queries
   try {
-    const { data } = await supabaseClient.rpc('get_dropdown_data');
-    return data || {};
+    const db = createRequestClient((globalThis as any).currentRequest);
+    await getUserOrThrow(db);
+    const { data } = await db.rpc('get_dropdown_data');
+    return (data as any) || {};
   } catch {
-    // Fallback to basic counts
+    const db = createRequestClient((globalThis as any).currentRequest);
+    await getUserOrThrow(db);
     const [therapists, clients, sessions] = await Promise.all([
-      supabaseClient.from('therapists').select('id').eq('status', 'active'),
-      supabaseClient.from('clients').select('id'),
-      supabaseClient.from('sessions').select('id').gte('start_time', new Date().toISOString().split('T')[0])
+      db.from('therapists').select('id').eq('status', 'active'),
+      db.from('clients').select('id'),
+      db.from('sessions').select('id').gte('start_time', new Date().toISOString().split('T')[0])
     ]);
-    
+
     return {
-      therapists: therapists.data || [],
-      clients: clients.data || [],
-      todaySessions: sessions.data || []
-    };
+      therapists: (therapists as any).data || [],
+      clients: (clients as any).data || [],
+      todaySessions: (sessions as any).data || []
+    } as any;
   }
 }
 
 async function getOptimizedChatHistory(conversationId?: string): Promise<ChatMessage[]> {
-  if (!conversationId) return [];
-  
+  if (!conversationId) return [] as any;
+
   try {
-    const { data } = await supabaseClient.rpc('get_recent_chat_history', {
+    const db = createRequestClient((globalThis as any).currentRequest);
+    await getUserOrThrow(db);
+    const { data } = await db.rpc('get_recent_chat_history', {
       p_conversation_id: conversationId,
-      p_limit: 5 // Reduced for token efficiency
-    });
-    
-    return data || [];
+      p_limit: 5
+    } as any);
+
+    return (data as any) || [];
   } catch (error) {
     console.warn('Chat history fetch failed:', error);
-    return [];
+    return [] as any;
   }
 }
 
 // ============================================================================
-// PREDICTIVE AI CAPABILITIES  
+// PREDICTIVE AI CAPABILITIES
 // ============================================================================
 
 interface Suggestion {
@@ -396,28 +401,28 @@ interface Suggestion {
 
 async function generateProactiveSuggestions(context: { summary?: { userRole?: string } }): Promise<Suggestion[]> {
   try {
-    // Check for upcoming conflicts
     const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
     const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-    
-    const { data: conflicts } = await supabaseClient.rpc('detect_scheduling_conflicts', {
+
+    const db = createRequestClient((globalThis as any).currentRequest);
+    await getUserOrThrow(db);
+    const { data: conflicts } = await db.rpc('detect_scheduling_conflicts', {
       p_start_date: tomorrow,
       p_end_date: nextWeek,
       p_include_suggestions: false
-    });
-    
+    } as any);
+
     const suggestions: Suggestion[] = [];
-    
-    if (conflicts && conflicts.length > 0) {
+
+    if (conflicts && (conflicts as any).length > 0) {
       suggestions.push({
         type: 'conflict_warning',
-        message: `${conflicts.length} potential scheduling conflicts detected in the next week`,
+        message: `${(conflicts as any).length} potential scheduling conflicts detected in the next week`,
         confidence: 0.9,
         action: 'predict_conflicts'
       });
     }
-    
-    // Workload recommendations
+
     if (context.summary?.userRole === 'admin') {
       suggestions.push({
         type: 'workload_analysis',
@@ -426,11 +431,11 @@ async function generateProactiveSuggestions(context: { summary?: { userRole?: st
         action: 'analyze_workload'
       });
     }
-    
-    return suggestions;
+
+    return suggestions as any;
   } catch (error) {
     console.warn('Suggestion generation failed:', error);
-    return [];
+    return [] as any;
   }
 }
 
@@ -440,179 +445,164 @@ async function generateProactiveSuggestions(context: { summary?: { userRole?: st
 
 async function processOptimizedMessage(
   message: string,
-  context: Record<string, unknown> 
+  context: Record<string, unknown>
 ): Promise<OptimizedAIResponse> {
   const startTime = performance.now();
   console.log("Processing message with context:", JSON.stringify({
     message_length: message.length,
-    has_conversation_id: !!context.conversationId,
-    conversation_id: context.conversationId
+    has_conversation_id: !!(context as any).conversationId,
+    conversation_id: (context as any).conversationId
   }));
-  
+
   try {
-    // Step 1: Check cache for similar queries
+    const db = createRequestClient((globalThis as any).currentRequest);
+    await getUserOrThrow(db);
+
     const cacheKey = await generateSemanticCacheKey(message, context);
     const cachedResponse = await checkCachedResponse(cacheKey);
-    
+
     if (cachedResponse) {
       return {
         response: cachedResponse,
         cacheHit: true,
         responseTime: performance.now() - startTime
-      };
+      } as any;
     }
-    
-    // Step 2: Build optimized context
-    const optimizedContext = await buildOptimizedContext(context.userRoles as string[] || [], context.conversationId as string);
-    console.log("Built optimized context with history items:", optimizedContext.recentActions?.length || 0);
-    
-    // Step 3: Generate proactive suggestions
-    const suggestions = await generateProactiveSuggestions(optimizedContext);
-    
-    // Step 4: Build compressed prompt
-    const contextPrompt = `CONTEXT: ${JSON.stringify(optimizedContext.summary)}
-RECENT: ${optimizedContext.recentActions.map(a => `${a.role}: ${a.content}`).join('; ')}
-TIME: ${optimizedContext.currentTime}`;
-    
-    // Step 5: Get AI response with optimized configuration
+
+    const optimizedContext = await buildOptimizedContext((context as any).userRoles as string[] || [], (context as any).conversationId as string);
+    console.log("Built optimized context with history items:", (optimizedContext as any).recentActions?.length || 0);
+
+    const suggestions = await generateProactiveSuggestions(optimizedContext as any);
+
+    const contextPrompt = `CONTEXT: ${JSON.stringify((optimizedContext as any).summary)}\nRECENT: ${((optimizedContext as any).recentActions as any).map((a: any) => `${a.role}: ${a.content}`).join('; ')}\nTIME: ${(optimizedContext as any).currentTime}`;
+
     const completion = await openai.chat.completions.create({
-      ...OPTIMIZED_AI_CONFIG,
+      ...OPTIMIZED_AI_CONFIG as any,
       messages: [
         { role: 'system', content: OPTIMIZED_SYSTEM_PROMPT },
         { role: 'system', content: contextPrompt },
         { role: 'user', content: message }
       ],
-      tools: compressedFunctionSchemas
-    });
-    
-    const responseMessage = completion.choices[0].message;
+      tools: compressedFunctionSchemas as any
+    } as any);
+
+    const responseMessage = completion.choices[0].message as any;
     const responseTime = performance.now() - startTime;
-    
-    // Get conversation ID - either from incoming context or create a new one
-    const conversationId = context.conversationId as string || 
+
+    const conversationId = (context as any).conversationId as string ||
                           (await saveChatMessage('user', message, context)).toString();
-    
-    // Step 6: Process function calls
-    let action;
+
+    let action: any;
     if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
       const toolCall = responseMessage.tool_calls[0];
       const functionName = toolCall.function.name;
       const functionArgs = JSON.parse(toolCall.function.arguments);
-      
-      // Process date references
+
       if (functionArgs.date === 'today') {
         functionArgs.date = new Date().toISOString().split('T')[0];
       } else if (functionArgs.date === 'tomorrow') {
         functionArgs.date = new Date(Date.now() + 86400000).toISOString().split('T')[0];
       }
-      
-      // Handle get_monthly_session_count function call
+
       if (functionName === "get_monthly_session_count") {
         try {
           const { start_date, end_date, therapist_id, client_id, status } = functionArgs;
-          
-          // Call the session metrics RPC to get the data
-          const { data: sessionData, error } = await supabaseClient.rpc('get_session_metrics', {
+
+          const { data: sessionData, error } = await db.rpc('get_session_metrics', {
             p_start_date: start_date,
             p_end_date: end_date,
             p_therapist_id: therapist_id || null,
             p_client_id: client_id || null,
             p_status: status || null
-          });
-          
+          } as any);
+
           if (error) throw error;
-          
-          // Calculate date range description
+
           const startDateObj = new Date(start_date);
           const endDateObj = new Date(end_date);
-          const sameMonth = startDateObj.getMonth() === endDateObj.getMonth() && 
+          const sameMonth = startDateObj.getMonth() === endDateObj.getMonth() &&
                             startDateObj.getFullYear() === endDateObj.getFullYear();
-          
+
           const monthName = startDateObj.toLocaleString('default', { month: 'long' });
-          const dateRangeText = sameMonth 
+          const dateRangeText = sameMonth
             ? `${monthName} ${startDateObj.getFullYear()}`
             : `${startDateObj.toLocaleDateString('default', { month: 'short', day: 'numeric' })} to ${endDateObj.toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-          
-          // Generate natural language response
-          const totalSessions = sessionData?.totalSessions || 0;
-          const completedSessions = sessionData?.completedSessions || 0;
-          const pendingSessions = sessionData?.scheduledSessions || 0;
-          
-          // Update the response message
+
+          const totalSessions = (sessionData as any)?.totalSessions || 0;
+          const completedSessions = (sessionData as any)?.completedSessions || 0;
+          const pendingSessions = (sessionData as any)?.scheduledSessions || 0;
+
           responseMessage.content = `For ${dateRangeText}, there ${totalSessions === 1 ? 'is' : 'are'} ${totalSessions} ${totalSessions === 1 ? 'session' : 'sessions'} ${
-            therapist_id ? 'for this therapist' : 
-            client_id ? 'for this client' : 
+            therapist_id ? 'for this therapist' :
+            client_id ? 'for this client' :
             'scheduled'
           }.${
             completedSessions > 0 ? ` ${completedSessions} ${completedSessions === 1 ? 'session has' : 'sessions have'} been completed.` : ''
           }${
             pendingSessions > 0 ? ` ${pendingSessions} ${pendingSessions === 1 ? 'session is' : 'sessions are'} still pending.` : ''
-          }`;
+          }` as any;
         } catch (error) {
           console.error('Error getting session counts:', error);
-          responseMessage.content = "I'm sorry, I couldn't retrieve the session counts. There might be an issue with the database connection.";
+          (responseMessage as any).content = "I'm sorry, I couldn't retrieve the session counts. There might be an issue with the database connection.";
         }
-        
-        // Don't set action since we've directly updated the response
-        action = null;
+
+        action = null as any;
       } else {
         action = {
           type: functionName,
           data: functionArgs
-        };
+        } as any;
       }
     }
-    
-    const response: OptimizedAIResponse = {
+
+    const response = {
       response: responseMessage.content || "I'll help you with that request.",
       action,
       cacheHit: false,
       responseTime,
       conversationId,
-      tokenUsage: completion.usage ? {
-        prompt: completion.usage.prompt_tokens,
-        completion: completion.usage.completion_tokens,
-        total: completion.usage.total_tokens
+      tokenUsage: (completion as any).usage ? {
+        prompt: (completion as any).usage.prompt_tokens,
+        completion: (completion as any).usage.completion_tokens,
+        total: (completion as any).usage.total_tokens
       } : undefined,
-      suggestions: suggestions.length > 0 ? suggestions : undefined
-    };
-    
-    // Step 7: Cache response for future use
+      suggestions: (suggestions as any).length > 0 ? suggestions : undefined
+    } as any;
+
     if (responseMessage.content) {
       await cacheAIResponse(cacheKey, message, responseMessage.content, {
-        tokenUsage: response.tokenUsage,
+        tokenUsage: (response as any).tokenUsage,
         hasAction: !!action,
-        suggestions: suggestions.length
-      });
+        suggestions: (suggestions as any).length
+      } as any);
     }
-    
-    // Step 8: Save to chat history
+
     await saveChatMessage(
       'user',
-      message, 
-      context, 
+      message,
+      context,
       undefined,
       conversationId
     );
-    
+
     await saveChatMessage(
-      'assistant', 
+      'assistant',
       responseMessage.content || "I'll help you with that.",
-      { optimized: true, cacheHit: false, responseTime },
+      { optimized: true, cacheHit: false, responseTime } as any,
       action,
       conversationId
     );
-    
+
     return response;
-    
-  } catch (error) {
+
+  } catch (error: any) {
     console.error('Optimized AI processing failed:', error);
-    
+
     return {
       response: "I apologize, but I'm experiencing technical difficulties. Please try again or use the manual interface.",
-      conversationId: context.conversationId as string,
+      conversationId: (context as any).conversationId as string,
       responseTime: performance.now() - startTime
-    };
+    } as any;
   }
 }
 
@@ -624,21 +614,22 @@ async function saveChatMessage(
   conversationId?: string
 ): Promise<string> {
   try {
-    // If no conversation ID, create a new conversation first
+    const db = createRequestClient((globalThis as any).currentRequest);
+    await getUserOrThrow(db);
+
     let actualConversationId = conversationId;
     if (!actualConversationId) {
-      const { data: convData, error: convError } = await supabaseClient
+      const { data: convData, error: convError } = await db
         .from('conversations')
         .insert({ user_id: null, title: "New Conversation" })
         .select('id')
         .single();
-      
+
       if (convError) throw convError;
-      actualConversationId = convData.id;
+      actualConversationId = (convData as any).id;
     }
-    
-    // Now insert the message with the conversation ID
-    const { data: msgData, error: msgError } = await supabaseClient
+
+    const { data: msgData, error: msgError } = await db
       .from('chat_history')
       .insert({
         role,
@@ -652,7 +643,7 @@ async function saveChatMessage(
       .single();
 
     if (msgError) throw msgError;
-    return msgData.conversation_id;
+    return (msgData as any).conversation_id;
   } catch (error) {
     console.error('Error saving chat message:', error);
     return conversationId || crypto.randomUUID();
@@ -664,7 +655,6 @@ async function saveChatMessage(
 // ============================================================================
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
@@ -677,10 +667,14 @@ Deno.serve(async (req) => {
       throw new Error(`Method ${req.method} not allowed`);
     }
 
+    (globalThis as any).currentRequest = req;
+
     const { message, context } = await req.json();
-    
-    // Process with optimized AI pipeline
-    const response = await processOptimizedMessage(message, context || {});
+
+    const db = createRequestClient(req);
+    await getUserOrThrow(db);
+
+    const response = await processOptimizedMessage(message, (context as any) || {});
 
     return new Response(
       JSON.stringify(response),
@@ -691,9 +685,9 @@ Deno.serve(async (req) => {
         },
       }
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error('Handler error:', error);
-    
+
     return new Response(
       JSON.stringify({
         error: "Internal Server Error",
@@ -708,4 +702,4 @@ Deno.serve(async (req) => {
       }
     );
   }
-}); 
+});

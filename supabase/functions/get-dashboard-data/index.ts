@@ -1,54 +1,23 @@
+import { z } from 'zod'
+import { errorEnvelope, getRequestId, rateLimit, IsoDateSchema } from '../lib/http/error.ts'
+import { createRequestClient } from "../_shared/database.ts";
+import { getUserOrThrow } from "../_shared/auth.ts";
 
-import { createClient } from '@supabase/supabase-js'
-// Local CORS headers (no shared module available)
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id',
 }
-import { errorEnvelope, getRequestId, rateLimit, IsoDateSchema } from '../lib/http/error.ts'
-import { z } from 'zod'
-
-const supabase = createClient(
-  Deno.env.get('SUPABASE_URL') ?? '',
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-)
 
 interface DashboardData {
-  todaysSessions: {
-    total: number;
-    completed: number;
-    pending: number;
-    cancelled: number;
-  };
-  thisWeekStats: {
-    totalSessions: number;
-    totalClients: number;
-    totalTherapists: number;
-    utilizationRate: number;
-  };
-  upcomingAlerts: {
-    expiring_authorizations: number;
-    low_session_counts: number;
-    pending_approvals: number;
-  };
-  recentActivity: Array<{
-    id: string;
-    type: string;
-    description: string;
-    timestamp: string;
-    status: string;
-  }>;
-  quickStats: {
-    activeClients: number;
-    activeTherapists: number;
-    thisMonthRevenue: number;
-    attendanceRate: number;
-  };
+  todaysSessions: { total: number; completed: number; pending: number; cancelled: number; };
+  thisWeekStats: { totalSessions: number; totalClients: number; totalTherapists: number; utilizationRate: number; };
+  upcomingAlerts: { expiring_authorizations: number; low_session_counts: number; pending_approvals: number; };
+  recentActivity: Array<{ id: string; type: string; description: string; timestamp: string; status: string; }>;
+  quickStats: { activeClients: number; activeTherapists: number; thisMonthRevenue: number; attendanceRate: number; };
 }
 
 Deno.serve(async (req: Request) => {
-  // Handle CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -56,19 +25,17 @@ Deno.serve(async (req: Request) => {
   try {
     const requestId = getRequestId(req)
 
-    // Basic rate limit: 60 requests/min per IP
+    const db = createRequestClient(req);
+    await getUserOrThrow(db);
+
     const ip = req.headers.get('x-forwarded-for') || 'unknown'
     const rl = rateLimit(`dashboard:${ip}`, 60, 60_000)
     if (!rl.allowed) {
       return errorEnvelope({ requestId, code: 'rate_limited', message: 'Too many requests', status: 429, headers: { 'Retry-After': String(rl.retryAfter ?? 60) } })
     }
 
-    // Validate optional query params
     const url = new URL(req.url)
-    const ParamsSchema = z.object({
-      start_date: IsoDateSchema.optional(),
-      end_date: IsoDateSchema.optional(),
-    })
+    const ParamsSchema = z.object({ start_date: IsoDateSchema.optional(), end_date: IsoDateSchema.optional() })
     const parsed = ParamsSchema.safeParse({
       start_date: url.searchParams.get('p_start_date') || url.searchParams.get('start_date') || undefined,
       end_date: url.searchParams.get('p_end_date') || url.searchParams.get('end_date') || undefined,
@@ -83,79 +50,47 @@ Deno.serve(async (req: Request) => {
     const weekStart = startDate ? new Date(startDate) : new Date();
     weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
     const weekStartStr = weekStart.toISOString().split('T')[0];
-    
     const monthStart = startDate ? new Date(startDate) : new Date();
     monthStart.setDate(1);
     const monthStartStr = monthStart.toISOString().split('T')[0];
 
-    // Get today's sessions
-    const { data: todaySessions, error: todayError } = await supabase
+    const { data: todaySessions, error: todayError } = await db
       .from('sessions')
       .select('id, status, start_time, end_time')
-      .gte('start_time', `${today}T00:00:00`)
-      .lte('start_time', `${today}T23:59:59`);
-
+      .gte('start_time', `${today}T00:00:00`).lte('start_time', `${today}T23:59:59`);
     if (todayError) throw todayError;
 
-    // Get this week's sessions
-    const { data: weekSessions, error: weekError } = await supabase
+    const { data: weekSessions, error: weekError } = await db
       .from('sessions')
       .select('id, status, client_id, therapist_id')
-      .gte('start_time', `${weekStartStr}T00:00:00`)
-      .lte('start_time', `${(endDate ?? today)}T23:59:59`);
-
+      .gte('start_time', `${weekStartStr}T00:00:00`).lte('start_time', `${(endDate ?? today)}T23:59:59`);
     if (weekError) throw weekError;
 
-    // Get active clients count
-    const { count: activeClientsCount, error: clientError } = await supabase
-      .from('clients')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'active');
-
+    const { count: activeClientsCount, error: clientError } = await db
+      .from('clients').select('id', { count: 'exact', head: true }).eq('status', 'active');
     if (clientError) throw clientError;
 
-    // Get active therapists count
-    const { count: activeTherapistsCount, error: therapistError } = await supabase
-      .from('therapists')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'active');
-
+    const { count: activeTherapistsCount, error: therapistError } = await db
+      .from('therapists').select('id', { count: 'exact', head: true }).eq('status', 'active');
     if (therapistError) throw therapistError;
 
-    // Get expiring authorizations (within 30 days)
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-    
-    const { count: expiringAuthsCount, error: authError } = await supabase
-      .from('authorizations')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'approved')
-      .lte('end_date', thirtyDaysFromNow.toISOString().split('T')[0]);
 
+    const { count: expiringAuthsCount, error: authError } = await db
+      .from('authorizations').select('id', { count: 'exact', head: true })
+      .eq('status', 'approved').lte('end_date', thirtyDaysFromNow.toISOString().split('T')[0]);
     if (authError) throw authError;
 
-    // Get recent activity (last 10 activities)
-    const { data: recentSessions, error: recentError } = await supabase
-      .from('sessions')
-      .select(`
-        id, status, start_time, created_at,
-        client:clients(full_name),
-        therapist:therapists(full_name)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(10);
-
+    const { data: recentSessions, error: recentError } = await db
+      .from('sessions').select('id, status, start_time, created_at, client:clients(full_name), therapist:therapists(full_name)')
+      .order('created_at', { ascending: false }).limit(10);
     if (recentError) throw recentError;
 
-    // Get this month's billing for revenue
-    const { data: monthlyBilling, error: billingError } = await supabase
-      .from('billing_records')
-      .select('amount_paid')
-      .gte('created_at', `${monthStartStr}T00:00:00`);
-
+    const { data: monthlyBilling, error: billingError } = await db
+      .from('billing_records').select('amount_paid').gte('created_at', `${monthStartStr}T00:00:00`);
     if (billingError) throw billingError;
 
-    // Calculate metrics
     const todaysSessionsData = {
       total: todaySessions?.length || 0,
       completed: todaySessions?.filter(s => s.status === 'completed').length || 0,
@@ -171,12 +106,10 @@ Deno.serve(async (req: Request) => {
 
     const thisMonthRevenue = monthlyBilling?.reduce((sum, record) => sum + (record.amount_paid || 0), 0) || 0;
 
-    // Calculate attendance rate
     const allCompletedSessions = weekSessions?.filter(s => s.status === 'completed').length || 0;
     const allScheduledSessions = weekSessions?.filter(s => ['completed', 'no_show'].includes(s.status)).length || 0;
     const attendanceRate = allScheduledSessions > 0 ? (allCompletedSessions / allScheduledSessions) * 100 : 0;
 
-    // Format recent activity
     const recentActivity = recentSessions?.map(session => ({
       id: session.id,
       type: 'session',
@@ -187,24 +120,10 @@ Deno.serve(async (req: Request) => {
 
     const dashboardData: DashboardData = {
       todaysSessions: todaysSessionsData,
-      thisWeekStats: {
-        totalSessions: totalWeekSessions,
-        totalClients: uniqueClients,
-        totalTherapists: uniqueTherapists,
-        utilizationRate: Math.round(utilizationRate * 100) / 100,
-      },
-      upcomingAlerts: {
-        expiring_authorizations: expiringAuthsCount || 0,
-        low_session_counts: 0, // Would need additional logic to calculate
-        pending_approvals: 0, // Would need additional logic to calculate
-      },
+      thisWeekStats: { totalSessions: totalWeekSessions, totalClients: uniqueClients, totalTherapists: uniqueTherapists, utilizationRate: Math.round(utilizationRate * 100) / 100 },
+      upcomingAlerts: { expiring_authorizations: expiringAuthsCount || 0, low_session_counts: 0, pending_approvals: 0 },
       recentActivity,
-      quickStats: {
-        activeClients: activeClientsCount || 0,
-        activeTherapists: activeTherapistsCount || 0,
-        thisMonthRevenue: Math.round(thisMonthRevenue * 100) / 100,
-        attendanceRate: Math.round(attendanceRate * 100) / 100,
-      },
+      quickStats: { activeClients: activeClientsCount || 0, activeTherapists: activeTherapistsCount || 0, thisMonthRevenue: Math.round(thisMonthRevenue * 100) / 100, attendanceRate: Math.round(attendanceRate * 100) / 100 }
     };
 
     return new Response(JSON.stringify({ success: true, data: dashboardData, parameters: { start_date: startDate ?? weekStartStr, end_date: endDate ?? today }, lastUpdated: new Date().toISOString(), requestId }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })

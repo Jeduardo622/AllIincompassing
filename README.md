@@ -295,6 +295,24 @@ node scripts/cleanup-supabase-branch.js --pattern "^pr-"
 node scripts/cleanup-supabase-branch.js --dry-run --max-age 7
 ```
 
+### `scripts/admin-password-reset.js`
+- Reset a user's password or create the account if it does not exist
+- Requires Supabase service role credentials loaded from your environment (no fallback value is bundled)
+
+#### Usage
+```bash
+# Supply the service role key through the environment (e.g. shell export or .env file)
+export SUPABASE_SERVICE_ROLE_KEY="<your-service-role-key>"
+
+# Optional: override the Supabase project URL if you are using a non-default project
+export SUPABASE_URL="https://your-project.supabase.co"
+
+# Execute the script with the target account details
+node scripts/admin-password-reset.js user@example.com NewPass123 true
+```
+
+> ℹ️  The script reads configuration via `dotenv`, so storing the key in a local `.env` file is supported. Keep the key out of version control and CI logs.
+
 ## 🔧 Configuration
 
 ### Environment Variables

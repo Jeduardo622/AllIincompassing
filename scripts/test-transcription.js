@@ -5,8 +5,32 @@
  * Validates OpenAI integration and California compliance
  */
 
-const SUPABASE_URL = 'https://wnnjeqheqxxyrgsjmygy.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndubmplcWhlcXh4eXJnc2pteWd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzQ1NTc1MjksImV4cCI6MjA1MDEzMzUyOX0.YWxvLPJJK8LLTlDJrZPQvlPzqgOKLvZgRoRQTjGfOjA';
+import { config as loadEnv } from 'dotenv';
+
+loadEnv();
+
+const SUPABASE_URL_FALLBACK = 'https://wnnjeqheqxxyrgsjmygy.supabase.co';
+
+export function resolveSupabaseUrl(env = process.env) {
+  return env.SUPABASE_URL || SUPABASE_URL_FALLBACK;
+}
+
+export function resolveSupabaseAnonKey(env = process.env) {
+  const key = env.SUPABASE_ANON_KEY;
+
+  if (!key) {
+    throw new Error('SUPABASE_ANON_KEY environment variable is required to run the transcription test suite.');
+  }
+
+  return key;
+}
+
+function getSupabaseConfig() {
+  return {
+    url: resolveSupabaseUrl(),
+    anonKey: resolveSupabaseAnonKey()
+  };
+}
 
 // Test data - base64 encoded "test audio data"
 const TEST_AUDIO_BASE64 = 'dGVzdCBhdWRpbyBkYXRh';
@@ -38,13 +62,15 @@ const TEST_SCENARIOS = [
  */
 async function testTranscription() {
   console.log('🎤 Testing AI Transcription Integration...\n');
-  
+
   try {
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/ai-transcription`, {
+    const { url, anonKey } = getSupabaseConfig();
+
+    const response = await fetch(`${url}/functions/v1/ai-transcription`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        'Authorization': `Bearer ${anonKey}`
       },
       body: JSON.stringify({
         audio: TEST_AUDIO_BASE64,
@@ -93,7 +119,7 @@ async function testTranscription() {
  */
 async function testSessionNoteGeneration() {
   console.log('📝 Testing AI Session Note Generation...\n');
-  
+
   const testPrompt = `
     Session Date: 2024-01-15
     Client: Test Client (Age 8)
@@ -118,13 +144,15 @@ async function testSessionNoteGeneration() {
     - Percentage correct: 80%
     - Independence level: Minimal prompting required
   `;
-  
+
   try {
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/ai-session-note-generator`, {
+    const { url, anonKey } = getSupabaseConfig();
+
+    const response = await fetch(`${url}/functions/v1/ai-session-note-generator`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        'Authorization': `Bearer ${anonKey}`
       },
       body: JSON.stringify({
         prompt: testPrompt,
@@ -386,5 +414,9 @@ async function runTests() {
   return overallSuccess;
 }
 
-// Run the tests
-runTests().catch(console.error); 
+// Run the tests when executed directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runTests().catch(console.error);
+}
+
+export { resolveSupabaseAnonKey, resolveSupabaseUrl };

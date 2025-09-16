@@ -1,16 +1,14 @@
 import { createProtectedRoute, corsHeaders, logApiAccess, RouteOptions } from "../_shared/auth-middleware.ts";
-import { supabaseAdmin, createRequestClient } from "../_shared/database.ts";
+import { createRequestClient } from "../_shared/database.ts";
 import { assertAdmin } from "../_shared/auth.ts";
-
-const db = supabaseAdmin;
 
 interface RoleUpdateRequest { role: 'client' | 'therapist' | 'admin' | 'super_admin'; is_active?: boolean; }
 
 export default createProtectedRoute(async (req: Request, userContext) => {
   if (req.method !== 'PATCH') return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   try {
-    const caller = createRequestClient(req);
-    await assertAdmin(caller);
+    const adminClient = createRequestClient(req);
+    await assertAdmin(adminClient);
 
     const url = new URL(req.url);
     const pathSegments = url.pathname.split('/');
@@ -26,7 +24,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
     const validRoles = ['client', 'therapist', 'admin', 'super_admin'];
     if (!role || !validRoles.includes(role)) return new Response(JSON.stringify({ error: 'Valid role is required', validRoles }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    const { data: existingUser } = await db.from('profiles').select('id, email, role, is_active').eq('id', userId).single();
+    const { data: existingUser } = await adminClient.from('profiles').select('id, email, role, is_active').eq('id', userId).single();
     if (!existingUser) return new Response(JSON.stringify({ error: 'User not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     if (userId === userContext.user.id && userContext.profile.role === 'super_admin' && role !== 'super_admin') return new Response(JSON.stringify({ error: 'Cannot demote yourself from super_admin role' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -34,7 +32,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
 
     const updateData: any = { role }; if (is_active !== undefined) updateData.is_active = is_active;
 
-    const { data: updatedUser, error: updateError } = await db
+    const { data: updatedUser, error: updateError } = await adminClient
       .from('profiles').update(updateData).eq('id', userId)
       .select('id, email, role, first_name, last_name, full_name, is_active, updated_at').single();
 

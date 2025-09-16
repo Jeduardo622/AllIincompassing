@@ -55,7 +55,7 @@ Deno.serve(async (req: Request) => {
         const endDate = new Date(end_date);
         while (currentDate <= endDate) {
           const dayOfWeek = currentDate.toLocaleDateString('en-US', { weekday: 'lowercase' });
-          // @ts-ignore
+          // @ts-expect-error - availability_hours is a JSONB column without a typed shape
           const dayAvailability = (therapist as any).availability_hours?.[dayOfWeek];
           if (dayAvailability?.start && dayAvailability?.end) {
             const startHour = parseInt(dayAvailability.start.split(':')[0]);

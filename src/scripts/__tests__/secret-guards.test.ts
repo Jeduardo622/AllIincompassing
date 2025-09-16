@@ -29,6 +29,20 @@ describe('resolveSupabaseServiceKey', () => {
     expect(() => module.resolveSupabaseServiceKey()).toThrowError(/SUPABASE_SERVICE_ROLE_KEY/);
   });
 
+  it('throws when the key is only whitespace', async () => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = '   ';
+    const module = await import('../../../scripts/admin-password-reset.js');
+
+    expect(() => module.resolveSupabaseServiceKey()).toThrowError(/SUPABASE_SERVICE_ROLE_KEY/);
+  });
+
+  it('trims surrounding whitespace from the configured key', async () => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = '  padded-key  ';
+    const module = await import('../../../scripts/admin-password-reset.js');
+
+    expect(module.resolveSupabaseServiceKey()).toBe('padded-key');
+  });
+
   it('supports supplying an explicit environment map', async () => {
     const module = await import('../../../scripts/admin-password-reset.js');
 

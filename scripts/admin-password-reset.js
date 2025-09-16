@@ -15,14 +15,22 @@ config();
 
 const SUPABASE_URL_FALLBACK = 'https://wnnjeqheqxxyrgsjmygy.supabase.co';
 
-export function resolveSupabaseServiceKey(env = process.env) {
-  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+function normalizeServiceRoleKey(key) {
+  if (typeof key !== 'string') {
+    return '';
+  }
 
-  if (!key) {
+  return key.trim();
+}
+
+export function resolveSupabaseServiceKey(env = process.env) {
+  const normalizedKey = normalizeServiceRoleKey(env.SUPABASE_SERVICE_ROLE_KEY);
+
+  if (!normalizedKey) {
     throw new Error('SUPABASE_SERVICE_ROLE_KEY environment variable is required to run this script.');
   }
 
-  return key;
+  return normalizedKey;
 }
 
 let cachedSupabaseClient;

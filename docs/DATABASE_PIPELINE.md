@@ -78,6 +78,8 @@ NETLIFY_AUTH_TOKEN=your_netlify_auth_token
 NETLIFY_SITE_ID=your_netlify_site_id
 ```
 
+> 🔒 Provide these values via your CI/CD secret store. Scripts that require elevated access, including `scripts/admin-password-reset.js`, will abort if `SUPABASE_SERVICE_ROLE_KEY` is missing or blank; no fallback credentials are embedded.
+
 ### Local Development Setup
 
 1. **Install Supabase CLI**:

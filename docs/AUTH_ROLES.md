@@ -305,6 +305,8 @@ SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
 
+> ⚠️ Supply these values through environment variables or your secret manager. Operational scripts (such as `scripts/admin-password-reset.js`) will terminate if `SUPABASE_SERVICE_ROLE_KEY` is unset or blank—no fallback key is bundled with the repository.
+
 ### Migration Application
 ```bash
 # Apply authentication system migration

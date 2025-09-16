@@ -2,8 +2,10 @@
 # Usage: .\scripts\reset-password.ps1
 
 param(
-    [string]$Email = "j_edaurdo622@yahoo.com",
-    [string]$Password = "Nina.6225"
+    [Parameter(Mandatory=$true)]
+    [string]$Email,
+    [Parameter(Mandatory=$true)]
+    [string]$Password
 )
 
 Write-Host "🔐 Admin Password Reset Tool" -ForegroundColor Green

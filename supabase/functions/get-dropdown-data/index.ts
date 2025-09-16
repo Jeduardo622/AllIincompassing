@@ -32,7 +32,7 @@ Deno.serve(async (req: Request) => {
       dropdownData.clients = clients || [];
     }
 
-    if (dataTypes.includes('locations') or dataTypes.includes('all')) {
+    if (dataTypes.includes('locations') || dataTypes.includes('all')) {
       dropdownData.locations = [
         { id: 'clinic', name: 'In Clinic', type: 'physical' },
         { id: 'home', name: 'In Home', type: 'physical' },

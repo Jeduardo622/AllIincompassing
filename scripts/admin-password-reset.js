@@ -13,16 +13,35 @@ import { config } from 'dotenv';
 // Load environment variables
 config();
 
-const supabaseUrl = process.env.SUPABASE_URL || 'https://wnnjeqheqxxyrgsjmygy.supabase.co';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndubmplcWhlcXh4eXJnc2pteWd5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczMzQzMTkzOCwiZXhwIjoyMDQ5MDA3OTM4fQ.H6ju0HUIl8Xhek2OtT6QYDaAe4-_HrggHfIkPP3pLmE';
+const SUPABASE_URL_FALLBACK = 'https://wnnjeqheqxxyrgsjmygy.supabase.co';
 
-// Create Supabase client with service role
-const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
+export function resolveSupabaseServiceKey(env = process.env) {
+  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!key) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY environment variable is required to run this script.');
   }
-});
+
+  return key;
+}
+
+let cachedSupabaseClient;
+
+function getSupabaseClient() {
+  if (!cachedSupabaseClient) {
+    const supabaseUrl = process.env.SUPABASE_URL || SUPABASE_URL_FALLBACK;
+    const supabaseServiceKey = resolveSupabaseServiceKey();
+
+    cachedSupabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
+  }
+
+  return cachedSupabaseClient;
+}
 
 /**
  * Logger utility
@@ -40,6 +59,8 @@ const logger = {
 async function resetUserPassword(email, newPassword, createIfNotExists = false) {
   try {
     logger.info(`Processing password reset for: ${email}`);
+
+    const supabase = getSupabaseClient();
     
     // Check if user exists in auth.users
     const { data: existingUsers, error: listError } = await supabase.auth.admin.listUsers();
@@ -192,6 +213,10 @@ Admin Password Reset Tool
 
 Usage: node scripts/admin-password-reset.js <email> <new_password> [create_if_not_exists]
 
+Environment variables:
+  SUPABASE_SERVICE_ROLE_KEY must be set before running this script.
+  (Optional) SUPABASE_URL overrides the default project URL.
+
 Examples:
   node scripts/admin-password-reset.js user@example.com newPassword123
   node scripts/admin-password-reset.js user@example.com newPassword123 true
@@ -226,4 +251,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   });
 }
 
-export { resetUserPassword }; 
+export { resetUserPassword, resolveSupabaseServiceKey };

@@ -56,9 +56,10 @@ ALTER TABLE therapists ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Therapists are viewable by authenticated users"
   ON therapists
-  FOR SELECT
+  FOR ALL
   TO authenticated
-  USING (true);
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
 
 -- Create clients table
 CREATE TABLE clients (
@@ -74,9 +75,24 @@ ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Clients are viewable by authenticated users"
   ON clients
-  FOR SELECT
+  FOR ALL
   TO authenticated
-  USING (true);
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM sessions s
+      WHERE s.client_id = clients.id
+        AND s.therapist_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM sessions s
+      WHERE s.client_id = clients.id
+        AND s.therapist_id = auth.uid()
+    )
+  );
 
 -- Create sessions table
 CREATE TABLE sessions (
@@ -95,9 +111,10 @@ ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Sessions are viewable by authenticated users"
   ON sessions
-  FOR SELECT
+  FOR ALL
   TO authenticated
-  USING (true);
+  USING (therapist_id = auth.uid())
+  WITH CHECK (therapist_id = auth.uid());
 
 -- Create billing_records table
 CREATE TABLE billing_records (
@@ -114,9 +131,24 @@ ALTER TABLE billing_records ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Billing records are viewable by authenticated users"
   ON billing_records
-  FOR SELECT
+  FOR ALL
   TO authenticated
-  USING (true);
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM sessions s
+      WHERE s.id = billing_records.session_id
+        AND s.therapist_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM sessions s
+      WHERE s.id = billing_records.session_id
+        AND s.therapist_id = auth.uid()
+    )
+  );
 
 -- Create indexes for better query performance
 CREATE INDEX sessions_client_id_idx ON sessions(client_id);

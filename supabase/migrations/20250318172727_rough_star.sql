@@ -117,6 +117,13 @@ CREATE POLICY "Therapists access control"
       WHEN app.user_has_role('therapist') THEN id = auth.uid()
       ELSE false
     END
+  )
+  WITH CHECK (
+    CASE
+      WHEN app.user_has_role('admin') THEN true
+      WHEN app.user_has_role('therapist') THEN id = auth.uid()
+      ELSE false
+    END
   );
 
 -- Clients table
@@ -135,6 +142,17 @@ CREATE POLICY "Clients access control"
       )
       ELSE false
     END
+  )
+  WITH CHECK (
+    CASE
+      WHEN app.user_has_role('admin') THEN true
+      WHEN app.user_has_role('therapist') THEN EXISTS (
+        SELECT 1 FROM sessions s
+        WHERE s.client_id = clients.id
+        AND s.therapist_id = auth.uid()
+      )
+      ELSE false
+    END
   );
 
 -- Sessions table
@@ -144,6 +162,13 @@ CREATE POLICY "Sessions access control"
   FOR ALL
   TO authenticated
   USING (
+    CASE
+      WHEN app.user_has_role('admin') THEN true
+      WHEN app.user_has_role('therapist') THEN therapist_id = auth.uid()
+      ELSE false
+    END
+  )
+  WITH CHECK (
     CASE
       WHEN app.user_has_role('admin') THEN true
       WHEN app.user_has_role('therapist') THEN therapist_id = auth.uid()

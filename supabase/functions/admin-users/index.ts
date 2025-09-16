@@ -1,8 +1,6 @@
 import { createProtectedRoute, corsHeaders, logApiAccess, RouteOptions } from "../_shared/auth-middleware.ts";
-import { supabaseAdmin, createRequestClient } from "../_shared/database.ts";
+import { createRequestClient } from "../_shared/database.ts";
 import { assertAdmin } from "../_shared/auth.ts";
-
-const db = supabaseAdmin;
 
 export default createProtectedRoute(async (req: Request, userContext) => {
   if (req.method !== 'GET') {
@@ -10,8 +8,8 @@ export default createProtectedRoute(async (req: Request, userContext) => {
   }
 
   try {
-    const caller = createRequestClient(req);
-    await assertAdmin(caller);
+    const adminClient = createRequestClient(req);
+    await assertAdmin(adminClient);
 
     const url = new URL(req.url);
     const page = parseInt(url.searchParams.get('page') || '1');
@@ -20,7 +18,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
     const active = url.searchParams.get('active');
     const search = url.searchParams.get('search');
 
-    let query = db.from('profiles').select('id, email, role, first_name, last_name, full_name, phone, is_active, last_login_at, created_at, updated_at');
+    let query = adminClient.from('profiles').select('id, email, role, first_name, last_name, full_name, phone, is_active, last_login_at, created_at, updated_at');
 
     if (role) query = query.eq('role', role);
     if (active !== null) query = query.eq('is_active', active === 'true');
@@ -36,7 +34,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
       return new Response(JSON.stringify({ error: 'Failed to fetch users' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const { count: totalCount } = await db.from('profiles').select('*', { count: 'exact', head: true });
+    const { count: totalCount } = await adminClient.from('profiles').select('*', { count: 'exact', head: true });
 
     const totalPages = Math.ceil((totalCount || 0) / limit);
     const hasNextPage = page < totalPages;

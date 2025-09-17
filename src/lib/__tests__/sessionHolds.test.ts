@@ -121,6 +121,7 @@ describe("session holds API helpers", () => {
             rate_per_hour: null,
             total_cost: null,
           },
+          roundedDurationMinutes: 60,
         },
       }),
     );
@@ -139,10 +140,49 @@ describe("session holds API helpers", () => {
     });
 
     expect(session.id).toBe("session-1");
+    expect(session.duration_minutes).toBe(60);
     expect(mockedCallEdge).toHaveBeenCalledWith(
       "sessions-confirm",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("normalizes duration_minutes using roundedDurationMinutes when provided", async () => {
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          session: {
+            id: "session-2",
+            therapist_id: "therapist",
+            client_id: "client",
+            start_time: "2025-01-01T02:00:00Z",
+            end_time: "2025-01-01T02:50:00Z",
+            status: "scheduled",
+            notes: null,
+            created_at: "2025-01-01T01:50:00Z",
+            duration_minutes: 30,
+          },
+          roundedDurationMinutes: 45,
+        },
+      }),
+    );
+
+    const session = await confirmSessionBooking({
+      holdKey: "hold-key",
+      session: {
+        therapist_id: "therapist",
+        client_id: "client",
+        start_time: "2025-01-01T02:00:00Z",
+        end_time: "2025-01-01T02:50:00Z",
+        duration_minutes: 30,
+      },
+      startTimeOffsetMinutes: 0,
+      endTimeOffsetMinutes: 0,
+      timeZone: "UTC",
+    });
+
+    expect(session.duration_minutes).toBe(45);
   });
 
   it("throws when confirmation fails due to expiration", async () => {

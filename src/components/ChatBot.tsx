@@ -14,6 +14,7 @@ import { supabase } from "../lib/supabase";
 import { cancelSessions } from "../lib/sessionCancellation";
 import { showSuccess, showError } from "../lib/toast";
 import { errorTracker } from "../lib/errorTracking";
+import { logger } from "../lib/logger/logger";
 // import type { Session, Client, Therapist, Authorization, AuthorizationService } from "../types";
 
 interface Message {
@@ -44,7 +45,7 @@ export default function ChatBot() {
     const savedConversationId = localStorage.getItem("chatConversationId");
     if (savedConversationId) {
       setConversationId(savedConversationId);
-      console.log("Loaded existing conversation ID:", savedConversationId);
+      logger.debug('Loaded chat conversation identifier from storage');
     }
   }, []);
 
@@ -98,10 +99,7 @@ export default function ChatBot() {
       if (response.conversationId) {
         localStorage.setItem("chatConversationId", response.conversationId);
         setConversationId(response.conversationId);
-        console.log(
-          "Received and stored conversation ID:",
-          response.conversationId,
-        );
+        logger.debug('Persisted chat conversation identifier after assistant response');
       }
 
       // Update assistant message with initial response
@@ -116,10 +114,11 @@ export default function ChatBot() {
 
       // Handle actions returned by the AI
       if (response.action) {
-        console.log(
-          `Executing action: ${response.action.type}`,
-          response.action.data,
-        );
+        logger.info('Executing chat bot action', {
+          metadata: { actionType: response.action.type }
+        });
+
+        const actionType = response.action.type;
 
         try {
           switch (response.action.type) {
@@ -209,7 +208,10 @@ export default function ChatBot() {
                   },
                 ]);
               } catch (dbError) {
-                console.error("sessions-cancel error", dbError);
+                logger.error('Session cancellation workflow failed', {
+                  error: dbError,
+                  context: { component: 'ChatBot', operation: 'cancel_sessions' }
+                });
                 throw dbError;
               }
 
@@ -577,7 +579,10 @@ export default function ChatBot() {
             }
           }
         } catch (actionError) {
-          console.error("Error executing action:", actionError);
+          logger.error('Chat bot action execution failed', {
+            error: actionError,
+            context: { component: 'ChatBot', operation: actionType }
+          });
           showError(actionError);
           if (actionError instanceof Error) {
             errorTracker.trackAIError(actionError, {
@@ -603,7 +608,10 @@ export default function ChatBot() {
         }
       }
     } catch (error) {
-      console.error("Error processing message:", error);
+      logger.error('Chat bot message processing failed', {
+        error,
+        context: { component: 'ChatBot', operation: 'handleSubmit' }
+      });
 
       const errorMessage =
         error instanceof Error ? error.message : "An error occurred";

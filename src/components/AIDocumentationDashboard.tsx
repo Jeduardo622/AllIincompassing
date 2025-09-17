@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { aiDocumentation, SessionNote, AudioSegment } from '@/lib/ai-documentation';
 import { toast } from '@/lib/toast';
+import { logger } from '@/lib/logger/logger';
 
 // Add interface for templates
 interface SessionNoteTemplate {
@@ -120,7 +121,11 @@ export function AIDocumentationDashboard({
       const notes = await aiDocumentation.getSessionNotes(clientId);
       setSessionNotes(notes);
     } catch (error) {
-      console.error('Error loading session notes:', error);
+      logger.error('Failed to load session notes', {
+        error,
+        context: { component: 'AIDocumentationDashboard', operation: 'loadSessionNotes' },
+        metadata: { hasClient: Boolean(clientId) }
+      });
       toast.error('Failed to load session notes');
     }
   };
@@ -175,7 +180,10 @@ export function AIDocumentationDashboard({
         setSelectedTemplate(defaultTemplate.id);
       }
     } catch (error) {
-      console.error('Error loading session note templates:', error);
+      logger.error('Failed to load session note templates', {
+        error,
+        context: { component: 'AIDocumentationDashboard', operation: 'loadTemplates' }
+      });
       toast.error('Failed to load session note templates');
     } finally {
       setIsLoadingTemplates(false);
@@ -203,7 +211,10 @@ export function AIDocumentationDashboard({
       
       setPerformanceMetrics(mockMetrics);
     } catch (error) {
-      console.error('Error loading performance metrics:', error);
+      logger.error('Failed to load performance metrics', {
+        error,
+        context: { component: 'AIDocumentationDashboard', operation: 'loadPerformanceMetrics' }
+      });
       toast.error('Failed to load performance metrics');
     } finally {
       setIsLoadingMetrics(false);
@@ -218,7 +229,10 @@ export function AIDocumentationDashboard({
       setRealtimeSegments([]);
       toast.success('Recording started - AI is now analyzing your session');
     } catch (error) {
-      console.error('Error starting recording:', error);
+      logger.error('Failed to start session recording', {
+        error,
+        context: { component: 'AIDocumentationDashboard', operation: 'handleStartRecording' }
+      });
       toast.error('Failed to start recording');
     }
   };
@@ -229,7 +243,10 @@ export function AIDocumentationDashboard({
       setIsRecording(false);
       toast.success('Recording stopped - Processing final transcript');
     } catch (error) {
-      console.error('Error stopping recording:', error);
+      logger.error('Failed to stop session recording', {
+        error,
+        context: { component: 'AIDocumentationDashboard', operation: 'handleStopRecording' }
+      });
       toast.error('Failed to stop recording');
     }
   };
@@ -271,7 +288,10 @@ export function AIDocumentationDashboard({
       
       toast.success(`AI session note generated using ${template?.template_name} template`);
     } catch (error) {
-      console.error('Error generating session note:', error);
+      logger.error('Failed to generate session note', {
+        error,
+        context: { component: 'AIDocumentationDashboard', operation: 'handleGenerateSessionNote' }
+      });
       toast.error('Failed to generate session note');
     } finally {
       setIsGenerating(false);
@@ -294,7 +314,10 @@ export function AIDocumentationDashboard({
       setEditingNote(null);
       toast.success('Session note updated successfully');
     } catch (error) {
-      console.error('Error updating session note:', error);
+      logger.error('Failed to update session note', {
+        error,
+        context: { component: 'AIDocumentationDashboard', operation: 'handleSaveNote' }
+      });
       toast.error('Failed to update session note');
     }
   };
@@ -308,7 +331,10 @@ export function AIDocumentationDashboard({
       await loadSessionNotes();
       toast.success('Session note signed successfully');
     } catch (error) {
-      console.error('Error signing session note:', error);
+      logger.error('Failed to sign session note', {
+        error,
+        context: { component: 'AIDocumentationDashboard', operation: 'handleSignNote' }
+      });
       toast.error('Failed to sign session note');
     }
   };
@@ -328,7 +354,10 @@ export function AIDocumentationDashboard({
       
       toast.success('Session note exported successfully');
     } catch (error) {
-      console.error('Error exporting session note:', error);
+      logger.error('Failed to export session note', {
+        error,
+        context: { component: 'AIDocumentationDashboard', operation: 'handleExportNote' }
+      });
       toast.error('Failed to export session note');
     }
   };

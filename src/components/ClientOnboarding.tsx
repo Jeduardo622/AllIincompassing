@@ -16,6 +16,7 @@ import AvailabilityEditor from './AvailabilityEditor';
 import { OnboardingSteps } from './OnboardingSteps';
 import type { Client } from '../types';
 import { prepareFormData } from '../lib/validation';
+import { logger } from '../lib/logger/logger';
 
 interface ClientOnboardingProps {
   onComplete?: () => void;
@@ -125,13 +126,21 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
         .limit(1);
       
       if (error) {
-        console.error('Error checking email:', error);
+        logger.error('Failed to check onboarding email uniqueness', {
+          error,
+          context: { component: 'ClientOnboarding', operation: 'checkEmailExists' },
+          metadata: { hasEmail: Boolean(email) }
+        });
         return false;
       }
       
       return data && data.length > 0;
     } catch (error) {
-      console.error('Error checking email:', error);
+      logger.error('Failed to check onboarding email uniqueness', {
+        error,
+        context: { component: 'ClientOnboarding', operation: 'checkEmailExists' },
+        metadata: { hasEmail: Boolean(email) }
+      });
       return false;
     }
   };
@@ -153,7 +162,10 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
         setEmailValidationError('');
       }
     } catch (error) {
-      console.error('Error validating email:', error);
+      logger.error('Client onboarding email validation failed', {
+        error,
+        context: { component: 'ClientOnboarding', operation: 'validateEmail' }
+      });
       setEmailValidationError('Unable to validate email. Please try again.');
     } finally {
       setIsValidatingEmail(false);
@@ -173,7 +185,9 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
         full_name: `${formattedData.first_name} ${formattedData.middle_name || ''} ${formattedData.last_name}`.trim()
       };
 
-      console.log("Submitting client data:", formattedClient);
+      logger.debug('Submitting client onboarding payload', {
+        metadata: { fields: Object.keys(formattedClient) }
+      });
 
       // Insert client data
       const { data: client, error } = await supabase
@@ -183,11 +197,16 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
         .single();
 
       if (error) {
-        console.error("Supabase insert error:", error);
+        logger.error('Supabase client creation failed', {
+          error,
+          context: { component: 'ClientOnboarding', operation: 'createClient' }
+        });
         throw error;
       }
 
-      console.log("Client created successfully:", client);
+      logger.info('Client onboarding Supabase insert completed', {
+        metadata: { hasId: Boolean(client?.id) }
+      });
 
       // Handle file uploads if any
       for (const [key, file] of Object.entries(uploadedFiles)) {
@@ -197,7 +216,11 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
           .upload(filePath, file);
 
         if (uploadError) {
-          console.error(`Error uploading ${key}:`, uploadError);
+          logger.error('Client document upload failed', {
+            error: uploadError,
+            metadata: { fileKey: key },
+            context: { component: 'ClientOnboarding', operation: 'uploadDocument' }
+          });
           // Continue with other uploads even if one fails
         }
       }
@@ -214,7 +237,11 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       }
     },
     onError: (error) => {
-      console.error("Mutation error:", error);
+      logger.error('Client creation mutation error', {
+        error,
+        context: { component: 'ClientOnboarding', operation: 'createClientMutation' },
+        track: false
+      });
       showError(error);
       setIsSubmitting(false);
     }
@@ -230,7 +257,12 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
   };
 
   const handleFormSubmit = async (data: OnboardingFormData) => {
-    console.log("Form submitted with data:", data);
+    logger.debug('Client onboarding form submitted', {
+      metadata: {
+        servicePreferenceCount: Array.isArray(data.service_preference) ? data.service_preference.length : 0,
+        documentCount: Object.keys(uploadedFiles).length
+      }
+    });
     
     // Only check email validation error if an email was provided
     if (emailValidationError) {
@@ -255,10 +287,13 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
     
     setIsSubmitting(true);
     try {
-      console.log("Starting client creation mutation");
+      logger.debug('Starting client creation mutation');
       await createClientMutation.mutateAsync(data);
     } catch (error) {
-      console.error('Error submitting form:', error);
+      logger.error('Client onboarding submission failed', {
+        error,
+        context: { component: 'ClientOnboarding', operation: 'handleFormSubmit' }
+      });
       setIsSubmitting(false);
     }
   };

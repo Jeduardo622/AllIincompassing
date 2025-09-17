@@ -48,7 +48,65 @@ export type Database = {
   }
   public: {
     Tables: {
-      // NOTE: Truncated to keep diff surgical. Use full generated file in repo.
+      session_holds: {
+        Row: {
+          id: string
+          therapist_id: string
+          client_id: string
+          start_time: string
+          end_time: string
+          hold_key: string
+          session_id: string | null
+          expires_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          therapist_id: string
+          client_id: string
+          start_time: string
+          end_time: string
+          hold_key?: string
+          session_id?: string | null
+          expires_at?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          therapist_id?: string
+          client_id?: string
+          start_time?: string
+          end_time?: string
+          hold_key?: string
+          session_id?: string | null
+          expires_at?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_holds_client_id_fkey"
+            columns: ["client_id"]
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+            isOneToOne: false
+          },
+          {
+            foreignKeyName: "session_holds_session_id_fkey"
+            columns: ["session_id"]
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+            isOneToOne: false
+          },
+          {
+            foreignKeyName: "session_holds_therapist_id_fkey"
+            columns: ["therapist_id"]
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+            isOneToOne: false
+          }
+        ]
+      }
+      // NOTE: Additional table definitions omitted for brevity.
     }
     Views: {
       [_ in never]: never
@@ -57,6 +115,24 @@ export type Database = {
       is_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
       is_super_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
       get_user_role_from_junction: { Args: { p_user_id: string }; Returns: Database["public"]["Enums"]["role_type"] }
+      acquire_session_hold: {
+        Args: {
+          p_therapist_id: string
+          p_client_id: string
+          p_start_time: string
+          p_end_time: string
+          p_session_id?: string | null
+          p_hold_seconds?: number | null
+        }
+        Returns: Json
+      }
+      confirm_session_hold: {
+        Args: {
+          p_hold_key: string
+          p_session: Json
+        }
+        Returns: Json
+      }
     }
     Enums: {
       role_type: "client" | "therapist" | "staff" | "supervisor" | "admin" | "super_admin"

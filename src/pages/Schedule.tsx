@@ -23,6 +23,8 @@ import {
   useSessionsOptimized,
   useDropdownData,
 } from "../lib/optimizedQueries";
+import { requestSessionHold, confirmSessionBooking } from "../lib/sessionHolds";
+import { showError } from "../lib/toast";
 
 // Memoized time slot component
 const TimeSlot = React.memo(
@@ -400,14 +402,28 @@ const Schedule = React.memo(() => {
   // Optimized mutations with proper error handling
   const createSessionMutation = useMutation({
     mutationFn: async (newSession: Partial<Session>) => {
-      const { data, error } = await supabase
-        .from("sessions")
-        .insert([newSession])
-        .select()
-        .single();
+      if (
+        !newSession.therapist_id ||
+        !newSession.client_id ||
+        !newSession.start_time ||
+        !newSession.end_time
+      ) {
+        throw new Error("Missing required session details");
+      }
 
-      if (error) throw error;
-      return data;
+      const hold = await requestSessionHold({
+        therapistId: newSession.therapist_id,
+        clientId: newSession.client_id,
+        startTime: newSession.start_time,
+        endTime: newSession.end_time,
+      });
+
+      const session = await confirmSessionBooking({
+        holdKey: hold.holdKey,
+        session: { ...newSession, status: newSession.status ?? "scheduled" },
+      });
+
+      return session;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
@@ -416,42 +432,95 @@ const Schedule = React.memo(() => {
       setSelectedSession(undefined);
       setSelectedTimeSlot(undefined);
     },
+    onError: (error) => {
+      showError(error);
+    },
   });
 
   const createMultipleSessionsMutation = useMutation({
     mutationFn: async (newSessions: Partial<Session>[]) => {
-      const { data, error } = await supabase
-        .from("sessions")
-        .insert(newSessions)
-        .select();
+      const createdSessions: Session[] = [];
 
-      if (error) throw error;
-      return data;
+      for (const session of newSessions) {
+        if (
+          !session.therapist_id ||
+          !session.client_id ||
+          !session.start_time ||
+          !session.end_time
+        ) {
+          throw new Error("Missing required session details");
+        }
+
+        const hold = await requestSessionHold({
+          therapistId: session.therapist_id,
+          clientId: session.client_id,
+          startTime: session.start_time,
+          endTime: session.end_time,
+        });
+
+        const confirmed = await confirmSessionBooking({
+          holdKey: hold.holdKey,
+          session: { ...session, status: session.status ?? "scheduled" },
+        });
+
+        createdSessions.push(confirmed);
+      }
+
+      return createdSessions;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
       queryClient.invalidateQueries({ queryKey: ["sessions-batch"] });
       setIsAutoScheduleModalOpen(false);
     },
+    onError: (error) => {
+      showError(error);
+    },
   });
 
   const updateSessionMutation = useMutation({
     mutationFn: async (updatedSession: Partial<Session>) => {
-      const { data, error } = await supabase
-        .from("sessions")
-        .update(updatedSession)
-        .eq("id", selectedSession?.id)
-        .select()
-        .single();
+      if (!selectedSession) {
+        throw new Error("No session selected for update");
+      }
 
-      if (error) throw error;
-      return data;
+      const mergedSession: Session = {
+        ...selectedSession,
+        ...updatedSession,
+      };
+
+      if (
+        !mergedSession.therapist_id ||
+        !mergedSession.client_id ||
+        !mergedSession.start_time ||
+        !mergedSession.end_time
+      ) {
+        throw new Error("Missing required session details");
+      }
+
+      const hold = await requestSessionHold({
+        therapistId: mergedSession.therapist_id,
+        clientId: mergedSession.client_id,
+        startTime: mergedSession.start_time,
+        endTime: mergedSession.end_time,
+        sessionId: selectedSession.id,
+      });
+
+      const confirmed = await confirmSessionBooking({
+        holdKey: hold.holdKey,
+        session: { ...mergedSession, id: selectedSession.id },
+      });
+
+      return confirmed;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
       queryClient.invalidateQueries({ queryKey: ["sessions-batch"] });
       setIsModalOpen(false);
       setSelectedSession(undefined);
+    },
+    onError: (error) => {
+      showError(error);
     },
   });
 

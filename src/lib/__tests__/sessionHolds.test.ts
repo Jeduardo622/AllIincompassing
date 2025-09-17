@@ -1,0 +1,115 @@
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { confirmSessionBooking, requestSessionHold } from "../sessionHolds";
+import { callEdge } from "../supabase";
+
+vi.mock("../supabase", () => ({
+  callEdge: vi.fn(),
+}));
+
+const mockedCallEdge = vi.mocked(callEdge);
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+beforeEach(() => {
+  mockedCallEdge.mockReset();
+});
+
+describe("session holds API helpers", () => {
+  it("requests a hold and returns hold metadata", async () => {
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse({ success: true, data: { holdKey: "hold-key", holdId: "1", expiresAt: "2025-01-01T00:05:00Z" } }),
+    );
+
+    const result = await requestSessionHold({
+      therapistId: "therapist",
+      clientId: "client",
+      startTime: "2025-01-01T00:00:00Z",
+      endTime: "2025-01-01T01:00:00Z",
+    });
+
+    expect(result).toEqual({ holdKey: "hold-key", holdId: "1", expiresAt: "2025-01-01T00:05:00Z" });
+    expect(mockedCallEdge).toHaveBeenCalledWith(
+      "sessions-hold",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("throws when a hold cannot be created", async () => {
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse({ success: false, error: "Therapist already booked" }, 409),
+    );
+
+    await expect(
+      requestSessionHold({
+        therapistId: "therapist",
+        clientId: "client",
+        startTime: "2025-01-01T00:00:00Z",
+        endTime: "2025-01-01T01:00:00Z",
+      }),
+    ).rejects.toThrow(/Therapist already booked/);
+  });
+
+  it("confirms a session when hold is valid", async () => {
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          session: {
+            id: "session-1",
+            therapist_id: "therapist",
+            client_id: "client",
+            start_time: "2025-01-01T00:00:00Z",
+            end_time: "2025-01-01T01:00:00Z",
+            status: "scheduled",
+            notes: null,
+            created_at: "2025-01-01T00:00:00Z",
+            duration_minutes: 60,
+            location_type: null,
+            session_type: null,
+            rate_per_hour: null,
+            total_cost: null,
+          },
+        },
+      }),
+    );
+
+    const session = await confirmSessionBooking({
+      holdKey: "hold-key",
+      session: {
+        therapist_id: "therapist",
+        client_id: "client",
+        start_time: "2025-01-01T00:00:00Z",
+        end_time: "2025-01-01T01:00:00Z",
+      },
+    });
+
+    expect(session.id).toBe("session-1");
+    expect(mockedCallEdge).toHaveBeenCalledWith(
+      "sessions-confirm",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("throws when confirmation fails due to expiration", async () => {
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse({ success: false, error: "Hold has expired" }, 410),
+    );
+
+    await expect(
+      confirmSessionBooking({
+        holdKey: "expired-key",
+        session: {
+          therapist_id: "therapist",
+          client_id: "client",
+          start_time: "2025-01-01T00:00:00Z",
+          end_time: "2025-01-01T01:00:00Z",
+        },
+      }),
+    ).rejects.toThrow(/Hold has expired/);
+  });
+});

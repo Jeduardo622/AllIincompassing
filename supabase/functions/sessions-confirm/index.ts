@@ -41,6 +41,7 @@ async function ensureAuthenticated(req: Request) {
   if (error || !data?.user) {
     throw jsonResponse({ success: false, error: "Unauthorized" }, 401);
   }
+  return data.user;
 }
 
 Deno.serve(async (req) => {
@@ -53,7 +54,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    await ensureAuthenticated(req);
+    const user = await ensureAuthenticated(req);
     const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
     const normalizedKey = idempotencyKey.length > 0 ? idempotencyKey : null;
     const idempotencyService = createSupabaseIdempotencyService(supabaseAdmin);
@@ -114,6 +115,7 @@ Deno.serve(async (req) => {
     const { data, error } = await supabaseAdmin.rpc("confirm_session_hold", {
       p_hold_key: payload.hold_key,
       p_session: payload.session,
+      p_actor_id: user.id,
     });
 
     if (error) {

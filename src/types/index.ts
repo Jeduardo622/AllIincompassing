@@ -150,6 +150,9 @@ export interface Session {
   status: 'scheduled' | 'completed' | 'cancelled' | 'no-show';
   notes: string;
   created_at: string;
+  created_by: string | null;
+  updated_at: string;
+  updated_by: string | null;
   duration_minutes?: number | null;
   therapist?: { id: string; full_name: string };
   client?: { id: string; full_name: string };

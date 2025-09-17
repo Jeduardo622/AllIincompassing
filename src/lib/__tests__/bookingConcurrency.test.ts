@@ -102,6 +102,10 @@ function setupEdgeMock() {
         status: "scheduled",
         notes: typeof sessionPayload.notes === "string" ? sessionPayload.notes : "",
         created_at: sessionPayload.created_at ?? new Date().toISOString(),
+        created_by: sessionPayload.created_by ?? "test-user",
+        updated_at: sessionPayload.updated_at ?? new Date().toISOString(),
+        updated_by:
+          sessionPayload.updated_by ?? sessionPayload.created_by ?? "test-user",
       };
 
       activeSessions.push(confirmedSession);

@@ -115,6 +115,9 @@ describe("session holds API helpers", () => {
             status: "scheduled",
             notes: null,
             created_at: "2025-01-01T00:00:00Z",
+            created_by: "user-1",
+            updated_at: "2025-01-01T00:00:00Z",
+            updated_by: "user-1",
             duration_minutes: 60,
             location_type: null,
             session_type: null,
@@ -161,6 +164,9 @@ describe("session holds API helpers", () => {
             status: "scheduled",
             notes: null,
             created_at: "2025-01-01T01:50:00Z",
+            created_by: "user-2",
+            updated_at: "2025-01-01T01:50:00Z",
+            updated_by: "user-2",
             duration_minutes: 30,
           },
           roundedDurationMinutes: 45,
@@ -299,7 +305,25 @@ describe("session holds API helpers", () => {
 
   it("includes idempotency key when confirming a session", async () => {
     mockedCallEdge.mockResolvedValueOnce(
-      jsonResponse({ success: true, data: { session: { id: "session-1" } } }),
+      jsonResponse({
+        success: true,
+        data: {
+          session: {
+            id: "session-1",
+            therapist_id: "therapist",
+            client_id: "client",
+            start_time: "2025-01-01T00:00:00Z",
+            end_time: "2025-01-01T01:00:00Z",
+            status: "scheduled",
+            notes: null,
+            created_at: "2025-01-01T00:00:00Z",
+            created_by: "user-3",
+            updated_at: "2025-01-01T00:00:00Z",
+            updated_by: "user-3",
+            duration_minutes: 60,
+          },
+        },
+      }),
     );
 
     await confirmSessionBooking({

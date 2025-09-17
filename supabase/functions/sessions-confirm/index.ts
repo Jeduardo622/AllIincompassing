@@ -145,7 +145,33 @@ Deno.serve(async (req) => {
       return respond({ success: false, error: "Session response missing" }, 500);
     }
 
-    return respond({ success: true, data: { session } });
+    let roundedDuration: number | null = null;
+    const rawDuration = session["duration_minutes"];
+
+    if (typeof rawDuration === "number" && Number.isFinite(rawDuration)) {
+      roundedDuration = rawDuration;
+    } else if (typeof rawDuration === "string") {
+      const trimmed = rawDuration.trim();
+      if (trimmed.length > 0) {
+        const parsed = Number(trimmed);
+        if (Number.isFinite(parsed)) {
+          roundedDuration = Math.round(parsed);
+        }
+      }
+    }
+
+    const sessionWithRoundedDuration =
+      roundedDuration === null
+        ? session
+        : { ...session, duration_minutes: roundedDuration };
+
+    return respond({
+      success: true,
+      data: {
+        session: sessionWithRoundedDuration,
+        roundedDurationMinutes: roundedDuration,
+      },
+    });
   } catch (error) {
     if (error instanceof Response) return error;
     console.error("sessions-confirm error", error);

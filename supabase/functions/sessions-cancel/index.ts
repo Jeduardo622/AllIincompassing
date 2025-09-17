@@ -52,6 +52,7 @@ async function ensureAuthenticated(req: Request) {
   if (error || !data?.user) {
     throw jsonResponse({ success: false, error: "Unauthorized" }, 401);
   }
+  return data.user;
 }
 
 function normalizeSessionIds(value: unknown): string[] {
@@ -187,7 +188,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    await ensureAuthenticated(req);
+    const user = await ensureAuthenticated(req);
     const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
     const normalizedKey = idempotencyKey.length > 0 ? idempotencyKey : null;
     const idempotencyService = createSupabaseIdempotencyService(supabaseAdmin);
@@ -306,7 +307,7 @@ Deno.serve(async (req) => {
     let cancelledIds: string[] = [];
 
     if (cancellableIds.length > 0) {
-      const updates: Record<string, unknown> = { status: "cancelled" };
+      const updates: Record<string, unknown> = { status: "cancelled", updated_by: user.id };
       if (reason !== undefined) {
         updates.notes = reason;
       }

@@ -83,7 +83,10 @@ Deno.serve(async (req: Request) => {
     if (authError) throw authError;
 
     const { data: recentSessions, error: recentError } = await db
-      .from('sessions').select('id, status, start_time, created_at, client:clients(full_name), therapist:therapists(full_name)')
+      .from('sessions')
+      .select(
+        'id, status, start_time, created_at, created_by, updated_at, updated_by, client:clients(full_name), therapist:therapists(full_name)'
+      )
       .order('created_at', { ascending: false }).limit(10);
     if (recentError) throw recentError;
 
@@ -115,7 +118,10 @@ Deno.serve(async (req: Request) => {
       type: 'session',
       description: `${session.status === 'completed' ? 'Completed' : 'Scheduled'} session: ${session.client?.full_name} with ${session.therapist?.full_name}`,
       timestamp: session.created_at,
-      status: session.status
+      status: session.status,
+      createdBy: session.created_by,
+      updatedAt: session.updated_at,
+      updatedBy: session.updated_by
     })) || [];
 
     const dashboardData: DashboardData = {

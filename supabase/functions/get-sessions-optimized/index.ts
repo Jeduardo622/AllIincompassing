@@ -3,7 +3,7 @@ import { getUserOrThrow } from "../_shared/auth.ts";
 import { corsHeaders } from '../_shared/cors.ts'
 
 interface SessionFilters { therapist_id?: string; client_id?: string; status?: string; start_date?: string; end_date?: string; location_type?: string; page?: number; limit?: number; }
-interface OptimizedSessionResponse { sessions: Array<{ id: string; start_time: string; end_time: string; status: string; location_type: string; notes?: string; therapist: { id: string; full_name: string; email: string; }; client: { id: string; full_name: string; email: string; }; authorization?: { id: string; sessions_remaining: number; }; }>; pagination: { page: number; limit: number; total: number; totalPages: number; hasNextPage: boolean; hasPreviousPage: boolean; }; summary: { totalSessions: number; completedSessions: number; upcomingSessions: number; cancelledSessions: number; }; }
+interface OptimizedSessionResponse { sessions: Array<{ id: string; start_time: string; end_time: string; status: string; location_type: string; notes?: string; created_at: string | null; created_by: string | null; updated_at: string | null; updated_by: string | null; therapist: { id: string; full_name: string; email: string; }; client: { id: string; full_name: string; email: string; }; authorization?: { id: string; sessions_remaining: number; }; }>; pagination: { page: number; limit: number; total: number; totalPages: number; hasNextPage: boolean; hasPreviousPage: boolean; }; summary: { totalSessions: number; completedSessions: number; upcomingSessions: number; cancelledSessions: number; }; }
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -14,7 +14,7 @@ Deno.serve(async (req: Request) => {
     const url = new URL(req.url);
     const filters: SessionFilters = { therapist_id: url.searchParams.get('therapist_id') || undefined, client_id: url.searchParams.get('client_id') || undefined, status: url.searchParams.get('status') || undefined, start_date: url.searchParams.get('start_date') || undefined, end_date: url.searchParams.get('end_date') || undefined, location_type: url.searchParams.get('location_type') || undefined, page: parseInt(url.searchParams.get('page') || '1'), limit: Math.min(parseInt(url.searchParams.get('limit') || '50'), 100) };
 
-    let query = db.from('sessions').select('id, start_time, end_time, status, location_type, notes, therapist_id, client_id, authorization_id, therapist:therapists!inner(id, full_name, email), client:clients!inner(id, full_name, email), authorization:authorizations(id, authorized_sessions, sessions_used)', { count: 'exact' });
+    let query = db.from('sessions').select('id, start_time, end_time, status, location_type, notes, created_at, created_by, updated_at, updated_by, therapist_id, client_id, authorization_id, therapist:therapists!inner(id, full_name, email), client:clients!inner(id, full_name, email), authorization:authorizations(id, authorized_sessions, sessions_used)', { count: 'exact' });
 
     if (filters.therapist_id) query = query.eq('therapist_id', filters.therapist_id);
     if (filters.client_id) query = query.eq('client_id', filters.client_id);
@@ -42,7 +42,7 @@ Deno.serve(async (req: Request) => {
     const upcomingSessions = allFilteredSessions?.filter(s => s.status === 'scheduled').length || 0;
     const cancelledSessions = allFilteredSessions?.filter(s => s.status === 'cancelled').length || 0;
 
-    const formattedSessions = sessions?.map(session => ({ id: session.id, start_time: session.start_time, end_time: session.end_time, status: session.status, location_type: session.location_type, notes: session.notes, therapist: session.therapist, client: session.client, authorization: session.authorization ? { id: session.authorization.id, sessions_remaining: (session.authorization.authorized_sessions || 0) - (session.authorization.sessions_used || 0) } : undefined })) || [];
+    const formattedSessions = sessions?.map(session => ({ id: session.id, start_time: session.start_time, end_time: session.end_time, status: session.status, location_type: session.location_type, notes: session.notes, created_at: session.created_at ?? null, created_by: session.created_by ?? null, updated_at: session.updated_at ?? null, updated_by: session.updated_by ?? null, therapist: session.therapist, client: session.client, authorization: session.authorization ? { id: session.authorization.id, sessions_remaining: (session.authorization.authorized_sessions || 0) - (session.authorization.sessions_used || 0) } : undefined })) || [];
 
     const totalPages = Math.ceil(totalSessions / (filters.limit || 50));
     const currentPage = filters.page || 1;

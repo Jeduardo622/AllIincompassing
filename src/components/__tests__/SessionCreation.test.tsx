@@ -132,6 +132,9 @@ describe('Session Creation', () => {
           end_time: '2024-07-01T11:00:00Z',
           status: 'scheduled',
           created_at: '2024-07-01T00:00:00Z',
+          created_by: 'user-1',
+          updated_at: '2024-07-01T00:00:00Z',
+          updated_by: 'user-1',
         });
       }),
     );

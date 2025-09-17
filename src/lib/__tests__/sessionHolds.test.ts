@@ -185,6 +185,97 @@ describe("session holds API helpers", () => {
     expect(session.duration_minutes).toBe(45);
   });
 
+  describe("duration rounding compliance", () => {
+    const startTime = "2025-01-01T03:00:00Z";
+
+    const computeEndTime = (minutes: number) => {
+      const startDate = new Date(startTime);
+      const safeMinutes = Number.isFinite(minutes) && minutes > 0 ? minutes : 0;
+      const endDate = new Date(startDate.getTime() + safeMinutes * 60_000);
+      return endDate.toISOString();
+    };
+
+    const roundingScenarios = [
+      {
+        rawDuration: 52,
+        roundedDuration: 45,
+        label: "rounds 52 minutes down to the previous quarter hour",
+      },
+      {
+        rawDuration: 53,
+        roundedDuration: 60,
+        label: "rounds 53 minutes up to the next quarter hour",
+      },
+      {
+        rawDuration: 68,
+        roundedDuration: 75,
+        label: "rounds 68 minutes up to the next quarter hour",
+      },
+      {
+        rawDuration: 93,
+        roundedDuration: 90,
+        label: "rounds 93 minutes down to the nearest quarter hour",
+      },
+      {
+        rawDuration: -5,
+        roundedDuration: 15,
+        label: "guards against negative inputs by enforcing the minimum quarter hour",
+      },
+    ] as const;
+
+    it.each(roundingScenarios)(
+      "$label",
+      async ({ rawDuration, roundedDuration }) => {
+        const endTime = computeEndTime(rawDuration);
+
+        mockedCallEdge.mockResolvedValueOnce(
+          jsonResponse({
+            success: true,
+            data: {
+              session: {
+                id: `session-${rawDuration}`,
+                therapist_id: "therapist",
+                client_id: "client",
+                start_time: startTime,
+                end_time: endTime,
+                status: "scheduled",
+                notes: null,
+                created_at: "2025-01-01T02:55:00Z",
+                duration_minutes: rawDuration,
+              },
+              roundedDurationMinutes: roundedDuration,
+            },
+          }),
+        );
+
+        const session = await confirmSessionBooking({
+          holdKey: "hold-key",
+          session: {
+            therapist_id: "therapist",
+            client_id: "client",
+            start_time: startTime,
+            end_time: endTime,
+            duration_minutes: rawDuration,
+          },
+          startTimeOffsetMinutes: 0,
+          endTimeOffsetMinutes: 0,
+          timeZone: "UTC",
+        });
+
+        expect(session.duration_minutes).toBe(roundedDuration);
+        expect(session).toEqual(
+          expect.objectContaining({
+            duration_minutes: roundedDuration,
+            client_id: "client",
+            therapist_id: "therapist",
+            start_time: startTime,
+            end_time: endTime,
+          }),
+        );
+      },
+    );
+  });
+
   it("throws when confirmation fails due to expiration", async () => {
     mockedCallEdge.mockResolvedValueOnce(
       jsonResponse({ success: false, error: "Hold has expired" }, 410),

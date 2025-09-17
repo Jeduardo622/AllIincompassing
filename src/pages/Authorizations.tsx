@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase';
 import type { Authorization, AuthorizationService } from '../types';
 import AuthorizationModal from '../components/AuthorizationModal';
 import { showSuccess, showError } from '../lib/toast';
+import { logger } from '../lib/logger/logger';
 
 export default function Authorizations() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -71,7 +72,9 @@ export default function Authorizations() {
 
   const createAuthorizationMutation = useMutation({
     mutationFn: async (data: Partial<Authorization> & { services: Partial<AuthorizationService>[] }) => {
-      console.log("Creating authorization with data:", data);
+      logger.debug('Creating authorization request', {
+        metadata: { serviceCount: data.services?.length ?? 0 }
+      });
       
       try {
         // First create the authorization
@@ -91,11 +94,16 @@ export default function Authorizations() {
           .single();
 
         if (authError) {
-          console.error("Error creating authorization:", authError);
+          logger.error('Failed to create authorization record', {
+            error: authError,
+            context: { component: 'Authorizations', operation: 'createAuthorization' }
+          });
           throw authError;
         }
 
-        console.log("Authorization created:", auth);
+        logger.info('Authorization record created', {
+          metadata: { serviceCount: data.services?.length ?? 0 }
+        });
 
         // Then create all services
         if (data.services && data.services.length > 0) {
@@ -110,21 +118,30 @@ export default function Authorizations() {
             decision_status: 'pending'
           }));
 
-          console.log("Inserting services:", servicesToInsert);
+          logger.debug('Creating authorization services', {
+            metadata: { count: servicesToInsert.length }
+          });
 
           const { error: servicesError } = await supabase
             .from('authorization_services')
             .insert(servicesToInsert);
 
           if (servicesError) {
-            console.error("Error creating authorization services:", servicesError);
+            logger.error('Failed to create authorization services', {
+              error: servicesError,
+              context: { component: 'Authorizations', operation: 'createServices' },
+              metadata: { count: servicesToInsert.length }
+            });
             throw servicesError;
           }
         }
 
         return auth;
       } catch (error) {
-        console.error("Error in createAuthorizationMutation:", error);
+        logger.error('Authorization creation mutation failed', {
+          error,
+          context: { component: 'Authorizations', operation: 'createAuthorizationMutation' }
+        });
         throw error;
       }
     },
@@ -135,14 +152,23 @@ export default function Authorizations() {
       showSuccess('Authorization created successfully');
     },
     onError: (error) => {
-      console.error("Mutation error:", error);
+      logger.error('Authorization creation mutation error', {
+        error,
+        context: { component: 'Authorizations', operation: 'createAuthorizationMutation' },
+        track: false
+      });
       showError(error instanceof Error ? error.message : 'Failed to create authorization');
     },
   });
 
   const updateAuthorizationMutation = useMutation({
     mutationFn: async (data: Partial<Authorization> & { services: Partial<AuthorizationService>[] }) => {
-      console.log("Updating authorization with data:", data);
+      logger.debug('Updating authorization', {
+        metadata: {
+          serviceCount: data.services?.length ?? 0,
+          hasSelection: Boolean(selectedAuthorization?.id)
+        }
+      });
       
       try {
         // Update the authorization
@@ -160,7 +186,10 @@ export default function Authorizations() {
           .eq('id', selectedAuthorization?.id);
 
         if (authError) {
-          console.error("Error updating authorization:", authError);
+          logger.error('Failed to update authorization record', {
+            error: authError,
+            context: { component: 'Authorizations', operation: 'updateAuthorization' }
+          });
           throw authError;
         }
 
@@ -182,7 +211,10 @@ export default function Authorizations() {
                 .eq('id', service.id);
 
               if (updateError) {
-                console.error("Error updating authorization service:", updateError);
+                logger.error('Failed to update authorization service', {
+                  error: updateError,
+                  context: { component: 'Authorizations', operation: 'updateService' }
+                });
                 throw updateError;
               }
             } else {
@@ -201,14 +233,20 @@ export default function Authorizations() {
                 }]);
 
               if (createError) {
-                console.error("Error creating new authorization service:", createError);
+                logger.error('Failed to create authorization service', {
+                  error: createError,
+                  context: { component: 'Authorizations', operation: 'createService' }
+                });
                 throw createError;
               }
             }
           }
         }
       } catch (error) {
-        console.error("Error in updateAuthorizationMutation:", error);
+        logger.error('Authorization update mutation failed', {
+          error,
+          context: { component: 'Authorizations', operation: 'updateAuthorizationMutation' }
+        });
         throw error;
       }
     },
@@ -219,7 +257,11 @@ export default function Authorizations() {
       showSuccess('Authorization updated successfully');
     },
     onError: (error) => {
-      console.error("Mutation error:", error);
+      logger.error('Authorization update mutation error', {
+        error,
+        context: { component: 'Authorizations', operation: 'updateAuthorizationMutation' },
+        track: false
+      });
       showError(error instanceof Error ? error.message : 'Failed to update authorization');
     },
   });
@@ -260,7 +302,9 @@ export default function Authorizations() {
 
   const handleSubmit = async (data: Partial<Authorization> & { services: Partial<AuthorizationService>[] }) => {
     try {
-      console.log("Form submitted with data:", data);
+      logger.debug('Submitting authorization form', {
+        metadata: { serviceCount: data.services?.length ?? 0 }
+      });
       
       // Validate required fields for services
       const validServices = data.services.filter(service => 
@@ -286,7 +330,10 @@ export default function Authorizations() {
         await createAuthorizationMutation.mutateAsync(submissionData);
       }
     } catch (error) {
-      console.error("Error in handleSubmit:", error);
+      logger.error('Authorization form submission failed', {
+        error,
+        context: { component: 'Authorizations', operation: 'handleSubmit' }
+      });
       showError(error instanceof Error ? error.message : 'An error occurred while saving the authorization');
     }
   };

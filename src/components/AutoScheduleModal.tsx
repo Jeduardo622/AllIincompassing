@@ -8,6 +8,7 @@ import {
 import type { Therapist, Client, Session } from '../types';
 import { generateOptimalSchedule } from '../lib/autoSchedule';
 import { getDistance } from 'geolib';
+import { logger } from '../lib/logger/logger';
 
 interface AutoScheduleModalProps {
   isOpen: boolean;
@@ -66,7 +67,10 @@ export default function AutoScheduleModal({
       await onSchedule(sessions);
       onClose();
     } catch (error) {
-      console.error('Error scheduling sessions:', error);
+      logger.error('Failed to auto schedule sessions', {
+        error,
+        context: { component: 'AutoScheduleModal', operation: 'handleSchedule' }
+      });
     } finally {
       setLoading(false);
     }

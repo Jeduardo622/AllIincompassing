@@ -3,6 +3,10 @@ import {
   createSupabaseIdempotencyService,
   IdempotencyConflictError,
 } from "../_shared/idempotency.ts";
+import {
+  validateTimezonePayload,
+  type TimezoneValidationPayload,
+} from "../_shared/timezone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,11 +14,9 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-interface HoldPayload {
+interface HoldPayload extends TimezoneValidationPayload {
   therapist_id: string;
   client_id: string;
-  start_time: string;
-  end_time: string;
   session_id?: string | null;
   hold_seconds?: number;
 }
@@ -91,6 +93,11 @@ Deno.serve(async (req) => {
     const payload = await req.json() as HoldPayload;
     if (!payload?.therapist_id || !payload?.client_id || !payload?.start_time || !payload?.end_time) {
       return respond({ success: false, error: "Missing required fields" }, 400);
+    }
+
+    const offsetValidation = validateTimezonePayload(payload);
+    if (!offsetValidation.ok) {
+      return respond({ success: false, error: offsetValidation.message }, 400);
     }
 
     const { data, error } = await supabaseAdmin.rpc("acquire_session_hold", {

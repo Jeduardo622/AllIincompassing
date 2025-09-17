@@ -9,6 +9,9 @@ export interface HoldRequest {
   sessionId?: string;
   holdSeconds?: number;
   idempotencyKey?: string;
+  startTimeOffsetMinutes: number;
+  endTimeOffsetMinutes: number;
+  timeZone: string;
 }
 
 export interface HoldResponse {
@@ -50,6 +53,9 @@ export async function requestSessionHold(payload: HoldRequest): Promise<HoldResp
       end_time: payload.endTime,
       session_id: payload.sessionId ?? null,
       hold_seconds: payload.holdSeconds ?? 300,
+      start_time_offset_minutes: payload.startTimeOffsetMinutes,
+      end_time_offset_minutes: payload.endTimeOffsetMinutes,
+      time_zone: payload.timeZone,
     }),
   });
 
@@ -71,6 +77,9 @@ export interface ConfirmRequest {
   holdKey: string;
   session: Partial<Session>;
   idempotencyKey?: string;
+  startTimeOffsetMinutes: number;
+  endTimeOffsetMinutes: number;
+  timeZone: string;
 }
 
 export async function confirmSessionBooking(payload: ConfirmRequest): Promise<Session> {
@@ -83,6 +92,9 @@ export async function confirmSessionBooking(payload: ConfirmRequest): Promise<Se
     body: JSON.stringify({
       hold_key: payload.holdKey,
       session: payload.session,
+      start_time_offset_minutes: payload.startTimeOffsetMinutes,
+      end_time_offset_minutes: payload.endTimeOffsetMinutes,
+      time_zone: payload.timeZone,
     }),
   });
 

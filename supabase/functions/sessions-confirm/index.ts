@@ -1,8 +1,12 @@
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
+import {
+  createSupabaseIdempotencyService,
+  IdempotencyConflictError,
+} from "../_shared/idempotency.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -11,12 +15,17 @@ interface ConfirmPayload {
   session: Record<string, unknown>;
 }
 
-function jsonResponse(body: Record<string, unknown>, status = 200) {
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200,
+  extraHeaders: Record<string, string> = {},
+) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       "Content-Type": "application/json",
       ...corsHeaders,
+      ...extraHeaders,
     },
   });
 }
@@ -40,10 +49,44 @@ Deno.serve(async (req) => {
 
   try {
     await ensureAuthenticated(req);
+    const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
+    const normalizedKey = idempotencyKey.length > 0 ? idempotencyKey : null;
+    const idempotencyService = createSupabaseIdempotencyService(supabaseAdmin);
+
+    if (normalizedKey) {
+      const existing = await idempotencyService.find(normalizedKey, "sessions-confirm");
+      if (existing) {
+        return jsonResponse(
+          existing.responseBody as Record<string, unknown>,
+          existing.statusCode,
+          { "Idempotent-Replay": "true", "Idempotency-Key": normalizedKey },
+        );
+      }
+    }
+
+    const respond = async (body: Record<string, unknown>, status: number = 200) => {
+      if (!normalizedKey) {
+        return jsonResponse(body, status);
+      }
+
+      try {
+        await idempotencyService.persist(normalizedKey, "sessions-confirm", body, status);
+      } catch (error) {
+        if (error instanceof IdempotencyConflictError) {
+          return jsonResponse(
+            { success: false, error: error.message },
+            409,
+          );
+        }
+        throw error;
+      }
+
+      return jsonResponse(body, status, { "Idempotency-Key": normalizedKey });
+    };
 
     const payload = await req.json() as ConfirmPayload;
     if (!payload?.hold_key || !payload?.session) {
-      return jsonResponse({ success: false, error: "Missing required fields" }, 400);
+      return respond({ success: false, error: "Missing required fields" }, 400);
     }
 
     const { data, error } = await supabaseAdmin.rpc("confirm_session_hold", {
@@ -53,7 +96,7 @@ Deno.serve(async (req) => {
 
     if (error) {
       console.error("confirm_session_hold error", error);
-      return jsonResponse({ success: false, error: error.message ?? "Failed to confirm session" }, 500);
+      return respond({ success: false, error: error.message ?? "Failed to confirm session" }, 500);
     }
 
     if (!data?.success) {
@@ -68,7 +111,7 @@ Deno.serve(async (req) => {
         HOLD_EXPIRED: 410,
       };
       const status = statusMap[data?.error_code as string] ?? 409;
-      return jsonResponse({
+      return respond({
         success: false,
         error: data?.error_message ?? "Unable to confirm session",
         code: data?.error_code,
@@ -77,10 +120,10 @@ Deno.serve(async (req) => {
 
     const session = data.session as Record<string, unknown> | undefined;
     if (!session) {
-      return jsonResponse({ success: false, error: "Session response missing" }, 500);
+      return respond({ success: false, error: "Session response missing" }, 500);
     }
 
-    return jsonResponse({ success: true, data: { session } });
+    return respond({ success: true, data: { session } });
   } catch (error) {
     if (error instanceof Response) return error;
     console.error("sessions-confirm error", error);

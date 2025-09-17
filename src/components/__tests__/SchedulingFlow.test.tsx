@@ -106,6 +106,9 @@ const mockExistingSessions = [
     status: 'scheduled' as const,
     notes: 'Regular session',
     created_at: '2024-01-01T00:00:00Z',
+    created_by: 'user-1',
+    updated_at: '2024-01-01T00:00:00Z',
+    updated_by: 'user-1',
     therapist: { id: 'therapist-1', full_name: 'Dr. John Smith' },
     client: { id: 'client-1', full_name: 'Alex Thompson' },
   },
@@ -272,6 +275,9 @@ describe('Scheduling Flow - Client with Therapist', () => {
             status: 'scheduled',
             notes: 'Test session',
             created_at: '2024-03-19T09:00:00Z',
+            created_by: 'user-2',
+            updated_at: '2024-03-19T09:00:00Z',
+            updated_by: 'user-2',
           });
         }),
       );

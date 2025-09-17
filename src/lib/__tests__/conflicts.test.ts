@@ -54,7 +54,10 @@ describe('checkSchedulingConflicts', () => {
       end_time: '2025-05-20T14:00:00Z',
       status: 'scheduled',
       notes: '',
-      created_at: '2025-05-19T00:00:00Z'
+      created_at: '2025-05-19T00:00:00Z',
+      created_by: 'tester',
+      updated_at: '2025-05-19T00:00:00Z',
+      updated_by: 'tester'
     }
   ];
 
@@ -243,7 +246,10 @@ describe('suggestAlternativeTimes', () => {
       end_time: '2025-05-20T14:00:00Z',
       status: 'scheduled',
       notes: '',
-      created_at: '2025-05-19T00:00:00Z'
+      created_at: '2025-05-19T00:00:00Z',
+      created_by: 'tester',
+      updated_at: '2025-05-19T00:00:00Z',
+      updated_by: 'tester'
     }
   ];
 

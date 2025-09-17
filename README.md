@@ -21,6 +21,12 @@ The scheduling workflow for session holds now enforces idempotency across the `s
 - Responses generated on initial execution are stored with their HTTP status codes, so repeated keys receive the exact same status/body combination.
 - The new `sessions-cancel` endpoint releases held slots and also participates in the idempotency flow, allowing client-side retries when releasing a hold.
 
+### CPT-compliant duration rounding
+
+- `confirm_session_hold` now rounds session durations to the nearest 15-minute increment (minimum one unit) before persisting and returning the session payload. This keeps billing calculations aligned with CPT reporting rules.
+- The `sessions-confirm` Edge Function surfaces the rounded value via both `data.session.duration_minutes` and `data.roundedDurationMinutes`, ensuring front-end scheduling flows and downstream billing logic consume the compliant duration without re-implementing rounding rules.
+- If you change the CPT increment in the future, update the constant inside the PL/pgSQL function and adjust any client expectations that rely on the `roundedDurationMinutes` helper field.
+
 Example request using `fetch`:
 
 ```ts

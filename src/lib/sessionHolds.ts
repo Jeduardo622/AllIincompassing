@@ -33,7 +33,10 @@ interface EdgeError {
 
 type HoldEdgeResponse = EdgeSuccess<{ holdKey: string; holdId: string; expiresAt: string; }> | EdgeError;
 
-type ConfirmEdgeResponse = EdgeSuccess<{ session: Session }> | EdgeError;
+type ConfirmEdgeResponse = EdgeSuccess<{
+  session: Session;
+  roundedDurationMinutes?: number | null;
+}> | EdgeError;
 
 function toError(message: string | undefined, fallback: string) {
   return new Error(message && message.length > 0 ? message : fallback);
@@ -109,7 +112,18 @@ export async function confirmSessionBooking(payload: ConfirmRequest): Promise<Se
     throw toError(body?.error, "Failed to confirm session");
   }
 
-  return body.data.session;
+  const { session, roundedDurationMinutes } = body.data;
+
+  let normalizedDuration: number | null = null;
+  if (typeof roundedDurationMinutes === "number" && Number.isFinite(roundedDurationMinutes)) {
+    normalizedDuration = roundedDurationMinutes;
+  } else if (typeof session.duration_minutes === "number" && Number.isFinite(session.duration_minutes)) {
+    normalizedDuration = session.duration_minutes;
+  }
+
+  return normalizedDuration === null
+    ? session
+    : { ...session, duration_minutes: normalizedDuration };
 }
 
 export interface CancelHoldRequest {

@@ -40,6 +40,7 @@ describe('SessionModal', () => {
     therapists: mockTherapists,
     clients: mockClients,
     existingSessions: [],
+    timeZone: "America/New_York",
   };
 
   it('renders the modal when open', () => {
@@ -87,8 +88,8 @@ describe('SessionModal', () => {
       expect(defaultProps.onSubmit).toHaveBeenCalledWith(expect.objectContaining({
         therapist_id: 'test-therapist-1',
         client_id: 'test-client-1',
-        start_time: '2025-03-18T10:00',
-        end_time: '2025-03-18T11:00',
+        start_time: '2025-03-18T14:00:00.000Z',
+        end_time: '2025-03-18T15:00:00.000Z',
         status: 'scheduled',
       }));
     });
@@ -100,8 +101,8 @@ describe('SessionModal', () => {
       id: 'conflict-1',
       therapist_id: 'test-therapist-1',
       client_id: 'test-client-1',
-      start_time: '2025-03-18T10:15',
-      end_time: '2025-03-18T10:45',
+      start_time: '2025-03-18T14:15:00.000Z',
+      end_time: '2025-03-18T14:45:00.000Z',
       status: 'scheduled',
     } as any];
 

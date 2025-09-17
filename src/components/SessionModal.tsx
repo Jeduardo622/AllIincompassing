@@ -1,6 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { format, addHours, addMinutes, parseISO } from 'date-fns';
+import {
+  toZonedTime as utcToZonedTime,
+  fromZonedTime as zonedTimeToUtc,
+} from 'date-fns-tz';
 import { 
   X, AlertCircle, Calendar, Clock, User, 
   FileText, CheckCircle2, AlertTriangle 
@@ -19,6 +23,7 @@ interface SessionModalProps {
   therapists: Therapist[];
   clients: Client[];
   existingSessions: Session[];
+  timeZone?: string;
 }
 
 export default function SessionModal({
@@ -31,28 +36,64 @@ export default function SessionModal({
   therapists,
   clients,
   existingSessions,
+  timeZone,
 }: SessionModalProps) {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [alternativeTimes, setAlternativeTimes] = useState<AlternativeTime[]>([]);
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
-  
+
+  const resolvedTimeZone = useMemo(() => {
+    if (timeZone && timeZone.length > 0) {
+      return timeZone;
+    }
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC';
+    } catch (error) {
+      console.warn('Unable to resolve user timezone', error);
+      return 'UTC';
+    }
+  }, [timeZone]);
+
+  const formatLocalInput = (isoString?: string | null) => {
+    if (!isoString) return '';
+    try {
+      const date = typeof isoString === 'string' ? parseISO(isoString) : new Date(isoString);
+      if (Number.isNaN(date.getTime())) return '';
+      const zoned = utcToZonedTime(date, resolvedTimeZone);
+      return format(zoned, "yyyy-MM-dd'T'HH:mm");
+    } catch (error) {
+      console.error('Failed to format local input', error);
+      return '';
+    }
+  };
+
+  const toUtcIsoString = (localValue?: string) => {
+    if (!localValue) return '';
+    try {
+      return zonedTimeToUtc(localValue, resolvedTimeZone).toISOString();
+    } catch (error) {
+      console.error('Failed to convert local time to UTC', error);
+      return '';
+    }
+  };
+
   // Calculate default end time (15-minute intervals)
   const getDefaultEndTime = (startTimeStr: string) => {
     if (!startTimeStr) return '';
-    
+
     const startTime = parseISO(startTimeStr);
     // Default to 1 hour session
     const endTime = addMinutes(startTime, 60);
     return format(endTime, "yyyy-MM-dd'T'HH:mm");
   };
-  
+
   // Prepare default start time from selectedDate and selectedTime
   const getDefaultStartTime = () => {
     if (selectedDate && selectedTime) {
       return `${format(selectedDate, 'yyyy-MM-dd')}T${selectedTime}`;
     }
     if (session?.start_time) {
-      return format(parseISO(session.start_time), "yyyy-MM-dd'T'HH:mm");
+      return formatLocalInput(session.start_time);
     }
     return '';
   };
@@ -63,7 +104,7 @@ export default function SessionModal({
       client_id: session?.client_id || '',
       start_time: getDefaultStartTime(),
       end_time: session?.end_time
-        ? format(parseISO(session.end_time), "yyyy-MM-dd'T'HH:mm")
+        ? formatLocalInput(session.end_time)
         : (selectedDate && selectedTime
             ? getDefaultEndTime(`${format(selectedDate, 'yyyy-MM-dd')}T${selectedTime}`)
             : ''),
@@ -84,56 +125,55 @@ export default function SessionModal({
     if (startTime && therapistId && clientId) {
       // When start time changes, set end time to be 1 hour later by default
       // but ensure it's on a 15-minute interval
-      const startDate = new Date(startTime);
-      const endDate = addHours(startDate, 1);
-      
-      // Round to nearest 15 minutes
-      const minutes = endDate.getMinutes();
-      const roundedMinutes = Math.ceil(minutes / 15) * 15;
-      const adjustedEndDate = new Date(endDate);
-      adjustedEndDate.setMinutes(roundedMinutes % 60);
-      if (roundedMinutes >= 60) {
-        adjustedEndDate.setHours(endDate.getHours() + Math.floor(roundedMinutes / 60));
-      }
-      
-      setValue('end_time', format(adjustedEndDate, "yyyy-MM-dd'T'HH:mm"));
+      const startUtc = zonedTimeToUtc(startTime, resolvedTimeZone);
+      const endUtc = addHours(startUtc, 1);
+      const endZoned = utcToZonedTime(endUtc, resolvedTimeZone);
+      setValue('end_time', format(endZoned, "yyyy-MM-dd'T'HH:mm"));
     }
-  }, [startTime, therapistId, clientId, setValue]);
+  }, [startTime, therapistId, clientId, resolvedTimeZone, setValue]);
 
   useEffect(() => {
     const checkConflicts = async () => {
       if (startTime && endTime && therapistId && clientId) {
         const therapist = therapists.find(t => t.id === therapistId);
         const client = clients.find(c => c.id === clientId);
-        
+
         if (therapist && client) {
+          const startUtcIso = toUtcIsoString(startTime);
+          const endUtcIso = toUtcIsoString(endTime);
           const newConflicts = await checkSchedulingConflicts(
-            startTime,
-            endTime,
+            startUtcIso,
+            endUtcIso,
             therapistId,
             clientId,
             existingSessions,
             therapist,
             client,
-            session?.id
+            {
+              excludeSessionId: session?.id,
+              timeZone: resolvedTimeZone,
+            }
           );
-          
+
           setConflicts(newConflicts);
-          
+
           // If conflicts exist, suggest alternative times
           if (newConflicts.length > 0) {
             setIsLoadingAlternatives(true);
             try {
               const alternatives = await suggestAlternativeTimes(
-                startTime,
-                endTime,
+                startUtcIso,
+                endUtcIso,
                 therapistId,
                 clientId,
                 existingSessions,
                 therapist,
                 client,
                 newConflicts,
-                session?.id
+                {
+                  excludeSessionId: session?.id,
+                  timeZone: resolvedTimeZone,
+                }
               );
               setAlternativeTimes(alternatives);
             } catch (error) {
@@ -150,7 +190,17 @@ export default function SessionModal({
     };
     
     checkConflicts();
-  }, [startTime, endTime, therapistId, clientId, therapists, clients, existingSessions, session?.id]);
+  }, [
+    startTime,
+    endTime,
+    therapistId,
+    clientId,
+    therapists,
+    clients,
+    existingSessions,
+    session?.id,
+    resolvedTimeZone,
+  ]);
 
   const handleFormSubmit = async (data: Partial<Session>) => {
     if (conflicts.length > 0) {
@@ -159,7 +209,12 @@ export default function SessionModal({
       }
     }
     try {
-      await onSubmit(data);
+      const transformed: Partial<Session> = {
+        ...data,
+        start_time: toUtcIsoString(data.start_time),
+        end_time: toUtcIsoString(data.end_time),
+      };
+      await onSubmit(transformed);
     } catch (error) {
       console.error('Failed to submit session', error);
       return;
@@ -173,28 +228,30 @@ export default function SessionModal({
       setValue(field, '');
       return;
     }
-    
-    const date = new Date(value);
-    const minutes = date.getMinutes();
+
+    const utcDate = zonedTimeToUtc(value, resolvedTimeZone);
+    const minutes = utcDate.getUTCMinutes();
     const roundedMinutes = Math.round(minutes / 15) * 15;
-    
-    date.setMinutes(roundedMinutes % 60);
+
+    const adjustedUtc = new Date(utcDate);
+    adjustedUtc.setUTCMinutes(roundedMinutes % 60, 0, 0);
     if (roundedMinutes >= 60) {
-      date.setHours(date.getHours() + Math.floor(roundedMinutes / 60));
+      adjustedUtc.setUTCHours(utcDate.getUTCHours() + Math.floor(roundedMinutes / 60));
     }
-    
-    setValue(field, format(date, "yyyy-MM-dd'T'HH:mm"));
-    
+
+    const adjustedLocal = utcToZonedTime(adjustedUtc, resolvedTimeZone);
+    setValue(field, format(adjustedLocal, "yyyy-MM-dd'T'HH:mm"));
+
     // If changing start time, also update end time
     if (field === 'start_time') {
-      const endDate = addHours(date, 1);
-      setValue('end_time', format(endDate, "yyyy-MM-dd'T'HH:mm"));
+      const endUtc = addHours(adjustedUtc, 1);
+      const endLocal = utcToZonedTime(endUtc, resolvedTimeZone);
+      setValue('end_time', format(endLocal, "yyyy-MM-dd'T'HH:mm"));
     }
   };
 
   const handleSelectAlternativeTime = (newStartTime: string, newEndTime: string) => {
-    // Preserve the wall-clock times from ISO strings to avoid timezone drift in tests
-    const toLocalInput = (iso: string) => (typeof iso === 'string' && iso.length >= 16 ? iso.slice(0, 16) : format(parseISO(iso), "yyyy-MM-dd'T'HH:mm"));
+    const toLocalInput = (iso: string) => formatLocalInput(iso);
     setValue('start_time', toLocalInput(newStartTime));
     setValue('end_time', toLocalInput(newEndTime));
   };

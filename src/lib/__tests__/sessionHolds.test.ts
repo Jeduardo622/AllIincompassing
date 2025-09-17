@@ -34,12 +34,28 @@ describe("session holds API helpers", () => {
       clientId: "client",
       startTime: "2025-01-01T00:00:00Z",
       endTime: "2025-01-01T01:00:00Z",
+      startTimeOffsetMinutes: 0,
+      endTimeOffsetMinutes: 0,
+      timeZone: "UTC",
     });
 
     expect(result).toEqual({ holdKey: "hold-key", holdId: "1", expiresAt: "2025-01-01T00:05:00Z" });
     expect(mockedCallEdge).toHaveBeenCalledWith(
       "sessions-hold",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          therapist_id: "therapist",
+          client_id: "client",
+          start_time: "2025-01-01T00:00:00Z",
+          end_time: "2025-01-01T01:00:00Z",
+          session_id: null,
+          hold_seconds: 300,
+          start_time_offset_minutes: 0,
+          end_time_offset_minutes: 0,
+          time_zone: "UTC",
+        }),
+      }),
     );
   });
 
@@ -54,6 +70,9 @@ describe("session holds API helpers", () => {
       startTime: "2025-01-01T00:00:00Z",
       endTime: "2025-01-01T01:00:00Z",
       idempotencyKey: "unique-key",
+      startTimeOffsetMinutes: 0,
+      endTimeOffsetMinutes: 0,
+      timeZone: "UTC",
     });
 
     expect(mockedCallEdge).toHaveBeenCalledWith(
@@ -75,6 +94,9 @@ describe("session holds API helpers", () => {
         clientId: "client",
         startTime: "2025-01-01T00:00:00Z",
         endTime: "2025-01-01T01:00:00Z",
+        startTimeOffsetMinutes: 0,
+        endTimeOffsetMinutes: 0,
+        timeZone: "UTC",
       }),
     ).rejects.toThrow(/Therapist already booked/);
   });
@@ -111,6 +133,9 @@ describe("session holds API helpers", () => {
         start_time: "2025-01-01T00:00:00Z",
         end_time: "2025-01-01T01:00:00Z",
       },
+      startTimeOffsetMinutes: 0,
+      endTimeOffsetMinutes: 0,
+      timeZone: "UTC",
     });
 
     expect(session.id).toBe("session-1");
@@ -134,6 +159,9 @@ describe("session holds API helpers", () => {
           start_time: "2025-01-01T00:00:00Z",
           end_time: "2025-01-01T01:00:00Z",
         },
+        startTimeOffsetMinutes: 0,
+        endTimeOffsetMinutes: 0,
+        timeZone: "UTC",
       }),
     ).rejects.toThrow(/Hold has expired/);
   });
@@ -147,6 +175,9 @@ describe("session holds API helpers", () => {
       holdKey: "hold-key",
       session: { id: "session-1" },
       idempotencyKey: "confirm-key",
+      startTimeOffsetMinutes: 0,
+      endTimeOffsetMinutes: 0,
+      timeZone: "UTC",
     });
 
     expect(mockedCallEdge).toHaveBeenCalledWith(

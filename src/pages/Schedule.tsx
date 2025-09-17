@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, startOfWeek, addDays, endOfWeek } from "date-fns";
+import { getTimezoneOffset } from "date-fns-tz";
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -322,6 +323,42 @@ const Schedule = React.memo(() => {
 
   const queryClient = useQueryClient();
 
+  const userTimeZone = useMemo(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+    } catch (error) {
+      console.warn("Unable to resolve timezone", error);
+      return "UTC";
+    }
+  }, []);
+
+  const computeTimeMetadata = useCallback(
+    (session: Partial<Session>) => {
+      if (!session.start_time || !session.end_time) {
+        throw new Error("Missing session start or end time");
+      }
+
+      const startDate = parseISO(session.start_time);
+      const endDate = parseISO(session.end_time);
+
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+        throw new Error("Invalid session time provided");
+      }
+
+      const startOffset = Math.round(getTimezoneOffset(userTimeZone, startDate) / 60000);
+      const endOffset = Math.round(getTimezoneOffset(userTimeZone, endDate) / 60000);
+
+      return {
+        startTime: session.start_time,
+        endTime: session.end_time,
+        startOffsetMinutes: startOffset,
+        endOffsetMinutes: endOffset,
+        timeZone: userTimeZone,
+      };
+    },
+    [userTimeZone],
+  );
+
   useEffect(() => {
     const pending = localStorage.getItem("pendingSchedule");
     if (pending) {
@@ -411,16 +448,25 @@ const Schedule = React.memo(() => {
         throw new Error("Missing required session details");
       }
 
+      const { startTime, endTime, startOffsetMinutes, endOffsetMinutes, timeZone } =
+        computeTimeMetadata(newSession);
+
       const hold = await requestSessionHold({
         therapistId: newSession.therapist_id,
         clientId: newSession.client_id,
-        startTime: newSession.start_time,
-        endTime: newSession.end_time,
+        startTime,
+        endTime,
+        startTimeOffsetMinutes: startOffsetMinutes,
+        endTimeOffsetMinutes: endOffsetMinutes,
+        timeZone,
       });
 
       const session = await confirmSessionBooking({
         holdKey: hold.holdKey,
         session: { ...newSession, status: newSession.status ?? "scheduled" },
+        startTimeOffsetMinutes: startOffsetMinutes,
+        endTimeOffsetMinutes: endOffsetMinutes,
+        timeZone,
       });
 
       return session;
@@ -451,16 +497,25 @@ const Schedule = React.memo(() => {
           throw new Error("Missing required session details");
         }
 
+        const { startTime, endTime, startOffsetMinutes, endOffsetMinutes, timeZone } =
+          computeTimeMetadata(session);
+
         const hold = await requestSessionHold({
           therapistId: session.therapist_id,
           clientId: session.client_id,
-          startTime: session.start_time,
-          endTime: session.end_time,
+          startTime,
+          endTime,
+          startTimeOffsetMinutes: startOffsetMinutes,
+          endTimeOffsetMinutes: endOffsetMinutes,
+          timeZone,
         });
 
         const confirmed = await confirmSessionBooking({
           holdKey: hold.holdKey,
           session: { ...session, status: session.status ?? "scheduled" },
+          startTimeOffsetMinutes: startOffsetMinutes,
+          endTimeOffsetMinutes: endOffsetMinutes,
+          timeZone,
         });
 
         createdSessions.push(confirmed);
@@ -498,17 +553,26 @@ const Schedule = React.memo(() => {
         throw new Error("Missing required session details");
       }
 
+      const { startTime, endTime, startOffsetMinutes, endOffsetMinutes, timeZone } =
+        computeTimeMetadata(mergedSession);
+
       const hold = await requestSessionHold({
         therapistId: mergedSession.therapist_id,
         clientId: mergedSession.client_id,
-        startTime: mergedSession.start_time,
-        endTime: mergedSession.end_time,
+        startTime,
+        endTime,
         sessionId: selectedSession.id,
+        startTimeOffsetMinutes: startOffsetMinutes,
+        endTimeOffsetMinutes: endOffsetMinutes,
+        timeZone,
       });
 
       const confirmed = await confirmSessionBooking({
         holdKey: hold.holdKey,
         session: { ...mergedSession, id: selectedSession.id },
+        startTimeOffsetMinutes: startOffsetMinutes,
+        endTimeOffsetMinutes: endOffsetMinutes,
+        timeZone,
       });
 
       return confirmed;
@@ -829,6 +893,7 @@ const Schedule = React.memo(() => {
           therapists={displayData.therapists}
           clients={displayData.clients}
           existingSessions={displayData.sessions}
+          timeZone={userTimeZone}
         />
       )}
 

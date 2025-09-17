@@ -47,6 +47,7 @@
     "@tanstack/react-query": "^5.24.1",
     "chart.js": "^4.4.1",
     "date-fns": "^3.3.1",
+    "date-fns-tz": "^3.2.0",
     "dotenv": "^16.5.0",
     "geolib": "^3.3.4",
     "isomorphic-dompurify": "^0.13.0",

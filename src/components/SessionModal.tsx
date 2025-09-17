@@ -160,9 +160,8 @@ export default function SessionModal({
     }
     try {
       await onSubmit(data);
-    } catch {
-      // Surface a user-visible error for tests to assert; swallow to avoid global unhandled rejection
-      alert('Error: Failed to create session');
+    } catch (error) {
+      console.error('Failed to submit session', error);
       return;
     }
   };

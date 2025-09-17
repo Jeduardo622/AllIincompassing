@@ -87,20 +87,39 @@ describe('Scheduling Integration - End-to-End Flow', () => {
       http.get('*/rest/v1/sessions*', () => {
         return HttpResponse.json([]);
       }),
-             http.post('*/rest/v1/sessions*', () => {
-         sessionCreated = true;
-         
-         return HttpResponse.json({
-           id: 'new-session-id',
-           client_id: 'client-1',
-           therapist_id: 'therapist-1',
-           start_time: '2024-03-19T10:00:00Z',
-           end_time: '2024-03-19T11:00:00Z',
-           status: 'scheduled',
-           notes: 'Initial ABA therapy session',
-           created_at: '2024-03-19T09:00:00Z',
-         });
-       }),
+      http.post('*/functions/v1/sessions-hold*', () => {
+        return HttpResponse.json({
+          success: true,
+          data: {
+            holdKey: 'test-hold',
+            holdId: 'hold-1',
+            expiresAt: '2025-01-01T00:05:00Z',
+          },
+        });
+      }),
+      http.post('*/functions/v1/sessions-confirm*', () => {
+        sessionCreated = true;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            session: {
+              id: 'new-session-id',
+              client_id: 'client-1',
+              therapist_id: 'therapist-1',
+              start_time: '2024-03-19T10:00:00Z',
+              end_time: '2024-03-19T11:00:00Z',
+              status: 'scheduled',
+              notes: 'Initial ABA therapy session',
+              created_at: '2024-03-19T09:00:00Z',
+              duration_minutes: 60,
+              location_type: null,
+              session_type: null,
+              rate_per_hour: null,
+              total_cost: null,
+            },
+          },
+        });
+      }),
     );
 
     // Render the Schedule page

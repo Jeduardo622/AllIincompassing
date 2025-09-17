@@ -13,6 +13,35 @@ This repository contains all the functionality for Supabase CLI.
 - [x] Generating types directly from your database schema
 - [x] Making authenticated HTTP requests to [Management API](https://supabase.com/docs/reference/api/introduction)
 
+## Session scheduling idempotency
+
+The scheduling workflow for session holds now enforces idempotency across the `sessions-hold`, `sessions-confirm`, and `sessions-cancel` Edge Functions. Clients can supply an `Idempotency-Key` header with each POST request to ensure retries never create duplicate reservations or confirmations.
+
+- When an `Idempotency-Key` is provided, the function stores a SHA-256 hash of the JSON response alongside the original payload metadata. Subsequent requests using the same key return the stored response immediately and include an `Idempotent-Replay: true` header without re-running business logic.
+- Responses generated on initial execution are stored with their HTTP status codes, so repeated keys receive the exact same status/body combination.
+- The new `sessions-cancel` endpoint releases held slots and also participates in the idempotency flow, allowing client-side retries when releasing a hold.
+
+Example request using `fetch`:
+
+```ts
+await fetch(`${SUPABASE_EDGE_URL}/sessions-hold`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+    "Idempotency-Key": crypto.randomUUID(),
+  },
+  body: JSON.stringify({
+    therapist_id: "...",
+    client_id: "...",
+    start_time: "2025-01-01T10:00:00Z",
+    end_time: "2025-01-01T11:00:00Z",
+  }),
+});
+```
+
+Clients should persist and reuse the same key for retries to guarantee safe replays.
+
 ## Getting started
 
 ### Install the CLI

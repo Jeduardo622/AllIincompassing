@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { confirmSessionBooking, requestSessionHold } from "../sessionHolds";
+import {
+  cancelSessionHold,
+  confirmSessionBooking,
+  requestSessionHold,
+} from "../sessionHolds";
 import { callEdge } from "../supabase";
 
 vi.mock("../supabase", () => ({
@@ -36,6 +40,27 @@ describe("session holds API helpers", () => {
     expect(mockedCallEdge).toHaveBeenCalledWith(
       "sessions-hold",
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("passes idempotency key when reserving a hold", async () => {
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse({ success: true, data: { holdKey: "hold-key", holdId: "1", expiresAt: "2025-01-01T00:05:00Z" } }),
+    );
+
+    await requestSessionHold({
+      therapistId: "therapist",
+      clientId: "client",
+      startTime: "2025-01-01T00:00:00Z",
+      endTime: "2025-01-01T01:00:00Z",
+      idempotencyKey: "unique-key",
+    });
+
+    expect(mockedCallEdge).toHaveBeenCalledWith(
+      "sessions-hold",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "Idempotency-Key": "unique-key" }),
+      }),
     );
   });
 
@@ -111,5 +136,84 @@ describe("session holds API helpers", () => {
         },
       }),
     ).rejects.toThrow(/Hold has expired/);
+  });
+
+  it("includes idempotency key when confirming a session", async () => {
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse({ success: true, data: { session: { id: "session-1" } } }),
+    );
+
+    await confirmSessionBooking({
+      holdKey: "hold-key",
+      session: { id: "session-1" },
+      idempotencyKey: "confirm-key",
+    });
+
+    expect(mockedCallEdge).toHaveBeenCalledWith(
+      "sessions-confirm",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "Idempotency-Key": "confirm-key" }),
+      }),
+    );
+  });
+
+  it("cancels a hold and returns hold metadata", async () => {
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          released: true,
+          hold: {
+            id: "1",
+            holdKey: "hold-key",
+            therapistId: "therapist",
+            clientId: "client",
+            startTime: "2025-01-01T00:00:00Z",
+            endTime: "2025-01-01T01:00:00Z",
+            expiresAt: "2025-01-01T00:05:00Z",
+          },
+        },
+      }),
+    );
+
+    const result = await cancelSessionHold({ holdKey: "hold-key" });
+
+    expect(result).toEqual({
+      released: true,
+      hold: {
+        id: "1",
+        holdKey: "hold-key",
+        therapistId: "therapist",
+        clientId: "client",
+        startTime: "2025-01-01T00:00:00Z",
+        endTime: "2025-01-01T01:00:00Z",
+        expiresAt: "2025-01-01T00:05:00Z",
+      },
+    });
+    expect(mockedCallEdge).toHaveBeenCalledWith(
+      "sessions-cancel",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("passes idempotency key when cancelling a hold", async () => {
+    mockedCallEdge.mockResolvedValueOnce(jsonResponse({ success: true, data: { released: false } }));
+
+    await cancelSessionHold({ holdKey: "hold-key", idempotencyKey: "cancel-key" });
+
+    expect(mockedCallEdge).toHaveBeenCalledWith(
+      "sessions-cancel",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "Idempotency-Key": "cancel-key" }),
+      }),
+    );
+  });
+
+  it("throws when cancellation fails", async () => {
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse({ success: false, error: "Hold not found" }, 404),
+    );
+
+    await expect(cancelSessionHold({ holdKey: "missing" })).rejects.toThrow(/Hold not found/);
   });
 });

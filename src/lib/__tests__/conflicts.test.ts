@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { checkSchedulingConflicts, suggestAlternativeTimes } from '../conflicts';
 import { parseISO, addHours } from 'date-fns';
+import { fromZonedTime } from 'date-fns-tz';
 import { supabase } from '../supabase';
 
 // Mock supabase
@@ -150,10 +151,50 @@ describe('checkSchedulingConflicts', () => {
       mockExistingSessions,
       mockTherapist,
       mockClient,
-      'session-1' // Exclude this session
+      { excludeSessionId: 'session-1' }
     );
 
     expect(conflicts).toHaveLength(0);
+  });
+
+  it('detects availability conflicts around DST spring forward for early times', async () => {
+    const timeZone = 'America/New_York';
+    const earlyStart = fromZonedTime('2025-03-10T07:00', timeZone).toISOString();
+    const earlyEnd = fromZonedTime('2025-03-10T08:00', timeZone).toISOString();
+
+    const conflicts = await checkSchedulingConflicts(
+      earlyStart,
+      earlyEnd,
+      mockTherapist.id,
+      mockClient.id,
+      [],
+      mockTherapist,
+      mockClient,
+      { timeZone }
+    );
+
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].type).toBe('therapist_unavailable');
+  });
+
+  it('detects availability conflicts around DST fall back for early times', async () => {
+    const timeZone = 'America/New_York';
+    const earlyStart = fromZonedTime('2025-11-03T07:00', timeZone).toISOString();
+    const earlyEnd = fromZonedTime('2025-11-03T08:00', timeZone).toISOString();
+
+    const conflicts = await checkSchedulingConflicts(
+      earlyStart,
+      earlyEnd,
+      mockTherapist.id,
+      mockClient.id,
+      [],
+      mockTherapist,
+      mockClient,
+      { timeZone }
+    );
+
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].type).toBe('therapist_unavailable');
   });
 });
 
@@ -253,7 +294,8 @@ describe('suggestAlternativeTimes', () => {
         therapist: mockTherapist,
         client: mockClient,
         existingSessions: mockExistingSessions,
-        excludeSessionId: undefined
+        excludeSessionId: undefined,
+        timeZone: 'UTC'
       }
     });
 

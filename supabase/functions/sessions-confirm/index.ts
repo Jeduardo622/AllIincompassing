@@ -3,6 +3,10 @@ import {
   createSupabaseIdempotencyService,
   IdempotencyConflictError,
 } from "../_shared/idempotency.ts";
+import {
+  validateTimezonePayload,
+  type TimezoneValidationPayload,
+} from "../_shared/timezone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,7 +14,8 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-interface ConfirmPayload {
+interface ConfirmPayload
+  extends Pick<TimezoneValidationPayload, "start_time_offset_minutes" | "end_time_offset_minutes" | "time_zone"> {
   hold_key: string;
   session: Record<string, unknown>;
 }
@@ -87,6 +92,23 @@ Deno.serve(async (req) => {
     const payload = await req.json() as ConfirmPayload;
     if (!payload?.hold_key || !payload?.session) {
       return respond({ success: false, error: "Missing required fields" }, 400);
+    }
+
+    const sessionData = payload.session as { start_time?: unknown; end_time?: unknown };
+    if (typeof sessionData.start_time !== "string" || typeof sessionData.end_time !== "string") {
+      return respond({ success: false, error: "Session start_time or end_time missing" }, 400);
+    }
+
+    const offsetValidation = validateTimezonePayload({
+      start_time: sessionData.start_time,
+      end_time: sessionData.end_time,
+      start_time_offset_minutes: payload.start_time_offset_minutes,
+      end_time_offset_minutes: payload.end_time_offset_minutes,
+      time_zone: payload.time_zone,
+    });
+
+    if (!offsetValidation.ok) {
+      return respond({ success: false, error: offsetValidation.message }, 400);
     }
 
     const { data, error } = await supabaseAdmin.rpc("confirm_session_hold", {

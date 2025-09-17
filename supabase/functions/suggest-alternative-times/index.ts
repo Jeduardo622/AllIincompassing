@@ -41,6 +41,7 @@ interface ConflictDetails {
     end_time: string;
     status: string;
   }>;
+  timeZone?: string;
 }
 
 interface AlternativeTime {
@@ -66,8 +67,14 @@ Deno.serve(async (req) => {
     // Parse the request body
     const conflictDetails: ConflictDetails = await req.json();
 
-    // Format the conflict details for the AI
-    const dayOfWeek = new Date(conflictDetails.startTime).toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+    const zone = conflictDetails.timeZone ?? "UTC";
+    const startDate = new Date(conflictDetails.startTime);
+    const endDate = new Date(conflictDetails.endTime);
+
+    const dayOfWeek = new Intl.DateTimeFormat("en-US", {
+      weekday: "long",
+      timeZone: zone,
+    }).format(startDate).toLowerCase();
     const sessionDuration = (new Date(conflictDetails.endTime).getTime() - new Date(conflictDetails.startTime).getTime()) / (1000 * 60); // in minutes
 
     // Get the therapist's availability for the day
@@ -78,8 +85,8 @@ Deno.serve(async (req) => {
 
     // Get existing sessions for the therapist and client on the same day
     const existingSessionsOnSameDay = conflictDetails.existingSessions.filter(session => {
-      const sessionDate = new Date(session.start_time).toDateString();
-      const requestedDate = new Date(conflictDetails.startTime).toDateString();
+      const sessionDate = new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(new Date(session.start_time));
+      const requestedDate = new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(startDate);
       return sessionDate === requestedDate;
     });
 
@@ -97,9 +104,9 @@ Deno.serve(async (req) => {
         {
           role: "user",
           content: `I need to schedule a ${sessionDuration}-minute therapy session for therapist ${conflictDetails.therapist.full_name}
-          with client ${conflictDetails.client.full_name} on ${new Date(conflictDetails.startTime).toLocaleDateString()}.
+          with client ${conflictDetails.client.full_name} on ${new Intl.DateTimeFormat("en-US", { timeZone: zone }).format(startDate)}.
 
-          I tried to schedule it from ${new Date(conflictDetails.startTime).toLocaleTimeString()} to ${new Date(conflictDetails.endTime).toLocaleTimeString()},
+          I tried to schedule it from ${new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" }).format(startDate)} to ${new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" }).format(endDate)},
           but encountered these conflicts:
           ${conflictDetails.conflicts.map(c => `- ${c.message}`).join('\n')}
 
@@ -108,8 +115,8 @@ Deno.serve(async (req) => {
 
           Existing sessions on this day:
           ${existingSessionsOnSameDay.map(s =>
-            `- ${new Date(s.start_time).toLocaleTimeString()} to ${new Date(s.end_time).toLocaleTimeString()}: ${
-              s.therapist_id === conflictDetails.therapistId ? 'Therapist busy' : 'Client busy'
+            `- ${new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" }).format(new Date(s.start_time))} to ${new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" }).format(new Date(s.end_time))}: ${
+              s.therapist_id === conflictDetails.therapistId ? "Therapist busy" : "Client busy"
             }`
           ).join('\n')}
 

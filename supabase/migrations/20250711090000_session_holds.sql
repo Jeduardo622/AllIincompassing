@@ -153,6 +153,8 @@ declare
   v_session_type text;
   v_rate numeric;
   v_total numeric;
+  v_cpt_increment constant integer := 15;
+  v_raw_duration numeric;
   v_duration integer;
 begin
   delete from session_holds where expires_at <= timezone('utc', now());
@@ -182,9 +184,16 @@ begin
   v_session_type := nullif(p_session->>'session_type', '');
   v_rate := nullif(p_session->>'rate_per_hour', '')::numeric;
   v_total := nullif(p_session->>'total_cost', '')::numeric;
-  v_duration := coalesce(
-    (p_session->>'duration_minutes')::int,
-    greatest(1, floor(extract(epoch from (v_end - v_start)) / 60)::int)
+  v_raw_duration := coalesce(
+    nullif(p_session->>'duration_minutes', '')::numeric,
+    (extract(epoch from (v_end - v_start)) / 60)::numeric
+  );
+
+  -- CPT codes require reporting in quarter-hour increments; round the raw duration
+  -- instead of truncating so billing receives the compliant value.
+  v_duration := greatest(
+    v_cpt_increment,
+    (round(v_raw_duration / v_cpt_increment)::int) * v_cpt_increment
   );
 
   if v_therapist_id is null or v_client_id is null or v_start is null or v_end is null then

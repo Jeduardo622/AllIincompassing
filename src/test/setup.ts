@@ -445,6 +445,7 @@ export const server = setupServer(
           rate_per_hour: null,
           total_cost: null,
         },
+        roundedDurationMinutes: 60,
       },
     });
   }),

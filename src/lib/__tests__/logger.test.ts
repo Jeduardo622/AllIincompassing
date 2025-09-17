@@ -57,7 +57,7 @@ describe('logger', () => {
   });
 
   it('sanitizes metadata before logging info', () => {
-    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const infoSpy = vi.spyOn(console, 'info');
 
     try {
       logger.info('Client Name: Jane Doe', {
@@ -74,7 +74,7 @@ describe('logger', () => {
   });
 
   it('forwards sanitized errors to the error tracker', () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error');
     const trackErrorSpy = vi.mocked(errorTracker.trackError);
 
     const originalError = new Error('Client email john@example.com failed validation');
@@ -101,7 +101,7 @@ describe('logger', () => {
   });
 
   it('respects the track=false option', () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error');
     const trackErrorSpy = vi.mocked(errorTracker.trackError);
 
     try {

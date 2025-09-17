@@ -1,7 +1,14 @@
-import { vi, beforeAll, afterEach, afterAll } from 'vitest';
+import { vi, beforeAll, beforeEach, afterEach, afterAll } from 'vitest';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import '@testing-library/jest-dom';
+import { installConsoleGuard } from './utils/consoleGuard';
+
+const consoleGuard = installConsoleGuard({ passthrough: false });
+
+beforeEach(() => {
+  consoleGuard.resetCapturedLogs();
+});
 
 // Global, deterministic time for tests (fake Date only; keep real timers)
 vi.useFakeTimers({ toFake: ['Date'] });
@@ -467,6 +474,10 @@ afterEach(() => server.resetHandlers());
 
 // Close server after all tests
 afterAll(() => server.close());
+
+afterAll(() => {
+  consoleGuard.restore();
+});
 
 // Mock window.matchMedia for responsive design tests
 Object.defineProperty(window, 'matchMedia', {

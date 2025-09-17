@@ -8,6 +8,7 @@ export interface HoldRequest {
   endTime: string;
   sessionId?: string;
   holdSeconds?: number;
+  idempotencyKey?: string;
 }
 
 export interface HoldResponse {
@@ -40,6 +41,7 @@ export async function requestSessionHold(payload: HoldRequest): Promise<HoldResp
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...(payload.idempotencyKey ? { "Idempotency-Key": payload.idempotencyKey } : {}),
     },
     body: JSON.stringify({
       therapist_id: payload.therapistId,
@@ -68,6 +70,7 @@ export async function requestSessionHold(payload: HoldRequest): Promise<HoldResp
 export interface ConfirmRequest {
   holdKey: string;
   session: Partial<Session>;
+  idempotencyKey?: string;
 }
 
 export async function confirmSessionBooking(payload: ConfirmRequest): Promise<Session> {
@@ -75,6 +78,7 @@ export async function confirmSessionBooking(payload: ConfirmRequest): Promise<Se
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...(payload.idempotencyKey ? { "Idempotency-Key": payload.idempotencyKey } : {}),
     },
     body: JSON.stringify({
       hold_key: payload.holdKey,
@@ -94,4 +98,46 @@ export async function confirmSessionBooking(payload: ConfirmRequest): Promise<Se
   }
 
   return body.data.session;
+}
+
+export interface CancelHoldRequest {
+  holdKey: string;
+  idempotencyKey?: string;
+}
+
+export interface CancelHoldResponse {
+  released: boolean;
+  hold?: {
+    id: string;
+    holdKey: string;
+    therapistId: string;
+    clientId: string;
+    startTime: string;
+    endTime: string;
+    expiresAt: string;
+  };
+}
+
+export async function cancelSessionHold(payload: CancelHoldRequest): Promise<CancelHoldResponse> {
+  const response = await callEdge("sessions-cancel", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(payload.idempotencyKey ? { "Idempotency-Key": payload.idempotencyKey } : {}),
+    },
+    body: JSON.stringify({ hold_key: payload.holdKey }),
+  });
+
+  let body: EdgeSuccess<{ released: boolean; hold?: CancelHoldResponse["hold"] }> | EdgeError | null = null;
+  try {
+    body = await response.json();
+  } catch (error) {
+    console.error("Failed to parse cancel response", error);
+  }
+
+  if (!response.ok || !body || !body.success) {
+    throw toError(body?.error, "Failed to release session hold");
+  }
+
+  return body.data;
 }

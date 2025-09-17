@@ -10,13 +10,8 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-interface HoldPayload {
-  therapist_id: string;
-  client_id: string;
-  start_time: string;
-  end_time: string;
-  session_id?: string | null;
-  hold_seconds?: number;
+interface CancelPayload {
+  hold_key: string;
 }
 
 function jsonResponse(
@@ -58,7 +53,7 @@ Deno.serve(async (req) => {
     const idempotencyService = createSupabaseIdempotencyService(supabaseAdmin);
 
     if (normalizedKey) {
-      const existing = await idempotencyService.find(normalizedKey, "sessions-hold");
+      const existing = await idempotencyService.find(normalizedKey, "sessions-cancel");
       if (existing) {
         return jsonResponse(
           existing.responseBody as Record<string, unknown>,
@@ -74,13 +69,10 @@ Deno.serve(async (req) => {
       }
 
       try {
-        await idempotencyService.persist(normalizedKey, "sessions-hold", body, status);
+        await idempotencyService.persist(normalizedKey, "sessions-cancel", body, status);
       } catch (error) {
         if (error instanceof IdempotencyConflictError) {
-          return jsonResponse(
-            { success: false, error: error.message },
-            409,
-          );
+          return jsonResponse({ success: false, error: error.message }, 409);
         }
         throw error;
       }
@@ -88,56 +80,47 @@ Deno.serve(async (req) => {
       return jsonResponse(body, status, { "Idempotency-Key": normalizedKey });
     };
 
-    const payload = await req.json() as HoldPayload;
-    if (!payload?.therapist_id || !payload?.client_id || !payload?.start_time || !payload?.end_time) {
+    const payload = await req.json() as CancelPayload;
+    if (!payload?.hold_key) {
       return respond({ success: false, error: "Missing required fields" }, 400);
     }
 
-    const { data, error } = await supabaseAdmin.rpc("acquire_session_hold", {
-      p_therapist_id: payload.therapist_id,
-      p_client_id: payload.client_id,
-      p_start_time: payload.start_time,
-      p_end_time: payload.end_time,
-      p_session_id: payload.session_id ?? null,
-      p_hold_seconds: payload.hold_seconds ?? 300,
-    });
+    const { data, error } = await supabaseAdmin
+      .from("session_holds")
+      .delete()
+      .eq("hold_key", payload.hold_key)
+      .select("id, hold_key, therapist_id, client_id, start_time, end_time, expires_at")
+      .maybeSingle();
 
     if (error) {
-      console.error("acquire_session_hold error", error);
-      return respond({ success: false, error: error.message ?? "Failed to create hold" }, 500);
+      console.error("sessions-cancel delete error", error);
+      return respond({ success: false, error: error.message ?? "Failed to cancel hold" }, 500);
     }
 
-    if (!data?.success) {
-      const statusMap: Record<string, number> = {
-        INVALID_RANGE: 400,
-        HOLD_EXISTS: 409,
-        THERAPIST_CONFLICT: 409,
-        CLIENT_CONFLICT: 409,
-      };
-      const status = statusMap[data?.error_code as string] ?? 409;
-      return respond({
-        success: false,
-        error: data?.error_message ?? "Unable to hold session",
-        code: data?.error_code,
-      }, status);
+    if (!data) {
+      return respond({ success: true, data: { released: false } });
     }
 
-    const hold = data.hold as Record<string, string> | undefined;
-    if (!hold) {
-      return respond({ success: false, error: "Hold response missing" }, 500);
-    }
+    const hold = data as Record<string, unknown>;
 
     return respond({
       success: true,
       data: {
-        holdKey: hold.hold_key,
-        holdId: hold.id,
-        expiresAt: hold.expires_at,
+        released: true,
+        hold: {
+          id: String(hold.id ?? ""),
+          holdKey: String(hold.hold_key ?? ""),
+          therapistId: String(hold.therapist_id ?? ""),
+          clientId: String(hold.client_id ?? ""),
+          startTime: String(hold.start_time ?? ""),
+          endTime: String(hold.end_time ?? ""),
+          expiresAt: String(hold.expires_at ?? ""),
+        },
       },
     });
   } catch (error) {
     if (error instanceof Response) return error;
-    console.error("sessions-hold error", error);
+    console.error("sessions-cancel error", error);
     const message = error instanceof Error ? error.message : "Internal server error";
     return jsonResponse({ success: false, error: message }, 500);
   }

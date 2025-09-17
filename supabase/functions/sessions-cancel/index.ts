@@ -11,7 +11,24 @@ const corsHeaders = {
 };
 
 interface CancelPayload {
-  hold_key: string;
+  hold_key?: unknown;
+  session_ids?: unknown;
+  date?: unknown;
+  therapist_id?: unknown;
+  reason?: unknown;
+}
+
+interface SessionRecord {
+  id?: unknown;
+  status?: unknown;
+}
+
+interface SessionCancellationSummary {
+  cancelledCount: number;
+  alreadyCancelledCount: number;
+  totalCount: number;
+  cancelledSessionIds: string[];
+  alreadyCancelledSessionIds: string[];
 }
 
 function jsonResponse(
@@ -35,6 +52,129 @@ async function ensureAuthenticated(req: Request) {
   if (error || !data?.user) {
     throw jsonResponse({ success: false, error: "Unauthorized" }, 401);
   }
+}
+
+function normalizeSessionIds(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  for (const item of value) {
+    let normalized = "";
+    if (typeof item === "string") {
+      normalized = item.trim();
+    } else if (typeof item === "number" || typeof item === "bigint") {
+      normalized = String(item);
+    }
+
+    if (normalized.length > 0) {
+      seen.add(normalized);
+    }
+  }
+
+  return Array.from(seen);
+}
+
+function buildDateRange(value: unknown): { start: string; end: string } | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return null;
+  }
+
+  const [yearStr, monthStr, dayStr] = trimmed.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  const canonical = `${yearStr}-${monthStr}-${dayStr}`;
+  return {
+    start: `${canonical}T00:00:00`,
+    end: `${canonical}T23:59:59.999`,
+  };
+}
+
+function normalizeTherapistId(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeReason(value: unknown): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "number" || typeof value === "bigint") {
+    return String(value);
+  }
+
+  return undefined;
+}
+
+function parseSessionRecords(data: SessionRecord[] | null): { id: string; status: string }[] {
+  if (!data) {
+    return [];
+  }
+
+  const parsed: { id: string; status: string }[] = [];
+  for (const record of data) {
+    const id = typeof record.id === "string" ? record.id : record.id != null ? String(record.id) : "";
+    const status = typeof record.status === "string" ? record.status : record.status != null ? String(record.status) : "";
+
+    if (id.length === 0) {
+      continue;
+    }
+
+    parsed.push({ id, status });
+  }
+
+  return parsed;
+}
+
+function summarizeCancellation(
+  matched: { id: string; status: string }[],
+  cancelledIds: string[],
+): SessionCancellationSummary {
+  const cancelledSet = new Set(cancelledIds);
+  const alreadyCancelled: string[] = [];
+
+  for (const session of matched) {
+    if (session.status === "cancelled" && !cancelledSet.has(session.id)) {
+      alreadyCancelled.push(session.id);
+    }
+  }
+
+  return {
+    cancelledCount: cancelledIds.length,
+    alreadyCancelledCount: alreadyCancelled.length,
+    totalCount: matched.length,
+    cancelledSessionIds: cancelledIds,
+    alreadyCancelledSessionIds: alreadyCancelled,
+  };
 }
 
 Deno.serve(async (req) => {
@@ -81,43 +221,116 @@ Deno.serve(async (req) => {
     };
 
     const payload = await req.json() as CancelPayload;
-    if (!payload?.hold_key) {
-      return respond({ success: false, error: "Missing required fields" }, 400);
-    }
 
-    const { data, error } = await supabaseAdmin
-      .from("session_holds")
-      .delete()
-      .eq("hold_key", payload.hold_key)
-      .select("id, hold_key, therapist_id, client_id, start_time, end_time, expires_at")
-      .maybeSingle();
+    if (payload?.hold_key) {
+      const holdKey = typeof payload.hold_key === "string" ? payload.hold_key.trim() : "";
+      if (holdKey.length === 0) {
+        return respond({ success: false, error: "Missing required fields" }, 400);
+      }
 
-    if (error) {
-      console.error("sessions-cancel delete error", error);
-      return respond({ success: false, error: error.message ?? "Failed to cancel hold" }, 500);
-    }
+      const { data, error } = await supabaseAdmin
+        .from("session_holds")
+        .delete()
+        .eq("hold_key", holdKey)
+        .select("id, hold_key, therapist_id, client_id, start_time, end_time, expires_at")
+        .maybeSingle();
 
-    if (!data) {
-      return respond({ success: true, data: { released: false } });
-    }
+      if (error) {
+        console.error("sessions-cancel delete hold error", error);
+        return respond({ success: false, error: error.message ?? "Failed to cancel hold" }, 500);
+      }
 
-    const hold = data as Record<string, unknown>;
+      if (!data) {
+        return respond({ success: true, data: { released: false } });
+      }
 
-    return respond({
-      success: true,
-      data: {
-        released: true,
-        hold: {
-          id: String(hold.id ?? ""),
-          holdKey: String(hold.hold_key ?? ""),
-          therapistId: String(hold.therapist_id ?? ""),
-          clientId: String(hold.client_id ?? ""),
-          startTime: String(hold.start_time ?? ""),
-          endTime: String(hold.end_time ?? ""),
-          expiresAt: String(hold.expires_at ?? ""),
+      const hold = data as Record<string, unknown>;
+
+      return respond({
+        success: true,
+        data: {
+          released: true,
+          hold: {
+            id: String(hold.id ?? ""),
+            holdKey: String(hold.hold_key ?? ""),
+            therapistId: String(hold.therapist_id ?? ""),
+            clientId: String(hold.client_id ?? ""),
+            startTime: String(hold.start_time ?? ""),
+            endTime: String(hold.end_time ?? ""),
+            expiresAt: String(hold.expires_at ?? ""),
+          },
         },
-      },
-    });
+      });
+    }
+
+    const sessionIds = normalizeSessionIds(payload?.session_ids);
+    const dateRange = buildDateRange(payload?.date);
+    const therapistId = normalizeTherapistId(payload?.therapist_id);
+    const reason = normalizeReason(payload?.reason);
+
+    if (sessionIds.length === 0 && !dateRange) {
+      return respond({ success: false, error: "Must provide session_ids or date" }, 400);
+    }
+
+    let selectQuery = supabaseAdmin.from("sessions");
+    if (sessionIds.length > 0) {
+      selectQuery = selectQuery.in("id", sessionIds);
+    }
+    if (dateRange) {
+      selectQuery = selectQuery
+        .gte("start_time", dateRange.start)
+        .lt("start_time", dateRange.end);
+    }
+    if (therapistId) {
+      selectQuery = selectQuery.eq("therapist_id", therapistId);
+    }
+
+    const { data: matchedSessions, error: fetchError } = await selectQuery.select("id, status");
+
+    if (fetchError) {
+      console.error("sessions-cancel fetch sessions error", fetchError);
+      return respond({ success: false, error: fetchError.message ?? "Failed to load sessions" }, 500);
+    }
+
+    const parsedSessions = parseSessionRecords(matchedSessions as SessionRecord[] | null);
+
+    if (parsedSessions.length === 0) {
+      const summary = summarizeCancellation(parsedSessions, []);
+      return respond({ success: true, data: summary });
+    }
+
+    const cancellableIds = parsedSessions
+      .filter((session) => session.status !== "cancelled")
+      .map((session) => session.id);
+
+    let cancelledIds: string[] = [];
+
+    if (cancellableIds.length > 0) {
+      const updates: Record<string, unknown> = { status: "cancelled" };
+      if (reason !== undefined) {
+        updates.notes = reason;
+      }
+
+      const { data: updated, error: updateError } = await supabaseAdmin
+        .from("sessions")
+        .update(updates)
+        .in("id", cancellableIds)
+        .select("id");
+
+      if (updateError) {
+        console.error("sessions-cancel update error", updateError);
+        return respond({ success: false, error: updateError.message ?? "Failed to cancel sessions" }, 500);
+      }
+
+      if (Array.isArray(updated)) {
+        cancelledIds = updated
+          .map((row) => (typeof row.id === "string" ? row.id : row.id != null ? String(row.id) : ""))
+          .filter((id) => id.length > 0);
+      }
+    }
+
+    const summary = summarizeCancellation(parsedSessions, cancelledIds);
+    return respond({ success: true, data: summary });
   } catch (error) {
     if (error instanceof Response) return error;
     console.error("sessions-cancel error", error);

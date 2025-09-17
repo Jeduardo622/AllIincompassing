@@ -11,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { processMessage } from "../lib/ai";
 import { supabase } from "../lib/supabase";
+import { cancelSessions } from "../lib/sessionCancellation";
 import { showSuccess, showError } from "../lib/toast";
 import { errorTracker } from "../lib/errorTracking";
 // import type { Session, Client, Therapist, Authorization, AuthorizationService } from "../types";
@@ -123,56 +124,92 @@ export default function ChatBot() {
         try {
           switch (response.action.type) {
             case "cancel_sessions": {
-              const { date, reason } = response.action.data;
-              console.log(`Cancelling sessions for date: ${date}`, { reason });
+              const { date, reason, therapist_id: therapistId } =
+                response.action.data;
+              if (!date) {
+                throw new Error("Cancellation requests must include a date");
+              }
 
-              // Update message to show processing
+              const cancellationReason =
+                typeof reason === "string" && reason.trim().length > 0
+                  ? reason
+                  : "Staff development day";
+
               setMessages((prev) => [
                 ...prev.slice(0, -1),
                 {
                   role: "assistant",
-                  content: response.response + "\n\n⏳ Cancelling sessions...",
+                  content: `${response.response}\n\n⏳ Cancelling sessions...`,
                   status: "processing",
                 },
               ]);
 
-              // Cancel all sessions for the given date
               try {
-                const { data, error } = await supabase
-                  .from("sessions")
-                  .update({
-                    status: "cancelled",
-                    notes: reason || "Staff development day",
-                  })
-                  .gte("start_time", `${date}T00:00:00`)
-                  .lt("start_time", `${date}T23:59:59`)
-                  .select("id");
+                const result = await cancelSessions({
+                  date,
+                  therapistId,
+                  reason: cancellationReason,
+                });
 
-                if (error) throw error;
+                await queryClient.invalidateQueries({
+                  queryKey: ["sessions"],
+                });
 
-                console.log(
-                  `Successfully cancelled ${data.length} sessions for ${date}`,
-                );
-                // Invalidate sessions query to refresh the UI
-                await queryClient.invalidateQueries({ queryKey: ["sessions"] });
+                const successParts: string[] = [];
+                if (result.cancelledCount > 0) {
+                  successParts.push(
+                    `${result.cancelledCount} session${
+                      result.cancelledCount === 1 ? "" : "s"
+                    } cancelled`,
+                  );
+                }
+                if (result.alreadyCancelledCount > 0) {
+                  successParts.push(
+                    `${result.alreadyCancelledCount} already cancelled`,
+                  );
+                }
+                if (result.totalCount === 0) {
+                  successParts.push("no sessions found");
+                }
 
-                showSuccess(`${data.length} sessions cancelled successfully`);
+                const summaryMessage =
+                  successParts.length > 0
+                    ? successParts.join(", ")
+                    : "No matching sessions to cancel";
 
-                // Update message to show completion
+                showSuccess(summaryMessage);
+
+                const formattedDate = new Date(`${date}T00:00:00`).toLocaleDateString();
+                const assistantMessage = [
+                  response.response,
+                  "",
+                  result.totalCount === 0
+                    ? "ℹ️ No sessions matched the request."
+                    : `✅ ${result.cancelledCount} session${
+                        result.cancelledCount === 1 ? "" : "s"
+                      } cancelled for ${formattedDate}.`,
+                  result.alreadyCancelledCount > 0
+                    ? `ℹ️ ${result.alreadyCancelledCount} session${
+                        result.alreadyCancelledCount === 1 ? "" : "s"
+                      } were already cancelled.`
+                    : null,
+                  cancellationReason
+                    ? `Reason noted: ${cancellationReason}`
+                    : null,
+                ]
+                  .filter((line): line is string => Boolean(line))
+                  .join("\n\n");
+
                 setMessages((prev) => [
                   ...prev.slice(0, -1),
                   {
                     role: "assistant",
-                    content:
-                      response.response +
-                      "\n\n✅ All sessions for " +
-                      new Date(date).toLocaleDateString() +
-                      " have been cancelled.",
+                    content: assistantMessage,
                     status: "action_success",
                   },
                 ]);
               } catch (dbError) {
-                console.error("Database error cancelling sessions:", dbError);
+                console.error("sessions-cancel error", dbError);
                 throw dbError;
               }
 

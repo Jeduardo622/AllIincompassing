@@ -1,33 +1,48 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderWithProviders, screen, userEvent } from "../../test/utils";
 import ChatBot from "../ChatBot";
+import { processMessage } from "../../lib/ai";
+import { cancelSessions } from "../../lib/sessionCancellation";
 
 beforeAll(() => {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 
-vi.mock("../../lib/ai", () => ({
-  processMessage: vi.fn().mockResolvedValue({
-    response: "Sure thing",
-    action: {
-      type: "schedule_session",
-      data: {
-        therapist_id: "t1",
-        client_id: "c1",
-        start_time: "2025-03-18T10:00:00Z",
-        end_time: "2025-03-18T11:00:00Z",
-        location_type: "in_clinic",
-      },
+const defaultScheduleAction = {
+  response: "Sure thing",
+  action: {
+    type: "schedule_session" as const,
+    data: {
+      therapist_id: "t1",
+      client_id: "c1",
+      start_time: "2025-03-18T10:00:00Z",
+      end_time: "2025-03-18T11:00:00Z",
+      location_type: "in_clinic",
     },
-  }),
+  },
+};
+
+vi.mock("../../lib/ai", () => ({
+  processMessage: vi.fn(),
 }));
+
+vi.mock("../../lib/sessionCancellation", () => ({
+  cancelSessions: vi.fn(),
+}));
+
+const mockedProcessMessage = vi.mocked(processMessage);
+const mockedCancelSessions = vi.mocked(cancelSessions);
 
 describe("ChatBot scheduling", () => {
   beforeEach(() => {
+    mockedProcessMessage.mockReset();
+    mockedProcessMessage.mockResolvedValue(defaultScheduleAction);
+    mockedCancelSessions.mockReset();
     localStorage.clear();
   });
   afterEach(() => {
     localStorage.clear();
+    vi.clearAllMocks();
   });
   it("dispatches openScheduleModal when scheduling action returned", async () => {
     const handler = vi.fn();
@@ -69,5 +84,44 @@ describe("ChatBot scheduling", () => {
     expect(stored).not.toBeNull();
     const detail = JSON.parse(stored as string);
     expect(detail.therapist_id).toBe("t1");
+  });
+
+  it("cancels sessions when AI requests cancellation", async () => {
+    mockedProcessMessage.mockResolvedValueOnce({
+      response: "Absolutely, cancelling now.",
+      action: {
+        type: "cancel_sessions",
+        data: { date: "2025-03-18", reason: "Snow day" },
+      },
+    });
+
+    mockedCancelSessions.mockResolvedValueOnce({
+      cancelledCount: 2,
+      alreadyCancelledCount: 1,
+      totalCount: 3,
+      cancelledSessionIds: ["s1", "s2"],
+      alreadyCancelledSessionIds: ["s3"],
+      idempotencyKey: "abc",
+    });
+
+    renderWithProviders(<ChatBot />);
+    await userEvent.click(document.getElementById("chat-trigger")!);
+
+    const input = screen.getByPlaceholderText(/Type your message/);
+    await userEvent.type(input, "cancel sessions");
+    const sendBtn = input
+      .closest("form")!
+      .querySelector('button[type="submit"]') as HTMLButtonElement;
+    await userEvent.click(sendBtn);
+
+    await screen.findByText(/✅ 2 sessions cancelled/);
+    expect(mockedCancelSessions).toHaveBeenCalledWith({
+      date: "2025-03-18",
+      therapistId: undefined,
+      reason: "Snow day",
+    });
+    expect(
+      screen.getByText(/Reason noted: Snow day/),
+    ).toBeInTheDocument();
   });
 });

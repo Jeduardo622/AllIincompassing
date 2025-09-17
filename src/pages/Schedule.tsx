@@ -10,7 +10,6 @@ import {
   Edit2,
   Wand2,
 } from "lucide-react";
-import { supabase } from "../lib/supabase";
 import type { Session, Therapist, Client } from "../types";
 import SessionModal from "../components/SessionModal";
 import AutoScheduleModal from "../components/AutoScheduleModal";
@@ -24,7 +23,8 @@ import {
   useDropdownData,
 } from "../lib/optimizedQueries";
 import { requestSessionHold, confirmSessionBooking } from "../lib/sessionHolds";
-import { showError } from "../lib/toast";
+import { cancelSessions } from "../lib/sessionCancellation";
+import { showError, showSuccess } from "../lib/toast";
 
 // Memoized time slot component
 const TimeSlot = React.memo(
@@ -524,18 +524,27 @@ const Schedule = React.memo(() => {
     },
   });
 
-  const deleteSessionMutation = useMutation({
-    mutationFn: async (sessionId: string) => {
-      const { error } = await supabase
-        .from("sessions")
-        .delete()
-        .eq("id", sessionId);
+  const cancelSessionMutation = useMutation({
+    mutationFn: async ({
+      sessionId,
+      reason,
+    }: {
+      sessionId: string;
+      reason?: string | null;
+    }) => {
+      const result = await cancelSessions({
+        sessionIds: [sessionId],
+        reason,
+      });
 
-      if (error) throw error;
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
       queryClient.invalidateQueries({ queryKey: ["sessions-batch"] });
+    },
+    onError: (error) => {
+      showError(error);
     },
   });
 
@@ -557,22 +566,57 @@ const Schedule = React.memo(() => {
 
   const _handleDeleteSession = useCallback(
     async (sessionId: string) => {
-      if (window.confirm("Are you sure you want to delete this session?")) {
-        await deleteSessionMutation.mutateAsync(sessionId);
+      if (window.confirm("Are you sure you want to cancel this session?")) {
+        const result = await cancelSessionMutation.mutateAsync({
+          sessionId,
+        });
+
+        showSuccess(
+          result.cancelledCount > 0
+            ? "Session cancelled successfully"
+            : "Session was already cancelled",
+        );
       }
     },
-    [deleteSessionMutation],
+    [cancelSessionMutation],
   );
 
   const handleSubmit = useCallback(
     async (data: Partial<Session>) => {
       if (selectedSession) {
+        if (data.status === "cancelled") {
+          const cancellationReason =
+            typeof data.notes === "string" && data.notes.trim().length > 0
+              ? data.notes
+              : undefined;
+
+          const result = await cancelSessionMutation.mutateAsync({
+            sessionId: selectedSession.id,
+            reason: cancellationReason,
+          });
+
+          showSuccess(
+            result.cancelledCount > 0
+              ? "Session cancelled successfully"
+              : "Session was already cancelled",
+          );
+
+          setIsModalOpen(false);
+          setSelectedSession(undefined);
+          return;
+        }
+
         await updateSessionMutation.mutateAsync(data);
       } else {
         await createSessionMutation.mutateAsync(data);
       }
     },
-    [selectedSession, updateSessionMutation, createSessionMutation],
+    [
+      selectedSession,
+      cancelSessionMutation,
+      updateSessionMutation,
+      createSessionMutation,
+    ],
   );
 
   const handleAutoSchedule = useCallback(

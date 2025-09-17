@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import type { Session, Therapist, Client } from '../types';
 import { checkSchedulingConflicts, suggestAlternativeTimes, type Conflict, type AlternativeTime } from '../lib/conflicts';
+import { logger } from '../lib/logger/logger';
 import AlternativeTimes from './AlternativeTimes';
 
 interface SessionModalProps {
@@ -49,7 +50,10 @@ export default function SessionModal({
     try {
       return Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC';
     } catch (error) {
-      console.warn('Unable to resolve user timezone', error);
+      logger.warn('Unable to resolve user timezone', {
+        error,
+        context: { component: 'SessionModal', operation: 'resolveTimeZone' }
+      });
       return 'UTC';
     }
   }, [timeZone]);
@@ -62,7 +66,10 @@ export default function SessionModal({
       const zoned = utcToZonedTime(date, resolvedTimeZone);
       return format(zoned, "yyyy-MM-dd'T'HH:mm");
     } catch (error) {
-      console.error('Failed to format local input', error);
+      logger.error('Failed to format local input', {
+        error,
+        context: { component: 'SessionModal', operation: 'formatLocalInput' }
+      });
       return '';
     }
   };
@@ -72,7 +79,10 @@ export default function SessionModal({
     try {
       return zonedTimeToUtc(localValue, resolvedTimeZone).toISOString();
     } catch (error) {
-      console.error('Failed to convert local time to UTC', error);
+      logger.error('Failed to convert local time to UTC', {
+        error,
+        context: { component: 'SessionModal', operation: 'toUtcIsoString' }
+      });
       return '';
     }
   };
@@ -177,7 +187,10 @@ export default function SessionModal({
               );
               setAlternativeTimes(alternatives);
             } catch (error) {
-              console.error('Error suggesting alternative times:', error);
+              logger.error('Failed to suggest alternative times', {
+                error,
+                context: { component: 'SessionModal', operation: 'suggestAlternativeTimes' }
+              });
               setAlternativeTimes([]);
             } finally {
               setIsLoadingAlternatives(false);
@@ -216,7 +229,10 @@ export default function SessionModal({
       };
       await onSubmit(transformed);
     } catch (error) {
-      console.error('Failed to submit session', error);
+      logger.error('Failed to submit session', {
+        error,
+        context: { component: 'SessionModal', operation: 'handleFormSubmit' }
+      });
       return;
     }
   };

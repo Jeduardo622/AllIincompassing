@@ -4,6 +4,8 @@ import { useForm } from 'react-hook-form';
 import { Building2, Mail, MapPin, Clock, Palette } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { isValidEmail, isValidUrl, prepareFormData } from '../../lib/validation';
+import { useAuth } from '../../lib/authContext';
+import { showError } from '../../lib/toast';
 
 interface CompanySettingsForm {
   company_name: string;
@@ -29,6 +31,8 @@ interface CompanySettingsForm {
   default_currency: string;
   session_duration_default: number;
 }
+
+type CompanySettingsRecord = CompanySettingsForm & { id: string };
 
 const DEFAULT_SETTINGS = {
   company_name: '',
@@ -57,11 +61,16 @@ const DEFAULT_SETTINGS = {
 
 export default function CompanySettings() {
   const queryClient = useQueryClient();
+  const { hasRole, loading: authLoading } = useAuth();
+  const canManageConfig = hasRole('admin');
   const { register, handleSubmit, reset, formState: { errors, isDirty, isSubmitting } } = useForm<CompanySettingsForm>();
 
-  const { data: settings, isLoading } = useQuery({
+  const { data: settings, isLoading, error } = useQuery<CompanySettingsRecord | null, Error>({
     queryKey: ['company-settings'],
     queryFn: async () => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can load company settings.');
+      }
       // First try to get existing settings
       const { data: existingSettings, error: fetchError } = await supabase
         .from('company_settings')
@@ -79,18 +88,23 @@ export default function CompanySettings() {
           .single();
 
         if (insertError) throw insertError;
-        return newSettings;
+        return newSettings as CompanySettingsRecord;
       }
 
-      return existingSettings[0];
+      return existingSettings[0] as CompanySettingsRecord;
     },
+    enabled: canManageConfig,
+    retry: false,
   });
 
   const updateSettings = useMutation({
     mutationFn: async (formData: CompanySettingsForm) => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can update company settings.');
+      }
       // Format data before submission
       const data = prepareFormData(formData);
-      
+
       const { error } = await supabase
         .from('company_settings')
         .upsert([{ id: settings?.id, ...data }]);
@@ -100,6 +114,9 @@ export default function CompanySettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['company-settings'] });
     },
+    onError: (mutationError) => {
+      showError(mutationError);
+    },
   });
 
   React.useEffect(() => {
@@ -108,10 +125,26 @@ export default function CompanySettings() {
     }
   }, [settings, reset]);
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!canManageConfig) {
+    return (
+      <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200 rounded-md p-6">
+        You do not have permission to manage company settings. Please contact an administrator if you believe this is a mistake.
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-200 rounded-md p-6">
+        Failed to load company settings: {error.message}
       </div>
     );
   }

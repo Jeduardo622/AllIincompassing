@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Edit2, Trash2, DollarSign, ClipboardCheck, MapPin } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../lib/authContext';
+import { showError, showSuccess } from '../../lib/toast';
 
 interface ServiceLine {
   id: string;
@@ -44,36 +46,59 @@ export default function ServiceLineSettings() {
   });
 
   const queryClient = useQueryClient();
+  const { hasRole, loading: authLoading } = useAuth();
+  const canManageConfig = hasRole('admin');
 
-  const { data: serviceLines = [], isLoading } = useQuery({
+  const {
+    data: serviceLines = [],
+    isLoading,
+    error,
+  } = useQuery<ServiceLine[], Error>({
     queryKey: ['service-lines'],
     queryFn: async () => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can load service lines.');
+      }
       const { data, error } = await supabase
         .from('service_lines')
         .select('*')
         .order('name');
-      
+
       if (error) throw error;
       return data as ServiceLine[];
     },
+    enabled: canManageConfig,
+    retry: false,
   });
 
-  const { data: locations = [] } = useQuery({
+  const {
+    data: locations = [],
+    error: locationsError,
+    isLoading: isLoadingLocations,
+  } = useQuery<{ id: string; name: string }[], Error>({
     queryKey: ['locations'],
     queryFn: async () => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can load locations.');
+      }
       const { data, error } = await supabase
         .from('locations')
         .select('id, name')
         .eq('is_active', true)
         .order('name');
-      
+
       if (error) throw error;
       return data;
     },
+    enabled: canManageConfig,
+    retry: false,
   });
 
   const createServiceLine = useMutation({
     mutationFn: async (newServiceLine: ServiceLineFormData) => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can create service lines.');
+      }
       const { data, error } = await supabase
         .from('service_lines')
         .insert([{
@@ -90,11 +115,18 @@ export default function ServiceLineSettings() {
       queryClient.invalidateQueries({ queryKey: ['service-lines'] });
       setIsModalOpen(false);
       resetForm();
+      showSuccess('Service line saved successfully');
+    },
+    onError: (mutationError) => {
+      showError(mutationError);
     },
   });
 
   const updateServiceLine = useMutation({
     mutationFn: async (serviceLine: ServiceLineFormData & { id: string }) => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can update service lines.');
+      }
       const { data, error } = await supabase
         .from('service_lines')
         .update({
@@ -112,11 +144,18 @@ export default function ServiceLineSettings() {
       queryClient.invalidateQueries({ queryKey: ['service-lines'] });
       setIsModalOpen(false);
       resetForm();
+      showSuccess('Service line updated successfully');
+    },
+    onError: (mutationError) => {
+      showError(mutationError);
     },
   });
 
   const deleteServiceLine = useMutation({
     mutationFn: async (id: string) => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can delete service lines.');
+      }
       const { error } = await supabase
         .from('service_lines')
         .delete()
@@ -126,6 +165,10 @@ export default function ServiceLineSettings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['service-lines'] });
+      showSuccess('Service line deleted successfully');
+    },
+    onError: (mutationError) => {
+      showError(mutationError);
     },
   });
 
@@ -193,6 +236,30 @@ export default function ServiceLineSettings() {
         : [...prev.available_locations, locationId],
     }));
   };
+
+  if (authLoading || isLoading || isLoadingLocations) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!canManageConfig) {
+    return (
+      <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200 rounded-md p-6">
+        You do not have permission to manage service lines.
+      </div>
+    );
+  }
+
+  if (error || locationsError) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-200 rounded-md p-6">
+        Failed to load service line settings: {(error ?? locationsError)?.message}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

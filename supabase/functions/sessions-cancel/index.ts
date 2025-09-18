@@ -55,6 +55,23 @@ async function ensureAuthenticated(req: Request) {
   return data.user;
 }
 
+function normalizeRole(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function isAdminRole(role: string | null): boolean {
+  return role === "admin" || role === "super_admin";
+}
+
+function isTherapistRole(role: string | null): boolean {
+  return role === "therapist";
+}
+
 function normalizeSessionIds(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -223,16 +240,45 @@ Deno.serve(async (req) => {
 
     const payload = await req.json() as CancelPayload;
 
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error("sessions-cancel profile lookup error", profileError);
+      return respond({
+        success: false,
+        error: profileError.message ?? "Failed to determine user role",
+      }, 500);
+    }
+
+    const profileRecord = profile as Record<string, unknown> | null;
+    const role = normalizeRole(profileRecord?.role);
+    const isAdmin = isAdminRole(role);
+    const isTherapist = isTherapistRole(role);
+
+    if (!isAdmin && !isTherapist) {
+      return respond({ success: false, error: "Forbidden" }, 403);
+    }
+
     if (payload?.hold_key) {
       const holdKey = typeof payload.hold_key === "string" ? payload.hold_key.trim() : "";
       if (holdKey.length === 0) {
         return respond({ success: false, error: "Missing required fields" }, 400);
       }
 
-      const { data, error } = await supabaseAdmin
+      let holdQuery = supabaseAdmin
         .from("session_holds")
         .delete()
-        .eq("hold_key", holdKey)
+        .eq("hold_key", holdKey);
+
+      if (isTherapist) {
+        holdQuery = holdQuery.eq("therapist_id", user.id);
+      }
+
+      const { data, error } = await holdQuery
         .select("id, hold_key, therapist_id, client_id, start_time, end_time, expires_at")
         .maybeSingle();
 
@@ -269,9 +315,39 @@ Deno.serve(async (req) => {
     const therapistId = normalizeTherapistId(payload?.therapist_id);
     const reason = normalizeReason(payload?.reason);
 
+    if (isTherapist && therapistId && therapistId !== user.id) {
+      return respond({ success: false, error: "Forbidden" }, 403);
+    }
+
+    if (isTherapist && sessionIds.length > 0) {
+      const { data: ownershipData, error: ownershipError } = await supabaseAdmin
+        .from("sessions")
+        .select("id")
+        .eq("therapist_id", user.id)
+        .in("id", sessionIds);
+
+      if (ownershipError) {
+        console.error("sessions-cancel ownership check error", ownershipError);
+        return respond({
+          success: false,
+          error: ownershipError.message ?? "Failed to verify sessions",
+        }, 500);
+      }
+
+      const ownedIds = new Set(
+        parseSessionRecords(ownershipData as SessionRecord[] | null).map((session) => session.id),
+      );
+
+      if (ownedIds.size !== sessionIds.length) {
+        return respond({ success: false, error: "Forbidden" }, 403);
+      }
+    }
+
     if (sessionIds.length === 0 && !dateRange) {
       return respond({ success: false, error: "Must provide session_ids or date" }, 400);
     }
+
+    const targetTherapistId = isTherapist ? user.id : therapistId;
 
     let selectQuery = supabaseAdmin.from("sessions");
     if (sessionIds.length > 0) {
@@ -282,8 +358,8 @@ Deno.serve(async (req) => {
         .gte("start_time", dateRange.start)
         .lt("start_time", dateRange.end);
     }
-    if (therapistId) {
-      selectQuery = selectQuery.eq("therapist_id", therapistId);
+    if (targetTherapistId) {
+      selectQuery = selectQuery.eq("therapist_id", targetTherapistId);
     }
 
     const { data: matchedSessions, error: fetchError } = await selectQuery.select("id, status");
@@ -312,11 +388,16 @@ Deno.serve(async (req) => {
         updates.notes = reason;
       }
 
-      const { data: updated, error: updateError } = await supabaseAdmin
+      let updateQuery = supabaseAdmin
         .from("sessions")
         .update(updates)
-        .in("id", cancellableIds)
-        .select("id");
+        .in("id", cancellableIds);
+
+      if (targetTherapistId) {
+        updateQuery = updateQuery.eq("therapist_id", targetTherapistId);
+      }
+
+      const { data: updated, error: updateError } = await updateQuery.select("id");
 
       if (updateError) {
         console.error("sessions-cancel update error", updateError);

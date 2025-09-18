@@ -104,4 +104,14 @@ describe("cancelSessions", () => {
       /bad request/i,
     );
   });
+
+  it("throws when cancellation is forbidden", async () => {
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse({ success: false, error: "Forbidden" }, 403),
+    );
+
+    await expect(cancelSessions({ sessionIds: ["s1"] })).rejects.toThrow(
+      /forbidden/i,
+    );
+  });
 });

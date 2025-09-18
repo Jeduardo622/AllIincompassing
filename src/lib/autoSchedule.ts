@@ -1,4 +1,14 @@
-import { format, parseISO, addMinutes, isWithinInterval, isSameDay, startOfWeek, endOfWeek, differenceInMinutes, addDays } from 'date-fns';
+import {
+  format,
+  parseISO,
+  addMinutes,
+  isWithinInterval,
+  isSameDay,
+  startOfWeek,
+  endOfWeek,
+  differenceInMinutes,
+  addDays
+} from 'date-fns';
 import { getDistance } from 'geolib';
 import type { Therapist, Client, Session } from '../types';
 
@@ -57,6 +67,67 @@ export interface ScheduleSlot {
   endTime: string;
   score: number;
   location?: Location | null;
+}
+
+const MINUTES_PER_HOUR = 60;
+
+export interface ClientHourCapacity {
+  authorizedHours: number | null;
+  providedHours: number;
+  unscheduledHours: number | null;
+  remainingHours: number | null;
+  remainingMinutes: number | null;
+}
+
+export interface CappedClientInfo {
+  client: Client;
+  remainingMinutes: number;
+}
+
+export interface GenerateOptimalScheduleResult {
+  slots: ScheduleSlot[];
+  cappedClients: CappedClientInfo[];
+}
+
+function sanitizeHourValue(value: number | null | undefined): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (Number.isFinite(value)) {
+    return Math.max(0, Number(value));
+  }
+
+  return null;
+}
+
+export function normalizeClientHourCapacity(client: Client): ClientHourCapacity {
+  const authorizedHours = sanitizeHourValue(client.authorized_hours_per_month ?? null);
+  const providedHours = sanitizeHourValue(client.hours_provided_per_month ?? 0) ?? 0;
+  const unscheduledHours = sanitizeHourValue(client.unscheduled_hours ?? null);
+
+  let remainingHours: number | null = null;
+
+  if (authorizedHours !== null) {
+    const boundedProvided = Math.min(providedHours, authorizedHours);
+    remainingHours = Math.max(authorizedHours - boundedProvided, 0);
+  }
+
+  if (unscheduledHours !== null) {
+    if (remainingHours === null) {
+      remainingHours = unscheduledHours;
+    } else {
+      remainingHours = Math.min(remainingHours, unscheduledHours);
+    }
+  }
+
+  return {
+    authorizedHours,
+    providedHours,
+    unscheduledHours,
+    remainingHours,
+    remainingMinutes: remainingHours === null ? null : remainingHours * MINUTES_PER_HOUR
+  };
 }
 
 // Memoized helper functions
@@ -266,9 +337,35 @@ export function generateOptimalSchedule(
   startDate: Date,
   endDate: Date,
   sessionDuration = 60
-): ScheduleSlot[] {
+): GenerateOptimalScheduleResult {
   const slots: ScheduleSlot[] = [];
-  const weeklyAssignments = new Map<string, Map<string, number>>();
+  const weeklyAssignments = new Map<
+    string,
+    {
+      therapistMinutes: Map<string, number>;
+      clientMinutes: Map<string, number>;
+    }
+  >();
+  const clientRemainingMinutes = new Map<string, number | null>();
+  const cappedClientInfo = new Map<string, CappedClientInfo>();
+
+  const markClientCapped = (client: Client, remainingMinutes: number) => {
+    const safeMinutes = Math.max(0, remainingMinutes);
+    const existing = cappedClientInfo.get(client.id);
+
+    if (!existing || safeMinutes < existing.remainingMinutes) {
+      cappedClientInfo.set(client.id, { client, remainingMinutes: safeMinutes });
+    }
+  };
+
+  clients.forEach(client => {
+    const capacity = normalizeClientHourCapacity(client);
+    clientRemainingMinutes.set(client.id, capacity.remainingMinutes);
+
+    if (capacity.remainingMinutes !== null && capacity.remainingMinutes < sessionDuration) {
+      markClientCapped(client, capacity.remainingMinutes);
+    }
+  });
 
   // Pre-filter compatible therapist-client pairs
   const compatiblePairs = therapists.flatMap(therapist =>
@@ -286,16 +383,19 @@ export function generateOptimalSchedule(
     const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
     const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
     const weekKey = format(weekStart, 'yyyy-MM-dd');
-    
+
     if (!weeklyAssignments.has(weekKey)) {
-      weeklyAssignments.set(weekKey, new Map());
+      weeklyAssignments.set(weekKey, {
+        therapistMinutes: new Map<string, number>(),
+        clientMinutes: new Map<string, number>()
+      });
     }
     const weeklyAssignmentMap = weeklyAssignments.get(weekKey)!;
 
     let dayDate = new Date(weekStart);
     while (dayDate <= weekEnd && dayDate <= endDate) {
       const dayName = format(dayDate, 'EEEE').toLowerCase();
-      
+
       if (dayName === 'sunday') {
         dayDate = addDays(dayDate, 1);
         continue;
@@ -305,11 +405,18 @@ export function generateOptimalSchedule(
       for (let hour = 8; hour < 18; hour++) {
         for (const { therapist, client, baseScore } of compatiblePairs) {
           // Check weekly limits early
-          const therapistWeeklyHours = weeklyAssignmentMap.get(therapist.id) || 0;
-          const clientWeeklyHours = weeklyAssignmentMap.get(client.id) || 0;
+          const therapistWeeklyMinutes =
+            weeklyAssignmentMap.therapistMinutes.get(therapist.id) || 0;
+          const clientWeeklyMinutes = weeklyAssignmentMap.clientMinutes.get(client.id) || 0;
 
-          if (therapistWeeklyHours >= therapist.weekly_hours_max ||
-              clientWeeklyHours >= client.authorized_hours) {
+          const therapistWeeklyLimit = therapist.weekly_hours_max * MINUTES_PER_HOUR;
+          if (therapistWeeklyMinutes + sessionDuration > therapistWeeklyLimit) {
+            continue;
+          }
+
+          const remainingMinutes = clientRemainingMinutes.get(client.id);
+          if (remainingMinutes !== undefined && remainingMinutes !== null && remainingMinutes < sessionDuration) {
+            markClientCapped(client, remainingMinutes);
             continue;
           }
 
@@ -347,8 +454,23 @@ export function generateOptimalSchedule(
             });
 
             // Update assignments
-            weeklyAssignmentMap.set(therapist.id, therapistWeeklyHours + 1);
-            weeklyAssignmentMap.set(client.id, clientWeeklyHours + 1);
+            weeklyAssignmentMap.therapistMinutes.set(
+              therapist.id,
+              therapistWeeklyMinutes + sessionDuration
+            );
+            weeklyAssignmentMap.clientMinutes.set(
+              client.id,
+              clientWeeklyMinutes + sessionDuration
+            );
+
+            if (remainingMinutes !== undefined && remainingMinutes !== null) {
+              const updatedRemaining = Math.max(remainingMinutes - sessionDuration, 0);
+              clientRemainingMinutes.set(client.id, updatedRemaining);
+
+              if (updatedRemaining < sessionDuration) {
+                markClientCapped(client, updatedRemaining);
+              }
+            }
 
             break; // Move to next hour
           }
@@ -359,9 +481,23 @@ export function generateOptimalSchedule(
     currentDate = addDays(currentDate, 7);
   }
 
-  return slots
+  const limitedSlots = slots
     .sort((a, b) => b.score - a.score)
-    .slice(0, 100); // Limit results for performance
+    .slice(0, 100);
+
+  const cappedClients = Array.from(cappedClientInfo.values()).sort((a, b) => {
+    const aName = a.client.full_name?.toLowerCase() || '';
+    const bName = b.client.full_name?.toLowerCase() || '';
+    if (aName === bName) {
+      return a.client.id.localeCompare(b.client.id);
+    }
+    return aName.localeCompare(bName);
+  });
+
+  return {
+    slots: limitedSlots,
+    cappedClients
+  };
 }
 
 // Additional helper functions

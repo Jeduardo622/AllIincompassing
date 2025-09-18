@@ -1,5 +1,5 @@
 import { OpenAI } from "npm:openai@5.5.1";
-import { createRequestClient } from "../_shared/database.ts";
+import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 
 // Initialize OpenAI client
@@ -260,24 +260,31 @@ async function generateSemanticCacheKey(
     page: (context as any).currentPage || 'unknown'
   });
 
-  // Use per-request client for DB calls
-  const db = createRequestClient((globalThis as any).currentRequest);
-  await getUserOrThrow(db);
-  const { data } = await db.rpc('generate_semantic_cache_key', {
+  const requestClient = createRequestClient((globalThis as any).currentRequest);
+  await getUserOrThrow(requestClient);
+  const { data, error } = await supabaseAdmin.rpc('generate_semantic_cache_key', {
     p_query_text: query,
     p_context_hash: contextHash
   } as any);
+
+  if (error) {
+    console.warn('Service role cache key generation failed:', error.message);
+  }
 
   return (data as any) || `ai_${Date.now()}`;
 }
 
 async function checkCachedResponse(cacheKey: string): Promise<string | null> {
   try {
-    const db = createRequestClient((globalThis as any).currentRequest);
-    await getUserOrThrow(db);
-    const { data } = await db.rpc('get_cached_ai_response', {
+    const requestClient = createRequestClient((globalThis as any).currentRequest);
+    await getUserOrThrow(requestClient);
+    const { data, error } = await supabaseAdmin.rpc('get_cached_ai_response', {
       p_cache_key: cacheKey
     } as any);
+
+    if (error) {
+      throw error;
+    }
 
     return (data as any)?.[0]?.response_text || null;
   } catch (error) {
@@ -293,15 +300,19 @@ async function cacheAIResponse(
   metadata: Record<string, unknown>
 ): Promise<void> {
   try {
-    const db = createRequestClient((globalThis as any).currentRequest);
-    await getUserOrThrow(db);
-    await db.rpc('cache_ai_response', {
+    const requestClient = createRequestClient((globalThis as any).currentRequest);
+    await getUserOrThrow(requestClient);
+    const { error } = await supabaseAdmin.rpc('cache_ai_response', {
       p_cache_key: cacheKey,
       p_query_text: query,
       p_response_text: response,
       p_metadata: metadata,
       p_expires_at: new Date(Date.now() + AI_CACHE_CONFIG.RESPONSE_PATTERNS.common_queries)
     } as any);
+
+    if (error) {
+      throw error;
+    }
   } catch (error) {
     console.warn('Cache storage failed:', error);
   }

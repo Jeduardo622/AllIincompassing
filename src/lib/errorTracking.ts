@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import type { Json } from './generated/database.types';
 
 interface ErrorContext {
   component?: string;
@@ -232,15 +233,20 @@ class ErrorTracker {
     try {
       // Log to Supabase
       for (const error of errorsToFlush) {
-        await supabase.from('error_logs').insert([{
-          error_type: error.type,
-          message: error.message,
-          stack_trace: error.stack,
-          context: error.context,
-          details: error.details,
-          severity: this.calculateSeverity(error),
-          created_at: error.timestamp
-        }]);
+        const { error: rpcError } = await supabase.rpc('log_error_event', {
+          p_error_type: error.type,
+          p_message: error.message,
+          p_stack_trace: error.stack ?? null,
+          p_context: (error.context ?? null) as Json | null,
+          p_details: (error.details ?? null) as Json | null,
+          p_severity: this.calculateSeverity(error),
+          p_url: (error.context?.url ?? null) as string | null,
+          p_user_agent: (error.context?.userAgent ?? null) as string | null
+        });
+
+        if (rpcError) {
+          throw rpcError;
+        }
       }
 
       // Clear from local storage

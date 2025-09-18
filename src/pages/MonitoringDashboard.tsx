@@ -19,21 +19,25 @@ import {
 import AIPerformance from '../components/monitoring/AIPerformance';
 import DatabasePerformance from '../components/monitoring/DatabasePerformance';
 import SystemPerformance from '../components/monitoring/SystemPerformance';
-import { 
-  useRealtimePerformanceMonitoring, 
-  usePerformanceAnalytics 
+import {
+  useRealtimePerformanceMonitoring,
+  usePerformanceAnalytics
 } from '../lib/performance';
 import { useCacheCleanup } from '../lib/cacheCleanup';
 import { useQueryPerformanceTracking } from '../lib/queryPerformanceTracker';
+import { useAuth } from '../lib/authContext';
 
 type TabType = 'ai' | 'database' | 'system' | 'overview' | 'cache' | 'queries';
 
 export default function MonitoringDashboard() {
+  const { loading: authLoading, isAdmin } = useAuth();
+  const hasAdminAccess = isAdmin();
+  const monitoringEnabled = !authLoading && hasAdminAccess;
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(30000);
   const [showSettings, setShowSettings] = useState(false);
-  
+
   // Real-time monitoring hooks
   const {
     isConnected,
@@ -42,40 +46,64 @@ export default function MonitoringDashboard() {
     alerts,
     clearMetrics,
     clearAlerts
-  } = useRealtimePerformanceMonitoring();
-  
+  } = useRealtimePerformanceMonitoring({ enabled: monitoringEnabled });
+
   const { analytics, analyzePerformance } = usePerformanceAnalytics();
-  
+
   // Cache cleanup and query performance tracking
-  const { 
-    manualCleanup, 
+  const {
+    manualCleanup,
     getCleanupStats
-  } = useCacheCleanup();
-  
-  const { 
-    getAnalysis, 
+  } = useCacheCleanup(undefined, { enabled: monitoringEnabled });
+
+  const {
+    getAnalysis,
     getStats: getQueryStats,
-    isActive: queryTrackingActive 
-  } = useQueryPerformanceTracking();
+    isActive: queryTrackingActive
+  } = useQueryPerformanceTracking(undefined, { enabled: monitoringEnabled });
   
   // Analyze performance when metrics change
   useEffect(() => {
-    if (metrics.length > 0) {
+    if (monitoringEnabled && metrics.length > 0) {
       analyzePerformance(metrics);
     }
-  }, [metrics, analyzePerformance]);
-  
+  }, [metrics, analyzePerformance, monitoringEnabled]);
+
   // Auto-refresh functionality
   useEffect(() => {
-    if (!autoRefresh) return;
-    
+    if (!monitoringEnabled || !autoRefresh) return;
+
     const interval = setInterval(() => {
       // Trigger refresh of all components
       window.location.reload();
     }, refreshInterval);
-    
+
     return () => clearInterval(interval);
-  }, [autoRefresh, refreshInterval]);
+  }, [monitoringEnabled, autoRefresh, refreshInterval]);
+
+  if (authLoading) {
+    return (
+      <div className="p-6">
+        <div className="bg-white dark:bg-dark-card shadow rounded-lg p-6 text-center">
+          <p className="text-sm text-gray-600 dark:text-gray-300">Loading monitoring dashboard…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasAdminAccess) {
+    return (
+      <div className="p-6">
+        <div className="bg-white dark:bg-dark-card shadow rounded-lg p-6 text-center space-y-2">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Admin access required</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            Monitoring data is restricted to administrator or monitoring roles. Please contact an administrator if you need
+            access.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const tabs = [
     { id: 'overview' as TabType, name: 'Overview', icon: Activity },

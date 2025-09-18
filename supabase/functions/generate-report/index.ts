@@ -26,7 +26,22 @@ export default createProtectedRoute(async (req: Request, userContext) => {
 
   try {
     const caller = createRequestClient(req);
-    await assertAdmin(caller);
+
+    const callerRole = userContext.profile.role;
+    if (callerRole === 'admin' || callerRole === 'super_admin') {
+      await assertAdmin(caller);
+    }
+
+    if (callerRole === 'client') {
+      logApiAccess('POST', '/generate-report', userContext, 403);
+      return new Response(
+        JSON.stringify({ error: 'Clients are not permitted to generate reports' }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
 
     const {
       reportType,
@@ -47,20 +62,48 @@ export default createProtectedRoute(async (req: Request, userContext) => {
       );
     }
 
+    const therapistScope = await resolveTherapistScope(userContext);
+
+    if (userContext.profile.role === 'therapist' && therapistScope.length === 0) {
+      logApiAccess('POST', '/generate-report', userContext, 403);
+      return new Response(
+        JSON.stringify({ error: 'Therapist account is not linked to any therapist profile' }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    if (
+      therapistId &&
+      therapistScope.length > 0 &&
+      !therapistScope.includes(therapistId)
+    ) {
+      logApiAccess('POST', '/generate-report', userContext, 403);
+      return new Response(
+        JSON.stringify({ error: 'Access to the requested therapist scope is not allowed' }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
     let reportData;
 
     switch (reportType) {
       case "sessions":
-        reportData = await generateSessionsReport(startDate, endDate, therapistId, clientId, status, userContext);
+        reportData = await generateSessionsReport(startDate, endDate, therapistId, clientId, status, userContext, therapistScope);
         break;
       case "clients":
-        reportData = await generateClientsReport(startDate, endDate, userContext);
+        reportData = await generateClientsReport(startDate, endDate, userContext, therapistScope);
         break;
       case "therapists":
         reportData = await generateTherapistsReport(startDate, endDate, userContext);
         break;
       case "billing":
-        reportData = await generateBillingReport(startDate, endDate, therapistId, clientId, userContext);
+        reportData = await generateBillingReport(startDate, endDate, therapistId, clientId, userContext, therapistScope);
         break;
       default:
         return new Response(
@@ -102,16 +145,17 @@ export default createProtectedRoute(async (req: Request, userContext) => {
       }
     );
   }
-}, RouteOptions.admin); // Require admin role for report generation
+}, RouteOptions.therapist); // Allow therapists and admins with scoped access
 
 // Helper functions with role-based access control
 async function generateSessionsReport(
   startDate: string,
   endDate: string,
-  therapistId?: string,
-  clientId?: string,
-  status?: string,
-  userContext: UserContext
+  therapistId: string | undefined,
+  clientId: string | undefined,
+  status: string | undefined,
+  userContext: UserContext,
+  therapistScope: string[]
 ) {
   let query = supabase
     .from("sessions")
@@ -123,10 +167,8 @@ async function generateSessionsReport(
     .gte("start_time", startDate)
     .lte("start_time", endDate);
 
-  // Apply role-based filtering
-  if (userContext.profile.role === 'therapist') {
-    // Therapists can only see their own sessions
-    query = query.eq('therapist_id', userContext.user.id);
+  if (therapistScope.length > 0) {
+    query = query.in('therapist_id', therapistScope);
   }
 
   if (therapistId) {
@@ -158,17 +200,28 @@ async function generateSessionsReport(
   };
 }
 
-async function generateClientsReport(startDate: string, endDate: string, userContext: UserContext) {
+async function generateClientsReport(startDate: string, endDate: string, userContext: UserContext, therapistScope: string[]) {
   let query = supabase
     .from("clients")
     .select("*")
     .gte("created_at", startDate)
     .lte("created_at", endDate);
 
-  // Apply role-based filtering
-  if (userContext.profile.role === 'therapist') {
-    // Therapists can only see their assigned clients
-    query = query.eq('therapist_id', userContext.user.id);
+  if (therapistScope.length > 0) {
+    // Therapists do not have a direct foreign key on the clients table. Instead,
+    // we join through sessions to ensure we only return clients that are
+    // associated with the therapist via scheduled work.
+    query = supabase
+      .from("clients")
+      .select(`
+        *,
+        therapist_sessions:sessions!inner (
+          therapist_id
+        )
+      `)
+      .gte("created_at", startDate)
+      .lte("created_at", endDate)
+      .in("therapist_sessions.therapist_id", therapistScope);
   }
 
   const { data, error } = await query;
@@ -177,12 +230,28 @@ async function generateClientsReport(startDate: string, endDate: string, userCon
     throw new Error(`Error fetching clients: ${error.message}`);
   }
 
+  const normalizedClients = therapistScope.length > 0
+    ? Array.from(
+      (data ?? []).reduce((map: Map<string, any>, client: any) => {
+        if (!client) {
+          return map;
+        }
+
+        const { therapist_sessions: _therapistSessions, ...clientRecord } = client;
+        if (clientRecord?.id && !map.has(clientRecord.id)) {
+          map.set(clientRecord.id, clientRecord);
+        }
+        return map;
+      }, new Map<string, any>()).values()
+    )
+    : data ?? [];
+
   return {
-    clients: data,
+    clients: normalizedClients,
     summary: {
-      totalClients: data.length,
-      activeClients: data.filter(c => c.is_active).length,
-      newClients: data.length
+      totalClients: normalizedClients.length,
+      activeClients: normalizedClients.filter((c: any) => c.is_active).length,
+      newClients: normalizedClients.length
     }
   };
 }
@@ -211,9 +280,10 @@ async function generateTherapistsReport(startDate: string, endDate: string, user
 async function generateBillingReport(
   startDate: string,
   endDate: string,
-  therapistId?: string,
-  clientId?: string,
-  userContext: UserContext
+  therapistId: string | undefined,
+  clientId: string | undefined,
+  userContext: UserContext,
+  therapistScope: string[]
 ) {
   // Only admins can generate billing reports (enforced by assertAdmin)
   let query = supabase
@@ -226,6 +296,10 @@ async function generateBillingReport(
     .gte("start_time", startDate)
     .lte("start_time", endDate)
     .eq("status", "completed");
+
+  if (therapistScope.length > 0) {
+    query = query.in("therapist_id", therapistScope);
+  }
 
   if (therapistId) {
     query = query.eq("therapist_id", therapistId);
@@ -253,4 +327,35 @@ async function generateBillingReport(
       averageSessionValue: data.length > 0 ? totalRevenue / data.length : 0,
     }
   };
+}
+
+async function resolveTherapistScope(userContext: UserContext): Promise<string[]> {
+  if (userContext.profile.role !== 'therapist') {
+    return [];
+  }
+
+  const scope = new Set<string>();
+  if (userContext.user.id) {
+    scope.add(userContext.user.id);
+  }
+  if (userContext.profile.id) {
+    scope.add(userContext.profile.id);
+  }
+
+  const { data, error } = await supabase
+    .from('user_therapist_links')
+    .select('therapist_id')
+    .eq('user_id', userContext.user.id);
+
+  if (error) {
+    console.warn('Error resolving therapist scope from user_therapist_links:', error);
+  } else if (data) {
+    for (const link of data) {
+      if (link?.therapist_id) {
+        scope.add(link.therapist_id);
+      }
+    }
+  }
+
+  return Array.from(scope);
 }

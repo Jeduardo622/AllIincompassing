@@ -6,7 +6,11 @@ import {
   User, X, ChevronLeft, ChevronRight 
 } from 'lucide-react';
 import type { Therapist, Client, Session } from '../types';
-import { generateOptimalSchedule } from '../lib/autoSchedule';
+import {
+  generateOptimalSchedule,
+  type GenerateOptimalScheduleResult,
+  type ScheduleSlot
+} from '../lib/autoSchedule';
 import { getDistance } from 'geolib';
 import { logger } from '../lib/logger/logger';
 
@@ -36,28 +40,31 @@ export default function AutoScheduleModal({
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [numWeeks, setNumWeeks] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [preview, setPreview] = useState<ReturnType<typeof generateOptimalSchedule>>([]);
+  const [preview, setPreview] = useState<GenerateOptimalScheduleResult>({
+    slots: [],
+    cappedClients: []
+  });
   const [currentPage, setCurrentPage] = useState(0);
   const itemsPerPage = 5;
 
   const handleGeneratePreview = () => {
     const start = parseISO(startDate);
     const end = addDays(start, numWeeks * 7 - 1);
-    const slots = generateOptimalSchedule(
+    const result = generateOptimalSchedule(
       therapists,
       clients,
       existingSessions,
       start,
       end
     );
-    setPreview(slots);
+    setPreview(result);
     setCurrentPage(0);
   };
 
   const handleSchedule = async () => {
     try {
       setLoading(true);
-      const sessions = preview.map(slot => ({
+      const sessions = preview.slots.map(slot => ({
         therapist_id: slot.therapist.id,
         client_id: slot.client.id,
         start_time: slot.startTime,
@@ -76,7 +83,7 @@ export default function AutoScheduleModal({
     }
   };
 
-  const calculateTravelMetrics = (slot: ReturnType<typeof generateOptimalSchedule>[0]) => {
+  const calculateTravelMetrics = (slot: ScheduleSlot) => {
     if (!slot.therapist.latitude || !slot.therapist.longitude || !slot.client.latitude || !slot.client.longitude) {
       return null;
     }
@@ -101,11 +108,25 @@ export default function AutoScheduleModal({
     };
   };
 
-  const totalPages = Math.ceil(preview.length / itemsPerPage);
-  const paginatedPreview = preview.slice(
+  const totalPages = Math.max(1, Math.ceil(preview.slots.length / itemsPerPage));
+  const paginatedPreview = preview.slots.slice(
     currentPage * itemsPerPage,
     (currentPage + 1) * itemsPerPage
   );
+
+  const formatRemainingHours = (minutes: number) => {
+    if (minutes <= 0) {
+      return 'No remaining hours';
+    }
+
+    const hours = minutes / 60;
+    if (hours >= 1) {
+      const rounded = Number.isInteger(hours) ? hours.toFixed(0) : hours.toFixed(1);
+      return `${rounded}h remaining`;
+    }
+
+    return `${hours.toFixed(2)}h remaining`;
+  };
 
   if (!isOpen) return null;
 
@@ -164,12 +185,36 @@ export default function AutoScheduleModal({
             </button>
           </div>
 
+          {/* Warnings */}
+          {preview.cappedClients.length > 0 && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-dark/40 dark:text-amber-200">
+              <div className="flex items-start space-x-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <div>
+                  <p className="font-medium">Some clients are at their monthly limits and were skipped.</p>
+                  <ul className="mt-2 space-y-1">
+                    {preview.cappedClients.map(({ client, remainingMinutes }) => (
+                      <li key={client.id} className="flex items-center justify-between">
+                        <span className="font-medium text-amber-900 dark:text-amber-100">
+                          {client.full_name}
+                        </span>
+                        <span className="text-xs text-amber-700 dark:text-amber-200/80">
+                          {formatRemainingHours(remainingMinutes)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Preview Section */}
-          {preview.length > 0 ? (
+          {preview.slots.length > 0 ? (
             <div>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                  Proposed Schedule ({preview.length} sessions)
+                  Proposed Schedule ({preview.slots.length} sessions)
                 </h3>
                 <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
                   <button
@@ -316,13 +361,15 @@ export default function AutoScheduleModal({
             </div>
           ) : (
             <div className="text-center text-gray-500 dark:text-gray-400 py-8">
-              Generate a preview to see proposed sessions
+              {preview.cappedClients.length > 0
+                ? 'All eligible clients are already at their authorized limits for the selected range.'
+                : 'Generate a preview to see proposed sessions'}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        {preview.length > 0 && (
+        {preview.slots.length > 0 && (
           <div className="border-t dark:border-gray-700 p-4">
             <div className="flex justify-end space-x-3">
               <button

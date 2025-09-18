@@ -383,6 +383,92 @@ describe('telemetry tables enforce admin-only visibility', () => {
   });
 });
 
+describe('AI cache and telemetry logs restrict standard users', () => {
+  it('prevents therapists from reading the AI response cache', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const tableExists = await ensureTelemetryTableExists('ai_response_cache');
+    if (!tableExists) {
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const result = await supabaseOrgA
+        .from('ai_response_cache')
+        .select('id')
+        .limit(1);
+
+      const affectedRows = Array.isArray(result.data) ? result.data.length : 0;
+      expectRlsViolation(result.error, affectedRows);
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+
+  it('prevents therapists from inserting AI response cache entries', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const tableExists = await ensureTelemetryTableExists('ai_response_cache');
+    if (!tableExists) {
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const insertResult = await supabaseOrgA
+        .from('ai_response_cache')
+        .insert({
+          cache_key: `unauthorized-${Date.now()}`,
+          query_text: 'SELECT 1',
+          response_text: 'forbidden',
+          metadata: {},
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
+        });
+
+      const affectedRows = Array.isArray(insertResult.data) ? insertResult.data.length : 0;
+      expectRlsViolation(insertResult.error, affectedRows);
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+
+  it('prevents therapists from inserting function performance log entries', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const tableExists = await ensureTelemetryTableExists('function_performance_logs');
+    if (!tableExists) {
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const insertResult = await supabaseOrgA
+        .from('function_performance_logs')
+        .insert({
+          function_name: 'unauthorized_test',
+          execution_time_ms: 10,
+          parameters: {},
+          result_size: 1,
+        });
+
+      const affectedRows = Array.isArray(insertResult.data) ? insertResult.data.length : 0;
+      expectRlsViolation(insertResult.error, affectedRows);
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+});
+
 afterAll(async () => {
   if (!runTests || !serviceClient) {
     return;

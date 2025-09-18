@@ -495,12 +495,25 @@ export class CacheCleanupManager {
 // Singleton instance
 let _cleanupManager: CacheCleanupManager | null = null;
 
-export function useCacheCleanup(config?: Partial<CacheCleanupConfig>) {
+export function useCacheCleanup(
+  config?: Partial<CacheCleanupConfig>,
+  options?: { enabled?: boolean }
+) {
   const queryClient = useQueryClient();
   const managerRef = useRef<CacheCleanupManager | null>(null);
+  const enabled = options?.enabled ?? true;
 
   // Initialize cleanup manager
   useEffect(() => {
+    if (!enabled) {
+      if (managerRef.current) {
+        managerRef.current.stop();
+        managerRef.current = null;
+        _cleanupManager = null;
+      }
+      return;
+    }
+
     if (!managerRef.current) {
       const finalConfig = config ? { ...DEFAULT_CLEANUP_CONFIG, ...config } : DEFAULT_CLEANUP_CONFIG;
       managerRef.current = new CacheCleanupManager(finalConfig);
@@ -547,10 +560,11 @@ export function useCacheCleanup(config?: Partial<CacheCleanupConfig>) {
       window.removeEventListener('cleanup:aggressive', handleAggressiveCleanup);
       manager.stop();
     };
-  }, [queryClient, config]);
+  }, [queryClient, config, enabled]);
 
   // Manual cleanup functions
   const manualCleanup = useCallback(async (type?: string) => {
+    if (!enabled) return;
     const manager = managerRef.current;
     if (!manager) return;
 
@@ -576,22 +590,28 @@ export function useCacheCleanup(config?: Partial<CacheCleanupConfig>) {
           (manager as any).cleanupReactQuery(),
         ]);
     }
-  }, []);
+  }, [enabled]);
 
   const getCleanupStats = useCallback(() => {
-    return managerRef.current?.getStats() || null;
-  }, []);
+    if (!enabled || !managerRef.current) {
+      return null;
+    }
+    return managerRef.current.getStats();
+  }, [enabled]);
 
   const updateCleanupConfig = useCallback((newConfig: Partial<CacheCleanupConfig>) => {
+    if (!enabled) {
+      return;
+    }
     managerRef.current?.updateConfig(newConfig);
-  }, []);
+  }, [enabled]);
 
   return {
     manualCleanup,
     getCleanupStats,
     updateCleanupConfig,
     estimateMemoryUsage,
-    isActive: managerRef.current ? !!managerRef.current.getStats().isRunning : false,
+    isActive: enabled && managerRef.current ? !!managerRef.current.getStats().isRunning : false,
   };
 }
 

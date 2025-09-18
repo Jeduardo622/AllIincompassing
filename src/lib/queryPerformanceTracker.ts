@@ -598,29 +598,41 @@ export class QueryPerformanceTracker {
 
 let _performanceTracker: QueryPerformanceTracker | null = null;
 
-export function useQueryPerformanceTracking(config?: Partial<QueryPerformanceConfig>) {
+export function useQueryPerformanceTracking(
+  config?: Partial<QueryPerformanceConfig>,
+  options?: { enabled?: boolean }
+) {
   const _queryClient = useQueryClient();
   const trackerRef = useRef<QueryPerformanceTracker | null>(null);
   const [isActive, setIsActive] = useState(false);
+  const enabled = options?.enabled ?? true;
 
   // Initialize tracker
   useEffect(() => {
-    if (!trackerRef.current) {
-      const finalConfig = config ? { ...DEFAULT_PERFORMANCE_CONFIG, ...config } : DEFAULT_PERFORMANCE_CONFIG;
-      trackerRef.current = new QueryPerformanceTracker(finalConfig);
-      _performanceTracker = trackerRef.current;
-      setIsActive(true);
+    if (!enabled) {
+      if (trackerRef.current) {
+        trackerRef.current.destroy();
+        trackerRef.current = null;
+        _performanceTracker = null;
+      }
+      setIsActive(false);
+      return;
     }
+
+    const finalConfig = config ? { ...DEFAULT_PERFORMANCE_CONFIG, ...config } : DEFAULT_PERFORMANCE_CONFIG;
+    trackerRef.current = new QueryPerformanceTracker(finalConfig);
+    _performanceTracker = trackerRef.current;
+    setIsActive(true);
 
     return () => {
       if (trackerRef.current) {
         trackerRef.current.destroy();
         trackerRef.current = null;
         _performanceTracker = null;
-        setIsActive(false);
       }
+      setIsActive(false);
     };
-  }, [config]);
+  }, [config, enabled]);
 
   // Track query function
   const trackQuery = useCallback(async <T>(
@@ -633,28 +645,34 @@ export function useQueryPerformanceTracking(config?: Partial<QueryPerformanceCon
       cacheAttempted?: boolean;
     }
   ): Promise<T> => {
-    if (!trackerRef.current) {
+    if (!enabled || !trackerRef.current) {
       return await queryFn();
     }
 
     return trackerRef.current.trackQuery(queryKey, operation, queryFn, options);
-  }, []);
+  }, [enabled]);
 
   // Get performance analysis
   const getAnalysis = useCallback(async (timeRange?: '1h' | '24h' | '7d') => {
-    if (!trackerRef.current) return null;
+    if (!enabled || !trackerRef.current) return null;
     return trackerRef.current.getPerformanceAnalysis(timeRange);
-  }, []);
+  }, [enabled]);
 
   // Get current statistics
   const getStats = useCallback(() => {
-    return trackerRef.current?.getStats() || null;
-  }, []);
+    if (!enabled || !trackerRef.current) {
+      return null;
+    }
+    return trackerRef.current.getStats();
+  }, [enabled]);
 
   // Update configuration
   const updateConfig = useCallback((newConfig: Partial<QueryPerformanceConfig>) => {
+    if (!enabled) {
+      return;
+    }
     trackerRef.current?.updateConfig(newConfig);
-  }, []);
+  }, [enabled]);
 
   return {
     trackQuery,

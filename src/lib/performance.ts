@@ -173,14 +173,24 @@ interface RealtimePayload {
 }
 
 // Real-time performance monitoring hook
-export function useRealtimePerformanceMonitoring() {
+export function useRealtimePerformanceMonitoring(options?: { enabled?: boolean }) {
+  const enabled = options?.enabled ?? true;
   const [isConnected, setIsConnected] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>(
+    enabled ? 'connecting' : 'disconnected'
+  );
   const [metrics, setMetrics] = useState<PerformanceMetric[]>([]);
   const [alerts, setAlerts] = useState<PerformanceAlert[]>([]);
-  
+
   useEffect(() => {
-    // Set up real-time subscription to performance metrics
+    if (!enabled) {
+      setIsConnected(false);
+      setConnectionStatus('disconnected');
+      setMetrics([]);
+      setAlerts([]);
+      return;
+    }
+
     const subscription = supabase
       .channel('performance_monitoring')
       .on('postgres_changes', {
@@ -211,8 +221,7 @@ export function useRealtimePerformanceMonitoring() {
       }, (payload: RealtimePayload) => {
         const alert = payload.new as PerformanceAlert;
         setAlerts(prev => [alert, ...prev.slice(0, 49)]);
-        
-        // Show browser notification for critical alerts
+
         if (alert.severity === 'critical' && 'Notification' in window) {
           new Notification(`Performance Alert: ${alert.alert_type}`, {
             body: alert.message,
@@ -224,19 +233,23 @@ export function useRealtimePerformanceMonitoring() {
         setConnectionStatus(status === 'SUBSCRIBED' ? 'connected' : 'connecting');
         setIsConnected(status === 'SUBSCRIBED');
       });
-    
+
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
-  
+  }, [enabled]);
+
   // Request notification permissions
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
-  }, []);
-  
+  }, [enabled]);
+
   return {
     isConnected,
     connectionStatus,

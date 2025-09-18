@@ -4,6 +4,7 @@ import {
   requestSessionHold,
 } from "../lib/sessionHolds";
 import { deriveCptMetadata } from "./deriveCpt";
+import { persistSessionCptMetadata } from "./sessionCptPersistence";
 import type {
   BookSessionRequest,
   BookSessionResult,
@@ -59,8 +60,9 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
     status: payload.session.status ?? "scheduled",
   };
 
+  let confirmed;
   try {
-    const confirmed = await confirmSessionBooking({
+    confirmed = await confirmSessionBooking({
       holdKey: hold.holdKey,
       session: sessionPayload,
       idempotencyKey: payload.idempotencyKey,
@@ -68,12 +70,6 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
       endTimeOffsetMinutes: payload.endTimeOffsetMinutes,
       timeZone: payload.timeZone,
     });
-
-    return {
-      session: confirmed,
-      hold,
-      cpt,
-    };
   } catch (error) {
     try {
       await cancelSessionHold({ holdKey: hold.holdKey });
@@ -82,4 +78,25 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
     }
     throw error;
   }
+
+  try {
+    const billedMinutes = typeof confirmed.duration_minutes === "number" && Number.isFinite(confirmed.duration_minutes)
+      ? confirmed.duration_minutes
+      : cpt.durationMinutes;
+
+    await persistSessionCptMetadata({
+      sessionId: confirmed.id,
+      cpt,
+      billedMinutes,
+    });
+  } catch (error) {
+    console.error("Failed to persist CPT metadata for session", error);
+    throw error;
+  }
+
+  return {
+    session: confirmed,
+    hold,
+    cpt,
+  };
 }

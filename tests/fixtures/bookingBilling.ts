@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { http, HttpResponse } from "msw";
 import type { HoldResponse } from "../../src/lib/sessionHolds";
 import type { BookSessionRequest } from "../../src/server/types";
@@ -34,6 +35,46 @@ export function createBookingRequest(
     idempotencyKey: overrides?.idempotencyKey,
     overrides: overrides?.overrides,
   };
+}
+
+const DEFAULT_CPT_CODES = [
+  { id: "cpt-97151", code: "97151" },
+  { id: "cpt-97153", code: "97153" },
+  { id: "cpt-97154", code: "97154" },
+  { id: "cpt-97155", code: "97155" },
+  { id: "cpt-97156", code: "97156" },
+];
+
+const DEFAULT_BILLING_MODIFIERS = [
+  { id: "modifier-GT", code: "GT" },
+  { id: "modifier-HQ", code: "HQ" },
+  { id: "modifier-95", code: "95" },
+  { id: "modifier-KX", code: "KX" },
+  { id: "modifier-HO", code: "HO" },
+  { id: "modifier-TZ", code: "TZ" },
+];
+
+function parseEqParameter(raw: string | null): string | null {
+  if (!raw) {
+    return null;
+  }
+  const value = raw.startsWith("eq.") ? raw.slice(3) : raw;
+  return value.length > 0 ? value : null;
+}
+
+function parseInParameter(raw: string | null): string[] {
+  if (!raw || !raw.startsWith("in.")) {
+    return [];
+  }
+  const value = raw.slice(3);
+  if (!value.startsWith("(") || !value.endsWith(")")) {
+    return [];
+  }
+  return value
+    .slice(1, -1)
+    .split(",")
+    .map((candidate) => candidate.replaceAll('"', "").trim())
+    .filter((candidate) => candidate.length > 0);
 }
 
 const DEFAULT_HOLD: HoldResponse = {
@@ -101,6 +142,8 @@ export interface SeededBookingBilling {
   confirmRequests: Array<Record<string, unknown>>;
   hold: HoldResponse;
   confirmedSession: Session;
+  sessionCptEntries: Array<Record<string, unknown>>;
+  sessionCptModifiers: Array<Record<string, unknown>>;
 }
 
 export function seedBookingBillingFixture(input: BookingBillingSeedInput): SeededBookingBilling {
@@ -119,6 +162,8 @@ export function seedBookingBillingFixture(input: BookingBillingSeedInput): Seede
 
   const holdRequests: Array<Record<string, unknown>> = [];
   const confirmRequests: Array<Record<string, unknown>> = [];
+  const sessionCptEntries: Array<Record<string, unknown>> = [];
+  const sessionCptModifiers: Array<Record<string, unknown>> = [];
 
   server.use(
     http.post("*/functions/v1/sessions-hold*", async ({ request }) => {
@@ -137,7 +182,129 @@ export function seedBookingBillingFixture(input: BookingBillingSeedInput): Seede
         },
       });
     }),
+    http.get("*/rest/v1/cpt_codes*", async ({ request }) => {
+      const url = new URL(request.url);
+      const code = parseEqParameter(url.searchParams.get("code"));
+      const matches = typeof code === "string"
+        ? DEFAULT_CPT_CODES.filter((candidate) => candidate.code === code)
+        : DEFAULT_CPT_CODES;
+      const rangeUpper = matches.length > 0 ? matches.length - 1 : 0;
+      return HttpResponse.json(matches, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Range": `0-${rangeUpper}/${matches.length}`,
+        },
+      });
+    }),
+    http.get("*/rest/v1/billing_modifiers*", async ({ request }) => {
+      const url = new URL(request.url);
+      const codes = parseInParameter(url.searchParams.get("code"));
+      const matches = codes.length > 0
+        ? DEFAULT_BILLING_MODIFIERS.filter((modifier) => codes.includes(modifier.code))
+        : DEFAULT_BILLING_MODIFIERS;
+      const rangeUpper = matches.length > 0 ? matches.length - 1 : 0;
+      return HttpResponse.json(matches, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Range": `0-${rangeUpper}/${matches.length}`,
+        },
+      });
+    }),
+    http.delete("*/rest/v1/session_cpt_entries*", async ({ request }) => {
+      const url = new URL(request.url);
+      const sessionId = parseEqParameter(url.searchParams.get("session_id"));
+      if (typeof sessionId === "string") {
+        const removedIds = sessionCptEntries
+          .filter((entry) => entry.session_id === sessionId)
+          .map((entry) => entry.id)
+          .filter((value): value is string => typeof value === "string");
+        for (let index = sessionCptEntries.length - 1; index >= 0; index -= 1) {
+          if (sessionCptEntries[index]?.session_id === sessionId) {
+            sessionCptEntries.splice(index, 1);
+          }
+        }
+        for (let index = sessionCptModifiers.length - 1; index >= 0; index -= 1) {
+          if (removedIds.includes(sessionCptModifiers[index]?.session_cpt_entry_id as string)) {
+            sessionCptModifiers.splice(index, 1);
+          }
+        }
+      }
+      return HttpResponse.json([], { status: 204 });
+    }),
+    http.get("*/rest/v1/session_cpt_entries*", async ({ request }) => {
+      const url = new URL(request.url);
+      const sessionId = parseEqParameter(url.searchParams.get("session_id"));
+      const matches = typeof sessionId === "string"
+        ? sessionCptEntries.filter((entry) => entry.session_id === sessionId)
+        : sessionCptEntries;
+      const rangeUpper = matches.length > 0 ? matches.length - 1 : 0;
+      return HttpResponse.json(matches, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Range": `0-${rangeUpper}/${matches.length}`,
+        },
+      });
+    }),
+    http.post("*/rest/v1/session_cpt_entries", async ({ request }) => {
+      const body = (await request.json().catch(() => [])) as Record<string, unknown> | Record<string, unknown>[];
+      const rows = Array.isArray(body) ? body : [body];
+      const inserted = rows.map((row) => {
+        const entry = {
+          id: typeof row.id === "string" && row.id.length > 0 ? row.id : `sce-${randomUUID()}`,
+          session_id: row.session_id,
+          cpt_code_id: row.cpt_code_id,
+          line_number: row.line_number ?? 1,
+          units: row.units ?? 1,
+          billed_minutes: row.billed_minutes ?? null,
+          is_primary: row.is_primary ?? false,
+          notes: row.notes ?? null,
+        };
+        sessionCptEntries.push(entry);
+        return { id: entry.id };
+      });
+
+      const rangeUpper = inserted.length > 0 ? inserted.length - 1 : 0;
+      return HttpResponse.json(inserted, {
+        status: 201,
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Range": `0-${rangeUpper}/${inserted.length}`,
+        },
+      });
+    }),
+    http.post("*/rest/v1/session_cpt_modifiers", async ({ request }) => {
+      const body = (await request.json().catch(() => [])) as Record<string, unknown> | Record<string, unknown>[];
+      const rows = Array.isArray(body) ? body : [body];
+      const inserted = rows.map((row, index) => {
+        const modifier = {
+          id: typeof row.id === "string" && row.id.length > 0 ? row.id : `scm-${randomUUID()}`,
+          session_cpt_entry_id: row.session_cpt_entry_id,
+          modifier_id: row.modifier_id,
+          position: row.position ?? index + 1,
+        };
+        sessionCptModifiers.push(modifier);
+        return { modifier_id: modifier.modifier_id };
+      });
+      const rangeUpper = inserted.length > 0 ? inserted.length - 1 : 0;
+      return HttpResponse.json(inserted, {
+        status: 201,
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Range": `0-${rangeUpper}/${inserted.length}`,
+        },
+      });
+    }),
   );
 
-  return { holdRequests, confirmRequests, hold, confirmedSession };
+  return {
+    holdRequests,
+    confirmRequests,
+    hold,
+    confirmedSession,
+    sessionCptEntries,
+    sessionCptModifiers,
+  };
 }

@@ -1,6 +1,8 @@
 -- Session hold infrastructure for transactional scheduling
 set search_path = public;
 
+create extension if not exists btree_gist;
+
 create table if not exists session_holds (
   id uuid primary key default gen_random_uuid(),
   therapist_id uuid not null references therapists(id) on delete cascade,
@@ -18,6 +20,20 @@ create unique index if not exists session_holds_therapist_start_time_idx
 
 create index if not exists session_holds_expires_at_idx
   on session_holds (expires_at);
+
+alter table session_holds
+  add constraint session_holds_therapist_time_excl
+    exclude using gist (
+      therapist_id with =,
+      tstzrange(start_time, end_time, '[)') with &&
+    );
+
+alter table session_holds
+  add constraint session_holds_client_time_excl
+    exclude using gist (
+      client_id with =,
+      tstzrange(start_time, end_time, '[)') with &&
+    );
 
 alter table session_holds enable row level security;
 
@@ -56,6 +72,7 @@ set search_path = public
 as $$
 declare
   v_hold session_holds;
+  v_constraint_name text;
 begin
   delete from session_holds where expires_at <= timezone('utc', now());
 
@@ -97,6 +114,34 @@ begin
     );
   end if;
 
+  if exists (
+    select 1
+    from session_holds h
+    where h.therapist_id = p_therapist_id
+      and h.expires_at > timezone('utc', now())
+      and tstzrange(h.start_time, h.end_time, '[)') && tstzrange(p_start_time, p_end_time, '[)')
+  ) then
+    return jsonb_build_object(
+      'success', false,
+      'error_code', 'THERAPIST_HOLD_CONFLICT',
+      'error_message', 'Therapist already has a hold during this time.'
+    );
+  end if;
+
+  if exists (
+    select 1
+    from session_holds h
+    where h.client_id = p_client_id
+      and h.expires_at > timezone('utc', now())
+      and tstzrange(h.start_time, h.end_time, '[)') && tstzrange(p_start_time, p_end_time, '[)')
+  ) then
+    return jsonb_build_object(
+      'success', false,
+      'error_code', 'CLIENT_HOLD_CONFLICT',
+      'error_message', 'Client already has a hold during this time.'
+    );
+  end if;
+
   begin
     insert into session_holds (
       therapist_id,
@@ -122,6 +167,23 @@ begin
         'error_code', 'HOLD_EXISTS',
         'error_message', 'A hold already exists for this time.'
       );
+    when exclusion_violation then
+      get stacked diagnostics v_constraint_name = constraint_name;
+      if v_constraint_name = 'session_holds_therapist_time_excl' then
+        return jsonb_build_object(
+          'success', false,
+          'error_code', 'THERAPIST_HOLD_CONFLICT',
+          'error_message', 'Therapist already has a hold during this time.'
+        );
+      elsif v_constraint_name = 'session_holds_client_time_excl' then
+        return jsonb_build_object(
+          'success', false,
+          'error_code', 'CLIENT_HOLD_CONFLICT',
+          'error_message', 'Client already has a hold during this time.'
+        );
+      else
+        raise;
+      end if;
   end;
 
   return jsonb_build_object(

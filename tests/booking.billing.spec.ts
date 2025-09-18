@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bookSession } from "../src/server/bookSession";
 import {
   createBookingRequest,
   seedBookingBillingFixture,
 } from "./fixtures/bookingBilling";
+import { resetSessionCptClient } from "../src/server/sessionCptPersistence";
 
 const asRecord = (value: unknown): Record<string, unknown> => {
   if (value && typeof value === "object") {
@@ -12,7 +13,31 @@ const asRecord = (value: unknown): Record<string, unknown> => {
   return {};
 };
 
+const originalSupabaseUrl = process.env.SUPABASE_URL;
+const originalServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
 describe("booking billing integration", () => {
+  beforeEach(() => {
+    process.env.SUPABASE_URL = "http://localhost";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test-key";
+    resetSessionCptClient();
+  });
+
+  afterEach(() => {
+    if (typeof originalSupabaseUrl === "string") {
+      process.env.SUPABASE_URL = originalSupabaseUrl;
+    } else {
+      delete process.env.SUPABASE_URL;
+    }
+
+    if (typeof originalServiceRoleKey === "string") {
+      process.env.SUPABASE_SERVICE_ROLE_KEY = originalServiceRoleKey;
+    } else {
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    }
+    resetSessionCptClient();
+  });
+
   it("derives CPT metadata using session type, location, and overrides", async () => {
     const request = createBookingRequest({
       session: {
@@ -98,6 +123,31 @@ describe("booking billing integration", () => {
       location_type: request.session.location_type,
       status: "scheduled",
     });
+
+    expect(seeded.sessionCptEntries).toHaveLength(1);
+    const cptEntry = seeded.sessionCptEntries[0];
+    expect(cptEntry).toMatchObject({
+      session_id: seeded.confirmedSession.id,
+      cpt_code_id: "cpt-97154",
+      line_number: 1,
+      units: 13,
+      billed_minutes: 195,
+      is_primary: true,
+      notes: "Group adaptive behavior treatment by protocol",
+    });
+
+    expect(seeded.sessionCptModifiers).toHaveLength(4);
+    const modifierEntryIds = new Set(
+      seeded.sessionCptModifiers.map((modifier) => modifier.session_cpt_entry_id),
+    );
+    expect(modifierEntryIds).toEqual(new Set([cptEntry.id]));
+    expect(seeded.sessionCptModifiers.map((modifier) => modifier.modifier_id)).toEqual([
+      "modifier-GT",
+      "modifier-HQ",
+      "modifier-95",
+      "modifier-KX",
+    ]);
+    expect(seeded.sessionCptModifiers.map((modifier) => modifier.position)).toEqual([1, 2, 3, 4]);
   });
 
   it("honors explicit CPT overrides and normalizes modifiers", async () => {
@@ -159,5 +209,27 @@ describe("booking billing integration", () => {
       session_type: request.session.session_type,
       location_type: request.session.location_type,
     });
+
+    expect(seeded.sessionCptEntries).toHaveLength(1);
+    const entry = seeded.sessionCptEntries[0];
+    expect(entry).toMatchObject({
+      session_id: seeded.confirmedSession.id,
+      cpt_code_id: "cpt-97155",
+      line_number: 1,
+      billed_minutes: 50,
+      units: 4,
+      is_primary: true,
+      notes: "Adaptive behavior treatment with protocol modification",
+    });
+
+    expect(seeded.sessionCptModifiers).toHaveLength(2);
+    expect(new Set(seeded.sessionCptModifiers.map((modifier) => modifier.session_cpt_entry_id))).toEqual(
+      new Set([entry.id]),
+    );
+    expect(seeded.sessionCptModifiers.map((modifier) => modifier.modifier_id)).toEqual([
+      "modifier-TZ",
+      "modifier-95",
+    ]);
+    expect(seeded.sessionCptModifiers.map((modifier) => modifier.position)).toEqual([1, 2]);
   });
 });

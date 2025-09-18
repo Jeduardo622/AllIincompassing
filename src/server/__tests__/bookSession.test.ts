@@ -30,6 +30,10 @@ const basePayload = {
     start_time: "2025-01-01T10:00:00Z",
     end_time: "2025-01-01T11:00:00Z",
     status: "scheduled" as const,
+    created_at: "2025-01-01T08:55:00Z",
+    created_by: "user-2",
+    updated_at: "2025-01-01T09:00:00Z",
+    updated_by: "user-2",
   },
   startTimeOffsetMinutes: 0,
   endTimeOffsetMinutes: 0,
@@ -90,6 +94,10 @@ describe("bookSession", () => {
       session: expect.objectContaining({
         therapist_id: basePayload.session.therapist_id,
         status: "scheduled",
+        created_at: basePayload.session.created_at,
+        created_by: basePayload.session.created_by,
+        updated_at: basePayload.session.updated_at,
+        updated_by: basePayload.session.updated_by,
       }),
       idempotencyKey: undefined,
       startTimeOffsetMinutes: 0,
@@ -157,5 +165,56 @@ describe("bookSession", () => {
 
     await expect(bookSession(basePayload)).rejects.toThrow("persist failure");
     expect(mockedCancelSessionHold).not.toHaveBeenCalled();
+  });
+
+  it("generates audit metadata when session payload is missing it", async () => {
+    mockedRequestSessionHold.mockResolvedValueOnce({
+      holdKey: "hold-key",
+      holdId: "hold-id",
+      expiresAt: "2025-01-01T00:05:00Z",
+    });
+
+    const confirmedSession: Session = {
+      id: "session-1",
+      client_id: basePayload.session.client_id,
+      therapist_id: basePayload.session.therapist_id,
+      start_time: basePayload.session.start_time,
+      end_time: basePayload.session.end_time,
+      status: "scheduled",
+      notes: "",
+      created_at: "2025-01-01T09:00:00Z",
+      created_by: "user-1",
+      updated_at: "2025-01-01T09:00:00Z",
+      updated_by: "user-1",
+      duration_minutes: 60,
+    };
+
+    mockedConfirmSessionBooking.mockResolvedValueOnce(confirmedSession);
+
+    const payloadWithoutAudit = {
+      ...basePayload,
+      session: {
+        ...basePayload.session,
+      },
+    };
+
+    Reflect.deleteProperty(payloadWithoutAudit.session, "created_at");
+    Reflect.deleteProperty(payloadWithoutAudit.session, "created_by");
+    Reflect.deleteProperty(payloadWithoutAudit.session, "updated_at");
+    Reflect.deleteProperty(payloadWithoutAudit.session, "updated_by");
+
+    await bookSession(payloadWithoutAudit);
+
+    const confirmationCall = mockedConfirmSessionBooking.mock.calls[0]?.[0];
+    expect(confirmationCall?.session.created_at).toBeDefined();
+    expect(new Date(confirmationCall?.session.created_at ?? "").toISOString()).toBe(
+      confirmationCall?.session.created_at,
+    );
+    expect(confirmationCall?.session.updated_at).toBeDefined();
+    expect(new Date(confirmationCall?.session.updated_at ?? "").toISOString()).toBe(
+      confirmationCall?.session.updated_at,
+    );
+    expect(confirmationCall?.session.created_by).toBeNull();
+    expect(confirmationCall?.session.updated_by).toBeNull();
   });
 });

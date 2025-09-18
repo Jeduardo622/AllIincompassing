@@ -1,49 +1,19 @@
 import type { BookableSession, BookingOverrides, DerivedCpt } from "./types";
+import type { SessionTypeRule } from "./cptRules";
+import {
+  CPT_DESCRIPTIONS,
+  FALLBACK_RULE,
+  LOCATION_MODIFIER_RULES,
+  LONG_DURATION_MODIFIER,
+  LONG_DURATION_THRESHOLD_MINUTES,
+  SESSION_TYPE_RULES,
+  normalizeBillingCode,
+} from "./cptRules";
 
 interface DeriveCptInput {
   session: BookableSession;
   overrides?: BookingOverrides;
 }
-
-interface SessionTypeRule {
-  code: string;
-  description: string;
-  defaultModifiers?: string[];
-}
-
-const SESSION_TYPE_RULES: Record<string, SessionTypeRule> = {
-  individual: {
-    code: "97153",
-    description: "Adaptive behavior treatment by protocol",
-  },
-  group: {
-    code: "97154",
-    description: "Group adaptive behavior treatment by protocol",
-    defaultModifiers: ["HQ"],
-  },
-  assessment: {
-    code: "97151",
-    description: "Behavior identification assessment by a physician or other qualified health care professional",
-  },
-  consultation: {
-    code: "97156",
-    description: "Family adaptive behavior guidance and therapy",
-    defaultModifiers: ["HO"],
-  },
-};
-
-const CPT_DESCRIPTIONS: Record<string, string> = Object.values(SESSION_TYPE_RULES).reduce(
-  (acc, rule) => ({ ...acc, [rule.code]: rule.description }),
-  {
-    "97155": "Adaptive behavior treatment with protocol modification",
-    "97158": "Group adaptive behavior treatment with protocol modification",
-  },
-);
-
-const FALLBACK_RULE: SessionTypeRule = {
-  code: "97153",
-  description: "Adaptive behavior treatment by protocol",
-};
 
 function computeDurationMinutes(session: BookableSession): number | null {
   try {
@@ -63,19 +33,11 @@ function computeDurationMinutes(session: BookableSession): number | null {
   }
 }
 
-function normalizeModifier(candidate: unknown): string | null {
-  if (typeof candidate !== "string") {
-    return null;
-  }
-  const trimmed = candidate.trim().toUpperCase();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
 function deriveBaseRule(session: BookableSession, overrides?: BookingOverrides): {
   rule: SessionTypeRule;
   source: DerivedCpt["source"];
 } {
-  const overrideCode = normalizeModifier(overrides?.cptCode ?? null);
+  const overrideCode = normalizeBillingCode(overrides?.cptCode ?? null);
   if (overrideCode) {
     const description = CPT_DESCRIPTIONS[overrideCode] ?? "Custom CPT code";
     return {
@@ -104,13 +66,11 @@ function appendLocationModifiers(session: BookableSession, modifiers: Set<string
     return;
   }
 
-  if (location.includes("tele") || location.includes("virtual") || location.includes("remote")) {
-    modifiers.add("95");
-  }
-
-  if (location.includes("school")) {
-    modifiers.add("HQ");
-  }
+  LOCATION_MODIFIER_RULES.forEach((rule) => {
+    if (rule.keywords.some((keyword) => location.includes(keyword))) {
+      modifiers.add(rule.modifier);
+    }
+  });
 }
 
 export function deriveCptMetadata({ session, overrides }: DeriveCptInput): DerivedCpt {
@@ -120,7 +80,7 @@ export function deriveCptMetadata({ session, overrides }: DeriveCptInput): Deriv
 
   if (Array.isArray(overrides?.modifiers)) {
     overrides?.modifiers.forEach((modifier) => {
-      const normalized = normalizeModifier(modifier);
+      const normalized = normalizeBillingCode(modifier);
       if (normalized) {
         modifiers.add(normalized);
       }
@@ -128,7 +88,7 @@ export function deriveCptMetadata({ session, overrides }: DeriveCptInput): Deriv
   }
 
   rule.defaultModifiers?.forEach((modifier) => {
-    const normalized = normalizeModifier(modifier);
+    const normalized = normalizeBillingCode(modifier);
     if (normalized) {
       modifiers.add(normalized);
     }
@@ -136,8 +96,11 @@ export function deriveCptMetadata({ session, overrides }: DeriveCptInput): Deriv
 
   appendLocationModifiers(session, modifiers);
 
-  if (typeof durationMinutes === "number" && durationMinutes >= 180) {
-    modifiers.add("KX");
+  if (
+    typeof durationMinutes === "number"
+    && durationMinutes >= LONG_DURATION_THRESHOLD_MINUTES
+  ) {
+    modifiers.add(LONG_DURATION_MODIFIER);
   }
 
   return {

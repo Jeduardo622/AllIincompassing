@@ -1,4 +1,5 @@
 import { createClient, type PostgrestError, type SupabaseClient } from "@supabase/supabase-js";
+import { BILLING_UNIT_MINUTES, normalizeBillingCode } from "./cptRules";
 import type { DerivedCpt } from "./types";
 
 type Database = {
@@ -105,13 +106,17 @@ function toError(message: string, error: PostgrestError | null): Error {
   return new Error(message);
 }
 
-function computeBillingMetrics(candidate: number | null | undefined): BillingMetrics {
+export function computeBillingMetrics(candidate: number | null | undefined): BillingMetrics {
   if (typeof candidate !== "number" || !Number.isFinite(candidate) || candidate <= 0) {
     return { minutes: null, units: 1 };
   }
 
   const roundedMinutes = Math.max(1, Math.round(candidate));
-  const units = Math.max(1, Math.ceil(roundedMinutes / 15));
+  const wholeUnits = Math.floor(roundedMinutes / BILLING_UNIT_MINUTES);
+  const remainder = roundedMinutes % BILLING_UNIT_MINUTES;
+  const additionalUnit = remainder >= 8 ? 1 : 0;
+  const computedUnits = wholeUnits + additionalUnit;
+  const units = Math.max(1, computedUnits);
   return { minutes: roundedMinutes, units };
 }
 
@@ -126,7 +131,7 @@ export async function persistSessionCptMetadata({
     throw new Error("sessionId is required to persist CPT metadata");
   }
 
-  const cptCode = typeof cpt.code === "string" ? cpt.code.trim().toUpperCase() : "";
+  const cptCode = normalizeBillingCode(cpt.code) ?? "";
   if (cptCode.length === 0) {
     throw new Error("CPT code is required to persist CPT metadata");
   }
@@ -202,7 +207,7 @@ export async function persistSessionCptMetadata({
 
   const modifierCodes = Array.isArray(cpt.modifiers)
     ? cpt.modifiers
-        .map((modifier) => (typeof modifier === "string" ? modifier.trim().toUpperCase() : ""))
+        .map((modifier) => normalizeBillingCode(modifier) ?? "")
         .filter((modifier) => modifier.length > 0)
     : [];
 

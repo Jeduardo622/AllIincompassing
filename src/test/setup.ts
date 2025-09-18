@@ -14,6 +14,24 @@ beforeEach(() => {
 vi.useFakeTimers({ toFake: ['Date'] });
 vi.setSystemTime(new Date('2025-06-30T12:00:00Z'));
 
+vi.mock('../lib/authContext', () => ({
+  useAuth: () => ({
+    user: { id: 'test-user', email: 'test@example.com' },
+    profile: null,
+    session: null,
+    loading: false,
+    signIn: vi.fn(),
+    signUp: vi.fn(),
+    signOut: vi.fn(),
+    resetPassword: vi.fn(),
+    updateProfile: vi.fn(),
+    hasRole: vi.fn(() => true),
+    hasAnyRole: vi.fn(() => true),
+    isAdmin: vi.fn(() => true),
+    isSuperAdmin: vi.fn(() => true),
+  }),
+}));
+
 // Mock Supabase with more realistic implementations
 vi.mock('../lib/supabase', () => {
   const chain: any = {

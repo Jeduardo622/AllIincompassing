@@ -18,6 +18,7 @@ import AvailabilityOverlay from "../components/AvailabilityOverlay";
 import SessionFilters from "../components/SessionFilters";
 import SchedulingMatrix from "../components/SchedulingMatrix";
 import { useDebounce } from "../lib/performance";
+import { useAuth } from "../lib/authContext";
 import {
   useScheduleDataBatch,
   useSessionsOptimized,
@@ -30,6 +31,7 @@ import type {
   BookSessionApiResponse,
   BookSessionResult,
 } from "../server/types";
+import { sanitizeAuditActorId, stampAuditMetadata } from "./scheduleAudit";
 
 // Memoized time slot component
 const TimeSlot = React.memo(
@@ -401,6 +403,17 @@ const Schedule = React.memo(() => {
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+  const auditActorId = useMemo(
+    () => sanitizeAuditActorId(userId),
+    [userId],
+  );
+  const applyAuditMetadata = useCallback(
+    (session: Partial<Session>) =>
+      stampAuditMetadata({ ...session }, auditActorId, new Date()),
+    [auditActorId],
+  );
 
   const userTimeZone = useMemo(() => {
     try {
@@ -530,8 +543,9 @@ const Schedule = React.memo(() => {
       const { startOffsetMinutes, endOffsetMinutes, timeZone } =
         computeTimeMetadata(newSession);
 
+      const sessionForBooking = applyAuditMetadata(newSession);
       const bookingResult = await callBookSessionApi(
-        buildBookingPayload(newSession, {
+        buildBookingPayload(sessionForBooking, {
           startOffsetMinutes,
           endOffsetMinutes,
           timeZone,
@@ -569,8 +583,9 @@ const Schedule = React.memo(() => {
         const { startOffsetMinutes, endOffsetMinutes, timeZone } =
           computeTimeMetadata(session);
 
+        const sessionForBooking = applyAuditMetadata(session);
         const bookingResult = await callBookSessionApi(
-          buildBookingPayload(session, {
+          buildBookingPayload(sessionForBooking, {
             startOffsetMinutes,
             endOffsetMinutes,
             timeZone,
@@ -615,8 +630,9 @@ const Schedule = React.memo(() => {
       const { startOffsetMinutes, endOffsetMinutes, timeZone } =
         computeTimeMetadata(mergedSession);
 
+      const sessionForBooking = applyAuditMetadata(mergedSession);
       const bookingResult = await callBookSessionApi(
-        buildBookingPayload({ ...mergedSession, id: selectedSession.id }, {
+        buildBookingPayload({ ...sessionForBooking, id: selectedSession.id }, {
           startOffsetMinutes,
           endOffsetMinutes,
           timeZone,

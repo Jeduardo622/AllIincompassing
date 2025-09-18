@@ -217,7 +217,7 @@ describe("booking billing integration", () => {
       cpt_code_id: "cpt-97155",
       line_number: 1,
       billed_minutes: 50,
-      units: 4,
+      units: 3,
       is_primary: true,
       notes: "Adaptive behavior treatment with protocol modification",
     });

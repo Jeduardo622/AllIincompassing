@@ -19,6 +19,26 @@ const REQUIRED_SESSION_FIELDS: Array<keyof RequiredSessionFields> = [
   "end_time",
 ];
 
+function normalizeAuditIdentifier(candidate: unknown): string | null {
+  if (typeof candidate !== "string") {
+    return null;
+  }
+  const trimmed = candidate.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeAuditTimestamp(candidate: unknown, fallbackIso: string): string {
+  if (typeof candidate !== "string") {
+    return fallbackIso;
+  }
+  const trimmed = candidate.trim();
+  if (trimmed.length === 0) {
+    return fallbackIso;
+  }
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.getTime()) ? fallbackIso : trimmed;
+}
+
 function assertSessionCompleteness(session: BookableSession) {
   for (const field of REQUIRED_SESSION_FIELDS) {
     const value = session[field];
@@ -55,9 +75,18 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
     timeZone: payload.timeZone,
   });
 
+  const nowIso = new Date().toISOString();
+  const normalizedCreatedBy = normalizeAuditIdentifier(payload.session.created_by);
+  const normalizedUpdatedBy = normalizeAuditIdentifier(payload.session.updated_by);
+  const actorId = normalizedUpdatedBy ?? normalizedCreatedBy ?? null;
+
   const sessionPayload: BookableSession = {
     ...payload.session,
     status: payload.session.status ?? "scheduled",
+    created_at: normalizeAuditTimestamp(payload.session.created_at, nowIso),
+    created_by: normalizedCreatedBy ?? actorId,
+    updated_at: normalizeAuditTimestamp(payload.session.updated_at, nowIso),
+    updated_by: normalizedUpdatedBy ?? actorId,
   };
 
   let confirmed;

@@ -232,6 +232,26 @@ const buildClientDocumentPath = (clientId: string, label: string): string => {
   return `clients/${clientId}/${label}-${Date.now()}.txt`;
 };
 
+const ensureTelemetryTableExists = async (tableName: string): Promise<boolean> => {
+  if (!serviceClient) {
+    return false;
+  }
+
+  const { error } = await serviceClient.from(tableName).select('count').limit(1);
+
+  if (!error) {
+    return true;
+  }
+
+  const message = error.message.toLowerCase();
+  if (message.includes('does not exist')) {
+    console.warn(`⏭️  Skipping telemetry RLS test - table ${tableName} missing.`);
+    return false;
+  }
+
+  throw error;
+};
+
 beforeAll(async () => {
   if (!SHOULD_RUN_RLS_TESTS) {
     console.warn('⏭️  Skipping RLS security tests - environment not configured.');
@@ -297,6 +317,70 @@ beforeAll(async () => {
     companySettingsId = insertResult.data.id;
     originalCompanyName = insertResult.data.company_name;
   }
+});
+
+describe('telemetry tables enforce admin-only visibility', () => {
+  const telemetryTables = [
+    'ai_performance_metrics',
+    'db_performance_metrics',
+    'system_performance_metrics',
+    'performance_alerts',
+    'performance_baselines',
+    'error_logs',
+    'function_performance_logs',
+    'ai_processing_logs'
+  ] as const;
+
+  telemetryTables.forEach((tableName) => {
+    it(`prevents therapists from querying ${tableName}`, async () => {
+      if (!runTests || !orgAContext) {
+        console.log('⏭️  Skipping RLS test - setup incomplete.');
+        return;
+      }
+
+      const tableExists = await ensureTelemetryTableExists(tableName);
+      if (!tableExists) {
+        return;
+      }
+
+      const supabaseOrgA = await signInTherapist(orgAContext);
+      try {
+        const result = await supabaseOrgA
+          .from(tableName)
+          .select('id')
+          .limit(1);
+
+        const affectedRows = Array.isArray(result.data) ? result.data.length : 0;
+        expectRlsViolation(result.error, affectedRows);
+      } finally {
+        await supabaseOrgA.auth.signOut();
+      }
+    });
+
+    it(`allows admins to query ${tableName}`, async () => {
+      if (!runTests || !adminContext) {
+        console.log('⏭️  Skipping RLS test - setup incomplete.');
+        return;
+      }
+
+      const tableExists = await ensureTelemetryTableExists(tableName);
+      if (!tableExists) {
+        return;
+      }
+
+      const adminClient = await signInAdmin(adminContext);
+      try {
+        const result = await adminClient
+          .from(tableName)
+          .select('id')
+          .limit(1);
+
+        expect(result.error).toBeNull();
+      } finally {
+        await adminClient.auth.signOut();
+      }
+    });
+  });
 });
 
 afterAll(async () => {
@@ -997,3 +1081,4 @@ describe('configuration tables enforce admin-only access', () => {
     }
   });
 });
+

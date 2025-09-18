@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, MapPin, Phone, Mail, Clock, Building2, Edit2, Trash2 } from 'lucide-react';
-import { supabase } from '../../lib/supabase'; 
+import { supabase } from '../../lib/supabase';
 import { prepareFormData } from '../../lib/validation';
+import { useAuth } from '../../lib/authContext';
+import { showError } from '../../lib/toast';
 
 interface Location {
   id: string;
@@ -72,25 +74,39 @@ export default function LocationSettings() {
   });
 
   const queryClient = useQueryClient();
+  const { hasRole, loading: authLoading } = useAuth();
+  const canManageConfig = hasRole('admin');
 
-  const { data: locations = [], isLoading } = useQuery({
+  const {
+    data: locations = [],
+    isLoading,
+    error,
+  } = useQuery<Location[], Error>({
     queryKey: ['locations'],
     queryFn: async () => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can load locations.');
+      }
       const { data, error } = await supabase
         .from('locations')
         .select('*')
         .order('name');
-      
+
       if (error) throw error;
       return data as Location[];
     },
+    enabled: canManageConfig,
+    retry: false,
   });
 
   const createLocation = useMutation({
     mutationFn: async (newLocation: LocationFormData) => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can create locations.');
+      }
       // Format data before submission
       const formattedLocation = prepareFormData(newLocation);
-      
+
       const { data, error } = await supabase
         .from('locations')
         .insert([formattedLocation])
@@ -105,13 +121,19 @@ export default function LocationSettings() {
       setIsModalOpen(false);
       resetForm();
     },
+    onError: (mutationError) => {
+      showError(mutationError);
+    },
   });
 
   const updateLocation = useMutation({
     mutationFn: async (location: LocationFormData & { id: string }) => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can update locations.');
+      }
       // Format data before submission
       const formattedLocation = prepareFormData(location);
-      
+
       const { data, error } = await supabase
         .from('locations')
         .update(formattedLocation)
@@ -127,10 +149,16 @@ export default function LocationSettings() {
       setIsModalOpen(false);
       resetForm();
     },
+    onError: (mutationError) => {
+      showError(mutationError);
+    },
   });
 
   const deleteLocation = useMutation({
     mutationFn: async (id: string) => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can delete locations.');
+      }
       const { error } = await supabase
         .from('locations')
         .delete()
@@ -140,6 +168,9 @@ export default function LocationSettings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['locations'] });
+    },
+    onError: (mutationError) => {
+      showError(mutationError);
     },
   });
 
@@ -215,6 +246,30 @@ export default function LocationSettings() {
       },
     }));
   };
+
+  if (authLoading || isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!canManageConfig) {
+    return (
+      <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200 rounded-md p-6">
+        You do not have permission to manage locations.
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-200 rounded-md p-6">
+        Failed to load locations: {error.message}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

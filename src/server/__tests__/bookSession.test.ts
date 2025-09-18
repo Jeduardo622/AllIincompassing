@@ -5,6 +5,7 @@ import {
   confirmSessionBooking,
   requestSessionHold,
 } from "../../lib/sessionHolds";
+import { persistSessionCptMetadata } from "../sessionCptPersistence";
 import type { Session } from "../../types";
 
 vi.mock("../../lib/sessionHolds", () => ({
@@ -13,9 +14,14 @@ vi.mock("../../lib/sessionHolds", () => ({
   cancelSessionHold: vi.fn(),
 }));
 
+vi.mock("../sessionCptPersistence", () => ({
+  persistSessionCptMetadata: vi.fn(),
+}));
+
 const mockedRequestSessionHold = vi.mocked(requestSessionHold);
 const mockedConfirmSessionBooking = vi.mocked(confirmSessionBooking);
 const mockedCancelSessionHold = vi.mocked(cancelSessionHold);
+const mockedPersistSessionCptMetadata = vi.mocked(persistSessionCptMetadata);
 
 const basePayload = {
   session: {
@@ -32,6 +38,7 @@ const basePayload = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockedPersistSessionCptMetadata.mockResolvedValue({ entryId: "entry-id", modifierIds: [] });
 });
 
 describe("bookSession", () => {
@@ -89,6 +96,12 @@ describe("bookSession", () => {
       endTimeOffsetMinutes: 0,
       timeZone: "UTC",
     });
+
+    expect(mockedPersistSessionCptMetadata).toHaveBeenCalledWith({
+      sessionId: confirmedSession.id,
+      cpt: expect.objectContaining({ code: "97153" }),
+      billedMinutes: confirmedSession.duration_minutes,
+    });
   });
 
   it("releases the hold when confirmation fails", async () => {
@@ -102,6 +115,7 @@ describe("bookSession", () => {
 
     await expect(bookSession(basePayload)).rejects.toThrow("unable to confirm");
     expect(mockedCancelSessionHold).toHaveBeenCalledWith({ holdKey: "hold-key" });
+    expect(mockedPersistSessionCptMetadata).not.toHaveBeenCalled();
   });
 
   it("throws when required session fields are missing", async () => {
@@ -114,5 +128,34 @@ describe("bookSession", () => {
         },
       }),
     ).rejects.toThrow(/therapist_id/);
+  });
+
+  it("bubbles persistence failures", async () => {
+    mockedRequestSessionHold.mockResolvedValueOnce({
+      holdKey: "hold-key",
+      holdId: "hold-id",
+      expiresAt: "2025-01-01T00:05:00Z",
+    });
+
+    const confirmedSession: Session = {
+      id: "session-1",
+      client_id: basePayload.session.client_id,
+      therapist_id: basePayload.session.therapist_id,
+      start_time: basePayload.session.start_time,
+      end_time: basePayload.session.end_time,
+      status: "scheduled",
+      notes: "",
+      created_at: "2025-01-01T09:00:00Z",
+      created_by: "user-1",
+      updated_at: "2025-01-01T09:00:00Z",
+      updated_by: "user-1",
+      duration_minutes: 60,
+    };
+
+    mockedConfirmSessionBooking.mockResolvedValueOnce(confirmedSession);
+    mockedPersistSessionCptMetadata.mockRejectedValueOnce(new Error("persist failure"));
+
+    await expect(bookSession(basePayload)).rejects.toThrow("persist failure");
+    expect(mockedCancelSessionHold).not.toHaveBeenCalled();
   });
 });

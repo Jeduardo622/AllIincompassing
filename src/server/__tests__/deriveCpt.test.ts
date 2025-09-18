@@ -65,4 +65,16 @@ describe("deriveCptMetadata", () => {
     expect(result.modifiers).toContain("KX");
     expect(result.durationMinutes).toBe(270);
   });
+
+  it("calculates duration across DST fall-back transitions", () => {
+    const result = deriveCptMetadata({
+      session: {
+        ...baseSession,
+        start_time: "2025-11-02T00:30:00-07:00",
+        end_time: "2025-11-02T02:30:00-08:00",
+      },
+    });
+
+    expect(result.durationMinutes).toBe(180);
+  });
 });

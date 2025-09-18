@@ -11,6 +11,9 @@ interface TenantContext {
   userId: string;
   therapistId: string;
   clientId: string;
+  clientUserId: string;
+  clientEmail: string;
+  clientPassword: string;
   sessionId: string;
   organizationId: string;
 }
@@ -44,6 +47,7 @@ const createdLocationIds: string[] = [];
 const createdServiceLineIds: string[] = [];
 const createdReferringProviderIds: string[] = [];
 const createdFileCabinetCategoryIds: string[] = [];
+const uploadedClientDocumentPaths: string[] = [];
 let companySettingsId: string | null = null;
 let originalCompanyName: string | null = null;
 
@@ -92,10 +96,26 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
 
   await serviceClient.from('profiles').update({ role: 'therapist' }).eq('id', userId);
 
-  const clientId = randomUUID();
+  const clientEmail = `${label}.client.${Date.now()}@example.com`;
+  const clientPassword = `P@ssw0rd-${Math.random().toString(36).slice(2, 10)}`;
+
+  const { data: createdClientUser, error: clientUserError } = await serviceClient.auth.admin.createUser({
+    email: clientEmail,
+    password: clientPassword,
+    email_confirm: true,
+  });
+
+  if (clientUserError || !createdClientUser?.user) {
+    throw clientUserError ?? new Error('Client user creation failed');
+  }
+
+  const clientUserId = createdClientUser.user.id;
+
+  await serviceClient.from('profiles').update({ role: 'client' }).eq('id', clientUserId);
+
   const { error: clientInsertError } = await serviceClient.from('clients').insert({
-    id: clientId,
-    email: `${label}.client.${Date.now()}@example.com`,
+    id: clientUserId,
+    email: clientEmail,
     full_name: `${label.toUpperCase()} Client`,
     date_of_birth: '2015-01-01',
   });
@@ -110,7 +130,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
 
   const { error: sessionInsertError } = await serviceClient.from('sessions').insert({
     id: sessionId,
-    client_id: clientId,
+    client_id: clientUserId,
     therapist_id: therapistId,
     start_time: start.toISOString(),
     end_time: end.toISOString(),
@@ -121,7 +141,18 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
     throw sessionInsertError;
   }
 
-  return { email, password, userId, therapistId, clientId, sessionId, organizationId };
+  return {
+    email,
+    password,
+    userId,
+    therapistId,
+    clientId: clientUserId,
+    clientUserId,
+    clientEmail,
+    clientPassword,
+    sessionId,
+    organizationId,
+  };
 };
 
 const createAdminFixture = async (): Promise<AdminContext> => {
@@ -180,6 +211,10 @@ const signInAdmin = async (context: AdminContext): Promise<TypedClient> => {
   return signInWithPassword(context.email, context.password);
 };
 
+const signInClient = async (context: TenantContext): Promise<TypedClient> => {
+  return signInWithPassword(context.clientEmail, context.clientPassword);
+};
+
 const expectRlsViolation = (error: PostgrestError | null, fallbackRowCount = 0) => {
   if (error) {
     expect(error.message.toLowerCase()).toMatch(/row-level security|not allowed|permission|violat/);
@@ -187,6 +222,14 @@ const expectRlsViolation = (error: PostgrestError | null, fallbackRowCount = 0) 
   }
 
   expect(fallbackRowCount).toBe(0);
+};
+
+const createTextBlob = (text: string): Blob => {
+  return new Blob([text], { type: 'text/plain' });
+};
+
+const buildClientDocumentPath = (clientId: string, label: string): string => {
+  return `clients/${clientId}/${label}-${Date.now()}.txt`;
 };
 
 beforeAll(async () => {
@@ -268,6 +311,7 @@ afterAll(async () => {
     await serviceClient.from('user_therapist_links').delete().eq('user_id', context.userId);
     await serviceClient.from('therapists').delete().eq('id', context.therapistId);
     await serviceClient.auth.admin.deleteUser(context.userId);
+    await serviceClient.auth.admin.deleteUser(context.clientUserId);
   }
 
   if (createdLocationIds.length > 0) {
@@ -284,6 +328,10 @@ afterAll(async () => {
 
   if (createdFileCabinetCategoryIds.length > 0) {
     await serviceClient.from('file_cabinet_settings').delete().in('id', createdFileCabinetCategoryIds);
+  }
+
+  if (uploadedClientDocumentPaths.length > 0) {
+    await serviceClient.storage.from('client-documents').remove(uploadedClientDocumentPaths);
   }
 
   if (companySettingsId && originalCompanyName !== null) {
@@ -451,6 +499,187 @@ describe('row level security for multi-tenant tables', () => {
       expectRlsViolation(result.error, affectedRows);
     } finally {
       await supabaseOrgA.auth.signOut();
+    }
+  });
+});
+
+describe('storage client document access policies', () => {
+  it('allows admins to upload and download client documents', async () => {
+    if (!runTests || !adminContext || !orgAContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const adminClient = await signInAdmin(adminContext);
+    const path = buildClientDocumentPath(orgAContext.clientId, 'admin');
+    try {
+      const uploadResult = await adminClient.storage
+        .from('client-documents')
+        .upload(path, createTextBlob('Admin storage test'), {
+          contentType: 'text/plain',
+          upsert: true,
+        });
+
+      expect(uploadResult.error).toBeNull();
+      uploadedClientDocumentPaths.push(path);
+
+      const downloadResult = await adminClient.storage.from('client-documents').download(path);
+      expect(downloadResult.error).toBeNull();
+      if (!downloadResult.data) {
+        throw new Error('Expected admin download payload.');
+      }
+
+      const downloadedText = await downloadResult.data.text();
+      expect(downloadedText).toBe('Admin storage test');
+    } finally {
+      await adminClient.auth.signOut();
+    }
+  });
+
+  it('allows assigned therapists to upload and download client documents', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const therapistClient = await signInTherapist(orgAContext);
+    const path = buildClientDocumentPath(orgAContext.clientId, 'therapist');
+    try {
+      const uploadResult = await therapistClient.storage
+        .from('client-documents')
+        .upload(path, createTextBlob('Therapist storage test'), {
+          contentType: 'text/plain',
+          upsert: true,
+        });
+
+      expect(uploadResult.error).toBeNull();
+      uploadedClientDocumentPaths.push(path);
+
+      const downloadResult = await therapistClient.storage.from('client-documents').download(path);
+      expect(downloadResult.error).toBeNull();
+      if (!downloadResult.data) {
+        throw new Error('Expected therapist download payload.');
+      }
+
+      const downloadedText = await downloadResult.data.text();
+      expect(downloadedText).toBe('Therapist storage test');
+    } finally {
+      await therapistClient.auth.signOut();
+    }
+  });
+
+  it('allows clients to upload and download their own documents', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const client = await signInClient(orgAContext);
+    const path = buildClientDocumentPath(orgAContext.clientId, 'client');
+    try {
+      const uploadResult = await client.storage
+        .from('client-documents')
+        .upload(path, createTextBlob('Client storage test'), {
+          contentType: 'text/plain',
+          upsert: true,
+        });
+
+      expect(uploadResult.error).toBeNull();
+      uploadedClientDocumentPaths.push(path);
+
+      const downloadResult = await client.storage.from('client-documents').download(path);
+      expect(downloadResult.error).toBeNull();
+      if (!downloadResult.data) {
+        throw new Error('Expected client download payload.');
+      }
+
+      const downloadedText = await downloadResult.data.text();
+      expect(downloadedText).toBe('Client storage test');
+    } finally {
+      await client.auth.signOut();
+    }
+  });
+
+  it('prevents unrelated therapists from uploading client documents', async () => {
+    if (!runTests || !orgAContext || !orgBContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const otherTherapist = await signInTherapist(orgBContext);
+    const path = buildClientDocumentPath(orgAContext.clientId, 'unauthorized-upload');
+    try {
+      const uploadResult = await otherTherapist.storage
+        .from('client-documents')
+        .upload(path, createTextBlob('Unauthorized storage test'), {
+          contentType: 'text/plain',
+          upsert: true,
+        });
+
+      expect(uploadResult.error).not.toBeNull();
+      expect(uploadResult.data).toBeNull();
+    } finally {
+      await otherTherapist.auth.signOut();
+    }
+  });
+
+  it('prevents unrelated therapists from downloading client documents', async () => {
+    if (!runTests || !orgAContext || !orgBContext || !serviceClient) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const path = buildClientDocumentPath(orgAContext.clientId, 'protected');
+    const seedResult = await serviceClient.storage
+      .from('client-documents')
+      .upload(path, createTextBlob('Protected content'), {
+        contentType: 'text/plain',
+        upsert: true,
+      });
+
+    if (seedResult.error) {
+      throw seedResult.error;
+    }
+
+    uploadedClientDocumentPaths.push(path);
+
+    const otherTherapist = await signInTherapist(orgBContext);
+    try {
+      const downloadResult = await otherTherapist.storage.from('client-documents').download(path);
+      expect(downloadResult.error).not.toBeNull();
+      expect(downloadResult.data).toBeNull();
+    } finally {
+      await otherTherapist.auth.signOut();
+    }
+  });
+
+  it('prevents clients from accessing other client documents', async () => {
+    if (!runTests || !orgAContext || !orgBContext || !serviceClient) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const path = buildClientDocumentPath(orgBContext.clientId, 'restricted');
+    const seedResult = await serviceClient.storage
+      .from('client-documents')
+      .upload(path, createTextBlob('Restricted content'), {
+        contentType: 'text/plain',
+        upsert: true,
+      });
+
+    if (seedResult.error) {
+      throw seedResult.error;
+    }
+
+    uploadedClientDocumentPaths.push(path);
+
+    const client = await signInClient(orgAContext);
+    try {
+      const downloadResult = await client.storage.from('client-documents').download(path);
+      expect(downloadResult.error).not.toBeNull();
+      expect(downloadResult.data).toBeNull();
+    } finally {
+      await client.auth.signOut();
     }
   });
 });

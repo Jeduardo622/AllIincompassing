@@ -15,6 +15,12 @@ interface TenantContext {
   organizationId: string;
 }
 
+interface AdminContext {
+  email: string;
+  password: string;
+  userId: string;
+}
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
 const SERVICE_ROLE_KEY =
@@ -32,6 +38,14 @@ let serviceClient: TypedClient | null = null;
 let runTests = false;
 let orgAContext: TenantContext | null = null;
 let orgBContext: TenantContext | null = null;
+let adminContext: AdminContext | null = null;
+
+const createdLocationIds: string[] = [];
+const createdServiceLineIds: string[] = [];
+const createdReferringProviderIds: string[] = [];
+const createdFileCabinetCategoryIds: string[] = [];
+let companySettingsId: string | null = null;
+let originalCompanyName: string | null = null;
 
 const createTenantFixture = async (label: string, organizationId: string): Promise<TenantContext> => {
   if (!serviceClient) {
@@ -110,14 +124,45 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
   return { email, password, userId, therapistId, clientId, sessionId, organizationId };
 };
 
-const signInTherapist = async (context: TenantContext): Promise<TypedClient> => {
+const createAdminFixture = async (): Promise<AdminContext> => {
+  if (!serviceClient) {
+    throw new Error('Service client not initialized');
+  }
+
+  const email = `admin.${Date.now()}@example.com`;
+  const password = `P@ssw0rd-${Math.random().toString(36).slice(2, 10)}`;
+
+  const { data: createdUser, error: createUserError } = await serviceClient.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+
+  if (createUserError || !createdUser?.user) {
+    throw createUserError ?? new Error('Admin user creation failed');
+  }
+
+  const userId = createdUser.user.id;
+
+  const assignResult = await serviceClient.rpc('assign_admin_role', {
+    user_email: email,
+  });
+
+  if (assignResult.error) {
+    throw assignResult.error;
+  }
+
+  return { email, password, userId };
+};
+
+const signInWithPassword = async (email: string, password: string): Promise<TypedClient> => {
   const client = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
   const signInResult = await client.auth.signInWithPassword({
-    email: context.email,
-    password: context.password,
+    email,
+    password,
   });
 
   if (signInResult.error) {
@@ -125,6 +170,14 @@ const signInTherapist = async (context: TenantContext): Promise<TypedClient> => 
   }
 
   return client;
+};
+
+const signInTherapist = async (context: TenantContext): Promise<TypedClient> => {
+  return signInWithPassword(context.email, context.password);
+};
+
+const signInAdmin = async (context: AdminContext): Promise<TypedClient> => {
+  return signInWithPassword(context.email, context.password);
 };
 
 const expectRlsViolation = (error: PostgrestError | null, fallbackRowCount = 0) => {
@@ -163,6 +216,44 @@ beforeAll(async () => {
   const orgBId = randomUUID();
   orgAContext = await createTenantFixture('orga', orgAId);
   orgBContext = await createTenantFixture('orgb', orgBId);
+  adminContext = await createAdminFixture();
+
+  const { data: existingSettings, error: companyFetchError } = await serviceClient
+    .from('company_settings')
+    .select('id, company_name')
+    .limit(1)
+    .maybeSingle();
+
+  if (companyFetchError) {
+    throw companyFetchError;
+  }
+
+  if (existingSettings) {
+    companySettingsId = existingSettings.id;
+    originalCompanyName = existingSettings.company_name;
+  } else {
+    const insertResult = await serviceClient
+      .from('company_settings')
+      .insert({
+        company_name: 'RLS Test Company',
+        time_zone: 'UTC',
+        date_format: 'MM/dd/yyyy',
+        time_format: '12h',
+        default_currency: 'USD',
+        session_duration_default: 60,
+        primary_color: '#000000',
+        accent_color: '#FFFFFF',
+      })
+      .select('id, company_name')
+      .single();
+
+    if (insertResult.error || !insertResult.data) {
+      throw insertResult.error ?? new Error('Failed to insert company settings for tests');
+    }
+
+    companySettingsId = insertResult.data.id;
+    originalCompanyName = insertResult.data.company_name;
+  }
 });
 
 afterAll(async () => {
@@ -177,6 +268,33 @@ afterAll(async () => {
     await serviceClient.from('user_therapist_links').delete().eq('user_id', context.userId);
     await serviceClient.from('therapists').delete().eq('id', context.therapistId);
     await serviceClient.auth.admin.deleteUser(context.userId);
+  }
+
+  if (createdLocationIds.length > 0) {
+    await serviceClient.from('locations').delete().in('id', createdLocationIds);
+  }
+
+  if (createdServiceLineIds.length > 0) {
+    await serviceClient.from('service_lines').delete().in('id', createdServiceLineIds);
+  }
+
+  if (createdReferringProviderIds.length > 0) {
+    await serviceClient.from('referring_providers').delete().in('id', createdReferringProviderIds);
+  }
+
+  if (createdFileCabinetCategoryIds.length > 0) {
+    await serviceClient.from('file_cabinet_settings').delete().in('id', createdFileCabinetCategoryIds);
+  }
+
+  if (companySettingsId && originalCompanyName !== null) {
+    await serviceClient
+      .from('company_settings')
+      .update({ company_name: originalCompanyName })
+      .eq('id', companySettingsId);
+  }
+
+  if (adminContext) {
+    await serviceClient.auth.admin.deleteUser(adminContext.userId);
   }
 });
 
@@ -333,6 +451,320 @@ describe('row level security for multi-tenant tables', () => {
       expectRlsViolation(result.error, affectedRows);
     } finally {
       await supabaseOrgA.auth.signOut();
+    }
+  });
+});
+
+describe('configuration tables enforce admin-only access', () => {
+  it('prevents therapists from updating company settings', async () => {
+    if (!runTests || !orgAContext || !companySettingsId) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const result = await supabaseOrgA
+        .from('company_settings')
+        .update({ company_name: 'Unauthorized Update' })
+        .eq('id', companySettingsId)
+        .select('id');
+
+      const affectedRows = Array.isArray(result.data) ? result.data.length : 0;
+      expectRlsViolation(result.error, affectedRows);
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+
+  it('allows admins to update company settings', async () => {
+    if (!runTests || !adminContext || !companySettingsId) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const adminClient = await signInAdmin(adminContext);
+    const newName = `Admin Updated Company ${Date.now()}`;
+    try {
+      const result = await adminClient
+        .from('company_settings')
+        .update({ company_name: newName })
+        .eq('id', companySettingsId)
+        .select('company_name')
+        .single();
+
+      expect(result.error).toBeNull();
+      expect(result.data?.company_name).toBe(newName);
+    } finally {
+      await adminClient.auth.signOut();
+      if (serviceClient && companySettingsId && originalCompanyName !== null) {
+        await serviceClient
+          .from('company_settings')
+          .update({ company_name: originalCompanyName })
+          .eq('id', companySettingsId);
+      }
+    }
+  });
+
+  it('prevents therapists from creating locations', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const result = await supabaseOrgA
+        .from('locations')
+        .insert({
+          name: 'Unauthorized Location',
+          type: 'clinic',
+          is_active: true,
+          operating_hours: {
+            monday: { start: '09:00', end: '17:00' },
+          },
+        })
+        .select('id');
+
+      const affectedRows = Array.isArray(result.data) ? result.data.length : 0;
+      expectRlsViolation(result.error, affectedRows);
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+
+  it('allows admins to create locations', async () => {
+    if (!runTests || !adminContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const adminClient = await signInAdmin(adminContext);
+    try {
+      const result = await adminClient
+        .from('locations')
+        .insert({
+          name: `Admin Location ${Date.now()}`,
+          type: 'clinic',
+          address_line1: null,
+          city: null,
+          state: null,
+          zip_code: null,
+          phone: null,
+          email: null,
+          is_active: true,
+          operating_hours: {
+            monday: { start: '09:00', end: '17:00' },
+            tuesday: { start: '09:00', end: '17:00' },
+          },
+        })
+        .select('id')
+        .single();
+
+      expect(result.error).toBeNull();
+      expect(result.data?.id).toBeTruthy();
+      if (result.data?.id) {
+        createdLocationIds.push(result.data.id);
+      }
+    } finally {
+      await adminClient.auth.signOut();
+    }
+  });
+
+  it('prevents therapists from creating service lines', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const result = await supabaseOrgA
+        .from('service_lines')
+        .insert({
+          name: 'Unauthorized Service Line',
+          code: 'UNAUTH',
+          description: 'Should fail',
+          rate_per_hour: 150,
+          billable: true,
+          requires_authorization: true,
+          documentation_required: true,
+          available_locations: [],
+          is_active: true,
+        })
+        .select('id');
+
+      const affectedRows = Array.isArray(result.data) ? result.data.length : 0;
+      expectRlsViolation(result.error, affectedRows);
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+
+  it('allows admins to create service lines', async () => {
+    if (!runTests || !adminContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const adminClient = await signInAdmin(adminContext);
+    try {
+      const result = await adminClient
+        .from('service_lines')
+        .insert({
+          name: `Admin Service Line ${Date.now()}`,
+          code: 'ADMIN',
+          description: 'Created via RLS test',
+          rate_per_hour: 175,
+          billable: true,
+          requires_authorization: true,
+          documentation_required: true,
+          available_locations: [],
+          is_active: true,
+        })
+        .select('id')
+        .single();
+
+      expect(result.error).toBeNull();
+      expect(result.data?.id).toBeTruthy();
+      if (result.data?.id) {
+        createdServiceLineIds.push(result.data.id);
+      }
+    } finally {
+      await adminClient.auth.signOut();
+    }
+  });
+
+  it('prevents therapists from creating referring providers', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const result = await supabaseOrgA
+        .from('referring_providers')
+        .insert({
+          first_name: 'Unauthorized',
+          last_name: 'Provider',
+          credentials: ['MD'],
+          npi_number: '1234567890',
+          specialty: 'Other',
+          phone: null,
+          fax: null,
+          email: 'unauthorized@example.com',
+          address_line1: null,
+          city: null,
+          state: null,
+          zip_code: null,
+          is_active: true,
+        })
+        .select('id');
+
+      const affectedRows = Array.isArray(result.data) ? result.data.length : 0;
+      expectRlsViolation(result.error, affectedRows);
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+
+  it('allows admins to create referring providers', async () => {
+    if (!runTests || !adminContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const adminClient = await signInAdmin(adminContext);
+    try {
+      const result = await adminClient
+        .from('referring_providers')
+        .insert({
+          first_name: 'Admin',
+          last_name: `Provider ${Date.now()}`,
+          credentials: ['MD'],
+          npi_number: '1234567890',
+          facility_name: 'Admin Facility',
+          specialty: 'Other',
+          phone: null,
+          fax: null,
+          email: `admin.provider.${Date.now()}@example.com`,
+          address_line1: null,
+          city: null,
+          state: null,
+          zip_code: null,
+          is_active: true,
+        })
+        .select('id')
+        .single();
+
+      expect(result.error).toBeNull();
+      expect(result.data?.id).toBeTruthy();
+      if (result.data?.id) {
+        createdReferringProviderIds.push(result.data.id);
+      }
+    } finally {
+      await adminClient.auth.signOut();
+    }
+  });
+
+  it('prevents therapists from creating file cabinet settings', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const result = await supabaseOrgA
+        .from('file_cabinet_settings')
+        .insert({
+          category_name: 'Unauthorized Category',
+          description: 'Should be blocked',
+          allowed_file_types: ['.pdf'],
+          max_file_size_mb: 5,
+          retention_period_days: 30,
+          requires_signature: false,
+          is_active: true,
+        })
+        .select('id');
+
+      const affectedRows = Array.isArray(result.data) ? result.data.length : 0;
+      expectRlsViolation(result.error, affectedRows);
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+
+  it('allows admins to create file cabinet settings', async () => {
+    if (!runTests || !adminContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const adminClient = await signInAdmin(adminContext);
+    try {
+      const result = await adminClient
+        .from('file_cabinet_settings')
+        .insert({
+          category_name: `Admin Category ${Date.now()}`,
+          description: 'Created via RLS test',
+          allowed_file_types: ['.pdf', '.docx'],
+          max_file_size_mb: 25,
+          retention_period_days: 180,
+          requires_signature: false,
+          is_active: true,
+        })
+        .select('id')
+        .single();
+
+      expect(result.error).toBeNull();
+      expect(result.data?.id).toBeTruthy();
+      if (result.data?.id) {
+        createdFileCabinetCategoryIds.push(result.data.id);
+      }
+    } finally {
+      await adminClient.auth.signOut();
     }
   });
 });

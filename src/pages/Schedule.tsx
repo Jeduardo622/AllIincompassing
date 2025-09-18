@@ -23,9 +23,13 @@ import {
   useSessionsOptimized,
   useDropdownData,
 } from "../lib/optimizedQueries";
-import { requestSessionHold, confirmSessionBooking } from "../lib/sessionHolds";
 import { cancelSessions } from "../lib/sessionCancellation";
 import { showError, showSuccess } from "../lib/toast";
+import type {
+  BookSessionApiRequestBody,
+  BookSessionApiResponse,
+  BookSessionResult,
+} from "../server/types";
 
 // Memoized time slot component
 const TimeSlot = React.memo(
@@ -110,6 +114,81 @@ const TimeSlot = React.memo(
 );
 
 TimeSlot.displayName = "TimeSlot";
+
+function createIdempotencyKey(): string | undefined {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    try {
+      return crypto.randomUUID();
+    } catch (error) {
+      console.warn("Failed to generate idempotency key", error);
+    }
+  }
+  return undefined;
+}
+
+async function callBookSessionApi(
+  payload: BookSessionApiRequestBody,
+): Promise<BookSessionResult> {
+  const idempotencyKey = createIdempotencyKey();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (idempotencyKey) {
+    headers["Idempotency-Key"] = idempotencyKey;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch("/api/book", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+  } catch (networkError) {
+    console.error("Booking API request failed", networkError);
+    throw new Error("Unable to reach booking service");
+  }
+
+  let body: BookSessionApiResponse | null = null;
+  try {
+    body = await response.json() as BookSessionApiResponse;
+  } catch (parseError) {
+    console.error("Failed to parse booking API response", parseError);
+  }
+
+  if (!response.ok || !body) {
+    const message = body?.error ?? "Failed to book session";
+    throw new Error(message);
+  }
+
+  if (!body.success || !body.data) {
+    throw new Error(body.error ?? "Failed to book session");
+  }
+
+  return body.data;
+}
+
+function buildBookingPayload(
+  session: Partial<Session>,
+  metadata: {
+    startOffsetMinutes: number;
+    endOffsetMinutes: number;
+    timeZone: string;
+  },
+): BookSessionApiRequestBody {
+  const normalizedSession = {
+    ...session,
+    status: session.status ?? "scheduled",
+  } as BookSessionApiRequestBody["session"];
+
+  return {
+    session: normalizedSession,
+    startTimeOffsetMinutes: metadata.startOffsetMinutes,
+    endTimeOffsetMinutes: metadata.endOffsetMinutes,
+    timeZone: metadata.timeZone,
+  };
+}
 
 // Memoized day column component
 const DayColumn = React.memo(
@@ -448,28 +527,18 @@ const Schedule = React.memo(() => {
         throw new Error("Missing required session details");
       }
 
-      const { startTime, endTime, startOffsetMinutes, endOffsetMinutes, timeZone } =
+      const { startOffsetMinutes, endOffsetMinutes, timeZone } =
         computeTimeMetadata(newSession);
 
-      const hold = await requestSessionHold({
-        therapistId: newSession.therapist_id,
-        clientId: newSession.client_id,
-        startTime,
-        endTime,
-        startTimeOffsetMinutes: startOffsetMinutes,
-        endTimeOffsetMinutes: endOffsetMinutes,
-        timeZone,
-      });
+      const bookingResult = await callBookSessionApi(
+        buildBookingPayload(newSession, {
+          startOffsetMinutes,
+          endOffsetMinutes,
+          timeZone,
+        }),
+      );
 
-      const session = await confirmSessionBooking({
-        holdKey: hold.holdKey,
-        session: { ...newSession, status: newSession.status ?? "scheduled" },
-        startTimeOffsetMinutes: startOffsetMinutes,
-        endTimeOffsetMinutes: endOffsetMinutes,
-        timeZone,
-      });
-
-      return session;
+      return bookingResult.session;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
@@ -497,28 +566,18 @@ const Schedule = React.memo(() => {
           throw new Error("Missing required session details");
         }
 
-        const { startTime, endTime, startOffsetMinutes, endOffsetMinutes, timeZone } =
+        const { startOffsetMinutes, endOffsetMinutes, timeZone } =
           computeTimeMetadata(session);
 
-        const hold = await requestSessionHold({
-          therapistId: session.therapist_id,
-          clientId: session.client_id,
-          startTime,
-          endTime,
-          startTimeOffsetMinutes: startOffsetMinutes,
-          endTimeOffsetMinutes: endOffsetMinutes,
-          timeZone,
-        });
+        const bookingResult = await callBookSessionApi(
+          buildBookingPayload(session, {
+            startOffsetMinutes,
+            endOffsetMinutes,
+            timeZone,
+          }),
+        );
 
-        const confirmed = await confirmSessionBooking({
-          holdKey: hold.holdKey,
-          session: { ...session, status: session.status ?? "scheduled" },
-          startTimeOffsetMinutes: startOffsetMinutes,
-          endTimeOffsetMinutes: endOffsetMinutes,
-          timeZone,
-        });
-
-        createdSessions.push(confirmed);
+        createdSessions.push(bookingResult.session);
       }
 
       return createdSessions;
@@ -553,29 +612,18 @@ const Schedule = React.memo(() => {
         throw new Error("Missing required session details");
       }
 
-      const { startTime, endTime, startOffsetMinutes, endOffsetMinutes, timeZone } =
+      const { startOffsetMinutes, endOffsetMinutes, timeZone } =
         computeTimeMetadata(mergedSession);
 
-      const hold = await requestSessionHold({
-        therapistId: mergedSession.therapist_id,
-        clientId: mergedSession.client_id,
-        startTime,
-        endTime,
-        sessionId: selectedSession.id,
-        startTimeOffsetMinutes: startOffsetMinutes,
-        endTimeOffsetMinutes: endOffsetMinutes,
-        timeZone,
-      });
+      const bookingResult = await callBookSessionApi(
+        buildBookingPayload({ ...mergedSession, id: selectedSession.id }, {
+          startOffsetMinutes,
+          endOffsetMinutes,
+          timeZone,
+        }),
+      );
 
-      const confirmed = await confirmSessionBooking({
-        holdKey: hold.holdKey,
-        session: { ...mergedSession, id: selectedSession.id },
-        startTimeOffsetMinutes: startOffsetMinutes,
-        endTimeOffsetMinutes: endOffsetMinutes,
-        timeZone,
-      });
-
-      return confirmed;
+      return bookingResult.session;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });

@@ -87,38 +87,42 @@ describe('Scheduling Integration - End-to-End Flow', () => {
       http.get('*/rest/v1/sessions*', () => {
         return HttpResponse.json([]);
       }),
-      http.post('*/functions/v1/sessions-hold*', () => {
-        return HttpResponse.json({
-          success: true,
-          data: {
-            holdKey: 'test-hold',
-            holdId: 'hold-1',
-            expiresAt: '2025-01-01T00:05:00Z',
-          },
-        });
-      }),
-      http.post('*/functions/v1/sessions-confirm*', () => {
+      http.post('*/api/book', async ({ request }) => {
         sessionCreated = true;
+        const payload = await request.json();
+        const sessionPayload = (payload?.session ?? {}) as Record<string, unknown>;
         return HttpResponse.json({
           success: true,
           data: {
             session: {
-              id: 'new-session-id',
-              client_id: 'client-1',
-              therapist_id: 'therapist-1',
-              start_time: '2024-03-19T10:00:00Z',
-              end_time: '2024-03-19T11:00:00Z',
-              status: 'scheduled',
-              notes: 'Initial ABA therapy session',
+              id: (sessionPayload.id as string) ?? 'new-session-id',
+              client_id: (sessionPayload.client_id as string) ?? 'client-1',
+              therapist_id: (sessionPayload.therapist_id as string) ?? 'therapist-1',
+              start_time: (sessionPayload.start_time as string) ?? '2024-03-19T10:00:00Z',
+              end_time: (sessionPayload.end_time as string) ?? '2024-03-19T11:00:00Z',
+              status: (sessionPayload.status as string) ?? 'scheduled',
+              notes: (sessionPayload.notes as string) ?? 'Initial ABA therapy session',
               created_at: '2024-03-19T09:00:00Z',
               created_by: 'user-1',
               updated_at: '2024-03-19T09:00:00Z',
               updated_by: 'user-1',
               duration_minutes: 60,
-              location_type: null,
-              session_type: null,
+              location_type: (sessionPayload.location_type as string) ?? null,
+              session_type: (sessionPayload.session_type as string) ?? null,
               rate_per_hour: null,
               total_cost: null,
+            },
+            hold: {
+              holdKey: 'test-hold',
+              holdId: 'hold-1',
+              expiresAt: '2025-01-01T00:05:00Z',
+            },
+            cpt: {
+              code: '97153',
+              description: 'Adaptive behavior treatment by protocol',
+              modifiers: [],
+              source: 'fallback',
+              durationMinutes: 60,
             },
           },
         });

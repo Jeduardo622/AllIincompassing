@@ -422,6 +422,60 @@ export const server = setupServer(
       }
     ]);
   }),
+  http.post('*/api/book', async ({ request }) => {
+    let body: { session?: Record<string, unknown> } | null = null;
+    try {
+      body = await request.json();
+    } catch (error) {
+      console.error('Failed to parse book API payload in tests', error);
+    }
+
+    const sessionPayload = (body?.session ?? {}) as Record<string, unknown>;
+    const startTime = typeof sessionPayload.start_time === 'string'
+      ? sessionPayload.start_time
+      : '2025-03-18T10:00:00Z';
+    const endTime = typeof sessionPayload.end_time === 'string'
+      ? sessionPayload.end_time
+      : '2025-03-18T11:00:00Z';
+
+    const responseSession = {
+      id: (sessionPayload.id as string) ?? 'new-session-id',
+      client_id: (sessionPayload.client_id as string) ?? 'client-1',
+      therapist_id: (sessionPayload.therapist_id as string) ?? 'therapist-1',
+      start_time: startTime,
+      end_time: endTime,
+      status: (sessionPayload.status as string) ?? 'scheduled',
+      notes: (sessionPayload.notes as string) ?? 'Test session',
+      created_at: '2025-03-18T09:00:00Z',
+      created_by: 'user-1',
+      updated_at: '2025-03-18T09:00:00Z',
+      updated_by: 'user-1',
+      duration_minutes: 60,
+      location_type: (sessionPayload.location_type as string) ?? null,
+      session_type: (sessionPayload.session_type as string) ?? null,
+      rate_per_hour: null,
+      total_cost: null,
+    };
+
+    return HttpResponse.json({
+      success: true,
+      data: {
+        session: responseSession,
+        hold: {
+          holdKey: 'test-hold',
+          holdId: 'hold-1',
+          expiresAt: '2025-01-01T00:05:00Z',
+        },
+        cpt: {
+          code: '97153',
+          description: 'Adaptive behavior treatment by protocol',
+          modifiers: [],
+          source: 'fallback',
+          durationMinutes: 60,
+        },
+      },
+    });
+  }),
   // Mock session hold + confirmation flow
   http.post('*/functions/v1/sessions-hold*', () => {
     return HttpResponse.json({

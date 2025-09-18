@@ -112,6 +112,48 @@ describe("bookSession", () => {
     });
   });
 
+  it("normalizes audit metadata before confirmation", async () => {
+    mockedRequestSessionHold.mockResolvedValueOnce({
+      holdKey: "hold-key",
+      holdId: "hold-id",
+      expiresAt: "2025-01-01T00:05:00Z",
+    });
+
+    const confirmedSession: Session = {
+      id: "session-2",
+      client_id: basePayload.session.client_id,
+      therapist_id: basePayload.session.therapist_id,
+      start_time: basePayload.session.start_time,
+      end_time: basePayload.session.end_time,
+      status: "scheduled",
+      notes: "",
+      created_at: "2025-01-01T08:55:00Z",
+      created_by: "user-2",
+      updated_at: "2025-01-01T09:01:00Z",
+      updated_by: "user-3",
+      duration_minutes: 60,
+    };
+
+    mockedConfirmSessionBooking.mockResolvedValueOnce(confirmedSession);
+
+    await bookSession({
+      ...basePayload,
+      session: {
+        ...basePayload.session,
+        created_at: " 2025-01-01T08:55:00Z ",
+        created_by: " user-2 ",
+        updated_at: "\t2025-01-01T09:01:00Z\n",
+        updated_by: "\tuser-3\n",
+      },
+    });
+
+    const confirmationCall = mockedConfirmSessionBooking.mock.calls[0]?.[0];
+    expect(confirmationCall?.session.created_at).toBe("2025-01-01T08:55:00Z");
+    expect(confirmationCall?.session.created_by).toBe("user-2");
+    expect(confirmationCall?.session.updated_at).toBe("2025-01-01T09:01:00Z");
+    expect(confirmationCall?.session.updated_by).toBe("user-3");
+  });
+
   it("releases the hold when confirmation fails", async () => {
     mockedRequestSessionHold.mockResolvedValueOnce({
       holdKey: "hold-key",

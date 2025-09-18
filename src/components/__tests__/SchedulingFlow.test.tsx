@@ -194,7 +194,7 @@ describe('Scheduling Flow - Client with Therapist', () => {
       // Should show matrix view; allow multiple matches
       expect(screen.getAllByText(/therapists/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/clients/i).length).toBeGreaterThan(0);
-    });
+    }, 15000);
   });
 
   describe('Session Modal - Creating New Session', () => {

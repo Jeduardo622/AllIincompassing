@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Edit2, Trash2, FileText, Clock, Lock, FileCheck } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../lib/authContext';
+import { showError, showSuccess } from '../../lib/toast';
 
 interface FileCabinetSetting {
   id: string;
@@ -40,22 +42,36 @@ export default function FileCabinetSettings() {
   });
 
   const queryClient = useQueryClient();
+  const { hasRole, loading: authLoading } = useAuth();
+  const canManageConfig = hasRole('admin');
 
-  const { data: categories = [], isLoading } = useQuery({
+  const {
+    data: categories = [],
+    isLoading,
+    error,
+  } = useQuery<FileCabinetSetting[], Error>({
     queryKey: ['file-cabinet-settings'],
     queryFn: async () => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can load file cabinet settings.');
+      }
       const { data, error } = await supabase
         .from('file_cabinet_settings')
         .select('*')
         .order('category_name');
-      
+
       if (error) throw error;
       return data as FileCabinetSetting[];
     },
+    enabled: canManageConfig,
+    retry: false,
   });
 
   const createCategory = useMutation({
     mutationFn: async (newCategory: FileCabinetFormData) => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can create file cabinet categories.');
+      }
       const { data, error } = await supabase
         .from('file_cabinet_settings')
         .insert([{
@@ -72,11 +88,18 @@ export default function FileCabinetSettings() {
       queryClient.invalidateQueries({ queryKey: ['file-cabinet-settings'] });
       setIsModalOpen(false);
       resetForm();
+      showSuccess('File cabinet category saved successfully');
+    },
+    onError: (mutationError) => {
+      showError(mutationError);
     },
   });
 
   const updateCategory = useMutation({
     mutationFn: async (category: FileCabinetFormData & { id: string }) => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can update file cabinet categories.');
+      }
       const { data, error } = await supabase
         .from('file_cabinet_settings')
         .update({
@@ -94,11 +117,18 @@ export default function FileCabinetSettings() {
       queryClient.invalidateQueries({ queryKey: ['file-cabinet-settings'] });
       setIsModalOpen(false);
       resetForm();
+      showSuccess('File cabinet category updated successfully');
+    },
+    onError: (mutationError) => {
+      showError(mutationError);
     },
   });
 
   const deleteCategory = useMutation({
     mutationFn: async (id: string) => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can delete file cabinet categories.');
+      }
       const { error } = await supabase
         .from('file_cabinet_settings')
         .delete()
@@ -108,6 +138,10 @@ export default function FileCabinetSettings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['file-cabinet-settings'] });
+      showSuccess('File cabinet category deleted successfully');
+    },
+    onError: (mutationError) => {
+      showError(mutationError);
     },
   });
 
@@ -171,6 +205,30 @@ export default function FileCabinetSettings() {
         : [...prev.allowed_file_types, fileType],
     }));
   };
+
+  if (authLoading || isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!canManageConfig) {
+    return (
+      <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200 rounded-md p-6">
+        You do not have permission to manage file cabinet settings.
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-200 rounded-md p-6">
+        Failed to load file cabinet settings: {error.message}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

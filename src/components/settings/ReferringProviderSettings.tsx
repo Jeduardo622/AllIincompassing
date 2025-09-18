@@ -4,6 +4,7 @@ import { Plus, Edit2, Trash2, User, Phone, Mail, Building2, Award, MapPin } from
 import { supabase } from '../../lib/supabase';
 import { prepareFormData } from '../../lib/validation';
 import { showSuccess, showError } from '../../lib/toast';
+import { useAuth } from '../../lib/authContext';
 
 interface ReferringProvider {
   id: string;
@@ -89,25 +90,39 @@ export default function ReferringProviderSettings() {
   });
 
   const queryClient = useQueryClient();
+  const { hasRole, loading: authLoading } = useAuth();
+  const canManageConfig = hasRole('admin');
 
-  const { data: providers = [], isLoading } = useQuery({
+  const {
+    data: providers = [],
+    isLoading,
+    error,
+  } = useQuery<ReferringProvider[], Error>({
     queryKey: ['referring-providers'],
     queryFn: async () => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can load referring providers.');
+      }
       const { data, error } = await supabase
         .from('referring_providers')
         .select('*')
         .order('last_name, first_name');
-      
+
       if (error) throw error;
       return data as ReferringProvider[];
     },
+    enabled: canManageConfig,
+    retry: false,
   });
 
   const createProvider = useMutation({
     mutationFn: async (newProvider: ReferringProviderFormData) => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can create referring providers.');
+      }
       // Format data before submission
       const formattedProvider = prepareFormData(newProvider);
-      
+
       const { data, error } = await supabase
         .from('referring_providers')
         .insert([{
@@ -133,9 +148,12 @@ export default function ReferringProviderSettings() {
 
   const updateProvider = useMutation({
     mutationFn: async (provider: ReferringProviderFormData & { id: string }) => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can update referring providers.');
+      }
       // Format data before submission
       const formattedProvider = prepareFormData(provider);
-      
+
       const { data, error } = await supabase
         .from('referring_providers')
         .update({
@@ -162,6 +180,9 @@ export default function ReferringProviderSettings() {
 
   const deleteProvider = useMutation({
     mutationFn: async (id: string) => {
+      if (!canManageConfig) {
+        throw new Error('Only admins can delete referring providers.');
+      }
       const { error } = await supabase
         .from('referring_providers')
         .delete()
@@ -245,6 +266,30 @@ export default function ReferringProviderSettings() {
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
     }));
   };
+
+  if (authLoading || isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!canManageConfig) {
+    return (
+      <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200 rounded-md p-6">
+        You do not have permission to manage referring providers.
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-200 rounded-md p-6">
+        Failed to load referring providers: {error.message}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

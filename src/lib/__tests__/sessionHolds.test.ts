@@ -101,6 +101,54 @@ describe("session holds API helpers", () => {
     ).rejects.toThrow(/Therapist already booked/);
   });
 
+  it("rejects a second hold when the slot is already reserved", async () => {
+    mockedCallEdge
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          data: { holdKey: "hold-1", holdId: "1", expiresAt: "2025-01-01T00:05:00Z" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            success: false,
+            error: "Therapist already has a hold during this time.",
+            code: "THERAPIST_HOLD_CONFLICT",
+          },
+          409,
+        ),
+      );
+
+    const holdRequest = {
+      therapistId: "therapist",
+      clientId: "client",
+      startTime: "2025-01-01T00:00:00Z",
+      endTime: "2025-01-01T01:00:00Z",
+      startTimeOffsetMinutes: 0,
+      endTimeOffsetMinutes: 0,
+      timeZone: "UTC",
+    } as const;
+
+    const [firstResult, secondResult] = await Promise.allSettled([
+      requestSessionHold({ ...holdRequest }),
+      requestSessionHold({ ...holdRequest }),
+    ]);
+
+    const fulfilled = [firstResult, secondResult].filter(
+      (result): result is PromiseFulfilledResult<unknown> => result.status === "fulfilled",
+    );
+    const rejected = [firstResult, secondResult].filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toBeInstanceOf(Error);
+    expect(rejected[0]?.reason.message).toMatch(/hold/);
+    expect(mockedCallEdge).toHaveBeenCalledTimes(2);
+  });
+
   it("confirms a session when hold is valid", async () => {
     mockedCallEdge.mockResolvedValueOnce(
       jsonResponse({

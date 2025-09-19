@@ -11,6 +11,7 @@ vi.mock("../supabase", () => ({
 }));
 
 const mockedCallEdge = vi.mocked(callEdge);
+const ACCESS_TOKEN = "edge-access-token";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -37,6 +38,7 @@ describe("session holds API helpers", () => {
       startTimeOffsetMinutes: 0,
       endTimeOffsetMinutes: 0,
       timeZone: "UTC",
+      accessToken: ACCESS_TOKEN,
     });
 
     expect(result).toEqual({ holdKey: "hold-key", holdId: "1", expiresAt: "2025-01-01T00:05:00Z" });
@@ -56,6 +58,7 @@ describe("session holds API helpers", () => {
           time_zone: "UTC",
         }),
       }),
+      { accessToken: ACCESS_TOKEN },
     );
   });
 
@@ -73,6 +76,7 @@ describe("session holds API helpers", () => {
       startTimeOffsetMinutes: 0,
       endTimeOffsetMinutes: 0,
       timeZone: "UTC",
+      accessToken: ACCESS_TOKEN,
     });
 
     expect(mockedCallEdge).toHaveBeenCalledWith(
@@ -80,6 +84,7 @@ describe("session holds API helpers", () => {
       expect.objectContaining({
         headers: expect.objectContaining({ "Idempotency-Key": "unique-key" }),
       }),
+      { accessToken: ACCESS_TOKEN },
     );
   });
 
@@ -97,6 +102,7 @@ describe("session holds API helpers", () => {
         startTimeOffsetMinutes: 0,
         endTimeOffsetMinutes: 0,
         timeZone: "UTC",
+        accessToken: ACCESS_TOKEN,
       }),
     ).rejects.toThrow(/Therapist already booked/);
   });
@@ -128,6 +134,7 @@ describe("session holds API helpers", () => {
       startTimeOffsetMinutes: 0,
       endTimeOffsetMinutes: 0,
       timeZone: "UTC",
+      accessToken: ACCESS_TOKEN,
     } as const;
 
     const [firstResult, secondResult] = await Promise.allSettled([
@@ -188,6 +195,7 @@ describe("session holds API helpers", () => {
       startTimeOffsetMinutes: 0,
       endTimeOffsetMinutes: 0,
       timeZone: "UTC",
+      accessToken: ACCESS_TOKEN,
     });
 
     expect(session.id).toBe("session-1");
@@ -195,6 +203,7 @@ describe("session holds API helpers", () => {
     expect(mockedCallEdge).toHaveBeenCalledWith(
       "sessions-confirm",
       expect.objectContaining({ method: "POST" }),
+      { accessToken: ACCESS_TOKEN },
     );
   });
 
@@ -234,6 +243,7 @@ describe("session holds API helpers", () => {
       startTimeOffsetMinutes: 0,
       endTimeOffsetMinutes: 0,
       timeZone: "UTC",
+      accessToken: ACCESS_TOKEN,
     });
 
     expect(session.duration_minutes).toBe(45);
@@ -314,6 +324,7 @@ describe("session holds API helpers", () => {
           startTimeOffsetMinutes: 0,
           endTimeOffsetMinutes: 0,
           timeZone: "UTC",
+          accessToken: ACCESS_TOKEN,
         });
 
         expect(session.duration_minutes).toBe(roundedDuration);
@@ -347,6 +358,7 @@ describe("session holds API helpers", () => {
         startTimeOffsetMinutes: 0,
         endTimeOffsetMinutes: 0,
         timeZone: "UTC",
+        accessToken: ACCESS_TOKEN,
       }),
     ).rejects.toThrow(/Hold has expired/);
   });
@@ -381,6 +393,7 @@ describe("session holds API helpers", () => {
       startTimeOffsetMinutes: 0,
       endTimeOffsetMinutes: 0,
       timeZone: "UTC",
+      accessToken: ACCESS_TOKEN,
     });
 
     expect(mockedCallEdge).toHaveBeenCalledWith(
@@ -388,6 +401,7 @@ describe("session holds API helpers", () => {
       expect.objectContaining({
         headers: expect.objectContaining({ "Idempotency-Key": "confirm-key" }),
       }),
+      { accessToken: ACCESS_TOKEN },
     );
   });
 
@@ -410,7 +424,7 @@ describe("session holds API helpers", () => {
       }),
     );
 
-    const result = await cancelSessionHold({ holdKey: "hold-key" });
+    const result = await cancelSessionHold({ holdKey: "hold-key", accessToken: ACCESS_TOKEN });
 
     expect(result).toEqual({
       released: true,
@@ -427,19 +441,25 @@ describe("session holds API helpers", () => {
     expect(mockedCallEdge).toHaveBeenCalledWith(
       "sessions-cancel",
       expect.objectContaining({ method: "POST" }),
+      { accessToken: ACCESS_TOKEN },
     );
   });
 
   it("passes idempotency key when cancelling a hold", async () => {
     mockedCallEdge.mockResolvedValueOnce(jsonResponse({ success: true, data: { released: false } }));
 
-    await cancelSessionHold({ holdKey: "hold-key", idempotencyKey: "cancel-key" });
+    await cancelSessionHold({
+      holdKey: "hold-key",
+      idempotencyKey: "cancel-key",
+      accessToken: ACCESS_TOKEN,
+    });
 
     expect(mockedCallEdge).toHaveBeenCalledWith(
       "sessions-cancel",
       expect.objectContaining({
         headers: expect.objectContaining({ "Idempotency-Key": "cancel-key" }),
       }),
+      { accessToken: ACCESS_TOKEN },
     );
   });
 
@@ -448,6 +468,8 @@ describe("session holds API helpers", () => {
       jsonResponse({ success: false, error: "Hold not found" }, 404),
     );
 
-    await expect(cancelSessionHold({ holdKey: "missing" })).rejects.toThrow(/Hold not found/);
+    await expect(
+      cancelSessionHold({ holdKey: "missing", accessToken: ACCESS_TOKEN }),
+    ).rejects.toThrow(/Hold not found/);
   });
 });

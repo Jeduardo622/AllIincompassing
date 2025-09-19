@@ -35,6 +35,7 @@ const basePayload = {
   startTimeOffsetMinutes: 0,
   endTimeOffsetMinutes: 0,
   timeZone: "UTC",
+  accessToken: "test-access-token",
 } as const;
 
 beforeEach(() => {
@@ -84,6 +85,7 @@ describe("bookSession", () => {
       startTimeOffsetMinutes: 0,
       endTimeOffsetMinutes: 0,
       timeZone: "UTC",
+      accessToken: basePayload.accessToken,
     });
 
     expect(mockedConfirmSessionBooking).toHaveBeenCalledWith({
@@ -96,6 +98,7 @@ describe("bookSession", () => {
       startTimeOffsetMinutes: 0,
       endTimeOffsetMinutes: 0,
       timeZone: "UTC",
+      accessToken: basePayload.accessToken,
     });
 
     expect(mockedPersistSessionCptMetadata).toHaveBeenCalledWith({
@@ -115,7 +118,10 @@ describe("bookSession", () => {
     mockedConfirmSessionBooking.mockRejectedValueOnce(new Error("unable to confirm"));
 
     await expect(bookSession(basePayload)).rejects.toThrow("unable to confirm");
-    expect(mockedCancelSessionHold).toHaveBeenCalledWith({ holdKey: "hold-key" });
+    expect(mockedCancelSessionHold).toHaveBeenCalledWith({
+      holdKey: "hold-key",
+      accessToken: basePayload.accessToken,
+    });
     expect(mockedPersistSessionCptMetadata).not.toHaveBeenCalled();
   });
 
@@ -209,6 +215,7 @@ describe("bookSession", () => {
       expect.objectContaining({
         holdKey: "hold-key",
         idempotencyKey,
+        accessToken: basePayload.accessToken,
       }),
     );
 
@@ -313,7 +320,10 @@ describe("bookSession", () => {
 
     if (losingHold) {
       expect(cancelledHoldKeys).toContain(losingHold.holdKey);
-      expect(mockedCancelSessionHold).toHaveBeenCalledWith({ holdKey: losingHold.holdKey });
+      expect(mockedCancelSessionHold).toHaveBeenCalledWith({
+        holdKey: losingHold.holdKey,
+        accessToken: basePayload.accessToken,
+      });
     }
 
     expect(mockedPersistSessionCptMetadata).toHaveBeenCalledTimes(1);

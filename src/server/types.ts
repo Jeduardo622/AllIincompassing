@@ -22,6 +22,7 @@ export interface BookSessionRequest {
   holdSeconds?: number;
   idempotencyKey?: string;
   overrides?: BookingOverrides;
+  accessToken: string;
 }
 
 export interface DerivedCpt {
@@ -38,7 +39,7 @@ export interface BookSessionResult {
   cpt: DerivedCpt;
 }
 
-export type BookSessionApiRequestBody = Omit<BookSessionRequest, "idempotencyKey">;
+export type BookSessionApiRequestBody = Omit<BookSessionRequest, "idempotencyKey" | "accessToken">;
 
 export interface BookSessionApiResponse {
   success: boolean;

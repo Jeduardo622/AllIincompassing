@@ -53,6 +53,7 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
     startTimeOffsetMinutes: payload.startTimeOffsetMinutes,
     endTimeOffsetMinutes: payload.endTimeOffsetMinutes,
     timeZone: payload.timeZone,
+    accessToken: payload.accessToken,
   });
 
   const sessionPayload: BookableSession = {
@@ -69,10 +70,11 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
       startTimeOffsetMinutes: payload.startTimeOffsetMinutes,
       endTimeOffsetMinutes: payload.endTimeOffsetMinutes,
       timeZone: payload.timeZone,
+      accessToken: payload.accessToken,
     });
   } catch (error) {
     try {
-      await cancelSessionHold({ holdKey: hold.holdKey });
+      await cancelSessionHold({ holdKey: hold.holdKey, accessToken: payload.accessToken });
     } catch (releaseError) {
       console.warn("Failed to release session hold after confirmation error", releaseError);
     }

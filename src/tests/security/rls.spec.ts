@@ -24,6 +24,8 @@ interface AdminContext {
   userId: string;
 }
 
+type OrgRecordIds = { orgA: string; orgB: string };
+
 const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ?? '';
 const SERVICE_ROLE_KEY =
@@ -50,6 +52,26 @@ const createdFileCabinetCategoryIds: string[] = [];
 const uploadedClientDocumentPaths: string[] = [];
 let companySettingsId: string | null = null;
 let originalCompanyName: string | null = null;
+
+const createdCptCodeIds: string[] = [];
+const createdBillingModifierIds: string[] = [];
+const createdSessionCptEntryIds: string[] = [];
+const createdSessionCptModifierIds: string[] = [];
+const createdAiCacheIds: string[] = [];
+const createdAiSessionNoteIds: string[] = [];
+const createdBehavioralPatternIds: string[] = [];
+const createdSessionTranscriptIds: string[] = [];
+const createdUserSessionIds: string[] = [];
+
+let sessionCptEntryIdsByOrg: OrgRecordIds | null = null;
+let sessionCptModifierIdsByOrg: OrgRecordIds | null = null;
+let aiSessionNoteIdsByOrg: OrgRecordIds | null = null;
+let behavioralPatternIdsByOrg: OrgRecordIds | null = null;
+let sessionTranscriptIdsByOrg: OrgRecordIds | null = null;
+let userSessionIdsByOrg: OrgRecordIds | null = null;
+let aiCacheIdsByOrg: OrgRecordIds | null = null;
+
+const userSessionIdsByUser = new Map<string, string>();
 
 const createTenantFixture = async (label: string, organizationId: string): Promise<TenantContext> => {
   if (!serviceClient) {
@@ -250,6 +272,300 @@ const ensureTelemetryTableExists = async (tableName: string): Promise<boolean> =
   }
 
   throw error;
+};
+
+const randomSuffix = (): string => {
+  return Math.random().toString(36).slice(2, 10);
+};
+
+const generateCptCode = (): string => {
+  return `${Math.floor(10000 + Math.random() * 90000)}`;
+};
+
+const generateModifierCode = (): string => {
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let index = 0; index < 4; index += 1) {
+    result += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+  return result;
+};
+
+const ensureSessionCptEntriesSeeded = async (): Promise<void> => {
+  if (!serviceClient || !orgAContext || !orgBContext || sessionCptEntryIdsByOrg) {
+    return;
+  }
+
+  const cptCode = generateCptCode();
+  const { data: cptRow, error: cptInsertError } = await serviceClient
+    .from('cpt_codes')
+    .insert({
+      code: cptCode,
+      short_description: `RLS Test ${cptCode}`,
+      long_description: 'Generated for RLS coverage tests',
+      service_setting: 'testing',
+      typical_duration_minutes: 60,
+    })
+    .select('id')
+    .single();
+
+  if (cptInsertError || !cptRow) {
+    throw cptInsertError ?? new Error('Failed to insert CPT code for tests');
+  }
+
+  createdCptCodeIds.push(cptRow.id);
+
+  const insertEntryForContext = async (context: TenantContext, label: string) => {
+    const { data, error } = await serviceClient
+      .from('session_cpt_entries')
+      .insert({
+        session_id: context.sessionId,
+        cpt_code_id: cptRow.id,
+        line_number: 1,
+        units: 1,
+        billed_minutes: 60,
+        rate: 120,
+        is_primary: true,
+        notes: `RLS coverage entry ${label}`,
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      throw error ?? new Error('Failed to insert session CPT entry for tests');
+    }
+
+    createdSessionCptEntryIds.push(data.id);
+    return data.id;
+  };
+
+  const orgAId = await insertEntryForContext(orgAContext, 'orgA');
+  const orgBId = await insertEntryForContext(orgBContext, 'orgB');
+
+  sessionCptEntryIdsByOrg = { orgA: orgAId, orgB: orgBId };
+};
+
+const ensureSessionCptModifiersSeeded = async (): Promise<void> => {
+  if (!serviceClient || !orgAContext || !orgBContext || sessionCptModifierIdsByOrg) {
+    return;
+  }
+
+  await ensureSessionCptEntriesSeeded();
+
+  if (!sessionCptEntryIdsByOrg) {
+    throw new Error('Session CPT entries were not seeded before modifier seeding');
+  }
+
+  const modifierCode = generateModifierCode();
+  const { data: modifierRow, error: modifierInsertError } = await serviceClient
+    .from('billing_modifiers')
+    .insert({
+      code: modifierCode,
+      description: 'RLS coverage modifier',
+      billing_note: 'Generated during RLS policy coverage tests',
+    })
+    .select('id')
+    .single();
+
+  if (modifierInsertError || !modifierRow) {
+    throw modifierInsertError ?? new Error('Failed to insert billing modifier for tests');
+  }
+
+  createdBillingModifierIds.push(modifierRow.id);
+
+  const insertModifierForEntry = async (entryId: string, position: number) => {
+    const { data, error } = await serviceClient
+      .from('session_cpt_modifiers')
+      .insert({
+        session_cpt_entry_id: entryId,
+        modifier_id: modifierRow.id,
+        position,
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      throw error ?? new Error('Failed to insert session CPT modifier for tests');
+    }
+
+    createdSessionCptModifierIds.push(data.id);
+    return data.id;
+  };
+
+  const orgAModifierId = await insertModifierForEntry(sessionCptEntryIdsByOrg.orgA, 1);
+  const orgBModifierId = await insertModifierForEntry(sessionCptEntryIdsByOrg.orgB, 1);
+
+  sessionCptModifierIdsByOrg = { orgA: orgAModifierId, orgB: orgBModifierId };
+};
+
+const ensureAiSessionNotesSeeded = async (): Promise<void> => {
+  if (!serviceClient || !orgAContext || !orgBContext || aiSessionNoteIdsByOrg) {
+    return;
+  }
+
+  const insertNoteForContext = async (context: TenantContext, label: string) => {
+    const start = new Date();
+    const end = new Date(start.getTime() + 45 * 60 * 1000);
+
+    const { data, error } = await serviceClient
+      .from('ai_session_notes')
+      .insert({
+        session_id: context.sessionId,
+        therapist_id: context.therapistId,
+        client_id: context.clientId,
+        session_date: start.toISOString(),
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
+        session_duration: 45,
+        ai_generated_summary: `Automated summary ${label}`,
+        ai_confidence_score: 0.88,
+        participants: ['therapist', 'client'],
+        manual_edits: [],
+        recommendations: [`Follow-up ${label}`],
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      throw error ?? new Error('Failed to insert AI session note for tests');
+    }
+
+    createdAiSessionNoteIds.push(data.id);
+    return data.id;
+  };
+
+  const orgANoteId = await insertNoteForContext(orgAContext, 'orgA');
+  const orgBNoteId = await insertNoteForContext(orgBContext, 'orgB');
+
+  aiSessionNoteIdsByOrg = { orgA: orgANoteId, orgB: orgBNoteId };
+};
+
+const ensureBehavioralPatternsSeeded = async (): Promise<void> => {
+  if (!serviceClient || !orgAContext || !orgBContext || behavioralPatternIdsByOrg) {
+    return;
+  }
+
+  const insertPatternForContext = async (context: TenantContext, label: string) => {
+    const { data, error } = await serviceClient
+      .from('behavioral_patterns')
+      .insert({
+        pattern_name: `RLS Pattern ${label} ${randomSuffix()}`,
+        pattern_type: 'aba',
+        regex_pattern: `^${label}-${randomSuffix()}$`,
+        created_by: context.therapistId,
+        confidence_weight: 0.75,
+        is_active: true,
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      throw error ?? new Error('Failed to insert behavioral pattern for tests');
+    }
+
+    createdBehavioralPatternIds.push(data.id);
+    return data.id;
+  };
+
+  const orgAPatternId = await insertPatternForContext(orgAContext, 'orgA');
+  const orgBPatternId = await insertPatternForContext(orgBContext, 'orgB');
+
+  behavioralPatternIdsByOrg = { orgA: orgAPatternId, orgB: orgBPatternId };
+};
+
+const ensureSessionTranscriptsSeeded = async (): Promise<void> => {
+  if (!serviceClient || !orgAContext || !orgBContext || sessionTranscriptIdsByOrg) {
+    return;
+  }
+
+  const insertTranscriptForContext = async (context: TenantContext, label: string) => {
+    const { data, error } = await serviceClient
+      .from('session_transcripts')
+      .insert({
+        session_id: context.sessionId,
+        processed_transcript: `Processed transcript for ${label}`,
+        raw_transcript: `Raw transcript for ${label}`,
+        confidence_score: 0.93,
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      throw error ?? new Error('Failed to insert session transcript for tests');
+    }
+
+    createdSessionTranscriptIds.push(data.id);
+    return data.id;
+  };
+
+  const orgATranscriptId = await insertTranscriptForContext(orgAContext, 'orgA');
+  const orgBTranscriptId = await insertTranscriptForContext(orgBContext, 'orgB');
+
+  sessionTranscriptIdsByOrg = { orgA: orgATranscriptId, orgB: orgBTranscriptId };
+};
+
+const ensureUserSessionsSeeded = async (): Promise<void> => {
+  if (!serviceClient || !orgAContext || !orgBContext || userSessionIdsByOrg) {
+    return;
+  }
+
+  const insertUserSessionForContext = async (context: TenantContext, label: string) => {
+    const { data, error } = await serviceClient
+      .from('user_sessions')
+      .insert({
+        user_id: context.userId,
+        session_token: `token-${label}-${randomSuffix()}`,
+        expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        is_active: true,
+        user_agent: `vitest/${label}`,
+      })
+      .select('id, user_id')
+      .single();
+
+    if (error || !data) {
+      throw error ?? new Error('Failed to insert user session for tests');
+    }
+
+    createdUserSessionIds.push(data.id);
+    userSessionIdsByUser.set(context.userId, data.id);
+    return data.id;
+  };
+
+  const orgAUserSessionId = await insertUserSessionForContext(orgAContext, 'orgA');
+  const orgBUserSessionId = await insertUserSessionForContext(orgBContext, 'orgB');
+
+  userSessionIdsByOrg = { orgA: orgAUserSessionId, orgB: orgBUserSessionId };
+};
+
+const ensureAiCacheSeeded = async (): Promise<void> => {
+  if (!serviceClient || !orgAContext || !orgBContext || aiCacheIdsByOrg) {
+    return;
+  }
+
+  const insertCacheRow = async (label: string) => {
+    const { data, error } = await serviceClient
+      .from('ai_cache')
+      .insert({
+        function_name: `generate_plan_${label}`,
+        input_hash: `hash-${label}-${randomSuffix()}`,
+        response_data: { source: 'rls-tests', label },
+        expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      throw error ?? new Error('Failed to insert AI cache row for tests');
+    }
+
+    createdAiCacheIds.push(data.id);
+    return data.id;
+  };
+
+  const orgACacheId = await insertCacheRow('orgA');
+  const orgBCacheId = await insertCacheRow('orgB');
+
+  aiCacheIdsByOrg = { orgA: orgACacheId, orgB: orgBCacheId };
 };
 
 beforeAll(async () => {
@@ -476,12 +792,58 @@ afterAll(async () => {
 
   const contexts = [orgAContext, orgBContext].filter(Boolean) as TenantContext[];
   for (const context of contexts) {
+    const userSessionId = userSessionIdsByUser.get(context.userId);
+    if (userSessionId) {
+      await serviceClient.from('user_sessions').delete().eq('id', userSessionId);
+      userSessionIdsByUser.delete(context.userId);
+      const index = createdUserSessionIds.indexOf(userSessionId);
+      if (index >= 0) {
+        createdUserSessionIds.splice(index, 1);
+      }
+    }
+
     await serviceClient.from('sessions').delete().eq('id', context.sessionId);
     await serviceClient.from('clients').delete().eq('id', context.clientId);
     await serviceClient.from('user_therapist_links').delete().eq('user_id', context.userId);
     await serviceClient.from('therapists').delete().eq('id', context.therapistId);
     await serviceClient.auth.admin.deleteUser(context.userId);
     await serviceClient.auth.admin.deleteUser(context.clientUserId);
+  }
+
+  if (createdSessionCptModifierIds.length > 0) {
+    await serviceClient.from('session_cpt_modifiers').delete().in('id', createdSessionCptModifierIds);
+  }
+
+  if (createdSessionCptEntryIds.length > 0) {
+    await serviceClient.from('session_cpt_entries').delete().in('id', createdSessionCptEntryIds);
+  }
+
+  if (createdAiSessionNoteIds.length > 0) {
+    await serviceClient.from('ai_session_notes').delete().in('id', createdAiSessionNoteIds);
+  }
+
+  if (createdBehavioralPatternIds.length > 0) {
+    await serviceClient.from('behavioral_patterns').delete().in('id', createdBehavioralPatternIds);
+  }
+
+  if (createdSessionTranscriptIds.length > 0) {
+    await serviceClient.from('session_transcripts').delete().in('id', createdSessionTranscriptIds);
+  }
+
+  if (createdAiCacheIds.length > 0) {
+    await serviceClient.from('ai_cache').delete().in('id', createdAiCacheIds);
+  }
+
+  if (createdUserSessionIds.length > 0) {
+    await serviceClient.from('user_sessions').delete().in('id', createdUserSessionIds);
+  }
+
+  if (createdCptCodeIds.length > 0) {
+    await serviceClient.from('cpt_codes').delete().in('id', createdCptCodeIds);
+  }
+
+  if (createdBillingModifierIds.length > 0) {
+    await serviceClient.from('billing_modifiers').delete().in('id', createdBillingModifierIds);
   }
 
   if (createdLocationIds.length > 0) {
@@ -669,6 +1031,164 @@ describe('row level security for multi-tenant tables', () => {
       expectRlsViolation(result.error, affectedRows);
     } finally {
       await supabaseOrgA.auth.signOut();
+    }
+  });
+});
+
+describe('session artifacts enforce tenant isolation', () => {
+  type OrgScopedConfig = {
+    table: keyof Database['public']['Tables'];
+    label: string;
+    seed: () => Promise<void>;
+    getIds: () => OrgRecordIds | null;
+    allowsAssignedTherapist?: boolean;
+    allowsAdmin?: boolean;
+  };
+
+  const orgScopedConfigs: OrgScopedConfig[] = [
+    {
+      table: 'session_cpt_entries',
+      label: 'session CPT entries',
+      seed: ensureSessionCptEntriesSeeded,
+      getIds: () => sessionCptEntryIdsByOrg,
+    },
+    {
+      table: 'session_cpt_modifiers',
+      label: 'session CPT modifiers',
+      seed: ensureSessionCptModifiersSeeded,
+      getIds: () => sessionCptModifierIdsByOrg,
+    },
+    {
+      table: 'ai_session_notes',
+      label: 'AI session notes',
+      seed: ensureAiSessionNotesSeeded,
+      getIds: () => aiSessionNoteIdsByOrg,
+    },
+    {
+      table: 'behavioral_patterns',
+      label: 'behavioral patterns',
+      seed: ensureBehavioralPatternsSeeded,
+      getIds: () => behavioralPatternIdsByOrg,
+    },
+    {
+      table: 'session_transcripts',
+      label: 'session transcripts',
+      seed: ensureSessionTranscriptsSeeded,
+      getIds: () => sessionTranscriptIdsByOrg,
+    },
+    {
+      table: 'user_sessions',
+      label: 'user sessions',
+      seed: ensureUserSessionsSeeded,
+      getIds: () => userSessionIdsByOrg,
+    },
+    {
+      table: 'ai_cache',
+      label: 'AI cache entries',
+      seed: ensureAiCacheSeeded,
+      getIds: () => aiCacheIdsByOrg,
+      allowsAssignedTherapist: false,
+    },
+  ];
+
+  beforeAll(async () => {
+    if (!runTests || !serviceClient || !orgAContext || !orgBContext) {
+      return;
+    }
+
+    for (const config of orgScopedConfigs) {
+      await config.seed();
+    }
+  });
+
+  orgScopedConfigs.forEach((config) => {
+    it(`prevents therapists from reading other organization ${config.label}`, async () => {
+      if (!runTests || !orgAContext || !orgBContext) {
+        console.log('⏭️  Skipping RLS test - setup incomplete.');
+        return;
+      }
+
+      const recordIds = config.getIds();
+      if (!recordIds) {
+        console.log(`⏭️  Skipping ${config.table} RLS test - seed data unavailable.`);
+        return;
+      }
+
+      const supabaseOrgB = await signInTherapist(orgBContext);
+      try {
+        const result = await supabaseOrgB
+          .from(config.table)
+          .select('id')
+          .eq('id', recordIds.orgA)
+          .maybeSingle();
+
+        if (result.error) {
+          expectRlsViolation(result.error);
+          return;
+        }
+
+        expect(result.data).toBeNull();
+      } finally {
+        await supabaseOrgB.auth.signOut();
+      }
+    });
+
+    if (config.allowsAssignedTherapist !== false) {
+      it(`allows assigned therapists to access their ${config.label}`, async () => {
+        if (!runTests || !orgAContext) {
+          console.log('⏭️  Skipping RLS test - setup incomplete.');
+          return;
+        }
+
+        const recordIds = config.getIds();
+        if (!recordIds) {
+          console.log(`⏭️  Skipping ${config.table} allow test - seed data unavailable.`);
+          return;
+        }
+
+        const supabaseOrgA = await signInTherapist(orgAContext);
+        try {
+          const result = await supabaseOrgA
+            .from(config.table)
+            .select('id')
+            .eq('id', recordIds.orgA)
+            .maybeSingle();
+
+          expect(result.error).toBeNull();
+          expect(result.data?.id).toBe(recordIds.orgA);
+        } finally {
+          await supabaseOrgA.auth.signOut();
+        }
+      });
+    }
+
+    if (config.allowsAdmin !== false) {
+      it(`allows admins to access ${config.label}`, async () => {
+        if (!runTests || !adminContext) {
+          console.log('⏭️  Skipping RLS test - setup incomplete.');
+          return;
+        }
+
+        const recordIds = config.getIds();
+        if (!recordIds) {
+          console.log(`⏭️  Skipping ${config.table} admin test - seed data unavailable.`);
+          return;
+        }
+
+        const adminClient = await signInAdmin(adminContext);
+        try {
+          const result = await adminClient
+            .from(config.table)
+            .select('id')
+            .eq('id', recordIds.orgA)
+            .maybeSingle();
+
+          expect(result.error).toBeNull();
+          expect(result.data?.id).toBe(recordIds.orgA);
+        } finally {
+          await adminClient.auth.signOut();
+        }
+      });
     }
   });
 });

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { getRuntimeSupabaseConfig } from '../lib/runtimeConfig';
 
 interface BootDiagnosticsProps {
   enabled?: boolean;
@@ -14,10 +15,10 @@ type PendingRequest = {
 };
 
 const KEY_LIST = [
-  'VITE_SUPABASE_URL',
-  'VITE_SUPABASE_ANON_KEY',
-  'VITE_SUPABASE_EDGE_URL',
-];
+  ['SUPABASE_URL', 'supabaseUrl'],
+  ['SUPABASE_ANON_KEY', 'supabaseAnonKey'],
+  ['SUPABASE_EDGE_URL', 'supabaseEdgeUrl'],
+] as const;
 
 export default function BootDiagnostics({ enabled, children }: BootDiagnosticsProps) {
   const [open, setOpen] = useState(false);
@@ -29,16 +30,18 @@ export default function BootDiagnostics({ enabled, children }: BootDiagnosticsPr
 
   // Evaluate presence of env keys without exposing values
   const envPresence = useMemo(() => {
-    const env = ((import.meta as unknown) as { env?: Record<string, unknown> }).env ?? {};
-    const info: Record<string, boolean> = {};
-    for (const k of KEY_LIST) info[k] = Boolean(env[k]);
-    // Also surface VITE_API_* keys generically
-    Object.keys(env)
-      .filter((k) => k.startsWith('VITE_API_'))
-      .forEach((k) => {
-        info[k] = Boolean((env as Record<string, unknown>)[k]);
-      });
-    return info;
+    try {
+      const config = getRuntimeSupabaseConfig();
+      return KEY_LIST.reduce<Record<string, boolean>>((acc, [label, key]) => {
+        acc[label] = Boolean((config as Record<string, unknown>)[key]);
+        return acc;
+      }, {});
+    } catch {
+      return KEY_LIST.reduce<Record<string, boolean>>((acc, [label]) => {
+        acc[label] = false;
+        return acc;
+      }, {});
+    }
   }, []);
 
   useEffect(() => {

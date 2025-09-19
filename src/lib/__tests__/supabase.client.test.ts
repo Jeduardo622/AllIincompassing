@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { setRuntimeSupabaseConfig, resetRuntimeSupabaseConfigForTests } from '../runtimeConfig';
 
 const makeChain = () => {
   const self: any = {
@@ -13,6 +14,18 @@ const makeChain = () => {
 };
 
 describe('supabase client singleton', () => {
+  beforeEach(() => {
+    resetRuntimeSupabaseConfigForTests();
+    setRuntimeSupabaseConfig({
+      supabaseUrl: 'https://test-project.supabase.co',
+      supabaseAnonKey: 'anon-key',
+    });
+  });
+
+  afterEach(() => {
+    resetRuntimeSupabaseConfigForTests();
+  });
+
   it('returns the same instance across imports', async () => {
     const mod1 = await import('../supabase');
     const mod2 = await import('../supabase');
@@ -31,6 +44,12 @@ describe('supabase client singleton', () => {
       .single();
     expect(error).toBeNull();
     expect(data).toBeNull();
+  });
+
+  it('throws a descriptive error when runtime config is missing', async () => {
+    resetRuntimeSupabaseConfigForTests();
+    vi.resetModules();
+    await expect(import('../supabaseClient')).rejects.toThrow(/Failed to initialise client/);
   });
 });
 

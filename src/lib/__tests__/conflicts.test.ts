@@ -2,16 +2,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { checkSchedulingConflicts, suggestAlternativeTimes } from '../conflicts';
 import { parseISO, addHours } from 'date-fns';
 import { fromZonedTime } from 'date-fns-tz';
-import { supabase } from '../supabase';
-
 // Mock supabase
 vi.mock('../supabase', () => ({
   supabase: {
     functions: {
-      invoke: vi.fn()
-    }
-  }
+      invoke: vi.fn(),
+    },
+  },
 }));
+
+let supabase: { functions: { invoke: ReturnType<typeof vi.fn> } };
+
+beforeEach(async () => {
+  ({ supabase } = await import('../supabase'));
+  vi.mocked(supabase.functions.invoke).mockReset();
+});
 
 describe('checkSchedulingConflicts', () => {
   const mockTherapist = {

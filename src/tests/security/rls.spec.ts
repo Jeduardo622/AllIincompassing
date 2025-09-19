@@ -61,8 +61,12 @@ const createdAiCacheIds: string[] = [];
 const createdAiSessionNoteIds: string[] = [];
 const createdBehavioralPatternIds: string[] = [];
 const createdSessionTranscriptIds: string[] = [];
+const createdSessionTranscriptSegmentIds: string[] = [];
 const createdSessionHoldIds: string[] = [];
 const createdUserSessionIds: string[] = [];
+const createdConversationIds: string[] = [];
+const createdSessionNoteTemplateIds: string[] = [];
+const createdAdminActionIds: string[] = [];
 
 let sessionCptEntryIdsByOrg: OrgRecordIds | null = null;
 let sessionCptModifierIdsByOrg: OrgRecordIds | null = null;
@@ -72,6 +76,9 @@ let sessionTranscriptIdsByOrg: OrgRecordIds | null = null;
 let userSessionIdsByOrg: OrgRecordIds | null = null;
 let aiCacheIdsByOrg: OrgRecordIds | null = null;
 let sessionHoldIdsByOrg: OrgRecordIds | null = null;
+let conversationIdsByOrg: OrgRecordIds | null = null;
+let sessionNoteTemplateIdsByOrg: OrgRecordIds | null = null;
+let sessionTranscriptSegmentIdsByOrg: OrgRecordIds | null = null;
 
 const userSessionIdsByUser = new Map<string, string>();
 
@@ -619,6 +626,108 @@ const ensureAiCacheSeeded = async (): Promise<void> => {
   aiCacheIdsByOrg = { orgA: orgACacheId, orgB: orgBCacheId };
 };
 
+const ensureConversationsSeeded = async (): Promise<void> => {
+  if (!serviceClient || !orgAContext || !orgBContext || conversationIdsByOrg) {
+    return;
+  }
+
+  const insertConversationForContext = async (context: TenantContext, label: string) => {
+    const { data, error } = await serviceClient
+      .from('conversations')
+      .insert({
+        user_id: context.userId,
+        title: `RLS Conversation ${label}`,
+        metadata: { label, source: 'rls-tests' },
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      throw error ?? new Error('Failed to insert conversation for tests');
+    }
+
+    createdConversationIds.push(data.id);
+    return data.id;
+  };
+
+  const orgAConversationId = await insertConversationForContext(orgAContext, 'orgA');
+  const orgBConversationId = await insertConversationForContext(orgBContext, 'orgB');
+
+  conversationIdsByOrg = { orgA: orgAConversationId, orgB: orgBConversationId };
+};
+
+const ensureSessionNoteTemplatesSeeded = async (): Promise<void> => {
+  if (!serviceClient || !orgAContext || !orgBContext || sessionNoteTemplateIdsByOrg) {
+    return;
+  }
+
+  const insertTemplateForContext = async (context: TenantContext, label: string) => {
+    const { data, error } = await serviceClient
+      .from('session_note_templates')
+      .insert({
+        template_name: `RLS Template ${label}`,
+        template_type: 'progress_note',
+        template_structure: { sections: ['summary'] },
+        created_by: context.therapistId,
+        compliance_requirements: { region: 'test' },
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      throw error ?? new Error('Failed to insert session note template for tests');
+    }
+
+    createdSessionNoteTemplateIds.push(data.id);
+    return data.id;
+  };
+
+  const orgATemplateId = await insertTemplateForContext(orgAContext, 'orgA');
+  const orgBTemplateId = await insertTemplateForContext(orgBContext, 'orgB');
+
+  sessionNoteTemplateIdsByOrg = { orgA: orgATemplateId, orgB: orgBTemplateId };
+};
+
+const ensureSessionTranscriptSegmentsSeeded = async (): Promise<void> => {
+  if (!serviceClient || !orgAContext || !orgBContext || sessionTranscriptSegmentIdsByOrg) {
+    return;
+  }
+
+  await ensureSessionTranscriptsSeeded();
+
+  if (!sessionTranscriptIdsByOrg) {
+    throw new Error('Session transcripts must be seeded before segments');
+  }
+
+  const insertSegmentForTranscript = async (transcriptId: string, offset: number) => {
+    const { data, error } = await serviceClient
+      .from('session_transcript_segments')
+      .insert({
+        session_id: transcriptId,
+        start_time: offset,
+        end_time: offset + 10,
+        speaker: 'therapist',
+        text: `Segment ${offset} generated for RLS tests`,
+        behavioral_markers: { markers: ['engagement'] },
+        confidence: 0.9,
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      throw error ?? new Error('Failed to insert session transcript segment for tests');
+    }
+
+    createdSessionTranscriptSegmentIds.push(data.id);
+    return data.id;
+  };
+
+  const orgASegmentId = await insertSegmentForTranscript(sessionTranscriptIdsByOrg.orgA, 0);
+  const orgBSegmentId = await insertSegmentForTranscript(sessionTranscriptIdsByOrg.orgB, 0);
+
+  sessionTranscriptSegmentIdsByOrg = { orgA: orgASegmentId, orgB: orgBSegmentId };
+};
+
 beforeAll(async () => {
   if (!SHOULD_RUN_RLS_TESTS) {
     console.warn('⏭️  Skipping RLS security tests - environment not configured.');
@@ -877,8 +986,19 @@ afterAll(async () => {
     await serviceClient.from('ai_session_notes').delete().in('id', createdAiSessionNoteIds);
   }
 
+  if (createdSessionNoteTemplateIds.length > 0) {
+    await serviceClient.from('session_note_templates').delete().in('id', createdSessionNoteTemplateIds);
+  }
+
   if (createdBehavioralPatternIds.length > 0) {
     await serviceClient.from('behavioral_patterns').delete().in('id', createdBehavioralPatternIds);
+  }
+
+  if (createdSessionTranscriptSegmentIds.length > 0) {
+    await serviceClient
+      .from('session_transcript_segments')
+      .delete()
+      .in('id', createdSessionTranscriptSegmentIds);
   }
 
   if (createdSessionTranscriptIds.length > 0) {
@@ -891,6 +1011,10 @@ afterAll(async () => {
 
   if (createdUserSessionIds.length > 0) {
     await serviceClient.from('user_sessions').delete().in('id', createdUserSessionIds);
+  }
+
+  if (createdConversationIds.length > 0) {
+    await serviceClient.from('conversations').delete().in('id', createdConversationIds);
   }
 
   if (createdCptCodeIds.length > 0) {
@@ -930,6 +1054,10 @@ afterAll(async () => {
 
   if (adminContext) {
     await serviceClient.auth.admin.deleteUser(adminContext.userId);
+  }
+
+  if (createdAdminActionIds.length > 0) {
+    await serviceClient.from('admin_actions').delete().in('id', createdAdminActionIds);
   }
 });
 
@@ -1404,6 +1532,71 @@ describe('session holds enforce role-scoped access', () => {
   });
 });
 
+describe('admin action logs enforce admin-only access', () => {
+  it('prevents therapists from reading admin action logs', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping admin action RLS test - setup incomplete.');
+      return;
+    }
+
+    const therapistClient = await signInTherapist(orgAContext);
+    try {
+      const result = await therapistClient.from('admin_actions').select('id').limit(1);
+      const affectedRows = Array.isArray(result.data) ? result.data.length : 0;
+      expectRlsViolation(result.error, affectedRows);
+    } finally {
+      await therapistClient.auth.signOut();
+    }
+  });
+
+  it('allows admins to insert and read admin action logs', async () => {
+    if (!runTests || !adminContext) {
+      console.log('⏭️  Skipping admin action allow test - setup incomplete.');
+      return;
+    }
+
+    const adminClient = await signInAdmin(adminContext);
+    let insertedActionId: string | null = null;
+
+    try {
+      const insertResult = await adminClient
+        .from('admin_actions')
+        .insert({
+          admin_user_id: adminContext.userId,
+          action_type: 'rls-test',
+          target_user_id: adminContext.userId,
+          action_details: { scope: 'rls', message: 'admin verification' },
+        })
+        .select('id, admin_user_id')
+        .single();
+
+      expect(insertResult.error).toBeNull();
+      const inserted = insertResult.data;
+      expect(inserted?.admin_user_id).toBe(adminContext.userId);
+
+      if (inserted?.id) {
+        insertedActionId = inserted.id;
+        createdAdminActionIds.push(inserted.id);
+      }
+
+      if (!insertedActionId) {
+        throw new Error('Expected admin action id to be returned');
+      }
+
+      const selectResult = await adminClient
+        .from('admin_actions')
+        .select('id, admin_user_id')
+        .eq('id', insertedActionId)
+        .single();
+
+      expect(selectResult.error).toBeNull();
+      expect(selectResult.data?.admin_user_id).toBe(adminContext.userId);
+    } finally {
+      await adminClient.auth.signOut();
+    }
+  });
+});
+
 describe('session artifacts enforce tenant isolation', () => {
   type OrgScopedConfig = {
     table: keyof Database['public']['Tables'];
@@ -1440,16 +1633,34 @@ describe('session artifacts enforce tenant isolation', () => {
       getIds: () => behavioralPatternIdsByOrg,
     },
     {
+      table: 'session_note_templates',
+      label: 'session note templates',
+      seed: ensureSessionNoteTemplatesSeeded,
+      getIds: () => sessionNoteTemplateIdsByOrg,
+    },
+    {
       table: 'session_transcripts',
       label: 'session transcripts',
       seed: ensureSessionTranscriptsSeeded,
       getIds: () => sessionTranscriptIdsByOrg,
     },
     {
+      table: 'session_transcript_segments',
+      label: 'session transcript segments',
+      seed: ensureSessionTranscriptSegmentsSeeded,
+      getIds: () => sessionTranscriptSegmentIdsByOrg,
+    },
+    {
       table: 'user_sessions',
       label: 'user sessions',
       seed: ensureUserSessionsSeeded,
       getIds: () => userSessionIdsByOrg,
+    },
+    {
+      table: 'conversations',
+      label: 'chat conversations',
+      seed: ensureConversationsSeeded,
+      getIds: () => conversationIdsByOrg,
     },
     {
       table: 'ai_cache',

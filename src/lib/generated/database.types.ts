@@ -72,7 +72,29 @@ export type Database = {
           last_accessed?: string | null
           response_data?: Json
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ai_session_notes_client_id_fkey",
+            columns: ["client_id"],
+            isOneToOne: false,
+            referencedRelation: "clients",
+            referencedColumns: ["id"],
+          },
+          {
+            foreignKeyName: "ai_session_notes_session_id_fkey",
+            columns: ["session_id"],
+            isOneToOne: false,
+            referencedRelation: "sessions",
+            referencedColumns: ["id"],
+          },
+          {
+            foreignKeyName: "ai_session_notes_therapist_id_fkey",
+            columns: ["therapist_id"],
+            isOneToOne: false,
+            referencedRelation: "therapists",
+            referencedColumns: ["id"],
+          },
+        ]
       }
       ai_performance_metrics: {
         Row: {
@@ -471,7 +493,15 @@ export type Database = {
           regex_pattern?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "behavioral_patterns_created_by_fkey",
+            columns: ["created_by"],
+            isOneToOne: false,
+            referencedRelation: "therapists",
+            referencedColumns: ["id"],
+          },
+        ]
       }
       billing_records: {
         Row: {
@@ -1501,7 +1531,15 @@ export type Database = {
           template_type?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "session_note_templates_created_by_fkey",
+            columns: ["created_by"],
+            isOneToOne: false,
+            referencedRelation: "therapists",
+            referencedColumns: ["id"],
+          },
+        ]
       }
       session_transcript_segments: {
         Row: {

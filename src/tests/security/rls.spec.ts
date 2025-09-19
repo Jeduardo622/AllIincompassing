@@ -1090,6 +1090,67 @@ describe('row level security for multi-tenant tables', () => {
   });
 });
 
+describe('user_profiles row level security', () => {
+  it('prevents anonymous clients from reading user profiles', async () => {
+    if (!runTests) {
+      console.log('⏭️  Skipping user_profiles anonymous access test - setup incomplete.');
+      return;
+    }
+
+    const anonymousClient = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const result = await anonymousClient
+      .from('user_profiles')
+      .select('id')
+      .limit(1);
+
+    const rowCount = Array.isArray(result.data) ? result.data.length : 0;
+    expectRlsViolation(result.error, rowCount);
+  });
+
+  it('prevents therapists from updating other user profiles', async () => {
+    if (!runTests || !orgAContext || !orgBContext || !serviceClient) {
+      console.log('⏭️  Skipping user_profiles cross-tenant update test - setup incomplete.');
+      return;
+    }
+
+    const { data: targetProfile, error: targetError } = await serviceClient
+      .from('user_profiles')
+      .select('id')
+      .eq('id', orgBContext.userId)
+      .maybeSingle();
+
+    if (targetError) {
+      console.warn(
+        '⏭️  Skipping user_profiles cross-tenant update test - service query failed.',
+        targetError.message,
+      );
+      return;
+    }
+
+    if (!targetProfile) {
+      console.warn('⏭️  Skipping user_profiles cross-tenant update test - target profile missing.');
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const result = await supabaseOrgA
+        .from('user_profiles')
+        .update({ full_name: 'Unauthorized Update Attempt' })
+        .eq('id', orgBContext.userId)
+        .select('id');
+
+      const affectedRows = Array.isArray(result.data) ? result.data.length : 0;
+      expectRlsViolation(result.error, affectedRows);
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+});
+
 describe('session holds enforce role-scoped access', () => {
   beforeAll(async () => {
     if (!runTests || !serviceClient || !orgAContext || !orgBContext) {

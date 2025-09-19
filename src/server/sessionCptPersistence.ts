@@ -1,4 +1,5 @@
 import { createClient, type PostgrestError, type SupabaseClient } from "@supabase/supabase-js";
+import { getRequiredServerEnv } from "./env";
 import type { DerivedCpt } from "./types";
 
 type Database = {
@@ -58,36 +59,13 @@ type BillingMetrics = {
 
 let cachedClient: SupabaseClient<Database> | null = null;
 
-function resolveEnvValue(key: string): string | undefined {
-  const processValue = typeof process !== "undefined" ? process.env?.[key] : undefined;
-  if (typeof processValue === "string" && processValue.trim().length > 0) {
-    return processValue.trim();
-  }
-
-  const meta = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
-  const metaValue = meta?.[key] ?? meta?.[`VITE_${key}`];
-  if (typeof metaValue === "string" && metaValue.trim().length > 0) {
-    return metaValue.trim();
-  }
-
-  return undefined;
-}
-
-function requireEnvValue(key: string): string {
-  const value = resolveEnvValue(key);
-  if (!value) {
-    throw new Error(`${key} environment variable is required to persist session CPT metadata`);
-  }
-  return value;
-}
-
 function getServiceClient(): SupabaseClient<Database> {
   if (cachedClient) {
     return cachedClient;
   }
 
-  const url = requireEnvValue("SUPABASE_URL");
-  const serviceRoleKey = requireEnvValue("SUPABASE_SERVICE_ROLE_KEY");
+  const url = getRequiredServerEnv("SUPABASE_URL");
+  const serviceRoleKey = getRequiredServerEnv("SUPABASE_SERVICE_ROLE_KEY");
 
   cachedClient = createClient<Database>(url, serviceRoleKey, {
     auth: {

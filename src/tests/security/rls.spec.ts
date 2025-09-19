@@ -61,6 +61,7 @@ const createdAiCacheIds: string[] = [];
 const createdAiSessionNoteIds: string[] = [];
 const createdBehavioralPatternIds: string[] = [];
 const createdSessionTranscriptIds: string[] = [];
+const createdSessionHoldIds: string[] = [];
 const createdUserSessionIds: string[] = [];
 
 let sessionCptEntryIdsByOrg: OrgRecordIds | null = null;
@@ -70,6 +71,7 @@ let behavioralPatternIdsByOrg: OrgRecordIds | null = null;
 let sessionTranscriptIdsByOrg: OrgRecordIds | null = null;
 let userSessionIdsByOrg: OrgRecordIds | null = null;
 let aiCacheIdsByOrg: OrgRecordIds | null = null;
+let sessionHoldIdsByOrg: OrgRecordIds | null = null;
 
 const userSessionIdsByUser = new Map<string, string>();
 
@@ -291,6 +293,21 @@ const generateModifierCode = (): string => {
   return result;
 };
 
+const generateHoldWindow = (
+  offsetMinutes = 0,
+): { start: string; end: string; expires: string } => {
+  const offsetMillis = (offsetMinutes + 5) * 60 * 1000;
+  const startDate = new Date(Date.now() + offsetMillis + Math.floor(Math.random() * 1000));
+  const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
+  const expiresDate = new Date(startDate.getTime() + 10 * 60 * 1000);
+
+  return {
+    start: startDate.toISOString(),
+    end: endDate.toISOString(),
+    expires: expiresDate.toISOString(),
+  };
+};
+
 const ensureSessionCptEntriesSeeded = async (): Promise<void> => {
   if (!serviceClient || !orgAContext || !orgBContext || sessionCptEntryIdsByOrg) {
     return;
@@ -502,6 +519,40 @@ const ensureSessionTranscriptsSeeded = async (): Promise<void> => {
   const orgBTranscriptId = await insertTranscriptForContext(orgBContext, 'orgB');
 
   sessionTranscriptIdsByOrg = { orgA: orgATranscriptId, orgB: orgBTranscriptId };
+};
+
+const ensureSessionHoldsSeeded = async (): Promise<void> => {
+  if (!serviceClient || !orgAContext || !orgBContext || sessionHoldIdsByOrg) {
+    return;
+  }
+
+  const insertHoldForContext = async (context: TenantContext, offsetMinutes: number) => {
+    const { start, end, expires } = generateHoldWindow(offsetMinutes);
+    const { data, error } = await serviceClient
+      .from('session_holds')
+      .insert({
+        therapist_id: context.therapistId,
+        client_id: context.clientId,
+        start_time: start,
+        end_time: end,
+        hold_key: randomUUID(),
+        expires_at: expires,
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      throw error ?? new Error('Failed to insert session hold for tests');
+    }
+
+    createdSessionHoldIds.push(data.id);
+    return data.id;
+  };
+
+  const orgAHoldId = await insertHoldForContext(orgAContext, 120);
+  const orgBHoldId = await insertHoldForContext(orgBContext, 180);
+
+  sessionHoldIdsByOrg = { orgA: orgAHoldId, orgB: orgBHoldId };
 };
 
 const ensureUserSessionsSeeded = async (): Promise<void> => {
@@ -810,6 +861,10 @@ afterAll(async () => {
     await serviceClient.auth.admin.deleteUser(context.clientUserId);
   }
 
+  if (createdSessionHoldIds.length > 0) {
+    await serviceClient.from('session_holds').delete().in('id', createdSessionHoldIds);
+  }
+
   if (createdSessionCptModifierIds.length > 0) {
     await serviceClient.from('session_cpt_modifiers').delete().in('id', createdSessionCptModifierIds);
   }
@@ -1029,6 +1084,259 @@ describe('row level security for multi-tenant tables', () => {
 
       const affectedRows = Array.isArray(result.data) ? result.data.length : 0;
       expectRlsViolation(result.error, affectedRows);
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+});
+
+describe('session holds enforce role-scoped access', () => {
+  beforeAll(async () => {
+    if (!runTests || !serviceClient || !orgAContext || !orgBContext) {
+      return;
+    }
+
+    await ensureSessionHoldsSeeded();
+  });
+
+  it('allows admins to manage session holds for any therapist', async () => {
+    if (!runTests || !adminContext || !orgAContext || !orgBContext || !sessionHoldIdsByOrg) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const adminClient = await signInAdmin(adminContext);
+    let insertedHoldId: string | null = null;
+
+    try {
+      const existingHoldResult = await adminClient
+        .from('session_holds')
+        .select('id, therapist_id')
+        .eq('id', sessionHoldIdsByOrg.orgB)
+        .single();
+
+      expect(existingHoldResult.error).toBeNull();
+      expect(existingHoldResult.data?.therapist_id).toBe(orgBContext.therapistId);
+
+      const { start, end, expires } = generateHoldWindow(240);
+      const insertResult = await adminClient
+        .from('session_holds')
+        .insert({
+          therapist_id: orgAContext.therapistId,
+          client_id: orgAContext.clientId,
+          start_time: start,
+          end_time: end,
+          hold_key: randomUUID(),
+          expires_at: expires,
+        })
+        .select('id, end_time')
+        .single();
+
+      expect(insertResult.error).toBeNull();
+      const insertedHold = insertResult.data;
+      if (!insertedHold) {
+        throw new Error('Failed to insert session hold as admin');
+      }
+
+      insertedHoldId = insertedHold.id;
+      createdSessionHoldIds.push(insertedHoldId);
+
+      const newEndTime = new Date(new Date(end).getTime() + 15 * 60 * 1000).toISOString();
+      const updateResult = await adminClient
+        .from('session_holds')
+        .update({ end_time: newEndTime })
+        .eq('id', insertedHoldId)
+        .select('end_time')
+        .single();
+
+      expect(updateResult.error).toBeNull();
+      expect(updateResult.data?.end_time).toBe(newEndTime);
+
+      const deleteResult = await adminClient
+        .from('session_holds')
+        .delete()
+        .eq('id', insertedHoldId)
+        .select('id')
+        .single();
+
+      expect(deleteResult.error).toBeNull();
+      insertedHoldId = null;
+    } finally {
+      if (insertedHoldId && serviceClient) {
+        await serviceClient.from('session_holds').delete().eq('id', insertedHoldId);
+      }
+      await adminClient.auth.signOut();
+    }
+  });
+
+  it('prevents therapists from viewing other therapists session holds', async () => {
+    if (!runTests || !orgAContext || !sessionHoldIdsByOrg) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const { data, error } = await supabaseOrgA
+        .from('session_holds')
+        .select('id')
+        .eq('id', sessionHoldIdsByOrg.orgB);
+
+      expect(error).toBeNull();
+      expect(Array.isArray(data)).toBe(true);
+      expect(data).toHaveLength(0);
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+
+  it('prevents therapists from inserting session holds for other therapists', async () => {
+    if (!runTests || !orgAContext || !orgBContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const { start, end, expires } = generateHoldWindow(300);
+      const insertResult = await supabaseOrgA
+        .from('session_holds')
+        .insert({
+          therapist_id: orgBContext.therapistId,
+          client_id: orgBContext.clientId,
+          start_time: start,
+          end_time: end,
+          hold_key: randomUUID(),
+          expires_at: expires,
+        })
+        .select('id');
+
+      const affectedRows = Array.isArray(insertResult.data) ? insertResult.data.length : 0;
+      expectRlsViolation(insertResult.error, affectedRows);
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+
+  it('allows therapists to insert, update, and delete their own session holds', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    let therapistHoldId: string | null = null;
+
+    try {
+      const { start, end, expires } = generateHoldWindow(360);
+      const insertResult = await supabaseOrgA
+        .from('session_holds')
+        .insert({
+          therapist_id: orgAContext.therapistId,
+          client_id: orgAContext.clientId,
+          start_time: start,
+          end_time: end,
+          hold_key: randomUUID(),
+          expires_at: expires,
+        })
+        .select('id, end_time')
+        .single();
+
+      expect(insertResult.error).toBeNull();
+      const insertedHold = insertResult.data;
+      if (!insertedHold) {
+        throw new Error('Failed to insert session hold for therapist');
+      }
+
+      therapistHoldId = insertedHold.id;
+      createdSessionHoldIds.push(insertedHold.id);
+
+      const updatedEnd = new Date(new Date(end).getTime() + 5 * 60 * 1000).toISOString();
+      const updateResult = await supabaseOrgA
+        .from('session_holds')
+        .update({ end_time: updatedEnd })
+        .eq('id', therapistHoldId)
+        .select('end_time')
+        .single();
+
+      expect(updateResult.error).toBeNull();
+      expect(updateResult.data?.end_time).toBe(updatedEnd);
+
+      const deleteResult = await supabaseOrgA
+        .from('session_holds')
+        .delete()
+        .eq('id', therapistHoldId)
+        .select('id')
+        .single();
+
+      expect(deleteResult.error).toBeNull();
+      therapistHoldId = null;
+    } finally {
+      if (therapistHoldId && serviceClient) {
+        await serviceClient.from('session_holds').delete().eq('id', therapistHoldId);
+      }
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+
+  it('prevents therapists from updating other therapists session holds', async () => {
+    if (!runTests || !orgAContext || !sessionHoldIdsByOrg) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const updateResult = await supabaseOrgA
+        .from('session_holds')
+        .update({ expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() })
+        .eq('id', sessionHoldIdsByOrg.orgB)
+        .select('id');
+
+      const affectedRows = Array.isArray(updateResult.data) ? updateResult.data.length : 0;
+      expectRlsViolation(updateResult.error, affectedRows);
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+
+  it('prevents therapists from deleting other therapists session holds', async () => {
+    if (!runTests || !orgAContext || !sessionHoldIdsByOrg) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const deleteResult = await supabaseOrgA
+        .from('session_holds')
+        .delete()
+        .eq('id', sessionHoldIdsByOrg.orgB)
+        .select('id');
+
+      const affectedRows = Array.isArray(deleteResult.data) ? deleteResult.data.length : 0;
+      expectRlsViolation(deleteResult.error, affectedRows);
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+
+  it('prevents therapists from reassigning session holds to other therapists', async () => {
+    if (!runTests || !orgAContext || !orgBContext || !sessionHoldIdsByOrg) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const updateResult = await supabaseOrgA
+        .from('session_holds')
+        .update({ therapist_id: orgBContext.therapistId })
+        .eq('id', sessionHoldIdsByOrg.orgA)
+        .select('id');
+
+      const affectedRows = Array.isArray(updateResult.data) ? updateResult.data.length : 0;
+      expectRlsViolation(updateResult.error, affectedRows);
     } finally {
       await supabaseOrgA.auth.signOut();
     }
@@ -1687,4 +1995,3 @@ describe('configuration tables enforce admin-only access', () => {
     }
   });
 });
-

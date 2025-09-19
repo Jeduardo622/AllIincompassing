@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { buildSupabaseEdgeUrl, getSupabaseAnonKey } from './runtimeConfig';
 import { showSuccess, showError } from './toast';
 
 // Types for AI Documentation System
@@ -226,11 +227,11 @@ export class AIDocumentationService {
   private async transcribeAudio(audioBase64: string): Promise<any> {
     try {
       // Call Supabase AI Transcription Edge Function
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-transcription`, {
+      const response = await fetch(buildSupabaseEdgeUrl('ai-transcription'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          'Authorization': `Bearer ${getSupabaseAnonKey()}`
         },
         body: JSON.stringify({
           audio: audioBase64,
@@ -442,11 +443,11 @@ export class AIDocumentationService {
     try {
       const prompt = this.buildSessionNotePrompt(sessionData, transcriptData);
       
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-session-note-generator`, {
+      const response = await fetch(buildSupabaseEdgeUrl('ai-session-note-generator'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          'Authorization': `Bearer ${getSupabaseAnonKey()}`
         },
         body: JSON.stringify({
           prompt,

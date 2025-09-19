@@ -2,6 +2,7 @@
 // multiple GoTrue instances (which can cause session/cookie conflicts).
 // Re-use the canonical client from supabaseClient.ts.
 import { supabase } from './supabaseClient';
+import { buildSupabaseEdgeUrl } from './runtimeConfig';
 // Re-export for modules importing from './supabase'
 export { supabase };
 
@@ -194,10 +195,7 @@ export async function callEdge(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers || {});
   if (session?.access_token) headers.set('Authorization', `Bearer ${session.access_token}`);
 
-  type ViteEnv = { VITE_SUPABASE_EDGE_URL?: string; VITE_SUPABASE_URL?: string };
-  const env = (import.meta.env as unknown as ViteEnv) || {};
-  const base = env.VITE_SUPABASE_EDGE_URL ?? `${env.VITE_SUPABASE_URL}/functions/v1/`;
-  const url = new URL(path, base).toString();
+  const url = buildSupabaseEdgeUrl(path);
   return fetch(url, { ...init, headers });
 }
 

@@ -24,6 +24,7 @@ import {
   useDropdownData,
 } from "../lib/optimizedQueries";
 import { cancelSessions } from "../lib/sessionCancellation";
+import { supabase } from "../lib/supabase";
 import { showError, showSuccess } from "../lib/toast";
 import type {
   BookSessionApiRequestBody,
@@ -137,6 +138,17 @@ async function callBookSessionApi(
   if (idempotencyKey) {
     headers["Idempotency-Key"] = idempotencyKey;
   }
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const accessToken = session?.access_token?.trim();
+
+  if (!accessToken) {
+    throw new Error("Authentication is required to book sessions");
+  }
+
+  headers.Authorization = `Bearer ${accessToken}`;
 
   let response: Response;
   try {

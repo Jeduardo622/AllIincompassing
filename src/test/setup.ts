@@ -204,11 +204,24 @@ vi.mock('../lib/supabase', () => {
             error: null,
           }),
         ),
+        getSession: vi.fn(() =>
+          Promise.resolve({
+            data: { session: { access_token: 'test-access-token' } },
+            error: null,
+          }),
+        ),
       },
     },
-    callEdge: vi.fn((path: string, init?: RequestInit) => {
+    callEdge: vi.fn((path: string, init?: RequestInit, options?: { accessToken?: string; anonKey?: string }) => {
+      const headers = new Headers(init?.headers ?? {});
+      if (options?.accessToken) {
+        headers.set('Authorization', `Bearer ${options.accessToken}`);
+      }
+      if (options?.anonKey) {
+        headers.set('apikey', options.anonKey);
+      }
       const url = `http://localhost/functions/v1/${path}`;
-      return fetch(url, init);
+      return fetch(url, { ...init, headers });
     }),
   };
 });

@@ -12,6 +12,7 @@ export interface HoldRequest {
   startTimeOffsetMinutes: number;
   endTimeOffsetMinutes: number;
   timeZone: string;
+  accessToken?: string;
 }
 
 export interface HoldResponse {
@@ -43,24 +44,28 @@ function toError(message: string | undefined, fallback: string) {
 }
 
 export async function requestSessionHold(payload: HoldRequest): Promise<HoldResponse> {
-  const response = await callEdge("sessions-hold", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(payload.idempotencyKey ? { "Idempotency-Key": payload.idempotencyKey } : {}),
+  const response = await callEdge(
+    "sessions-hold",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(payload.idempotencyKey ? { "Idempotency-Key": payload.idempotencyKey } : {}),
+      },
+      body: JSON.stringify({
+        therapist_id: payload.therapistId,
+        client_id: payload.clientId,
+        start_time: payload.startTime,
+        end_time: payload.endTime,
+        session_id: payload.sessionId ?? null,
+        hold_seconds: payload.holdSeconds ?? 300,
+        start_time_offset_minutes: payload.startTimeOffsetMinutes,
+        end_time_offset_minutes: payload.endTimeOffsetMinutes,
+        time_zone: payload.timeZone,
+      }),
     },
-    body: JSON.stringify({
-      therapist_id: payload.therapistId,
-      client_id: payload.clientId,
-      start_time: payload.startTime,
-      end_time: payload.endTime,
-      session_id: payload.sessionId ?? null,
-      hold_seconds: payload.holdSeconds ?? 300,
-      start_time_offset_minutes: payload.startTimeOffsetMinutes,
-      end_time_offset_minutes: payload.endTimeOffsetMinutes,
-      time_zone: payload.timeZone,
-    }),
-  });
+    { accessToken: payload.accessToken },
+  );
 
   let body: HoldEdgeResponse | null = null;
   try {
@@ -83,23 +88,28 @@ export interface ConfirmRequest {
   startTimeOffsetMinutes: number;
   endTimeOffsetMinutes: number;
   timeZone: string;
+  accessToken?: string;
 }
 
 export async function confirmSessionBooking(payload: ConfirmRequest): Promise<Session> {
-  const response = await callEdge("sessions-confirm", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(payload.idempotencyKey ? { "Idempotency-Key": payload.idempotencyKey } : {}),
+  const response = await callEdge(
+    "sessions-confirm",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(payload.idempotencyKey ? { "Idempotency-Key": payload.idempotencyKey } : {}),
+      },
+      body: JSON.stringify({
+        hold_key: payload.holdKey,
+        session: payload.session,
+        start_time_offset_minutes: payload.startTimeOffsetMinutes,
+        end_time_offset_minutes: payload.endTimeOffsetMinutes,
+        time_zone: payload.timeZone,
+      }),
     },
-    body: JSON.stringify({
-      hold_key: payload.holdKey,
-      session: payload.session,
-      start_time_offset_minutes: payload.startTimeOffsetMinutes,
-      end_time_offset_minutes: payload.endTimeOffsetMinutes,
-      time_zone: payload.timeZone,
-    }),
-  });
+    { accessToken: payload.accessToken },
+  );
 
   let body: ConfirmEdgeResponse | null = null;
   try {
@@ -129,6 +139,7 @@ export async function confirmSessionBooking(payload: ConfirmRequest): Promise<Se
 export interface CancelHoldRequest {
   holdKey: string;
   idempotencyKey?: string;
+  accessToken?: string;
 }
 
 export interface CancelHoldResponse {
@@ -145,14 +156,18 @@ export interface CancelHoldResponse {
 }
 
 export async function cancelSessionHold(payload: CancelHoldRequest): Promise<CancelHoldResponse> {
-  const response = await callEdge("sessions-cancel", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(payload.idempotencyKey ? { "Idempotency-Key": payload.idempotencyKey } : {}),
+  const response = await callEdge(
+    "sessions-cancel",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(payload.idempotencyKey ? { "Idempotency-Key": payload.idempotencyKey } : {}),
+      },
+      body: JSON.stringify({ hold_key: payload.holdKey }),
     },
-    body: JSON.stringify({ hold_key: payload.holdKey }),
-  });
+    { accessToken: payload.accessToken },
+  );
 
   let body: EdgeSuccess<{ released: boolean; hold?: CancelHoldResponse["hold"] }> | EdgeError | null = null;
   try {

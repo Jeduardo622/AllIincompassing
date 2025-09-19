@@ -189,11 +189,36 @@ if (!import.meta.env.VITEST) {
   testConnection();
 }
 
+export interface CallEdgeOptions {
+  accessToken?: string;
+  anonKey?: string;
+}
+
 // Edge Function helper - attaches user's JWT automatically
-export async function callEdge(path: string, init: RequestInit = {}) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const headers = new Headers(init.headers || {});
-  if (session?.access_token) headers.set('Authorization', `Bearer ${session.access_token}`);
+export async function callEdge(
+  path: string,
+  init: RequestInit = {},
+  options: CallEdgeOptions = {},
+) {
+  const headers = new Headers(init.headers ?? {});
+
+  const providedToken = typeof options.accessToken === 'string'
+    ? options.accessToken.trim()
+    : '';
+
+  if (providedToken.length > 0) {
+    headers.set('Authorization', `Bearer ${providedToken}`);
+  } else if (!headers.has('Authorization')) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      headers.set('Authorization', `Bearer ${session.access_token}`);
+    }
+  }
+
+  const anonKey = typeof options.anonKey === 'string' ? options.anonKey.trim() : '';
+  if (anonKey.length > 0) {
+    headers.set('apikey', anonKey);
+  }
 
   const url = buildSupabaseEdgeUrl(path);
   return fetch(url, { ...init, headers });

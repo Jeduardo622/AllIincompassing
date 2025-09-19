@@ -28,11 +28,13 @@ function jsonResponse(
 
 function normalizePayload(
   body: BookSessionApiRequestBody,
-  idempotencyKey?: string,
+  idempotencyKey: string | undefined,
+  accessToken: string,
 ): BookSessionRequest {
   return {
     ...body,
     idempotencyKey,
+    accessToken,
   };
 }
 
@@ -43,6 +45,19 @@ export async function bookHandler(request: Request): Promise<Response> {
 
   if (request.method !== "POST") {
     return jsonResponse({ success: false, error: "Method not allowed" }, 405);
+  }
+
+  const authHeader = request.headers.get("Authorization");
+  const accessToken = typeof authHeader === "string"
+    ? authHeader.replace(/^Bearer\s+/i, "").trim()
+    : "";
+
+  if (!authHeader || accessToken.length === 0) {
+    return jsonResponse(
+      { success: false, error: "Missing authorization token" },
+      401,
+      { "WWW-Authenticate": "Bearer" },
+    );
   }
 
   let body: BookSessionApiRequestBody;
@@ -59,7 +74,7 @@ export async function bookHandler(request: Request): Promise<Response> {
 
   try {
     const idempotencyKey = request.headers.get("Idempotency-Key") ?? undefined;
-    const result = await bookSession(normalizePayload(body, idempotencyKey));
+    const result = await bookSession(normalizePayload(body, idempotencyKey, accessToken));
     const headers = idempotencyKey
       ? { "Idempotency-Key": idempotencyKey }
       : {};

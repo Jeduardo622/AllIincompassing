@@ -3,8 +3,14 @@ import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import '@testing-library/jest-dom';
 import { installConsoleGuard } from './utils/consoleGuard';
+import { setRuntimeSupabaseConfig } from '../lib/runtimeConfig';
 
 const consoleGuard = installConsoleGuard({ passthrough: false });
+
+setRuntimeSupabaseConfig({
+  supabaseUrl: 'https://test-project.supabase.co',
+  supabaseAnonKey: 'test-anon-key',
+});
 
 beforeEach(() => {
   consoleGuard.resetCapturedLogs();

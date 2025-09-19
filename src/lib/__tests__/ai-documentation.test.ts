@@ -2,12 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AIDocumentationService } from '../ai-documentation';
 import { server } from '../../test/setup';
 import { http, HttpResponse } from 'msw';
-
-// Mock environment variables
-vi.mock('import.meta.env', () => ({
-  VITE_SUPABASE_URL: 'https://test-project.supabase.co',
-  VITE_SUPABASE_ANON_KEY: 'test-anon-key'
-}));
+import { setRuntimeSupabaseConfig, resetRuntimeSupabaseConfigForTests } from '../runtimeConfig';
 
 // Mock MediaRecorder
 class MockMediaRecorder {
@@ -48,6 +43,11 @@ describe('AIDocumentationService', () => {
   let service: AIDocumentationService;
 
   beforeEach(() => {
+    resetRuntimeSupabaseConfigForTests();
+    setRuntimeSupabaseConfig({
+      supabaseUrl: 'https://test-project.supabase.co',
+      supabaseAnonKey: 'test-anon-key',
+    });
     service = AIDocumentationService.getInstance();
     vi.clearAllMocks();
   });

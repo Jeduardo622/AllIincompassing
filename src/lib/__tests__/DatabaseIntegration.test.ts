@@ -9,8 +9,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
 
 // Test configuration
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'test-key';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'http://localhost:54321';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'test-key';
 
 // Initialize Supabase client for testing
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);

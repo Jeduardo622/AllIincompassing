@@ -3,6 +3,11 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    'import.meta.env.VITE_SUPABASE_URL': 'undefined',
+    'import.meta.env.VITE_SUPABASE_ANON_KEY': 'undefined',
+    'import.meta.env.VITE_SUPABASE_EDGE_URL': 'undefined',
+  },
   optimizeDeps: {
     exclude: ['lucide-react'],
   },

@@ -1,5 +1,6 @@
 // import { supabase } from './supabase';
 import { errorTracker } from './errorTracking';
+import { buildSupabaseEdgeUrl, getSupabaseAnonKey } from './runtimeConfig';
 
 interface AIResponse {
   response: string;
@@ -20,12 +21,12 @@ export async function processMessage(
 ): Promise<AIResponse> {
   try {
     // First try the optimized ai-agent endpoint
-    const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent-optimized`;
+    const apiUrl = buildSupabaseEdgeUrl('ai-agent-optimized');
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        'Authorization': `Bearer ${getSupabaseAnonKey()}`
       },
       body: JSON.stringify({ message, context }),
     });
@@ -33,12 +34,12 @@ export async function processMessage(
     if (!response.ok) {
       console.warn(`Optimized AI agent failed with status: ${response.status}, falling back to process-message`);
       // Fall back to the original process-message function
-      const fallbackUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-message`;
+      const fallbackUrl = buildSupabaseEdgeUrl('process-message');
       const fallbackResponse = await fetch(fallbackUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${getSupabaseAnonKey()}`,
         },
         body: JSON.stringify({ message, context }),
       });
@@ -72,12 +73,12 @@ export async function processMessage(
 // Function to get client details
 export async function getClientDetails(clientId: string): Promise<any> {
   try {
-    const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-client-details`;
+    const apiUrl = buildSupabaseEdgeUrl('get-client-details');
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Authorization': `Bearer ${getSupabaseAnonKey()}`,
       },
       body: JSON.stringify({ clientId }),
     });
@@ -97,12 +98,12 @@ export async function getClientDetails(clientId: string): Promise<any> {
 // Function to get therapist details
 export async function getTherapistDetails(therapistId: string): Promise<any> {
   try {
-    const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-therapist-details`;
+    const apiUrl = buildSupabaseEdgeUrl('get-therapist-details');
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Authorization': `Bearer ${getSupabaseAnonKey()}`,
       },
       body: JSON.stringify({ therapistId }),
     });
@@ -122,12 +123,12 @@ export async function getTherapistDetails(therapistId: string): Promise<any> {
 // Function to get authorization details
 export async function getAuthorizationDetails(authorizationId: string): Promise<any> {
   try {
-    const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-authorization-details`;
+    const apiUrl = buildSupabaseEdgeUrl('get-authorization-details');
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Authorization': `Bearer ${getSupabaseAnonKey()}`,
       },
       body: JSON.stringify({ authorizationId }),
     });

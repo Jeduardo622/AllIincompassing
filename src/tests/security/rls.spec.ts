@@ -22,6 +22,7 @@ interface AdminContext {
   email: string;
   password: string;
   userId: string;
+  organizationId: string;
 }
 
 type OrgRecordIds = { orgA: string; orgB: string };
@@ -55,6 +56,7 @@ let originalCompanyName: string | null = null;
 
 const createdCptCodeIds: string[] = [];
 const createdBillingModifierIds: string[] = [];
+const createdBillingRecordIds: string[] = [];
 const createdSessionCptEntryIds: string[] = [];
 const createdSessionCptModifierIds: string[] = [];
 const createdAiCacheIds: string[] = [];
@@ -70,6 +72,7 @@ const createdAdminActionIds: string[] = [];
 
 let sessionCptEntryIdsByOrg: OrgRecordIds | null = null;
 let sessionCptModifierIdsByOrg: OrgRecordIds | null = null;
+let billingRecordIdsByOrg: OrgRecordIds | null = null;
 let aiSessionNoteIdsByOrg: OrgRecordIds | null = null;
 let behavioralPatternIdsByOrg: OrgRecordIds | null = null;
 let sessionTranscriptIdsByOrg: OrgRecordIds | null = null;
@@ -110,6 +113,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
     full_name: `${label.toUpperCase()} Therapist`,
     specialties: ['aba'],
     max_clients: 5,
+    organization_id: organizationId,
   });
 
   if (therapistInsertError) {
@@ -134,6 +138,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
     email: clientEmail,
     password: clientPassword,
     email_confirm: true,
+    user_metadata: { organization_id: organizationId },
   });
 
   if (clientUserError || !createdClientUser?.user) {
@@ -149,6 +154,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
     email: clientEmail,
     full_name: `${label.toUpperCase()} Client`,
     date_of_birth: '2015-01-01',
+    organization_id: organizationId,
   });
 
   if (clientInsertError) {
@@ -166,6 +172,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
     start_time: start.toISOString(),
     end_time: end.toISOString(),
     status: 'completed',
+    organization_id: organizationId,
   });
 
   if (sessionInsertError) {
@@ -186,7 +193,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
   };
 };
 
-const createAdminFixture = async (): Promise<AdminContext> => {
+const createAdminFixture = async (organizationId: string): Promise<AdminContext> => {
   if (!serviceClient) {
     throw new Error('Service client not initialized');
   }
@@ -198,6 +205,7 @@ const createAdminFixture = async (): Promise<AdminContext> => {
     email,
     password,
     email_confirm: true,
+    user_metadata: { organization_id: organizationId },
   });
 
   if (createUserError || !createdUser?.user) {
@@ -214,7 +222,7 @@ const createAdminFixture = async (): Promise<AdminContext> => {
     throw assignResult.error;
   }
 
-  return { email, password, userId };
+  return { email, password, userId, organizationId };
 };
 
 const signInWithPassword = async (email: string, password: string): Promise<TypedClient> => {
@@ -351,6 +359,7 @@ const ensureSessionCptEntriesSeeded = async (): Promise<void> => {
         rate: 120,
         is_primary: true,
         notes: `RLS coverage entry ${label}`,
+        organization_id: context.organizationId,
       })
       .select('id')
       .single();
@@ -367,6 +376,37 @@ const ensureSessionCptEntriesSeeded = async (): Promise<void> => {
   const orgBId = await insertEntryForContext(orgBContext, 'orgB');
 
   sessionCptEntryIdsByOrg = { orgA: orgAId, orgB: orgBId };
+};
+
+const ensureBillingRecordsSeeded = async (): Promise<void> => {
+  if (!serviceClient || !orgAContext || !orgBContext || billingRecordIdsByOrg) {
+    return;
+  }
+
+  const insertRecordForContext = async (context: TenantContext, label: string) => {
+    const { data, error } = await serviceClient
+      .from('billing_records')
+      .insert({
+        session_id: context.sessionId,
+        amount: 150,
+        status: 'pending',
+        organization_id: context.organizationId,
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      throw error ?? new Error(`Failed to insert billing record for ${label}`);
+    }
+
+    createdBillingRecordIds.push(data.id);
+    return data.id;
+  };
+
+  const orgARecordId = await insertRecordForContext(orgAContext, 'orgA');
+  const orgBRecordId = await insertRecordForContext(orgBContext, 'orgB');
+
+  billingRecordIdsByOrg = { orgA: orgARecordId, orgB: orgBRecordId };
 };
 
 const ensureSessionCptModifiersSeeded = async (): Promise<void> => {
@@ -755,7 +795,7 @@ beforeAll(async () => {
   const orgBId = randomUUID();
   orgAContext = await createTenantFixture('orga', orgAId);
   orgBContext = await createTenantFixture('orgb', orgBId);
-  adminContext = await createAdminFixture();
+  adminContext = await createAdminFixture(orgAId);
 
   const { data: existingSettings, error: companyFetchError } = await serviceClient
     .from('company_settings')
@@ -976,6 +1016,10 @@ afterAll(async () => {
 
   if (createdSessionCptModifierIds.length > 0) {
     await serviceClient.from('session_cpt_modifiers').delete().in('id', createdSessionCptModifierIds);
+  }
+
+  if (createdBillingRecordIds.length > 0) {
+    await serviceClient.from('billing_records').delete().in('id', createdBillingRecordIds);
   }
 
   if (createdSessionCptEntryIds.length > 0) {
@@ -1214,6 +1258,121 @@ describe('row level security for multi-tenant tables', () => {
       expectRlsViolation(result.error, affectedRows);
     } finally {
       await supabaseOrgA.auth.signOut();
+    }
+  });
+
+  it('prevents admins from reading other organization clients', async () => {
+    if (!runTests || !adminContext || !orgBContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const supabaseAdmin = await signInAdmin(adminContext);
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('clients')
+        .select('id')
+        .eq('id', orgBContext.clientId);
+
+      expect(error).toBeNull();
+      expect(Array.isArray(data)).toBe(true);
+      expect(data).toHaveLength(0);
+    } finally {
+      await supabaseAdmin.auth.signOut();
+    }
+  });
+
+  it('prevents admins from reading other organization therapists', async () => {
+    if (!runTests || !adminContext || !orgBContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const supabaseAdmin = await signInAdmin(adminContext);
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('therapists')
+        .select('id')
+        .eq('id', orgBContext.therapistId);
+
+      expect(error).toBeNull();
+      expect(Array.isArray(data)).toBe(true);
+      expect(data).toHaveLength(0);
+    } finally {
+      await supabaseAdmin.auth.signOut();
+    }
+  });
+
+  it('prevents admins from reading other organization sessions', async () => {
+    if (!runTests || !adminContext || !orgBContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const supabaseAdmin = await signInAdmin(adminContext);
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('sessions')
+        .select('id')
+        .eq('id', orgBContext.sessionId);
+
+      expect(error).toBeNull();
+      expect(Array.isArray(data)).toBe(true);
+      expect(data).toHaveLength(0);
+    } finally {
+      await supabaseAdmin.auth.signOut();
+    }
+  });
+
+  it('prevents admins from reading other organization billing records', async () => {
+    if (!runTests || !adminContext || !orgAContext || !orgBContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    await ensureBillingRecordsSeeded();
+    if (!billingRecordIdsByOrg) {
+      throw new Error('Billing records were not seeded');
+    }
+
+    const supabaseAdmin = await signInAdmin(adminContext);
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('billing_records')
+        .select('id')
+        .eq('id', billingRecordIdsByOrg.orgB);
+
+      expect(error).toBeNull();
+      expect(Array.isArray(data)).toBe(true);
+      expect(data).toHaveLength(0);
+    } finally {
+      await supabaseAdmin.auth.signOut();
+    }
+  });
+
+  it('prevents admins from reading other organization session CPT entries', async () => {
+    if (!runTests || !adminContext || !orgAContext || !orgBContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    await ensureSessionCptEntriesSeeded();
+    if (!sessionCptEntryIdsByOrg) {
+      throw new Error('Session CPT entries were not seeded');
+    }
+
+    const supabaseAdmin = await signInAdmin(adminContext);
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('session_cpt_entries')
+        .select('id')
+        .eq('id', sessionCptEntryIdsByOrg.orgB);
+
+      expect(error).toBeNull();
+      expect(Array.isArray(data)).toBe(true);
+      expect(data).toHaveLength(0);
+    } finally {
+      await supabaseAdmin.auth.signOut();
     }
   });
 });

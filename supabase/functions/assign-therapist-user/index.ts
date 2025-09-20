@@ -78,11 +78,33 @@ export default createProtectedRoute(async (req: Request, userContext) => {
 
     let result: any;
     if (existingClient) {
-      const { data: updateData, error: updateError } = await adminClient.from('clients').update({ therapist_id: therapistId, updated_at: new Date().toISOString() }).eq('id', userId).select().single();
+      const { data: updateData, error: updateError } = await adminClient
+        .from('clients')
+        .update({
+          therapist_id: therapistId,
+          updated_at: new Date().toISOString(),
+          organization_id: callerOrganizationId,
+        })
+        .eq('id', userId)
+        .select()
+        .single();
       if (updateError) throw new Error(`Error updating client assignment: ${updateError.message}`);
       result = { action: 'updated', client: updateData, previousTherapistId: (existingClient as any).therapist_id };
     } else {
-      const { data: newClient, error: createError } = await adminClient.from('clients').insert({ id: userId, email: userEmail, therapist_id: therapistId, full_name: (targetUser as any).user_metadata?.full_name || userEmail.split('@')[0], created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select().single();
+      const { data: newClient, error: createError } = await adminClient
+        .from('clients')
+        .insert({
+          id: userId,
+          email: userEmail,
+          therapist_id: therapistId,
+          full_name:
+            (targetUser as any).user_metadata?.full_name || userEmail.split('@')[0],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          organization_id: callerOrganizationId,
+        })
+        .select()
+        .single();
       if (createError) throw new Error(`Error creating client record: ${createError.message}`);
       result = { action: 'created', client: newClient };
     }

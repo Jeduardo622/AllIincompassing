@@ -509,6 +509,7 @@ export type Database = {
           claim_number: string | null
           created_at: string | null
           id: string
+          organization_id: string | null
           session_id: string
           status: string
           submitted_at: string | null
@@ -518,6 +519,7 @@ export type Database = {
           claim_number?: string | null
           created_at?: string | null
           id?: string
+          organization_id?: string | null
           session_id: string
           status?: string
           submitted_at?: string | null
@@ -527,6 +529,7 @@ export type Database = {
           claim_number?: string | null
           created_at?: string | null
           id?: string
+          organization_id?: string | null
           session_id?: string
           status?: string
           submitted_at?: string | null
@@ -656,6 +659,7 @@ export type Database = {
           middle_name: string | null
           notes: string | null
           one_to_one_units: number | null
+          organization_id: string | null
           parent_consult_units: number | null
           parent1_email: string | null
           parent1_first_name: string | null
@@ -710,6 +714,7 @@ export type Database = {
           middle_name?: string | null
           notes?: string | null
           one_to_one_units?: number | null
+          organization_id?: string | null
           parent_consult_units?: number | null
           parent1_email?: string | null
           parent1_first_name?: string | null
@@ -764,6 +769,7 @@ export type Database = {
           middle_name?: string | null
           notes?: string | null
           one_to_one_units?: number | null
+          organization_id?: string | null
           parent_consult_units?: number | null
           parent1_email?: string | null
           parent1_first_name?: string | null
@@ -1632,6 +1638,7 @@ export type Database = {
           id: string
           location_type: string | null
           notes: string | null
+          organization_id: string | null
           rate_per_hour: number | null
           session_type: string | null
           start_time: string
@@ -1647,6 +1654,7 @@ export type Database = {
           id?: string
           location_type?: string | null
           notes?: string | null
+          organization_id?: string | null
           rate_per_hour?: number | null
           session_type?: string | null
           start_time: string
@@ -1662,6 +1670,7 @@ export type Database = {
           id?: string
           location_type?: string | null
           notes?: string | null
+          organization_id?: string | null
           rate_per_hour?: number | null
           session_type?: string | null
           start_time?: string
@@ -1836,6 +1845,7 @@ export type Database = {
           max_daily_travel_minutes: number | null
           medicaid_id: string | null
           middle_name: string | null
+          organization_id: string | null
           npi_number: string | null
           phone: string | null
           practitioner_id: string | null
@@ -1875,6 +1885,7 @@ export type Database = {
           max_daily_travel_minutes?: number | null
           medicaid_id?: string | null
           middle_name?: string | null
+          organization_id?: string | null
           npi_number?: string | null
           phone?: string | null
           practitioner_id?: string | null
@@ -1914,6 +1925,7 @@ export type Database = {
           max_daily_travel_minutes?: number | null
           medicaid_id?: string | null
           middle_name?: string | null
+          organization_id?: string | null
           npi_number?: string | null
           phone?: string | null
           practitioner_id?: string | null
@@ -2579,6 +2591,10 @@ export type Database = {
         Args: { removed_by_uuid?: string; role_name: string; user_uuid: string }
         Returns: boolean
       }
+      current_user_organization_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string | null
+      }
       resolve_performance_alert: {
         Args: { p_alert_id: string; p_resolution_note?: string }
         Returns: boolean
@@ -2597,6 +2613,16 @@ export type Database = {
       }
       user_has_role: {
         Args: { role_name: string } | { role_name: string; user_uuid?: string }
+        Returns: boolean
+      }
+      user_has_role_for_org: {
+        Args: {
+          role_name: string
+          target_client_id?: string | null
+          target_organization_id?: string | null
+          target_session_id?: string | null
+          target_therapist_id?: string | null
+        }
         Returns: boolean
       }
       validate_performance_improvements: {

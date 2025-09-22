@@ -50,7 +50,20 @@ describe("bookHandler integration", () => {
       .mockResolvedValueOnce(
         jsonResponse({
           success: true,
-          data: { holdKey: "hold-key", holdId: "hold-id", expiresAt: "2025-01-01T09:05:00Z" },
+          data: {
+            holdKey: "hold-key",
+            holdId: "hold-id",
+            expiresAt: "2025-01-01T09:05:00Z",
+            holds: [
+              {
+                holdKey: "hold-key",
+                holdId: "hold-id",
+                startTime: payload.session.start_time,
+                endTime: payload.session.end_time,
+                expiresAt: "2025-01-01T09:05:00Z",
+              },
+            ],
+          },
         }),
       )
       .mockResolvedValueOnce(
@@ -71,6 +84,22 @@ describe("bookHandler integration", () => {
               updated_by: "user-1",
               duration_minutes: 60,
             },
+            sessions: [
+              {
+                id: "session-1",
+                therapist_id: payload.session.therapist_id,
+                client_id: payload.session.client_id,
+                start_time: payload.session.start_time,
+                end_time: payload.session.end_time,
+                status: "scheduled",
+                notes: "",
+                created_at: "2025-01-01T09:00:00Z",
+                created_by: "user-1",
+                updated_at: "2025-01-01T09:00:00Z",
+                updated_by: "user-1",
+                duration_minutes: 60,
+              },
+            ],
             roundedDurationMinutes: 60,
           },
         }),

@@ -45,6 +45,7 @@ let runTests = false;
 let orgAContext: TenantContext | null = null;
 let orgBContext: TenantContext | null = null;
 let adminContext: AdminContext | null = null;
+let otherAdminContext: AdminContext | null = null;
 
 const createdLocationIds: string[] = [];
 const createdServiceLineIds: string[] = [];
@@ -796,6 +797,7 @@ beforeAll(async () => {
   orgAContext = await createTenantFixture('orga', orgAId);
   orgBContext = await createTenantFixture('orgb', orgBId);
   adminContext = await createAdminFixture(orgAId);
+  otherAdminContext = await createAdminFixture(orgBId);
 
   const { data: existingSettings, error: companyFetchError } = await serviceClient
     .from('company_settings')
@@ -1098,6 +1100,10 @@ afterAll(async () => {
 
   if (adminContext) {
     await serviceClient.auth.admin.deleteUser(adminContext.userId);
+  }
+
+  if (otherAdminContext) {
+    await serviceClient.auth.admin.deleteUser(otherAdminContext.userId);
   }
 
   if (createdAdminActionIds.length > 0) {
@@ -1764,6 +1770,7 @@ describe('session artifacts enforce tenant isolation', () => {
     getIds: () => OrgRecordIds | null;
     allowsAssignedTherapist?: boolean;
     allowsAdmin?: boolean;
+    enforceAdminIsolation?: boolean;
   };
 
   const orgScopedConfigs: OrgScopedConfig[] = [
@@ -1790,24 +1797,28 @@ describe('session artifacts enforce tenant isolation', () => {
       label: 'behavioral patterns',
       seed: ensureBehavioralPatternsSeeded,
       getIds: () => behavioralPatternIdsByOrg,
+      enforceAdminIsolation: true,
     },
     {
       table: 'session_note_templates',
       label: 'session note templates',
       seed: ensureSessionNoteTemplatesSeeded,
       getIds: () => sessionNoteTemplateIdsByOrg,
+      enforceAdminIsolation: true,
     },
     {
       table: 'session_transcripts',
       label: 'session transcripts',
       seed: ensureSessionTranscriptsSeeded,
       getIds: () => sessionTranscriptIdsByOrg,
+      enforceAdminIsolation: true,
     },
     {
       table: 'session_transcript_segments',
       label: 'session transcript segments',
       seed: ensureSessionTranscriptSegmentsSeeded,
       getIds: () => sessionTranscriptSegmentIdsByOrg,
+      enforceAdminIsolation: true,
     },
     {
       table: 'user_sessions',
@@ -1897,6 +1908,39 @@ describe('session artifacts enforce tenant isolation', () => {
           expect(result.data?.id).toBe(recordIds.orgA);
         } finally {
           await supabaseOrgA.auth.signOut();
+        }
+      });
+    }
+
+    if (config.enforceAdminIsolation) {
+      it(`prevents admins from other organizations from reading ${config.label}`, async () => {
+        if (!runTests || !otherAdminContext) {
+          console.log('⏭️  Skipping RLS test - setup incomplete.');
+          return;
+        }
+
+        const recordIds = config.getIds();
+        if (!recordIds) {
+          console.log(`⏭️  Skipping ${config.table} cross-org admin test - seed data unavailable.`);
+          return;
+        }
+
+        const adminClient = await signInAdmin(otherAdminContext);
+        try {
+          const result = await adminClient
+            .from(config.table)
+            .select('id')
+            .eq('id', recordIds.orgA)
+            .maybeSingle();
+
+          if (result.error) {
+            expectRlsViolation(result.error);
+            return;
+          }
+
+          expect(result.data).toBeNull();
+        } finally {
+          await adminClient.auth.signOut();
         }
       });
     }

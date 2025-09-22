@@ -464,6 +464,7 @@ export type Database = {
           created_by: string | null
           id: string
           is_active: boolean | null
+          organization_id: string | null
           pattern_name: string
           pattern_type: string
           regex_pattern: string
@@ -476,6 +477,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           is_active?: boolean | null
+          organization_id?: string | null
           pattern_name: string
           pattern_type: string
           regex_pattern: string
@@ -488,6 +490,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           is_active?: boolean | null
+          organization_id?: string | null
           pattern_name?: string
           pattern_type?: string
           regex_pattern?: string
@@ -1508,6 +1511,7 @@ export type Database = {
           description: string | null
           id: string
           is_california_compliant: boolean | null
+          organization_id: string | null
           template_name: string
           template_structure: Json
           template_type: string
@@ -1520,6 +1524,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_california_compliant?: boolean | null
+          organization_id?: string | null
           template_name: string
           template_structure: Json
           template_type: string
@@ -1532,6 +1537,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_california_compliant?: boolean | null
+          organization_id?: string | null
           template_name?: string
           template_structure?: Json
           template_type?: string
@@ -1558,6 +1564,7 @@ export type Database = {
           speaker: string
           start_time: number
           text: string
+          organization_id: string | null
         }
         Insert: {
           behavioral_markers?: Json | null
@@ -1569,6 +1576,7 @@ export type Database = {
           speaker: string
           start_time: number
           text: string
+          organization_id?: string | null
         }
         Update: {
           behavioral_markers?: Json | null
@@ -1580,6 +1588,7 @@ export type Database = {
           speaker?: string
           start_time?: number
           text?: string
+          organization_id?: string | null
         }
         Relationships: [
           {
@@ -1600,6 +1609,7 @@ export type Database = {
           raw_transcript: string
           session_id: string
           updated_at: string | null
+          organization_id: string | null
         }
         Insert: {
           confidence_score?: number | null
@@ -1609,6 +1619,7 @@ export type Database = {
           raw_transcript: string
           session_id: string
           updated_at?: string | null
+          organization_id?: string | null
         }
         Update: {
           confidence_score?: number | null
@@ -1618,6 +1629,7 @@ export type Database = {
           raw_transcript?: string
           session_id?: string
           updated_at?: string | null
+          organization_id?: string | null
         }
         Relationships: [
           {

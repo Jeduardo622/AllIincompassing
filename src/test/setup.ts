@@ -36,7 +36,7 @@ vi.mock('../lib/supabase', () => {
     returns: vi.fn(() => chain),
   };
 
-  return {
+  const supabaseMock: any = {
     supabase: {
       from: vi.fn((table: string) => {
         if (table === 'sessions') {
@@ -212,18 +212,35 @@ vi.mock('../lib/supabase', () => {
         ),
       },
     },
-    callEdge: vi.fn((path: string, init?: RequestInit, options?: { accessToken?: string; anonKey?: string }) => {
-      const headers = new Headers(init?.headers ?? {});
-      if (options?.accessToken) {
-        headers.set('Authorization', `Bearer ${options.accessToken}`);
-      }
-      if (options?.anonKey) {
-        headers.set('apikey', options.anonKey);
-      }
-      const url = `http://localhost/functions/v1/${path}`;
-      return fetch(url, { ...init, headers });
-    }),
   };
+
+  supabaseMock.callEdge = vi.fn(async (
+    path: string,
+    init: RequestInit = {},
+    options: { accessToken?: string; anonKey?: string } = {},
+  ) => {
+    const headers = new Headers(init?.headers ?? {});
+
+    const providedToken = typeof options.accessToken === 'string' ? options.accessToken.trim() : '';
+    if (providedToken.length > 0) {
+      headers.set('Authorization', `Bearer ${providedToken}`);
+    } else if (!headers.has('Authorization')) {
+      const { data: { session } = { session: null } } = await supabaseMock.supabase.auth.getSession();
+      if (session?.access_token) {
+        headers.set('Authorization', `Bearer ${session.access_token}`);
+      }
+    }
+
+    const anonKey = typeof options.anonKey === 'string' ? options.anonKey.trim() : '';
+    if (anonKey.length > 0) {
+      headers.set('apikey', anonKey);
+    }
+
+    const url = `http://localhost/functions/v1/${path}`;
+    return fetch(url, { ...init, headers });
+  });
+
+  return supabaseMock;
 });
 
 /**

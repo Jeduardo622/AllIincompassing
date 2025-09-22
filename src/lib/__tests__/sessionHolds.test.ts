@@ -27,7 +27,23 @@ beforeEach(() => {
 describe("session holds API helpers", () => {
   it("requests a hold and returns hold metadata", async () => {
     mockedCallEdge.mockResolvedValueOnce(
-      jsonResponse({ success: true, data: { holdKey: "hold-key", holdId: "1", expiresAt: "2025-01-01T00:05:00Z" } }),
+      jsonResponse({
+        success: true,
+        data: {
+          holdKey: "hold-key",
+          holdId: "1",
+          expiresAt: "2025-01-01T00:05:00Z",
+          holds: [
+            {
+              holdKey: "hold-key",
+              holdId: "1",
+              startTime: "2025-01-01T00:00:00Z",
+              endTime: "2025-01-01T01:00:00Z",
+              expiresAt: "2025-01-01T00:05:00Z",
+            },
+          ],
+        },
+      }),
     );
 
     const result = await requestSessionHold({
@@ -41,7 +57,22 @@ describe("session holds API helpers", () => {
       accessToken: ACCESS_TOKEN,
     });
 
-    expect(result).toEqual({ holdKey: "hold-key", holdId: "1", expiresAt: "2025-01-01T00:05:00Z" });
+    expect(result).toEqual({
+      holdKey: "hold-key",
+      holdId: "1",
+      startTime: "2025-01-01T00:00:00Z",
+      endTime: "2025-01-01T01:00:00Z",
+      expiresAt: "2025-01-01T00:05:00Z",
+      holds: [
+        {
+          holdKey: "hold-key",
+          holdId: "1",
+          startTime: "2025-01-01T00:00:00Z",
+          endTime: "2025-01-01T01:00:00Z",
+          expiresAt: "2025-01-01T00:05:00Z",
+        },
+      ],
+    });
     expect(mockedCallEdge).toHaveBeenCalledWith(
       "sessions-hold",
       expect.objectContaining({
@@ -56,6 +87,14 @@ describe("session holds API helpers", () => {
           start_time_offset_minutes: 0,
           end_time_offset_minutes: 0,
           time_zone: "UTC",
+          occurrences: [
+            {
+              start_time: "2025-01-01T00:00:00Z",
+              end_time: "2025-01-01T01:00:00Z",
+              start_time_offset_minutes: 0,
+              end_time_offset_minutes: 0,
+            },
+          ],
         }),
       }),
       { accessToken: ACCESS_TOKEN },
@@ -64,7 +103,23 @@ describe("session holds API helpers", () => {
 
   it("passes idempotency key when reserving a hold", async () => {
     mockedCallEdge.mockResolvedValueOnce(
-      jsonResponse({ success: true, data: { holdKey: "hold-key", holdId: "1", expiresAt: "2025-01-01T00:05:00Z" } }),
+      jsonResponse({
+        success: true,
+        data: {
+          holdKey: "hold-key",
+          holdId: "1",
+          expiresAt: "2025-01-01T00:05:00Z",
+          holds: [
+            {
+              holdKey: "hold-key",
+              holdId: "1",
+              startTime: "2025-01-01T00:00:00Z",
+              endTime: "2025-01-01T01:00:00Z",
+              expiresAt: "2025-01-01T00:05:00Z",
+            },
+          ],
+        },
+      }),
     );
 
     await requestSessionHold({
@@ -179,12 +234,32 @@ describe("session holds API helpers", () => {
             rate_per_hour: null,
             total_cost: null,
           },
+          sessions: [
+            {
+              id: "session-1",
+              therapist_id: "therapist",
+              client_id: "client",
+              start_time: "2025-01-01T00:00:00Z",
+              end_time: "2025-01-01T01:00:00Z",
+              status: "scheduled",
+              notes: null,
+              created_at: "2025-01-01T00:00:00Z",
+              created_by: "user-1",
+              updated_at: "2025-01-01T00:00:00Z",
+              updated_by: "user-1",
+              duration_minutes: 60,
+              location_type: null,
+              session_type: null,
+              rate_per_hour: null,
+              total_cost: null,
+            },
+          ],
           roundedDurationMinutes: 60,
         },
       }),
     );
 
-    const session = await confirmSessionBooking({
+    const response = await confirmSessionBooking({
       holdKey: "hold-key",
       session: {
         therapist_id: "therapist",
@@ -198,8 +273,9 @@ describe("session holds API helpers", () => {
       accessToken: ACCESS_TOKEN,
     });
 
-    expect(session.id).toBe("session-1");
-    expect(session.duration_minutes).toBe(60);
+    expect(response.session.id).toBe("session-1");
+    expect(response.session.duration_minutes).toBe(60);
+    expect(response.sessions).toHaveLength(1);
     expect(mockedCallEdge).toHaveBeenCalledWith(
       "sessions-confirm",
       expect.objectContaining({ method: "POST" }),
@@ -226,12 +302,28 @@ describe("session holds API helpers", () => {
             updated_by: "user-2",
             duration_minutes: 30,
           },
+          sessions: [
+            {
+              id: "session-2",
+              therapist_id: "therapist",
+              client_id: "client",
+              start_time: "2025-01-01T02:00:00Z",
+              end_time: "2025-01-01T02:50:00Z",
+              status: "scheduled",
+              notes: null,
+              created_at: "2025-01-01T01:50:00Z",
+              created_by: "user-2",
+              updated_at: "2025-01-01T01:50:00Z",
+              updated_by: "user-2",
+              duration_minutes: 30,
+            },
+          ],
           roundedDurationMinutes: 45,
         },
       }),
     );
 
-    const session = await confirmSessionBooking({
+    const response = await confirmSessionBooking({
       holdKey: "hold-key",
       session: {
         therapist_id: "therapist",
@@ -246,7 +338,7 @@ describe("session holds API helpers", () => {
       accessToken: ACCESS_TOKEN,
     });
 
-    expect(session.duration_minutes).toBe(45);
+    expect(response.session.duration_minutes).toBe(45);
   });
 
   describe("duration rounding compliance", () => {
@@ -312,7 +404,7 @@ describe("session holds API helpers", () => {
           }),
         );
 
-        const session = await confirmSessionBooking({
+        const response = await confirmSessionBooking({
           holdKey: "hold-key",
           session: {
             therapist_id: "therapist",
@@ -327,8 +419,8 @@ describe("session holds API helpers", () => {
           accessToken: ACCESS_TOKEN,
         });
 
-        expect(session.duration_minutes).toBe(roundedDuration);
-        expect(session).toEqual(
+        expect(response.session.duration_minutes).toBe(roundedDuration);
+        expect(response.session).toEqual(
           expect.objectContaining({
             duration_minutes: roundedDuration,
             client_id: "client",

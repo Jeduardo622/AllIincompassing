@@ -14,11 +14,20 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+interface HoldOccurrencePayload {
+  start_time: string;
+  end_time: string;
+  start_time_offset_minutes: number;
+  end_time_offset_minutes: number;
+  time_zone?: string;
+}
+
 interface HoldPayload extends TimezoneValidationPayload {
   therapist_id: string;
   client_id: string;
   session_id?: string | null;
   hold_seconds?: number;
+  occurrences?: HoldOccurrencePayload[];
 }
 
 function jsonResponse(
@@ -95,51 +104,108 @@ Deno.serve(async (req) => {
       return respond({ success: false, error: "Missing required fields" }, 400);
     }
 
-    const offsetValidation = validateTimezonePayload(payload);
-    if (!offsetValidation.ok) {
-      return respond({ success: false, error: offsetValidation.message }, 400);
+    const occurrencePayloads = Array.isArray(payload.occurrences) && payload.occurrences.length > 0
+      ? payload.occurrences
+      : [payload];
+
+    for (const occurrence of occurrencePayloads) {
+      const offsetValidation = validateTimezonePayload({
+        start_time: occurrence.start_time,
+        end_time: occurrence.end_time,
+        start_time_offset_minutes: occurrence.start_time_offset_minutes,
+        end_time_offset_minutes: occurrence.end_time_offset_minutes,
+        time_zone: occurrence.time_zone ?? payload.time_zone,
+      });
+
+      if (!offsetValidation.ok) {
+        return respond({ success: false, error: offsetValidation.message }, 400);
+      }
     }
 
-    const { data, error } = await supabaseAdmin.rpc("acquire_session_hold", {
-      p_therapist_id: payload.therapist_id,
-      p_client_id: payload.client_id,
-      p_start_time: payload.start_time,
-      p_end_time: payload.end_time,
-      p_session_id: payload.session_id ?? null,
-      p_hold_seconds: payload.hold_seconds ?? 300,
-    });
+    const createdHolds: Array<{ hold_key: string; id: string; start_time: string; end_time: string; expires_at: string; }> = [];
 
-    if (error) {
-      console.error("acquire_session_hold error", error);
-      return respond({ success: false, error: error.message ?? "Failed to create hold" }, 500);
+    for (const occurrence of occurrencePayloads) {
+      const { data, error } = await supabaseAdmin.rpc("acquire_session_hold", {
+        p_therapist_id: payload.therapist_id,
+        p_client_id: payload.client_id,
+        p_start_time: occurrence.start_time,
+        p_end_time: occurrence.end_time,
+        p_session_id: payload.session_id ?? null,
+        p_hold_seconds: payload.hold_seconds ?? 300,
+      });
+
+      if (error) {
+        console.error("acquire_session_hold error", error);
+        if (createdHolds.length > 0) {
+          await supabaseAdmin
+            .from("session_holds")
+            .delete()
+            .in("hold_key", createdHolds.map((hold) => hold.hold_key));
+        }
+        return respond({ success: false, error: error.message ?? "Failed to create hold" }, 500);
+      }
+
+      if (!data?.success) {
+        const statusMap: Record<string, number> = {
+          INVALID_RANGE: 400,
+          HOLD_EXISTS: 409,
+          THERAPIST_CONFLICT: 409,
+          CLIENT_CONFLICT: 409,
+        };
+        const status = statusMap[data?.error_code as string] ?? 409;
+
+        if (createdHolds.length > 0) {
+          await supabaseAdmin
+            .from("session_holds")
+            .delete()
+            .in("hold_key", createdHolds.map((hold) => hold.hold_key));
+        }
+
+        return respond({
+          success: false,
+          error: data?.error_message ?? "Unable to hold session",
+          code: data?.error_code,
+        }, status);
+      }
+
+      const hold = data.hold as Record<string, string> | undefined;
+      if (!hold) {
+        if (createdHolds.length > 0) {
+          await supabaseAdmin
+            .from("session_holds")
+            .delete()
+            .in("hold_key", createdHolds.map((created) => created.hold_key));
+        }
+        return respond({ success: false, error: "Hold response missing" }, 500);
+      }
+
+      createdHolds.push(hold as {
+        hold_key: string;
+        id: string;
+        start_time: string;
+        end_time: string;
+        expires_at: string;
+      });
     }
 
-    if (!data?.success) {
-      const statusMap: Record<string, number> = {
-        INVALID_RANGE: 400,
-        HOLD_EXISTS: 409,
-        THERAPIST_CONFLICT: 409,
-        CLIENT_CONFLICT: 409,
-      };
-      const status = statusMap[data?.error_code as string] ?? 409;
-      return respond({
-        success: false,
-        error: data?.error_message ?? "Unable to hold session",
-        code: data?.error_code,
-      }, status);
-    }
-
-    const hold = data.hold as Record<string, string> | undefined;
-    if (!hold) {
-      return respond({ success: false, error: "Hold response missing" }, 500);
+    const [primaryHold] = createdHolds;
+    if (!primaryHold) {
+      return respond({ success: false, error: "Failed to create hold" }, 500);
     }
 
     return respond({
       success: true,
       data: {
-        holdKey: hold.hold_key,
-        holdId: hold.id,
-        expiresAt: hold.expires_at,
+        holdKey: primaryHold.hold_key,
+        holdId: primaryHold.id,
+        expiresAt: primaryHold.expires_at,
+        holds: createdHolds.map((hold) => ({
+          holdKey: hold.hold_key,
+          holdId: hold.id,
+          startTime: hold.start_time,
+          endTime: hold.end_time,
+          expiresAt: hold.expires_at,
+        })),
       },
     });
   } catch (error) {

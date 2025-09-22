@@ -79,7 +79,38 @@ describe("bookHandler", () => {
         updated_by: "user-1",
         duration_minutes: 60,
       },
-      hold: { holdKey: "hold", holdId: "1", expiresAt: "2025-01-01T10:05:00Z" },
+      sessions: [
+        {
+          id: "session-1",
+          client_id: "client-1",
+          therapist_id: "therapist-1",
+          start_time: "2025-01-01T10:00:00Z",
+          end_time: "2025-01-01T11:00:00Z",
+          status: "scheduled",
+          notes: "",
+          created_at: "2025-01-01T09:00:00Z",
+          created_by: "user-1",
+          updated_at: "2025-01-01T09:00:00Z",
+          updated_by: "user-1",
+          duration_minutes: 60,
+        },
+      ],
+      hold: {
+        holdKey: "hold",
+        holdId: "1",
+        startTime: "2025-01-01T10:00:00Z",
+        endTime: "2025-01-01T11:00:00Z",
+        expiresAt: "2025-01-01T10:05:00Z",
+        holds: [
+          {
+            holdKey: "hold",
+            holdId: "1",
+            startTime: "2025-01-01T10:00:00Z",
+            endTime: "2025-01-01T11:00:00Z",
+            expiresAt: "2025-01-01T10:05:00Z",
+          },
+        ],
+      },
       cpt: { code: "97153", description: "Adaptive behavior treatment by protocol", modifiers: [], source: "fallback", durationMinutes: 60 },
     });
 

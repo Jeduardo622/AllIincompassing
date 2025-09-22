@@ -1,5 +1,12 @@
 import { callEdge, supabase } from './supabase';
 import { showSuccess, showError } from './toast';
+import {
+  createPseudonym,
+  PseudonymMap,
+  redactAndPseudonymize,
+  registerNamePseudonym,
+  registerPseudonym
+} from './phi/pseudonym.ts';
 
 // Types for AI Documentation System
 export interface SessionTranscript {
@@ -468,21 +475,108 @@ export class AIDocumentationService {
 
   // Build comprehensive prompt for AI session note generation
   private buildSessionNotePrompt(sessionData: any, transcriptData: any): string {
+    const pseudonymMap: PseudonymMap = {};
+
+    const clientAlias = createPseudonym(
+      'Client',
+      sessionData?.client_id || sessionData?.client?.id || sessionData?.client_name
+    );
+    const therapistAlias = createPseudonym(
+      'Therapist',
+      sessionData?.therapist_id || sessionData?.therapist?.id || sessionData?.therapist_name
+    );
+
+    registerNamePseudonym(pseudonymMap, sessionData?.client_name, clientAlias);
+    registerNamePseudonym(pseudonymMap, sessionData?.client?.full_name, clientAlias);
+    registerPseudonym(pseudonymMap, sessionData?.client_email, clientAlias);
+    registerPseudonym(pseudonymMap, sessionData?.client?.email, clientAlias);
+
+    registerNamePseudonym(pseudonymMap, sessionData?.therapist_name, therapistAlias);
+    registerNamePseudonym(pseudonymMap, sessionData?.therapist?.full_name, therapistAlias);
+    registerPseudonym(pseudonymMap, sessionData?.therapist_email, therapistAlias);
+    registerPseudonym(pseudonymMap, sessionData?.therapist?.email, therapistAlias);
+
+    const participantAliases: string[] = [];
+    if (Array.isArray(sessionData?.participants)) {
+      sessionData.participants.forEach((participant: unknown, index: number) => {
+        let identifier: string | undefined;
+        let participantName: string | undefined;
+        let participantEmail: string | undefined;
+
+        if (typeof participant === 'string') {
+          participantName = participant;
+          identifier = participant;
+        } else if (participant && typeof participant === 'object') {
+          const record = participant as Record<string, unknown>;
+          if (typeof record.id === 'string') {
+            identifier = record.id;
+          } else if (typeof record.participant_id === 'string') {
+            identifier = record.participant_id;
+          } else if (typeof record.email === 'string') {
+            identifier = record.email;
+          } else if (typeof record.full_name === 'string') {
+            identifier = record.full_name;
+          } else if (typeof record.name === 'string') {
+            identifier = record.name;
+          }
+
+          if (typeof record.full_name === 'string') {
+            participantName = record.full_name;
+          } else if (typeof record.name === 'string') {
+            participantName = record.name;
+          }
+
+          if (typeof record.email === 'string') {
+            participantEmail = record.email;
+          }
+        }
+
+        const alias = createPseudonym('Participant', identifier ?? `participant-${index}`);
+        participantAliases.push(alias);
+        registerNamePseudonym(pseudonymMap, participantName, alias);
+        registerPseudonym(pseudonymMap, participantEmail, alias);
+      });
+    }
+
+    const sessionDate = sessionData?.session_date ? String(sessionData.session_date) : 'Unknown date';
+    const durationValue = sessionData?.duration;
+    const durationMinutes =
+      typeof durationValue === 'number' || typeof durationValue === 'string' ? String(durationValue) : 'Unknown';
+    const sanitizedLocation = redactAndPseudonymize(
+      sessionData?.location ? String(sessionData.location) : 'Unknown location',
+      pseudonymMap
+    );
+
+    const transcriptContent =
+      typeof transcriptData?.processed_transcript === 'string' ? transcriptData.processed_transcript : '';
+    const sanitizedTranscript = redactAndPseudonymize(transcriptContent, pseudonymMap);
+
+    const markersJson = JSON.stringify(transcriptData?.behavioral_markers ?? [], null, 2);
+    const sanitizedMarkers = redactAndPseudonymize(markersJson, pseudonymMap);
+
+    const sessionInfoLines = [
+      `- Date: ${sessionDate}`,
+      `- Duration: ${durationMinutes} minutes`,
+      `- Location: ${sanitizedLocation}`,
+      `- Client: ${clientAlias}`,
+      `- Therapist: ${therapistAlias}`
+    ];
+
+    if (participantAliases.length > 0) {
+      sessionInfoLines.push(`- Participants: ${participantAliases.join(', ')}`);
+    }
+
     return `
 Generate a comprehensive ABA session note that complies with California documentation requirements.
 
 Session Information:
-- Date: ${sessionData.session_date}
-- Duration: ${sessionData.duration} minutes
-- Location: ${sessionData.location}
-- Client: ${sessionData.client_name}
-- Therapist: ${sessionData.therapist_name}
+${sessionInfoLines.join('\n')}
 
 Transcript Analysis:
-${transcriptData.processed_transcript}
+${sanitizedTranscript}
 
 Behavioral Markers Identified:
-${JSON.stringify(transcriptData.behavioral_markers, null, 2)}
+${sanitizedMarkers}
 
 Requirements:
 1. Use objective, observable language only

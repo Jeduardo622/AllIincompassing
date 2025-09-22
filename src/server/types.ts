@@ -1,6 +1,21 @@
 import type { Session } from "../types";
 import type { HoldResponse } from "../lib/sessionHolds";
 
+export interface SessionRecurrence {
+  rule: string;
+  count?: number;
+  until?: string;
+  exceptions?: string[];
+  timeZone?: string;
+}
+
+export interface RecurrenceOccurrence {
+  startTime: string;
+  endTime: string;
+  startOffsetMinutes: number;
+  endOffsetMinutes: number;
+}
+
 export interface BookingOverrides {
   cptCode?: string;
   modifiers?: string[];
@@ -12,7 +27,9 @@ export type RequiredSessionFields = Pick<
 >;
 
 export type BookableSession = RequiredSessionFields &
-  Partial<Omit<Session, keyof RequiredSessionFields>>;
+  Partial<Omit<Session, keyof RequiredSessionFields>> & {
+    recurrence?: SessionRecurrence | null;
+  };
 
 export interface BookSessionRequest {
   session: BookableSession;
@@ -23,6 +40,7 @@ export interface BookSessionRequest {
   idempotencyKey?: string;
   overrides?: BookingOverrides;
   accessToken: string;
+  recurrence?: SessionRecurrence | null;
 }
 
 export interface DerivedCpt {
@@ -35,6 +53,7 @@ export interface DerivedCpt {
 
 export interface BookSessionResult {
   session: Session;
+  sessions: Session[];
   hold: HoldResponse;
   cpt: DerivedCpt;
 }

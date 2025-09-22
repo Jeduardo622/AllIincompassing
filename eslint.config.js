@@ -36,9 +36,12 @@ export default tseslint.config(
       'prefer-const': 'error',
     },
   },
-  // Components & Pages: strict rules (inherits from src block)
+  // Components: enforce structured logging over console usage
   {
-    files: ['src/components/**/*.{ts,tsx}', 'src/pages/**/*.{ts,tsx}'],
+    files: ['src/components/**/*.{ts,tsx}'],
+    rules: {
+      'no-console': 'error',
+    },
   },
   // Lib: allow any during incremental typing, keep unused strict
   {
@@ -68,6 +71,7 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
+      'no-console': 'off',
     },
   },
   // Cypress E2E tests

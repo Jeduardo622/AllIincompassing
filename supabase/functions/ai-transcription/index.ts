@@ -1,6 +1,5 @@
 import { OpenAI } from "npm:openai@5.5.1";
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
-import { createRequestClient } from "../_shared/database.ts";
+import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 import { z } from "npm:zod@3.23.8";
 import { errorEnvelope, getRequestId, rateLimit } from "./lib/http/error.ts";
@@ -31,6 +30,48 @@ Deno.serve(async (req) => {
     if (!parsed.success) return errorEnvelope({ requestId, code: "invalid_body", message: "Invalid request body", status: 400, headers: corsHeaders });
     const { audio, model = "whisper-1", language = "en", prompt, session_id, chunk_index } = parsed.data;
 
+    let resolvedSessionId: string | null = null;
+    if (session_id) {
+      const { data: sessionRecord, error: sessionError } = await db
+        .from("sessions")
+        .select("id, has_transcription_consent")
+        .eq("id", session_id)
+        .maybeSingle();
+
+      if (sessionError) {
+        console.error("Failed to verify session consent:", sessionError);
+        return errorEnvelope({
+          requestId,
+          code: "session_lookup_failed",
+          message: "Unable to verify session consent",
+          status: 500,
+          headers: corsHeaders,
+        });
+      }
+
+      if (!sessionRecord) {
+        return errorEnvelope({
+          requestId,
+          code: "session_not_found",
+          message: "Session not found",
+          status: 404,
+          headers: corsHeaders,
+        });
+      }
+
+      if (!sessionRecord.has_transcription_consent) {
+        return errorEnvelope({
+          requestId,
+          code: "consent_required",
+          message: "Transcription is not permitted for this session",
+          status: 403,
+          headers: corsHeaders,
+        });
+      }
+
+      resolvedSessionId = sessionRecord.id;
+    }
+
     const audioBuffer = Uint8Array.from(atob(audio), c => c.charCodeAt(0));
     const audioBlob = new Blob([audioBuffer], { type: "audio/wav" });
     const audioFile = new File([audioBlob], "audio.wav", { type: "audio/wav" });
@@ -48,11 +89,24 @@ Deno.serve(async (req) => {
 
     const response: TranscriptionResponse = { text: (transcription as any).text, confidence: averageConfidence, start_time: (transcription as any).segments?.[0]?.start || 0, end_time: (transcription as any).segments?.[(transcription as any).segments.length - 1]?.end || 0, segments: (transcription as any).segments?.map((segment: any) => ({ text: segment.text, start: segment.start, end: segment.end, confidence: averageConfidence })), processing_time: processingTime };
 
-    if (session_id) {
+    if (resolvedSessionId) {
       try {
-        await db.from('session_transcript_segments').insert({ session_id, chunk_index: chunk_index || 0, start_time: response.start_time, end_time: response.end_time, text: response.text, confidence: response.confidence, speaker: 'unknown', created_at: new Date().toISOString() });
+        const insertResult = await supabaseAdmin.from("session_transcript_segments").insert({
+          session_id: resolvedSessionId,
+          chunk_index: chunk_index ?? 0,
+          start_time: response.start_time ?? 0,
+          end_time: response.end_time ?? 0,
+          text: response.text,
+          confidence: response.confidence,
+          speaker: "unknown",
+          created_at: new Date().toISOString(),
+        });
+
+        if (insertResult.error) {
+          throw insertResult.error;
+        }
       } catch (dbError) {
-        console.warn('Failed to store transcript segment:', dbError);
+        console.warn("Failed to store transcript segment:", dbError);
       }
     }
 

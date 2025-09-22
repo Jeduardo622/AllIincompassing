@@ -1651,6 +1651,7 @@ export type Database = {
           location_type: string | null
           notes: string | null
           organization_id: string | null
+          has_transcription_consent: boolean
           rate_per_hour: number | null
           session_type: string | null
           start_time: string
@@ -1667,6 +1668,7 @@ export type Database = {
           location_type?: string | null
           notes?: string | null
           organization_id?: string | null
+          has_transcription_consent?: boolean
           rate_per_hour?: number | null
           session_type?: string | null
           start_time: string
@@ -1683,6 +1685,7 @@ export type Database = {
           location_type?: string | null
           notes?: string | null
           organization_id?: string | null
+          has_transcription_consent?: boolean
           rate_per_hour?: number | null
           session_type?: string | null
           start_time?: string
@@ -2598,6 +2601,13 @@ export type Database = {
           p_file_type: string
         }
         Returns: Json
+      }
+      prune_session_transcripts: {
+        Args: { retention_days?: number }
+        Returns: {
+          deleted_transcripts: number
+          deleted_segments: number
+        }[]
       }
       remove_user_role: {
         Args: { removed_by_uuid?: string; role_name: string; user_uuid: string }

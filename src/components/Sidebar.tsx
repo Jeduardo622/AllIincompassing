@@ -9,6 +9,7 @@ import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/theme';
 import ChatBot from './ChatBot';
 import ThemeToggle from './ThemeToggle';
+import { logger } from '../lib/logger/logger';
 
 export default function Sidebar() {
   const { signOut, hasRole, user, profile } = useAuth();
@@ -31,7 +32,15 @@ export default function Sidebar() {
       // Explicitly navigate to login after successful sign-out to avoid race conditions with guards
       navigate('/login', { replace: true });
     } catch (error) {
-      console.error('Error signing out:', error);
+      logger.error('Sidebar sign-out failed', {
+        error,
+        context: { component: 'Sidebar', operation: 'handleSignOut' },
+        metadata: {
+          hadUser: Boolean(user),
+          hadProfile: Boolean(profile),
+          attemptedNavigate: true
+        }
+      });
       setIsSigningOut(false);
       // Force navigation to login page even if there's an error
       navigate('/login');
@@ -40,16 +49,29 @@ export default function Sidebar() {
 
   const handleRefreshSession = async () => {
     if (isRefreshing) return;
-    
-    console.log('Manual session refresh requested');
+
+    logger.info('Manual session refresh requested', {
+      context: { component: 'Sidebar', operation: 'refreshSession' },
+      metadata: { hasProfile: Boolean(profile) }
+    });
     try {
       setIsRefreshing(true);
       // Note: authContext automatically manages session state
-      console.log('Session state refreshed, current role:', profile?.role);
-      console.log('Manual session refresh completed');
+      logger.debug('Manual session refresh acknowledged by auth context', {
+        context: { component: 'Sidebar', operation: 'refreshSession' },
+        metadata: { hasRole: Boolean(profile?.role) }
+      });
+      logger.info('Manual session refresh completed', {
+        context: { component: 'Sidebar', operation: 'refreshSession' },
+        metadata: { therapistView: Boolean(therapistId) }
+      });
       setIsRefreshing(false);
     } catch (error) {
-      console.error('Error refreshing session:', error);
+      logger.error('Sidebar session refresh failed', {
+        error,
+        context: { component: 'Sidebar', operation: 'refreshSession' },
+        metadata: { therapistView: Boolean(therapistId) }
+      });
       setIsRefreshing(false);
     }
   };

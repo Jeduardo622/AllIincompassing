@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Shield, Mail, Calendar, Key } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showSuccess, showError } from '../../lib/toast';
+import { logger } from '../../lib/logger/logger';
 
 interface AdminUser {
   id: string;
@@ -72,7 +73,14 @@ export default function AdminSettings() {
         
         if (assignError) throw assignError;
       } catch (error) {
-        console.error('Error in admin creation:', error);
+        logger.error('Admin creation mutation failed', {
+          error,
+          context: { component: 'AdminSettings', operation: 'createAdminMutation' },
+          metadata: {
+            hasEmail: Boolean(data.email),
+            hasProfileDetails: Boolean(data.first_name || data.last_name || data.title)
+          }
+        });
         throw error;
       }
     },
@@ -109,19 +117,26 @@ export default function AdminSettings() {
   const deleteAdminMutation = useMutation({
     mutationFn: async (userId: string) => {
       // Use the simplified function signature with just operation and target_user_id
-      console.log('Attempting to remove admin role for user ID:', userId);
+      logger.info('Admin removal requested', {
+        context: { component: 'AdminSettings', operation: 'removeAdmin' },
+        metadata: { hasUserId: Boolean(userId) }
+      });
       const { error } = await supabase.rpc('manage_admin_users', {
         operation: 'remove',
         metadata: {}
       });
-      
+
       if (error) {
-        console.error('Error removing admin user:', error);
-        console.error('Error details:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
+        const rpcError = error as { code?: string | null; details?: unknown; hint?: unknown };
+        logger.error('Admin removal RPC failed', {
+          error,
+          context: { component: 'AdminSettings', operation: 'removeAdminRpc' },
+          metadata: {
+            hasUserId: Boolean(userId),
+            supabaseCode: rpcError?.code ?? null,
+            hasDetails: Boolean(rpcError?.details),
+            hasHint: Boolean(rpcError?.hint)
+          }
         });
         throw error;
       }
@@ -131,7 +146,11 @@ export default function AdminSettings() {
       showSuccess('Admin user removed successfully');
     },
     onError: (error) => {
-      console.error('Delete admin mutation error:', error);
+      logger.error('Delete admin mutation lifecycle error', {
+        error,
+        context: { component: 'AdminSettings', operation: 'removeAdminMutation' },
+        metadata: { stage: 'onError' }
+      });
       showError(error);
     },
   });
@@ -149,10 +168,17 @@ export default function AdminSettings() {
   const handleDelete = async (userId: string) => {
     if (window.confirm('Are you sure you want to remove this admin user?')) {
       try {
-        console.log('Deleting admin user with ID:', userId);
+        logger.info('Admin removal confirmed by user', {
+          context: { component: 'AdminSettings', operation: 'handleDelete' },
+          metadata: { hasUserId: Boolean(userId) }
+        });
         await deleteAdminMutation.mutateAsync(userId);
       } catch (error) {
-        console.error('Error in handleDelete:', error);
+        logger.error('Admin removal handler failed', {
+          error,
+          context: { component: 'AdminSettings', operation: 'handleDelete' },
+          metadata: { hasUserId: Boolean(userId) }
+        });
       }
     }
   };

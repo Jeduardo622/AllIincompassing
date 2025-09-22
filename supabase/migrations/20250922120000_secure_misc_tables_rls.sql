@@ -335,14 +335,23 @@ CREATE POLICY behavioral_patterns_admin_access
   ON public.behavioral_patterns
   FOR SELECT
   TO authenticated
-  USING (auth.user_has_role('admin') OR auth.user_has_role('super_admin'));
+  USING (
+    app.user_has_role_for_org('admin', organization_id, created_by)
+    OR app.user_has_role_for_org('super_admin', organization_id, created_by)
+  );
 
 CREATE POLICY behavioral_patterns_owner_access
   ON public.behavioral_patterns
   FOR ALL
   TO authenticated
-  USING (created_by = auth.uid())
-  WITH CHECK (created_by = auth.uid());
+  USING (
+    created_by = auth.uid()
+    AND app.user_has_role_for_org('therapist', organization_id, created_by)
+  )
+  WITH CHECK (
+    created_by = auth.uid()
+    AND app.user_has_role_for_org('therapist', organization_id, created_by)
+  );
 
 -- session_note_templates policies
 ALTER TABLE public.session_note_templates ENABLE ROW LEVEL SECURITY;
@@ -362,14 +371,23 @@ CREATE POLICY session_note_templates_admin_access
   ON public.session_note_templates
   FOR SELECT
   TO authenticated
-  USING (auth.user_has_role('admin') OR auth.user_has_role('super_admin'));
+  USING (
+    app.user_has_role_for_org('admin', organization_id, created_by)
+    OR app.user_has_role_for_org('super_admin', organization_id, created_by)
+  );
 
 CREATE POLICY session_note_templates_owner_access
   ON public.session_note_templates
   FOR ALL
   TO authenticated
-  USING (created_by = auth.uid())
-  WITH CHECK (created_by = auth.uid());
+  USING (
+    created_by = auth.uid()
+    AND app.user_has_role_for_org('therapist', organization_id, created_by)
+  )
+  WITH CHECK (
+    created_by = auth.uid()
+    AND app.user_has_role_for_org('therapist', organization_id, created_by)
+  );
 
 -- session_transcripts policies
 ALTER TABLE public.session_transcripts ENABLE ROW LEVEL SECURITY;
@@ -389,14 +407,18 @@ CREATE POLICY session_transcripts_admin_read
   ON public.session_transcripts
   FOR SELECT
   TO authenticated
-  USING (auth.user_has_role('admin') OR auth.user_has_role('super_admin'));
+  USING (
+    app.user_has_role_for_org('admin', organization_id, NULL, NULL, session_id)
+    OR app.user_has_role_for_org('super_admin', organization_id, NULL, NULL, session_id)
+  );
 
 CREATE POLICY session_transcripts_therapist_read
   ON public.session_transcripts
   FOR SELECT
   TO authenticated
   USING (
-    EXISTS (
+    app.user_has_role_for_org('therapist', organization_id, NULL, NULL, session_id)
+    AND EXISTS (
       SELECT 1
       FROM public.sessions s
       WHERE s.id = session_id
@@ -422,17 +444,51 @@ CREATE POLICY session_transcript_segments_admin_read
   ON public.session_transcript_segments
   FOR SELECT
   TO authenticated
-  USING (auth.user_has_role('admin') OR auth.user_has_role('super_admin'));
+  USING (
+    app.user_has_role_for_org(
+      'admin',
+      organization_id,
+      NULL,
+      NULL,
+      COALESCE(
+        (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
+        session_id
+      )
+    )
+    OR app.user_has_role_for_org(
+      'super_admin',
+      organization_id,
+      NULL,
+      NULL,
+      COALESCE(
+        (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
+        session_id
+      )
+    )
+  );
 
 CREATE POLICY session_transcript_segments_therapist_read
   ON public.session_transcript_segments
   FOR SELECT
   TO authenticated
   USING (
-    EXISTS (
+    app.user_has_role_for_org(
+      'therapist',
+      organization_id,
+      NULL,
+      NULL,
+      COALESCE(
+        (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
+        session_id
+      )
+    )
+    AND EXISTS (
       SELECT 1
       FROM public.sessions s
-      WHERE s.id = session_id
+      WHERE s.id = COALESCE(
+          (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
+          session_id
+        )
         AND s.therapist_id = auth.uid()
     )
   );

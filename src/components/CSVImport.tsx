@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { logger } from '../lib/logger/logger';
 import { AlertCircle, Upload, CheckCircle, X } from 'lucide-react';
 import { showSuccess, showError } from '../lib/toast';
 import type { Client, Therapist } from '../types';
@@ -225,7 +226,14 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose, entityType = 'client' })
             success: prev.success + 1
           }));
         } catch (error) {
-          console.error(`Error importing row ${actualRowIndex}:`, error);
+          logger.error('CSV import row processing failed', {
+            error,
+            context: { component: 'CSVImport', operation: 'processRow' },
+            metadata: {
+              rowIndex: actualRowIndex,
+              entityType
+            }
+          });
           setImportStatus(prev => ({
             ...prev,
             processed: prev.processed + 1,

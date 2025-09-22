@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { showSuccess, showError } from '../lib/toast';
+import { logger } from '../lib/logger/logger';
 import AvailabilityEditor from './AvailabilityEditor';
 import { OnboardingSteps } from './OnboardingSteps';
 import type { Therapist } from '../types';
@@ -141,7 +142,14 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
           .upload(filePath, file);
 
         if (uploadError) {
-          console.error(`Error uploading ${key}:`, uploadError);
+          logger.error('Therapist onboarding document upload failed', {
+            error: uploadError,
+            context: { component: 'TherapistOnboarding', operation: 'uploadDocument' },
+            metadata: {
+              documentKey: key,
+              hasFile: Boolean(file)
+            }
+          });
           // Continue with other uploads even if one fails
         }
       }
@@ -203,7 +211,14 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
     try {
       await createTherapistMutation.mutateAsync(data);
     } catch (error) {
-      console.error('Error submitting form:', error);
+      logger.error('Therapist onboarding submission failed', {
+        error,
+        context: { component: 'TherapistOnboarding', operation: 'handleFormSubmit' },
+        metadata: {
+          hasUploads: Object.keys(uploadedFiles).length > 0,
+          selectedStep: currentStep
+        }
+      });
       setIsSubmitting(false);
     }
   };

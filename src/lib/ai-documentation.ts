@@ -1,5 +1,4 @@
-import { supabase } from './supabase';
-import { buildSupabaseEdgeUrl, getSupabaseAnonKey } from './runtimeConfig';
+import { callEdge, supabase } from './supabase';
 import { showSuccess, showError } from './toast';
 
 // Types for AI Documentation System
@@ -227,11 +226,10 @@ export class AIDocumentationService {
   private async transcribeAudio(audioBase64: string): Promise<any> {
     try {
       // Call Supabase AI Transcription Edge Function
-      const response = await fetch(buildSupabaseEdgeUrl('ai-transcription'), {
+      const response = await callEdge('ai-transcription', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getSupabaseAnonKey()}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           audio: audioBase64,
@@ -443,11 +441,10 @@ export class AIDocumentationService {
     try {
       const prompt = this.buildSessionNotePrompt(sessionData, transcriptData);
       
-      const response = await fetch(buildSupabaseEdgeUrl('ai-session-note-generator'), {
+      const response = await callEdge('ai-session-note-generator', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getSupabaseAnonKey()}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           prompt,

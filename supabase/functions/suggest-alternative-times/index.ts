@@ -2,6 +2,14 @@ import { createClient } from "npm:@supabase/supabase-js@2.50.0";
 import { OpenAI } from "npm:openai@5.5.1";
 import { createRequestClient } from "../_shared/database.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
+import {
+  createPseudonym,
+  hashIdentifier,
+  PseudonymMap,
+  redactAndPseudonymize,
+  registerNamePseudonym,
+  registerPseudonym
+} from "../../../src/lib/phi/pseudonym.ts";
 
 const openai = new OpenAI({
   apiKey: Deno.env.get("OPENAI_API_KEY"),
@@ -67,6 +75,36 @@ Deno.serve(async (req) => {
     // Parse the request body
     const conflictDetails: ConflictDetails = await req.json();
 
+    const therapistIdentifier =
+      conflictDetails.therapist?.id ||
+      conflictDetails.therapistId ||
+      conflictDetails.therapist?.full_name ||
+      'therapist';
+    const clientIdentifier =
+      conflictDetails.client?.id ||
+      conflictDetails.clientId ||
+      conflictDetails.client?.full_name ||
+      'client';
+
+    const therapistAlias = createPseudonym('Therapist', therapistIdentifier);
+    const clientAlias = createPseudonym('Client', clientIdentifier);
+    const therapistHash = hashIdentifier(therapistIdentifier);
+    const clientHash = hashIdentifier(clientIdentifier);
+
+    const pseudonymMap: PseudonymMap = {};
+    registerNamePseudonym(pseudonymMap, conflictDetails.therapist?.full_name, therapistAlias);
+    registerNamePseudonym(pseudonymMap, conflictDetails.client?.full_name, clientAlias);
+
+    const therapistRecord = conflictDetails.therapist as Record<string, unknown>;
+    const clientRecord = conflictDetails.client as Record<string, unknown>;
+
+    if (typeof therapistRecord.email === "string") {
+      registerPseudonym(pseudonymMap, therapistRecord.email, therapistAlias);
+    }
+    if (typeof clientRecord.email === "string") {
+      registerPseudonym(pseudonymMap, clientRecord.email, clientAlias);
+    }
+
     const zone = conflictDetails.timeZone ?? "UTC";
     const startDate = new Date(conflictDetails.startTime);
     const endDate = new Date(conflictDetails.endTime);
@@ -90,6 +128,62 @@ Deno.serve(async (req) => {
       return sessionDate === requestedDate;
     });
 
+    const dateFormatter = new Intl.DateTimeFormat("en-US", { timeZone: zone });
+    const timeFormatter = new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" });
+
+    const requestedDateText = dateFormatter.format(startDate);
+    const requestedStartText = timeFormatter.format(startDate);
+    const requestedEndText = timeFormatter.format(endDate);
+
+    const conflictMessages = conflictDetails.conflicts
+      .map(conflict => `- ${conflict.message}`)
+      .join("\n");
+
+    const sanitizedConflictMessages = redactAndPseudonymize(
+      conflictMessages.trim().length > 0 ? conflictMessages : "- None reported",
+      pseudonymMap
+    );
+
+    const therapistAvailabilityWindow =
+      therapistAvailability?.start && therapistAvailability?.end
+        ? `${therapistAvailability.start} to ${therapistAvailability.end}`
+        : "Not available";
+    const clientAvailabilityWindow =
+      clientAvailability?.start && clientAvailability?.end
+        ? `${clientAvailability.start} to ${clientAvailability.end}`
+        : "Not available";
+
+    const sanitizedTherapistAvailability = redactAndPseudonymize(therapistAvailabilityWindow, pseudonymMap);
+    const sanitizedClientAvailability = redactAndPseudonymize(clientAvailabilityWindow, pseudonymMap);
+
+    const existingSessionsText = existingSessionsOnSameDay
+      .map(session =>
+        `- ${timeFormatter.format(new Date(session.start_time))} to ${timeFormatter.format(new Date(session.end_time))}: ${
+          session.therapist_id === conflictDetails.therapistId ? "Therapist busy" : "Client busy"
+        }`
+      )
+      .join("\n");
+
+    const sanitizedExistingSessions = redactAndPseudonymize(
+      existingSessionsText.trim().length > 0 ? existingSessionsText : "- None scheduled",
+      pseudonymMap
+    );
+
+    const userPrompt = `I need to schedule a ${sessionDuration}-minute therapy session for ${therapistAlias} with ${clientAlias} on ${requestedDateText}.
+
+I tried to schedule it from ${requestedStartText} to ${requestedEndText}, but encountered these conflicts:
+${sanitizedConflictMessages}
+
+Therapist availability on ${dayOfWeek}: ${sanitizedTherapistAvailability}
+Client availability on ${dayOfWeek}: ${sanitizedClientAvailability}
+
+Existing sessions on this day:
+${sanitizedExistingSessions}
+
+Please suggest 3-5 alternative time slots that would work for both the therapist and client.`;
+
+    const sanitizedUserPrompt = redactAndPseudonymize(userPrompt, pseudonymMap);
+
     // Use OpenAI to suggest alternative times
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -103,24 +197,7 @@ Deno.serve(async (req) => {
         },
         {
           role: "user",
-          content: `I need to schedule a ${sessionDuration}-minute therapy session for therapist ${conflictDetails.therapist.full_name}
-          with client ${conflictDetails.client.full_name} on ${new Intl.DateTimeFormat("en-US", { timeZone: zone }).format(startDate)}.
-
-          I tried to schedule it from ${new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" }).format(startDate)} to ${new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" }).format(endDate)},
-          but encountered these conflicts:
-          ${conflictDetails.conflicts.map(c => `- ${c.message}`).join('\n')}
-
-          Therapist availability on ${dayOfWeek}: ${therapistAvailability.start ? `${therapistAvailability.start} to ${therapistAvailability.end}` : 'Not available'}
-          Client availability on ${dayOfWeek}: ${clientAvailability.start ? `${clientAvailability.start} to ${clientAvailability.end}` : 'Not available'}
-
-          Existing sessions on this day:
-          ${existingSessionsOnSameDay.map(s =>
-            `- ${new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" }).format(new Date(s.start_time))} to ${new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" }).format(new Date(s.end_time))}: ${
-              s.therapist_id === conflictDetails.therapistId ? "Therapist busy" : "Client busy"
-            }`
-          ).join('\n')}
-
-          Please suggest 3-5 alternative time slots that would work for both the therapist and client.`
+          content: sanitizedUserPrompt
         }
       ],
       tools: [
@@ -165,7 +242,18 @@ Deno.serve(async (req) => {
           }
         }
       ],
-      tool_choice: { type: "function", function: { name: "suggest_alternative_times" } }
+      tool_choice: { type: "function", function: { name: "suggest_alternative_times" } },
+      metadata: {
+        session_duration_minutes: sessionDuration,
+        requested_start_iso: startDate.toISOString(),
+        requested_end_iso: endDate.toISOString(),
+        therapist_availability_start: therapistAvailability?.start ?? null,
+        therapist_availability_end: therapistAvailability?.end ?? null,
+        client_availability_start: clientAvailability?.start ?? null,
+        client_availability_end: clientAvailability?.end ?? null,
+        therapist_hash: therapistHash,
+        client_hash: clientHash
+      }
     });
 
     // Extract the function call result

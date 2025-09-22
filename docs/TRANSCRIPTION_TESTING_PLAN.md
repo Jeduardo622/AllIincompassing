@@ -27,6 +27,22 @@ OPENAI_API_KEY=<openai-key>  # In Supabase secrets
 - **Performance Tests**: Load testing with multiple concurrent sessions
 - **Compliance Tests**: Automated validation against California requirements
 
+### 1.4 Edge Function Invocation Standard
+- ✅ Use the shared `callEdge(path, init, options?)` helper from `src/lib/supabase` for every Supabase Edge request.
+- 🔐 The helper fetches the active session via `supabase.auth.getSession()` and attaches the `Authorization: Bearer <JWT>` header automatically, so tests can assert authenticated behavior without duplicating logic.
+- 🧰 Override tokens only when performing service-to-service calls (`options.accessToken`) or when a specific anon key is required (`options.anonKey`).
+- 🧪 Example (TypeScript):
+  ```ts
+  import { callEdge } from '@/lib/supabase';
+
+  await callEdge('ai-transcription', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audio: base64Chunk }),
+  });
+  ```
+- 🚫 Do **not** call `fetch(buildSupabaseEdgeUrl(...))` directly—doing so bypasses JWT attachment and can lead to anonymous traffic hitting authenticated functions.
+
 ## 2. Core Functionality Tests
 
 ### 2.1 Audio Transcription Tests

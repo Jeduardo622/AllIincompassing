@@ -3,6 +3,7 @@ import { AIDocumentationService } from '../ai-documentation';
 import { server } from '../../test/setup';
 import { http, HttpResponse } from 'msw';
 import { setRuntimeSupabaseConfig, resetRuntimeSupabaseConfigForTests } from '../runtimeConfig';
+import { supabase } from '../supabase';
 
 // Mock MediaRecorder
 class MockMediaRecorder {
@@ -93,6 +94,34 @@ describe('AIDocumentationService', () => {
       const result = await transcribeAudio(audioBase64);
 
       expect(result).toEqual(mockTranscriptionResponse);
+    });
+
+    it('attaches the session bearer token when calling the transcription edge function', async () => {
+      const getSessionMock = vi.mocked(supabase.auth.getSession);
+      getSessionMock.mockResolvedValueOnce({
+        data: { session: { access_token: 'jwt-transcription' } },
+        error: null,
+      } as any);
+
+      let receivedAuth: string | null = null;
+      server.use(
+        http.post('http://localhost/functions/v1/ai-transcription', async ({ request }) => {
+          receivedAuth = request.headers.get('authorization');
+          return HttpResponse.json({
+            text: 'Token validation transcript',
+            confidence: 0.95,
+            start_time: 0,
+            end_time: 5,
+          });
+        }),
+      );
+
+      const audioBase64 = 'dGVzdCBhdWRpbyBkYXRh';
+      const transcribeAudio = (service as any).transcribeAudio.bind(service);
+      await transcribeAudio(audioBase64);
+
+      expect(getSessionMock).toHaveBeenCalled();
+      expect(receivedAuth).toBe('Bearer jwt-transcription');
     });
 
     it('should handle transcription errors gracefully', async () => {
@@ -237,6 +266,53 @@ describe('AIDocumentationService', () => {
       expect(result.goals).toBeDefined();
       expect(result.interventions).toBeDefined();
       expect(result.observations).toBeDefined();
+    });
+
+    it('attaches the session bearer token when invoking the session note edge function', async () => {
+      const getSessionMock = vi.mocked(supabase.auth.getSession);
+      getSessionMock.mockResolvedValueOnce({
+        data: { session: { access_token: 'jwt-session-note' } },
+        error: null,
+      } as any);
+
+      let receivedAuth: string | null = null;
+      server.use(
+        http.post('http://localhost/functions/v1/ai-session-note-generator', async ({ request }) => {
+          receivedAuth = request.headers.get('authorization');
+          return HttpResponse.json({
+            content: JSON.stringify({
+              clinical_status: 'Client demonstrates consistent engagement with prompts across the entire session duration.',
+              goals: [],
+              interventions: [],
+              observations: [],
+              responses: [],
+              data_summary: [],
+              progress: [],
+              recommendations: [],
+              summary: 'Token validation summary',
+              confidence: 0.88,
+            }),
+          });
+        }),
+      );
+
+      const generateAISessionNote = (service as any).generateAISessionNote.bind(service);
+      await generateAISessionNote(
+        {
+          session_date: '2025-06-30',
+          duration: 60,
+          location: 'Clinic Office',
+          client_name: 'Test Client',
+          therapist_name: 'Test Therapist',
+        },
+        {
+          processed_transcript: 'Token validation transcript',
+          behavioral_markers: [],
+        },
+      );
+
+      expect(getSessionMock).toHaveBeenCalled();
+      expect(receivedAuth).toBe('Bearer jwt-session-note');
     });
 
     it('should validate California compliance requirements', async () => {

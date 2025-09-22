@@ -14,10 +14,17 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+interface ConfirmOccurrencePayload
+  extends Pick<TimezoneValidationPayload, "start_time_offset_minutes" | "end_time_offset_minutes" | "time_zone"> {
+  hold_key: string;
+  session: Record<string, unknown>;
+}
+
 interface ConfirmPayload
   extends Pick<TimezoneValidationPayload, "start_time_offset_minutes" | "end_time_offset_minutes" | "time_zone"> {
   hold_key: string;
   session: Record<string, unknown>;
+  occurrences?: ConfirmOccurrencePayload[];
 }
 
 function jsonResponse(
@@ -100,55 +107,86 @@ Deno.serve(async (req) => {
       return respond({ success: false, error: "Session start_time or end_time missing" }, 400);
     }
 
-    const offsetValidation = validateTimezonePayload({
-      start_time: sessionData.start_time,
-      end_time: sessionData.end_time,
-      start_time_offset_minutes: payload.start_time_offset_minutes,
-      end_time_offset_minutes: payload.end_time_offset_minutes,
-      time_zone: payload.time_zone,
-    });
+    const occurrencePayloads = Array.isArray(payload.occurrences) && payload.occurrences.length > 0
+      ? payload.occurrences
+      : [{
+          hold_key: payload.hold_key,
+          session: payload.session,
+          start_time_offset_minutes: payload.start_time_offset_minutes,
+          end_time_offset_minutes: payload.end_time_offset_minutes,
+          time_zone: payload.time_zone,
+        }];
 
-    if (!offsetValidation.ok) {
-      return respond({ success: false, error: offsetValidation.message }, 400);
+    for (const occurrence of occurrencePayloads) {
+      const occurrenceSession = occurrence.session as { start_time?: unknown; end_time?: unknown };
+      if (
+        typeof occurrenceSession.start_time !== "string" ||
+        typeof occurrenceSession.end_time !== "string"
+      ) {
+        return respond({ success: false, error: "Session start_time or end_time missing" }, 400);
+      }
+
+      const offsetValidation = validateTimezonePayload({
+        start_time: occurrenceSession.start_time,
+        end_time: occurrenceSession.end_time,
+        start_time_offset_minutes: occurrence.start_time_offset_minutes,
+        end_time_offset_minutes: occurrence.end_time_offset_minutes,
+        time_zone: occurrence.time_zone ?? payload.time_zone,
+      });
+
+      if (!offsetValidation.ok) {
+        return respond({ success: false, error: offsetValidation.message }, 400);
+      }
     }
 
-    const { data, error } = await supabaseAdmin.rpc("confirm_session_hold", {
-      p_hold_key: payload.hold_key,
-      p_session: payload.session,
-      p_actor_id: user.id,
-    });
+    const confirmedSessions: Record<string, unknown>[] = [];
 
-    if (error) {
-      console.error("confirm_session_hold error", error);
-      return respond({ success: false, error: error.message ?? "Failed to confirm session" }, 500);
+    for (const occurrence of occurrencePayloads) {
+      const { data, error } = await supabaseAdmin.rpc("confirm_session_hold", {
+        p_hold_key: occurrence.hold_key,
+        p_session: occurrence.session,
+        p_actor_id: user.id,
+      });
+
+      if (error) {
+        console.error("confirm_session_hold error", error);
+        return respond({ success: false, error: error.message ?? "Failed to confirm session" }, 500);
+      }
+
+      if (!data?.success) {
+        const statusMap: Record<string, number> = {
+          MISSING_FIELDS: 400,
+          INVALID_RANGE: 400,
+          HOLD_MISMATCH: 409,
+          CLIENT_MISMATCH: 409,
+          THERAPIST_CONFLICT: 409,
+          CLIENT_CONFLICT: 409,
+          HOLD_NOT_FOUND: 410,
+          HOLD_EXPIRED: 410,
+        };
+        const status = statusMap[data?.error_code as string] ?? 409;
+        return respond({
+          success: false,
+          error: data?.error_message ?? "Unable to confirm session",
+          code: data?.error_code,
+        }, status);
+      }
+
+      const session = data.session as Record<string, unknown> | undefined;
+      if (!session) {
+        return respond({ success: false, error: "Session response missing" }, 500);
+      }
+
+      confirmedSessions.push(session);
     }
 
-    if (!data?.success) {
-      const statusMap: Record<string, number> = {
-        MISSING_FIELDS: 400,
-        INVALID_RANGE: 400,
-        HOLD_MISMATCH: 409,
-        CLIENT_MISMATCH: 409,
-        THERAPIST_CONFLICT: 409,
-        CLIENT_CONFLICT: 409,
-        HOLD_NOT_FOUND: 410,
-        HOLD_EXPIRED: 410,
-      };
-      const status = statusMap[data?.error_code as string] ?? 409;
-      return respond({
-        success: false,
-        error: data?.error_message ?? "Unable to confirm session",
-        code: data?.error_code,
-      }, status);
-    }
-
-    const session = data.session as Record<string, unknown> | undefined;
-    if (!session) {
+    const [primarySession] = confirmedSessions;
+    if (!primarySession) {
       return respond({ success: false, error: "Session response missing" }, 500);
     }
 
+    const rawDuration = primarySession["duration_minutes"];
     let roundedDuration: number | null = null;
-    const rawDuration = session["duration_minutes"];
 
     if (typeof rawDuration === "number" && Number.isFinite(rawDuration)) {
       roundedDuration = rawDuration;
@@ -162,15 +200,22 @@ Deno.serve(async (req) => {
       }
     }
 
-    const sessionWithRoundedDuration =
-      roundedDuration === null
-        ? session
-        : { ...session, duration_minutes: roundedDuration };
+    const normalizeSession = (record: Record<string, unknown>) => {
+      if (roundedDuration === null) {
+        return record;
+      }
+
+      return {
+        ...record,
+        duration_minutes: roundedDuration,
+      };
+    };
 
     return respond({
       success: true,
       data: {
-        session: sessionWithRoundedDuration,
+        session: normalizeSession(primarySession),
+        sessions: confirmedSessions.map(normalizeSession),
         roundedDurationMinutes: roundedDuration,
       },
     });

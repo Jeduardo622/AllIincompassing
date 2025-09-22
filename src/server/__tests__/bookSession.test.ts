@@ -48,7 +48,18 @@ describe("bookSession", () => {
     mockedRequestSessionHold.mockResolvedValueOnce({
       holdKey: "hold-key",
       holdId: "hold-id",
+      startTime: basePayload.session.start_time,
+      endTime: basePayload.session.end_time,
       expiresAt: "2025-01-01T00:05:00Z",
+      holds: [
+        {
+          holdKey: "hold-key",
+          holdId: "hold-id",
+          startTime: basePayload.session.start_time,
+          endTime: basePayload.session.end_time,
+          expiresAt: "2025-01-01T00:05:00Z",
+        },
+      ],
     });
 
     const confirmedSession: Session = {
@@ -66,7 +77,11 @@ describe("bookSession", () => {
       duration_minutes: 60,
     };
 
-    mockedConfirmSessionBooking.mockResolvedValueOnce(confirmedSession);
+    mockedConfirmSessionBooking.mockResolvedValueOnce({
+      session: confirmedSession,
+      sessions: [confirmedSession],
+      roundedDurationMinutes: confirmedSession.duration_minutes ?? null,
+    });
 
     const result = await bookSession(basePayload);
 
@@ -86,6 +101,14 @@ describe("bookSession", () => {
       endTimeOffsetMinutes: 0,
       timeZone: "UTC",
       accessToken: basePayload.accessToken,
+      occurrences: [
+        {
+          startTime: basePayload.session.start_time,
+          endTime: basePayload.session.end_time,
+          startTimeOffsetMinutes: 0,
+          endTimeOffsetMinutes: 0,
+        },
+      ],
     });
 
     expect(mockedConfirmSessionBooking).toHaveBeenCalledWith({
@@ -99,6 +122,13 @@ describe("bookSession", () => {
       endTimeOffsetMinutes: 0,
       timeZone: "UTC",
       accessToken: basePayload.accessToken,
+      occurrences: expect.arrayContaining([
+        expect.objectContaining({
+          holdKey: "hold-key",
+          startTimeOffsetMinutes: 0,
+          endTimeOffsetMinutes: 0,
+        }),
+      ]),
     });
 
     expect(mockedPersistSessionCptMetadata).toHaveBeenCalledWith({
@@ -112,7 +142,18 @@ describe("bookSession", () => {
     mockedRequestSessionHold.mockResolvedValueOnce({
       holdKey: "hold-key",
       holdId: "hold-id",
+      startTime: basePayload.session.start_time,
+      endTime: basePayload.session.end_time,
       expiresAt: "2025-01-01T00:05:00Z",
+      holds: [
+        {
+          holdKey: "hold-key",
+          holdId: "hold-id",
+          startTime: basePayload.session.start_time,
+          endTime: basePayload.session.end_time,
+          expiresAt: "2025-01-01T00:05:00Z",
+        },
+      ],
     });
 
     mockedConfirmSessionBooking.mockRejectedValueOnce(new Error("unable to confirm"));
@@ -141,7 +182,18 @@ describe("bookSession", () => {
     mockedRequestSessionHold.mockResolvedValueOnce({
       holdKey: "hold-key",
       holdId: "hold-id",
+      startTime: basePayload.session.start_time,
+      endTime: basePayload.session.end_time,
       expiresAt: "2025-01-01T00:05:00Z",
+      holds: [
+        {
+          holdKey: "hold-key",
+          holdId: "hold-id",
+          startTime: basePayload.session.start_time,
+          endTime: basePayload.session.end_time,
+          expiresAt: "2025-01-01T00:05:00Z",
+        },
+      ],
     });
 
     const confirmedSession: Session = {
@@ -159,7 +211,11 @@ describe("bookSession", () => {
       duration_minutes: 60,
     };
 
-    mockedConfirmSessionBooking.mockResolvedValueOnce(confirmedSession);
+    mockedConfirmSessionBooking.mockResolvedValueOnce({
+      session: confirmedSession,
+      sessions: [confirmedSession],
+      roundedDurationMinutes: confirmedSession.duration_minutes ?? null,
+    });
     mockedPersistSessionCptMetadata.mockRejectedValueOnce(new Error("persist failure"));
 
     await expect(bookSession(basePayload)).rejects.toThrow("persist failure");
@@ -170,7 +226,18 @@ describe("bookSession", () => {
     mockedRequestSessionHold.mockResolvedValueOnce({
       holdKey: "hold-key",
       holdId: "hold-id",
+      startTime: basePayload.session.start_time,
+      endTime: basePayload.session.end_time,
       expiresAt: "2025-01-01T00:05:00Z",
+      holds: [
+        {
+          holdKey: "hold-key",
+          holdId: "hold-id",
+          startTime: basePayload.session.start_time,
+          endTime: basePayload.session.end_time,
+          expiresAt: "2025-01-01T00:05:00Z",
+        },
+      ],
     });
 
     const confirmedSession: Session = {
@@ -188,7 +255,11 @@ describe("bookSession", () => {
       duration_minutes: 60,
     };
 
-    mockedConfirmSessionBooking.mockResolvedValueOnce(confirmedSession);
+    mockedConfirmSessionBooking.mockResolvedValueOnce({
+      session: confirmedSession,
+      sessions: [confirmedSession],
+      roundedDurationMinutes: confirmedSession.duration_minutes ?? null,
+    });
 
     const idempotencyKey = "booking-123";
 
@@ -236,7 +307,18 @@ describe("bookSession", () => {
       const hold = {
         holdKey: `hold-${nextIndex}`,
         holdId: `hold-id-${nextIndex}`,
+        startTime: slotStart,
+        endTime: slotEnd,
         expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        holds: [
+          {
+            holdKey: `hold-${nextIndex}`,
+            holdId: `hold-id-${nextIndex}`,
+            startTime: slotStart,
+            endTime: slotEnd,
+            expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+          },
+        ],
       };
 
       issuedHolds.push({ holdKey: hold.holdKey, clientId });
@@ -272,7 +354,11 @@ describe("bookSession", () => {
       };
 
       confirmedSlots.set(slotKey, confirmedSession);
-      return confirmedSession;
+      return {
+        session: confirmedSession,
+        sessions: [confirmedSession],
+        roundedDurationMinutes: confirmedSession.duration_minutes ?? null,
+      };
     });
 
     mockedCancelSessionHold.mockImplementation(async ({ holdKey }) => {

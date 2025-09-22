@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, startOfWeek, addDays, endOfWeek } from "date-fns";
-import { getTimezoneOffset } from "date-fns-tz";
+import { getTimezoneOffset, zonedTimeToUtc } from "date-fns-tz";
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -30,7 +30,76 @@ import type {
   BookSessionApiRequestBody,
   BookSessionApiResponse,
   BookSessionResult,
+  SessionRecurrence,
 } from "../server/types";
+
+interface RecurrenceFormState {
+  enabled: boolean;
+  rule: string;
+  count?: number;
+  until?: string;
+  exceptions: string[];
+  timeZone: string;
+}
+
+function toTimeZoneAwareIso(value: string | undefined, timeZone: string): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+
+  try {
+    if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed)) {
+      const parsed = new Date(trimmed);
+      return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+    }
+
+    const utcValue = zonedTimeToUtc(trimmed, timeZone);
+    return utcValue.toISOString();
+  } catch (error) {
+    console.warn("Failed to normalize recurrence datetime", { error, value, timeZone });
+    return undefined;
+  }
+}
+
+function normalizeRecurrencePayload(state: RecurrenceFormState | undefined): SessionRecurrence | undefined {
+  if (!state?.enabled) {
+    return undefined;
+  }
+
+  const rule = state.rule.trim();
+  if (rule.length === 0) {
+    return undefined;
+  }
+
+  const recurrence: SessionRecurrence = {
+    rule,
+    timeZone: state.timeZone,
+  };
+
+  if (typeof state.count === "number" && Number.isFinite(state.count) && state.count > 0) {
+    recurrence.count = Math.trunc(state.count);
+  }
+
+  const untilIso = toTimeZoneAwareIso(state.until, state.timeZone);
+  if (untilIso) {
+    recurrence.until = untilIso;
+  }
+
+  const exceptionIsoValues = state.exceptions
+    .map((value) => toTimeZoneAwareIso(value, state.timeZone))
+    .filter((value): value is string => typeof value === "string");
+
+  if (exceptionIsoValues.length > 0) {
+    recurrence.exceptions = exceptionIsoValues;
+  }
+
+  return recurrence;
+}
 
 // Memoized time slot component
 const TimeSlot = React.memo(
@@ -188,17 +257,21 @@ function buildBookingPayload(
     endOffsetMinutes: number;
     timeZone: string;
   },
+  recurrenceState?: RecurrenceFormState,
 ): BookSessionApiRequestBody {
   const normalizedSession = {
     ...session,
     status: session.status ?? "scheduled",
   } as BookSessionApiRequestBody["session"];
 
+  const recurrence = normalizeRecurrencePayload(recurrenceState) ?? session.recurrence ?? undefined;
+
   return {
     session: normalizedSession,
     startTimeOffsetMinutes: metadata.startOffsetMinutes,
     endTimeOffsetMinutes: metadata.endOffsetMinutes,
     timeZone: metadata.timeZone,
+    ...(recurrence ? { recurrence } : {}),
   };
 }
 
@@ -423,6 +496,42 @@ const Schedule = React.memo(() => {
     }
   }, []);
 
+  const [recurrenceEnabled, setRecurrenceEnabled] = useState(false);
+  const [recurrenceRule, setRecurrenceRule] = useState("FREQ=WEEKLY;INTERVAL=1");
+  const [recurrenceCount, setRecurrenceCount] = useState<number | undefined>();
+  const [recurrenceUntil, setRecurrenceUntil] = useState("");
+  const [recurrenceExceptions, setRecurrenceExceptions] = useState<string[]>([]);
+  const [recurrenceTimeZone, setRecurrenceTimeZone] = useState(userTimeZone);
+
+  useEffect(() => {
+    setRecurrenceTimeZone(userTimeZone);
+  }, [userTimeZone]);
+
+  useEffect(() => {
+    if (selectedSession) {
+      setRecurrenceEnabled(false);
+    }
+  }, [selectedSession]);
+
+  const recurrenceFormState = useMemo<RecurrenceFormState>(
+    () => ({
+      enabled: recurrenceEnabled,
+      rule: recurrenceRule,
+      count: recurrenceCount,
+      until: recurrenceUntil,
+      exceptions: recurrenceExceptions,
+      timeZone: recurrenceTimeZone,
+    }),
+    [
+      recurrenceEnabled,
+      recurrenceRule,
+      recurrenceCount,
+      recurrenceUntil,
+      recurrenceExceptions,
+      recurrenceTimeZone,
+    ],
+  );
+
   const computeTimeMetadata = useCallback(
     (session: Partial<Session>) => {
       if (!session.start_time || !session.end_time) {
@@ -547,7 +656,7 @@ const Schedule = React.memo(() => {
           startOffsetMinutes,
           endOffsetMinutes,
           timeZone,
-        }),
+        }, recurrenceFormState),
       );
 
       return bookingResult.session;
@@ -628,11 +737,15 @@ const Schedule = React.memo(() => {
         computeTimeMetadata(mergedSession);
 
       const bookingResult = await callBookSessionApi(
-        buildBookingPayload({ ...mergedSession, id: selectedSession.id }, {
-          startOffsetMinutes,
-          endOffsetMinutes,
-          timeZone,
-        }),
+        buildBookingPayload(
+          { ...mergedSession, id: selectedSession.id },
+          {
+            startOffsetMinutes,
+            endOffsetMinutes,
+            timeZone,
+          },
+          recurrenceFormState,
+        ),
       );
 
       return bookingResult.session;
@@ -686,6 +799,25 @@ const Schedule = React.memo(() => {
     setSelectedSession(session);
     setSelectedTimeSlot(undefined);
     setIsModalOpen(true);
+  }, []);
+
+  const handleAddRecurrenceException = useCallback(() => {
+    setRecurrenceExceptions((prev) => [...prev, ""]);
+  }, []);
+
+  const handleRecurrenceExceptionChange = useCallback(
+    (index: number, value: string) => {
+      setRecurrenceExceptions((prev) => {
+        const next = [...prev];
+        next[index] = value;
+        return next;
+      });
+    },
+    [],
+  );
+
+  const handleRemoveRecurrenceException = useCallback((index: number) => {
+    setRecurrenceExceptions((prev) => prev.filter((_, current) => current !== index));
   }, []);
 
   const _handleDeleteSession = useCallback(
@@ -904,6 +1036,134 @@ const Schedule = React.memo(() => {
         onTherapistChange={setSelectedTherapist}
         onClientChange={setSelectedClient}
       />
+
+      <div className="mt-6 bg-white dark:bg-dark-lighter border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <label className="inline-flex items-center text-sm font-medium text-gray-700 dark:text-gray-300">
+            <input
+              type="checkbox"
+              className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              checked={recurrenceEnabled}
+              onChange={(event) => setRecurrenceEnabled(event.target.checked)}
+            />
+            Enable recurrence (RRULE)
+          </label>
+
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Time Zone
+            </span>
+            <input
+              type="text"
+              value={recurrenceTimeZone}
+              onChange={(event) => setRecurrenceTimeZone(event.target.value)}
+              placeholder="America/New_York"
+              className="flex-1 md:flex-none md:w-64 rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+            />
+          </div>
+        </div>
+
+        {recurrenceEnabled && (
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                RRULE
+              </label>
+              <input
+                type="text"
+                value={recurrenceRule}
+                onChange={(event) => setRecurrenceRule(event.target.value)}
+                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                placeholder="FREQ=WEEKLY;BYDAY=MO,WE;INTERVAL=1"
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Provide a valid RFC 5545 RRULE string. Weekly rules support automatic timezone-aware scheduling.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Count
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={typeof recurrenceCount === "number" ? recurrenceCount : ""}
+                onChange={(event) => {
+                  const { value } = event.target;
+                  if (value.trim().length === 0) {
+                    setRecurrenceCount(undefined);
+                    return;
+                  }
+
+                  const parsed = Number(value);
+                  setRecurrenceCount(Number.isNaN(parsed) ? undefined : parsed);
+                }}
+                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Limit the number of occurrences. Leave blank to rely on the RRULE or end date.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Until
+              </label>
+              <input
+                type="datetime-local"
+                value={recurrenceUntil}
+                onChange={(event) => setRecurrenceUntil(event.target.value)}
+                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Optional end date in the selected time zone.
+              </p>
+            </div>
+
+            <div className="md:col-span-2">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Exceptions
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAddRecurrenceException}
+                  className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 focus:outline-none"
+                >
+                  Add exception
+                </button>
+              </div>
+
+              {recurrenceExceptions.length === 0 ? (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  No exception dates configured.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {recurrenceExceptions.map((value, index) => (
+                    <div key={`recurrence-exception-${index}`} className="flex items-center gap-2">
+                      <input
+                        type="datetime-local"
+                        value={value}
+                        onChange={(event) => handleRecurrenceExceptionChange(index, event.target.value)}
+                        className="flex-1 rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveRecurrenceException(index)}
+                        className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 focus:outline-none"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {view === "matrix" ? (
         <SchedulingMatrix

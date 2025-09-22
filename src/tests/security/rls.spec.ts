@@ -174,6 +174,7 @@ const createTenantFixture = async (label: string, organizationId: string): Promi
     end_time: end.toISOString(),
     status: 'completed',
     organization_id: organizationId,
+    has_transcription_consent: true,
   });
 
   if (sessionInsertError) {
@@ -1694,6 +1695,159 @@ describe('session holds enforce role-scoped access', () => {
     } finally {
       await supabaseOrgA.auth.signOut();
     }
+  });
+});
+
+describe('session transcription consent enforcement', () => {
+  beforeAll(async () => {
+    if (!runTests || !serviceClient || !orgAContext || !orgBContext) {
+      return;
+    }
+
+    await ensureSessionTranscriptsSeeded();
+  });
+
+  it('prevents transcript segments from persisting when consent is revoked', async () => {
+    if (!runTests || !serviceClient || !orgAContext) {
+      console.log('⏭️  Skipping consent enforcement test - setup incomplete.');
+      return;
+    }
+
+    const targetSessionId = orgAContext.sessionId;
+
+    try {
+      const { error: revokeError } = await serviceClient
+        .from('sessions')
+        .update({ has_transcription_consent: false })
+        .eq('id', targetSessionId);
+
+      if (revokeError) {
+        throw revokeError;
+      }
+
+      const insertResult = await serviceClient
+        .from('session_transcript_segments')
+        .insert({
+          session_id: targetSessionId,
+          start_time: 0,
+          end_time: 5,
+          speaker: 'therapist',
+          text: 'Segment rejected due to missing consent',
+          confidence: 0.5,
+        });
+
+      expect(insertResult.error).not.toBeNull();
+      expect(insertResult.error?.message ?? '').toContain('Transcription consent is required');
+    } finally {
+      await serviceClient
+        .from('sessions')
+        .update({ has_transcription_consent: true })
+        .eq('id', targetSessionId);
+    }
+  });
+
+  it('allows transcript segments to persist when consent is granted', async () => {
+    if (!runTests || !serviceClient || !orgAContext) {
+      console.log('⏭️  Skipping consent persistence test - setup incomplete.');
+      return;
+    }
+
+    const targetSessionId = orgAContext.sessionId;
+    const insertResult = await serviceClient
+      .from('session_transcript_segments')
+      .insert({
+        session_id: targetSessionId,
+        start_time: 12,
+        end_time: 18,
+        speaker: 'therapist',
+        text: 'Segment stored after consent confirmation',
+        confidence: 0.84,
+      })
+      .select('id')
+      .single();
+
+    expect(insertResult.error).toBeNull();
+    const insertedSegment = insertResult.data;
+    expect(insertedSegment?.id).toBeDefined();
+
+    if (insertedSegment?.id) {
+      createdSessionTranscriptSegmentIds.push(insertedSegment.id);
+    }
+  });
+
+  it('prunes aged or disallowed transcript artifacts via retention helper', async () => {
+    if (!runTests || !serviceClient || !orgAContext) {
+      console.log('⏭️  Skipping retention helper test - setup incomplete.');
+      return;
+    }
+
+    const targetSessionId = orgAContext.sessionId;
+    const retentionCreatedAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+
+    const transcriptInsert = await serviceClient
+      .from('session_transcripts')
+      .insert({
+        session_id: targetSessionId,
+        processed_transcript: 'Processed retention test transcript',
+        raw_transcript: 'Raw retention test transcript',
+        confidence_score: 0.42,
+        created_at: retentionCreatedAt,
+      })
+      .select('id')
+      .single();
+
+    if (transcriptInsert.error || !transcriptInsert.data) {
+      throw transcriptInsert.error ?? new Error('Failed to seed retention transcript');
+    }
+
+    const transcriptId = transcriptInsert.data.id;
+    createdSessionTranscriptIds.push(transcriptId);
+
+    const segmentInsert = await serviceClient
+      .from('session_transcript_segments')
+      .insert({
+        session_id: targetSessionId,
+        start_time: 30,
+        end_time: 40,
+        speaker: 'therapist',
+        text: 'Retention window validation segment',
+        confidence: 0.73,
+        created_at: retentionCreatedAt,
+      })
+      .select('id')
+      .single();
+
+    if (segmentInsert.error || !segmentInsert.data) {
+      throw segmentInsert.error ?? new Error('Failed to seed retention segment');
+    }
+
+    const segmentId = segmentInsert.data.id;
+    createdSessionTranscriptSegmentIds.push(segmentId);
+
+    const { data: pruneData, error: pruneError } = await serviceClient.rpc('prune_session_transcripts', {
+      retention_days: 1,
+    });
+
+    expect(pruneError).toBeNull();
+    const summary = Array.isArray(pruneData) ? pruneData[0] : pruneData;
+    expect(summary?.deleted_segments ?? 0).toBeGreaterThanOrEqual(1);
+    expect(summary?.deleted_transcripts ?? 0).toBeGreaterThanOrEqual(1);
+
+    const { data: segmentCheck } = await serviceClient
+      .from('session_transcript_segments')
+      .select('id')
+      .eq('id', segmentId)
+      .maybeSingle();
+
+    expect(segmentCheck).toBeNull();
+
+    const { data: transcriptCheck } = await serviceClient
+      .from('session_transcripts')
+      .select('id')
+      .eq('id', transcriptId)
+      .maybeSingle();
+
+    expect(transcriptCheck).toBeNull();
   });
 });
 

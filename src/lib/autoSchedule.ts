@@ -11,6 +11,7 @@ import {
 } from 'date-fns';
 import { getDistance } from 'geolib';
 import type { Therapist, Client, Session } from '../types';
+import { geocodeAddress, clearGeocodingCache } from './geocoding';
 
 // Performance optimizations
 const memoCache = new Map<string, unknown>();
@@ -33,6 +34,7 @@ function memoize<T extends (...args: unknown[]) => unknown>(
 // Clear cache periodically to prevent memory leaks
 export function clearScheduleCache() {
   memoCache.clear();
+  clearGeocodingCache();
 }
 
 // Optimized constants
@@ -59,6 +61,12 @@ export interface Location {
   longitude: number;
   address?: string;
 }
+
+const DEFAULT_BASE_LOCATION: Location = {
+  latitude: 40.7128,
+  longitude: -74.006,
+  address: 'therapist_base_location',
+};
 
 export interface ScheduleSlot {
   therapist: Therapist;
@@ -134,16 +142,20 @@ export function normalizeClientHourCapacity(client: Client): ClientHourCapacity 
 const getLocationFromAddress = memoize(
   (client: Client): Location | null => {
     if (!client.address) return null;
-    
-    // This would typically call a geocoding service
-    // For now, return a mock location
+
+    const geocoded = geocodeAddress(client.address);
+    if (!geocoded) return null;
+
     return {
-      latitude: 40.7128 + Math.random() * 0.1,
-      longitude: -74.0060 + Math.random() * 0.1,
-      address: client.address,
+      latitude: geocoded.latitude,
+      longitude: geocoded.longitude,
+      address: geocoded.address ?? client.address.trim(),
     };
   },
-  (client: Client) => `location_${client.id}_${client.address}`
+  (client: Client) => {
+    const normalizedAddress = client.address?.trim().toLowerCase() ?? 'unknown';
+    return `location_${normalizedAddress}`;
+  }
 );
 
 const calculateTravelInfo = memoize(
@@ -162,8 +174,11 @@ const calculateTravelInfo = memoize(
     
     return { distance, duration };
   },
-  (from: Location, to: Location, time: Date) => 
-    `travel_${from.latitude}_${from.longitude}_${to.latitude}_${to.longitude}_${time.getHours()}`
+  (from: Location, to: Location, time: Date) => {
+    const originKey = from.address?.trim().toLowerCase() ?? `${from.latitude}_${from.longitude}`;
+    const destinationKey = to.address?.trim().toLowerCase() ?? `${to.latitude}_${to.longitude}`;
+    return `travel_${originKey}_${destinationKey}_${time.getHours()}`;
+  }
 );
 
 // Optimized scoring functions
@@ -313,7 +328,7 @@ const calculateTravelScore = memoize(
     const _lastSession = sameDay[sameDay.length - 1];
     // In a real implementation, you'd get the location from the last session's client
     // For now, assume a base location
-    const lastLocation = { latitude: 40.7128, longitude: -74.0060 };
+    const lastLocation = DEFAULT_BASE_LOCATION;
 
     const { duration } = calculateTravelInfo(lastLocation, clientLocation, startTime);
     

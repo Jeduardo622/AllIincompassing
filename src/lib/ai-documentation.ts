@@ -1,5 +1,6 @@
 import { callEdge, supabase } from './supabase';
 import { showSuccess, showError } from './toast';
+import type { Database } from './generated/database.types';
 import {
   createPseudonym,
   PseudonymMap,
@@ -133,12 +134,17 @@ export interface ProgressNote {
 }
 
 // AI Documentation Service
+export const TRANSCRIPTION_CONSENT_REQUIRED_ERROR = 'TRANSCRIPTION_CONSENT_REQUIRED';
+
+type SessionConsentRow = Pick<Database['public']['Tables']['sessions']['Row'], 'has_transcription_consent'>;
+
 export class AIDocumentationService {
   private static instance: AIDocumentationService;
   private isRecording = false;
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
   private currentSessionId: string | null = null;
+  private sessionConsentCache = new Map<string, boolean>();
 
   public static getInstance(): AIDocumentationService {
     if (!AIDocumentationService.instance) {
@@ -150,9 +156,16 @@ export class AIDocumentationService {
   // Start real-time session recording
   async startSessionRecording(sessionId: string): Promise<void> {
     try {
+      const hasConsent = await this.getRecordingConsent(sessionId);
+
+      if (!hasConsent) {
+        showError('Transcription consent is required before recording can begin.');
+        throw new Error(TRANSCRIPTION_CONSENT_REQUIRED_ERROR);
+      }
+
       this.currentSessionId = sessionId;
-      
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -177,12 +190,56 @@ export class AIDocumentationService {
 
       this.mediaRecorder.start(5000); // Capture 5-second chunks
       this.isRecording = true;
-      
+
       showSuccess('Session recording started');
     } catch (error) {
+      this.isRecording = false;
+      this.currentSessionId = null;
       console.error('Error starting recording:', error);
+      if (error instanceof Error) {
+        if (error.message === TRANSCRIPTION_CONSENT_REQUIRED_ERROR) {
+          throw error;
+        }
+        if (error.message === 'Unable to verify transcription consent') {
+          showError(error);
+          throw error;
+        }
+      }
       showError('Failed to start session recording');
       throw error;
+    }
+  }
+
+  async getRecordingConsent(sessionId: string, options: { refresh?: boolean } = {}): Promise<boolean> {
+    if (!options.refresh && this.sessionConsentCache.has(sessionId)) {
+      return this.sessionConsentCache.get(sessionId) ?? false;
+    }
+
+    const hasConsent = await this.fetchSessionConsent(sessionId);
+    this.sessionConsentCache.set(sessionId, hasConsent);
+    return hasConsent;
+  }
+
+  private async fetchSessionConsent(sessionId: string): Promise<boolean> {
+    try {
+      const { data, error } = await supabase
+        .from('sessions')
+        .select('has_transcription_consent')
+        .eq('id', sessionId)
+        .maybeSingle<SessionConsentRow>();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data) {
+        return false;
+      }
+
+      return Boolean(data.has_transcription_consent);
+    } catch (error) {
+      console.error('Failed to verify session consent:', error);
+      throw new Error('Unable to verify transcription consent');
     }
   }
 

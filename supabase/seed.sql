@@ -12,56 +12,35 @@ BEGIN;
 -- ---------------------------------------------------------------------------
 -- Ensure required roles exist with consistent permissions.
 -- ---------------------------------------------------------------------------
-INSERT INTO public.roles (name, description, is_system_role, permissions, updated_at)
+INSERT INTO public.roles (name, description)
 VALUES
   (
     'super_admin',
-    'Super administrator with full access across organizations.',
-    true,
-    '["*"]'::jsonb,
-    NOW()
+    'Super administrator with full access across organizations.'
   ),
   (
     'admin',
-    'Administrator with elevated access to manage teams and settings.',
-    true,
-    '["*"]'::jsonb,
-    NOW()
+    'Administrator with elevated access to manage teams and settings.'
   ),
   (
     'therapist',
-    'Therapist managing assigned caseload and schedule.',
-    true,
-    '["sessions:manage_own","clients:read_assigned"]'::jsonb,
-    NOW()
+    'Therapist managing assigned caseload and schedule.'
   ),
   (
     'client',
-    'Client accessing personal schedule and documentation.',
-    true,
-    '[]'::jsonb,
-    NOW()
+    'Client accessing personal schedule and documentation.'
   ),
   (
     'receptionist',
-    'Front desk staff coordinating schedules.',
-    true,
-    '["schedule:read","schedule:write"]'::jsonb,
-    NOW()
+    'Front desk staff coordinating schedules.'
   ),
   (
     'monitoring',
-    'Read-only observability integration account.',
-    true,
-    '["monitoring:read"]'::jsonb,
-    NOW()
+    'Read-only observability integration account.'
   )
 ON CONFLICT (name) DO UPDATE
 SET
-  description = EXCLUDED.description,
-  permissions = EXCLUDED.permissions,
-  is_system_role = COALESCE(EXCLUDED.is_system_role, public.roles.is_system_role),
-  updated_at = NOW();
+  description = EXCLUDED.description;
 
 -- ---------------------------------------------------------------------------
 -- Create deterministic development accounts and related domain records.
@@ -148,7 +127,6 @@ BEGIN
     END IF;
 
     INSERT INTO auth.identities (
-      id,
       user_id,
       identity_data,
       provider,
@@ -158,7 +136,6 @@ BEGIN
       updated_at
     ) VALUES (
       user_id,
-      user_id,
       jsonb_build_object('sub', user_id::text, 'email', user_record.email),
       'email',
       user_record.email,
@@ -166,9 +143,11 @@ BEGIN
       NOW(),
       NOW()
     )
-    ON CONFLICT (id) DO UPDATE
+    ON CONFLICT (provider, provider_id) DO UPDATE
     SET
+      user_id = EXCLUDED.user_id,
       identity_data = EXCLUDED.identity_data,
+      last_sign_in_at = EXCLUDED.last_sign_in_at,
       updated_at = NOW();
 
     SELECT id INTO role_id
@@ -176,12 +155,9 @@ BEGIN
     WHERE name = user_record.role_name;
 
     IF role_id IS NOT NULL THEN
-      INSERT INTO public.user_roles (user_id, role_id, is_active, granted_at)
-      VALUES (user_id, role_id, true, NOW())
-      ON CONFLICT (user_id, role_id) DO UPDATE
-      SET
-        is_active = true,
-        granted_at = COALESCE(public.user_roles.granted_at, NOW());
+      INSERT INTO public.user_roles (user_id, role_id)
+      VALUES (user_id, role_id)
+      ON CONFLICT (user_id, role_id) DO NOTHING;
     END IF;
 
     INSERT INTO public.profiles (
@@ -190,7 +166,6 @@ BEGIN
       role,
       first_name,
       last_name,
-      full_name,
       phone,
       is_active,
       created_at,
@@ -201,7 +176,6 @@ BEGIN
       user_record.role_name::public.role_type,
       user_record.first_name,
       user_record.last_name,
-      user_record.first_name || ' ' || user_record.last_name,
       user_record.phone,
       true,
       NOW(),
@@ -213,7 +187,6 @@ BEGIN
       role = EXCLUDED.role,
       first_name = EXCLUDED.first_name,
       last_name = EXCLUDED.last_name,
-      full_name = EXCLUDED.full_name,
       phone = EXCLUDED.phone,
       is_active = true,
       updated_at = NOW();
@@ -366,7 +339,6 @@ BEGIN
         diagnosis,
         authorized_hours_per_month,
         hours_provided_per_month,
-        unscheduled_hours,
         one_to_one_units,
         supervision_units,
         parent_consult_units,
@@ -410,7 +382,6 @@ BEGIN
         ARRAY['Autism Spectrum Disorder'],
         40,
         30,
-        10,
         20,
         5,
         4,
@@ -451,7 +422,6 @@ BEGIN
         diagnosis = EXCLUDED.diagnosis,
         authorized_hours_per_month = EXCLUDED.authorized_hours_per_month,
         hours_provided_per_month = EXCLUDED.hours_provided_per_month,
-        unscheduled_hours = EXCLUDED.unscheduled_hours,
         one_to_one_units = EXCLUDED.one_to_one_units,
         supervision_units = EXCLUDED.supervision_units,
         parent_consult_units = EXCLUDED.parent_consult_units,

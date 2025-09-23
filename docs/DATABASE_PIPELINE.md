@@ -64,6 +64,7 @@ Add these secrets to your GitHub repository:
 
 ```bash
 # Supabase Configuration
+SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_ACCESS_TOKEN=your_supabase_access_token
 SUPABASE_PROJECT_REF=wnnjeqheqxxyrgsjmygy
 SUPABASE_DB_PASSWORD=your_database_password
@@ -79,6 +80,17 @@ NETLIFY_SITE_ID=your_netlify_site_id
 ```
 
 > 🔒 Provide these values via your CI/CD secret store. Scripts that require elevated access, including `scripts/admin-password-reset.js`, will abort if `SUPABASE_SERVICE_ROLE_KEY` is missing or blank; no fallback credentials are embedded.
+
+Expose the read-only Supabase credentials to CI jobs so the RLS security tests can authenticate:
+
+```yaml
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+```
+
+For local runs, export the same variables and set `RUN_DB_IT=1` before invoking `npm test` to opt into the database-backed suites.
 
 ### Local Development Setup
 

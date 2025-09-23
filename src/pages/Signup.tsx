@@ -69,10 +69,13 @@ export default function Signup() {
       });
 
       if (error) {
+        const normalizedError = toError(error, 'Signup failed');
+
         logger.error('Signup request returned an error', {
-          error: toError(error, 'Signup failed'),
+          error: normalizedError,
           metadata: {
             role,
+            attemptedEmail: email,
           },
         });
         setError(error.message);
@@ -88,10 +91,13 @@ export default function Signup() {
         }
       });
     } catch (err) {
+      const normalizedError = toError(err, 'Signup failed');
+
       logger.error('Signup request threw an exception', {
-        error: toError(err, 'Signup failed'),
+        error: normalizedError,
         metadata: {
           role,
+          attemptedEmail: email,
         },
       });
       const message = err instanceof Error ? err.message : 'Failed to create account';

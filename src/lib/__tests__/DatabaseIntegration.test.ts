@@ -7,6 +7,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
+import { shouldRunDbIntegrationTests } from '../testUtils/shouldRunDbIntegrationTests';
 
 // Test configuration
 const SUPABASE_URL = process.env.SUPABASE_URL || 'http://localhost:54321';
@@ -27,7 +28,7 @@ async function isTestEnvironmentValid(): Promise<boolean> {
 }
 
 // Only run these against a real test environment (CI or explicit opt-in)
-const SHOULD_RUN_DB_IT = !!(import.meta.env.CI || (import.meta as any).env?.RUN_DB_IT === '1');
+const SHOULD_RUN_DB_IT = shouldRunDbIntegrationTests();
 
 describe('Database Integration Tests', () => {
   let testEnvironmentValid = false;

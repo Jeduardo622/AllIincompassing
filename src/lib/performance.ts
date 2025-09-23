@@ -1,12 +1,19 @@
 import { useMemo, useCallback, useRef, useEffect, useState } from 'react';
 import { supabase } from './supabase';
+import { logger } from './logger/logger';
+import { toError } from './logger/normalizeError';
 
 // Performance monitoring
 export const measurePerformance = (name: string, fn: () => void) => {
   const start = performance.now();
   fn();
   const end = performance.now();
-  console.log(`${name} took ${end - start} milliseconds`);
+  logger.debug(`${name} completed`, {
+    metadata: {
+      scope: 'performance.measure',
+      durationMs: Number((end - start).toFixed(2)),
+    },
+  });
 };
 
 // Debounce hook for expensive operations
@@ -111,11 +118,13 @@ export function useVirtualizedList<T>(
 export const logBundleInfo = () => {
   if (typeof window !== 'undefined') {
     const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
-    console.log('Performance metrics:', {
-      domContentLoaded: nav.domContentLoadedEventEnd - nav.domContentLoadedEventStart,
-      loadComplete: nav.loadEventEnd - nav.loadEventStart,
-      firstPaint: performance.getEntriesByName('first-paint')[0]?.startTime,
-      firstContentfulPaint: performance.getEntriesByName('first-contentful-paint')[0]?.startTime,
+    logger.info('Performance metrics collected', {
+      metadata: {
+        domContentLoaded: nav.domContentLoadedEventEnd - nav.domContentLoadedEventStart,
+        loadComplete: nav.loadEventEnd - nav.loadEventStart,
+        firstPaint: performance.getEntriesByName('first-paint')[0]?.startTime ?? null,
+        firstContentfulPaint: performance.getEntriesByName('first-contentful-paint')[0]?.startTime ?? null,
+      },
     });
   }
 };
@@ -126,10 +135,12 @@ export const useMemoryMonitor = () => {
     const checkMemory = () => {
       if ('memory' in performance) {
         const memory = (performance as { memory: { usedJSHeapSize: number; totalJSHeapSize: number; jsHeapSizeLimit: number } }).memory;
-        console.log('Memory usage:', {
-          used: (memory.usedJSHeapSize / 1048576).toFixed(2) + ' MB',
-          allocated: (memory.totalJSHeapSize / 1048576).toFixed(2) + ' MB',
-          limit: (memory.jsHeapSizeLimit / 1048576).toFixed(2) + ' MB',
+        logger.info('Memory usage snapshot', {
+          metadata: {
+            usedMb: Number((memory.usedJSHeapSize / 1048576).toFixed(2)),
+            allocatedMb: Number((memory.totalJSHeapSize / 1048576).toFixed(2)),
+            limitMb: Number((memory.jsHeapSizeLimit / 1048576).toFixed(2)),
+          },
         });
       }
     };
@@ -462,7 +473,12 @@ export async function getDatabasePerformanceMetrics(): Promise<DatabasePerforman
       }
     };
   } catch (error) {
-    console.error('Failed to get database performance metrics:', error);
+    logger.error('Failed to get database performance metrics', {
+      error: toError(error, 'Database performance metrics fetch failed'),
+      metadata: {
+        scope: 'performance.getDatabaseMetrics',
+      },
+    });
     throw error;
   }
 }
@@ -497,7 +513,12 @@ export async function getSecurityStatus(): Promise<SecurityStatus> {
       ]
     };
   } catch (error) {
-    console.error('Failed to get security status:', error);
+    logger.error('Failed to get security status', {
+      error: toError(error, 'Security status fetch failed'),
+      metadata: {
+        scope: 'performance.getSecurityStatus',
+      },
+    });
     throw error;
   }
 }
@@ -573,7 +594,12 @@ export async function getOptimizationSuggestions(): Promise<OptimizationSuggesti
 
     return suggestions;
   } catch (error) {
-    console.error('Failed to get optimization suggestions:', error);
+    logger.error('Failed to get optimization suggestions', {
+      error: toError(error, 'Optimization suggestions fetch failed'),
+      metadata: {
+        scope: 'performance.getOptimizationSuggestions',
+      },
+    });
     return [];
   }
 }
@@ -839,7 +865,12 @@ export async function establishPerformanceBaseline(): Promise<{
       })));
     
     if (error) {
-      console.warn('Failed to store performance baselines:', error);
+      logger.warn('Failed to store performance baselines', {
+        metadata: {
+          scope: 'performance.establishBaseline',
+          failure: toError(error, 'Performance baseline storage failed').message,
+        },
+      });
     }
     
     // Generate adaptive thresholds based on baselines
@@ -858,7 +889,12 @@ export async function establishPerformanceBaseline(): Promise<{
     };
     
   } catch (error) {
-    console.error('Error establishing performance baseline:', error);
+    logger.error('Error establishing performance baseline', {
+      error: toError(error, 'Performance baseline establishment failed'),
+      metadata: {
+        scope: 'performance.establishBaseline',
+      },
+    });
     return {
       baselines: [],
       thresholds: DEFAULT_THRESHOLDS,
@@ -884,7 +920,12 @@ export function usePerformanceBaseline() {
       setRecommendations(result.recommendations);
       setLastUpdated(new Date());
     } catch (error) {
-      console.error('Error establishing baseline:', error);
+      logger.error('Error establishing baseline', {
+        error: toError(error, 'Baseline refresh failed'),
+        metadata: {
+          scope: 'performance.usePerformanceBaseline',
+        },
+      });
     } finally {
       setIsLoading(false);
     }

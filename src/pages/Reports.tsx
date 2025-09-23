@@ -12,6 +12,8 @@ import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { showError } from '../lib/toast';
 import { useDebounce } from '../lib/performance';
+import { logger } from '../lib/logger/logger';
+import { toError } from '../lib/logger/normalizeError';
 // import { CACHE_STRATEGIES, generateCacheKey } from './cacheStrategy';
 import { useDropdownData, useSessionMetrics } from '../lib/optimizedQueries';
 
@@ -207,7 +209,13 @@ const Reports = React.memo(() => {
       
       setReportData(data);
     } catch (error) {
-      console.error('Error generating report:', error);
+      logger.error('Failed to generate analytics report', {
+        error: toError(error, 'Report generation failed'),
+        metadata: {
+          reportType,
+          dateRange: debouncedFilters.dateRange,
+        },
+      });
       showError('Failed to generate report');
     } finally {
       setIsGenerating(false);

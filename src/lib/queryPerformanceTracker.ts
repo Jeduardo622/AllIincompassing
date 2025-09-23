@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
+import { logger } from './logger/logger';
+import { toError } from './logger/normalizeError';
 
 // ============================================================================
 // QUERY PERFORMANCE TRACKING TYPES
@@ -288,12 +290,15 @@ export class QueryPerformanceTracker {
 
   // Handle query errors
   private handleQueryError(metric: QueryPerformanceMetric): void {
-    console.error('Query error detected:', {
-      queryKey: metric.queryKey,
-      operation: metric.operation,
-      duration: metric.duration,
-      error: metric.errorMessage,
-      timestamp: metric.timestamp,
+    logger.error('Query error detected', {
+      error: metric.errorMessage ? new Error(metric.errorMessage) : undefined,
+      metadata: {
+        scope: 'queryPerformance.queryError',
+        queryKey: metric.queryKey,
+        operation: metric.operation,
+        durationMs: metric.duration,
+        timestamp: metric.timestamp,
+      },
     });
 
     // Store error pattern for analysis
@@ -381,13 +386,23 @@ export class QueryPerformanceTracker {
         })));
 
       if (error) {
-        console.error('Failed to flush query metrics:', error);
+        logger.error('Failed to flush query metrics', {
+          error: toError(error, 'Query metrics flush failed'),
+          metadata: {
+            scope: 'queryPerformance.flush',
+          },
+        });
         // Re-add metrics to buffer for retry
         this.metricsBuffer.unshift(...metricsToFlush);
       }
 
     } catch (error) {
-      console.error('Error flushing metrics:', error);
+      logger.error('Error flushing metrics', {
+        error: toError(error, 'Query metrics flush failed'),
+        metadata: {
+          scope: 'queryPerformance.flush',
+        },
+      });
       // Store in localStorage as fallback
       this.storeMetricsLocally(metricsToFlush);
     }
@@ -400,7 +415,12 @@ export class QueryPerformanceTracker {
       const combined = [...stored, ...metrics].slice(-100); // Keep last 100
       localStorage.setItem('queryMetrics', JSON.stringify(combined));
     } catch (error) {
-      console.error('Failed to store metrics locally:', error);
+      logger.error('Failed to store metrics locally', {
+        error: toError(error, 'Local metric storage failed'),
+        metadata: {
+          scope: 'queryPerformance.localStore',
+        },
+      });
     }
   }
 
@@ -422,7 +442,12 @@ export class QueryPerformanceTracker {
       .limit(1000);
 
     if (error) {
-      console.error('Failed to fetch performance metrics:', error);
+      logger.error('Failed to fetch performance metrics', {
+        error: toError(error, 'Performance metrics fetch failed'),
+        metadata: {
+          scope: 'queryPerformance.analysis',
+        },
+      });
     }
 
     const allMetrics = [...recentMetrics, ...(dbMetrics || [])];
@@ -725,7 +750,12 @@ export const createQueryPerformanceTable = async () => {
   });
 
   if (error) {
-    console.error('Failed to create query performance table:', error);
+    logger.error('Failed to create query performance table', {
+      error: toError(error, 'Query performance table creation failed'),
+      metadata: {
+        scope: 'queryPerformance.setup',
+      },
+    });
   }
 };
 

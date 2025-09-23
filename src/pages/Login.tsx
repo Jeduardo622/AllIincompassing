@@ -3,6 +3,8 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Calendar, AlertCircle, Eye, EyeOff, CheckCircle } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { showError, showSuccess } from '../lib/toast';
+import { logger } from '../lib/logger/logger';
+import { toError } from '../lib/logger/normalizeError';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -52,8 +54,13 @@ export default function Login() {
       const { error } = await signIn(email, password);
       
       if (error) {
-        console.error('Login error:', error);
-        
+        logger.error('Login error returned from sign-in', {
+          error: toError(error, 'Login failed'),
+          metadata: {
+            flow: 'signIn',
+          },
+        });
+
         // Provide more specific error messages
         let errorMessage = error.message;
         if (error.message.includes('Invalid login credentials')) {
@@ -72,7 +79,12 @@ export default function Login() {
       // Success - navigation will happen automatically via useEffect
       showSuccess('Successfully signed in!');
     } catch (err) {
-      console.error('Login catch error:', err);
+      logger.error('Login form submission threw an exception', {
+        error: toError(err, 'Login failed'),
+        metadata: {
+          flow: 'signIn',
+        },
+      });
       const message = err instanceof Error ? err.message : 'An unexpected error occurred';
       setError(message);
       showError(message);
@@ -97,7 +109,12 @@ export default function Login() {
       const { error } = await resetPassword(email);
       
       if (error) {
-        console.error('Reset password error:', error);
+        logger.error('Reset password request returned an error', {
+          error: toError(error, 'Password reset failed'),
+          metadata: {
+            flow: 'resetPassword',
+          },
+        });
         setError(error.message);
         showError(error.message);
         return;
@@ -107,7 +124,12 @@ export default function Login() {
       showSuccess('Password reset email sent!');
       setShowForgotPassword(false);
     } catch (err) {
-      console.error('Reset password catch error:', err);
+      logger.error('Reset password request threw an exception', {
+        error: toError(err, 'Password reset failed'),
+        metadata: {
+          flow: 'resetPassword',
+        },
+      });
       const message = err instanceof Error ? err.message : 'An error occurred';
       setError(message);
       showError(message);

@@ -15,6 +15,8 @@ import ClientModal from '../components/ClientModal';
 import CSVImport from '../components/CSVImport';
 import { prepareFormData } from '../lib/validation';
 import { showSuccess, showError } from '../lib/toast';
+import { logger } from '../lib/logger/logger';
+import { toError } from '../lib/logger/normalizeError';
 
 const Clients = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -164,7 +166,13 @@ const Clients = () => {
         await createClientMutation.mutateAsync(data);
       }
     } catch (error) {
-      console.error('Error submitting client:', error);
+      logger.error('Failed to submit client changes', {
+        error: toError(error, 'Client mutation failed'),
+        metadata: {
+          hasExistingClient: Boolean(selectedClient),
+          targetClientId: selectedClient?.id ?? null,
+        },
+      });
     }
   };
 

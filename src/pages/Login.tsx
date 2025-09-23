@@ -54,10 +54,13 @@ export default function Login() {
       const { error } = await signIn(email, password);
       
       if (error) {
+        const normalizedError = toError(error, 'Login failed');
+
         logger.error('Login error returned from sign-in', {
-          error: toError(error, 'Login failed'),
+          error: normalizedError,
           metadata: {
             flow: 'signIn',
+            attemptedEmail: email,
           },
         });
 
@@ -79,10 +82,13 @@ export default function Login() {
       // Success - navigation will happen automatically via useEffect
       showSuccess('Successfully signed in!');
     } catch (err) {
+      const normalizedError = toError(err, 'Login failed');
+
       logger.error('Login form submission threw an exception', {
-        error: toError(err, 'Login failed'),
+        error: normalizedError,
         metadata: {
           flow: 'signIn',
+          attemptedEmail: email,
         },
       });
       const message = err instanceof Error ? err.message : 'An unexpected error occurred';
@@ -109,10 +115,13 @@ export default function Login() {
       const { error } = await resetPassword(email);
       
       if (error) {
+        const normalizedError = toError(error, 'Password reset failed');
+
         logger.error('Reset password request returned an error', {
-          error: toError(error, 'Password reset failed'),
+          error: normalizedError,
           metadata: {
             flow: 'resetPassword',
+            attemptedEmail: email,
           },
         });
         setError(error.message);
@@ -124,10 +133,13 @@ export default function Login() {
       showSuccess('Password reset email sent!');
       setShowForgotPassword(false);
     } catch (err) {
+      const normalizedError = toError(err, 'Password reset failed');
+
       logger.error('Reset password request threw an exception', {
-        error: toError(err, 'Password reset failed'),
+        error: normalizedError,
         metadata: {
           flow: 'resetPassword',
+          attemptedEmail: email,
         },
       });
       const message = err instanceof Error ? err.message : 'An error occurred';

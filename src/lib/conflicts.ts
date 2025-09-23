@@ -43,24 +43,56 @@ export async function checkSchedulingConflicts(
   const startLocal = utcToZonedTime(startUtc, timeZone);
   const endLocal = utcToZonedTime(endUtc, timeZone);
 
-  const getHour = (d: Date) => d.getHours();
+  const getMinutesSinceMidnight = (d: Date) => d.getHours() * 60 + d.getMinutes();
+  const parseAvailabilityMinutes = (
+    value: string | null | undefined,
+    referenceDate: Date,
+  ): number | null => {
+    if (typeof value !== 'string') {
+      return null;
+    }
+
+    const [hourPart, minutePart = '0'] = value.split(':');
+    const hours = Number.parseInt(hourPart, 10);
+    const minutes = Number.parseInt(minutePart, 10);
+
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+      return null;
+    }
+
+    const adjusted = new Date(referenceDate);
+    adjusted.setHours(hours, minutes, 0, 0);
+    return getMinutesSinceMidnight(adjusted);
+  };
+
+  const sessionStartMinutes = getMinutesSinceMidnight(startLocal);
+  const sessionEndMinutes = getMinutesSinceMidnight(endLocal);
   const getDay = (d: Date) => d.getDay();
   const weekdayNames = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'] as const;
   const dayName = weekdayNames[getDay(startLocal)];
 
-  // Check therapist availability (hour-level bounds; inclusive start/exclusive end)
+  // Check therapist availability using minute-level bounds
   const therapistAvailability = therapist.availability_hours[dayName];
   if (
     therapistAvailability &&
     therapistAvailability.start &&
     therapistAvailability.end
   ) {
-    const [availStartHour] = therapistAvailability.start.split(':').map(Number);
-    const [availEndHour] = therapistAvailability.end.split(':').map(Number);
-    const sessionStartHour = getHour(startLocal);
-    const sessionEndHour = getHour(endLocal);
+    const availabilityStartMinutes = parseAvailabilityMinutes(
+      therapistAvailability.start,
+      startLocal,
+    );
+    const availabilityEndMinutes = parseAvailabilityMinutes(
+      therapistAvailability.end,
+      startLocal,
+    );
 
-    if (sessionStartHour < availStartHour || sessionEndHour > availEndHour) {
+    if (
+      availabilityStartMinutes === null ||
+      availabilityEndMinutes === null ||
+      sessionStartMinutes < availabilityStartMinutes ||
+      sessionEndMinutes > availabilityEndMinutes
+    ) {
       if (!addedTypes.has('therapist_unavailable')) {
         conflicts.push({
           type: 'therapist_unavailable',
@@ -84,19 +116,28 @@ export async function checkSchedulingConflicts(
     return conflicts;
   }
 
-  // Check client availability (hour-level bounds; inclusive start/exclusive end)
+  // Check client availability using minute-level bounds
   const clientAvailability = client.availability_hours[dayName];
   if (
     clientAvailability &&
     clientAvailability.start &&
     clientAvailability.end
   ) {
-    const [availStartHour] = clientAvailability.start.split(':').map(Number);
-    const [availEndHour] = clientAvailability.end.split(':').map(Number);
-    const sessionStartHour = getHour(startLocal);
-    const sessionEndHour = getHour(endLocal);
+    const availabilityStartMinutes = parseAvailabilityMinutes(
+      clientAvailability.start,
+      startLocal,
+    );
+    const availabilityEndMinutes = parseAvailabilityMinutes(
+      clientAvailability.end,
+      startLocal,
+    );
 
-    if (sessionStartHour < availStartHour || sessionEndHour > availEndHour) {
+    if (
+      availabilityStartMinutes === null ||
+      availabilityEndMinutes === null ||
+      sessionStartMinutes < availabilityStartMinutes ||
+      sessionEndMinutes > availabilityEndMinutes
+    ) {
       if (!addedTypes.has('client_unavailable')) {
         conflicts.push({
           type: 'client_unavailable',

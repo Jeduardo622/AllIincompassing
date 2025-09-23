@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   generateOptimalSchedule,
-  normalizeClientHourCapacity
+  normalizeClientHourCapacity,
+  clearScheduleCache,
 } from '../autoSchedule';
+import { configureGeocoding, resetGeocodingConfig } from '../geocoding';
 import type { Therapist, Client, Session } from '../../types';
 
 const createTherapist = (overrides: Partial<Therapist> = {}): Therapist => ({
@@ -84,6 +86,11 @@ describe('generateOptimalSchedule', () => {
   };
   const sessions: Session[] = [];
 
+  afterEach(() => {
+    clearScheduleCache();
+    resetGeocodingConfig();
+  });
+
   it('skips clients who have no remaining hours for a full session', () => {
     const cappedClient = createClient({
       id: 'client-capped',
@@ -156,5 +163,58 @@ describe('generateOptimalSchedule', () => {
     expect(scheduledClientIds).toContain('client-open');
     expect(scheduledClientIds).not.toContain('client-capped');
     expect(result.cappedClients.map(info => info.client.id)).toContain('client-capped');
+  });
+
+  it('produces consistent travel scoring for repeated runs with the same input', () => {
+    const therapist = createTherapist({ id: 'therapist-travel' });
+    const client = createClient({
+      id: 'client-travel',
+      address: '1600 Pennsylvania Avenue NW, Washington, DC 20500',
+    });
+
+    const first = generateOptimalSchedule(
+      [therapist],
+      [client],
+      sessions,
+      schedulingWindow.start,
+      schedulingWindow.end
+    );
+
+    clearScheduleCache();
+
+    const second = generateOptimalSchedule(
+      [therapist],
+      [client],
+      sessions,
+      schedulingWindow.start,
+      schedulingWindow.end
+    );
+
+    expect(first.slots[0]?.location).toEqual(second.slots[0]?.location);
+    expect(second.slots[0]?.score).toBeCloseTo(first.slots[0]?.score ?? 0, 6);
+  });
+
+  it('supports injecting a custom geocoding provider for deterministic tests', () => {
+    configureGeocoding({
+      provider: () => ({ latitude: 35.123456, longitude: -120.654321 }),
+    });
+
+    const client = createClient({
+      id: 'client-custom-geo',
+      address: '742 Evergreen Terrace, Springfield',
+    });
+
+    const result = generateOptimalSchedule(
+      [baseTherapist],
+      [client],
+      sessions,
+      schedulingWindow.start,
+      schedulingWindow.end
+    );
+
+    expect(result.slots[0]?.location).toMatchObject({
+      latitude: 35.123456,
+      longitude: -120.654321,
+    });
   });
 });

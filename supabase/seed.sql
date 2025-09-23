@@ -12,56 +12,35 @@ BEGIN;
 -- ---------------------------------------------------------------------------
 -- Ensure required roles exist with consistent permissions.
 -- ---------------------------------------------------------------------------
-INSERT INTO public.roles (name, description, is_system_role, permissions, updated_at)
+INSERT INTO public.roles (name, description)
 VALUES
   (
     'super_admin',
-    'Super administrator with full access across organizations.',
-    true,
-    '["*"]'::jsonb,
-    NOW()
+    'Super administrator with full access across organizations.'
   ),
   (
     'admin',
-    'Administrator with elevated access to manage teams and settings.',
-    true,
-    '["*"]'::jsonb,
-    NOW()
+    'Administrator with elevated access to manage teams and settings.'
   ),
   (
     'therapist',
-    'Therapist managing assigned caseload and schedule.',
-    true,
-    '["sessions:manage_own","clients:read_assigned"]'::jsonb,
-    NOW()
+    'Therapist managing assigned caseload and schedule.'
   ),
   (
     'client',
-    'Client accessing personal schedule and documentation.',
-    true,
-    '[]'::jsonb,
-    NOW()
+    'Client accessing personal schedule and documentation.'
   ),
   (
     'receptionist',
-    'Front desk staff coordinating schedules.',
-    true,
-    '["schedule:read","schedule:write"]'::jsonb,
-    NOW()
+    'Front desk staff coordinating schedules.'
   ),
   (
     'monitoring',
-    'Read-only observability integration account.',
-    true,
-    '["monitoring:read"]'::jsonb,
-    NOW()
+    'Read-only observability integration account.'
   )
 ON CONFLICT (name) DO UPDATE
 SET
-  description = EXCLUDED.description,
-  permissions = EXCLUDED.permissions,
-  is_system_role = COALESCE(EXCLUDED.is_system_role, public.roles.is_system_role),
-  updated_at = NOW();
+  description = EXCLUDED.description;
 
 -- ---------------------------------------------------------------------------
 -- Create deterministic development accounts and related domain records.
@@ -176,12 +155,9 @@ BEGIN
     WHERE name = user_record.role_name;
 
     IF role_id IS NOT NULL THEN
-      INSERT INTO public.user_roles (user_id, role_id, is_active, granted_at)
-      VALUES (user_id, role_id, true, NOW())
-      ON CONFLICT (user_id, role_id) DO UPDATE
-      SET
-        is_active = true,
-        granted_at = COALESCE(public.user_roles.granted_at, NOW());
+      INSERT INTO public.user_roles (user_id, role_id)
+      VALUES (user_id, role_id)
+      ON CONFLICT (user_id, role_id) DO NOTHING;
     END IF;
 
     INSERT INTO public.profiles (

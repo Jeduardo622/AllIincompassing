@@ -6,7 +6,7 @@ The preview pipeline and local `supabase db reset` runs depend on `supabase/seed
 
 Running the seed script produces:
 
-- **Baseline roles** – `super_admin`, `admin`, `therapist`, `client`, `receptionist`, and `monitoring` with deterministic permission payloads.
+- **Baseline roles** – `super_admin`, `admin`, `therapist`, `client`, `receptionist`, and `monitoring` with consistent descriptions matching the current schema.
 - **Preview accounts** – four confirmed users with predictable credentials:
 
   | Role | Email | Password |

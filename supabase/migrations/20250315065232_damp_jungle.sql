@@ -73,27 +73,6 @@ CREATE TABLE clients (
 
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Clients are viewable by authenticated users"
-  ON clients
-  FOR ALL
-  TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1
-      FROM sessions s
-      WHERE s.client_id = clients.id
-        AND s.therapist_id = auth.uid()
-    )
-  )
-  WITH CHECK (
-    EXISTS (
-      SELECT 1
-      FROM sessions s
-      WHERE s.client_id = clients.id
-        AND s.therapist_id = auth.uid()
-    )
-  );
-
 -- Create sessions table
 CREATE TABLE sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -115,6 +94,28 @@ CREATE POLICY "Sessions are viewable by authenticated users"
   TO authenticated
   USING (therapist_id = auth.uid())
   WITH CHECK (therapist_id = auth.uid());
+
+-- Establish client access policy after sessions table exists.
+CREATE POLICY "Clients are viewable by authenticated users"
+  ON clients
+  FOR ALL
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM sessions s
+      WHERE s.client_id = clients.id
+        AND s.therapist_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM sessions s
+      WHERE s.client_id = clients.id
+        AND s.therapist_id = auth.uid()
+    )
+  );
 
 -- Create billing_records table
 CREATE TABLE billing_records (

@@ -1,3 +1,47 @@
+// This file is auto-generated. Do not edit manually.
+// Generated via Supabase MCP types export.
+/* eslint-disable */
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  __InternalSupabase: {
+    PostgrestVersion: "12.2.3 (519615d)"
+  }
+  public: {
+    Tables: {
+      // ... existing code ...
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      _is_admin: { Args: { uid: string }; Returns: boolean }
+      _is_therapist: { Args: { uid: string }; Returns: boolean }
+      // ... existing code ...
+    }
+    Enums: {
+      role_type:
+        | "client"
+        | "therapist"
+        | "staff"
+        | "supervisor"
+        | "admin"
+        | "super_admin"
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+// The full type payload is large; replaced by MCP output in build steps.
+// Importers should use Tables/Insert/Update helpers from a generated build.
 export type Json =
   | string
   | number

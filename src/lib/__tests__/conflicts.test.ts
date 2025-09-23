@@ -147,6 +147,40 @@ describe('checkSchedulingConflicts', () => {
     expect(conflicts).toHaveLength(0);
   });
 
+  it('rejects bookings that begin before the therapist minute-level availability', async () => {
+    const therapistWithLaterStart = {
+      ...mockTherapist,
+      availability_hours: {
+        ...mockTherapist.availability_hours,
+        tuesday: { start: '09:30', end: '17:00' },
+      },
+    };
+
+    const clientAvailableEarlier = {
+      ...mockClient,
+      availability_hours: {
+        ...mockClient.availability_hours,
+        tuesday: { start: '09:00', end: '18:00' },
+      },
+    };
+
+    const startTime = '2025-05-20T09:15:00Z';
+    const endTime = addHours(parseISO(startTime), 1).toISOString();
+
+    const conflicts = await checkSchedulingConflicts(
+      startTime,
+      endTime,
+      therapistWithLaterStart.id,
+      clientAvailableEarlier.id,
+      [],
+      therapistWithLaterStart,
+      clientAvailableEarlier
+    );
+
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]?.type).toBe('therapist_unavailable');
+  });
+
   it('respects minute-level availability windows with 15-minute offsets', async () => {
     const therapistWithOffsets = {
       ...mockTherapist,
@@ -222,6 +256,106 @@ describe('checkSchedulingConflicts', () => {
 
     expect(lateConflicts).toHaveLength(1);
     expect(lateConflicts[0]?.type).toBe('therapist_unavailable');
+  });
+
+  it('enforces minute-level therapist availability after DST spring forward', async () => {
+    const timeZone = 'America/New_York';
+    const therapistWithOffsets = {
+      ...mockTherapist,
+      availability_hours: {
+        ...mockTherapist.availability_hours,
+        monday: { start: '09:30', end: '17:00' },
+      },
+    };
+
+    const clientWithOffsets = {
+      ...mockClient,
+      availability_hours: {
+        ...mockClient.availability_hours,
+        monday: { start: '09:00', end: '18:00' },
+      },
+    };
+
+    const earlyStart = fromZonedTime('2025-03-10T09:15', timeZone).toISOString();
+    const earlyEnd = fromZonedTime('2025-03-10T10:15', timeZone).toISOString();
+    const earlyConflicts = await checkSchedulingConflicts(
+      earlyStart,
+      earlyEnd,
+      therapistWithOffsets.id,
+      clientWithOffsets.id,
+      [],
+      therapistWithOffsets,
+      clientWithOffsets,
+      { timeZone }
+    );
+
+    expect(earlyConflicts).toHaveLength(1);
+    expect(earlyConflicts[0]?.type).toBe('therapist_unavailable');
+
+    const validStart = fromZonedTime('2025-03-10T09:30', timeZone).toISOString();
+    const validEnd = fromZonedTime('2025-03-10T10:30', timeZone).toISOString();
+    const validConflicts = await checkSchedulingConflicts(
+      validStart,
+      validEnd,
+      therapistWithOffsets.id,
+      clientWithOffsets.id,
+      [],
+      therapistWithOffsets,
+      clientWithOffsets,
+      { timeZone }
+    );
+
+    expect(validConflicts).toHaveLength(0);
+  });
+
+  it('enforces minute-level therapist availability after DST fall back', async () => {
+    const timeZone = 'America/New_York';
+    const therapistWithOffsets = {
+      ...mockTherapist,
+      availability_hours: {
+        ...mockTherapist.availability_hours,
+        monday: { start: '09:30', end: '17:00' },
+      },
+    };
+
+    const clientWithOffsets = {
+      ...mockClient,
+      availability_hours: {
+        ...mockClient.availability_hours,
+        monday: { start: '09:00', end: '18:00' },
+      },
+    };
+
+    const earlyStart = fromZonedTime('2025-11-03T09:15', timeZone).toISOString();
+    const earlyEnd = fromZonedTime('2025-11-03T10:15', timeZone).toISOString();
+    const earlyConflicts = await checkSchedulingConflicts(
+      earlyStart,
+      earlyEnd,
+      therapistWithOffsets.id,
+      clientWithOffsets.id,
+      [],
+      therapistWithOffsets,
+      clientWithOffsets,
+      { timeZone }
+    );
+
+    expect(earlyConflicts).toHaveLength(1);
+    expect(earlyConflicts[0]?.type).toBe('therapist_unavailable');
+
+    const validStart = fromZonedTime('2025-11-03T09:30', timeZone).toISOString();
+    const validEnd = fromZonedTime('2025-11-03T10:30', timeZone).toISOString();
+    const validConflicts = await checkSchedulingConflicts(
+      validStart,
+      validEnd,
+      therapistWithOffsets.id,
+      clientWithOffsets.id,
+      [],
+      therapistWithOffsets,
+      clientWithOffsets,
+      { timeZone }
+    );
+
+    expect(validConflicts).toHaveLength(0);
   });
 
   it('ignores excluded session when checking for conflicts', async () => {

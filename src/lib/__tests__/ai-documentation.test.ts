@@ -1,9 +1,43 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AIDocumentationService } from '../ai-documentation';
+import { AIDocumentationService, TRANSCRIPTION_CONSENT_REQUIRED_ERROR } from '../ai-documentation';
 import { server } from '../../test/setup';
 import { http, HttpResponse } from 'msw';
 import { setRuntimeSupabaseConfig, resetRuntimeSupabaseConfigForTests } from '../runtimeConfig';
 import { supabase } from '../supabase';
+import * as toastModule from '../toast';
+
+const supabaseFromMock = supabase.from as unknown as ReturnType<typeof vi.fn>;
+const defaultSupabaseFromImplementation = supabaseFromMock.getMockImplementation();
+
+const configureSessionConsent = (consent: boolean) => {
+  const sessionChain: any = {};
+  sessionChain.select = vi.fn(() => sessionChain);
+  sessionChain.eq = vi.fn(() => sessionChain);
+  sessionChain.maybeSingle = vi.fn(async () => ({
+    data: { has_transcription_consent: consent },
+    error: null,
+  }));
+  sessionChain.single = vi.fn(async () => ({
+    data: { has_transcription_consent: consent },
+    error: null,
+  }));
+
+  supabaseFromMock.mockImplementation((table: string) => {
+    if (table === 'sessions') {
+      return sessionChain;
+    }
+
+    return typeof defaultSupabaseFromImplementation === 'function'
+      ? defaultSupabaseFromImplementation(table)
+      : ({
+          select: vi.fn(() => ({
+            maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          })),
+        } as any);
+  });
+
+  return sessionChain;
+};
 
 // Mock MediaRecorder
 class MockMediaRecorder {
@@ -56,6 +90,9 @@ describe('AIDocumentationService', () => {
   afterEach(() => {
     // Reset singleton instance
     (AIDocumentationService as any).instance = null;
+    if (typeof defaultSupabaseFromImplementation === 'function') {
+      supabaseFromMock.mockImplementation(defaultSupabaseFromImplementation);
+    }
   });
 
   describe('Transcription Tests', () => {
@@ -355,18 +392,25 @@ describe('AIDocumentationService', () => {
   });
 
   describe('Audio Recording Tests', () => {
+    let sessionConsentChain: ReturnType<typeof configureSessionConsent>;
+
+    beforeEach(() => {
+      sessionConsentChain = configureSessionConsent(true);
+      supabaseFromMock.mockClear();
+    });
+
     it('should start recording successfully', async () => {
       const sessionId = 'test-session-123';
-      
+
       await service.startSessionRecording(sessionId);
-      
+
       expect((service as any).isRecording).toBe(true);
       expect((service as any).currentSessionId).toBe(sessionId);
     });
 
     it('should stop recording and process audio', async () => {
       const sessionId = 'test-session-123';
-      
+
       await service.startSessionRecording(sessionId);
 
       server.use(
@@ -376,10 +420,36 @@ describe('AIDocumentationService', () => {
       );
 
       await service.stopSessionRecording();
-      
+
       expect((service as any).isRecording).toBe(false);
       await new Promise((r) => setTimeout(r, 0));
       expect((service as any).currentSessionId).toBeNull();
+    });
+
+    it('blocks recording when consent is not granted', async () => {
+      sessionConsentChain = configureSessionConsent(false);
+      const showErrorSpy = vi.spyOn(toastModule, 'showError');
+
+      await expect(service.startSessionRecording('no-consent-session')).rejects.toThrow(
+        TRANSCRIPTION_CONSENT_REQUIRED_ERROR
+      );
+
+      expect(showErrorSpy).toHaveBeenCalledWith('Transcription consent is required before recording can begin.');
+      expect((service as any).isRecording).toBe(false);
+      expect((service as any).currentSessionId).toBeNull();
+
+      showErrorSpy.mockRestore();
+    });
+
+    it('caches consent lookups across calls', async () => {
+      sessionConsentChain = configureSessionConsent(true);
+      supabaseFromMock.mockClear();
+
+      await service.getRecordingConsent('cached-session', { refresh: true });
+      await service.getRecordingConsent('cached-session');
+
+      expect(supabaseFromMock).toHaveBeenCalledTimes(1);
+      expect(sessionConsentChain.maybeSingle).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -456,9 +526,14 @@ describe('AIDocumentationService', () => {
   });
 
   describe('Integration Tests', () => {
+    beforeEach(() => {
+      configureSessionConsent(true);
+      supabaseFromMock.mockClear();
+    });
+
     it('should complete full transcription workflow', async () => {
       const sessionId = 'integration-test-session';
-      
+
       server.use(
         http.post('*/functions/v1/ai-transcription', () =>
           HttpResponse.json({

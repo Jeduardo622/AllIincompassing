@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient'; // Use consistent client
+import { logger } from './logger/logger';
+import { toError } from './logger/normalizeError';
 
 // User profile interface - moved from legacy auth.ts
 export interface UserProfile {
@@ -61,13 +63,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .single();
 
       if (error) {
-        console.error('Error fetching profile:', error);
+        logger.error('Failed to fetch profile record', {
+          error: toError(error, 'Profile fetch failed'),
+          metadata: {
+            scope: 'authContext.fetchProfile',
+            userId,
+          },
+        });
         return null;
       }
 
       return data;
     } catch (error) {
-      console.error('Error fetching profile:', error);
+      logger.error('Failed to fetch profile record', {
+        error: toError(error, 'Profile fetch failed'),
+        metadata: {
+          scope: 'authContext.fetchProfile',
+          userId,
+        },
+      });
       return null;
     }
   }, []);
@@ -90,7 +104,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
       
       if (error) {
-        console.error('Error getting session:', error);
+        logger.error('Failed to fetch initial auth session', {
+          error: toError(error, 'Auth session fetch failed'),
+          metadata: {
+            scope: 'authContext.initializeAuth',
+          },
+        });
         return;
       }
 
@@ -103,7 +122,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setProfile(profileData);
       }
     } catch (error) {
-      console.error('Error initializing auth:', error);
+      logger.error('Failed to initialize auth context', {
+        error: toError(error, 'Auth initialization failed'),
+        metadata: {
+          scope: 'authContext.initializeAuth',
+        },
+      });
     } finally {
       setLoading(false);
     }
@@ -191,13 +215,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       
       if (error) {
-        console.error('Signup error:', error);
+        logger.error('Supabase sign-up request returned an error', {
+          error: toError(error, 'Sign up failed'),
+          metadata: {
+            scope: 'authContext.signUp',
+          },
+        });
         return { error };
       }
 
       return { error: null };
     } catch (error) {
-      console.error('Signup catch error:', error);
+      logger.error('Supabase sign-up request threw an exception', {
+        error: toError(error, 'Sign up failed'),
+        metadata: {
+          scope: 'authContext.signUp',
+        },
+      });
       return { error: error instanceof Error ? error : new Error('Sign up failed') };
     } finally {
       setLoading(false);
@@ -210,7 +244,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { error } = await supabase.auth.signOut();
       
       if (error) {
-        console.error('Sign out error:', error);
+        logger.error('Supabase sign-out request returned an error', {
+          error: toError(error, 'Sign out failed'),
+          metadata: {
+            scope: 'authContext.signOut',
+          },
+        });
         throw error;
       }
 
@@ -219,7 +258,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setProfile(null);
       setSession(null);
     } catch (error) {
-      console.error('Sign out catch error:', error);
+      logger.error('Supabase sign-out request threw an exception', {
+        error: toError(error, 'Sign out failed'),
+        metadata: {
+          scope: 'authContext.signOut',
+        },
+      });
       throw error instanceof Error ? error : new Error('Sign out failed');
     } finally {
       setLoading(false);
@@ -233,13 +277,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       
       if (error) {
-        console.error('Reset password error:', error);
+        logger.error('Supabase reset-password request returned an error', {
+          error: toError(error, 'Password reset failed'),
+          metadata: {
+            scope: 'authContext.resetPassword',
+          },
+        });
         return { error };
       }
 
       return { error: null };
     } catch (error) {
-      console.error('Reset password catch error:', error);
+      logger.error('Supabase reset-password request threw an exception', {
+        error: toError(error, 'Password reset failed'),
+        metadata: {
+          scope: 'authContext.resetPassword',
+        },
+      });
       return { error: error instanceof Error ? error : new Error('Password reset failed') };
     }
   };
@@ -256,14 +310,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .single();
 
       if (error) {
-        console.error('Update profile error:', error);
+        logger.error('Supabase profile update returned an error', {
+          error: toError(error, 'Profile update failed'),
+          metadata: {
+            scope: 'authContext.updateProfile',
+            userId: user.id,
+          },
+        });
         return { error };
       }
 
       setProfile(data);
       return { error: null };
     } catch (error) {
-      console.error('Update profile catch error:', error);
+      logger.error('Supabase profile update threw an exception', {
+        error: toError(error, 'Profile update failed'),
+        metadata: {
+          scope: 'authContext.updateProfile',
+          userId: user.id,
+        },
+      });
       return { error: error instanceof Error ? error : new Error('Update failed') };
     }
   };

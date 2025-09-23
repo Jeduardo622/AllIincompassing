@@ -26,6 +26,8 @@ import {
 import { cancelSessions } from "../lib/sessionCancellation";
 import { supabase } from "../lib/supabase";
 import { showError, showSuccess } from "../lib/toast";
+import { logger } from "../lib/logger/logger";
+import { toError } from "../lib/logger/normalizeError";
 import type {
   BookSessionApiRequestBody,
   BookSessionApiResponse,
@@ -61,7 +63,13 @@ function toTimeZoneAwareIso(value: string | undefined, timeZone: string): string
     const utcValue = zonedTimeToUtc(trimmed, timeZone);
     return utcValue.toISOString();
   } catch (error) {
-    console.warn("Failed to normalize recurrence datetime", { error, value, timeZone });
+    logger.warn("Failed to normalize recurrence datetime", {
+      metadata: {
+        value,
+        timeZone,
+        failure: toError(error, "Recurrence normalization failed").message,
+      },
+    });
     return undefined;
   }
 }
@@ -190,7 +198,11 @@ function createIdempotencyKey(): string | undefined {
     try {
       return crypto.randomUUID();
     } catch (error) {
-      console.warn("Failed to generate idempotency key", error);
+      logger.warn("Failed to generate idempotency key", {
+        metadata: {
+          failure: toError(error, "Idempotency key generation failed").message,
+        },
+      });
     }
   }
   return undefined;
@@ -227,7 +239,12 @@ async function callBookSessionApi(
       body: JSON.stringify(payload),
     });
   } catch (networkError) {
-    console.error("Booking API request failed", networkError);
+    logger.error("Booking API request failed", {
+      error: toError(networkError, "Booking API request failed"),
+      metadata: {
+        endpoint: "/api/book",
+      },
+    });
     throw new Error("Unable to reach booking service");
   }
 
@@ -235,7 +252,12 @@ async function callBookSessionApi(
   try {
     body = await response.json() as BookSessionApiResponse;
   } catch (parseError) {
-    console.error("Failed to parse booking API response", parseError);
+    logger.error("Failed to parse booking API response", {
+      error: toError(parseError, "Booking API response parsing failed"),
+      metadata: {
+        endpoint: "/api/book",
+      },
+    });
   }
 
   if (!response.ok || !body) {
@@ -491,7 +513,12 @@ const Schedule = React.memo(() => {
     try {
       return Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
     } catch (error) {
-      console.warn("Unable to resolve timezone", error);
+      logger.warn("Unable to resolve timezone for schedule view", {
+        metadata: {
+          fallback: "UTC",
+          failure: toError(error, "Timezone resolution failed").message,
+        },
+      });
       return "UTC";
     }
   }, []);

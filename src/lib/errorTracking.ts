@@ -1,5 +1,7 @@
 import { supabase } from './supabase';
 import type { Json } from './generated/database.types';
+import { logger } from './logger/logger';
+import { toError } from './logger/normalizeError';
 
 interface ErrorContext {
   component?: string;
@@ -146,7 +148,12 @@ class ErrorTracker {
       localStorage.setItem('performance_alerts', JSON.stringify(alerts.slice(-50)));
 
     } catch (error) {
-      console.error('Failed to track performance alert:', error);
+      logger.error('Failed to track performance alert', {
+        error: toError(error, 'Performance alert tracking failed'),
+        metadata: {
+          scope: 'errorTracking.performanceAlert',
+        },
+      });
     }
   }
 
@@ -175,7 +182,13 @@ class ErrorTracker {
         p_conversation_id: null
       });
     } catch (error) {
-      console.error('Failed to log AI performance metric:', error);
+      logger.error('Failed to log AI performance metric', {
+        error: toError(error, 'AI performance logging failed'),
+        metadata: {
+          scope: 'errorTracking.aiPerformance',
+          functionCalled: metrics.functionCalled,
+        },
+      });
     }
   }
 
@@ -253,11 +266,16 @@ class ErrorTracker {
       localStorage.removeItem('queued_errors');
 
     } catch (error) {
-      console.error('Failed to flush error queue:', error);
-      
+      logger.error('Failed to flush error queue', {
+        error: toError(error, 'Error queue flush failed'),
+        metadata: {
+          scope: 'errorTracking.flush',
+        },
+      });
+
       // Re-queue errors for retry
       this.errorQueue.unshift(...errorsToFlush);
-      
+
       // Store in local storage for persistence
       try {
         const existingErrors = JSON.parse(localStorage.getItem('queued_errors') || '[]');
@@ -266,7 +284,12 @@ class ErrorTracker {
           ...errorsToFlush
         ].slice(-100))); // Keep last 100 errors
       } catch (storageError) {
-        console.error('Failed to store errors locally:', storageError);
+        logger.error('Failed to store errors locally', {
+          error: toError(storageError, 'Persisting queued errors failed'),
+          metadata: {
+            scope: 'errorTracking.flush',
+          },
+        });
       }
     }
   }

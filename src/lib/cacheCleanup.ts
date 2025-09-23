@@ -1,6 +1,8 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
+import { logger } from './logger/logger';
+import { toError } from './logger/normalizeError';
 
 // ============================================================================
 // CACHE CLEANUP CONFIGURATION
@@ -136,7 +138,12 @@ export function estimateMemoryUsage(): MemoryStats {
     }
 
   } catch (error) {
-    console.warn('Failed to estimate memory usage:', error);
+    logger.warn('Failed to estimate memory usage', {
+      metadata: {
+        scope: 'cacheCleanup.memoryEstimation',
+        failure: toError(error, 'Memory usage estimation failed').message,
+      },
+    });
   }
 
   return stats;
@@ -173,7 +180,11 @@ export class CacheCleanupManager {
       this.startMemoryMonitoring();
     }
 
-    console.log('Cache cleanup manager started');
+    logger.info('Cache cleanup manager started', {
+      metadata: {
+        scope: 'cacheCleanup.manager',
+      },
+    });
   }
 
   // Stop all cleanup intervals
@@ -182,7 +193,11 @@ export class CacheCleanupManager {
     this.intervals.clear();
     this.isRunning = false;
     
-    console.log('Cache cleanup manager stopped');
+    logger.info('Cache cleanup manager stopped', {
+      metadata: {
+        scope: 'cacheCleanup.manager',
+      },
+    });
   }
 
   // Schedule all cleanup tasks
@@ -227,7 +242,12 @@ export class CacheCleanupManager {
       
       this.updateStats('reactQuery');
     } catch (error) {
-      console.error('React Query cleanup failed:', error);
+      logger.error('React Query cleanup failed', {
+        error: toError(error, 'React Query cleanup failed'),
+        metadata: {
+          scope: 'cacheCleanup.reactQuery',
+        },
+      });
       this.cleanupStats.errors++;
     }
   }
@@ -281,7 +301,12 @@ export class CacheCleanupManager {
       this.updateStats('localStorage', bytesFreed);
       
     } catch (error) {
-      console.error('localStorage cleanup failed:', error);
+      logger.error('localStorage cleanup failed', {
+        error: toError(error, 'Local storage cleanup failed'),
+        metadata: {
+          scope: 'cacheCleanup.localStorage',
+        },
+      });
       this.cleanupStats.errors++;
     }
   }
@@ -317,7 +342,12 @@ export class CacheCleanupManager {
       this.updateStats('sessionStorage', bytesFreed);
       
     } catch (error) {
-      console.error('sessionStorage cleanup failed:', error);
+      logger.error('sessionStorage cleanup failed', {
+        error: toError(error, 'Session storage cleanup failed'),
+        metadata: {
+          scope: 'cacheCleanup.sessionStorage',
+        },
+      });
       this.cleanupStats.errors++;
     }
   }
@@ -333,7 +363,12 @@ export class CacheCleanupManager {
       this.updateStats('aiCache', deletedCount || 0);
       
     } catch (error) {
-      console.error('AI cache cleanup failed:', error);
+      logger.error('AI cache cleanup failed', {
+        error: toError(error, 'AI cache cleanup failed'),
+        metadata: {
+          scope: 'cacheCleanup.aiCache',
+        },
+      });
       this.cleanupStats.errors++;
     }
   }
@@ -370,7 +405,12 @@ export class CacheCleanupManager {
       this.updateStats('performanceData');
       
     } catch (error) {
-      console.error('Performance data cleanup failed:', error);
+      logger.error('Performance data cleanup failed', {
+        error: toError(error, 'Performance data cleanup failed'),
+        metadata: {
+          scope: 'cacheCleanup.performanceData',
+        },
+      });
       this.cleanupStats.errors++;
     }
   }
@@ -415,10 +455,12 @@ export class CacheCleanupManager {
     }
 
     if (this.config.features.enableAnalytics) {
-      console.log(`Cache cleanup completed: ${source}`, {
-        bytesFreed,
-        totalCleanups: this.cleanupStats.totalCleanups,
-        totalBytesFreed: this.cleanupStats.bytesFreed,
+      logger.info(`Cache cleanup completed: ${source}`, {
+        metadata: {
+          bytesFreed,
+          totalCleanups: this.cleanupStats.totalCleanups,
+          totalBytesFreed: this.cleanupStats.bytesFreed,
+        },
       });
     }
   }
@@ -427,7 +469,11 @@ export class CacheCleanupManager {
   async performAggressiveCleanup(): Promise<void> {
     if (!this.config.features.enableAggressive) return;
 
-    console.warn('Performing aggressive cache cleanup due to memory pressure');
+    logger.warn('Performing aggressive cache cleanup due to memory pressure', {
+      metadata: {
+        scope: 'cacheCleanup.aggressive',
+      },
+    });
 
     try {
       // Force cleanup all caches immediately
@@ -446,7 +492,12 @@ export class CacheCleanupManager {
       // No-op: window.gc may not exist in browsers
 
     } catch (error) {
-      console.error('Aggressive cleanup failed:', error);
+      logger.error('Aggressive cleanup failed', {
+        error: toError(error, 'Aggressive cleanup failed'),
+        metadata: {
+          scope: 'cacheCleanup.aggressive',
+        },
+      });
       this.cleanupStats.errors++;
     }
   }
@@ -459,7 +510,12 @@ export class CacheCleanupManager {
       if (memStats.used > this.config.memoryThresholds.critical) {
         this.performAggressiveCleanup();
       } else if (memStats.used > this.config.memoryThresholds.warning) {
-        console.warn('Memory usage approaching threshold:', memStats);
+        logger.warn('Memory usage approaching threshold', {
+          metadata: {
+            scope: 'cacheCleanup.memoryMonitoring',
+            stats: memStats,
+          },
+        });
       }
     };
 
@@ -543,13 +599,22 @@ export function useCacheCleanup(
         queryClient.removeQueries({ queryKey: query.queryKey });
       });
 
-      console.log(`Cleaned up ${staleQueries.length + errorQueries.length} React Query entries`);
+      logger.info('React Query cache cleanup completed', {
+        metadata: {
+          scope: 'cacheCleanup.reactQuery',
+          removedEntries: staleQueries.length + errorQueries.length,
+        },
+      });
     };
 
     const handleAggressiveCleanup = () => {
       // Clear all cached data aggressively
       queryClient.clear();
-      console.log('Performed aggressive React Query cleanup');
+      logger.info('Performed aggressive React Query cleanup', {
+        metadata: {
+          scope: 'cacheCleanup.reactQuery',
+        },
+      });
     };
 
     window.addEventListener('cleanup:reactQuery', handleReactQueryCleanup);

@@ -18,6 +18,8 @@ import TherapistModal from '../components/TherapistModal';
 import CSVImport from '../components/CSVImport';
 import { prepareFormData } from '../lib/validation';
 import { showSuccess, showError } from '../lib/toast';
+import { logger } from '../lib/logger/logger';
+import { toError } from '../lib/logger/normalizeError';
 
 const Therapists = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -198,7 +200,13 @@ const Therapists = () => {
         await createTherapistMutation.mutateAsync(data);
       }
     } catch (error) {
-      console.error('Error submitting therapist:', error);
+      logger.error('Failed to submit therapist changes', {
+        error: toError(error, 'Therapist mutation failed'),
+        metadata: {
+          hasExistingTherapist: Boolean(selectedTherapist),
+          targetTherapistId: selectedTherapist?.id ?? null,
+        },
+      });
     }
   };
 

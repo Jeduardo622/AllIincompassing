@@ -26,6 +26,8 @@ import {
 import { useCacheCleanup } from '../lib/cacheCleanup';
 import { useQueryPerformanceTracking } from '../lib/queryPerformanceTracker';
 import { useAuth } from '../lib/authContext';
+import { logger } from '../lib/logger/logger';
+import { toError } from '../lib/logger/normalizeError';
 
 type TabType = 'ai' | 'database' | 'system' | 'overview' | 'cache' | 'queries';
 
@@ -450,7 +452,12 @@ export default function MonitoringDashboard() {
         setQueryAnalysis(analysis);
         setQueryStats(stats);
       } catch (error) {
-        console.error('Failed to load query performance data:', error);
+        logger.error('Failed to load query performance data', {
+          error: toError(error, 'Query performance fetch failed'),
+          metadata: {
+            refreshIntervalMs: 30000,
+          },
+        });
       }
     };
 

@@ -1,5 +1,7 @@
 import { useCallback } from 'react';
 import { useQueryClient, QueryClient } from '@tanstack/react-query';
+import { logger } from './logger/logger';
+import { toError } from './logger/normalizeError';
 
 // ============================================================================
 // TIERED CACHE STRATEGY
@@ -137,12 +139,14 @@ export const useSmartInvalidation = () => {
     });
     
     // Log invalidation for monitoring
-    console.log(`Cache invalidated for ${entity} ${action}`, {
-      entity,
-      action,
-      entityId,
-      invalidatedKeys: invalidationMap[entity],
-      timestamp: new Date().toISOString()
+    logger.info(`Cache invalidated for ${entity} ${action}`, {
+      metadata: {
+        entity,
+        action,
+        entityId,
+        invalidatedKeys: invalidationMap[entity],
+        timestamp: new Date().toISOString(),
+      },
     });
   }, [queryClient]);
   
@@ -155,7 +159,12 @@ export const useSmartInvalidation = () => {
           staleTime: CACHE_STRATEGIES.ENTITIES.therapists, // Default to 15 minutes
         });
       } catch (error) {
-        console.warn(`Failed to warm cache for ${key}:`, error);
+        logger.warn(`Failed to warm cache for ${key}`, {
+          metadata: {
+            key,
+            failure: toError(error, 'Cache warm failed').message,
+          },
+        });
       }
     }
   }, [queryClient]);
@@ -220,7 +229,12 @@ export const useCachePerformanceMonitor = () => {
       queryClient.removeQueries({ queryKey: query.queryKey });
     });
     
-    console.log(`Cleared ${staleQueries.length} stale cache entries`);
+    logger.info('Cleared stale cache entries', {
+      metadata: {
+        scope: 'cacheStrategy.clearStaleCache',
+        removedEntries: staleQueries.length,
+      },
+    });
   }, [queryClient]);
   
   return { getCacheStats, clearStaleCache };
@@ -285,7 +299,12 @@ export const useCachePreloading = () => {
         staleTime: CACHE_STRATEGIES.SESSIONS.future_weeks,
       });
     } catch (error) {
-      console.warn('Failed to preload next week data:', error);
+      logger.warn('Failed to preload next week data', {
+        metadata: {
+          scope: 'cachePreloading.schedule',
+          failure: toError(error, 'Schedule preloading failed').message,
+        },
+      });
     }
   }, [queryClient]);
   
@@ -296,7 +315,12 @@ export const useCachePreloading = () => {
         staleTime: CACHE_STRATEGIES.ENTITIES.dropdowns,
       });
     } catch (error) {
-      console.warn('Failed to preload dropdown data:', error);
+      logger.warn('Failed to preload dropdown data', {
+        metadata: {
+          scope: 'cachePreloading.dropdowns',
+          failure: toError(error, 'Dropdown preload failed').message,
+        },
+      });
     }
   }, [queryClient]);
   

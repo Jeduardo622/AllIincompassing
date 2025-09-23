@@ -27,18 +27,71 @@ interface AdminContext {
 
 type OrgRecordIds = { orgA: string; orgB: string };
 
-const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ?? '';
-const SERVICE_ROLE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ??
-  ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.SUPABASE_SERVICE_ROLE_KEY ?? '');
+const importMetaEnv =
+  (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
+
+const readEnv = (key: string): string | undefined => process.env[key] ?? importMetaEnv[key];
+
+const parseBooleanEnv = (value: string | undefined): boolean => {
+  if (!value) {
+    return false;
+  }
+
+  const normalized = value.toLowerCase();
+  return normalized === '1' || normalized === 'true';
+};
+
+const SUPABASE_URL = readEnv('SUPABASE_URL') ?? '';
+const SUPABASE_ANON_KEY = readEnv('SUPABASE_ANON_KEY') ?? '';
+const SERVICE_ROLE_KEY = readEnv('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+const missingEnvVars = (
+  [
+    ['SUPABASE_URL', SUPABASE_URL],
+    ['SUPABASE_ANON_KEY', SUPABASE_ANON_KEY],
+    ['SUPABASE_SERVICE_ROLE_KEY', SERVICE_ROLE_KEY],
+  ] as const
+).filter(([, value]) => !value);
+
+const isCiEnvironment = parseBooleanEnv(process.env.CI) || parseBooleanEnv(importMetaEnv.CI);
+const runDatabaseIntegrationTests = parseBooleanEnv(readEnv('RUN_DB_IT'));
 
 const SHOULD_RUN_RLS_TESTS =
-  Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && SERVICE_ROLE_KEY) &&
-  Boolean(
-    import.meta.env.CI ||
-      (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.RUN_DB_IT === '1',
+  missingEnvVars.length === 0 && (isCiEnvironment || runDatabaseIntegrationTests);
+
+const missingEnvVarNames = missingEnvVars.map(([name]) => name);
+
+const rlsEnvironmentBlockers: string[] = [];
+
+if (missingEnvVarNames.length > 0) {
+  rlsEnvironmentBlockers.push(
+    `Missing environment variables: ${missingEnvVarNames.join(', ')}.`,
   );
+}
+
+if (!isCiEnvironment && !runDatabaseIntegrationTests) {
+  rlsEnvironmentBlockers.push(
+    'Set RUN_DB_IT=1 locally (or run inside CI) to opt into the Supabase RLS integration suite.',
+  );
+}
+
+const rlsEnvironmentGuidance =
+  'Expose SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY to the test environment ' +
+  '(for CI, map GitHub secrets with these names) before running `npm test`. For local runs, export the same values and set RUN_DB_IT=1 to opt into the suite. These should reference a read-only Supabase project dedicated to automated testing.';
+
+if (!SHOULD_RUN_RLS_TESTS && (isCiEnvironment || runDatabaseIntegrationTests)) {
+  describe('Supabase RLS integration environment', () => {
+    it('is configured before executing the security suite', () => {
+      const messageParts = [
+        'Supabase RLS tests are disabled because the environment is incomplete.',
+        ...rlsEnvironmentBlockers,
+        rlsEnvironmentGuidance,
+      ].filter(Boolean);
+
+      throw new Error(messageParts.join(' '));
+    });
+  });
+}
 
 let serviceClient: TypedClient | null = null;
 let runTests = false;

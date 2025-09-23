@@ -32,7 +32,12 @@ import {
   Timer,
   Template
 } from 'lucide-react';
-import { aiDocumentation, SessionNote, AudioSegment } from '@/lib/ai-documentation';
+import {
+  aiDocumentation,
+  SessionNote,
+  AudioSegment,
+  TRANSCRIPTION_CONSENT_REQUIRED_ERROR
+} from '@/lib/ai-documentation';
 import { toast } from '@/lib/toast';
 import { logger } from '@/lib/logger/logger';
 
@@ -61,6 +66,7 @@ export function AIDocumentationDashboard({
   onSessionNoteGenerated
 }: AIDocumentationDashboardProps) {
   const [isRecording, setIsRecording] = useState(false);
+  const [hasRecordingConsent, setHasRecordingConsent] = useState<boolean | null>(null);
   const [currentTranscript, setCurrentTranscript] = useState<string>('');
   const [realtimeSegments, setRealtimeSegments] = useState<AudioSegment[]>([]);
   const [sessionNotes, setSessionNotes] = useState<SessionNote[]>([]);
@@ -96,6 +102,34 @@ export function AIDocumentationDashboard({
     loadTemplates();
     loadPerformanceMetrics();
   }, [clientId]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const verifyConsent = async () => {
+      try {
+        const consent = await aiDocumentation.getRecordingConsent(sessionId, { refresh: true });
+        if (isActive) {
+          setHasRecordingConsent(consent);
+        }
+      } catch (error) {
+        logger.error('Failed to verify transcription consent', {
+          error,
+          context: { component: 'AIDocumentationDashboard', operation: 'verifyConsent', sessionId }
+        });
+        if (isActive) {
+          setHasRecordingConsent(false);
+        }
+        toast.error('Unable to verify transcription consent');
+      }
+    };
+
+    void verifyConsent();
+
+    return () => {
+      isActive = false;
+    };
+  }, [sessionId]);
 
   // Listen for real-time transcript updates
   useEffect(() => {
@@ -223,6 +257,14 @@ export function AIDocumentationDashboard({
 
   const handleStartRecording = async () => {
     try {
+      const consent = await aiDocumentation.getRecordingConsent(sessionId, { refresh: true });
+      setHasRecordingConsent(consent);
+
+      if (!consent) {
+        toast.error('Cannot start recording without transcription consent');
+        return;
+      }
+
       await aiDocumentation.startSessionRecording(sessionId);
       setIsRecording(true);
       setCurrentTranscript('');
@@ -233,6 +275,12 @@ export function AIDocumentationDashboard({
         error,
         context: { component: 'AIDocumentationDashboard', operation: 'handleStartRecording' }
       });
+      if (error instanceof Error && error.message === TRANSCRIPTION_CONSENT_REQUIRED_ERROR) {
+        return;
+      }
+      if (error instanceof Error && error.message === 'Unable to verify transcription consent') {
+        return;
+      }
       toast.error('Failed to start recording');
     }
   };
@@ -441,6 +489,56 @@ export function AIDocumentationDashboard({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex flex-col gap-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/40 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <Badge
+                    className={`${
+                      hasRecordingConsent === true
+                        ? 'bg-green-100 text-green-700'
+                        : hasRecordingConsent === false
+                          ? 'bg-red-100 text-red-700'
+                          : 'bg-yellow-100 text-yellow-700'
+                    }`}
+                  >
+                    {hasRecordingConsent === true
+                      ? 'Consent Granted'
+                      : hasRecordingConsent === false
+                        ? 'Consent Required'
+                        : 'Checking Consent'}
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">
+                    {hasRecordingConsent === true
+                      ? 'Recording is permitted for this session.'
+                      : hasRecordingConsent === false
+                        ? 'Recording is blocked until consent is granted.'
+                        : 'Verifying consent status...'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>Recording consent</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={hasRecordingConsent === true}
+                    aria-label="Recording consent status"
+                    disabled
+                    className={`relative inline-flex h-5 w-10 shrink-0 cursor-not-allowed items-center rounded-full border transition-colors ${
+                      hasRecordingConsent === true
+                        ? 'border-green-500 bg-green-500'
+                        : hasRecordingConsent === false
+                          ? 'border-red-400 bg-red-400'
+                          : 'border-slate-300 bg-slate-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        hasRecordingConsent === true ? 'translate-x-5' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
               <div className="flex items-center justify-center space-x-4">
                 {!isRecording ? (
                   <Button

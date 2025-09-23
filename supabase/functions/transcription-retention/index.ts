@@ -37,9 +37,10 @@ Deno.serve(async (req) => {
     });
   }
 
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!serviceKey) {
-    console.error("Retention job misconfigured: missing SUPABASE_SERVICE_ROLE_KEY");
+  // Use a dedicated job token; do not use service role in edge functions
+  const jobToken = Deno.env.get("TRANSCRIPTION_RETENTION_TOKEN");
+  if (!jobToken) {
+    console.error("Retention job misconfigured: missing TRANSCRIPTION_RETENTION_TOKEN");
     return errorEnvelope({
       requestId,
       code: "server_error",
@@ -50,7 +51,7 @@ Deno.serve(async (req) => {
   }
 
   const authHeader = req.headers.get("authorization") ?? "";
-  if (authHeader !== `Bearer ${serviceKey}`) {
+  if (authHeader !== `Bearer ${jobToken}`) {
     return errorEnvelope({
       requestId,
       code: "unauthorized",

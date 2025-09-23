@@ -127,7 +127,6 @@ BEGIN
     END IF;
 
     INSERT INTO auth.identities (
-      id,
       user_id,
       identity_data,
       provider,
@@ -137,7 +136,6 @@ BEGIN
       updated_at
     ) VALUES (
       user_id,
-      user_id,
       jsonb_build_object('sub', user_id::text, 'email', user_record.email),
       'email',
       user_record.email,
@@ -145,9 +143,11 @@ BEGIN
       NOW(),
       NOW()
     )
-    ON CONFLICT (id) DO UPDATE
+    ON CONFLICT (provider, provider_id) DO UPDATE
     SET
+      user_id = EXCLUDED.user_id,
       identity_data = EXCLUDED.identity_data,
+      last_sign_in_at = EXCLUDED.last_sign_in_at,
       updated_at = NOW();
 
     SELECT id INTO role_id
@@ -166,7 +166,6 @@ BEGIN
       role,
       first_name,
       last_name,
-      full_name,
       phone,
       is_active,
       created_at,
@@ -177,7 +176,6 @@ BEGIN
       user_record.role_name::public.role_type,
       user_record.first_name,
       user_record.last_name,
-      user_record.first_name || ' ' || user_record.last_name,
       user_record.phone,
       true,
       NOW(),
@@ -189,7 +187,6 @@ BEGIN
       role = EXCLUDED.role,
       first_name = EXCLUDED.first_name,
       last_name = EXCLUDED.last_name,
-      full_name = EXCLUDED.full_name,
       phone = EXCLUDED.phone,
       is_active = true,
       updated_at = NOW();
@@ -342,7 +339,6 @@ BEGIN
         diagnosis,
         authorized_hours_per_month,
         hours_provided_per_month,
-        unscheduled_hours,
         one_to_one_units,
         supervision_units,
         parent_consult_units,
@@ -386,7 +382,6 @@ BEGIN
         ARRAY['Autism Spectrum Disorder'],
         40,
         30,
-        10,
         20,
         5,
         4,
@@ -427,7 +422,6 @@ BEGIN
         diagnosis = EXCLUDED.diagnosis,
         authorized_hours_per_month = EXCLUDED.authorized_hours_per_month,
         hours_provided_per_month = EXCLUDED.hours_provided_per_month,
-        unscheduled_hours = EXCLUDED.unscheduled_hours,
         one_to_one_units = EXCLUDED.one_to_one_units,
         supervision_units = EXCLUDED.supervision_units,
         parent_consult_units = EXCLUDED.parent_consult_units,

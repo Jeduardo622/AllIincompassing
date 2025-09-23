@@ -3,6 +3,8 @@ import { supabase } from './supabase';
 import { CACHE_STRATEGIES, generateCacheKey, useSmartInvalidation } from './cacheStrategy';
 import { useDebounce } from './performance';
 import type { Session } from '../types';
+import { logger } from './logger/logger';
+import { toError } from './logger/normalizeError';
 
 // ============================================================================
 // BATCHED SCHEDULE QUERIES (Replaces N+1 queries)
@@ -275,11 +277,17 @@ export const useQueryPerformanceMonitor = () => {
   
   const logSlowQuery = (queryKey: unknown[], duration: number, dataSize?: number) => {
     if (duration > 1000) { // Log queries taking longer than 1 second
-      console.warn('Slow query detected:', {
-        queryKey,
-        duration: `${duration.toFixed(2)}ms`,
-        dataSize: dataSize ? `${(dataSize / 1024).toFixed(2)}KB` : 'unknown',
-        timestamp: new Date().toISOString()
+      const normalizedKey = Array.isArray(queryKey)
+        ? queryKey.map((keyPart) => String(keyPart)).join(':')
+        : String(queryKey);
+
+      logger.warn('Slow query detected', {
+        metadata: {
+          queryKey: normalizedKey,
+          durationMs: Number(duration.toFixed(2)),
+          dataSizeBytes: dataSize ?? null,
+          timestamp: new Date().toISOString(),
+        },
       });
       
       // In production, send to monitoring service
@@ -348,7 +356,12 @@ export const useSmartPrefetch = () => {
         staleTime: CACHE_STRATEGIES.SESSIONS.future_weeks,
       });
     } catch (error) {
-      console.warn('Failed to prefetch next week data:', error);
+      logger.warn('Failed to prefetch next week data', {
+        metadata: {
+          scope: 'smartPrefetch.nextWeek',
+          failure: toError(error, 'Next week prefetch failed').message,
+        },
+      });
     }
   };
   
@@ -365,7 +378,12 @@ export const useSmartPrefetch = () => {
         staleTime: CACHE_STRATEGIES.REPORTS.past_months,
       });
     } catch (error) {
-      console.warn('Failed to prefetch next month data:', error);
+      logger.warn('Failed to prefetch next month data', {
+        metadata: {
+          scope: 'smartPrefetch.nextMonth',
+          failure: toError(error, 'Next month prefetch failed').message,
+        },
+      });
     }
   };
   

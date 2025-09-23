@@ -43,6 +43,12 @@ export default tseslint.config(
       'no-console': 'error',
     },
   },
+  {
+    files: ['src/pages/**/*.{ts,tsx}'],
+    rules: {
+      'no-console': 'error',
+    },
+  },
   // Lib: allow any during incremental typing, keep unused strict
   {
     files: ['src/lib/**/*.{ts,tsx}'],

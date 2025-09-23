@@ -3,6 +3,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Calendar, Shield, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { showError, showSuccess } from '../lib/toast';
+import { logger } from '../lib/logger/logger';
+import { toError } from '../lib/logger/normalizeError';
 
 export default function Signup() {
   const [email, setEmail] = useState('');
@@ -67,7 +69,12 @@ export default function Signup() {
       });
 
       if (error) {
-        console.error('Signup error:', error);
+        logger.error('Signup request returned an error', {
+          error: toError(error, 'Signup failed'),
+          metadata: {
+            role,
+          },
+        });
         setError(error.message);
         showError(error.message);
         return;
@@ -81,7 +88,12 @@ export default function Signup() {
         }
       });
     } catch (err) {
-      console.error('Signup catch error:', err);
+      logger.error('Signup request threw an exception', {
+        error: toError(err, 'Signup failed'),
+        metadata: {
+          role,
+        },
+      });
       const message = err instanceof Error ? err.message : 'Failed to create account';
       setError(message);
       showError(message);

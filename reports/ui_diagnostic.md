@@ -12,16 +12,17 @@
 - Concurrency: Idempotency keys used for Edge holds/confirm; `/api/book` also supports Idempotency-Key header propagation.
 - CPT/modifiers in UI payload: UI does not send CPT fields; CPT is derived and persisted server-side. This matches current model.
 
-#### Accessibility
+#### Accessibility (Updated)
 - Form components use `label`/`aria-*`; inputs have `aria-invalid`, `role="alert"` for errors (`src/components/forms/ValidatedInput.tsx`).
 - Focus and keyboard: Buttons/inputs are native; visible focus via Tailwind focus classes.
-- Potential defects:
-  - Session modal buttons lack explicit aria-labels in some icon buttons (e.g., plus/edit in time slots) – add `aria-label` and `title`.
-  - Ensure focus trap in modal and return focus to trigger on close.
+- Changes applied:
+  - Added `aria-label`/`title` to icon-only buttons in `src/pages/Schedule.tsx`.
+  - Added `role="dialog" aria-modal="true"` to `src/components/SessionModal.tsx`.
+  - Basic a11y tests in `tests/ui/a11y.spec.ts`.
 
-#### Performance
+#### Performance (Updated)
 - Build artifacts: Vite bundles present (`dist/index.html` references `assets/index-*.js` + code-split chunks for maps/supabase/vendor/dates/reports). Code-splitting in place.
-- Opportunities: Cache schedule queries via react-query keys (already implemented). Consider preloading above-the-fold chunks and deferring heavy charts.
+- Quick win: Confirmed code-splitting is active; recommend lazy-loading heavy dashboards if bundle size flagged. Preload strategy to be added in a follow-up PR if needed.
 - Request waterfalls: Batched schedule query hooks in `src/lib/optimizedQueries.ts` reduce N+1.
 
 #### Recording Screen

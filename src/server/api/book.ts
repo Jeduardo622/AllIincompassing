@@ -1,3 +1,4 @@
+import "../bootstrapSupabase";
 import { bookSession } from "../bookSession";
 import type {
   BookSessionApiRequestBody,

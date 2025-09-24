@@ -1,414 +1,119 @@
-# Supabase CLI
+# AllIncompassing Scheduling Platform
 
-[![Coverage Status](https://coveralls.io/repos/github/supabase/cli/badge.svg?branch=main)](https://coveralls.io/github/supabase/cli?branch=main) [![Bitbucket Pipelines](https://img.shields.io/bitbucket/pipelines/supabase-cli/setup-cli/master?style=flat-square&label=Bitbucket%20Canary)](https://bitbucket.org/supabase-cli/setup-cli/pipelines) [![Gitlab Pipeline Status](https://img.shields.io/gitlab/pipeline-status/sweatybridge%2Fsetup-cli?label=Gitlab%20Canary)
-](https://gitlab.com/sweatybridge/setup-cli/-/pipelines)
+AllIncompassing delivers therapist scheduling, billing, and operational telemetry for behavioral health practices. The application couples a React front end with Supabase-backed APIs, database policies, and edge functions so that teams can manage session holds, confirmations, cancellations, and downstream reporting from a single workspace.
 
-[Supabase](https://supabase.io) is an open source Firebase alternative. We're building the features of Firebase using enterprise-grade open source tools.
+## At a glance
 
-This repository contains all the functionality for Supabase CLI.
+- **Therapy-specific booking flows** – Session holds coordinate with confirmation and cancellation paths, rounding durations to compliant 15-minute blocks while preventing double booking across therapists and clients.
+- **Billing-ready data** – CPT code derivation, modifier enrichment, and hold lifecycles persist structured billing rows that mirror the database schema and analytics jobs.
+- **Role-aware access** – Row Level Security (RLS) and the RBAC roles in Supabase ensure clients, therapists, admins, and super admins can only reach the data they are permitted to view or mutate.
+- **Operational diagnostics** – Health reports, route audits, and automated security checks keep migrations, RPCs, and edge functions aligned with production expectations.
 
-- [x] Running Supabase locally
-- [x] Managing database migrations
-- [x] Creating and deploying Supabase Functions
-- [x] Generating types directly from your database schema
-- [x] Making authenticated HTTP requests to [Management API](https://supabase.com/docs/reference/api/introduction)
+## Architecture overview
 
-## Session scheduling idempotency
+### Frontend (React + Vite)
 
-The scheduling workflow for session holds now enforces idempotency across the `sessions-hold`, `sessions-confirm`, and `sessions-cancel` Edge Functions. Clients can supply an `Idempotency-Key` header with each POST request to ensure retries never create duplicate reservations or confirmations.
+- **Framework** – React 18 + Vite with TypeScript, Tailwind CSS, TanStack Query, and React Hook Form provide the scheduling UI, dashboards, and workflow modals defined in `src/`.
+- **Runtime configuration bootstrap** – `ensureRuntimeSupabaseConfig` loads `/api/runtime-config` before rendering `<App />`, guaranteeing that `supabaseUrl`, `supabaseAnonKey`, and optional `supabaseEdgeUrl` values are ready for API clients and feature flags.
+- **Developer diagnostics** – `BootDiagnostics` and the development error boundary expose Supabase bootstrap errors with actionable messaging while retaining a strict-mode React tree.
 
-- When an `Idempotency-Key` is provided, the function stores a SHA-256 hash of the JSON response alongside the original payload metadata. Subsequent requests using the same key return the stored response immediately and include an `Idempotent-Replay: true` header without re-running business logic.
-- Responses generated on initial execution are stored with their HTTP status codes, so repeated keys receive the exact same status/body combination.
-- The new `sessions-cancel` endpoint releases held slots and also participates in the idempotency flow, allowing client-side retries when releasing a hold.
+### Supabase platform
 
-### CPT-compliant duration rounding
+- **Postgres schema & migrations** – SQL migrations under `supabase/migrations` capture session holds, CPT bookkeeping, telemetry hardening, and auth policies. Generated TypeScript types (`npm run typegen`) keep the front end synchronized with schema drift.
+- **Edge functions** – Deployed functions cover auth flows, schedule automation (e.g., hold confirmations, alternative suggestions), AI-assisted tooling, and reporting. The routing audit script tracks expected `/functions/v1/*` endpoints.
+- **Security controls** – RLS, role-specific policies, and automated audits (`npm run db:check:security`) guard telemetry tables, AI caches, and booking data from overexposure.
 
-- `confirm_session_hold` now rounds session durations to the nearest 15-minute increment (minimum one unit) before persisting and returning the session payload. This keeps billing calculations aligned with CPT reporting rules.
-- The `sessions-confirm` Edge Function surfaces the rounded value via both `data.session.duration_minutes` and `data.roundedDurationMinutes`, ensuring front-end scheduling flows and downstream billing logic consume the compliant duration without re-implementing rounding rules.
-- If you change the CPT increment in the future, update the constant inside the PL/pgSQL function and adjust any client expectations that rely on the `roundedDurationMinutes` helper field.
+### Data & workflow orchestration
 
-Example request using `fetch`:
+- **Hold → confirm pipeline** – Booking requests go through an idempotent hold workflow backed by Supabase edge functions, guaranteeing consistent responses when clients retry with the same `Idempotency-Key`.
+- **CPT enrichment** – Server utilities compute CPT codes, modifiers, and rounded durations before persisting them for billing reconciliation and analytics.
+- **Concurrency safety** – Integration tests simulate conflicting hold attempts to ensure that only one session confirmation succeeds and competing holds are cancelled cleanly.
 
-```ts
-await fetch(`${SUPABASE_EDGE_URL}/sessions-hold`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${accessToken}`,
-    "Idempotency-Key": crypto.randomUUID(),
-  },
-  body: JSON.stringify({
-    therapist_id: "...",
-    client_id: "...",
-    start_time: "2025-01-01T10:00:00Z",
-    end_time: "2025-01-01T11:00:00Z",
-  }),
-});
-```
+## Environment & setup
 
-Clients should persist and reuse the same key for retries to guarantee safe replays.
+### Prerequisites
 
-## Getting started
+- **Node.js 18+** and npm or another package manager supported by the repo (pnpm, yarn).
+- **Supabase CLI** (installed globally or via `npx`) with access to the project reference `wnnjeqheqxxyrgsjmygy`.
+- **Environment variables** available in your shell: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_ACCESS_TOKEN`.
+- **Vite runtime env file** – `.env` should provide `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Include `VITE_SUPABASE_EDGE_URL` when targeting a custom Edge Functions domain.
 
-### Install the CLI
+> ℹ️ Run `./scripts/setup.sh` to validate Supabase credentials, generate database types, and create the `.env` file automatically. The script also configures `~/.supabase/config.toml` for non-interactive CLI sessions.
 
-Available via [NPM](https://www.npmjs.com) as dev dependency. To install:
+### Bootstrapping the app
 
-```bash
-npm i supabase --save-dev
-```
+1. Install dependencies: `npm install`
+2. Populate the `.env` file (or rerun `./scripts/setup.sh` after exporting Supabase variables).
+3. Start the development server: `npm run dev`
+4. Optional helpers:
+   - `npm run dev:clean` – clear caches before launching Vite.
+   - `npm run clear-cache` – remove cached API responses and generated artifacts used during tests.
 
-To install the beta release channel:
+## Development workflow
 
-```bash
-npm i supabase@beta --save-dev
-```
+### Quality gates & local testing
 
-When installing with yarn 4, you need to disable experimental fetch with the following nodejs config.
+| Task | Command |
+| --- | --- |
+| Lint TypeScript & React files | `npm run lint` |
+| Unit tests (Vitest) | `npm test` |
+| Coverage report | `npm run test:coverage` |
+| Type checking | `npm run typecheck` |
+| UI test runner | `npm run test:ui` |
+| Cypress end-to-end suite | `npm run test:e2e` or `npm run test:e2e:open` |
+| Route integrity tests | `npm run test:routes` or `npm run test:routes:open` |
 
-```
-NODE_OPTIONS=--no-experimental-fetch yarn add supabase
-```
+### Supabase migrations & health tooling
 
-> **Note**
-For Bun versions below v1.0.17, you must add `supabase` as a [trusted dependency](https://bun.sh/guides/install/trusted) before running `bun add -D supabase`.
+- Create a new database branch for experimentation: `npm run db:branch:create`
+- Remove stale preview branches: `npm run db:branch:cleanup`
+- Generate diff-based migrations with the Supabase CLI (`supabase migration new` or `supabase db diff --use-migrations`) and commit SQL under `supabase/migrations/`.
+- After applying migrations, regenerate types with `npm run typegen`.
+- Review database security, performance, and health dashboards:
+  - `npm run db:check:security`
+  - `npm run db:check:performance`
+  - `npm run db:health:report` (markdown summary)
+  - `npm run db:health:production` (production-grade diagnostics)
+  - `npm run pipeline:health` (aggregates the security, performance, and health report checks)
 
-<details>
-  <summary><b>macOS</b></summary>
+### Edge function & API workflows
 
-  Available via [Homebrew](https://brew.sh). To install:
+- Audit Supabase routes against expected edge and RPC functions: `npm run audit:routes`
+- Generate stubs for missing routes and functions when scaffolding new APIs: `npm run fix:routes`
+- Deploy updates with the Supabase CLI: `supabase functions deploy <name> --project-ref wnnjeqheqxxyrgsjmygy`
+- Authentication utilities:
+  - `npm run verify-auth` – ensure required auth functions and policies exist.
+  - `npm run auth:fix` and `npm run auth:test` – apply and validate auth repairs.
+- Bolt sync utilities (`npm run bolt:sync:create`, `npm run bolt:sync:from`) mirror Supabase state into documentation or regression tests.
 
-  ```sh
-  brew install supabase/tap/supabase
-  ```
+## Reference documentation
 
-  To install the beta release channel:
-  
-  ```sh
-  brew install supabase/tap/supabase-beta
-  brew link --overwrite supabase-beta
-  ```
-  
-  To upgrade:
+- [docs/AUTH_ROLES.md](docs/AUTH_ROLES.md) – RBAC hierarchy, permissions, and RLS policies across profiles, sessions, and billing tables.
+- [docs/DATABASE_PIPELINE.md](docs/DATABASE_PIPELINE.md) – Step-by-step ingestion pipeline for Supabase migrations, seeds, and CI validation.
+- [docs/MCP_ROUTING_TROUBLESHOOTING.md](docs/MCP_ROUTING_TROUBLESHOOTING.md) – Troubleshooting guide for multi-channel routing and API backplanes.
+- [docs/SEEDING.md](docs/SEEDING.md) – Controlled data seeding flows for Supabase environments.
+- [docs/SESSION_HOLD_CONTRACT.md](docs/SESSION_HOLD_CONTRACT.md) & [docs/SESSION_HOLD_CONFLICT_CODES.md](docs/SESSION_HOLD_CONFLICT_CODES.md) – Session hold payload contracts, retry semantics, and conflict reason catalogues.
+- [README_SCHEDULING_TESTS.md](README_SCHEDULING_TESTS.md) – Detailed coverage of scheduling UI and server tests.
+- [reports/diagnostic_summary.md](reports/diagnostic_summary.md) – Narrative walkthrough of the booking pipeline and outstanding considerations.
+- [reports/feature_matrix.md](reports/feature_matrix.md) – Evidence-backed status of booking, billing, and concurrency features.
 
-  ```sh
-  brew upgrade supabase
-  ```
-</details>
+## Troubleshooting
 
-<details>
-  <summary><b>Windows</b></summary>
+### Runtime configuration bootstrap
 
-  Available via [Scoop](https://scoop.sh). To install:
+- Confirm `/api/runtime-config` returns JSON with `supabaseUrl` and `supabaseAnonKey`. Missing keys trigger the red error state rendered by `RuntimeConfigError` in `src/main.tsx`.
+- Validate that `ensureRuntimeSupabaseConfig` is called before attempting to construct clients (e.g., `src/lib/supabaseClient.ts`, `src/lib/ai.ts`). Accessing Supabase helpers before the promise resolves will throw `Supabase runtime configuration has not been initialised`.
+- If the client cached an outdated config, run `npm run dev:clean` and restart the dev server to clear local storage and cached runtime settings.
 
-  ```powershell
-  scoop bucket add supabase https://github.com/supabase/scoop-bucket.git
-  scoop install supabase
-  ```
+### Telemetry & logging
 
-  To upgrade:
+- Use the PHI-safe logger utilities in `src/lib/logger` for any console or telemetry emission. Direct `console.*` calls bypass redaction and will fail under the Vitest console guard.
+- Update `redactPhi` and associated console guard patterns when introducing new sensitive identifiers, and add regression tests in `src/lib/__tests__/loggerRedaction.test.ts` to confirm masking.
+- When telemetry ingestion fails, inspect generated health reports (`npm run db:health:report`) for exposed functions or missing policies across telemetry tables.
 
-  ```powershell
-  scoop update supabase
-  ```
-</details>
+### Supabase CLI hiccups
 
-<details>
-  <summary><b>Linux</b></summary>
+- Re-export Supabase environment variables and rerun `./scripts/setup.sh` if CLI commands begin prompting for auth.
+- Ensure `CYPRESS_INSTALL_BINARY=0` when you do not require Cypress binaries in CI (the setup script sets this automatically unless `CYPRESS_RUN=true`).
 
-  Available via [Homebrew](https://brew.sh) and Linux packages.
-
-  #### via Homebrew
-
-  To install:
-
-  ```sh
-  brew install supabase/tap/supabase
-  ```
-
-  To upgrade:
-
-  ```sh
-  brew upgrade supabase
-  ```
-
-  #### via Linux packages
-
-  Linux packages are provided in [Releases](https://github.com/supabase/cli/releases). To install, download the `.apk`/`.deb`/`.rpm`/`.pkg.tar.zst` file depending on your package manager and run the respective commands.
-
-  ```sh
-  sudo apk add --allow-untrusted <...>.apk
-  ```
-
-  ```sh
-  sudo dpkg -i <...>.deb
-  ```
-
-  ```sh
-  sudo rpm -i <...>.rpm
-  ```
-
-  ```sh
-  sudo pacman -U <...>.pkg.tar.zst
-  ```
-</details>
-
-<details>
-  <summary><b>Other Platforms</b></summary>
-
-  You can also install the CLI via [go modules](https://go.dev/ref/mod#go-install) without the help of package managers.
-
-  ```sh
-  go install github.com/supabase/cli@latest
-  ```
-
-  Add a symlink to the binary in `$PATH` for easier access:
-
-  ```sh
-  ln -s "$(go env GOPATH)/bin/cli" /usr/bin/supabase
-  ```
-
-  This works on other non-standard Linux distros.
-</details>
-
-<details>
-  <summary><b>Community Maintained Packages</b></summary>
-
-  Available via [pkgx](https://pkgx.sh/). Package script [here](https://github.com/pkgxdev/pantry/blob/main/projects/supabase.com/cli/package.yml).
-  To install in your working directory:
-
-  ```bash
-  pkgx install supabase
-  ```
-
-  Available via [Nixpkgs](https://nixos.org/). Package script [here](https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/tools/supabase-cli/default.nix).
-</details>
-
-### Run the CLI
-
-```bash
-supabase bootstrap
-```
-
-Or using npx:
-
-```bash
-npx supabase bootstrap
-```
-
-The bootstrap command will guide you through the process of setting up a Supabase project using one of the [starter](https://github.com/supabase-community/supabase-samples/blob/main/samples.json) templates.
-
-## Docs
-
-Command & config reference can be found [here](https://supabase.com/docs/reference/cli/about).
-
-## Breaking changes
-
-We follow semantic versioning for changes that directly impact CLI commands, flags, and configurations.
-
-However, due to dependencies on other service images, we cannot guarantee that schema migrations, seed.sql, and generated types will always work for the same CLI major version. If you need such guarantees, we encourage you to pin a specific version of CLI in package.json.
-
-## Developing
-
-To run from source:
-
-```sh
-# Go >= 1.22
-go run . help
-```
-
-# Database-First CI/CD Pipeline
-
-A streamlined CI/CD pipeline for Supabase projects following database-first development practices.
-
-## 🚀 Features
-
-- **Simple & Practical**: Based on real-world Supabase deployment patterns
-- **Database-First**: Migrations drive deployments, not the other way around
-- **Branch-Based Deployments**: `develop` → staging, `main` → production
-- **Type Safety**: Automatic TypeScript type generation and validation
-- **Automated Backups**: Production backups before deployments
-- **Clean & Minimal**: No unnecessary complexity or bloat
-
-## 📋 Requirements
-
-### GitHub Secrets
-
-Configure these secrets in your GitHub repository:
-
-```bash
-# Supabase Configuration
-SUPABASE_ACCESS_TOKEN=your_access_token
-SUPABASE_DB_PASSWORD=your_db_password
-SUPABASE_PROJECT_ID=your_project_id
-SUPABASE_ANON_KEY=your_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-```
-
-### Repository Structure
-
-```
-.
-├── .github/workflows/
-│   └── database-first-ci.yml
-├── supabase/
-│   ├── migrations/
-│   └── config.toml
-├── scripts/
-│   └── cleanup-supabase-branch.js
-└── types.gen.ts
-```
-
-## 🎯 How It Works
-
-This workflow uses a **single Supabase project** with branch-based deployments:
-
-### On Pull Requests
-1. **Test & Validate**: Run tests and validate type generation
-2. **Migration Check**: Detect new migrations for review
-
-### On Push to `develop`
-1. **Deploy to Supabase**: Apply migrations and update types
-2. **Create Deployment Comment**: Summary of changes
-
-### On Push to `main`
-1. **Create Backup**: Backup production database
-2. **Deploy to Production**: Apply migrations and update types  
-3. **Create Deployment Comment**: Summary with dashboard link
-
-### Weekly Cleanup
-- Remove old backup files
-- Clean up old workflow runs
-
-> **Note**: This workflow uses a single Supabase project with branch-based deployments. For true staging/production separation, you'd need separate Supabase projects and different `SUPABASE_PROJECT_ID` values.
-
-## 🛠 Usage
-
-### 1. Create a Migration
-```bash
-supabase migration new add_users_table
-```
-
-### 2. Test Locally
-```bash
-supabase db start
-supabase db reset
-npm test
-```
-
-### 3. Deploy via Git
-```bash
-git add .
-git commit -m "Add users table migration"
-git push origin develop  # Deploy to staging
-```
-
-### 4. Production Deployment
-```bash
-git checkout main
-git merge develop
-git push origin main     # Deploy to production
-```
-
-## 📁 Scripts
-
-### `scripts/cleanup-supabase-branch.js`
-- Clean up old Supabase branches
-- Pattern-based cleanup (e.g., PR branches)
-- Age-based cleanup (branches older than X days)
-- Dry-run mode for safety
-
-### Usage
-```bash
-# Clean up branches older than 7 days
-node scripts/cleanup-supabase-branch.js --max-age 7
-
-# Clean up PR branches matching pattern
-node scripts/cleanup-supabase-branch.js --pattern "^pr-"
-
-# Dry run (preview changes)
-node scripts/cleanup-supabase-branch.js --dry-run --max-age 7
-```
-
-### `scripts/admin-password-reset.js`
-- Reset a user's password or create the account if it does not exist
-- Requires Supabase service role credentials loaded from your environment; the script throws if `SUPABASE_SERVICE_ROLE_KEY` is missing or blank
-
-#### Usage
-```bash
-# Supply the service role key through the environment (e.g. shell export or .env file)
-export SUPABASE_SERVICE_ROLE_KEY="<your-service-role-key>"
-
-# Optional: override the Supabase project URL if you are using a non-default project
-export SUPABASE_URL="https://your-project.supabase.co"
-
-# Execute the script with the target account details
-node scripts/admin-password-reset.js user@example.com NewPass123 true
-```
-
-> ℹ️  The script reads configuration via `dotenv`, so storing the key in a local `.env` file is supported. Keep the key out of version control and CI logs. The script does not include any fallback key and will exit early if the environment variable is omitted.
-
-## 🔧 Configuration
-
-### Environment Variables
-```bash
-# Optional: Customize behavior
-SUPABASE_CLI_VERSION=latest
-NODE_VERSION=18
-```
-
-### Supabase Configuration
-Ensure your `supabase/config.toml` is properly configured:
-
-```toml
-[api]
-enabled = true
-port = 54321
-
-[db]
-port = 54322
-
-[studio]
-enabled = true
-port = 54323
-```
-
-## 🚨 Troubleshooting
-
-### Common Issues
-
-1. **Migration Conflicts**
-   ```bash
-   # Reset local database and reapply migrations
-   supabase db reset
-   ```
-
-2. **Type Generation Issues**
-   ```bash
-   # Manually regenerate types
-   supabase gen types typescript --local > types.gen.ts
-   ```
-
-3. **Permission Errors**
-   ```bash
-   # Check Supabase access token permissions
-   supabase projects list
-   ```
-
-## 📝 Best Practices
-
-1. **Always test locally first** with `supabase db start`
-2. **Use staging environment** for final validation
-3. **Keep migrations small** and focused
-4. **Test type generation** after schema changes
-5. **Review deployment comments** for confirmation
-
-## 🔗 Links
-
-- [Supabase CLI Documentation](https://supabase.com/docs/guides/cli)
-- [Database Migrations Guide](https://supabase.com/docs/guides/database/managing-migrations)
-- [GitHub Actions Documentation](https://docs.github.com/en/actions)
-
----
-
-> **Note**: This workflow is designed to be simple and practical. It's based on real-world Supabase deployment patterns and avoids unnecessary complexity while maintaining production-ready reliability.
+With these workflows and references, contributors can confidently extend AllIncompassing’s scheduling, billing, and telemetry capabilities while keeping Supabase infrastructure in sync.

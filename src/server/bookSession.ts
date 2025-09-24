@@ -1,3 +1,4 @@
+import "./bootstrapSupabase";
 import { addDays } from "date-fns";
 import { formatInTimeZone, zonedTimeToUtc } from "date-fns-tz";
 import {

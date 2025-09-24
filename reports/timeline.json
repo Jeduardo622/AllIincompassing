@@ -1,0 +1,8 @@
+[
+  {"item":"RLS coverage","effort":"M","start":"2025-09-24","end":"2025-10-08","deps":[]},
+  {"item":"UI auth headers","effort":"S","start":"2025-09-24","end":"2025-09-27","deps":[]},
+  {"item":"CPT/modifiers path (proposed)","effort":"S","start":"2025-09-28","end":"2025-10-02","deps":["RLS coverage"]},
+  {"item":"A11y improvements","effort":"S","start":"2025-09-28","end":"2025-10-02","deps":[]},
+  {"item":"Performance tuning","effort":"S","start":"2025-10-01","end":"2025-10-05","deps":[]}
+]
+

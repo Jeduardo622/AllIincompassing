@@ -1,0 +1,19 @@
+// Proposed UI edits (non-applied) to improve headers/payload/a11y
+
+// 1) Add aria-labels to icon-only buttons in `src/pages/Schedule.tsx`
+// Example around TimeSlot plus/edit controls:
+// <button aria-label="Add session" title="Add session" ...>
+// <button aria-label="Edit session" title="Edit session" ...>
+
+// 2) Implement focus trap in `src/components/SessionModal.tsx` (wrap with dialog semantics)
+// - Add role="dialog" aria-modal="true" and initialFocus management
+// - Restore focus to trigger on close
+
+// 3) Add optional CPT/modifier override UI in SessionModal advanced section
+//  - Inputs: CPT code (validated against `cpt_codes`), Modifiers (comma-separated, validated)
+//  - Pass as `overrides` to server (`deriveCpt` already supports overrides)
+
+// 4) Runtime config fetch hardening in `src/lib/runtimeConfig.ts`
+//  - Add retry/backoff (e.g., 3 attempts, 250ms/500ms/1000ms) before surfacing error
+
+

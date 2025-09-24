@@ -1,3 +1,4 @@
+process.env.NODE_ENV = 'development';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
@@ -30,6 +31,13 @@ export default defineConfig({
     },
     env: {
       VITEST: 'true',
+    },
+    environmentMatchGlobs: [
+      ['src/server/**', 'node'],
+      ['src/scripts/**', 'node'],
+    ],
+    define: {
+      'process.env.NODE_ENV': JSON.stringify('test'),
     },
   },
 });

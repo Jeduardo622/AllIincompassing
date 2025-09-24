@@ -1,10 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bookSession } from "../src/server/bookSession";
 import {
   createBookingRequest,
   seedBookingBillingFixture,
 } from "./fixtures/bookingBilling";
+import { resetRuntimeSupabaseConfigForTests } from "../src/lib/runtimeConfig";
 import { resetSessionCptClient } from "../src/server/sessionCptPersistence";
+
+const importBookSession = async () => {
+  const module = await import("../src/server/bookSession");
+  return module.bookSession;
+};
+
+const TEST_SUPABASE_URL = "https://testing.supabase.co";
+const TEST_SUPABASE_ANON_KEY = "testing-anon-key";
+const TEST_SUPABASE_EDGE_URL = "https://testing.supabase.co/functions/v1/";
+const TEST_SERVICE_ROLE_KEY = "service-role-test-key";
+
+const ORIGINAL_ENV = {
+  SUPABASE_URL: process.env.SUPABASE_URL,
+  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
+  SUPABASE_EDGE_URL: process.env.SUPABASE_EDGE_URL,
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+};
 
 const asRecord = (value: unknown): Record<string, unknown> => {
   if (value && typeof value === "object") {
@@ -13,25 +30,38 @@ const asRecord = (value: unknown): Record<string, unknown> => {
   return {};
 };
 
-const originalSupabaseUrl = process.env.SUPABASE_URL;
-const originalServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
 describe("booking billing integration", () => {
   beforeEach(() => {
-    process.env.SUPABASE_URL = "http://localhost";
-    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test-key";
+    resetRuntimeSupabaseConfigForTests();
+    process.env.SUPABASE_URL = TEST_SUPABASE_URL;
+    process.env.SUPABASE_ANON_KEY = TEST_SUPABASE_ANON_KEY;
+    process.env.SUPABASE_EDGE_URL = TEST_SUPABASE_EDGE_URL;
+    process.env.SUPABASE_SERVICE_ROLE_KEY = TEST_SERVICE_ROLE_KEY;
     resetSessionCptClient();
   });
 
   afterEach(() => {
-    if (typeof originalSupabaseUrl === "string") {
-      process.env.SUPABASE_URL = originalSupabaseUrl;
+    resetRuntimeSupabaseConfigForTests();
+    if (typeof ORIGINAL_ENV.SUPABASE_URL === "string") {
+      process.env.SUPABASE_URL = ORIGINAL_ENV.SUPABASE_URL;
     } else {
       delete process.env.SUPABASE_URL;
     }
 
-    if (typeof originalServiceRoleKey === "string") {
-      process.env.SUPABASE_SERVICE_ROLE_KEY = originalServiceRoleKey;
+    if (typeof ORIGINAL_ENV.SUPABASE_ANON_KEY === "string") {
+      process.env.SUPABASE_ANON_KEY = ORIGINAL_ENV.SUPABASE_ANON_KEY;
+    } else {
+      delete process.env.SUPABASE_ANON_KEY;
+    }
+
+    if (typeof ORIGINAL_ENV.SUPABASE_EDGE_URL === "string") {
+      process.env.SUPABASE_EDGE_URL = ORIGINAL_ENV.SUPABASE_EDGE_URL;
+    } else {
+      delete process.env.SUPABASE_EDGE_URL;
+    }
+
+    if (typeof ORIGINAL_ENV.SUPABASE_SERVICE_ROLE_KEY === "string") {
+      process.env.SUPABASE_SERVICE_ROLE_KEY = ORIGINAL_ENV.SUPABASE_SERVICE_ROLE_KEY;
     } else {
       delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     }
@@ -39,6 +69,7 @@ describe("booking billing integration", () => {
   });
 
   it("derives CPT metadata using session type, location, and overrides", async () => {
+    const bookSession = await importBookSession();
     const request = createBookingRequest({
       session: {
         session_type: "Group",
@@ -151,6 +182,7 @@ describe("booking billing integration", () => {
   });
 
   it("honors explicit CPT overrides and normalizes modifiers", async () => {
+    const bookSession = await importBookSession();
     const request = createBookingRequest({
       session: {
         session_type: "Consultation",

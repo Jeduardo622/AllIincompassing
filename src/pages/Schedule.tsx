@@ -152,7 +152,7 @@ const TimeSlot = React.memo(
         className="h-10 border-b dark:border-gray-700 border-r dark:border-gray-700 p-2 relative group cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
         onClick={handleTimeSlotClick}
       >
-        <button className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-opacity">
+        <button aria-label="Add session" title="Add session" className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-opacity">
           <Plus className="w-4 h-4 text-gray-500 dark:text-gray-400" />
         </button>
 
@@ -180,6 +180,7 @@ const TimeSlot = React.memo(
                   e.stopPropagation();
                   onEditSession(session);
                 }}
+                aria-label="Edit session" title="Edit session"
               >
                 <Edit2 className="w-3 h-3" />
               </button>
@@ -679,11 +680,14 @@ const Schedule = React.memo(() => {
         computeTimeMetadata(newSession);
 
       const bookingResult = await callBookSessionApi(
-        buildBookingPayload(newSession, {
-          startOffsetMinutes,
-          endOffsetMinutes,
-          timeZone,
-        }, recurrenceFormState),
+        {
+          ...buildBookingPayload(newSession, {
+            startOffsetMinutes,
+            endOffsetMinutes,
+            timeZone,
+          }, recurrenceFormState),
+          overrides: undefined,
+        }
       );
 
       return bookingResult.session;
@@ -718,11 +722,14 @@ const Schedule = React.memo(() => {
           computeTimeMetadata(session);
 
         const bookingResult = await callBookSessionApi(
-          buildBookingPayload(session, {
-            startOffsetMinutes,
-            endOffsetMinutes,
-            timeZone,
-          }),
+          {
+            ...buildBookingPayload(session, {
+              startOffsetMinutes,
+              endOffsetMinutes,
+              timeZone,
+            }),
+            overrides: undefined,
+          }
         );
 
         createdSessions.push(bookingResult.session);
@@ -764,15 +771,18 @@ const Schedule = React.memo(() => {
         computeTimeMetadata(mergedSession);
 
       const bookingResult = await callBookSessionApi(
-        buildBookingPayload(
-          { ...mergedSession, id: selectedSession.id },
-          {
-            startOffsetMinutes,
-            endOffsetMinutes,
-            timeZone,
-          },
-          recurrenceFormState,
-        ),
+        {
+          ...buildBookingPayload(
+            { ...mergedSession, id: selectedSession.id },
+            {
+              startOffsetMinutes,
+              endOffsetMinutes,
+              timeZone,
+            },
+            recurrenceFormState,
+          ),
+          overrides: undefined,
+        }
       );
 
       return bookingResult.session;

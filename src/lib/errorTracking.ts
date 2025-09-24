@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import type { Json } from './generated/database.types';
 import { logger } from './logger/logger';
+import { redactPhi } from './logger/redactPhi';
 import { toError } from './logger/normalizeError';
 
 interface ErrorContext {
@@ -28,6 +29,39 @@ interface PerformanceAlert {
   severity: 'low' | 'medium' | 'high' | 'critical';
   autoResolve?: boolean;
 }
+
+const sanitizeMessage = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return redactPhi(value) as string;
+  }
+
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  return redactPhi(String(value)) as string;
+};
+
+const sanitizeOptionalString = (value: unknown): string | undefined => (
+  typeof value === 'string' ? (redactPhi(value) as string) : undefined
+);
+
+const sanitizeRecord = <T>(value: T | undefined | null): T | undefined | null => {
+  if (value === undefined || value === null) {
+    return value;
+  }
+
+  return redactPhi(value) as T;
+};
+
+const sanitizeFunctionIdentifier = (value: unknown): string => {
+  if (typeof value === 'string') {
+    const sanitized = redactPhi(value) as string;
+    return sanitized || 'unknown';
+  }
+
+  return 'unknown';
+};
 
 class ErrorTracker {
   private static instance: ErrorTracker;
@@ -79,29 +113,34 @@ class ErrorTracker {
 
   /**
    * Track AI-specific errors with detailed context
-   */
+  */
   async trackAIError(error: Error, details: AIErrorDetails, context?: ErrorContext): Promise<void> {
+    const baseContext: ErrorContext = {
+      ...(context ?? {}),
+      timestamp: new Date(),
+      userAgent: navigator.userAgent,
+      url: window.location.href
+    };
+
+    const sanitizedDetails = sanitizeRecord(details) as AIErrorDetails;
+    const sanitizedContext = sanitizeRecord(baseContext) as ErrorContext;
+
     const errorData = {
       type: 'ai_error',
-      message: error.message,
-      stack: error.stack,
-      details,
-      context: {
-        ...context,
-        timestamp: new Date(),
-        userAgent: navigator.userAgent,
-        url: window.location.href
-      }
+      message: sanitizeMessage(error.message),
+      stack: sanitizeOptionalString(error.stack),
+      details: sanitizedDetails,
+      context: sanitizedContext
     };
 
     // Log performance metrics for AI errors
     await this.logAIPerformanceMetric({
-      responseTime: details.responseTime || 0,
+      responseTime: sanitizedDetails.responseTime ?? 0,
       cacheHit: false,
-      tokenUsage: details.tokenUsage || 0,
-      functionCalled: details.functionCalled || 'unknown',
+      tokenUsage: sanitizedDetails.tokenUsage ?? 0,
+      functionCalled: sanitizedDetails.functionCalled ?? 'unknown',
       errorOccurred: true,
-      errorType: details.errorType
+      errorType: sanitizedDetails.errorType
     });
 
     this.queueError(errorData);
@@ -111,16 +150,20 @@ class ErrorTracker {
    * Track general application errors
    */
   trackError(error: Error, context?: ErrorContext): void {
+    const baseContext: ErrorContext = {
+      ...(context ?? {}),
+      timestamp: new Date(),
+      userAgent: navigator.userAgent,
+      url: window.location.href
+    };
+
+    const sanitizedContext = sanitizeRecord(baseContext) as ErrorContext;
+
     const errorData = {
       type: 'application_error',
-      message: error.message,
-      stack: error.stack,
-      context: {
-        ...context,
-        timestamp: new Date(),
-        userAgent: navigator.userAgent,
-        url: window.location.href
-      }
+      message: sanitizeMessage(error.message),
+      stack: sanitizeOptionalString(error.stack),
+      context: sanitizedContext
     };
 
     this.queueError(errorData);
@@ -168,15 +211,17 @@ class ErrorTracker {
     errorOccurred: boolean;
     errorType?: string;
   }): Promise<void> {
+    const sanitizedFunctionCalled = sanitizeFunctionIdentifier(metrics.functionCalled);
+
     try {
       await supabase.rpc('log_ai_performance', {
         p_response_time_ms: metrics.responseTime,
         p_cache_hit: metrics.cacheHit,
-        p_token_usage: { 
+        p_token_usage: {
           total: metrics.tokenUsage,
-          error_type: metrics.errorType 
+          error_type: metrics.errorType
         },
-        p_function_called: metrics.functionCalled,
+        p_function_called: sanitizedFunctionCalled,
         p_error_occurred: metrics.errorOccurred,
         p_user_id: null, // Will be set by RLS
         p_conversation_id: null
@@ -186,7 +231,7 @@ class ErrorTracker {
         error: toError(error, 'AI performance logging failed'),
         metadata: {
           scope: 'errorTracking.aiPerformance',
-          functionCalled: metrics.functionCalled,
+          functionCalled: sanitizedFunctionCalled,
         },
       });
     }
@@ -246,15 +291,31 @@ class ErrorTracker {
     try {
       // Log to Supabase
       for (const error of errorsToFlush) {
+        const sanitizedType = typeof error.type === 'string'
+          ? (redactPhi(error.type) as string)
+          : sanitizeMessage(error.type);
+        const sanitizedMessage = sanitizeMessage(error.message);
+        const sanitizedStack = sanitizeOptionalString(error.stack);
+        const sanitizedContext = sanitizeRecord(error.context) as ErrorContext | undefined;
+        const sanitizedDetails = sanitizeRecord(error.details);
+        const sanitizedErrorData = {
+          ...error,
+          type: sanitizedType,
+          message: sanitizedMessage,
+          stack: sanitizedStack,
+          context: sanitizedContext,
+          details: sanitizedDetails
+        };
+
         const { error: rpcError } = await supabase.rpc('log_error_event', {
-          p_error_type: error.type,
-          p_message: error.message,
-          p_stack_trace: error.stack ?? null,
-          p_context: (error.context ?? null) as Json | null,
-          p_details: (error.details ?? null) as Json | null,
-          p_severity: this.calculateSeverity(error),
-          p_url: (error.context?.url ?? null) as string | null,
-          p_user_agent: (error.context?.userAgent ?? null) as string | null
+          p_error_type: sanitizedType,
+          p_message: sanitizedMessage,
+          p_stack_trace: sanitizedStack ?? null,
+          p_context: (sanitizedContext ?? null) as Json | null,
+          p_details: (sanitizedDetails ?? null) as Json | null,
+          p_severity: this.calculateSeverity(sanitizedErrorData),
+          p_url: (sanitizedContext?.url ?? null) as string | null,
+          p_user_agent: (sanitizedContext?.userAgent ?? null) as string | null
         });
 
         if (rpcError) {
@@ -279,9 +340,26 @@ class ErrorTracker {
       // Store in local storage for persistence
       try {
         const existingErrors = JSON.parse(localStorage.getItem('queued_errors') || '[]');
+        const sanitizedExistingErrors = Array.isArray(existingErrors)
+          ? existingErrors.map((queuedError: any) => ({
+            ...queuedError,
+            message: sanitizeMessage(queuedError?.message),
+            stack: sanitizeOptionalString(queuedError?.stack),
+            context: sanitizeRecord(queuedError?.context),
+            details: sanitizeRecord(queuedError?.details)
+          }))
+          : [];
+        const sanitizedNewErrors = errorsToFlush.map((queuedError) => ({
+          ...queuedError,
+          message: sanitizeMessage(queuedError?.message),
+          stack: sanitizeOptionalString(queuedError?.stack),
+          context: sanitizeRecord(queuedError?.context),
+          details: sanitizeRecord(queuedError?.details)
+        }));
+
         localStorage.setItem('queued_errors', JSON.stringify([
-          ...existingErrors,
-          ...errorsToFlush
+          ...sanitizedExistingErrors,
+          ...sanitizedNewErrors
         ].slice(-100))); // Keep last 100 errors
       } catch (storageError) {
         logger.error('Failed to store errors locally', {

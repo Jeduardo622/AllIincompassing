@@ -23,4 +23,13 @@ Risk Notes
 - Ensure CPT code format matches existing rows; if any non-##### rows exist, fix before apply.
 - Function security: verify app.user_has_role_for_org semantics in your project.
 
+### Applied Status
+- 20250924124000_create_cpt_linkage_tables.sql: APPLIED via MCP
+- 20250924120000_add_cpt_and_modifiers.sql: APPLIED via MCP
+- 20250924121000_rpc_insert_session_with_billing.sql: APPLIED via MCP
+
+Warnings/Notes
+- Initially deferred constraints due to missing linkage tables; resolved by creating base tables first.
+- Keep monitoring RLS with organization scoping; policies created for linkage tables align with session ownership and admin roles.
+
 

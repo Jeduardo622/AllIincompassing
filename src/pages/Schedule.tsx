@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, startOfWeek, addDays, endOfWeek } from "date-fns";
-import { getTimezoneOffset, zonedTimeToUtc } from "date-fns-tz";
+import { getTimezoneOffset, fromZonedTime as zonedTimeToUtc } from "date-fns-tz";
 import {
   Calendar as CalendarIcon,
   ChevronLeft,

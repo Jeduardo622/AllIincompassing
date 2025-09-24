@@ -1,5 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { bookSession } from "../bookSession";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cancelSessionHold,
   confirmSessionBooking,
@@ -24,6 +23,21 @@ const mockedConfirmSessionBooking = vi.mocked(confirmSessionBooking);
 const mockedCancelSessionHold = vi.mocked(cancelSessionHold);
 const mockedPersistSessionCptMetadata = vi.mocked(persistSessionCptMetadata);
 
+const importBookSession = async () => {
+  const module = await import("../bookSession");
+  return module.bookSession;
+};
+
+const TEST_SUPABASE_URL = "https://testing.supabase.co";
+const TEST_SUPABASE_ANON_KEY = "testing-anon-key";
+const TEST_SUPABASE_EDGE_URL = "https://testing.supabase.co/functions/v1/";
+
+const ORIGINAL_ENV = {
+  SUPABASE_URL: process.env.SUPABASE_URL,
+  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
+  SUPABASE_EDGE_URL: process.env.SUPABASE_EDGE_URL,
+};
+
 const basePayload = {
   session: {
     therapist_id: "therapist-1",
@@ -38,13 +52,21 @@ const basePayload = {
   accessToken: "test-access-token",
 } as const;
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
   mockedPersistSessionCptMetadata.mockResolvedValue({ entryId: "entry-id", modifierIds: [] });
+
+  const runtimeConfig = await import("../../lib/runtimeConfig");
+  runtimeConfig.resetRuntimeSupabaseConfigForTests();
+
+  process.env.SUPABASE_URL = TEST_SUPABASE_URL;
+  process.env.SUPABASE_ANON_KEY = TEST_SUPABASE_ANON_KEY;
+  process.env.SUPABASE_EDGE_URL = TEST_SUPABASE_EDGE_URL;
 });
 
 describe("bookSession", () => {
   it("requests a hold and confirms the session", async () => {
+    const bookSession = await importBookSession();
     mockedRequestSessionHold.mockResolvedValueOnce({
       holdKey: "hold-key",
       holdId: "hold-id",
@@ -139,6 +161,7 @@ describe("bookSession", () => {
   });
 
   it("releases the hold when confirmation fails", async () => {
+    const bookSession = await importBookSession();
     mockedRequestSessionHold.mockResolvedValueOnce({
       holdKey: "hold-key",
       holdId: "hold-id",
@@ -167,6 +190,7 @@ describe("bookSession", () => {
   });
 
   it("throws when required session fields are missing", async () => {
+    const bookSession = await importBookSession();
     await expect(
       bookSession({
         ...basePayload,
@@ -179,6 +203,7 @@ describe("bookSession", () => {
   });
 
   it("bubbles persistence failures", async () => {
+    const bookSession = await importBookSession();
     mockedRequestSessionHold.mockResolvedValueOnce({
       holdKey: "hold-key",
       holdId: "hold-id",
@@ -223,6 +248,7 @@ describe("bookSession", () => {
   });
 
   it("forwards idempotency metadata to hold and confirm requests", async () => {
+    const bookSession = await importBookSession();
     mockedRequestSessionHold.mockResolvedValueOnce({
       holdKey: "hold-key",
       holdId: "hold-id",
@@ -294,6 +320,7 @@ describe("bookSession", () => {
   });
 
   it("releases the losing hold when concurrent bookings race for the same slot", async () => {
+    const bookSession = await importBookSession();
     const slotStart = "2025-01-01T10:00:00Z";
     const slotEnd = "2025-01-01T11:00:00Z";
     const therapistId = basePayload.session.therapist_id;
@@ -419,4 +446,22 @@ describe("bookSession", () => {
       billedMinutes: expect.any(Number),
     });
   });
+});
+
+afterAll(() => {
+  if (typeof ORIGINAL_ENV.SUPABASE_URL === "string") {
+    process.env.SUPABASE_URL = ORIGINAL_ENV.SUPABASE_URL;
+  } else {
+    delete process.env.SUPABASE_URL;
+  }
+  if (typeof ORIGINAL_ENV.SUPABASE_ANON_KEY === "string") {
+    process.env.SUPABASE_ANON_KEY = ORIGINAL_ENV.SUPABASE_ANON_KEY;
+  } else {
+    delete process.env.SUPABASE_ANON_KEY;
+  }
+  if (typeof ORIGINAL_ENV.SUPABASE_EDGE_URL === "string") {
+    process.env.SUPABASE_EDGE_URL = ORIGINAL_ENV.SUPABASE_EDGE_URL;
+  } else {
+    delete process.env.SUPABASE_EDGE_URL;
+  }
 });

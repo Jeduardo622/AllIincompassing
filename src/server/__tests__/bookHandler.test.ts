@@ -1,30 +1,72 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { bookHandler } from "../api/book";
-import { bookSession } from "../bookSession";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+const bookSessionMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../bookSession", () => ({
-  bookSession: vi.fn(),
+  bookSession: bookSessionMock,
 }));
 
-const mockedBookSession = vi.mocked(bookSession);
+const importBookHandler = async () => {
+  const module = await import("../api/book");
+  return module.bookHandler;
+};
 
-beforeEach(() => {
+const TEST_SUPABASE_URL = "https://testing.supabase.co";
+const TEST_SUPABASE_ANON_KEY = "testing-anon-key";
+const TEST_SUPABASE_EDGE_URL = "https://testing.supabase.co/functions/v1/";
+
+const ORIGINAL_ENV = {
+  SUPABASE_URL: process.env.SUPABASE_URL,
+  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
+  SUPABASE_EDGE_URL: process.env.SUPABASE_EDGE_URL,
+};
+
+beforeEach(async () => {
   vi.clearAllMocks();
+  bookSessionMock.mockReset();
+
+  const runtimeConfig = await import("../../lib/runtimeConfig");
+  runtimeConfig.resetRuntimeSupabaseConfigForTests();
+
+  process.env.SUPABASE_URL = TEST_SUPABASE_URL;
+  process.env.SUPABASE_ANON_KEY = TEST_SUPABASE_ANON_KEY;
+  process.env.SUPABASE_EDGE_URL = TEST_SUPABASE_EDGE_URL;
+});
+
+afterAll(() => {
+  if (typeof ORIGINAL_ENV.SUPABASE_URL === "string") {
+    process.env.SUPABASE_URL = ORIGINAL_ENV.SUPABASE_URL;
+  } else {
+    delete process.env.SUPABASE_URL;
+  }
+  if (typeof ORIGINAL_ENV.SUPABASE_ANON_KEY === "string") {
+    process.env.SUPABASE_ANON_KEY = ORIGINAL_ENV.SUPABASE_ANON_KEY;
+  } else {
+    delete process.env.SUPABASE_ANON_KEY;
+  }
+  if (typeof ORIGINAL_ENV.SUPABASE_EDGE_URL === "string") {
+    process.env.SUPABASE_EDGE_URL = ORIGINAL_ENV.SUPABASE_EDGE_URL;
+  } else {
+    delete process.env.SUPABASE_EDGE_URL;
+  }
 });
 
 describe("bookHandler", () => {
   it("returns CORS headers for OPTIONS requests", async () => {
+    const bookHandler = await importBookHandler();
     const response = await bookHandler(new Request("http://localhost/api/book", { method: "OPTIONS" }));
     expect(response.status).toBe(200);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
   });
 
   it("rejects non-POST methods", async () => {
+    const bookHandler = await importBookHandler();
     const response = await bookHandler(new Request("http://localhost/api/book", { method: "GET" }));
     expect(response.status).toBe(405);
   });
 
   it("returns error when JSON payload is invalid", async () => {
+    const bookHandler = await importBookHandler();
     const response = await bookHandler(new Request("http://localhost/api/book", {
       method: "POST",
       headers: {
@@ -40,6 +82,7 @@ describe("bookHandler", () => {
   });
 
   it("returns 401 when authorization header is missing", async () => {
+    const bookHandler = await importBookHandler();
     const response = await bookHandler(new Request("http://localhost/api/book", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -60,11 +103,11 @@ describe("bookHandler", () => {
     const body = await response.json();
     expect(body.success).toBe(false);
     expect(body.error).toMatch(/authorization/i);
-    expect(mockedBookSession).not.toHaveBeenCalled();
+    expect(bookSessionMock).not.toHaveBeenCalled();
   });
 
   it("invokes booking service and returns success", async () => {
-    mockedBookSession.mockResolvedValueOnce({
+    bookSessionMock.mockResolvedValueOnce({
       session: {
         id: "session-1",
         client_id: "client-1",
@@ -114,6 +157,7 @@ describe("bookHandler", () => {
       cpt: { code: "97153", description: "Adaptive behavior treatment by protocol", modifiers: [], source: "fallback", durationMinutes: 60 },
     });
 
+    const bookHandler = await importBookHandler();
     const response = await bookHandler(new Request("http://localhost/api/book", {
       method: "POST",
       headers: {
@@ -139,15 +183,16 @@ describe("bookHandler", () => {
     const body = await response.json();
     expect(body.success).toBe(true);
     expect(body.data.session.id).toBe("session-1");
-    expect(mockedBookSession).toHaveBeenCalledWith(expect.objectContaining({
+    expect(bookSessionMock).toHaveBeenCalledWith(expect.objectContaining({
       idempotencyKey: "abc-123",
       accessToken: "valid-token",
     }));
   });
 
   it("surfaces booking errors", async () => {
-    mockedBookSession.mockRejectedValueOnce(new Error("conflict"));
+    bookSessionMock.mockRejectedValueOnce(new Error("conflict"));
 
+    const bookHandler = await importBookHandler();
     const response = await bookHandler(new Request("http://localhost/api/book", {
       method: "POST",
       headers: {
@@ -171,6 +216,6 @@ describe("bookHandler", () => {
     const body = await response.json();
     expect(body.success).toBe(false);
     expect(body.error).toBe("conflict");
-    expect(mockedBookSession).toHaveBeenCalledWith(expect.objectContaining({ accessToken: "valid-token" }));
+    expect(bookSessionMock).toHaveBeenCalledWith(expect.objectContaining({ accessToken: "valid-token" }));
   });
 });

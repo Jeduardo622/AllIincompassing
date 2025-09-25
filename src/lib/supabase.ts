@@ -139,7 +139,44 @@ class PerformanceSupabaseClient {
 export const supabaseClient = new PerformanceSupabaseClient();
 
 // Connection verification function for development
+const diagnosticsLogScope = 'supabase.connectionDiagnostics';
+
+const parseBooleanFlag = (value: unknown): boolean | null => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+      return true;
+    }
+
+    if (['0', 'false', 'no', 'off', ''].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return null;
+};
+
+export const shouldRunConnectionDiagnostics = (): boolean => {
+  const vitestFlag = parseBooleanFlag(import.meta.env?.VITEST);
+  if (vitestFlag === true) {
+    return false;
+  }
+
+  const explicitFlag = parseBooleanFlag(import.meta.env?.VITE_ENABLE_CONNECTION_DIAGNOSTICS);
+  if (explicitFlag !== null) {
+    return explicitFlag;
+  }
+
+  return parseBooleanFlag(import.meta.env?.DEV) === true;
+};
+
 const testConnection = async () => {
+  console.info('[supabase] Starting connection diagnostics checks', { scope: diagnosticsLogScope });
   try {
     // Test auth connection
     const { data: { session }, error: authError } = await supabase.auth.getSession();
@@ -184,10 +221,17 @@ const testConnection = async () => {
 // Export test function for use in other parts of the app
 export const verifyConnection = testConnection;
 
-// Only run connection test in development or when proper credentials exist
-if (!import.meta.env.VITEST) {
-  testConnection();
-}
+export const runConnectionDiagnosticsIfEnabled = (): boolean => {
+  if (!shouldRunConnectionDiagnostics()) {
+    return false;
+  }
+
+  console.info('[supabase] Running connection diagnostics', { scope: diagnosticsLogScope });
+  void testConnection();
+  return true;
+};
+
+runConnectionDiagnosticsIfEnabled();
 
 export interface CallEdgeOptions {
   accessToken?: string;

@@ -569,36 +569,38 @@ afterAll(() => {
   consoleGuard.restore();
 });
 
-// Mock window.matchMedia for responsive design tests
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: vi.fn().mockImplementation(query => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: vi.fn(), // deprecated
-    removeListener: vi.fn(), // deprecated
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  })),
-});
+if (typeof window !== 'undefined') {
+  // Mock window.matchMedia for responsive design tests
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation(query => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(), // deprecated
+      removeListener: vi.fn(), // deprecated
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
 
-// Mock IntersectionObserver for virtual scrolling tests
-const mockIntersectionObserver = vi.fn();
-mockIntersectionObserver.mockReturnValue({
-  observe: () => null,
-  unobserve: () => null,
-  disconnect: () => null,
-});
-window.IntersectionObserver = mockIntersectionObserver; 
+  // Mock IntersectionObserver for virtual scrolling tests
+  const mockIntersectionObserver = vi.fn();
+  mockIntersectionObserver.mockReturnValue({
+    observe: () => null,
+    unobserve: () => null,
+    disconnect: () => null,
+  });
+  window.IntersectionObserver = mockIntersectionObserver;
 
-// Stub browser dialogs for jsdom environment
-Object.defineProperty(window, 'alert', {
-  writable: true,
-  value: vi.fn(),
-});
-Object.defineProperty(window, 'confirm', {
-  writable: true,
-  value: vi.fn(() => true),
-});
+  // Stub browser dialogs for jsdom environment
+  Object.defineProperty(window, 'alert', {
+    writable: true,
+    value: vi.fn(),
+  });
+  Object.defineProperty(window, 'confirm', {
+    writable: true,
+    value: vi.fn(() => true),
+  });
+}

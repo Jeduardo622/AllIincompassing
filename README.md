@@ -63,6 +63,12 @@ AllIncompassing delivers therapist scheduling, billing, and operational telemetr
 | Cypress end-to-end suite | `npm run test:e2e` or `npm run test:e2e:open` |
 | Route integrity tests | `npm run test:routes` or `npm run test:routes:open` |
 
+### Supabase connection diagnostics
+
+- Connection diagnostics automatically execute only in Vite development builds so production deployments do not trigger auth, table, or RPC probes on every boot.
+- To force diagnostics in another environment, export `VITE_ENABLE_CONNECTION_DIAGNOSTICS=true` before running the app (e.g., `VITE_ENABLE_CONNECTION_DIAGNOSTICS=true npm run dev`). Set the flag to `false` to explicitly disable the checks.
+- The helper `verifyConnection()` in `src/lib/supabase.ts` can be invoked manually from dev tools or scripts. Each intentional run logs `[supabase] Running connection diagnostics` and `[supabase] Starting connection diagnostics checks` in the console for easy traceability.
+
 ### Supabase migrations & health tooling
 
 - Create a new database branch for experimentation: `npm run db:branch:create`

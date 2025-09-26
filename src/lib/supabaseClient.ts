@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './generated/database.types';
-import { getRuntimeSupabaseConfig } from './runtimeConfig';
+import { ensureRuntimeSupabaseConfig, getRuntimeSupabaseConfig } from './runtimeConfig';
 
 const resolveSupabaseConfig = (): { supabaseUrl: string; supabaseAnonKey: string } => {
   try {
@@ -12,6 +12,9 @@ const resolveSupabaseConfig = (): { supabaseUrl: string; supabaseAnonKey: string
   }
 };
 
+// Ensure runtime config fetched before creating client (supports production where
+// the config is provided by Netlify Function at /api/runtime-config)
+await ensureRuntimeSupabaseConfig();
 const { supabaseUrl, supabaseAnonKey } = resolveSupabaseConfig();
 
 // Browser singleton client. Typed with generated Database.

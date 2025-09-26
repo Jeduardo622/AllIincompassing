@@ -35,6 +35,7 @@
     "auth:fix": "node scripts/apply-auth-fixes.js",
     "auth:test": "node scripts/test-super-admin-creation.js",
     "audit:service-role": "node scripts/audit-service-role-usage.cjs",
+    "preview:smoke": "node scripts/preview-smoke.js --url $PREVIEW_URL",
     "typegen": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/lib/db.types.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

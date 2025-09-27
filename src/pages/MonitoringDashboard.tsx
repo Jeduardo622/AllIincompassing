@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Activity, 
   Database, 
@@ -39,6 +39,7 @@ export default function MonitoringDashboard() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(30000);
   const [showSettings, setShowSettings] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
 
   // Real-time monitoring hooks
   const {
@@ -63,7 +64,15 @@ export default function MonitoringDashboard() {
     getStats: getQueryStats,
     isActive: queryTrackingActive
   } = useQueryPerformanceTracking(undefined, { enabled: monitoringEnabled });
-  
+
+  const refreshMonitoringData = useCallback(() => {
+    setRefreshToken((token) => token + 1);
+
+    if (monitoringEnabled && metrics.length > 0) {
+      analyzePerformance(metrics);
+    }
+  }, [monitoringEnabled, metrics, analyzePerformance]);
+
   // Analyze performance when metrics change
   useEffect(() => {
     if (monitoringEnabled && metrics.length > 0) {
@@ -76,12 +85,11 @@ export default function MonitoringDashboard() {
     if (!monitoringEnabled || !autoRefresh) return;
 
     const interval = setInterval(() => {
-      // Trigger refresh of all components
-      window.location.reload();
+      refreshMonitoringData();
     }, refreshInterval);
 
     return () => clearInterval(interval);
-  }, [monitoringEnabled, autoRefresh, refreshInterval]);
+  }, [monitoringEnabled, autoRefresh, refreshInterval, refreshMonitoringData]);
 
   if (authLoading) {
     return (
@@ -297,20 +305,23 @@ export default function MonitoringDashboard() {
     </div>
   );
 
-  const CacheManagementTab = () => {
+  const CacheManagementTab = ({ refreshToken: cacheRefreshToken }: { refreshToken: number }) => {
     const [cleanupStats, setCleanupStats] = useState<ReturnType<typeof getCleanupStats> | null>(null);
     const [isRunningCleanup, setIsRunningCleanup] = useState(false);
 
-    const loadCleanupStats = async () => {
+    const loadCleanupStats = useCallback(() => {
       const stats = getCleanupStats();
       setCleanupStats(stats);
-    };
+    }, [getCleanupStats]);
 
     useEffect(() => {
       loadCleanupStats();
+    }, [loadCleanupStats, cacheRefreshToken]);
+
+    useEffect(() => {
       const interval = setInterval(loadCleanupStats, 10000); // Update every 10 seconds
       return () => clearInterval(interval);
-    }, []);
+    }, [loadCleanupStats]);
 
     const handleManualCleanup = async (type?: string) => {
       setIsRunningCleanup(true);
@@ -439,11 +450,11 @@ export default function MonitoringDashboard() {
     );
   };
 
-  const QueryPerformanceTab = () => {
+  const QueryPerformanceTab = ({ refreshToken: queryRefreshToken }: { refreshToken: number }) => {
     const [queryAnalysis, setQueryAnalysis] = useState<Awaited<ReturnType<typeof getAnalysis>> | null>(null);
     const [queryStats, setQueryStats] = useState<ReturnType<typeof getQueryStats> | null>(null);
 
-    const loadQueryData = async () => {
+    const loadQueryData = useCallback(async () => {
       try {
         const [analysis, stats] = await Promise.all([
           getAnalysis('24h'),
@@ -459,13 +470,16 @@ export default function MonitoringDashboard() {
           },
         });
       }
-    };
+    }, [getAnalysis, getQueryStats]);
 
     useEffect(() => {
       loadQueryData();
+    }, [loadQueryData, queryRefreshToken]);
+
+    useEffect(() => {
       const interval = setInterval(loadQueryData, 30000); // Update every 30 seconds
       return () => clearInterval(interval);
-    }, []);
+    }, [loadQueryData]);
 
     return (
       <div className="space-y-6">
@@ -613,6 +627,9 @@ export default function MonitoringDashboard() {
 
   return (
     <div>
+      <span data-testid="refresh-token-value" className="hidden" aria-hidden="true">
+        {refreshToken}
+      </span>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
           <Activity className="w-6 h-6 mr-2 text-blue-600" />
@@ -629,7 +646,8 @@ export default function MonitoringDashboard() {
               <Settings className="w-5 h-5" />
             </button>
             <button
-              onClick={() => window.location.reload()}
+              onClick={refreshMonitoringData}
+              aria-label="Refresh monitoring data"
               className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             >
               <RefreshCw className="w-5 h-5" />
@@ -756,8 +774,8 @@ export default function MonitoringDashboard() {
           {activeTab === 'ai' && <AIPerformance />}
           {activeTab === 'database' && <DatabasePerformance />}
           {activeTab === 'system' && <SystemPerformance />}
-          {activeTab === 'cache' && <CacheManagementTab />}
-          {activeTab === 'queries' && <QueryPerformanceTab />}
+          {activeTab === 'cache' && <CacheManagementTab refreshToken={refreshToken} />}
+          {activeTab === 'queries' && <QueryPerformanceTab refreshToken={refreshToken} />}
         </div>
       </div>
 

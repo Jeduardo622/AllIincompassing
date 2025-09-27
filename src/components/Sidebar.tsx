@@ -89,23 +89,23 @@ export default function Sidebar() {
       path: '/schedule',
       roles: [] // accessible to all authenticated users
     },
-    { 
-      icon: Users, 
-      label: 'Clients', 
+    {
+      icon: Users,
+      label: 'Clients',
       path: '/clients',
-      roles: ['admin', 'therapist']
+      roles: ['therapist', 'admin', 'super_admin']
     },
-    { 
-      icon: UserCog, 
-      label: 'Therapists', 
-      path: '/therapists', 
-      roles: ['admin']
+    {
+      icon: UserCog,
+      label: 'Therapists',
+      path: '/therapists',
+      roles: ['admin', 'super_admin']
     },
-    { 
-      icon: FileCheck, 
-      label: 'Authorizations', 
+    {
+      icon: FileCheck,
+      label: 'Authorizations',
       path: '/authorizations',
-      roles: ['admin', 'therapist']
+      roles: ['therapist', 'admin', 'super_admin']
     },
     { 
       icon: FileText, 
@@ -113,29 +113,29 @@ export default function Sidebar() {
       path: '/documentation',
       roles: [] // accessible to all authenticated users
     },
-    { 
-      icon: CreditCard, 
-      label: 'Billing', 
-      path: '/billing', 
-      roles: ['admin']
+    {
+      icon: CreditCard,
+      label: 'Billing',
+      path: '/billing',
+      roles: ['admin', 'super_admin']
     },
-    { 
-      icon: BarChart, 
-      label: 'Reports', 
-      path: '/reports', 
-      roles: ['admin']
+    {
+      icon: BarChart,
+      label: 'Reports',
+      path: '/reports',
+      roles: ['admin', 'super_admin']
     },
-    { 
-      icon: Activity, 
-      label: 'Monitoring', 
-      path: '/monitoring', 
-      roles: ['admin']
+    {
+      icon: Activity,
+      label: 'Monitoring',
+      path: '/monitoring',
+      roles: ['admin', 'super_admin']
     },
-    { 
-      icon: Settings, 
-      label: 'Settings', 
-      path: '/settings', 
-      roles: ['admin']
+    {
+      icon: Settings,
+      label: 'Settings',
+      path: '/settings',
+      roles: ['admin', 'super_admin']
     },
   ];
 

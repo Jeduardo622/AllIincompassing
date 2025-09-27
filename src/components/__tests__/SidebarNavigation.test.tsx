@@ -66,4 +66,38 @@ describe("Sidebar navigation active styling", () => {
     expect(icon).toHaveClass("text-blue-500");
     expect(icon).toHaveClass("dark:text-blue-400");
   });
+
+  it("shows admin navigation items for super admin users", () => {
+    const hasRole = vi.fn(
+      (role: "client" | "therapist" | "admin" | "super_admin") =>
+        ["client", "therapist", "admin", "super_admin"].includes(role)
+    );
+
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole,
+      user: {
+        email: "superadmin@example.com",
+        user_metadata: {},
+      },
+      profile: {
+        role: "super_admin",
+      },
+      hasAnyRole: vi.fn((roles: ("client" | "therapist" | "admin" | "super_admin")[]) =>
+        roles.some(role => hasRole(role))
+      ),
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Sidebar />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("link", { name: /therapists/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /billing/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /reports/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /monitoring/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /settings/i })).toBeInTheDocument();
+  });
 });

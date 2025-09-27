@@ -231,15 +231,21 @@ export default function Sidebar() {
                   }`
                 }
               >
-                <Icon className={`
-                  -ml-1 mr-2 h-5 w-5
-                  ${
-                    path === location.pathname
-                      ? 'text-blue-500 dark:text-blue-400'
-                      : 'text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400'
-                  }
-                `} />
-                {label}
+                {({ isActive }) => (
+                  <>
+                    <Icon
+                      className={`
+                        -ml-1 mr-2 h-5 w-5
+                        ${
+                          isActive
+                            ? 'text-blue-500 dark:text-blue-400'
+                            : 'text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400'
+                        }
+                      `}
+                    />
+                    {label}
+                  </>
+                )}
               </NavLink>
             );
           })}

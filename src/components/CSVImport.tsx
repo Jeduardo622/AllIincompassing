@@ -5,6 +5,12 @@ import { logger } from '../lib/logger/logger';
 import { AlertCircle, Upload, CheckCircle, X } from 'lucide-react';
 import { showSuccess, showError } from '../lib/toast';
 import type { Client, Therapist } from '../types';
+import {
+  applyExistingDuplicateErrors,
+  prepareRecordsForImport,
+  type CsvMappedRecord,
+  type ImportEntity,
+} from '../lib/importProcessing';
 
 interface CSVImportProps {
   onClose: () => void;
@@ -171,96 +177,178 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose, entityType = 'client' })
       errors: []
     });
     setStep('import');
-    
-    // Process in batches to avoid overwhelming the server
-    const batchSize = 5;
-    
-    for (let i = 0; i < csvData.length; i += batchSize) {
-      const batch = csvData.slice(i, i + batchSize);
-      const promises = batch.map(async (row, rowIndex) => {
-        const actualRowIndex = i + rowIndex;
-        try {
-          // Map CSV data to entity object
-          const entityData: Partial<Client> | Partial<Therapist> = {};
-          
-          // Map fields according to headerMap
-          for (const [index, field] of Object.entries(headerMap)) {
-            if (field && row[parseInt(index)] !== undefined) {
-              let value = row[parseInt(index)].trim();
-              
-              // Special handling for date fields
-              if (field === 'date_of_birth' && value) {
-                // Convert MM/DD/YYYY to YYYY-MM-DD
-                const parts = value.split('/');
-                if (parts.length === 3) {
-                  value = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
-                }
-              }
-              
-              // Handle service preferences
-              if (field === 'service_preference' && value) {
-                entityData.service_preference = value.split(',').map(s => s.trim());
-              } else if (field === 'service_type' && value) {
-                entityData.service_type = value.split(',').map(s => s.trim());
-              } else if (field === 'specialties' && value) {
-                entityData.specialties = value.split(',').map(s => s.trim());
-              } else {
-                entityData[field] = value || null;
-              }
-            }
-          }
-          
-          // Ensure we have a full_name
-          if (entityData.first_name || entityData.last_name) {
-            entityData.full_name = [entityData.first_name, entityData.middle_name, entityData.last_name]
-              .filter(Boolean)
-              .join(' ');
-          }
-          
-          // Create entity
-          await createEntityMutation.mutateAsync(entityData);
-          
-          setImportStatus(prev => ({
-            ...prev,
-            processed: prev.processed + 1,
-            success: prev.success + 1
-          }));
-        } catch (error) {
-          logger.error('CSV import row processing failed', {
-            error,
-            context: { component: 'CSVImport', operation: 'processRow' },
-            metadata: {
-              rowIndex: actualRowIndex,
-              entityType
-            }
-          });
-          setImportStatus(prev => ({
-            ...prev,
-            processed: prev.processed + 1,
-            failed: prev.failed + 1,
-            errors: [...prev.errors, { 
-              row: actualRowIndex + 1, 
-              message: error instanceof Error ? error.message : 'Unknown error' 
-            }]
-          }));
+
+    const { records, uniqueEmails, uniqueClientIds } = prepareRecordsForImport(csvData, headerMap, entityType);
+
+    const tableName = entityType === 'client' ? 'clients' : 'therapists';
+    let existingEmailSet = new Set<string>();
+    const existingClientIdSet = new Set<string>();
+
+    try {
+      if (uniqueEmails.length > 0) {
+        const { data, error } = await supabase
+          .from(tableName)
+          .select(entityType === 'client' ? 'email, client_id' : 'email')
+          .in('email', uniqueEmails);
+
+        if (error) {
+          throw error;
         }
+
+        if (data) {
+          const matches = (data as Array<{ email?: string | null; client_id?: string | null }>);
+          existingEmailSet = new Set(
+            matches
+              .map(item => item.email)
+              .filter((value): value is string => typeof value === 'string' && value.length > 0)
+          );
+
+          if (entityType === 'client') {
+            matches
+              .map(item => item.client_id)
+              .filter((value): value is string => typeof value === 'string' && value.length > 0)
+              .forEach(value => existingClientIdSet.add(value));
+          }
+        }
+      }
+
+      if (entityType === 'client' && uniqueClientIds.length > 0) {
+        const { data: clientIdMatches, error: clientIdError } = await supabase
+          .from('clients')
+          .select('client_id')
+          .in('client_id', uniqueClientIds);
+
+        if (clientIdError) {
+          throw clientIdError;
+        }
+
+        if (clientIdMatches) {
+          clientIdMatches
+            .map(item => item.client_id)
+            .filter((value): value is string => typeof value === 'string' && value.length > 0)
+            .forEach(value => existingClientIdSet.add(value));
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to validate import data';
+      logger.error('CSV import pre-validation failed', {
+        error,
+        context: { component: 'CSVImport', operation: 'preValidation' },
+        metadata: { entityType }
       });
-      
-      await Promise.all(promises);
+      setImportStatus({
+        total: csvData.length,
+        processed: 0,
+        success: 0,
+        failed: 0,
+        inProgress: false,
+        errors: [{ row: 0, message }]
+      });
+      showError(`Unable to validate import: ${message}`);
+      return;
     }
-    
+
+    applyExistingDuplicateErrors(records, {
+      entityType,
+      existingEmails: existingEmailSet,
+      existingClientIds: entityType === 'client' ? existingClientIdSet : undefined
+    });
+
+    const invalidRecords = records.filter(record => record.errors.length > 0 || !record.data);
+    const validRecords = records.filter((record): record is CsvMappedRecord & { data: ImportEntity } => {
+      return record.errors.length === 0 && Boolean(record.data);
+    });
+
+    let processedCount = invalidRecords.length;
+    let successCount = 0;
+    let failedCount = invalidRecords.length;
+    let errorAccumulator = invalidRecords.map(record => ({
+      row: record.rowIndex + 1,
+      message: record.errors.join('; ')
+    }));
+
+    setImportStatus({
+      total: csvData.length,
+      processed: processedCount,
+      success: successCount,
+      failed: failedCount,
+      inProgress: true,
+      errors: errorAccumulator
+    });
+
+    if (validRecords.length === 0) {
+      setImportStatus(prev => ({
+        ...prev,
+        inProgress: false
+      }));
+      showError(`No valid ${entityType}s to import. Please fix validation errors.`);
+      return;
+    }
+
+    const batchSize = 5;
+
+    for (let i = 0; i < validRecords.length; i += batchSize) {
+      const batch = validRecords.slice(i, i + batchSize);
+      await Promise.all(
+        batch.map(async record => {
+          try {
+            await createEntityMutation.mutateAsync(record.data as Partial<Client> | Partial<Therapist>);
+            successCount += 1;
+            processedCount += 1;
+
+            setImportStatus(prev => ({
+              ...prev,
+              processed: processedCount,
+              success: successCount
+            }));
+          } catch (error) {
+            failedCount += 1;
+            processedCount += 1;
+            const message = error instanceof Error ? error.message : 'Unknown error';
+
+            logger.error('CSV import row processing failed', {
+              error,
+              context: { component: 'CSVImport', operation: 'processRow' },
+              metadata: {
+                rowIndex: record.rowIndex,
+                entityType
+              }
+            });
+
+            errorAccumulator = [
+              ...errorAccumulator,
+              {
+                row: record.rowIndex + 1,
+                message
+              }
+            ];
+
+            setImportStatus(prev => ({
+              ...prev,
+              processed: processedCount,
+              failed: failedCount,
+              errors: errorAccumulator
+            }));
+          }
+        })
+      );
+    }
+
+    queryClient.invalidateQueries({ queryKey: [entityType === 'client' ? 'clients' : 'therapists'] });
+
     setImportStatus(prev => ({
       ...prev,
-      inProgress: false
+      inProgress: false,
+      processed: processedCount,
+      success: successCount,
+      failed: failedCount,
+      errors: errorAccumulator
     }));
-    
-    // Refresh client data
-    queryClient.invalidateQueries({ queryKey: [entityType === 'client' ? 'clients' : 'therapists'] });
-    
-    if (importStatus.failed === 0) {
-      showSuccess(`Successfully imported ${importStatus.success} ${entityType}s`);
+
+    if (failedCount === 0) {
+      showSuccess(`Successfully imported ${successCount} ${entityType}s`);
     } else {
-      showError(`Imported ${importStatus.success} ${entityType}s with ${importStatus.failed} failures`);
+      showError(`Imported ${successCount} ${entityType}s with ${failedCount} failures`);
     }
   };
 

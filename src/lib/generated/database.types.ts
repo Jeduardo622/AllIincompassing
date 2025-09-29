@@ -641,6 +641,7 @@ export type Database = {
           city: string | null
           client_id: string | null
           created_at: string | null
+          created_by: string | null
           date_of_birth: string | null
           daycare_after_school: boolean | null
           diagnosis: string[] | null
@@ -663,6 +664,8 @@ export type Database = {
           notes: string | null
           one_to_one_units: number | null
           organization_id: string | null
+          updated_at: string
+          updated_by: string | null
           parent_consult_units: number | null
           parent1_email: string | null
           parent1_first_name: string | null
@@ -696,6 +699,7 @@ export type Database = {
           city?: string | null
           client_id?: string | null
           created_at?: string | null
+          created_by?: string | null
           date_of_birth?: string | null
           daycare_after_school?: boolean | null
           diagnosis?: string[] | null
@@ -718,6 +722,8 @@ export type Database = {
           notes?: string | null
           one_to_one_units?: number | null
           organization_id?: string | null
+          updated_at?: string
+          updated_by?: string | null
           parent_consult_units?: number | null
           parent1_email?: string | null
           parent1_first_name?: string | null
@@ -751,6 +757,7 @@ export type Database = {
           city?: string | null
           client_id?: string | null
           created_at?: string | null
+          created_by?: string | null
           date_of_birth?: string | null
           daycare_after_school?: boolean | null
           diagnosis?: string[] | null
@@ -773,6 +780,8 @@ export type Database = {
           notes?: string | null
           one_to_one_units?: number | null
           organization_id?: string | null
+          updated_at?: string
+          updated_by?: string | null
           parent_consult_units?: number | null
           parent1_email?: string | null
           parent1_first_name?: string | null
@@ -2612,6 +2621,14 @@ export type Database = {
       remove_user_role: {
         Args: { removed_by_uuid?: string; role_name: string; user_uuid: string }
         Returns: boolean
+      }
+      client_email_exists: {
+        Args: { p_email: string }
+        Returns: boolean
+      }
+      create_client: {
+        Args: { p_client_data: Json }
+        Returns: Database["public"]["Tables"]["clients"]["Row"]
       }
       current_user_organization_id: {
         Args: Record<PropertyKey, never>

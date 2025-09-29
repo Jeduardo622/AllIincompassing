@@ -1,6 +1,6 @@
 import { createProtectedRoute, corsHeaders, logApiAccess, RouteOptions } from "../_shared/auth-middleware.ts";
 import { createRequestClient } from "../_shared/database.ts";
-import { assertAdmin } from "../_shared/auth.ts";
+import { assertAdminOrSuperAdmin } from "../_shared/auth.ts";
 
 interface RoleUpdateRequest { role: 'client' | 'therapist' | 'admin' | 'super_admin'; is_active?: boolean; }
 
@@ -8,7 +8,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
   if (req.method !== 'PATCH') return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   try {
     const adminClient = createRequestClient(req);
-    await assertAdmin(adminClient);
+    await assertAdminOrSuperAdmin(adminClient);
 
     const url = new URL(req.url);
     const pathSegments = url.pathname.split('/');

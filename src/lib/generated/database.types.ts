@@ -2270,7 +2270,7 @@ export type Database = {
         Returns: Json
       }
       get_admin_users: {
-        Args: Record<PropertyKey, never>
+        Args: { organization_id: string }
         Returns: Json
       }
       get_ai_cache_metrics: {

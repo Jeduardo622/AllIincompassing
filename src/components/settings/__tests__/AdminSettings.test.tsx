@@ -3,6 +3,7 @@ import { renderWithProviders, screen, waitFor, userEvent } from '../../../test/u
 import AdminSettings from '../AdminSettings';
 import { supabase } from '../../../lib/supabase';
 import { logger } from '../../../lib/logger/logger';
+import { useAuth } from '../../../lib/authContext';
 
 vi.mock('../../../lib/logger/logger', () => {
   const info = vi.fn();
@@ -18,6 +19,10 @@ vi.mock('../../../lib/logger/logger', () => {
   };
 });
 
+vi.mock('../../../lib/authContext', () => ({
+  useAuth: vi.fn(),
+}));
+
 const rpcMock = vi.mocked(supabase.rpc);
 const defaultRpcImplementation = rpcMock.getMockImplementation();
 const fallbackRpc = defaultRpcImplementation
@@ -27,9 +32,6 @@ const mockAdminUser = {
   id: 'admin-id',
   user_id: 'user-123',
   email: 'admin@example.com',
-  first_name: 'Ada',
-  last_name: 'Admin',
-  title: 'Administrator',
   created_at: new Date('2025-01-01T00:00:00Z').toISOString(),
   raw_user_meta_data: {
     first_name: 'Ada',
@@ -40,9 +42,30 @@ const mockAdminUser = {
 
 describe('AdminSettings logging', () => {
   beforeEach(() => {
+    const authStub = {
+      user: {
+        user_metadata: {
+          organization_id: '11111111-1111-1111-1111-111111111111'
+        }
+      },
+      profile: null,
+      session: null,
+      loading: false,
+      signIn: vi.fn(),
+      signUp: vi.fn(),
+      signOut: vi.fn(),
+      resetPassword: vi.fn(),
+      updateProfile: vi.fn(),
+      hasRole: vi.fn(() => true),
+      hasAnyRole: vi.fn(() => true),
+      isAdmin: vi.fn(() => true),
+      isSuperAdmin: vi.fn(() => false)
+    } as unknown as ReturnType<typeof useAuth>;
+    vi.mocked(useAuth).mockReturnValue(authStub);
     rpcMock.mockClear();
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
       if (functionName === 'get_admin_users') {
+        expect(params).toMatchObject({ organization_id: '11111111-1111-1111-1111-111111111111' });
         return { data: [mockAdminUser], error: null };
       }
       if (functionName === 'manage_admin_users') {

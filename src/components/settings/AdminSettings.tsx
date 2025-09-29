@@ -180,7 +180,7 @@ export default function AdminSettings() {
       });
       const { error } = await supabase.rpc('manage_admin_users', {
         operation: 'remove',
-        metadata: {}
+        target_user_id: userId
       });
 
       if (error) {

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -17,63 +18,10 @@ import { OnboardingSteps } from './OnboardingSteps';
 import type { Client } from '../types';
 import { prepareFormData } from '../lib/validation';
 import { logger } from '../lib/logger/logger';
+import { clientSchema, type ClientFormData } from '../lib/validationSchemas';
 
 interface ClientOnboardingProps {
   onComplete?: () => void;
-}
-
-interface OnboardingFormData {
-  // Basic Information
-  email: string;
-  first_name: string;
-  middle_name?: string;
-  last_name: string;
-  date_of_birth: string;
-  gender?: string;
-  client_id?: string;
-  phone?: string;
-  cin_number?: string;
-
-  // Parent/Guardian Information
-  parent1_first_name?: string;
-  parent1_last_name?: string;
-  parent1_phone?: string;
-  parent1_email?: string;
-  parent1_relationship?: string;
-  parent2_first_name?: string;
-  parent2_last_name?: string;
-  parent2_phone?: string;
-  parent2_email?: string;
-  parent2_relationship?: string;
-
-  // Address Information
-  address_line1?: string;
-  address_line2?: string;
-  city?: string;
-  state?: string;
-  zip_code?: string;
-
-  // Service Information
-  service_preference: string[];
-  insurance_info?: Record<string, unknown>;
-  referral_source?: string;
-  one_to_one_units?: number;
-  supervision_units?: number;
-  parent_consult_units?: number;
-  
-  // Availability
-  availability_hours: {
-    [key: string]: {
-      start: string | null;
-      end: string | null;
-    };
-  };
-
-  // Documents
-  insurance_card_front?: File;
-  insurance_card_back?: File;
-  referral_form?: File;
-  consent_form?: File;
 }
 
 const DEFAULT_AVAILABILITY = {
@@ -98,7 +46,15 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
   // Parse query parameters
   const queryParams = new URLSearchParams(location.search);
   
-  const { register, handleSubmit, control, formState: { errors } } = useForm<OnboardingFormData>({
+  const {
+    register,
+    handleSubmit,
+    control,
+    trigger,
+    formState: { errors, isValid }
+  } = useForm<ClientFormData>({
+    resolver: zodResolver(clientSchema),
+    mode: 'onChange',
     defaultValues: {
       email: queryParams.get('email') || '',
       first_name: queryParams.get('first_name') || '',
@@ -113,6 +69,24 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       availability_hours: DEFAULT_AVAILABILITY,
     }
   });
+
+  const STEP_FIELDS: Record<number, Array<keyof ClientFormData>> = {
+    1: ['first_name', 'last_name', 'date_of_birth', 'email', 'gender', 'phone', 'client_id', 'cin_number'],
+    2: [
+      'parent1_first_name',
+      'parent1_last_name',
+      'parent1_phone',
+      'parent1_email',
+      'parent1_relationship',
+      'parent2_first_name',
+      'parent2_last_name',
+      'parent2_phone',
+      'parent2_email',
+      'parent2_relationship',
+    ],
+    3: ['address_line1', 'address_line2', 'city', 'state', 'zip_code'],
+    4: ['service_preference', 'one_to_one_units', 'supervision_units', 'parent_consult_units', 'insurance_info'],
+  };
 
   // Check if email already exists in database
   const checkEmailExists = async (email: string): Promise<boolean> => {
@@ -251,7 +225,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
     }
   };
 
-  const handleFormSubmit = async (data: OnboardingFormData) => {
+  const handleFormSubmit = async (data: ClientFormData) => {
     logger.debug('Client onboarding form submitted', {
       metadata: {
         servicePreferenceCount: Array.isArray(data.service_preference) ? data.service_preference.length : 0,
@@ -293,7 +267,19 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
     }
   };
 
-  const nextStep = () => {
+  const nextStep = async () => {
+    const fields = STEP_FIELDS[currentStep] ?? [];
+    if (fields.length > 0) {
+      const isStepValid = await trigger(fields, { shouldFocus: true });
+      if (!isStepValid) {
+        return;
+      }
+    }
+
+    if (emailValidationError) {
+      return;
+    }
+
     setCurrentStep(prev => Math.min(prev + 1, 5));
   };
 
@@ -310,10 +296,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="onboarding-first-name"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   First Name
                 </label>
                 <input
+                  id="onboarding-first-name"
                   type="text"
                   {...register('first_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -324,10 +314,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="onboarding-middle-name"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Middle Name
                 </label>
                 <input
+                  id="onboarding-middle-name"
                   type="text"
                   {...register('middle_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -335,10 +329,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="onboarding-last-name"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Last Name
                 </label>
                 <input
+                  id="onboarding-last-name"
                   type="text"
                   {...register('last_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -351,10 +349,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="onboarding-date-of-birth"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Date of Birth
                 </label>
                 <input
+                  id="onboarding-date-of-birth"
                   type="date"
                   {...register('date_of_birth')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -365,10 +367,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="onboarding-gender"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Gender
                 </label>
                 <select
+                  id="onboarding-gender"
                   {...register('gender')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
@@ -380,10 +386,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="onboarding-email"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Email
                 </label>
                 <input
+                  id="onboarding-email"
                   type="email"
                   {...register('email')}
                   onBlur={(e) => validateEmail(e.target.value)}
@@ -406,10 +416,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="onboarding-phone"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Phone
                 </label>
                 <input
+                  id="onboarding-phone"
                   type="tel"
                   {...register('phone')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -417,10 +431,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="onboarding-client-id"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Client ID
                 </label>
                 <input
+                  id="onboarding-client-id"
                   type="text"
                   {...register('client_id')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -431,10 +449,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="onboarding-cin-number"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   CIN Number
                 </label>
                 <input
+                  id="onboarding-cin-number"
                   type="text"
                   {...register('cin_number')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -456,10 +478,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               <h3 className="text-md font-medium text-blue-800 dark:text-blue-200 mb-2">Primary Parent/Guardian</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor="onboarding-parent1-first-name"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
                     First Name
                   </label>
                   <input
+                    id="onboarding-parent1-first-name"
                     type="text"
                     {...register('parent1_first_name')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -469,10 +495,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor="onboarding-parent1-last-name"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
                     Last Name
                   </label>
                   <input
+                    id="onboarding-parent1-last-name"
                     type="text"
                     {...register('parent1_last_name')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -485,10 +515,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor="onboarding-parent1-phone"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
                     Phone
                   </label>
                   <input
+                    id="onboarding-parent1-phone"
                     type="tel"
                     {...register('parent1_phone')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -498,10 +532,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor="onboarding-parent1-email"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
                     Email
                   </label>
                   <input
+                    id="onboarding-parent1-email"
                     type="email"
                     {...register('parent1_email')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -510,10 +548,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               </div>
               
               <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="onboarding-parent1-relationship"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Relationship to Client
                 </label>
                 <select
+                  id="onboarding-parent1-relationship"
                   {...register('parent1_relationship')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
@@ -534,20 +576,28 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               <h3 className="text-md font-medium text-gray-700 dark:text-gray-300 mb-2">Secondary Parent/Guardian (Optional)</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor="onboarding-parent2-first-name"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
                     First Name
                   </label>
                   <input
+                    id="onboarding-parent2-first-name"
                     type="text"
                     {...register('parent2_first_name')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor="onboarding-parent2-last-name"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
                     Last Name
                   </label>
                   <input
+                    id="onboarding-parent2-last-name"
                     type="text"
                     {...register('parent2_last_name')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -557,20 +607,28 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor="onboarding-parent2-phone"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
                     Phone
                   </label>
                   <input
+                    id="onboarding-parent2-phone"
                     type="tel"
                     {...register('parent2_phone')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor="onboarding-parent2-email"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
                     Email
                   </label>
                   <input
+                    id="onboarding-parent2-email"
                     type="email"
                     {...register('parent2_email')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -579,10 +637,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               </div>
               
               <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="onboarding-parent2-relationship"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Relationship to Client
                 </label>
                 <select
+                  id="onboarding-parent2-relationship"
                   {...register('parent2_relationship')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
@@ -605,10 +667,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             
             <div className="grid grid-cols-1 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="onboarding-address-line1"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Street Address
                 </label>
                 <input
+                  id="onboarding-address-line1"
                   type="text"
                   {...register('address_line1')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -620,10 +686,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor="onboarding-city"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
                     City
                   </label>
                   <input
+                    id="onboarding-city"
                     type="text"
                     {...register('city')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -633,10 +703,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor="onboarding-state"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
                     State
                   </label>
                   <input
+                    id="onboarding-state"
                     type="text"
                     {...register('state')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -646,10 +720,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor="onboarding-zip-code"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
                     ZIP Code
                   </label>
                   <input
+                    id="onboarding-zip-code"
                     type="text"
                     {...register('zip_code')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -714,10 +792,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="onboarding-insurance-provider"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Insurance Provider
                 </label>
                 <input
+                  id="onboarding-insurance-provider"
                   type="text"
                   {...register('insurance_info.provider')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -727,10 +809,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="onboarding-one-to-one-units"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   1:1 Units
                 </label>
                 <input
+                  id="onboarding-one-to-one-units"
                   type="number"
                   min="0"
                   {...register('one_to_one_units', { valueAsNumber: true })}
@@ -739,10 +825,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="onboarding-supervision-units"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Supervision Units
                 </label>
                 <input
+                  id="onboarding-supervision-units"
                   type="number"
                   min="0"
                   {...register('supervision_units', { valueAsNumber: true })}
@@ -751,10 +841,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="onboarding-parent-consult-units"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Parent Consult Units
                 </label>
                 <input
+                  id="onboarding-parent-consult-units"
                   type="number"
                   min="0"
                   {...register('parent_consult_units', { valueAsNumber: true })}
@@ -965,7 +1059,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               <button
                 type="button"
                 onClick={nextStep}
-                disabled={emailValidationError !== ''}
+                disabled={emailValidationError !== '' || isValidatingEmail}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
                 Next
@@ -974,7 +1068,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             ) : (
               <button
                 type="submit"
-                disabled={isSubmitting || emailValidationError !== '' || isValidatingEmail}
+                disabled={isSubmitting || emailValidationError !== '' || isValidatingEmail || !isValid}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
                 {isSubmitting ? (

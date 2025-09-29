@@ -21,6 +21,18 @@ import { showSuccess, showError } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
 import { toError } from '../lib/logger/normalizeError';
 
+export const matchesStatusFilter = (
+  status: Therapist['status'] | null | undefined,
+  selectedStatus: string,
+) => {
+  if (selectedStatus === 'all') {
+    return true;
+  }
+
+  const normalizedStatus = (status ?? 'active').toLowerCase();
+  return normalizedStatus === selectedStatus.toLowerCase();
+};
+
 const Therapists = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -214,7 +226,7 @@ const Therapists = () => {
     navigate('/therapists/new');
   };
 
-  const filteredTherapists = therapists.filter(therapist => {
+  const filteredTherapists = therapists.filter((therapist) => {
     const matchesSearch = (
       (therapist.full_name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
       (therapist.email?.toLowerCase() || '').includes(searchQuery.toLowerCase())
@@ -222,7 +234,7 @@ const Therapists = () => {
 
     const matchesLocation = filterLocation === 'all' || therapist.service_type?.includes(filterLocation);
     const matchesServiceLine = filterServiceLine === 'all' || therapist.specialties?.includes(filterServiceLine);
-    const matchesStatus = filterStatus === 'all'; // Add more status conditions as needed
+    const matchesStatus = matchesStatusFilter(therapist.status, filterStatus);
 
     return matchesSearch && matchesLocation && matchesServiceLine && matchesStatus;
   });
@@ -290,7 +302,7 @@ const Therapists = () => {
               onChange={(e) => setFilterStatus(e.target.value)}
               className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
             >
-              <option value="all">All Active</option>
+              <option value="all">All Statuses</option>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
             </select>
@@ -380,9 +392,22 @@ const Therapists = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
-                        Active
-                      </span>
+                      {(() => {
+                        const status = (therapist.status ?? 'active').toLowerCase();
+                        const isActive = status === 'active';
+
+                        return (
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              isActive
+                                ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
+                                : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+                            }`}
+                          >
+                            {isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-3">

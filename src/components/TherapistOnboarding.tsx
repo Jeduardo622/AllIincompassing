@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -30,7 +32,7 @@ interface OnboardingFormData {
   last_name: string;
   title?: string;
   phone?: string;
-  
+
   // Professional Information
   npi_number?: string;
   medicaid_id?: string;
@@ -38,7 +40,8 @@ interface OnboardingFormData {
   taxonomy_code?: string;
   rbt_number?: string;
   bcba_number?: string;
-  
+  license_number: string;
+
   // Employment Information
   facility?: string;
   employee_type?: string;
@@ -71,9 +74,9 @@ interface OnboardingFormData {
 
   // Documents
   certifications?: File[];
-  resume?: File;
-  license?: File;
-  background_check?: File;
+  resume?: File | null;
+  license: File | null;
+  background_check?: File | null;
 }
 
 const DEFAULT_AVAILABILITY = {
@@ -85,7 +88,26 @@ const DEFAULT_AVAILABILITY = {
   saturday: { start: "06:00", end: "21:00" },
 };
 
-export default function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
+const therapistOnboardingSchema = z
+  .object({
+    first_name: z.string().trim().min(1, 'First name is required'),
+    last_name: z.string().trim().min(1, 'Last name is required'),
+    email: z.string().trim().min(1, 'Email is required').email('Enter a valid email address'),
+    license_number: z.string().trim().min(1, 'License number is required'),
+    license: z.instanceof(File).or(z.null()),
+  })
+  .passthrough()
+  .superRefine((data, ctx) => {
+    if (!(data.license instanceof File)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['license'],
+        message: 'Professional license document is required',
+      });
+    }
+  });
+
+export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, File>>({});
@@ -95,8 +117,16 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
   
   // Parse query parameters
   const queryParams = new URLSearchParams(location.search);
-  
-  const { register, handleSubmit, control, formState: { errors } } = useForm<OnboardingFormData>({
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors },
+    setFocus,
+    trigger,
+  } = useForm<OnboardingFormData>({
+    resolver: zodResolver(therapistOnboardingSchema),
     defaultValues: {
       email: queryParams.get('email') || '',
       first_name: queryParams.get('first_name') || '',
@@ -108,8 +138,32 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
       weekly_hours_max: 40,
       availability_hours: DEFAULT_AVAILABILITY,
       preferred_areas: [],
+      license_number: '',
+      license: null,
+      resume: null,
+      background_check: null,
     }
   });
+
+  useEffect(() => {
+    const fieldOrder: (keyof OnboardingFormData)[] = [
+      'first_name',
+      'last_name',
+      'email',
+      'license_number',
+      'license',
+    ];
+    const firstError = fieldOrder.find((field) => errors[field]);
+
+    if (firstError) {
+      setFocus(firstError);
+    }
+  }, [errors, setFocus]);
+
+  const stepValidationFields: Record<number, (keyof OnboardingFormData)[]> = {
+    1: ['first_name', 'last_name', 'email'],
+    2: ['license_number'],
+  };
 
   const createTherapistMutation = useMutation({
     mutationFn: async (data: Partial<Therapist>) => {
@@ -171,45 +225,50 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
     }
   });
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, fieldName: string) => {
-    if (e.target.files && e.target.files[0]) {
-      setUploadedFiles(prev => ({
-        ...prev,
-        [fieldName]: e.target.files![0]
-      }));
+  const handleFileChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    fieldName: 'resume' | 'license' | 'background_check' | 'certifications',
+    onChange?: (value: File | null) => void,
+  ) => {
+    const file = e.target.files?.[0] ?? null;
+
+    setUploadedFiles(prev => {
+      const next = { ...prev };
+
+      if (file) {
+        next[fieldName] = file;
+      } else {
+        delete next[fieldName];
+      }
+
+      return next;
+    });
+
+    if (onChange) {
+      onChange(file);
     }
   };
 
   const handleFormSubmit = async (data: OnboardingFormData) => {
-    // Validate required fields
-    if (!data.first_name?.trim()) {
-      showError('First name is required');
-      return;
-    }
-    
-    if (!data.last_name?.trim()) {
-      showError('Last name is required');
-      return;
-    }
-    
-    if (!data.email?.trim()) {
-      showError('Email is required');
-      return;
-    }
-    
-    // Ensure service_type is an array
-    if (!data.service_type || !Array.isArray(data.service_type)) {
-      data.service_type = [];
-    }
-    
-    // Ensure specialties is an array
-    if (!data.specialties || !Array.isArray(data.specialties)) {
-      data.specialties = [];
-    }
-    
+    const sanitizedData: OnboardingFormData = {
+      ...data,
+      service_type: Array.isArray(data.service_type) ? data.service_type : [],
+      specialties: Array.isArray(data.specialties) ? data.specialties : [],
+      preferred_areas: Array.isArray(data.preferred_areas) ? data.preferred_areas : [],
+    };
+
+    const therapistPayload = { ...sanitizedData } as Partial<Therapist> & {
+      license_number: string;
+    };
+
+    delete (therapistPayload as Record<string, unknown>).license;
+    delete (therapistPayload as Record<string, unknown>).resume;
+    delete (therapistPayload as Record<string, unknown>).background_check;
+    delete (therapistPayload as Record<string, unknown>).certifications;
+
     setIsSubmitting(true);
     try {
-      await createTherapistMutation.mutateAsync(data);
+      await createTherapistMutation.mutateAsync(therapistPayload);
     } catch (error) {
       logger.error('Therapist onboarding submission failed', {
         error,
@@ -223,7 +282,16 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
     }
   };
 
-  const nextStep = () => {
+  const nextStep = async () => {
+    const fieldsToValidate = stepValidationFields[currentStep];
+
+    if (fieldsToValidate) {
+      const isValid = await trigger(fieldsToValidate);
+      if (!isValid) {
+        return;
+      }
+    }
+
     setCurrentStep(prev => Math.min(prev + 1, 5));
   };
 
@@ -244,12 +312,20 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
                   First Name
                 </label>
                 <input
+                  id="onboarding-first-name"
                   type="text"
+                  aria-invalid={errors.first_name ? 'true' : 'false'}
+                  aria-describedby={errors.first_name ? 'onboarding-first-name-error' : undefined}
                   {...register('first_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.first_name && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.first_name.message}</p>
+                  <p
+                    id="onboarding-first-name-error"
+                    className="mt-1 text-sm text-red-600 dark:text-red-400"
+                  >
+                    {errors.first_name.message}
+                  </p>
                 )}
               </div>
 
@@ -269,12 +345,20 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
                   Last Name
                 </label>
                 <input
+                  id="onboarding-last-name"
                   type="text"
+                  aria-invalid={errors.last_name ? 'true' : 'false'}
+                  aria-describedby={errors.last_name ? 'onboarding-last-name-error' : undefined}
                   {...register('last_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.last_name && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.last_name.message}</p>
+                  <p
+                    id="onboarding-last-name-error"
+                    className="mt-1 text-sm text-red-600 dark:text-red-400"
+                  >
+                    {errors.last_name.message}
+                  </p>
                 )}
               </div>
             </div>
@@ -285,12 +369,20 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
                   Email
                 </label>
                 <input
+                  id="onboarding-email"
                   type="email"
+                  aria-invalid={errors.email ? 'true' : 'false'}
+                  aria-describedby={errors.email ? 'onboarding-email-error' : undefined}
                   {...register('email')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.email && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.email.message}</p>
+                  <p
+                    id="onboarding-email-error"
+                    className="mt-1 text-sm text-red-600 dark:text-red-400"
+                  >
+                    {errors.email.message}
+                  </p>
                 )}
               </div>
 
@@ -421,7 +513,31 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
                   />
                 </div>
               </div>
-              
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    License Number
+                  </label>
+                  <input
+                    id="onboarding-license-number"
+                    type="text"
+                    aria-invalid={errors.license_number ? 'true' : 'false'}
+                    aria-describedby={errors.license_number ? 'onboarding-license-number-error' : undefined}
+                    {...register('license_number')}
+                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                  />
+                  {errors.license_number && (
+                    <p
+                      id="onboarding-license-number-error"
+                      className="mt-1 text-sm text-red-600 dark:text-red-400"
+                    >
+                      {errors.license_number.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -703,7 +819,7 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Resume/CV
                 </label>
-                <div className="flex items-center">
+                <div className="flex flex-col md:flex-row md:items-center">
                   <input
                     type="file"
                     id="resume"
@@ -729,12 +845,25 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
                   License/Certification
                 </label>
                 <div className="flex items-center">
-                  <input
-                    type="file"
-                    id="license"
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    onChange={(e) => handleFileChange(e, 'license')}
-                    className="hidden"
+                  <Controller
+                    control={control}
+                    name="license"
+                    render={({ field }) => (
+                      <input
+                        id="license"
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        className="sr-only"
+                        aria-label="License document upload"
+                        aria-invalid={errors.license ? 'true' : 'false'}
+                        aria-describedby={errors.license ? 'license-error' : undefined}
+                        onChange={(event) => {
+                          handleFileChange(event, 'license', (file) => field.onChange(file));
+                        }}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                      />
+                    )}
                   />
                   <label
                     htmlFor="license"
@@ -743,9 +872,17 @@ export default function TherapistOnboarding({ onComplete }: TherapistOnboardingP
                     <Upload className="w-4 h-4 inline-block mr-2" />
                     Choose File
                   </label>
-                  <span className="ml-3 text-sm text-gray-500 dark:text-gray-400">
+                  <span className="md:ml-3 text-sm text-gray-500 dark:text-gray-400 mt-2 md:mt-0">
                     {uploadedFiles.license?.name || 'No file chosen'}
                   </span>
+                  {errors.license && (
+                    <p
+                      id="license-error"
+                      className="mt-2 md:mt-0 md:ml-3 text-sm text-red-600 dark:text-red-400"
+                    >
+                      {errors.license.message}
+                    </p>
+                  )}
                 </div>
               </div>
               

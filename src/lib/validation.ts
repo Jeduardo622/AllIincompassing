@@ -135,6 +135,7 @@ export const prepareFormData = <T extends Record<string, any>>(data: T): T => {
     'parent2_last_name', 'parent2_phone', 'parent2_relationship',
     'middle_name', 'staff_id', 'supervisor', 'npi_number', 'medicaid_id',
     'practitioner_id', 'taxonomy_code', 'rbt_number', 'bcba_number',
+    'license_number',
     'facility', 'street', 'title', 'employee_type'
   ];
   

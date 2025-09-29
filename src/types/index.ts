@@ -69,6 +69,7 @@ export interface Therapist {
   medicaid_id?: string;
   practitioner_id?: string;
   taxonomy_code?: string;
+  license_number?: string;
   time_zone?: string;
   phone?: string;
   street?: string;

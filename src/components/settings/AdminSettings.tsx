@@ -1,17 +1,24 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Shield, Mail, Calendar, Key } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showSuccess, showError } from '../../lib/toast';
 import { logger } from '../../lib/logger/logger';
+import { useAuth } from '../../lib/authContext';
+import type { PostgrestError } from '@supabase/supabase-js';
 
 interface AdminUser {
   id: string;
+  user_id: string;
   email: string;
-  first_name: string;
-  last_name: string;
-  title: string;
   created_at: string;
+  raw_user_meta_data?: {
+    first_name?: string;
+    last_name?: string;
+    title?: string;
+    organization_id?: string;
+    organizationId?: string;
+  } | null;
 }
 
 interface AdminFormData {
@@ -34,17 +41,67 @@ export default function AdminSettings() {
     title: '',
   });
   const [newPassword, setNewPassword] = useState('');
+  const [accessError, setAccessError] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
-  const { data: admins = [], isLoading } = useQuery({
-    queryKey: ['admins'],
+  const organizationId = useMemo(() => {
+    const metadata = user?.user_metadata ?? {};
+    const snake = typeof metadata.organization_id === 'string' ? metadata.organization_id : null;
+    const camel = typeof metadata.organizationId === 'string' ? metadata.organizationId : null;
+    return snake || camel || null;
+  }, [user]);
+
+  useEffect(() => {
+    if (!organizationId) {
+      setAccessError('Your account is missing an organization. Please contact support.');
+    }
+  }, [organizationId]);
+
+  const { data: admins = [], isLoading, error: adminsError } = useQuery<AdminUser[], Error>({
+    queryKey: ['admins', organizationId],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_admin_users');
-      if (error) throw error;
-      return data || [];
+      if (!organizationId) {
+        const missingError = new Error('Organization context is required to load admin users.');
+        (missingError as Error & { status?: number }).status = 400;
+        throw missingError;
+      }
+
+      const { data, error } = await supabase.rpc('get_admin_users', { organization_id: organizationId });
+
+      if (error) {
+        const rpcError = error as PostgrestError & { status?: number };
+        const mappedError = new Error(
+          rpcError.code === '42501'
+            ? 'You do not have permission to view admin users for this organization.'
+            : error.message || 'Failed to load admin users.'
+        );
+        (mappedError as Error & { status?: number }).status = rpcError.code === '42501' ? 403 : 500;
+        throw mappedError;
+      }
+
+      return (data as AdminUser[] | null) ?? [];
     },
+    enabled: Boolean(organizationId),
+    retry: false,
   });
+
+  useEffect(() => {
+    if (!adminsError) {
+      if (organizationId) {
+        setAccessError(null);
+      }
+      return;
+    }
+
+    const status = (adminsError as Error & { status?: number }).status;
+    if (status === 403 || status === 400) {
+      setAccessError(adminsError.message);
+    } else if (status && status >= 400) {
+      showError(adminsError);
+    }
+  }, [adminsError, organizationId]);
 
   const createAdminMutation = useMutation({
     mutationFn: async (data: AdminFormData) => {
@@ -225,6 +282,8 @@ export default function AdminSettings() {
         <div className="text-center py-4">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
         </div>
+      ) : accessError ? (
+        <div className="text-center py-4 text-red-600 dark:text-red-400">{accessError}</div>
       ) : admins.length === 0 ? (
         <div className="text-center py-4 text-gray-500 dark:text-gray-400">
           No admin users found

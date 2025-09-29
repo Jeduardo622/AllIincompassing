@@ -1,6 +1,6 @@
 import { createProtectedRoute, corsHeaders, logApiAccess, RouteOptions, UserContext } from "../_shared/auth-middleware.ts";
 import { supabaseAdmin, createRequestClient } from "../_shared/database.ts";
-import { assertAdmin } from "../_shared/auth.ts";
+import { assertAdminOrSuperAdmin } from "../_shared/auth.ts";
 
 const supabase = supabaseAdmin;
 
@@ -29,7 +29,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
 
     const callerRole = userContext.profile.role;
     if (callerRole === 'admin' || callerRole === 'super_admin') {
-      await assertAdmin(caller);
+      await assertAdminOrSuperAdmin(caller);
     }
 
     if (callerRole === 'client') {
@@ -257,7 +257,7 @@ async function generateClientsReport(startDate: string, endDate: string, userCon
 }
 
 async function generateTherapistsReport(startDate: string, endDate: string, userContext: UserContext) {
-  // Only admins can generate therapist reports (enforced by assertAdmin)
+  // Only admins can generate therapist reports (enforced by assertAdminOrSuperAdmin)
   const { data, error } = await supabase
     .from("therapists")
     .select("*")
@@ -285,7 +285,7 @@ async function generateBillingReport(
   userContext: UserContext,
   therapistScope: string[]
 ) {
-  // Only admins can generate billing reports (enforced by assertAdmin)
+  // Only admins can generate billing reports (enforced by assertAdminOrSuperAdmin)
   let query = supabase
     .from("sessions")
     .select(`

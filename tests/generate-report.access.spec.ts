@@ -45,7 +45,7 @@ const logApiAccess = vi.fn();
 const userContexts = new Map<string, TestUserContext>();
 const recordedClientQueries: URL[] = [];
 const recordedSessionQueries: URL[] = [];
-let isAdminResponse = false;
+let roleResponse: string[] = [];
 
 const clientsData = [
   {
@@ -249,8 +249,8 @@ vi.mock('../supabase/functions/_shared/database.ts', () => {
 // generate-report specific handlers for each test run.
 function registerAccessHandlers() {
   server.use(
-    http.post('http://localhost/rest/v1/rpc/is_admin', () => {
-      return HttpResponse.json({ data: isAdminResponse });
+    http.post('http://localhost/rest/v1/rpc/get_user_roles', () => {
+      return HttpResponse.json({ data: [{ roles: roleResponse }] });
     }),
     http.get('http://localhost/rest/v1/user_therapist_links', ({ request }) => {
       const url = new URL(request.url);
@@ -344,7 +344,7 @@ afterEach(() => {
   recordedClientQueries.length = 0;
   recordedSessionQueries.length = 0;
   userContexts.clear();
-  isAdminResponse = false;
+  roleResponse = [];
   logApiAccess.mockClear();
 });
 
@@ -431,7 +431,7 @@ describe('generate-report access control', () => {
       user: { id: 'admin-user-1', email: 'admin@example.com' },
       profile: { id: 'admin-profile-1', email: 'admin@example.com', role: 'admin', is_active: true },
     });
-    isAdminResponse = true;
+    roleResponse = ['admin'];
 
     const handler = (await import('../supabase/functions/generate-report/index.ts')).default;
     const response = await handler(buildRequest({
@@ -453,7 +453,7 @@ describe('generate-report access control', () => {
       user: { id: 'admin-user-1', email: 'admin@example.com' },
       profile: { id: 'admin-profile-1', email: 'admin@example.com', role: 'admin', is_active: true },
     });
-    isAdminResponse = true;
+    roleResponse = ['admin'];
 
     const handler = (await import('../supabase/functions/generate-report/index.ts')).default;
     const response = await handler(buildRequest({

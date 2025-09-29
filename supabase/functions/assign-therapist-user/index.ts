@@ -1,6 +1,6 @@
 import { createProtectedRoute, corsHeaders, logApiAccess, RouteOptions } from "../_shared/auth-middleware.ts";
 import { supabaseAdmin, createRequestClient } from "../_shared/database.ts";
-import { assertAdmin } from "../_shared/auth.ts";
+import { assertAdminOrSuperAdmin } from "../_shared/auth.ts";
 
 interface AssignTherapistRequest { userId: string; therapistId: string; }
 
@@ -20,7 +20,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
   if (req.method !== 'POST') return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   try {
     const adminClient = createRequestClient(req);
-    await assertAdmin(adminClient);
+    await assertAdminOrSuperAdmin(adminClient);
 
     const { userId, therapistId }: AssignTherapistRequest = await req.json();
     if (!userId || !therapistId) return new Response(JSON.stringify({ error: 'User ID and therapist ID are required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

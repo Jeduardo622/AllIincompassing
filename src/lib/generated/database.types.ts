@@ -2150,8 +2150,8 @@ export type Database = {
         }[]
       }
       assign_admin_role: {
-        Args: { user_email: string }
-        Returns: Json
+        Args: { user_email: string; organization_id: string }
+        Returns: undefined
       }
       assign_therapist_role: {
         Args: { therapist_id: string; user_email: string } | { user_id: string }

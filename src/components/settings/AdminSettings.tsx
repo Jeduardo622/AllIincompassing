@@ -27,6 +27,7 @@ interface AdminFormData {
   first_name: string;
   last_name: string;
   title: string;
+  organization_id: string | null;
 }
 
 export default function AdminSettings() {
@@ -39,6 +40,7 @@ export default function AdminSettings() {
     first_name: '',
     last_name: '',
     title: '',
+    organization_id: null,
   });
   const [newPassword, setNewPassword] = useState('');
   const [accessError, setAccessError] = useState<string | null>(null);
@@ -56,7 +58,11 @@ export default function AdminSettings() {
   useEffect(() => {
     if (!organizationId) {
       setAccessError('Your account is missing an organization. Please contact support.');
+      setFormData((previous) => ({ ...previous, organization_id: null }));
+      return;
     }
+
+    setFormData((previous) => ({ ...previous, organization_id: organizationId }));
   }, [organizationId]);
 
   const { data: admins = [], isLoading, error: adminsError } = useQuery<AdminUser[], Error>({
@@ -105,6 +111,16 @@ export default function AdminSettings() {
 
   const createAdminMutation = useMutation({
     mutationFn: async (data: AdminFormData) => {
+      if (!organizationId) {
+        const error = new Error('Organization context is required to create an admin user.');
+        logger.error('Missing organization during admin creation', {
+          error,
+          context: { component: 'AdminSettings', operation: 'createAdminMutation' },
+          metadata: { hasOrganizationId: false },
+        });
+        throw error;
+      }
+
       // Use assign_admin_role function instead of manage_admin_users
       try {
         // First create the user with password
@@ -116,18 +132,20 @@ export default function AdminSettings() {
               first_name: data.first_name,
               last_name: data.last_name,
               title: data.title,
-              is_admin: true
-            }
-          }
+              is_admin: true,
+              organization_id: organizationId,
+            },
+          },
         });
-        
+
         if (signUpError) throw signUpError;
-        
+
         // Then assign admin role
         const { error: assignError } = await supabase.rpc('assign_admin_role', {
-          user_email: data.email
+          user_email: data.email,
+          organization_id: organizationId,
         });
-        
+
         if (assignError) throw assignError;
       } catch (error) {
         logger.error('Admin creation mutation failed', {
@@ -135,14 +153,15 @@ export default function AdminSettings() {
           context: { component: 'AdminSettings', operation: 'createAdminMutation' },
           metadata: {
             hasEmail: Boolean(data.email),
-            hasProfileDetails: Boolean(data.first_name || data.last_name || data.title)
-          }
+            hasProfileDetails: Boolean(data.first_name || data.last_name || data.title),
+            hasOrganizationId: Boolean(organizationId),
+          },
         });
         throw error;
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admins'] });
+      queryClient.invalidateQueries({ queryKey: ['admins', organizationId] });
       setIsModalOpen(false);
       resetForm();
       showSuccess('Admin user created successfully');
@@ -219,6 +238,7 @@ export default function AdminSettings() {
       first_name: '',
       last_name: '',
       title: '',
+      organization_id: organizationId ?? null,
     });
   };
 
@@ -347,15 +367,15 @@ export default function AdminSettings() {
 
       {/* Create Admin Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="add-admin-modal-title">
           <div className="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-md p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
+            <h2 id="add-admin-modal-title" className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
               Add New Admin
             </h2>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="add-admin-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Email*
                 </label>
                 <input
@@ -364,12 +384,13 @@ export default function AdminSettings() {
                   required
                   value={formData.email}
                   onChange={handleInputChange}
+                  id="add-admin-email"
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="add-admin-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Password*
                 </label>
                 <input
@@ -379,12 +400,13 @@ export default function AdminSettings() {
                   minLength={8}
                   value={formData.password}
                   onChange={handleInputChange}
+                  id="add-admin-password"
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="add-admin-first-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   First Name*
                 </label>
                 <input
@@ -393,12 +415,13 @@ export default function AdminSettings() {
                   required
                   value={formData.first_name}
                   onChange={handleInputChange}
+                  id="add-admin-first-name"
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="add-admin-last-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Last Name*
                 </label>
                 <input
@@ -407,12 +430,13 @@ export default function AdminSettings() {
                   required
                   value={formData.last_name}
                   onChange={handleInputChange}
+                  id="add-admin-last-name"
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="add-admin-title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Title
                 </label>
                 <input
@@ -420,8 +444,28 @@ export default function AdminSettings() {
                   name="title"
                   value={formData.title}
                   onChange={handleInputChange}
+                  id="add-admin-title"
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
+              </div>
+
+              <div>
+                <label htmlFor="add-admin-organization" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Organization ID
+                </label>
+                <input
+                  type="text"
+                  name="organization_id"
+                  value={formData.organization_id ?? ''}
+                  readOnly
+                  id="add-admin-organization"
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                />
+                {!formData.organization_id && (
+                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    Organization context is required before creating additional admins.
+                  </p>
+                )}
               </div>
 
               <div className="flex justify-end space-x-3 pt-4">
@@ -437,7 +481,8 @@ export default function AdminSettings() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  disabled={!formData.organization_id}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Add Admin
                 </button>
@@ -449,9 +494,9 @@ export default function AdminSettings() {
 
       {/* Password Reset Modal */}
       {isPasswordModalOpen && selectedAdmin && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="reset-password-modal-title">
           <div className="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-md p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
+            <h2 id="reset-password-modal-title" className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
               Reset Password for {selectedAdmin.email}
             </h2>
 

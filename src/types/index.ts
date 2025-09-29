@@ -97,6 +97,10 @@ export interface Client {
     };
   };
   created_at: string;
+  created_by?: string | null;
+  updated_at?: string;
+  updated_by?: string | null;
+  organization_id?: string | null;
   latitude?: number;
   longitude?: number;
   preferred_radius_km?: number;
@@ -138,7 +142,8 @@ export interface Client {
   preferred_language?: string;
   address?: string;
   notes?: string;
-  // Note: status field removed as it doesn't exist in current database schema
+  status?: string;
+  // Optional status retained to match database defaults while remaining backwards compatible
 }
 
 export interface Session {

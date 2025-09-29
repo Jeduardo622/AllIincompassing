@@ -51,6 +51,15 @@ let existingProfile: TestProfile & {
   full_name: string;
   updated_at: string;
 };
+let adminActionInserts: Array<Record<string, unknown>> = [];
+
+type AdminUserRecord = {
+  id: string;
+  email: string;
+  user_metadata?: Record<string, unknown>;
+};
+
+const adminUsers = new Map<string, AdminUserRecord>();
 
 vi.mock('../supabase/functions/_shared/auth-middleware.ts', () => ({
   corsHeaders: {
@@ -114,7 +123,16 @@ vi.mock('../supabase/functions/_shared/database.ts', () => {
   };
 
   return {
-    supabaseAdmin: {} as never,
+    supabaseAdmin: {
+      auth: {
+        admin: {
+          getUserById: vi.fn(async (userId: string) => ({
+            data: { user: adminUsers.get(userId) ?? null },
+            error: null,
+          })),
+        },
+      },
+    },
     createRequestClient: () => ({
       rpc: vi.fn(async (functionName: string) => {
         if (functionName === 'get_user_roles') {
@@ -124,6 +142,14 @@ vi.mock('../supabase/functions/_shared/database.ts', () => {
       }),
       from: vi.fn((table: string) => {
         if (table !== 'profiles') {
+          if (table === 'admin_actions') {
+            return {
+              insert: vi.fn(async (payload: Record<string, unknown>) => {
+                adminActionInserts.push(payload);
+                return { error: null };
+              }),
+            };
+          }
           throw new Error(`Unexpected table: ${table}`);
         }
         return createProfilesQuery();
@@ -149,6 +175,8 @@ describe('admin-users-roles access control', () => {
       full_name: 'Target User',
       updated_at: '2025-06-01T00:00:00Z',
     };
+    adminActionInserts = [];
+    adminUsers.clear();
   });
 
   it('allows a super admin to demote another admin user', async () => {
@@ -165,6 +193,16 @@ describe('admin-users-roles access control', () => {
     };
 
     userContexts.set('super', superAdminContext);
+    adminUsers.set('super-admin-1', {
+      id: 'super-admin-1',
+      email: 'super@example.com',
+      user_metadata: { organization_id: 'org-123' },
+    });
+    adminUsers.set(existingProfile.id, {
+      id: existingProfile.id,
+      email: existingProfile.email,
+      user_metadata: { organization_id: 'org-999' },
+    });
 
     const { default: handler } = await import('../supabase/functions/admin-users-roles/index.ts');
 
@@ -185,5 +223,17 @@ describe('admin-users-roles access control', () => {
     expect(body.user.role).toBe('therapist');
     expect(latestUpdatePayload).toEqual({ role: 'therapist' });
     expect(logApiAccess).toHaveBeenCalledWith('PATCH', '/admin/users/11111111-1111-1111-1111-111111111111/roles', superAdminContext, 200);
+    expect(adminActionInserts).toEqual([
+      {
+        admin_user_id: 'super-admin-1',
+        target_user_id: '11111111-1111-1111-1111-111111111111',
+        organization_id: 'org-999',
+        action_type: 'role_update',
+        action_details: {
+          new_role: 'therapist',
+          is_active: true,
+        },
+      },
+    ]);
   });
 });

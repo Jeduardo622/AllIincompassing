@@ -109,7 +109,18 @@ export default createProtectedRoute(async (req: Request, userContext) => {
       result = { action: 'created', client: newClient };
     }
 
-    const { error: logError } = await adminClient.from('admin_actions').insert({ admin_user_id: userContext.user.id, action_type: 'therapist_assignment', target_user_id: userId, action_details: { therapist_id: therapistId, therapist_name: therapistData.full_name, action: result.action, user_email: userEmail } });
+    const { error: logError } = await adminClient.from('admin_actions').insert({
+      admin_user_id: userContext.user.id,
+      action_type: 'therapist_assignment',
+      target_user_id: userId,
+      organization_id: callerOrganizationId,
+      action_details: {
+        therapist_id: therapistId,
+        therapist_name: therapistData.full_name,
+        action: result.action,
+        user_email: userEmail,
+      },
+    });
     if (logError) console.warn('Failed to log admin action:', logError);
 
     logApiAccess('POST', '/assign-therapist-user', userContext, 200);

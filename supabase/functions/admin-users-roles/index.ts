@@ -1,5 +1,5 @@
 import { createProtectedRoute, corsHeaders, logApiAccess, RouteOptions } from "../_shared/auth-middleware.ts";
-import { createRequestClient } from "../_shared/database.ts";
+import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { assertAdminOrSuperAdmin } from "../_shared/auth.ts";
 
 interface RoleUpdateRequest { role: 'client' | 'therapist' | 'admin' | 'super_admin'; is_active?: boolean; }
@@ -39,6 +39,40 @@ export default createProtectedRoute(async (req: Request, userContext) => {
     if (updateError || !updatedUser) {
       console.error('Role update error:', updateError);
       return new Response(JSON.stringify({ error: 'Failed to update user role' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    try {
+      const [actorResponse, targetResponse] = await Promise.all([
+        supabaseAdmin.auth.admin.getUserById(userContext.user.id),
+        supabaseAdmin.auth.admin.getUserById(userId),
+      ]);
+
+      const actorOrg = (actorResponse.data?.user?.user_metadata as Record<string, unknown> | undefined)?.organization_id
+        ?? (actorResponse.data?.user?.user_metadata as Record<string, unknown> | undefined)?.organizationId
+        ?? null;
+      const targetOrg = (targetResponse.data?.user?.user_metadata as Record<string, unknown> | undefined)?.organization_id
+        ?? (targetResponse.data?.user?.user_metadata as Record<string, unknown> | undefined)?.organizationId
+        ?? null;
+      const organizationId = targetOrg ?? actorOrg ?? null;
+
+      const { error: actionLogError } = await adminClient
+        .from('admin_actions')
+        .insert({
+          admin_user_id: userContext.user.id,
+          target_user_id: userId,
+          organization_id: organizationId,
+          action_type: 'role_update',
+          action_details: {
+            new_role: role,
+            is_active: updateData.is_active ?? existingUser.is_active,
+          },
+        });
+
+      if (actionLogError) {
+        console.error('Failed to record admin action:', actionLogError);
+      }
+    } catch (logError) {
+      console.error('Failed to enrich admin action metadata:', logError);
     }
 
     logApiAccess('PATCH', `/admin/users/${userId}/roles`, userContext, 200);

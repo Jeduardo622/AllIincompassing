@@ -21,6 +21,7 @@ export type Database = {
           admin_user_id: string | null
           created_at: string | null
           id: string
+          organization_id: string | null
           target_user_id: string | null
         }
         Insert: {
@@ -29,6 +30,7 @@ export type Database = {
           admin_user_id?: string | null
           created_at?: string | null
           id?: string
+          organization_id?: string | null
           target_user_id?: string | null
         }
         Update: {
@@ -37,6 +39,7 @@ export type Database = {
           admin_user_id?: string | null
           created_at?: string | null
           id?: string
+          organization_id?: string | null
           target_user_id?: string | null
         }
         Relationships: []

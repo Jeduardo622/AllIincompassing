@@ -1,9 +1,12 @@
 import React from 'react';
 import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { X } from 'lucide-react';
 import type { Client } from '../types';
 import AvailabilityEditor from './AvailabilityEditor';
 // import { showError } from '../lib/toast';
+import { clientSchema, type ClientFormData } from '../lib/validationSchemas';
+import { prepareFormData } from '../lib/validation';
 
 interface ClientModalProps {
   isOpen: boolean;
@@ -18,7 +21,9 @@ export default function ClientModal({
   onSubmit,
   client,
 }: ClientModalProps) {
-  const { register, handleSubmit, control, formState: { errors, isSubmitting } } = useForm({
+  const { register, handleSubmit, control, formState: { errors, isSubmitting, isValid, isSubmitted } } = useForm<ClientFormData>({
+    resolver: zodResolver(clientSchema),
+    mode: 'onChange',
     defaultValues: {
       email: client?.email || '',
       first_name: client?.first_name || '',
@@ -65,15 +70,16 @@ export default function ClientModal({
 
   if (!isOpen) return null;
 
-  const handleFormSubmit = async (data: Partial<Client>) => {
+  const handleFormSubmit = async (data: ClientFormData) => {
     // Validate required fields
 
     // Ensure service_preference is always an array
     if (!Array.isArray(data.service_preference)) {
       data.service_preference = [];
     }
-    
-    await onSubmit(data);
+
+    const formatted = prepareFormData(data);
+    await onSubmit(formatted);
   };
 
   return (
@@ -457,8 +463,9 @@ export default function ClientModal({
                   </label>
                   <input
                     type="number"
-                    {...register('one_to_one_units', { 
-                      min: { value: 0, message: 'Must be 0 or greater' },
+                    min={0}
+                    {...register('one_to_one_units', {
+                      valueAsNumber: true,
                     })}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
@@ -473,8 +480,9 @@ export default function ClientModal({
                   </label>
                   <input
                     type="number"
-                    {...register('supervision_units', { 
-                      min: { value: 0, message: 'Must be 0 or greater' },
+                    min={0}
+                    {...register('supervision_units', {
+                      valueAsNumber: true,
                     })}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
@@ -489,8 +497,9 @@ export default function ClientModal({
                   </label>
                   <input
                     type="number"
-                    {...register('parent_consult_units', { 
-                      min: { value: 0, message: 'Must be 0 or greater' },
+                    min={0}
+                    {...register('parent_consult_units', {
+                      valueAsNumber: true,
                     })}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
@@ -539,6 +548,11 @@ export default function ClientModal({
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 placeholder="Enter insurance information in JSON format"
               />
+              {errors.insurance_info && (
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                  {errors.insurance_info.message as string}
+                </p>
+              )}
             </div>
           </div>
 
@@ -567,7 +581,7 @@ export default function ClientModal({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || (!isValid && isSubmitted)}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label={client ? "Update Client" : "Create Client"}
             >

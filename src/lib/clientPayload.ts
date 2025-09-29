@@ -1,5 +1,6 @@
 import type { Client } from '../types';
 import { prepareFormData } from './validation';
+import { clientPayloadSchema } from './validationSchemas';
 
 interface PrepareClientPayloadOptions {
   enforceFullName?: boolean;
@@ -16,7 +17,7 @@ const computeFullName = (client: Partial<Client>): string => {
 export const prepareClientPayload = (
   clientData: Partial<Client>,
   options: PrepareClientPayloadOptions = {}
-): Partial<Client> => {
+) => {
   const prepared = prepareFormData(clientData);
 
   const payload: Partial<Client> = {
@@ -44,7 +45,7 @@ export const prepareClientPayload = (
     }
   }
 
-  return payload;
+  return clientPayloadSchema.parse(payload);
 };
 
 type SupabaseUpdateResponse<T> = Promise<{ data: T | null; error: unknown }>;

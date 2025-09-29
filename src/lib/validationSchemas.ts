@@ -1,125 +1,288 @@
 import { z } from 'zod';
+import type { Database } from './generated/database.types';
 
 // Common validation patterns
-const emailSchema = z.string().email('Please enter a valid email address').or(z.literal(''));
-const phoneSchema = z
-  .string()
-  .regex(/^[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$/, 'Please enter a valid phone number')
-  .or(z.literal(''));
-const urlSchema = z
-  .string()
-  .url('Please enter a valid URL')
-  .or(z.literal(''))
-  .or(z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}/, 'Please enter a valid URL or domain'));
+const phonePattern = /^[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$/;
 
-// Utility schemas
-const requiredStringSchema = (field: string) => 
-  z.string().min(1, `${field} is required`).transform(val => val.trim());
+const preprocessTrim = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess(value => (typeof value === 'string' ? value.trim() : value), schema);
 
-const optionalStringSchema = z.string().optional().or(z.literal(''));
+const requiredStringSchema = (field: string) =>
+  preprocessTrim(z.string().min(1, `${field} is required`));
 
-const zipCodeSchema = z
-  .string()
-  .regex(/^\d{5}(-\d{4})?$/, 'Please enter a valid ZIP code (12345 or 12345-6789)')
-  .or(z.literal(''));
+const optionalStringSchema = preprocessTrim(z.string()).optional().transform(value => value ?? '');
 
-const stateSchema = z
-  .string()
-  .length(2, 'Please enter a valid 2-letter state code')
-  .or(z.literal(''));
+const emailSchema = preprocessTrim(
+  z.string().min(1, 'Email is required').email('Please enter a valid email address')
+);
+
+const optionalEmailSchema = preprocessTrim(
+  z.union([z.literal(''), z.string().email('Please enter a valid email address')])
+);
+
+const phoneSchema = preprocessTrim(
+  z.union([z.literal(''), z.string().regex(phonePattern, 'Please enter a valid phone number')])
+);
+
+const urlSchema = preprocessTrim(
+  z.union([
+    z.literal(''),
+    z.string().url('Please enter a valid URL'),
+    z
+      .string()
+      .regex(
+        /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}/,
+        'Please enter a valid URL or domain'
+      ),
+  ])
+);
+
+const zipCodeSchema = preprocessTrim(
+  z.union([
+    z.literal(''),
+    z.string().regex(/^\d{5}(-\d{4})?$/, 'Please enter a valid ZIP code (12345 or 12345-6789)'),
+  ])
+);
+
+const stateSchema = preprocessTrim(
+  z.union([
+    z.literal(''),
+    z
+      .string()
+      .length(2, 'Please enter a valid 2-letter state code')
+      .transform(val => val.toUpperCase()),
+  ])
+);
 
 // Availability hours schema
 const timeSchema = z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Please enter time in HH:MM format');
 
-const dayAvailabilitySchema = z.object({
-  start: timeSchema,
-  end: timeSchema,
-}).refine(
-  (data) => {
-    const start = new Date(`2000-01-01T${data.start}:00`);
-    const end = new Date(`2000-01-01T${data.end}:00`);
-    return start < end;
+const availabilityTimeSchema = z.preprocess(
+  value => {
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed.length === 0 ? null : trimmed;
+    }
+
+    return value;
   },
-  {
-    message: 'Start time must be before end time',
-    path: ['end'],
-  }
+  z.union([z.literal(null), timeSchema])
 );
 
-const availabilityHoursSchema = z.object({
-  monday: dayAvailabilitySchema.optional(),
-  tuesday: dayAvailabilitySchema.optional(),
-  wednesday: dayAvailabilitySchema.optional(),
-  thursday: dayAvailabilitySchema.optional(),
-  friday: dayAvailabilitySchema.optional(),
-  saturday: dayAvailabilitySchema.optional(),
-  sunday: dayAvailabilitySchema.optional(),
+const dayAvailabilitySchema = z
+  .object({
+    start: availabilityTimeSchema,
+    end: availabilityTimeSchema,
+  })
+  .superRefine((data, ctx) => {
+    if (data.start && data.end) {
+      const start = new Date(`2000-01-01T${data.start}:00`);
+      const end = new Date(`2000-01-01T${data.end}:00`);
+      if (start >= end) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'End time must be after start time',
+          path: ['end'],
+        });
+      }
+    }
+
+    if ((data.start && !data.end) || (!data.start && data.end)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Both start and end times are required for a day',
+        path: data.start ? ['end'] : ['start'],
+      });
+    }
+  });
+
+const availabilityHoursSchema = z.record(dayAvailabilitySchema);
+
+const insuranceInfoStringSchema = preprocessTrim(z.string()).superRefine((value, ctx) => {
+  if (value.length === 0) {
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    if (typeof parsed !== 'object' || parsed === null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Insurance information must be valid JSON',
+      });
+    }
+  } catch {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Insurance information must be valid JSON',
+    });
+  }
 });
 
-// Client validation schema
-export const clientSchema = z.object({
-  // Demographics
-  first_name: requiredStringSchema('First name'),
-  middle_name: optionalStringSchema,
-  last_name: requiredStringSchema('Last name'),
-  full_name: optionalStringSchema,
-  email: emailSchema,
-  phone: phoneSchema,
-  date_of_birth: z.string().min(1, 'Date of birth is required'),
-  gender: z.enum(['Male', 'Female', 'Other', ''], { message: 'Please select a gender' }),
-  
-  // Address
-  address_line1: optionalStringSchema,
-  address_line2: optionalStringSchema,
-  city: optionalStringSchema,
-  state: stateSchema,
-  zip_code: zipCodeSchema,
-  
-  // Client-specific fields
-  client_id: optionalStringSchema,
-  cin_number: optionalStringSchema,
-  
-  // Units
-  one_to_one_units: z.number().min(0, 'Units must be non-negative').default(0),
-  supervision_units: z.number().min(0, 'Units must be non-negative').default(0),
-  parent_consult_units: z.number().min(0, 'Units must be non-negative').default(0),
-  
-  // Service preferences
-  service_preference: z.array(z.string()).default([]),
-  
-  // Availability
-  availability_hours: availabilityHoursSchema.optional(),
-  
-  // Parent/Guardian info
-  parent1_first_name: optionalStringSchema,
-  parent1_last_name: optionalStringSchema,
-  parent1_phone: phoneSchema,
-  parent1_email: emailSchema,
-  parent1_relationship: optionalStringSchema,
-  parent2_first_name: optionalStringSchema,
-  parent2_last_name: optionalStringSchema,
-  parent2_phone: phoneSchema,
-  parent2_email: emailSchema,
-  parent2_relationship: optionalStringSchema,
-  
-  // Insurance
-  insurance_info: z.any().optional(),
-}).refine(
-  (data) => {
-    // Cross-field validation: if parent info is provided, ensure consistency
-    if (data.parent1_first_name && !data.parent1_last_name) {
-      return false;
-    }
-    if (data.parent1_last_name && !data.parent1_first_name) {
-      return false;
-    }
-    return true;
-  },
-  {
-    message: 'If parent information is provided, both first and last names are required',
-    path: ['parent1_last_name'],
-  }
+const insuranceInfoSchema = z.union([
+  z.record(z.unknown()),
+  insuranceInfoStringSchema,
+]);
+
+const nonNegativeNumber = (label: string) =>
+  z
+    .number({ invalid_type_error: `${label} must be a number` })
+    .min(0, `${label} must be 0 or greater`);
+
+type ClientInsert = Database['public']['Tables']['clients']['Insert'];
+
+const genderSchema = preprocessTrim(
+  z.union([z.literal(''), z.enum(['Male', 'Female', 'Other'])])
 );
+
+const servicePreferenceSchema = z.array(preprocessTrim(z.string())).default([]);
+
+// Client validation schema
+export const clientFormSchema = z
+  .object({
+    // Demographics
+    first_name: requiredStringSchema('First name'),
+    middle_name: optionalStringSchema,
+    last_name: requiredStringSchema('Last name'),
+    full_name: optionalStringSchema,
+    email: emailSchema,
+    phone: phoneSchema,
+    date_of_birth: requiredStringSchema('Date of birth'),
+    gender: genderSchema,
+
+    // Address
+    address_line1: optionalStringSchema,
+    address_line2: optionalStringSchema,
+    city: optionalStringSchema,
+    state: stateSchema,
+    zip_code: zipCodeSchema,
+
+    // Client-specific fields
+    client_id: optionalStringSchema,
+    cin_number: optionalStringSchema,
+    referral_source: optionalStringSchema,
+
+    // Units
+    one_to_one_units: nonNegativeNumber('1:1 units').default(0),
+    supervision_units: nonNegativeNumber('Supervision units').default(0),
+    parent_consult_units: nonNegativeNumber('Parent consult units').default(0),
+
+    // Service preferences
+    service_preference: servicePreferenceSchema,
+
+    // Availability
+    availability_hours: availabilityHoursSchema.default({}),
+
+    // Parent/Guardian info
+    parent1_first_name: optionalStringSchema,
+    parent1_last_name: optionalStringSchema,
+    parent1_phone: phoneSchema,
+    parent1_email: optionalEmailSchema,
+    parent1_relationship: optionalStringSchema,
+    parent2_first_name: optionalStringSchema,
+    parent2_last_name: optionalStringSchema,
+    parent2_phone: phoneSchema,
+    parent2_email: optionalEmailSchema,
+    parent2_relationship: optionalStringSchema,
+
+    // Insurance
+    insurance_info: insuranceInfoSchema.optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.parent1_first_name && !data.parent1_last_name) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'If parent information is provided, both first and last names are required',
+        path: ['parent1_last_name'],
+      });
+    }
+
+    if (data.parent1_last_name && !data.parent1_first_name) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'If parent information is provided, both first and last names are required',
+        path: ['parent1_first_name'],
+      });
+    }
+  });
+
+export const clientSchema = clientFormSchema;
+
+const jsonValueSchema = z.union([z.record(z.unknown()), z.array(z.unknown())]);
+
+const availabilityPayloadSchema = z
+  .record(
+    z.object({
+      start: z.string().nullable(),
+      end: z.string().nullable(),
+    })
+  )
+  .nullable();
+
+export const clientPayloadSchema: z.ZodType<ClientInsert> = z
+  .object({
+    address_line1: z.string().nullable().optional(),
+    address_line2: z.string().nullable().optional(),
+    authorized_hours_per_month: z.number().nullable().optional(),
+    availability_hours: availabilityPayloadSchema.optional(),
+    avoid_rush_hour: z.boolean().nullable().optional(),
+    cin_number: z.string().nullable().optional(),
+    city: z.string().nullable().optional(),
+    client_id: z.string().nullable().optional(),
+    created_at: z.string().nullable().optional(),
+    created_by: z.string().nullable().optional(),
+    date_of_birth: z.string().nullable().optional(),
+    daycare_after_school: z.boolean().nullable().optional(),
+    diagnosis: z.array(z.string()).nullable().optional(),
+    documents: jsonValueSchema.nullable().optional(),
+    email: z.string().nullable().optional(),
+    first_name: z.string().nullable().optional(),
+    full_name: z.string().min(1, 'Full name is required'),
+    gender: z.string().nullable().optional(),
+    hours_provided_per_month: z.number().nullable().optional(),
+    id: z.string().optional(),
+    in_clinic: z.boolean().nullable().optional(),
+    in_home: z.boolean().nullable().optional(),
+    in_school: z.boolean().nullable().optional(),
+    insurance_info: jsonValueSchema.nullable().optional(),
+    last_name: z.string().nullable().optional(),
+    latitude: z.number().nullable().optional(),
+    longitude: z.number().nullable().optional(),
+    max_travel_minutes: z.number().nullable().optional(),
+    middle_name: z.string().nullable().optional(),
+    notes: z.string().nullable().optional(),
+    one_to_one_units: z.number().nullable().optional(),
+    organization_id: z.string().nullable().optional(),
+    updated_at: z.string().nullable().optional(),
+    updated_by: z.string().nullable().optional(),
+    parent_consult_units: z.number().nullable().optional(),
+    parent1_email: z.string().nullable().optional(),
+    parent1_first_name: z.string().nullable().optional(),
+    parent1_last_name: z.string().nullable().optional(),
+    parent1_phone: z.string().nullable().optional(),
+    parent1_relationship: z.string().nullable().optional(),
+    parent2_email: z.string().nullable().optional(),
+    parent2_first_name: z.string().nullable().optional(),
+    parent2_last_name: z.string().nullable().optional(),
+    parent2_phone: z.string().nullable().optional(),
+    parent2_relationship: z.string().nullable().optional(),
+    phone: z.string().nullable().optional(),
+    preferred_language: z.string().nullable().optional(),
+    preferred_radius_km: z.number().nullable().optional(),
+    preferred_session_time: z.array(z.string()).nullable().optional(),
+    referral_source: z.string().nullable().optional(),
+    service_preference: z.array(z.string()).nullable().optional(),
+    state: z.string().nullable().optional(),
+    status: z.string().optional(),
+    supervision_units: z.number().nullable().optional(),
+    unscheduled_hours: z.number().nullable().optional(),
+    zip_code: z.string().nullable().optional(),
+  })
+  .strict();
 
 // Therapist validation schema
 export const therapistSchema = z.object({
@@ -273,6 +436,7 @@ export const userSettingsSchema = z.object({
 
 // Export types
 export type ClientFormData = z.infer<typeof clientSchema>;
+export type ClientPayload = z.infer<typeof clientPayloadSchema>;
 export type TherapistFormData = z.infer<typeof therapistSchema>;
 export type SessionFormData = z.infer<typeof sessionSchema>;
 export type AuthorizationFormData = z.infer<typeof authorizationSchema>;

@@ -3,6 +3,7 @@ import { renderWithProviders, screen, userEvent } from "../../test/utils";
 import ChatBot from "../ChatBot";
 import { processMessage } from "../../lib/ai";
 import { cancelSessions } from "../../lib/sessionCancellation";
+import { useAuth } from "../../lib/authContext";
 
 beforeAll(() => {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -30,14 +31,22 @@ vi.mock("../../lib/sessionCancellation", () => ({
   cancelSessions: vi.fn(),
 }));
 
+vi.mock("../../lib/authContext", () => ({
+  useAuth: vi.fn(),
+}));
+
 const mockedProcessMessage = vi.mocked(processMessage);
 const mockedCancelSessions = vi.mocked(cancelSessions);
+const mockedUseAuth = vi.mocked(useAuth);
 
 describe("ChatBot scheduling", () => {
   beforeEach(() => {
     mockedProcessMessage.mockReset();
     mockedProcessMessage.mockResolvedValue(defaultScheduleAction);
     mockedCancelSessions.mockReset();
+    mockedUseAuth.mockReturnValue({
+      session: { access_token: "test-jwt" },
+    } as unknown as ReturnType<typeof useAuth>);
     localStorage.clear();
   });
   afterEach(() => {
@@ -61,6 +70,11 @@ describe("ChatBot scheduling", () => {
     await screen.findByText("Sure thing");
 
     expect(handler).toHaveBeenCalled();
+    expect(mockedProcessMessage).toHaveBeenCalledWith(
+      "schedule a session",
+      expect.objectContaining({ url: expect.any(String) }),
+      { accessToken: "test-jwt" }
+    );
     const event = handler.mock.calls[0][0] as CustomEvent;
     expect(event.detail.therapist_id).toBe("t1");
 
@@ -123,5 +137,22 @@ describe("ChatBot scheduling", () => {
     expect(
       screen.getByText(/Reason noted: Snow day/),
     ).toBeInTheDocument();
+  });
+
+  it("notifies when no auth session is present", async () => {
+    mockedUseAuth.mockReturnValue({ session: null } as unknown as ReturnType<typeof useAuth>);
+
+    renderWithProviders(<ChatBot />);
+    await userEvent.click(document.getElementById("chat-trigger")!);
+
+    const input = screen.getByPlaceholderText(/Type your message/);
+    await userEvent.type(input, "hello");
+    const sendBtn = input
+      .closest("form")!
+      .querySelector('button[type="submit"]') as HTMLButtonElement;
+    await userEvent.click(sendBtn);
+
+    await screen.findByText("Please sign in to use the assistant.");
+    expect(mockedProcessMessage).not.toHaveBeenCalled();
   });
 });

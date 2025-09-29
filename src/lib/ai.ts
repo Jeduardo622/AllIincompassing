@@ -2,6 +2,32 @@
 import { errorTracker } from './errorTracking';
 import { buildSupabaseEdgeUrl, getSupabaseAnonKey } from './runtimeConfig';
 
+export interface EdgeAuthContext {
+  accessToken: string;
+}
+
+const ensureAccessToken = (auth: EdgeAuthContext): string => {
+  const token = auth?.accessToken;
+  if (!token || typeof token !== 'string' || token.trim().length === 0) {
+    throw new Error('Missing Supabase access token for edge function request');
+  }
+  return token;
+};
+
+const buildEdgeRequestInit = (payload: unknown, auth: EdgeAuthContext): RequestInit => {
+  const accessToken = ensureAccessToken(auth);
+
+  return {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: getSupabaseAnonKey(),
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  };
+};
+
 interface AIResponse {
   response: string;
   action?: unknown;
@@ -17,32 +43,22 @@ export async function processMessage(
     url: string;
     userAgent: string;
     conversationId?: string;
-  }
+  },
+  auth: EdgeAuthContext
 ): Promise<AIResponse> {
   try {
     // First try the optimized ai-agent endpoint
     const apiUrl = buildSupabaseEdgeUrl('ai-agent-optimized');
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getSupabaseAnonKey()}`
-      },
-      body: JSON.stringify({ message, context }),
-    });
-    
+    const response = await fetch(apiUrl, buildEdgeRequestInit({ message, context }, auth));
+
     if (!response.ok) {
       console.warn(`Optimized AI agent failed with status: ${response.status}, falling back to process-message`);
       // Fall back to the original process-message function
       const fallbackUrl = buildSupabaseEdgeUrl('process-message');
-      const fallbackResponse = await fetch(fallbackUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getSupabaseAnonKey()}`,
-        },
-        body: JSON.stringify({ message, context }),
-      });
+      const fallbackResponse = await fetch(
+        fallbackUrl,
+        buildEdgeRequestInit({ message, context }, auth)
+      );
       
       if (!fallbackResponse.ok) {
         throw new Error(`HTTP error! status: ${fallbackResponse.status}`);
@@ -71,17 +87,10 @@ export async function processMessage(
 }
 
 // Function to get client details
-export async function getClientDetails(clientId: string): Promise<any> {
+export async function getClientDetails(clientId: string, auth: EdgeAuthContext): Promise<any> {
   try {
     const apiUrl = buildSupabaseEdgeUrl('get-client-details');
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getSupabaseAnonKey()}`,
-      },
-      body: JSON.stringify({ clientId }),
-    });
+    const response = await fetch(apiUrl, buildEdgeRequestInit({ clientId }, auth));
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -96,17 +105,10 @@ export async function getClientDetails(clientId: string): Promise<any> {
 }
 
 // Function to get therapist details
-export async function getTherapistDetails(therapistId: string): Promise<any> {
+export async function getTherapistDetails(therapistId: string, auth: EdgeAuthContext): Promise<any> {
   try {
     const apiUrl = buildSupabaseEdgeUrl('get-therapist-details');
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getSupabaseAnonKey()}`,
-      },
-      body: JSON.stringify({ therapistId }),
-    });
+    const response = await fetch(apiUrl, buildEdgeRequestInit({ therapistId }, auth));
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -121,17 +123,13 @@ export async function getTherapistDetails(therapistId: string): Promise<any> {
 }
 
 // Function to get authorization details
-export async function getAuthorizationDetails(authorizationId: string): Promise<any> {
+export async function getAuthorizationDetails(
+  authorizationId: string,
+  auth: EdgeAuthContext
+): Promise<any> {
   try {
     const apiUrl = buildSupabaseEdgeUrl('get-authorization-details');
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getSupabaseAnonKey()}`,
-      },
-      body: JSON.stringify({ authorizationId }),
-    });
+    const response = await fetch(apiUrl, buildEdgeRequestInit({ authorizationId }, auth));
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);

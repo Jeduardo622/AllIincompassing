@@ -69,11 +69,9 @@ const Clients = () => {
       };
 
       // Insert the new client
-      const { data, error } = await supabase
-        .from('clients')
-        .insert([parsedClient])
-        .select()
-        .single();
+      const { data, error } = await supabase.rpc('create_client', {
+        p_client_data: parsedClient,
+      });
 
       if (error) throw error;
       return data;

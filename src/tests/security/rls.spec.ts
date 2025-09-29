@@ -123,6 +123,7 @@ const createdUserSessionIds: string[] = [];
 const createdConversationIds: string[] = [];
 const createdSessionNoteTemplateIds: string[] = [];
 const createdAdminActionIds: string[] = [];
+const createdTherapistClientIds: string[] = [];
 
 let sessionCptEntryIdsByOrg: OrgRecordIds | null = null;
 let sessionCptModifierIdsByOrg: OrgRecordIds | null = null;
@@ -136,6 +137,7 @@ let sessionHoldIdsByOrg: OrgRecordIds | null = null;
 let conversationIdsByOrg: OrgRecordIds | null = null;
 let sessionNoteTemplateIdsByOrg: OrgRecordIds | null = null;
 let sessionTranscriptSegmentIdsByOrg: OrgRecordIds | null = null;
+let therapistRpcClientId: string | null = null;
 
 const userSessionIdsByUser = new Map<string, string>();
 
@@ -1066,6 +1068,10 @@ afterAll(async () => {
     await serviceClient.auth.admin.deleteUser(context.clientUserId);
   }
 
+  if (createdTherapistClientIds.length > 0) {
+    await serviceClient.from('clients').delete().in('id', createdTherapistClientIds);
+  }
+
   if (createdSessionHoldIds.length > 0) {
     await serviceClient.from('session_holds').delete().in('id', createdSessionHoldIds);
   }
@@ -1203,6 +1209,70 @@ describe('row level security for multi-tenant tables', () => {
 
       const affectedRows = Array.isArray(result.data) ? result.data.length : 0;
       expectRlsViolation(result.error, affectedRows);
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+
+  it('allows therapists to create clients within their organization via RPC', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    const uniqueEmail = `rpc-client-${Date.now()}@example.com`;
+
+    try {
+      const { data, error } = await supabaseOrgA.rpc('create_client', {
+        p_client_data: {
+          email: uniqueEmail,
+          first_name: 'RPC',
+          last_name: 'Client',
+          date_of_birth: '2016-06-15',
+          service_preference: ['aba'],
+          availability_hours: {
+            monday: { start: '08:00', end: '16:00' },
+          },
+        },
+      });
+
+      expect(error).toBeNull();
+      expect(data).not.toBeNull();
+      expect(data?.created_by).toBe(orgAContext.therapistId);
+      expect(data?.organization_id).toBe(orgAContext.organizationId);
+
+      if (data?.id) {
+        therapistRpcClientId = data.id;
+        createdTherapistClientIds.push(data.id);
+      }
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+
+  it('allows therapists to read clients they created without sessions', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    if (!therapistRpcClientId) {
+      console.log('⏭️  Skipping therapist RPC client read test - no client created.');
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const { data, error } = await supabaseOrgA
+        .from('clients')
+        .select('id, created_by')
+        .eq('id', therapistRpcClientId)
+        .maybeSingle();
+
+      expect(error).toBeNull();
+      expect(data?.id).toBe(therapistRpcClientId);
+      expect(data?.created_by).toBe(orgAContext.therapistId);
     } finally {
       await supabaseOrgA.auth.signOut();
     }

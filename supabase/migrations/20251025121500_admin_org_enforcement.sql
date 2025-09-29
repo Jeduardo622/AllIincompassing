@@ -124,6 +124,7 @@ DECLARE
   v_target_metadata JSONB;
   v_target_org UUID;
   v_admin_count INTEGER;
+  v_effective_org UUID;
 BEGIN
   SELECT id INTO v_admin_role_id
   FROM roles
@@ -201,7 +202,33 @@ BEGIN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'Organization context is required to add an admin';
       END IF;
 
-      PERFORM assign_admin_role(v_target_email, COALESCE(v_target_org, v_caller_org));
+      v_effective_org := COALESCE(v_target_org, v_caller_org);
+
+      PERFORM assign_admin_role(v_target_email, v_effective_org);
+
+      BEGIN
+        INSERT INTO admin_actions (
+          admin_user_id,
+          target_user_id,
+          organization_id,
+          action_type,
+          action_details
+        )
+        VALUES (
+          v_caller_id,
+          v_target_id,
+          v_effective_org,
+          'admin_role_added',
+          jsonb_build_object(
+            'operation', 'add',
+            'target_email', v_target_email,
+            'service_role', v_is_service_role
+          )
+        );
+      EXCEPTION
+        WHEN OTHERS THEN
+          RAISE WARNING 'Failed to log admin add action: %', SQLERRM;
+      END;
 
     WHEN 'remove' THEN
       IF NOT v_is_service_role THEN
@@ -224,6 +251,32 @@ BEGIN
       UPDATE auth.users
       SET raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) - 'is_admin'
       WHERE id = v_target_id;
+
+      v_effective_org := COALESCE(v_target_org, v_caller_org);
+
+      BEGIN
+        INSERT INTO admin_actions (
+          admin_user_id,
+          target_user_id,
+          organization_id,
+          action_type,
+          action_details
+        )
+        VALUES (
+          v_caller_id,
+          v_target_id,
+          v_effective_org,
+          'admin_role_removed',
+          jsonb_build_object(
+            'operation', 'remove',
+            'target_email', v_target_email,
+            'service_role', v_is_service_role
+          )
+        );
+      EXCEPTION
+        WHEN OTHERS THEN
+          RAISE WARNING 'Failed to log admin remove action: %', SQLERRM;
+      END;
 
     ELSE
       RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = format('Invalid operation: %s', operation);

@@ -13,7 +13,7 @@ import { supabase } from '../lib/supabase';
 import type { Client } from '../types';
 import ClientModal from '../components/ClientModal';
 import CSVImport from '../components/CSVImport';
-import { prepareFormData } from '../lib/validation';
+import { prepareClientPayload, updateClientRecord } from '../lib/clientPayload';
 import { showSuccess, showError } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
 import { toError } from '../lib/logger/normalizeError';
@@ -58,15 +58,7 @@ const Clients = () => {
   const createClientMutation = useMutation({
     mutationFn: async (newClient: Partial<Client>) => {
       // Format data before submission
-      const formattedClient = prepareFormData(newClient);
-      
-      // Prepare client data with proper formatting
-      const parsedClient = {
-        ...formattedClient,
-        service_preference: formattedClient.service_preference,
-        insurance_info: formattedClient.insurance_info || {},
-        full_name: `${formattedClient.first_name} ${formattedClient.middle_name || ''} ${formattedClient.last_name}`.trim()
-      };
+      const parsedClient = prepareClientPayload(newClient, { enforceFullName: true });
 
       // Insert the new client
       const { data, error } = await supabase.rpc('create_client', {
@@ -90,23 +82,11 @@ const Clients = () => {
   const updateClientMutation = useMutation({
     mutationFn: async (updatedClient: Partial<Client>) => {
       // Prepare client data with proper formatting
-      const parsedClient = {
-        ...updatedClient,
-        service_preference: updatedClient.service_preference,
-        insurance_info: updatedClient.insurance_info || {},
-        full_name: `${updatedClient.first_name} ${updatedClient.middle_name || ''} ${updatedClient.last_name}`.trim()
-      };
+      if (!selectedClient?.id) {
+        throw new Error('Missing client identifier for update');
+      }
 
-      // Update the client
-      const { data, error } = await supabase
-        .from('clients')
-        .update(parsedClient)
-        .eq('id', selectedClient?.id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return updateClientRecord(supabase, selectedClient.id, updatedClient);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });

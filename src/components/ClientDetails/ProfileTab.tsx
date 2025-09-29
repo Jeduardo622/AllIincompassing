@@ -6,6 +6,7 @@ import {
   FileText
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { updateClientRecord } from '../../lib/clientPayload';
 import { showSuccess, showError } from '../../lib/toast';
 import ClientModal from '../ClientModal';
 import AddGeneralNoteModal from '../AddGeneralNoteModal';
@@ -65,15 +66,7 @@ export default function ProfileTab({ client }: ProfileTabProps) {
   
   const updateClientMutation = useMutation({
     mutationFn: async (updatedClient: Partial<ProfileTabProps['client']>) => {
-      const { data, error } = await supabase
-        .from('clients')
-        .update(updatedClient)
-        .eq('id', client.id)
-        .select()
-        .single();
-        
-      if (error) throw error;
-      return data;
+      return updateClientRecord(supabase, client.id, updatedClient);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['client', client.id] });

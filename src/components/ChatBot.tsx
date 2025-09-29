@@ -15,6 +15,7 @@ import { cancelSessions } from "../lib/sessionCancellation";
 import { showSuccess, showError } from "../lib/toast";
 import { errorTracker } from "../lib/errorTracking";
 import { logger } from "../lib/logger/logger";
+import { useAuth } from "../lib/authContext";
 // import type { Session, Client, Therapist, Authorization, AuthorizationService } from "../types";
 
 interface Message {
@@ -39,6 +40,7 @@ export default function ChatBot() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { session } = useAuth();
 
   // Load conversation ID from localStorage on component mount
   useEffect(() => {
@@ -75,25 +77,48 @@ export default function ChatBot() {
       },
     ]);
 
-    // Add placeholder for assistant response
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "assistant",
-        content: "Thinking...",
-        status: "sending",
-      },
-    ]);
-
-    setIsLoading(true);
-
     try {
+      if (!session?.access_token) {
+        const authError = new Error('Active session is required to call edge functions');
+        errorTracker.trackAIError(authError, {
+          functionCalled: "ChatBot_processMessage",
+          errorType: "auth_error",
+        });
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "Please sign in to use the assistant.",
+            status: "error",
+          },
+        ]);
+        setError("Authentication required");
+        showError("Please sign in to use the assistant.");
+        return;
+      }
+
+      // Add placeholder for assistant response
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Thinking...",
+          status: "sending",
+        },
+      ]);
+
+      setIsLoading(true);
+
       // Process the message
-      const response = await processMessage(userMessage, {
-        url: window.location.href,
-        userAgent: navigator.userAgent,
-        conversationId: conversationId || undefined,
-      });
+      const response = await processMessage(
+        userMessage,
+        {
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          conversationId: conversationId || undefined,
+        },
+        { accessToken: session.access_token }
+      );
 
       // Store the conversation ID for future messages
       if (response.conversationId) {

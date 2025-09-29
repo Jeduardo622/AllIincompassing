@@ -14,7 +14,12 @@ const resolveSupabaseConfig = (): { supabaseUrl: string; supabaseAnonKey: string
 
 // Ensure runtime config fetched before creating client (supports production where
 // the config is provided by Netlify Function at /api/runtime-config)
-await ensureRuntimeSupabaseConfig();
+try {
+  await ensureRuntimeSupabaseConfig();
+} catch (error) {
+  const message = error instanceof Error ? error.message : 'Unknown runtime configuration error';
+  throw new Error(`[Supabase] Failed to initialise client: ${message}`);
+}
 const { supabaseUrl, supabaseAnonKey } = resolveSupabaseConfig();
 
 // Browser singleton client. Typed with generated Database.

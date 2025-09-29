@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import TherapistOnboarding from '../components/TherapistOnboarding';
+import { TherapistOnboarding } from '../components/TherapistOnboarding';
 
 export default function TherapistOnboardingPage() {
   const navigate = useNavigate();

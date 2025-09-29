@@ -273,6 +273,7 @@ const createAdminFixture = async (organizationId: string): Promise<AdminContext>
 
   const assignResult = await serviceClient.rpc('assign_admin_role', {
     user_email: email,
+    organization_id: organizationId,
   });
 
   if (assignResult.error) {
@@ -891,6 +892,71 @@ beforeAll(async () => {
     companySettingsId = insertResult.data.id;
     originalCompanyName = insertResult.data.company_name;
   }
+});
+
+describe('admin organization scoping', () => {
+  it('prevents admins from assigning roles across organizations', async () => {
+    if (!runTests || !adminContext || !otherAdminContext) {
+      console.log('⏭️  Skipping admin scoping test - setup incomplete.');
+      return;
+    }
+
+    const adminClient = await signInAdmin(adminContext);
+    try {
+      const { error } = await adminClient.rpc('assign_admin_role', {
+        user_email: otherAdminContext.email,
+        organization_id: otherAdminContext.organizationId,
+      });
+
+      expect(error).toBeTruthy();
+      expect(error?.message.toLowerCase()).toMatch(/organization/);
+    } finally {
+      await adminClient.auth.signOut();
+    }
+  });
+
+  it('prevents admins from removing admin users in other organizations', async () => {
+    if (!runTests || !adminContext || !otherAdminContext) {
+      console.log('⏭️  Skipping admin scoping test - setup incomplete.');
+      return;
+    }
+
+    const adminClient = await signInAdmin(adminContext);
+    try {
+      const { error } = await adminClient.rpc('manage_admin_users', {
+        operation: 'remove',
+        target_user_id: otherAdminContext.userId,
+      });
+
+      expect(error).toBeTruthy();
+      expect(error?.message.toLowerCase()).toMatch(/organization/);
+    } finally {
+      await adminClient.auth.signOut();
+    }
+  });
+
+  it('allows admins with organization metadata to invoke assign-therapist-user', async () => {
+    if (!runTests || !adminContext || !orgAContext) {
+      console.log('⏭️  Skipping edge function test - setup incomplete.');
+      return;
+    }
+
+    const adminClient = await signInAdmin(adminContext);
+    try {
+      const { data, error } = await adminClient.functions.invoke('assign-therapist-user', {
+        body: {
+          userId: orgAContext.clientUserId,
+          therapistId: orgAContext.therapistId,
+        },
+      });
+
+      expect(error).toBeNull();
+      expect(data?.success).toBe(true);
+      expect(data?.data?.therapistId).toBe(orgAContext.therapistId);
+    } finally {
+      await adminClient.auth.signOut();
+    }
+  });
 });
 
 describe('telemetry tables enforce admin-only visibility', () => {

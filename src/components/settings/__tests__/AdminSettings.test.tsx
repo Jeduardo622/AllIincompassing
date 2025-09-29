@@ -28,6 +28,8 @@ const defaultRpcImplementation = rpcMock.getMockImplementation();
 const fallbackRpc = defaultRpcImplementation
   ?? (async (_functionName: string, _params?: Record<string, unknown>) => ({ data: null, error: null }));
 
+let confirmSpy: ReturnType<typeof vi.spyOn> | null = null;
+
 const mockAdminUser = {
   id: 'admin-id',
   user_id: 'user-123',
@@ -63,12 +65,18 @@ describe('AdminSettings logging', () => {
     } as unknown as ReturnType<typeof useAuth>;
     vi.mocked(useAuth).mockReturnValue(authStub);
     rpcMock.mockClear();
+    confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
       if (functionName === 'get_admin_users') {
         expect(params).toMatchObject({ organization_id: '11111111-1111-1111-1111-111111111111' });
         return { data: [mockAdminUser], error: null };
       }
       if (functionName === 'manage_admin_users') {
+        expect(params).toMatchObject({
+          operation: 'remove',
+          target_user_id: mockAdminUser.user_id
+        });
         return { data: null, error: new Error('failed to remove admin') };
       }
       if (defaultRpcImplementation) {
@@ -82,6 +90,8 @@ describe('AdminSettings logging', () => {
 
   afterEach(() => {
     rpcMock.mockImplementation(defaultRpcImplementation ?? fallbackRpc);
+    confirmSpy?.mockRestore();
+    confirmSpy = null;
   });
 
   it('logs errors when admin removal fails', async () => {
@@ -99,6 +109,13 @@ describe('AdminSettings logging', () => {
           && options?.context?.operation === 'removeAdminRpc'
         )
       ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(rpcMock).toHaveBeenCalledWith(
+        'manage_admin_users',
+        expect.objectContaining({ operation: 'remove', target_user_id: mockAdminUser.user_id })
+      );
     });
   });
 });

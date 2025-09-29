@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { X } from 'lucide-react';
 import type { Therapist } from '../types';
 import AvailabilityEditor from './AvailabilityEditor';
-import { showError } from '../lib/toast';
 
 interface TherapistModalProps {
   isOpen: boolean;
@@ -12,13 +13,34 @@ interface TherapistModalProps {
   therapist?: Therapist;
 }
 
-export default function TherapistModal({
+const therapistModalSchema = z.object({
+  first_name: z.string().trim().min(1, 'First name is required'),
+  last_name: z.string().trim().min(1, 'Last name is required'),
+  email: z.string().trim().min(1, 'Email is required').email('Enter a valid email address'),
+  license_number: z.string().trim().min(1, 'License number is required'),
+}).passthrough();
+
+type TherapistModalFormValues = Partial<Therapist> & {
+  first_name: string;
+  last_name: string;
+  email: string;
+  license_number: string;
+};
+
+export function TherapistModal({
   isOpen,
   onClose,
   onSubmit,
   therapist,
 }: TherapistModalProps) {
-  const { register, handleSubmit, control, formState: { errors, isSubmitting } } = useForm({
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors, isSubmitting },
+    setFocus,
+  } = useForm<TherapistModalFormValues>({
+    resolver: zodResolver(therapistModalSchema),
     defaultValues: {
       email: therapist?.email || '',
       first_name: therapist?.first_name || '',
@@ -56,33 +78,31 @@ export default function TherapistModal({
       rbt_number: therapist?.rbt_number || '',
       bcba_number: therapist?.bcba_number || '',
       preferred_areas: Array.isArray(therapist?.preferred_areas) ? therapist.preferred_areas : [],
+      license_number: therapist?.license_number || '',
     },
   });
 
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const orderedFields: (keyof TherapistModalFormValues)[] = ['first_name', 'last_name', 'email', 'license_number'];
+    const fieldWithError = orderedFields.find((field) => errors[field]);
+
+    if (fieldWithError) {
+      setFocus(fieldWithError);
+    }
+  }, [errors, isOpen, setFocus]);
+
   if (!isOpen) return null;
 
-  const handleFormSubmit = async (data: Partial<Therapist>) => {
-    // Validate required fields
-    if (!data.first_name?.trim()) {
-      showError('First name is required');
-      return;
-    }
-    
-    if (!data.last_name?.trim()) {
-      showError('Last name is required');
-      return;
-    }
-    
-    if (!data.email?.trim()) {
-      showError('Email is required');
-      return;
-    }
-    
+  const handleFormSubmit = async (data: TherapistModalFormValues) => {
     // Ensure array fields are always arrays, not null
     data.service_type = data.service_type || [];
     data.specialties = data.specialties || [];
     data.preferred_areas = data.preferred_areas || [];
-    
+
     await onSubmit(data);
   };
 
@@ -111,12 +131,20 @@ export default function TherapistModal({
                   First Name
                 </label>
                 <input
+                  id="therapist-first-name"
                   type="text"
+                  aria-invalid={errors.first_name ? 'true' : 'false'}
+                  aria-describedby={errors.first_name ? 'therapist-first-name-error' : undefined}
                   {...register('first_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.first_name && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.first_name.message}</p>
+                  <p
+                    id="therapist-first-name-error"
+                    className="mt-1 text-sm text-red-600 dark:text-red-400"
+                  >
+                    {errors.first_name.message}
+                  </p>
                 )}
               </div>
 
@@ -136,12 +164,20 @@ export default function TherapistModal({
                   Last Name
                 </label>
                 <input
+                  id="therapist-last-name"
                   type="text"
+                  aria-invalid={errors.last_name ? 'true' : 'false'}
+                  aria-describedby={errors.last_name ? 'therapist-last-name-error' : undefined}
                   {...register('last_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.last_name && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.last_name.message}</p>
+                  <p
+                    id="therapist-last-name-error"
+                    className="mt-1 text-sm text-red-600 dark:text-red-400"
+                  >
+                    {errors.last_name.message}
+                  </p>
                 )}
               </div>
             </div>
@@ -152,12 +188,20 @@ export default function TherapistModal({
                   Email
                 </label>
                 <input
+                  id="therapist-email"
                   type="text"
+                  aria-invalid={errors.email ? 'true' : 'false'}
+                  aria-describedby={errors.email ? 'therapist-email-error' : undefined}
                   {...register('email')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
                 {errors.email && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.email.message}</p>
+                  <p
+                    id="therapist-email-error"
+                    className="mt-1 text-sm text-red-600 dark:text-red-400"
+                  >
+                    {errors.email.message}
+                  </p>
                 )}
               </div>
 
@@ -365,6 +409,28 @@ export default function TherapistModal({
                   {...register('bcba_number')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  License Number
+                </label>
+                <input
+                  id="therapist-license-number"
+                  type="text"
+                  aria-invalid={errors.license_number ? 'true' : 'false'}
+                  aria-describedby={errors.license_number ? 'therapist-license-number-error' : undefined}
+                  {...register('license_number')}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                />
+                {errors.license_number && (
+                  <p
+                    id="therapist-license-number-error"
+                    className="mt-1 text-sm text-red-600 dark:text-red-400"
+                  >
+                    {errors.license_number.message}
+                  </p>
+                )}
               </div>
 
               <div>

@@ -1,6 +1,6 @@
 import { createProtectedRoute, corsHeaders, logApiAccess, RouteOptions } from "../_shared/auth-middleware.ts";
 import { createRequestClient } from "../_shared/database.ts";
-import { assertAdmin } from "../_shared/auth.ts";
+import { assertAdminOrSuperAdmin } from "../_shared/auth.ts";
 
 interface AdminUsersError extends Error {
   status?: number;
@@ -21,7 +21,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
 
   try {
     const adminClient = createRequestClient(req);
-    await assertAdmin(adminClient);
+    await assertAdminOrSuperAdmin(adminClient);
 
     const url = new URL(req.url);
     const organizationId = url.searchParams.get("organization_id")?.trim();

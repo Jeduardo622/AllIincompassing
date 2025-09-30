@@ -211,31 +211,61 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   user_id UUID;
+  actor_role TEXT;
+  actor_id UUID;
 BEGIN
+  actor_role := current_setting('request.jwt.claim.role', true);
+
+  IF actor_role IS NULL THEN
+    RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'create_super_admin requires a role claim';
+  ELSIF actor_role <> 'super_admin' THEN
+    RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'Only super_admins may call create_super_admin';
+  END IF;
+
+  actor_id := NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid;
+
   -- Get user ID by email
   SELECT au.id INTO user_id
   FROM auth.users au
   WHERE au.email = user_email;
-  
+
   IF user_id IS NULL THEN
     RAISE EXCEPTION 'User with email % not found', user_email;
   END IF;
-  
+
   -- Update user role to super_admin
   UPDATE profiles
-  SET role = 'super_admin', updated_at = NOW()
+  SET role = 'super_admin', updated_at = TIMEZONE('utc'::text, NOW())
   WHERE id = user_id;
-  
+
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Profile for user % not found', user_email;
   END IF;
-  
+
+  INSERT INTO admin_actions (
+    action_type,
+    admin_user_id,
+    target_user_id,
+    action_details
+  )
+  VALUES (
+    'super_admin_promotion',
+    actor_id,
+    user_id,
+    jsonb_build_object(
+      'reason', format('Manual promotion of %s to super_admin via create_super_admin', user_email),
+      'performed_at', TIMEZONE('utc'::text, NOW())
+    )
+  );
+
   RAISE NOTICE 'User % promoted to super_admin', user_email;
 END;
 $$;
 
--- Grant execute permission
-GRANT EXECUTE ON FUNCTION create_super_admin(TEXT) TO authenticated;
+-- Restrict execute permission to trusted roles only
+REVOKE EXECUTE ON FUNCTION create_super_admin(TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION create_super_admin(TEXT) FROM authenticated;
+GRANT EXECUTE ON FUNCTION create_super_admin(TEXT) TO service_role;
 
 -- ============================================================================
 -- ENSURE EXISTING USERS HAVE PROFILES

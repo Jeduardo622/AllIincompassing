@@ -153,6 +153,12 @@ export async function handleGetClientDetails({
       return jsonResponse(404, { error: "Client not found or access denied" });
     }
 
+    const isArchived = Boolean((data as { deleted_at?: string | null }).deleted_at);
+    if (isArchived && !isAdmin) {
+      logApiAccess("POST", "/get-client-details", userContext, 404);
+      return jsonResponse(404, { error: "Client not found or archived" });
+    }
+
     logApiAccess("POST", "/get-client-details", userContext, 200);
     return jsonResponse(200, { client: data });
   } catch (error) {

@@ -17,7 +17,10 @@ Deno.serve(async (req: Request) => {
     const dropdownData: Partial<DropdownData> = {};
 
     if (dataTypes.includes('therapists') || dataTypes.includes('all')) {
-      let therapistQuery = db.from('therapists').select('id, full_name, email, status, specialties');
+      let therapistQuery = db
+        .from('therapists')
+        .select('id, full_name, email, status, specialties')
+        .is('deleted_at', null);
       if (!includeInactive) therapistQuery = therapistQuery.eq('status', 'active');
       const { data: therapists, error: therapistError } = await therapistQuery.order('full_name');
       if (therapistError) throw therapistError;
@@ -25,7 +28,10 @@ Deno.serve(async (req: Request) => {
     }
 
     if (dataTypes.includes('clients') || dataTypes.includes('all')) {
-      let clientQuery = db.from('clients').select('id, full_name, email, status');
+      let clientQuery = db
+        .from('clients')
+        .select('id, full_name, email, status')
+        .is('deleted_at', null);
       if (!includeInactive) clientQuery = clientQuery.eq('status', 'active');
       const { data: clients, error: clientError } = await clientQuery.order('full_name');
       if (clientError) throw clientError;

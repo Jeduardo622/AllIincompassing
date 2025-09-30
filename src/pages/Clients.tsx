@@ -2,12 +2,24 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { useNavigate, Link } from 'react-router-dom';
-import { 
-  Search, Trash2, User, Mail, Activity, MapPin, Calendar, Heart,
-  Filter, ChevronUp, ChevronDown, Settings, Star,
+import {
+  Search,
+  Archive,
+  ArchiveRestore,
+  User,
+  Mail,
+  Activity,
+  MapPin,
+  Calendar,
+  Heart,
+  Filter,
+  ChevronUp,
+  ChevronDown,
+  Settings,
+  Star,
   UserPlus,
   FileUp,
-  Clock
+  Clock,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Client } from '../types';
@@ -28,6 +40,7 @@ const Clients = () => {
   const [filterUnits, setFilterUnits] = useState<string>('all');
   const [sortColumn, setSortColumn] = useState<string>('full_name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [archivedFilter, setArchivedFilter] = useState<'all' | 'active' | 'archived'>('active');
   
   // Add missing useMemo import
   const { useMemo } = React;
@@ -99,18 +112,20 @@ const Clients = () => {
     },
   });
 
-  const deleteClientMutation = useMutation({
-    mutationFn: async (clientId: string) => {
-      const { error } = await supabase
-        .from('clients')
-        .delete()
-        .eq('id', clientId);
+  const archiveClientMutation = useMutation({
+    mutationFn: async ({ clientId, restore }: { clientId: string; restore: boolean }) => {
+      const { data, error } = await supabase.rpc('set_client_archive_state', {
+        p_client_id: clientId,
+        p_restore: restore,
+      });
 
       if (error) throw error;
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      const restoreAction = Boolean((variables as { restore?: boolean } | undefined)?.restore);
       queryClient.invalidateQueries({ queryKey: ['clients'] });
-      showSuccess('Client deleted successfully');
+      showSuccess(restoreAction ? 'Client restored successfully' : 'Client archived successfully');
     },
     onError: (error) => {
       showError(error);
@@ -130,9 +145,15 @@ const Clients = () => {
     navigate(`/clients/${client.id}`);
   };
 
-  const handleDeleteClient = async (clientId: string) => {
-    if (window.confirm('Are you sure you want to delete this client?')) {
-      await deleteClientMutation.mutateAsync(clientId);
+  const handleArchiveClient = async (client: Client) => {
+    if (window.confirm(`Are you sure you want to archive ${client.full_name || 'this client'}?`)) {
+      await archiveClientMutation.mutateAsync({ clientId: client.id, restore: false });
+    }
+  };
+
+  const handleRestoreClient = async (client: Client) => {
+    if (window.confirm(`Restore ${client.full_name || 'this client'}?`)) {
+      await archiveClientMutation.mutateAsync({ clientId: client.id, restore: true });
     }
   };
 
@@ -229,8 +250,14 @@ const Clients = () => {
     } else if (filterUnits === 'low') {
       matchesUnits = totalUnits < 10;
     }
-    
-    return matchesSearch && matchesEmail && matchesService && matchesUnits;
+
+    const matchesArchive = archivedFilter === 'all'
+      ? true
+      : archivedFilter === 'archived'
+        ? Boolean(client.deleted_at)
+        : !client.deleted_at;
+
+    return matchesSearch && matchesEmail && matchesService && matchesUnits && matchesArchive;
   });
 
   // Sort the filtered clients
@@ -296,7 +323,7 @@ const Clients = () => {
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-dark dark:text-gray-200"
               />
             </div>
-            <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <Filter className="w-5 h-5 text-gray-400" />
                 <Mail className="w-5 h-5 text-gray-400" />
@@ -337,6 +364,19 @@ const Clients = () => {
                   <option value="high">High (&gt;20)</option>
                   <option value="medium">Medium (10-20)</option>
                   <option value="low">Low (&lt;10)</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Archive className="w-5 h-5 text-gray-400" />
+                <select
+                  value={archivedFilter}
+                  onChange={(e) => setArchivedFilter(e.target.value as 'all' | 'active' | 'archived')}
+                  className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
+                >
+                  <option value="active">Active</option>
+                  <option value="archived">Archived</option>
+                  <option value="all">All</option>
                 </select>
               </div>
             </div>
@@ -399,12 +439,17 @@ const Clients = () => {
                       <div className="flex items-center">
                         <User className="w-8 h-8 text-gray-400 bg-gray-100 dark:bg-gray-600 rounded-full p-1" />
                         <div className="ml-4">
-                          <Link 
+                          <Link
                             to={`/clients/${client.id}`}
                             className="text-sm font-medium text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400"
                           >
                             {client.full_name}
                           </Link>
+                          {client.deleted_at && (
+                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                              Archived
+                            </span>
+                          )}
                           <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
                             <Calendar className="w-3 h-3 mr-1" />
                             {client.date_of_birth ? format(parseISO(client.date_of_birth), 'MMM d, yyyy') : 'N/A'}
@@ -470,13 +515,23 @@ const Clients = () => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-3">
-                        <button
-                          onClick={() => handleDeleteClient(client.id)}
-                          className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
-                          title="Delete client"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {client.deleted_at ? (
+                          <button
+                            onClick={() => handleRestoreClient(client)}
+                            className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300"
+                            title="Restore client"
+                          >
+                            <ArchiveRestore className="w-4 h-4" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleArchiveClient(client)}
+                            className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
+                            title="Archive client"
+                          >
+                            <Archive className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -43,6 +43,15 @@ const mockTherapists = [
     service_type: 'In clinic',
     specialties: ['ABA Therapy'],
   },
+  {
+    id: 'therapist-3',
+    full_name: 'Archived Therapist',
+    email: 'archived@example.com',
+    status: 'inactive',
+    service_type: 'Telehealth',
+    specialties: ['Speech Therapy'],
+    deleted_at: '2025-01-01T00:00:00.000Z',
+  },
 ];
 
 beforeEach(() => {
@@ -98,6 +107,19 @@ describe('Therapists page filtering', () => {
       invalidateQueries.mockClear();
       options.onSuccess?.();
       expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['therapists'] });
+    });
+  });
+
+  it('shows only archived therapists when the archived filter is selected', async () => {
+    renderWithProviders(<Therapists />);
+
+    const archivedSelect = screen.getAllByRole('combobox')[3];
+    await userEvent.selectOptions(archivedSelect, 'archived');
+
+    await waitFor(() => {
+      expect(screen.getByText('Archived Therapist')).toBeInTheDocument();
+      expect(screen.queryByText('Active Therapist')).not.toBeInTheDocument();
+      expect(screen.queryByText('Inactive Therapist')).not.toBeInTheDocument();
     });
   });
 });

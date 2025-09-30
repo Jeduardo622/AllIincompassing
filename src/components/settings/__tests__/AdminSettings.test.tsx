@@ -181,3 +181,86 @@ describe('AdminSettings logging', () => {
     }
   });
 });
+
+describe('AdminSettings accessibility', () => {
+  beforeEach(() => {
+    const authStub = {
+      user: {
+        user_metadata: {
+          organization_id: '22222222-2222-2222-2222-222222222222'
+        }
+      },
+      profile: null,
+      session: null,
+      loading: false,
+      signIn: vi.fn(),
+      signUp: vi.fn(),
+      signOut: vi.fn(),
+      resetPassword: vi.fn(),
+      updateProfile: vi.fn(),
+      hasRole: vi.fn(() => true),
+      hasAnyRole: vi.fn(() => true),
+      isAdmin: vi.fn(() => true),
+      isSuperAdmin: vi.fn(() => false)
+    } as unknown as ReturnType<typeof useAuth>;
+
+    vi.mocked(useAuth).mockReturnValue(authStub);
+    rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
+      if (functionName === 'get_admin_users') {
+        return { data: [], error: null };
+      }
+
+      if (defaultRpcImplementation) {
+        return defaultRpcImplementation(functionName, params as never);
+      }
+
+      return fallbackRpc(functionName, params);
+    });
+  });
+
+  afterEach(() => {
+    rpcMock.mockImplementation(defaultRpcImplementation ?? fallbackRpc);
+  });
+
+  it('traps focus within the add admin modal', async () => {
+    renderWithProviders(<AdminSettings />);
+
+    const openModalButton = await screen.findByRole('button', { name: 'Add Admin' });
+    await userEvent.click(openModalButton);
+
+    const modal = await screen.findByRole('dialog', { name: 'Add New Admin' });
+    const emailInput = within(modal).getByLabelText('Email*');
+
+    await waitFor(() => {
+      expect(emailInput).toHaveFocus();
+    });
+
+    await userEvent.tab({ shift: true });
+
+    const submitButton = within(modal).getByRole('button', { name: 'Add Admin' });
+    expect(submitButton).toHaveFocus();
+
+    await userEvent.tab();
+    expect(emailInput).toHaveFocus();
+  });
+
+  it('closes the modal with Escape and restores trigger focus', async () => {
+    renderWithProviders(<AdminSettings />);
+
+    const openModalButton = await screen.findByRole('button', { name: 'Add Admin' });
+    openModalButton.focus();
+
+    await userEvent.click(openModalButton);
+
+    const modal = await screen.findByRole('dialog', { name: 'Add New Admin' });
+    expect(modal).toHaveAttribute('aria-modal', 'true');
+
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Add New Admin' })).not.toBeInTheDocument();
+    });
+
+    expect(openModalButton).toHaveFocus();
+  });
+});

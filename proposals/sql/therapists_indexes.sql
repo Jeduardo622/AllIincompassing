@@ -1,0 +1,7 @@
+-- Therapists domain index proposals (documentation only)
+-- 1. CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_org_start_time ON public.sessions (organization_id, start_time DESC);
+--    Supports `/get-schedule-data-batch` date filtering with org scoping.
+-- 2. CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_session_holds_hold_key ON public.session_holds (hold_key);
+--    Accelerates idempotency checks in `sessions-confirm`.
+-- 3. CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_authorizations_client_status ON public.authorizations (client_id, status);
+--    Optimizes joins supplying `authorization.sessions_remaining` in optimized queries.

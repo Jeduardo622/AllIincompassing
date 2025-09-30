@@ -1,0 +1,7 @@
+-- Clients domain index proposals (documentation only; do not execute automatically)
+-- 1. CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_clients_org_status ON public.clients (organization_id, status);
+--    Justification: speeds filtered roster queries in `src/pages/Clients.tsx` and RLS checks.
+-- 2. CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_admin_invite_tokens_email_org ON public.admin_invite_tokens (email, organization_id);
+--    Justification: used during `/admin/invite` duplicate checks before issuing onboarding links.
+-- 3. CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_profiles_preferences_gin ON public.profiles USING gin (preferences jsonb_path_ops);
+--    Justification: supports preference lookups for client-specific feature toggles.

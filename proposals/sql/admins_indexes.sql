@@ -1,0 +1,7 @@
+-- Admin domain index proposals (documentation only)
+-- 1. CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_admin_actions_org_created_at ON public.admin_actions (organization_id, created_at DESC);
+--    Supports audit queries surfaced in leadership dashboards.
+-- 2. CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_authorizations_end_date_status ON public.authorizations (end_date, status);
+--    Accelerates expiring authorization alerts in `/get-dashboard-data`.
+-- 3. CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_billing_records_created_at ON public.billing_records (created_at DESC);
+--    Enables faster revenue calculations for dashboard KPIs.

@@ -1,0 +1,5 @@
+-- Therapists domain RLS adjustments (outline only)
+-- * Enforce organization_id scoping on public.sessions SELECT/UPDATE so therapists only see linked org sessions.
+-- * Add USING clause to public.session_holds policy to require hold.owner_id = auth.uid() OR role in ('admin','super_admin').
+-- * Limit authorizations exposure by creating policy that joins clients.organization_id with app.current_user_organization_id().
+-- * Ensure dropdown data queries leverage security definer RPCs instead of direct table reads from the browser.

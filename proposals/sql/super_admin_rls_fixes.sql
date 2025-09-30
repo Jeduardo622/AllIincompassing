@@ -1,0 +1,5 @@
+-- Super admin domain RLS & governance fixes (outline only)
+-- * Add dedicated policy allowing super admins to bypass organization filters while logging every access (policy with security definer function writing to admin_actions).
+-- * Create policy on ai_conversations limiting SELECT to automation service roles; redact transcripts for standard admins.
+-- * Require organization_id consistency when super admins use assign-therapist-user by adding CHECK constraint and trigger to validate metadata.
+-- * Review auth schema so `process-message` and AI helpers execute under restricted service role rather than public anon access.

@@ -2153,7 +2153,7 @@ export type Database = {
         }[]
       }
       assign_admin_role: {
-        Args: { user_email: string; organization_id: string }
+        Args: { user_email: string; organization_id: string; reason?: string | null }
         Returns: undefined
       }
       assign_therapist_role: {

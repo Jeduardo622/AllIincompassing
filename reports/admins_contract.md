@@ -1,15 +1,14 @@
-# Admins Request/Response Contract
+# Admins API Contracts & Validation
 
-| Endpoint | Method | Required Payload / Params | Optional Controls | Response Shape |
+| Route | Request Schema | Response Schema | Status Codes | Validation Gaps |
 | --- | --- | --- | --- | --- |
-| `/admin/users` | GET | `organization_id` query param (UUID). | `page`, `limit`, `search`. | `{ users: User[], pagination, filters }` or `{ error }` with 4xx/5xx. |
-| `/admin/users/:id/roles` | PATCH | JSON `{ role: 'client'|'therapist'|'admin'|'super_admin' }`. | `is_active` boolean. | `{ message, user }` or `{ error }`; 403 when attempting to demote self. |
-| `/admin/invite` | POST | `{ email, organizationId?, expiresInHours?, role? }`. | None beyond defaults. | `{ inviteUrl, expiresAt, deliveryStatus }` (implicit via success message) or structured error. |
-| `/dashboard/data` | GET | Headers only. | `start_date`, `end_date` query parameters. | `{ success: true, data: DashboardData, parameters, lastUpdated, requestId }` or error envelope. |
-| `/get-authorization-details` | POST | `{ authorizationId }`. | None. | `{ authorization }` or `{ error }` with status 400 on missing ID. |
-| `/generate-report` | POST | `{ reportType, startDate, endDate }`. | `therapistId`, `clientId`, `status`. | `{ report: { rows, metadata } }` or structured error with 400/403/500. |
+| `/admin/users` | GET requires query `organization_id` (UUID), optional `page`, `limit`, `search`. | `{ users: [], pagination: { currentPage, limit, totalPages, totalCount, hasNextPage, hasPreviousPage }, filters: { role, active, search } }` or `{ error }`. | 200 success, 400 missing/invalid org ID, 403 from RPC, 405 invalid method, 500 server error. | No server-side pagination of RPC result; trusts RPC to enforce org scoping and to reject non-admins. |【F:supabase/functions/admin-users/index.ts†L20-L94】|
+| `/admin/users/:id/roles` | PATCH body `{ role: 'client'|'therapist'|'admin'|'super_admin', is_active?: boolean }`. | `{ message: string, user: {...} }` or `{ error }`. | 200 success, 400 invalid ID/payload, 403 self-demotion/deactivation, 404 missing user, 405 method, 500 failure. | Path parsing uses naive string split; no explicit organization check other than metadata heuristics; relies on Supabase update success. |【F:supabase/functions/admin-users-roles/index.ts†L8-L72】|
+| `/admin/invite` | POST body `{ email, organizationId?, expiresInHours?, role? }`. | `{ success: true, inviteUrl, expiresAt }` or `{ error }`. | 200 success, 204 OPTIONS, 400 invalid body, 403 unauthorized, 409 duplicate invite, 500 email failure. | Accepts optional `organizationId`; defaults to actor’s metadata but does not verify they belong; email send failure returns generic message. |【F:supabase/functions/admin-invite/index.ts†L17-L120】|
+| `/generate-report` | POST body `{ reportType: string, organizationId?, dateRange?: { start: string; end: string }, delivery?: { mode } }`. | `{ requestId, status: 'queued', exportPath?, message }` or `{ error }`. | 202/200 queued, 400 invalid payload, 403 unauthorized, 500 failure. | Schema uses manual conditionals; does not restrict `reportType` to known values; may queue expensive jobs arbitrarily. |【F:supabase/functions/generate-report/index.ts†L22-L120】|
+| `/get-dashboard-data` | POST body `{ organizationId: string, dateRange?: {...}, filters?: {...} }`. | `{ success: true, data: { metrics... }, errors?: [] }` or `{ success: false, error }`. | 200 success, 400 validation, 403 unauthorized, 500 failure. | Accepts `organizationId` directly; no cross-check that actor matches; aggregated metrics may include PHI counts. |【F:supabase/functions/get-dashboard-data/index.ts†L15-L120】|
 
 ## Security Risks
-- `/admin/invite` surfaces detailed zod validation errors; leaking schema keys is acceptable, but ensure error payloads never echo normalized email or organization IDs in plaintext logs.
-- `/dashboard/data` calculates attendance/utilization on the fly; repeated invocations could create timing side-channels revealing session volume trends even when data masked elsewhere.
-- `/admin/users/:id/roles` writes `admin_actions` without verifying logging success; if insert fails silently, audit trail gaps emerge. 
+- Role management route logs target details but returns 500 with generic message, leaving operators blind to specific failure reasons.
+- Report generation accepts custom `reportType` strings, enabling path traversal for storage keys if not sanitized downstream.
+- Dashboard route surfaces raw counts of sessions/authorizations; without per-role filtering, lower-privileged admins see sensitive metrics.

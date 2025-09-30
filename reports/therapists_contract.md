@@ -1,15 +1,15 @@
-# Therapists Request/Response Contract
+# Therapists API Contracts & Validation
 
-| Endpoint | Method | Required Payload / Params | Optional Controls | Response Shape |
+| Route | Request Schema | Response Schema | Status Codes | Validation Gaps |
 | --- | --- | --- | --- | --- |
-| `/get-schedule-data-batch` | GET / POST | `start_date`, `end_date`; POST body accepts same along with arrays of `therapist_ids` or `client_ids`. | `batch_size`, `offset`, `include_availability`, `include_conflicts`. | `{ success, data: { sessions[], availability?, conflicts?, pagination, performance }, request_parameters }` with 500 error envelope on failure. |
-| `/get-sessions-optimized` | GET | Query params `page`, `limit`, `therapist_id`, `client_id`, `status`, `start_date`, `end_date`, `location_type`. | None beyond filters. | `{ success: true, data: { sessions[], pagination, summary }, filters, performance }` or `{ success: false, error }`. |
-| `/get-dropdown-data` | GET | `types` comma list and `include_inactive` flag. | None. | `{ success: true, data: { therapists?, clients?, locations?, ... }, cached, lastUpdated }`. |
-| `/sessions/confirm` | POST | `{ hold_key, session: { start_time, end_time, ... } }`. | `occurrences[]`, timezone offset metadata. | `{ success: true, session, occurrences }` on success, else `{ success: false, error }` with 4xx/5xx. |
-| `/sessions/hold` | POST | `session` block plus `duration_minutes`, `time_zone`. | `metadata`, `occurrences`. | `{ success: true, hold_key, expires_at }` or error JSON with descriptive `code`. |
-| `/sessions/cancel` | POST | `{ session_id }`. | `reason`, `notes`, `cancellation_policy`. | `{ success: true, session_id }` or error with 4xx/5xx. |
+| `/get-therapist-details` | POST `{ therapistId: string }`. | `{ therapist: {...therapist columns...} }` on success; `{ error: string }` on failure. | 200 success, 204 OPTIONS, 400 validation error, 500 fallback. | Only checks presence of `therapistId`; no UUID validation; catches errors generically exposing message strings. |【F:supabase/functions/get-therapist-details/index.ts†L7-L23】|
+| `/get-schedule-data-batch` | GET query params or POST JSON with `start_date`, `end_date`, optional `therapist_ids[]`, `client_ids[]`, `batch_size`, `offset`, toggles. | `{ success: true, data: { sessions[], availability?, conflicts?, pagination, performance }, request_parameters, requestId }` or error envelope. | 200 success, 204 OPTIONS, 400 invalid payload, 429 rate-limited, 500 server error. | Zod schema ensures ranges but does not verify therapist/client IDs belong to caller; `requestId` resets when error thrown. |【F:supabase/functions/get-schedule-data-batch/index.ts†L18-L94】|
+| `/get-sessions-optimized` | POST JSON with `organizationId`, optional `therapistIds[]`, `dateRange`, `includeTravelBuffer`, etc. | `{ data: { sessions, metrics }, pagination, meta }` or error payload. | 200 success, 400 invalid body, 401/403 when unauthorized, 429 via rate limit, 500 on failure. | Schema defined via Zod but uses `.uuid()` only for some fields; `organizationId` optional causing cross-tenant risk; travel buffer trust. |【F:supabase/functions/get-sessions-optimized/index.ts†L8-L120】|
+| `/sessions/hold` | POST JSON: `{ therapistId, clientId, startTime, endTime, notes?, location? }`. | `{ holdId, expiresAt, conflicts[] }` or `{ error }`. | 200 success, 400 invalid payload/conflict, 403 unauthorized, 409 existing hold, 500 failure. | Validations rely on custom helper; concurrency controls not enforced beyond supabase row constraints. |【F:supabase/functions/sessions-hold/index.ts†L1-L120】|
+| `/sessions/confirm` | POST JSON: `{ sessionId, confirmationCode?, overrideConflicts?, notifyClient? }`. | `{ session: {...}, authorization: {...?} }` or `{ error }`. | 200 success, 400 invalid body, 403 unauthorized, 404 missing session, 409 conflict, 500 failure. | Accepts boolean `overrideConflicts` without additional role gating; relies on SQL to reject unauthorized overrides. |【F:supabase/functions/sessions-confirm/index.ts†L20-L120】|
+| `/suggest-alternative-times` | POST JSON: `{ therapistId, clientId?, startWindow, endWindow, durationMinutes, timezone }`. | `{ suggestions: [{ start, end, reason }], conflicts: [...] }` or `{ error }`. | 200 success, 400 invalid body, 500 server error. | No rate-limiting; timezone validated via Intl but errors return general message. |【F:supabase/functions/suggest-alternative-times/index.ts†L1-L100】|
 
 ## Security Risks
-- `get-schedule-data-batch` exposes `authorization.sessions_remaining` counts that might be considered PHI; ensure HIPAA compliance before broad therapist rollout.
-- Cancellation endpoint does not reconfirm therapist ownership—any authenticated user with a session ID could cancel unless RLS rejects the update.
-- Bulk dropdown responses contain therapist emails; caching these in browsers may leak staff directories on shared workstations. 
+- Scheduling endpoints accept raw IDs; absent additional RPC checks, a compromised token can enumerate other tenants’ session metadata.
+- `sessions-confirm` returns rich session payloads even on error, risking leakage if RLS misconfigured.
+- Alternative time suggestions compute availability in memory and could leak other therapists’ open slots without verifying caller’s association.

@@ -1,21 +1,26 @@
+// ENV REQUIREMENTS: set SUPABASE_URL, SUPABASE_ANON_KEY, and TEST_JWT_SUPER_ADMIN before enabling RUN_SUPER_ADMIN_DOMAIN_TESTS.
 import { describe, it, expect } from "vitest";
 
-const runSuperAdminSuite = process.env.RUN_SUPER_ADMIN_DOMAIN_TESTS === "true";
+const runSuperAdminSuite =
+  process.env.RUN_SUPER_ADMIN_DOMAIN_TESTS === "true" && Boolean(process.env.TEST_JWT_SUPER_ADMIN);
 const suite = runSuperAdminSuite ? describe : describe.skip;
 
 suite("Super admin automation contract expectations", () => {
-  it("captures AI agent header and payload requirements", () => {
+  it("captures impersonation header and payload requirements", () => {
     const headers = {
-      Authorization: "Bearer <service-role-jwt>",
+      Authorization: "Bearer <super-admin-jwt>",
+      apikey: "<anon-key>",
       "Content-Type": "application/json",
     } as const;
     const payload = {
-      message: "Summarize compliance risks",
-      context: { organizationId: "uuid" },
+      action: "issue",
+      targetUserId: "uuid",
+      expiresInMinutes: 15,
+      reason: "Audit support",
     } as const;
 
     expect(headers.Authorization.includes("Bearer ")).toBe(true);
-    expect(typeof payload.message).toBe("string");
+    expect(payload.expiresInMinutes).toBeLessThanOrEqual(30);
   });
 
   it("describes role mutation contract", () => {

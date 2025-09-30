@@ -1,15 +1,13 @@
-# Super Admin Request/Response Contract
+# Super Admin API Contracts & Validation
 
-| Endpoint | Method | Required Payload / Params | Optional Controls | Response Shape |
+| Route | Request Schema | Response Schema | Status Codes | Validation Gaps |
 | --- | --- | --- | --- | --- |
-| `/admin/users/:id/roles` | PATCH | `{ role: 'client'|'therapist'|'admin'|'super_admin' }`. | `is_active`. | `{ message, user }` or `{ error }` with 400/403/500. |
-| `/admin/invite` | POST | `{ email, organizationId?, expiresInHours?, role? }`. | `role` may be `super_admin` (only allowed when caller is super admin). | `{ success: true, inviteUrl, message }` or `{ error, details }`. |
-| `/generate-report` | POST | `{ reportType, startDate, endDate }`. | `therapistId`, `clientId`, `status`. | `{ report, metadata }` or `{ error }`. |
-| `/ai/agent/optimized` | POST | `{ message: string, context?: Record<string, unknown> }`. | `conversationId`, cached context hints. | `{ response, action?, suggestions?, tokenUsage?, cacheHit? }` or `{ error }`. |
-| `/process-message` | POST | `{ message: string, context?: Record<string, unknown> }`. | None. | `{ response, fallback: true, conversationId?, responseTime }` or `{ error }`. |
-| `/assign-therapist-user` | POST | `{ userId, therapistId }`. | None. | `{ success, message, data: { userId, therapistId, action, client } }` or `{ error }`. |
+| `/super-admin/impersonate` | POST JSON: `{ action: 'issue'|'revoke', targetUserId?, targetUserEmail?, expiresInMinutes?, reason }`. | Issue: `{ success: true, token, expiresAt, auditId }`; Revoke: `{ success: true }`; Errors: `{ error }`. | 200 success, 400 invalid payload, 403 non-super-admin or cross-org denial, 404 target missing, 409 overlapping session, 500 failure. | Zod schema ensures minutes range but allows either ID or email; reason not strictly required for revoke; audit insert failures logged but do not abort. |【F:supabase/functions/super-admin-impersonate/index.ts†L14-L120】|
+| `/super-admin/feature-flags` | POST JSON with `action` among `list`, `createFlag`, `updateGlobalFlag`, `setOrgFlag`, `setOrgPlan`, `upsertOrganization`. Each action has dedicated payload: e.g., `createFlag` needs `{ flagKey, description?, defaultEnabled? }`. | Success: `{ data: {...}, message? }` depending on action; Errors: `{ error, details? }`. | 200 success, 400 invalid JSON/action payload, 403 unauthorized, 409 duplicate slug, 500 on DB failure. | Schema ensures uuid/slug formatting but `organization.metadata` accepts arbitrary objects; no rate limits, so repeated toggles possible. |【F:supabase/functions/feature-flags/index.ts†L24-L88】|
+| `/assign-therapist-user` | POST `{ userId: string, therapistId: string }`. | `{ action: 'updated'|'created', client, previousTherapistId? }` or `{ error }`. | 200 success, 400 missing params or archived therapist, 401 missing admin context, 403 cross-org, 404 missing user/therapist, 405 wrong method, 500 failure. | Organization comparison depends on metadata keys; absence of `organization_id` prevents assignment even for valid cross-tenant support cases. |【F:supabase/functions/assign-therapist-user/index.ts†L18-L100】|
+| `/get-authorization-details` | POST `{ authorizationId: string }`. | `{ authorization: {...client, provider, services} }` or `{ error }`. | 200 success, 204 OPTIONS, 400 missing ID or DB error, 500 fallback. | No UUID check; returns raw nested objects including service details, exposing PHI if RLS misconfigured. |【F:supabase/functions/get-authorization-details/index.ts†L8-L24】|
 
 ## Security Risks
-- AI endpoints echo request context verbatim to OpenAI; sanitize before logging to avoid storing PHI in function logs.
-- `/assign-therapist-user` implicitly trusts Supabase auth metadata for organization scoping; if metadata missing, admins may assign across tenants inadvertently.
-- `/admin/invite` returns `inviteUrl`; ensure the frontend never logs the raw token to prevent reuse. 
+- Impersonation tokens minted with service role and returned to caller; without short TTL enforcement on revoke, sessions persist until expiry.
+- Feature flag payloads allow plan reassignment without concurrency guard, risking overwritten plan metadata during simultaneous edits.
+- Assignment endpoint uses Supabase admin API with service role; logging includes full error strings potentially leaking emails in logs.

@@ -1,6 +1,8 @@
+// ENV REQUIREMENTS: set SUPABASE_URL, SUPABASE_ANON_KEY, and TEST_JWT_ORG_A with a non-prod client/admin JWT before enabling RUN_CLIENT_DOMAIN_TESTS.
 import { describe, it, expect } from "vitest";
 
-const runClientsSuite = process.env.RUN_CLIENT_DOMAIN_TESTS === "true";
+const runClientsSuite =
+  process.env.RUN_CLIENT_DOMAIN_TESTS === "true" && Boolean(process.env.TEST_JWT_ORG_A);
 const suite = runClientsSuite ? describe : describe.skip;
 
 suite("Clients domain contract expectations", () => {

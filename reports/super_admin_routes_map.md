@@ -1,15 +1,13 @@
 # Super Admin Route Map
 
-| Surface | Method | Path | Source | Auth Guard | Primary Data Touchpoints |
-| --- | --- | --- | --- | --- | --- |
-| Edge Function | PATCH | `/admin/users/:id/roles` | `supabase/functions/admin-users-roles/index.ts` | `RouteOptions.superAdmin` blocks non-super-admin access. | Updates `profiles` row, logs to `admin_actions`, touches Supabase auth admin API. |
-| Edge Function | POST | `/admin/invite` | `supabase/functions/admin-invite/index.ts` | Super admins can target arbitrary organizations; zod validation enforced. | Inserts hashed tokens in `admin_invite_tokens`, calls external email service. |
-| Edge Function | POST | `/generate-report` | `supabase/functions/generate-report/index.ts` | Allows super admins to bypass org filters; ensures therapist scope via helper functions. | Aggregates multi-tenant session/billing data via Supabase admin client. |
-| Edge Function | POST | `/ai/agent/optimized` | `supabase/functions/ai-agent-optimized/index.ts` | Requires authenticated caller via `getUserOrThrow`; assumed super admin for automation controls. | Calls OpenAI GPT-4o, reads/writes conversation caches via Supabase. |
-| Edge Function | POST | `/process-message` | `supabase/functions/process-message/index.ts` | No auth guard—designed as fallback, should be restricted by routing. | Invokes OpenAI `gpt-3.5-turbo` to craft assistant responses; no DB touches. |
-| Edge Function | POST | `/assign-therapist-user` | `supabase/functions/assign-therapist-user/index.ts` | Admin route but super admin can cross organizations; ensures org alignment via metadata. | Reads Supabase auth admin user metadata, upserts `clients` rows, logs `admin_actions`. |
+| Route/Function | Method | Path/File | Purpose | Auth Required | Headers (Auth/apikey) | Handler | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `/super-admin/impersonate` | POST | `supabase/functions/super-admin-impersonate/index.ts` | Issues and revokes audited impersonation tokens for cross-tenant troubleshooting. | `createProtectedRoute` enforces `super_admin` role and reason payload. | `Authorization: Bearer <JWT>`, `apikey: <anon>`. | Default export handler. | Validates impersonation duration, target user (by ID or email), inserts `impersonation_audit` rows, and signs JWT with reduced TTL.【F:supabase/functions/super-admin-impersonate/index.ts†L1-L120】 |
+| `/super-admin/feature-flags` | POST | `supabase/functions/feature-flags/index.ts` | Manages global and per-organization feature flags and plan assignments. | `createProtectedRoute` with `RouteOptions.superAdmin`. | `Authorization: Bearer <JWT>`, `apikey: <anon>`. | Default export handler. | Parses `action` via Zod, normalizes slugs, and writes to `feature_flags`/`organization_feature_flags`; returns structured errors for invalid JSON.【F:supabase/functions/feature-flags/index.ts†L1-L88】 |
+| `/assign-therapist-user` | POST | `supabase/functions/assign-therapist-user/index.ts` | Allows admins/super admins to associate Supabase auth users with therapist records. | `createProtectedRoute` + `assertAdminOrSuperAdmin`. | `Authorization: Bearer <JWT>`, `apikey: <anon>`. | Default export route. | Pulls caller org from metadata, guards against cross-org assignments, and uses service role for auth lookups; rejects archived therapists.【F:supabase/functions/assign-therapist-user/index.ts†L1-L94】 |
+| `/get-authorization-details` | POST | `supabase/functions/get-authorization-details/index.ts` | Surfaces detailed authorization + client/provider info for oversight dashboards. | `getUserOrThrow` ensures authentication; no extra role gating. | `Authorization: Bearer <JWT>`, `apikey: <anon>`. | Inline `Deno.serve` handler. | Accepts `authorizationId` JSON payload; returns 400 on errors and logs message, relying on RLS for tenant isolation.【F:supabase/functions/get-authorization-details/index.ts†L1-L26】 |
 
 ## Security Risks
-- `process-message` lacks authentication and could expose OpenAI API to anonymous callers; rate limiting or routing controls must block public access.
-- `ai-agent-optimized` streams prompts containing PHI into OpenAI; ensure BAA and redaction pipelines exist before production use.
-- `/generate-report` grants organization-wide exports; without explicit tenant filters for super admins, a compromised token exposes the entire dataset. 
+- Impersonation handler signs JWTs using service role credentials; audit log inserts are best-effort—failures fall back to console logging, so consider wrapping in transaction.
+- Feature-flag action parser allows arbitrary metadata objects; absence of JSON schema for `organization.metadata` could write malformed data consumed elsewhere.
+- `assign-therapist-user` relies on metadata-based org extraction; inconsistent metadata keys would bypass org comparison, risking cross-tenant assignments.

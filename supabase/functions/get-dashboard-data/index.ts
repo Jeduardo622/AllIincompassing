@@ -67,11 +67,17 @@ Deno.serve(async (req: Request) => {
     if (weekError) throw weekError;
 
     const { count: activeClientsCount, error: clientError } = await db
-      .from('clients').select('id', { count: 'exact', head: true }).eq('status', 'active');
+      .from('clients')
+      .select('id', { count: 'exact', head: true })
+      .is('deleted_at', null)
+      .eq('status', 'active');
     if (clientError) throw clientError;
 
     const { count: activeTherapistsCount, error: therapistError } = await db
-      .from('therapists').select('id', { count: 'exact', head: true }).eq('status', 'active');
+      .from('therapists')
+      .select('id', { count: 'exact', head: true })
+      .is('deleted_at', null)
+      .eq('status', 'active');
     if (therapistError) throw therapistError;
 
     const thirtyDaysFromNow = new Date();

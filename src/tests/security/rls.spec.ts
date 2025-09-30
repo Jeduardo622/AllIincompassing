@@ -104,6 +104,7 @@ const createdLocationIds: string[] = [];
 const createdServiceLineIds: string[] = [];
 const createdReferringProviderIds: string[] = [];
 const createdFileCabinetCategoryIds: string[] = [];
+const createdFeatureFlagIds: string[] = [];
 const uploadedClientDocumentPaths: string[] = [];
 let companySettingsId: string | null = null;
 let originalCompanyName: string | null = null;
@@ -1213,6 +1214,10 @@ afterAll(async () => {
 
   if (createdFileCabinetCategoryIds.length > 0) {
     await serviceClient.from('file_cabinet_settings').delete().in('id', createdFileCabinetCategoryIds);
+  }
+
+  if (createdFeatureFlagIds.length > 0) {
+    await serviceClient.from('feature_flags').delete().in('id', createdFeatureFlagIds);
   }
 
   if (uploadedClientDocumentPaths.length > 0) {
@@ -2810,6 +2815,40 @@ describe('configuration tables enforce admin-only access', () => {
       if (result.data?.id) {
         createdFileCabinetCategoryIds.push(result.data.id);
       }
+    } finally {
+      await adminClient.auth.signOut();
+    }
+  });
+});
+
+describe('feature flag row-level security', () => {
+  it('prevents non-super-admins from querying feature flag tables', async () => {
+    if (!runTests || !serviceClient || !adminContext) {
+      console.log('⏭️  Skipping feature flag RLS test - setup incomplete.');
+      return;
+    }
+
+    const insertResult = await serviceClient
+      .from('feature_flags')
+      .insert({
+        flag_key: `rls-flag-${Date.now()}`,
+        description: 'RLS verification flag',
+        default_enabled: false,
+      })
+      .select('id')
+      .single();
+
+    if (insertResult.error || !insertResult.data) {
+      throw insertResult.error ?? new Error('Failed to insert feature flag for RLS test');
+    }
+
+    createdFeatureFlagIds.push(insertResult.data.id);
+
+    const adminClient = await signInAdmin(adminContext);
+    try {
+      const queryResult = await adminClient.from('feature_flags').select('id, flag_key').limit(1);
+      const rowCount = Array.isArray(queryResult.data) ? queryResult.data.length : 0;
+      expectRlsViolation(queryResult.error, rowCount);
     } finally {
       await adminClient.auth.signOut();
     }

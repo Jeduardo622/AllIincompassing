@@ -1059,6 +1059,247 @@ export type Database = {
         }
         Relationships: []
       }
+      feature_flag_audit_logs: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          feature_flag_id: string | null
+          id: string
+          new_state: Json | null
+          organization_id: string | null
+          plan_code: string | null
+          previous_state: Json | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          feature_flag_id?: string | null
+          id?: string
+          new_state?: Json | null
+          organization_id?: string | null
+          plan_code?: string | null
+          previous_state?: Json | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          feature_flag_id?: string | null
+          id?: string
+          new_state?: Json | null
+          organization_id?: string | null
+          plan_code?: string | null
+          previous_state?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feature_flag_audit_logs_feature_flag_id_fkey",
+            columns: ["feature_flag_id"],
+            isOneToOne: false,
+            referencedRelation: "feature_flags",
+            referencedColumns: ["id"],
+          },
+          {
+            foreignKeyName: "feature_flag_audit_logs_organization_id_fkey",
+            columns: ["organization_id"],
+            isOneToOne: false,
+            referencedRelation: "organizations",
+            referencedColumns: ["id"],
+          },
+          {
+            foreignKeyName: "feature_flag_audit_logs_plan_code_fkey",
+            columns: ["plan_code"],
+            isOneToOne: false,
+            referencedRelation: "plans",
+            referencedColumns: ["code"],
+          },
+        ]
+      }
+      feature_flags: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          default_enabled: boolean
+          description: string | null
+          flag_key: string
+          id: string
+          metadata: Json | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          default_enabled?: boolean
+          description?: string | null
+          flag_key: string
+          id?: string
+          metadata?: Json | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          default_enabled?: boolean
+          description?: string | null
+          flag_key?: string
+          id?: string
+          metadata?: Json | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      organization_feature_flags: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          feature_flag_id: string
+          id: string
+          is_enabled: boolean
+          organization_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          feature_flag_id: string
+          id?: string
+          is_enabled?: boolean
+          organization_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          feature_flag_id?: string
+          id?: string
+          is_enabled?: boolean
+          organization_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_feature_flags_feature_flag_id_fkey",
+            columns: ["feature_flag_id"],
+            isOneToOne: false,
+            referencedRelation: "feature_flags",
+            referencedColumns: ["id"],
+          },
+          {
+            foreignKeyName: "organization_feature_flags_organization_id_fkey",
+            columns: ["organization_id"],
+            isOneToOne: false,
+            referencedRelation: "organizations",
+            referencedColumns: ["id"],
+          },
+        ]
+      }
+      organization_plans: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          notes: string | null
+          organization_id: string
+          plan_code: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          notes?: string | null
+          organization_id: string
+          plan_code: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          notes?: string | null
+          organization_id?: string
+          plan_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_plans_organization_id_fkey",
+            columns: ["organization_id"],
+            isOneToOne: true,
+            referencedRelation: "organizations",
+            referencedColumns: ["id"],
+          },
+          {
+            foreignKeyName: "organization_plans_plan_code_fkey",
+            columns: ["plan_code"],
+            isOneToOne: false,
+            referencedRelation: "plans",
+            referencedColumns: ["code"],
+          },
+        ]
+      }
+      organizations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          metadata: Json | null
+          name: string | null
+          slug: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id: string
+          metadata?: Json | null
+          name?: string | null
+          slug?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          metadata?: Json | null
+          name?: string | null
+          slug?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      plans: {
+        Row: {
+          code: string
+          created_at: string
+          description: string | null
+          is_active: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description?: string | null
+          is_active?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          description?: string | null
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       function_performance_logs: {
         Row: {
           executed_at: string | null

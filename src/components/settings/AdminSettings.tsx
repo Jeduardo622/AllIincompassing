@@ -29,6 +29,7 @@ interface AdminFormData {
   last_name: string;
   title: string;
   organization_id: string | null;
+  reason: string;
 }
 
 export default function AdminSettings() {
@@ -42,6 +43,7 @@ export default function AdminSettings() {
     last_name: '',
     title: '',
     organization_id: null,
+    reason: '',
   });
   const [newPassword, setNewPassword] = useState('');
   const [accessError, setAccessError] = useState<string | null>(null);
@@ -127,6 +129,8 @@ export default function AdminSettings() {
 
       // Use assign_admin_role function instead of manage_admin_users
       try {
+        const trimmedReason = data.reason.trim();
+
         // First create the user with password
         const { error: signUpError } = await supabase.auth.signUp({
           email: data.email,
@@ -148,6 +152,7 @@ export default function AdminSettings() {
         const { error: assignError } = await supabase.rpc('assign_admin_role', {
           user_email: data.email,
           organization_id: organizationId,
+          reason: trimmedReason,
         });
 
         if (assignError) throw assignError;
@@ -243,6 +248,7 @@ export default function AdminSettings() {
       last_name: '',
       title: '',
       organization_id: organizationId ?? null,
+      reason: '',
     });
   };
 
@@ -277,7 +283,14 @@ export default function AdminSettings() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await createAdminMutation.mutateAsync(formData);
+    const trimmedReason = formData.reason.trim();
+
+    if (trimmedReason.length < 10) {
+      showError(new Error('Please provide a reason with at least 10 characters.'));
+      return;
+    }
+
+    await createAdminMutation.mutateAsync({ ...formData, reason: trimmedReason });
   };
 
   const handlePasswordReset = async (e: React.FormEvent) => {
@@ -486,6 +499,26 @@ export default function AdminSettings() {
                     Organization context is required before creating additional admins.
                   </p>
                 )}
+              </div>
+
+              <div>
+                <label htmlFor="add-admin-reason" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Reason for admin access*
+                </label>
+                <textarea
+                  id="add-admin-reason"
+                  name="reason"
+                  required
+                  minLength={10}
+                  rows={3}
+                  value={formData.reason}
+                  onChange={handleInputChange}
+                  placeholder="Explain why this user requires administrative privileges"
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Provide a short justification that will be stored in the audit log.
+                </p>
               </div>
 
               <div className="flex justify-end space-x-3 pt-4">

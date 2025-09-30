@@ -274,6 +274,7 @@ const createAdminFixture = async (organizationId: string): Promise<AdminContext>
   const assignResult = await serviceClient.rpc('assign_admin_role', {
     user_email: email,
     organization_id: organizationId,
+    reason: 'integration-test bootstrap',
   });
 
   if (assignResult.error) {
@@ -906,6 +907,7 @@ describe('admin organization scoping', () => {
       const { error } = await adminClient.rpc('assign_admin_role', {
         user_email: otherAdminContext.email,
         organization_id: otherAdminContext.organizationId,
+        reason: 'cross-org rejection test',
       });
 
       expect(error).toBeTruthy();

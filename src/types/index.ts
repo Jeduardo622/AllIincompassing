@@ -50,6 +50,8 @@ export interface Therapist {
     };
   };
   created_at: string;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
   latitude?: number;
   longitude?: number;
   service_radius_km?: number;
@@ -102,6 +104,8 @@ export interface Client {
   updated_at?: string;
   updated_by?: string | null;
   organization_id?: string | null;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
   latitude?: number;
   longitude?: number;
   preferred_radius_km?: number;

@@ -48,7 +48,11 @@ Deno.serve(async (req: Request) => {
 
     let availability: any[] = [];
     if (include_availability && therapist_ids && therapist_ids.length > 0) {
-      const { data: therapists } = await db.from('therapists').select('id, full_name, availability_hours').in('id', therapist_ids);
+      const { data: therapists } = await db
+        .from('therapists')
+        .select('id, full_name, availability_hours')
+        .in('id', therapist_ids)
+        .is('deleted_at', null);
       availability = therapists?.map(therapist => {
         const availableSlots: Array<{ start_time: string; end_time: string; duration_minutes: number }>= [];
         const currentDate = new Date(start_date);

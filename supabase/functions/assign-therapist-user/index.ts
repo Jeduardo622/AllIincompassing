@@ -59,11 +59,20 @@ export default createProtectedRoute(async (req: Request, userContext) => {
       return new Response(JSON.stringify({ error: 'Target user email is missing' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const { data: therapistData, error: therapistError } = await adminClient.from('therapists').select('id, full_name, is_active').eq('id', therapistId).single();
+    const { data: therapistData, error: therapistError } = await adminClient
+      .from('therapists')
+      .select('id, full_name, is_active, deleted_at')
+      .eq('id', therapistId)
+      .single();
     if (therapistError || !therapistData) {
       console.error('Error fetching therapist:', therapistError);
       logApiAccess('POST', '/assign-therapist-user', userContext, 404);
       return new Response(JSON.stringify({ error: 'Therapist not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    if ((therapistData as { deleted_at?: string | null }).deleted_at) {
+      logApiAccess('POST', '/assign-therapist-user', userContext, 400);
+      return new Response(JSON.stringify({ error: 'Cannot assign archived therapist' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const therapistOrganizationId = extractOrganizationId(therapistData as unknown as Record<string, unknown>);

@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Link } from 'react-router-dom';
-import { 
-  Search, 
-  Trash2, 
+import {
+  Search,
+  Archive,
+  ArchiveRestore,
   User,
   Mail,
   MapPin,
   Briefcase,
   Building,
-  UserPlus, 
-  FileUp
+  UserPlus,
+  FileUp,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Therapist } from '../types';
@@ -41,6 +42,7 @@ const Therapists = () => {
   const [filterLocation, setFilterLocation] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterServiceLine, setFilterServiceLine] = useState('all');
+  const [archivedFilter, setArchivedFilter] = useState<'all' | 'active' | 'archived'>('active');
   
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -87,7 +89,8 @@ const Therapists = () => {
           weekly_hours_max,
           availability_hours,
           max_clients,
-          created_at
+          created_at,
+          deleted_at
         `)
         .order('full_name');
       
@@ -166,18 +169,20 @@ const Therapists = () => {
     },
   });
 
-  const deleteTherapistMutation = useMutation({
-    mutationFn: async (therapistId: string) => {
-      const { error } = await supabase
-        .from('therapists')
-        .delete()
-        .eq('id', therapistId);
+  const archiveTherapistMutation = useMutation({
+    mutationFn: async ({ therapistId, restore }: { therapistId: string; restore: boolean }) => {
+      const { data, error } = await supabase.rpc('set_therapist_archive_state', {
+        p_therapist_id: therapistId,
+        p_restore: restore,
+      });
 
       if (error) throw error;
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      const restoreAction = Boolean((variables as { restore?: boolean } | undefined)?.restore);
       queryClient.invalidateQueries({ queryKey: ['therapists'] });
-      showSuccess('Therapist deleted successfully');
+      showSuccess(restoreAction ? 'Therapist restored successfully' : 'Therapist archived successfully');
     },
     onError: (error) => {
       showError(error);
@@ -198,9 +203,15 @@ const Therapists = () => {
     navigate(`/therapists/${therapist.id}`);
   };
 
-  const handleDeleteTherapist = async (therapistId: string) => {
-    if (window.confirm('Are you sure you want to delete this staff member?')) {
-      await deleteTherapistMutation.mutateAsync(therapistId);
+  const handleArchiveTherapist = async (therapist: Therapist) => {
+    if (window.confirm(`Are you sure you want to archive ${therapist.full_name || 'this staff member'}?`)) {
+      await archiveTherapistMutation.mutateAsync({ therapistId: therapist.id, restore: false });
+    }
+  };
+
+  const handleRestoreTherapist = async (therapist: Therapist) => {
+    if (window.confirm(`Restore ${therapist.full_name || 'this staff member'}?`)) {
+      await archiveTherapistMutation.mutateAsync({ therapistId: therapist.id, restore: true });
     }
   };
 
@@ -235,8 +246,13 @@ const Therapists = () => {
     const matchesLocation = filterLocation === 'all' || therapist.service_type?.includes(filterLocation);
     const matchesServiceLine = filterServiceLine === 'all' || therapist.specialties?.includes(filterServiceLine);
     const matchesStatus = matchesStatusFilter(therapist.status, filterStatus);
+    const matchesArchive = archivedFilter === 'all'
+      ? true
+      : archivedFilter === 'archived'
+        ? Boolean(therapist.deleted_at)
+        : !therapist.deleted_at;
 
-    return matchesSearch && matchesLocation && matchesServiceLine && matchesStatus;
+    return matchesSearch && matchesLocation && matchesServiceLine && matchesStatus && matchesArchive;
   });
 
   return (
@@ -306,6 +322,16 @@ const Therapists = () => {
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
             </select>
+
+            <select
+              value={archivedFilter}
+              onChange={(e) => setArchivedFilter(e.target.value as 'all' | 'active' | 'archived')}
+              className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
+            >
+              <option value="active">Active</option>
+              <option value="archived">Archived</option>
+              <option value="all">All</option>
+            </select>
           </div>
         </div>
 
@@ -359,6 +385,11 @@ const Therapists = () => {
                           >
                             {therapist.full_name}
                           </Link>
+                          {therapist.deleted_at && (
+                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                              Archived
+                            </span>
+                          )}
                           <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
                             <Mail className="w-3 h-3 mr-1" />
                             {therapist.email}
@@ -395,29 +426,42 @@ const Therapists = () => {
                       {(() => {
                         const status = (therapist.status ?? 'active').toLowerCase();
                         const isActive = status === 'active';
+                        const isArchived = Boolean(therapist.deleted_at);
 
                         return (
                           <span
                             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              isActive
-                                ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
-                                : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+                              isArchived
+                                ? 'bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200'
+                                : isActive
+                                  ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
+                                  : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
                             }`}
                           >
-                            {isActive ? 'Active' : 'Inactive'}
+                            {isArchived ? 'Archived' : isActive ? 'Active' : 'Inactive'}
                           </span>
                         );
                       })()}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-3">
-                        <button
-                          onClick={() => handleDeleteTherapist(therapist.id)}
-                          className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
-                          title="Delete therapist"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {therapist.deleted_at ? (
+                          <button
+                            onClick={() => handleRestoreTherapist(therapist)}
+                            className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300"
+                            title="Restore therapist"
+                          >
+                            <ArchiveRestore className="w-4 h-4" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleArchiveTherapist(therapist)}
+                            className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
+                            title="Archive therapist"
+                          >
+                            <Archive className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

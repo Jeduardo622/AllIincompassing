@@ -1,14 +1,15 @@
-# Clients Request/Response Contract
+# Clients API Contracts & Validation
 
-| Endpoint | Method | Required Payload | Optional Fields | Response Shape |
+| Route | Request Schema | Response Schema | Status Codes | Validation Gaps |
 | --- | --- | --- | --- | --- |
-| `/api/book` (`bookHandler`) | POST | `session` object with `clientId`, `therapistId`, `startTime`, `endTime`. | `recurrence`, `authorizationId`, `notes`, overrides forwarded to `bookSession`. | `{ success: true, data: BookSessionResult }` or `{ success: false, error }`; echoes `Idempotency-Key` header when supplied. |
-| `/get-client-details` | POST | `{ clientId: string }` | None. | `{ client: Client }` on 200; 403/404 when access denied; 500 on RPC failure. |
-| `/initiate-client-onboarding` | POST | `{ client_name, client_email }` | `date_of_birth`, `insurance_provider`, `referral_source`, `service_preference[]`. | `{ success: true, onboardingUrl, message }` or `{ success: false, error }` with status 400 on validation failure. |
-| `/profiles/me` | GET | *Headers only* (`Authorization`). | Query params ignored. | `{ profile: {...} }` containing sanitized caller profile fields. |
-| `/profiles/me` | PUT | Any subset of `first_name`, `last_name`, `phone`, `avatar_url`, `time_zone`, `preferences`. | None. | `{ message: 'Profile updated successfully', profile: {...} }` or error JSON with 400/500 status. |
+| `/api/book` (`bookHandler`) | JSON body `{ session: { clientId, therapistId, startTime, endTime, ... } }`; relies on upstream UI to shape `session`. Headers must include `Authorization` and optional `Idempotency-Key`. | Success: `{ success: true, data: BookSessionResult }`; Failure: `{ success: false, error: string }`. Echoes `Idempotency-Key` header when supplied. | 200 success, 400 invalid JSON/missing session, 401 missing auth, 405 method mismatch, 500 fallback. | No schema validation beyond checking `session` presence; trusts nested fields and durations before invoking `bookSession`.【F:src/server/api/book.ts†L35-L86】 |
+| `/get-client-details` | POST body `{ clientId: string }`. Role + org enforced via `user_has_role_for_org`. | 200: `{ client: {...fields}, isArchived?: boolean }`; 403/404: `{ error: string }`; 500 on RPC error. | 200, 400 missing ID, 403 access denied, 404 not found/archived, 405 wrong method, 500 server error. | Payload parsed without Zod; archived check denies non-admin access but message differs (404) which can reveal existence timing. |【F:supabase/functions/get-client-details/index.ts†L55-L120】|
+| `/initiate-client-onboarding` | POST JSON requiring `client_name`, `client_email`; optional `date_of_birth`, `insurance_provider`, `referral_source`, `service_preference[]`. | `{ success: true, onboardingUrl, message }` or `{ success: false, error }`. | 200 success, 204 options, 400 validation failure, 500 unexpected error. | Manual `if` validation; does not sanitize query params beyond join; no org_id parameter. |【F:supabase/functions/initiate-client-onboarding/index.ts†L17-L70】|
+| `/profiles/me` GET | Headers only; no body. | `{ profile: {...allowed fields...} }`. | 200 success, 404 missing profile, 500 error. | None. |【F:supabase/functions/profiles-me/index.ts†L18-L60】|
+| `/profiles/me` PUT | JSON body with any subset of `first_name`, `last_name`, `phone`, `avatar_url`, `time_zone`, `preferences`. | `{ message: string, profile: {...updated fields...} }` or `{ error: string }`. | 200 success, 400 invalid fields/phone/timezone, 405 when method not GET/PUT, 500 update failure. | Allows arbitrary JSON for `preferences` without size guard; no debounce on repeated updates. |【F:supabase/functions/profiles-me/index.ts†L62-L120】|
+| `/get-dropdown-data` | GET query params `types`, `include_inactive`; no POST variant; authentication required. | `{ success: true, data: { therapists?, clients?, ... }, cached: boolean, lastUpdated }` or `{ success: false, error }`. | 200 success, 204 OPTIONS, 500 on failure. | Query parsing uses `.split(',')` without validation; returns entire dataset relying on RLS; search/res filters not sanitized. |【F:supabase/functions/get-dropdown-data/index.ts†L11-L58】|
 
 ## Security Risks
-- Booking payload trusts caller-provided timestamps and durations; missing normalization may allow creation of sessions outside allowable windows if downstream validation regresses.
-- `/get-client-details` leaks presence/absence information (403 vs 404) that could allow tenant enumeration when RPC role checks misconfigured.
-- `/profiles/me` update path filters allowed keys but does not enforce length limits; large `preferences` blobs could trigger Supabase row bloat or exceed Postgres limits. 
+- Missing JSON schema validation on booking payload can allow injection of unexpected properties consumed by downstream `bookSession` logic.
+- `/initiate-client-onboarding` returns 400 error messages directly from thrown errors; these reveal internal validation reasons useful for brute force enumerations.
+- `preferences` JSON update path lacks server-side size checks, risking PII exfiltration or denial-of-service via oversized payloads.

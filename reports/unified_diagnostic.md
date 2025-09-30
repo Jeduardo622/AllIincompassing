@@ -1,26 +1,29 @@
 # Unified Domain Diagnostic
 
-## Status Matrix
-
-| Domain | Surface Coverage | AuthZ Confidence | Data Leakage Risk | Automation/AI Risk | Overall Status |
-| --- | --- | --- | --- | --- | --- |
-| Clients | Booking API, client detail function, onboarding, profile management | Medium – relies on `user_has_role_for_org` RPC and Supabase JWT | Medium – browser queries expose full roster if RLS weakens | Low – limited AI usage | 🟡 Needs Guardrails |
-| Therapists | Schedule batch/optimized APIs, holds/confirm flows, dropdown data | Low – functions lack explicit org filters | High – schedule exports include PHI + authorization counts | Medium – booking automation depends on caller-supplied offsets | 🔴 Immediate Risk |
-| Admins | User management, invites, dashboard/reporting | Medium – asserts admin role but trusts organization metadata | Medium – aggregated KPIs may reveal cross-tenant trends | Low – minimal AI use | 🟡 Needs Guardrails |
-| Super Admin | Global role management, AI orchestration, cross-tenant assignments | Low – some endpoints unauthenticated (`process-message`) | High – multi-tenant exports + AI prompts can leak PHI | High – GPT integrations without redaction | 🔴 Immediate Risk |
-| UI (Clients) | Roster, detail, onboarding | Medium | Medium | Low | 🟡 |
-| UI (Therapists) | Schedule matrix, session modal, dropdowns | Low | High | Medium | 🔴 |
-| UI (Admins) | Dashboard, Reports, Settings | Medium | Medium | Low | 🟡 |
-| UI (Super Admin) | Admin management modals | Low | High | Medium | 🔴 |
+| Domain | Capability | Status (✅/🟧/❌) | Evidence | Gaps/Risks | Proposed Fix | Effort (S/M/L) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Clients | Route/contract documentation | ✅ | `reports/clients_routes_map.md`, `reports/clients_contract.md` refreshed with auth/header coverage.【F:reports/clients_routes_map.md†L1-L18】【F:reports/clients_contract.md†L1-L34】 | Ongoing reliance on RLS for dropdown data; onboarding lacks org scope. | Add explicit organization assertions in `/initiate-client-onboarding` and `/get-dropdown-data` plus contract tests. | M |
+| Clients | Soft-delete enforcement | ✅ | Supabase definer RPC + UI wiring documented; tests require env gating.【F:reports/clients_supabase_static.md†L1-L23】【F:tests/clients/domain.verification.spec.ts†L1-L29】 | No audit trail beyond updated timestamps. | Add audit trigger + reportable log table (`proposals/sql/clients_rls_fixes.sql`). | M |
+| Therapists | Schedule APIs & validation | 🟧 | Route/contract docs identify missing org checks; Zod partial validation noted.【F:reports/therapists_routes_map.md†L1-L19】【F:reports/therapists_contract.md†L1-L30】 | `get-schedule-data-batch` trusts caller IDs; availability JSON unbounded. | Extend RPCs to verify organization_id and enforce JSON schema; add throttling. | L |
+| Therapists | Soft-delete + availability storage | ✅ | Supabase static review covers archive RPC + availability indexes.【F:reports/therapists_supabase_static.md†L1-L25】 | Lack of audit around `set_therapist_archive_state`. | Add audit trigger + retention policy (see `proposals/sql/therapists_rls_fixes.sql`). | M |
+| Admins | Admin management routes | 🟧 | Updated route map/contract highlight in-memory pagination + path parsing issues.【F:reports/admins_routes_map.md†L1-L18】【F:reports/admins_contract.md†L1-L33】 | RPC still returns full dataset; no per-page LIMIT in SQL. | Update `get_admin_users` to accept limit/offset and enforce in SQL (`proposals/patches/admins_routes.diff`). | M |
+| Admins | Audit logging | 🟧 | Supabase policies on `admin_actions` ensure scoped inserts.【F:supabase/migrations/20250922120000_secure_misc_tables_rls.sql†L175-L205】 | Missing cross-org audit export + retention schedule. | Add scheduled export + retention cron; extend `admin_actions` indexes (proposal). | M |
+| Super Admin | Impersonation controls | ✅ | Edge route + contract capture TTL enforcement and audit inserts.【F:reports/super_admin_routes_map.md†L1-L15】【F:reports/super_admin_contract.md†L1-L26】 | Audit insert failures only log to console. | Implement mandatory transaction + retry or queue (see `proposals/sql/super_admin_audit_triggers.sql`). | M |
+| Super Admin | Feature flag governance | 🟧 | Contract documents Zod action schema but notes metadata gaps.【F:reports/super_admin_contract.md†L1-L28】 | No metadata schema; lacks plan history log. | Introduce JSON schema enforcement + history table (proposal). | M |
+| UI (Clients) | Auth headers, validation, a11y | 🟧 | UI diagnostic identifies reliance on anon client + minimal validation.【F:reports/ui_clients_diagnostic.md†L1-L30】 | Accessibility review pending for modals; no debounced saves. | Add aria labels + server proxy for roster fetch. | M |
+| UI (Therapists) | Schedules & forms | 🟧 | Diagnostic flags missing focus management + conflict toasts.【F:reports/ui_therapists_diagnostic.md†L1-L28】 | No loading skeleton for heavy schedule queries; manual refresh required. | Add suspense + virtualization; enforce accessible modals. | M |
 
 ## Fix-Now Top 10
-1. Lock down `/supabase/functions/process-message` with the same `createProtectedRoute` guard or upstream routing to prevent anonymous OpenAI usage.
-2. Add organization scoping to `get-schedule-data-batch`, `get-sessions-optimized`, and `get-dropdown-data` queries to stop cross-tenant session leakage.
-3. Enforce role checks on `/sessions/cancel` and `/sessions/hold` to confirm the caller owns the target therapist/client relationship.
-4. Harden `/initiate-client-onboarding` so only admins with matching `organization_id` can mint onboarding URLs.
-5. Introduce server-side validation of `profiles.preferences` payloads to stop unbounded JSON writes from `/profiles/me` and Settings UI.
-6. Implement pagination limits and server-side filtering inside `get_admin_users` RPC to avoid dumping entire tenant user lists to the browser.
-7. Require signed, expiring URLs (or hashed tokens) when returning `admin-invite` links to reduce risk of invite interception.
-8. Add audit + throttling around AI functions (`ai-agent-optimized`, `ai-session-note-generator`, `ai-transcription`) to monitor prompt content and prevent PHI over-share.
-9. Move roster CRUD (`Clients.tsx`, `Therapists.tsx`) behind privileged edge functions so the browser no longer issues direct table writes with the anon key.
-10. Ensure `assign-therapist-user` validates that the target user and therapist share the same organization via database constraints, not just metadata heuristics. 
+1. Harden `/initiate-client-onboarding` and `/get-dropdown-data` with explicit organization assertions and audit logging.【F:reports/clients_routes_map.md†L8-L17】
+2. Add audit triggers for `app.set_client_archive_state` and `app.set_therapist_archive_state` to capture actor + reason metadata.【F:reports/clients_supabase_static.md†L12-L20】【F:reports/therapists_supabase_static.md†L10-L22】
+3. Extend `get_admin_users` RPC to paginate in SQL and cap result size to prevent large payloads.【F:reports/admins_contract.md†L1-L15】
+4. Normalize `assign-therapist-user` metadata extraction and enforce dual-approval for cross-org assignments.【F:reports/super_admin_routes_map.md†L1-L18】
+5. Enforce JSON schema for feature-flag organization metadata and log plan changes.【F:reports/super_admin_contract.md†L1-L28】
+6. Add rate limiting + org validation to `get-schedule-data-batch` and `get-sessions-optimized` to prevent tenant leakage.【F:reports/therapists_routes_map.md†L1-L19】
+7. Create UI loading states and a11y passes for client/therapist rosters, including keyboard focus management.【F:reports/ui_clients_diagnostic.md†L1-L24】【F:reports/ui_therapists_diagnostic.md†L1-L24】
+8. Instrument impersonation function with guaranteed audit persistence and revocation queue on failure.【F:reports/super_admin_routes_map.md†L1-L15】
+9. Deliver admin audit export automation and retention schedule referencing `admin_actions` policies.【F:supabase/migrations/20250922120000_secure_misc_tables_rls.sql†L175-L205】
+10. Publish automated regression tests for org-scoped RPCs using new domain verification scaffolds with env gating.【F:tests/admins/domain.verification.spec.ts†L1-L28】【F:tests/therapists/domain.verification.spec.ts†L1-L27】
+
+## Timeline
+See `reports/timeline.json` for sequencing of the above priorities.

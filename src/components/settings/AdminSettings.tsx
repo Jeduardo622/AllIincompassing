@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Shield, Mail, Calendar, Key } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showSuccess, showError } from '../../lib/toast';
 import { logger } from '../../lib/logger/logger';
 import { useAuth } from '../../lib/authContext';
+import { Modal } from '../common/Modal';
 import type { PostgrestError } from '@supabase/supabase-js';
 
 interface AdminUser {
@@ -44,6 +45,9 @@ export default function AdminSettings() {
   });
   const [newPassword, setNewPassword] = useState('');
   const [accessError, setAccessError] = useState<string | null>(null);
+
+  const addAdminEmailRef = useRef<HTMLInputElement>(null);
+  const resetPasswordInputRef = useRef<HTMLInputElement>(null);
 
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -242,6 +246,17 @@ export default function AdminSettings() {
     });
   };
 
+  const closeCreateAdminModal = () => {
+    setIsModalOpen(false);
+    resetForm();
+  };
+
+  const closePasswordModal = () => {
+    setIsPasswordModalOpen(false);
+    setSelectedAdmin(null);
+    setNewPassword('');
+  };
+
   const handleDelete = async (userId: string) => {
     if (window.confirm('Are you sure you want to remove this admin user?')) {
       try {
@@ -366,19 +381,24 @@ export default function AdminSettings() {
       )}
 
       {/* Create Admin Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="add-admin-modal-title">
-          <div className="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-md p-6">
-            <h2 id="add-admin-modal-title" className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-              Add New Admin
-            </h2>
+      <Modal
+        isOpen={isModalOpen}
+        onClose={closeCreateAdminModal}
+        titleId="add-admin-modal-title"
+        initialFocusRef={addAdminEmailRef}
+        panelClassName="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-md p-6"
+      >
+        <h2 id="add-admin-modal-title" className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
+          Add New Admin
+        </h2>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label htmlFor="add-admin-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Email*
                 </label>
                 <input
+                  ref={addAdminEmailRef}
                   type="email"
                   name="email"
                   required
@@ -471,10 +491,7 @@ export default function AdminSettings() {
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsModalOpen(false);
-                    resetForm();
-                  }}
+                  onClick={closeCreateAdminModal}
                   className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-dark border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   Cancel
@@ -488,14 +505,18 @@ export default function AdminSettings() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* Password Reset Modal */}
-      {isPasswordModalOpen && selectedAdmin && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="reset-password-modal-title">
-          <div className="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-md p-6">
+      <Modal
+        isOpen={isPasswordModalOpen && Boolean(selectedAdmin)}
+        onClose={closePasswordModal}
+        titleId="reset-password-modal-title"
+        initialFocusRef={resetPasswordInputRef}
+        panelClassName="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-md p-6"
+      >
+        {selectedAdmin && (
+          <>
             <h2 id="reset-password-modal-title" className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
               Reset Password for {selectedAdmin.email}
             </h2>
@@ -506,6 +527,7 @@ export default function AdminSettings() {
                   New Password*
                 </label>
                 <input
+                  ref={resetPasswordInputRef}
                   type="password"
                   required
                   minLength={8}
@@ -518,11 +540,7 @@ export default function AdminSettings() {
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsPasswordModalOpen(false);
-                    setSelectedAdmin(null);
-                    setNewPassword('');
-                  }}
+                  onClick={closePasswordModal}
                   className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-dark border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   Cancel
@@ -535,9 +553,9 @@ export default function AdminSettings() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
     </div>
   );
 }

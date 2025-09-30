@@ -4,6 +4,7 @@ import AdminSettings from '../AdminSettings';
 import { supabase } from '../../../lib/supabase';
 import { logger } from '../../../lib/logger/logger';
 import { useAuth } from '../../../lib/authContext';
+import { showError, showSuccess } from '../../../lib/toast';
 
 vi.mock('../../../lib/logger/logger', () => {
   const info = vi.fn();
@@ -22,6 +23,18 @@ vi.mock('../../../lib/logger/logger', () => {
 vi.mock('../../../lib/authContext', () => ({
   useAuth: vi.fn(),
 }));
+
+vi.mock('../../../lib/toast', async () => {
+  const actual = await vi.importActual<typeof import('../../../lib/toast')>(
+    '../../../lib/toast'
+  );
+
+  return {
+    ...actual,
+    showSuccess: vi.fn(),
+    showError: vi.fn(),
+  };
+});
 
 const rpcMock = vi.mocked(supabase.rpc);
 const defaultRpcImplementation = rpcMock.getMockImplementation();
@@ -86,6 +99,8 @@ describe('AdminSettings logging', () => {
     });
     vi.mocked(logger.error).mockClear();
     vi.mocked(logger.info).mockClear();
+    vi.mocked(showError).mockClear();
+    vi.mocked(showSuccess).mockClear();
   });
 
   afterEach(() => {
@@ -156,6 +171,10 @@ describe('AdminSettings logging', () => {
       await userEvent.type(within(modal).getByLabelText('Password*'), 'StrongPass123!');
       await userEvent.type(within(modal).getByLabelText('First Name*'), 'New');
       await userEvent.type(within(modal).getByLabelText('Last Name*'), 'Admin');
+      await userEvent.type(
+        within(modal).getByLabelText('Reason for admin access*'),
+        'Granting admin for coverage.'
+      );
 
       const submitButton = within(modal).getByRole('button', { name: 'Add Admin' });
       await userEvent.click(submitButton);
@@ -170,8 +189,63 @@ describe('AdminSettings logging', () => {
         expect.objectContaining({
           user_email: 'new.admin@example.com',
           organization_id: '11111111-1111-1111-1111-111111111111',
+          reason: 'Granting admin for coverage.',
         })
       );
+    } finally {
+      if (originalSignUp) {
+        (supabase.auth as Record<string, unknown>).signUp = originalSignUp;
+      } else {
+        delete (supabase.auth as Record<string, unknown>).signUp;
+      }
+    }
+  });
+
+  it('requires a justification before assigning a new admin user', async () => {
+    const assignAdminSpy = vi.fn();
+    const originalSignUp = (supabase.auth as { signUp?: (...args: unknown[]) => unknown }).signUp;
+    const signUpMock = vi.fn().mockResolvedValue({ data: {}, error: null });
+    (supabase.auth as Record<string, unknown>).signUp = signUpMock;
+
+    rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
+      if (functionName === 'get_admin_users') {
+        return { data: [mockAdminUser], error: null };
+      }
+
+      if (functionName === 'assign_admin_role') {
+        assignAdminSpy(params);
+        return { data: null, error: null };
+      }
+
+      if (defaultRpcImplementation) {
+        return defaultRpcImplementation(functionName, params as never);
+      }
+
+      return fallbackRpc(functionName, params);
+    });
+
+    try {
+      renderWithProviders(<AdminSettings />);
+
+      await userEvent.click(await screen.findByText('Add Admin'));
+
+      const modal = await screen.findByRole('dialog', { name: 'Add New Admin' });
+      await userEvent.type(within(modal).getByLabelText('Email*'), 'space.admin@example.com');
+      await userEvent.type(within(modal).getByLabelText('Password*'), 'StrongPass123!');
+      await userEvent.type(within(modal).getByLabelText('First Name*'), 'Space');
+      await userEvent.type(within(modal).getByLabelText('Last Name*'), 'Admin');
+      await userEvent.type(within(modal).getByLabelText('Reason for admin access*'), '          ');
+
+      const submitButton = within(modal).getByRole('button', { name: 'Add Admin' });
+      await userEvent.click(submitButton);
+
+      await waitFor(() => {
+        expect(vi.mocked(showError)).toHaveBeenCalledWith(
+          expect.objectContaining({ message: 'Please provide a reason with at least 10 characters.' })
+        );
+      });
+
+      expect(assignAdminSpy).not.toHaveBeenCalled();
     } finally {
       if (originalSignUp) {
         (supabase.auth as Record<string, unknown>).signUp = originalSignUp;

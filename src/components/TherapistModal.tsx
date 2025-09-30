@@ -127,7 +127,7 @@ export function TherapistModal({
             <h3 className="text-lg font-medium text-blue-900 dark:text-blue-100 mb-4">General Information</h3>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-first-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   First Name
                 </label>
                 <input
@@ -149,10 +149,11 @@ export function TherapistModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-middle-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Middle Name
                 </label>
                 <input
+                  id="therapist-middle-name"
                   type="text"
                   {...register('middle_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -160,7 +161,7 @@ export function TherapistModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-last-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Last Name
                 </label>
                 <input
@@ -184,7 +185,7 @@ export function TherapistModal({
 
             <div className="grid grid-cols-2 gap-4 mt-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Email
                 </label>
                 <input
@@ -206,10 +207,11 @@ export function TherapistModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Phone
                 </label>
                 <input
+                  id="therapist-phone"
                   type="tel"
                   {...register('phone')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -219,10 +221,11 @@ export function TherapistModal({
 
             <div className="grid grid-cols-3 gap-4 mt-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-staff-id" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Staff ID
                 </label>
                 <input
+                  id="therapist-staff-id"
                   type="text"
                   {...register('staff_id')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -230,10 +233,11 @@ export function TherapistModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Title
                 </label>
                 <select
+                  id="therapist-title"
                   {...register('title')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
@@ -247,10 +251,11 @@ export function TherapistModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-employee-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Employee Type
                 </label>
                 <select
+                  id="therapist-employee-type"
                   {...register('employee_type')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
@@ -264,10 +269,11 @@ export function TherapistModal({
 
             <div className="grid grid-cols-2 gap-4 mt-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-status" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Status
                 </label>
                 <select
+                  id="therapist-status"
                   {...register('status')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
@@ -412,7 +418,7 @@ export function TherapistModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-license-number" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   License Number
                 </label>
                 <input
@@ -434,10 +440,11 @@ export function TherapistModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-practitioner-id" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Practitioner ID
                 </label>
                 <input
+                  id="therapist-practitioner-id"
                   type="text"
                   {...register('practitioner_id')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -445,10 +452,11 @@ export function TherapistModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-taxonomy-code" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Taxonomy Code
                 </label>
                 <input
+                  id="therapist-taxonomy-code"
                   type="text"
                   {...register('taxonomy_code')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"

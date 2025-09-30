@@ -125,6 +125,7 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
     formState: { errors },
     setFocus,
     trigger,
+    getFieldState,
   } = useForm<OnboardingFormData>({
     resolver: zodResolver(therapistOnboardingSchema),
     defaultValues: {
@@ -288,6 +289,10 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
     if (fieldsToValidate) {
       const isValid = await trigger(fieldsToValidate);
       if (!isValid) {
+        const firstInvalidField = fieldsToValidate.find(field => getFieldState(field).invalid);
+        if (firstInvalidField) {
+          setFocus(firstInvalidField);
+        }
         return;
       }
     }
@@ -308,7 +313,7 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="onboarding-first-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   First Name
                 </label>
                 <input
@@ -330,10 +335,11 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="onboarding-middle-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Middle Name
                 </label>
                 <input
+                  id="onboarding-middle-name"
                   type="text"
                   {...register('middle_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -341,7 +347,7 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="onboarding-last-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Last Name
                 </label>
                 <input
@@ -365,7 +371,7 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="onboarding-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Email
                 </label>
                 <input
@@ -387,10 +393,11 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="onboarding-phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Phone
                 </label>
                 <input
+                  id="onboarding-phone"
                   type="tel"
                   {...register('phone')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -398,10 +405,11 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="onboarding-title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Title
                 </label>
                 <select
+                  id="onboarding-title"
                   {...register('title')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
@@ -419,10 +427,11 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="onboarding-employee-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Employee Type
                 </label>
                 <select
+                  id="onboarding-employee-type"
                   {...register('employee_type')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
@@ -434,10 +443,11 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="onboarding-staff-id" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Staff ID
                 </label>
                 <input
+                  id="onboarding-staff-id"
                   type="text"
                   {...register('staff_id')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -445,10 +455,11 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="onboarding-status" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Status
                 </label>
                 <select
+                  id="onboarding-status"
                   {...register('status')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
@@ -470,43 +481,47 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
               <h3 className="text-md font-medium text-blue-800 dark:text-blue-200 mb-2">Credentials & Identifiers</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="onboarding-npi-number" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     NPI Number
                   </label>
                   <input
+                    id="onboarding-npi-number"
                     type="text"
                     {...register('npi_number')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="onboarding-medicaid-id" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Medicaid ID
                   </label>
                   <input
+                    id="onboarding-medicaid-id"
                     type="text"
                     {...register('medicaid_id')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
-                </div>
+                  </div>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="onboarding-rbt-number" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     RBT Number
                   </label>
                   <input
+                    id="onboarding-rbt-number"
                     type="text"
                     {...register('rbt_number')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="onboarding-bcba-number" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     BCBA Number
                   </label>
                   <input
+                    id="onboarding-bcba-number"
                     type="text"
                     {...register('bcba_number')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -516,7 +531,7 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="onboarding-license-number" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     License Number
                   </label>
                   <input
@@ -540,20 +555,22 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="onboarding-practitioner-id" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Practitioner ID
                   </label>
                   <input
+                    id="onboarding-practitioner-id"
                     type="text"
                     {...register('practitioner_id')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="onboarding-taxonomy-code" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Taxonomy Code
                   </label>
                   <input
+                    id="onboarding-taxonomy-code"
                     type="text"
                     {...register('taxonomy_code')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -841,7 +858,7 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
               </div>
               
               <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label htmlFor="license" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   License/Certification
                 </label>
                 <div className="flex items-center">

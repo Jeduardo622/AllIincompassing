@@ -1,0 +1,19 @@
+# Placeholder diff capturing super-admin AI hardening
+@@
+- Deno.serve(async (req: Request) => {
+-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+-  try {
+-    const db = createRequestClient(req);
+-    await getUserOrThrow(db);
+-    const { message, context } = await req.json();
+-    ...
+-  }
++export default createProtectedRoute(async (req, userContext) => {
++  if (req.method !== 'POST') return methodNotAllowed();
++  await assertSuperAdmin(userContext);
++  const { message, context } = await req.json();
++  const scrubbedContext = redactPhi(context);
++  const response = await invokeOpenAi(message, scrubbedContext);
++  await logAiUsage(userContext.user.id, response.tokenUsage);
++  return jsonResponse(response);
++}, RouteOptions.superAdmin);

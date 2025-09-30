@@ -1,0 +1,9 @@
+# Placeholder diff to tighten admin endpoints
+@@
+- const organizationId = url.searchParams.get("organization_id")?.trim();
+- if (!organizationId) { return respond(400, { error: "organization_id is required" }); }
+- const { data: rpcUsers, error } = await adminClient.rpc("get_admin_users", { organization_id: organizationId });
++const organizationId = requireOrganizationContext(userContext);
++const targetOrg = url.searchParams.get("organization_id")?.trim() ?? organizationId;
++await assertOrgMatchOrSuperAdmin(userContext, targetOrg);
++const { data: rpcUsers, error } = await adminClient.rpc("get_admin_users", { organization_id: targetOrg, limit: 200 });

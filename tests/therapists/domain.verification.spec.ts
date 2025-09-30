@@ -1,6 +1,8 @@
+// ENV REQUIREMENTS: set SUPABASE_URL, SUPABASE_ANON_KEY, and TEST_JWT_ORG_A (therapist-scoped JWT) before enabling RUN_THERAPIST_DOMAIN_TESTS.
 import { describe, it, expect } from "vitest";
 
-const runTherapistSuite = process.env.RUN_THERAPIST_DOMAIN_TESTS === "true";
+const runTherapistSuite =
+  process.env.RUN_THERAPIST_DOMAIN_TESTS === "true" && Boolean(process.env.TEST_JWT_ORG_A);
 const suite = runTherapistSuite ? describe : describe.skip;
 
 suite("Therapist schedule and mutation expectations", () => {

@@ -1,6 +1,10 @@
+// ENV REQUIREMENTS: set SUPABASE_URL, SUPABASE_ANON_KEY, TEST_JWT_ORG_A, and TEST_JWT_SUPER_ADMIN before enabling RUN_ADMIN_DOMAIN_TESTS.
 import { describe, it, expect } from "vitest";
 
-const runAdminsSuite = process.env.RUN_ADMIN_DOMAIN_TESTS === "true";
+const runAdminsSuite =
+  process.env.RUN_ADMIN_DOMAIN_TESTS === "true" &&
+  Boolean(process.env.TEST_JWT_ORG_A) &&
+  Boolean(process.env.TEST_JWT_SUPER_ADMIN);
 const suite = runAdminsSuite ? describe : describe.skip;
 
 suite("Admin edge contract expectations", () => {

@@ -368,8 +368,8 @@ async function getCompressedContextData(): Promise<ContextData> {
     const db = createRequestClient((globalThis as any).currentRequest);
     await getUserOrThrow(db);
     const [therapists, clients, sessions] = await Promise.all([
-      db.from('therapists').select('id').eq('status', 'active'),
-      db.from('clients').select('id'),
+      db.from('therapists').select('id').eq('status', 'active').is('deleted_at', null),
+      db.from('clients').select('id').is('deleted_at', null),
       db.from('sessions').select('id').gte('start_time', new Date().toISOString().split('T')[0])
     ]);
 

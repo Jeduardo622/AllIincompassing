@@ -21,6 +21,33 @@ const __dirname = path.dirname(__filename);
 const REPORTS_DIR = path.join(__dirname, '..', '.reports');
 const PROJECT_REF = process.env.SUPABASE_PROJECT_REF || 'wnnjeqheqxxyrgsjmygy';
 
+const REQUIRED_INDEXES = [
+  {
+    name: 'sessions_org_therapist_start_time_idx',
+    table: 'public.sessions',
+    definitionSnippets: ['ON public.sessions', '(organization_id, therapist_id, start_time)'],
+  },
+  {
+    name: 'clients_org_status_active_idx',
+    table: 'public.clients',
+    definitionSnippets: [
+      'ON public.clients',
+      '(organization_id, status, full_name)',
+      'WHERE (deleted_at IS NULL)'
+    ],
+  },
+  {
+    name: 'billing_records_org_status_created_idx',
+    table: 'public.billing_records',
+    definitionSnippets: ['ON public.billing_records', '(organization_id, status, created_at DESC)'],
+  },
+  {
+    name: 'session_cpt_entries_org_session_line_idx',
+    table: 'public.session_cpt_entries',
+    definitionSnippets: ['ON public.session_cpt_entries', '(organization_id, session_id, line_number)'],
+  },
+];
+
 /**
  * Logger utility
  */
@@ -292,7 +319,7 @@ async function checkTableSizes(branchId) {
 async function checkConnections(branchId) {
   try {
     logger.info('Checking connection statistics...');
-    
+
     const projectRef = branchId || PROJECT_REF;
     
     const connectionsQuery = `
@@ -320,6 +347,63 @@ async function checkConnections(branchId) {
   } catch (error) {
     logger.error(`Connection check failed: ${error.message}`);
     return [];
+  }
+}
+
+/**
+ * Verify required indexes exist with expected definitions
+ */
+async function verifyRequiredIndexes(branchId) {
+  try {
+    logger.info('Verifying required indexes are present...');
+
+    const projectRef = branchId || PROJECT_REF;
+    const indexNamesList = REQUIRED_INDEXES.map((index) => `'${index.name}'`).join(', ');
+
+    const requiredIndexesQuery = `
+      SELECT
+        indexname,
+        indexdef
+      FROM pg_indexes
+      WHERE schemaname = 'public'
+        AND indexname = ANY (ARRAY[${indexNamesList}]);
+    `;
+
+    const command = `supabase db query '${requiredIndexesQuery}' --project-ref ${projectRef} --experimental`;
+    const output = execSync(command, {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+
+    const rows = parseQueryOutput(output);
+    const indexMap = new Map(rows.map((row) => [row.indexname, row.indexdef]));
+
+    const missing = [];
+    for (const index of REQUIRED_INDEXES) {
+      const definition = indexMap.get(index.name);
+      if (!definition) {
+        missing.push(`${index.table}.${index.name}`);
+        continue;
+      }
+
+      const hasAllSnippets = index.definitionSnippets.every((snippet) => definition.includes(snippet));
+      if (!hasAllSnippets) {
+        missing.push(`${index.table}.${index.name}`);
+      }
+    }
+
+    if (missing.length > 0) {
+      throw new Error(`Missing or misconfigured indexes detected: ${missing.join(', ')}`);
+    }
+
+    logger.success('All required indexes verified');
+    return {
+      indexes: Object.fromEntries(indexMap),
+      missing,
+    };
+  } catch (error) {
+    logger.error(`Required index verification failed: ${error.message}`);
+    throw error;
   }
 }
 
@@ -355,7 +439,7 @@ function parseQueryOutput(output) {
 /**
  * Generate performance report
  */
-function generatePerformanceReport(branchId, advisors, slowQueries, indexIssues, tableSizes, connections) {
+function generatePerformanceReport(branchId, advisors, slowQueries, indexIssues, tableSizes, connections, requiredIndexes) {
   const report = {
     branch_id: branchId,
     timestamp: new Date().toISOString(),
@@ -364,7 +448,8 @@ function generatePerformanceReport(branchId, advisors, slowQueries, indexIssues,
       slow_queries: slowQueries.length,
       index_issues: indexIssues.length,
       largest_tables: tableSizes.slice(0, 5).map(t => ({ name: t.tablename, size: t.size })),
-      total_connections: connections.reduce((sum, c) => sum + parseInt(c.connection_count || 0), 0)
+      total_connections: connections.reduce((sum, c) => sum + parseInt(c.connection_count || 0), 0),
+      missing_required_indexes: requiredIndexes?.missing?.length ?? 0,
     },
     advisors: advisors.advisors,
     slow_queries: slowQueries,
@@ -372,9 +457,10 @@ function generatePerformanceReport(branchId, advisors, slowQueries, indexIssues,
     table_sizes: tableSizes,
     connections: connections,
     errors: advisors.errors,
-    recommendations: generatePerformanceRecommendations(advisors, slowQueries, indexIssues, tableSizes)
+    recommendations: generatePerformanceRecommendations(advisors, slowQueries, indexIssues, tableSizes),
+    required_indexes: requiredIndexes?.indexes ?? {},
   };
-  
+
   return report;
 }
 
@@ -461,16 +547,25 @@ async function main() {
     logger.info(`Starting performance check for branch: ${branchId}`);
     
     // Run all performance checks
-    const [advisors, slowQueries, indexIssues, tableSizes, connections] = await Promise.all([
+    const [advisors, slowQueries, indexIssues, tableSizes, connections, requiredIndexes] = await Promise.all([
       runPerformanceAdvisors(branchId),
       checkSlowQueries(branchId),
       checkMissingIndexes(branchId),
       checkTableSizes(branchId),
-      checkConnections(branchId)
+      checkConnections(branchId),
+      verifyRequiredIndexes(branchId),
     ]);
-    
+
     // Generate report
-    const report = generatePerformanceReport(branchId, advisors, slowQueries, indexIssues, tableSizes, connections);
+    const report = generatePerformanceReport(
+      branchId,
+      advisors,
+      slowQueries,
+      indexIssues,
+      tableSizes,
+      connections,
+      requiredIndexes,
+    );
     
     // Save report
     const reportPath = savePerformanceReport(report);
@@ -481,6 +576,7 @@ async function main() {
     logger.info(`- Slow Queries: ${report.summary.slow_queries}`);
     logger.info(`- Index Issues: ${report.summary.index_issues}`);
     logger.info(`- Total Connections: ${report.summary.total_connections}`);
+    logger.info(`- Missing Required Indexes: ${report.summary.missing_required_indexes}`);
     
     if (report.summary.slow_queries > 5) {
       logger.warn(`High number of slow queries detected!`);
@@ -505,6 +601,7 @@ export {
   checkMissingIndexes,
   checkTableSizes,
   checkConnections,
+  verifyRequiredIndexes,
   generatePerformanceReport,
   savePerformanceReport
-}; 
+};

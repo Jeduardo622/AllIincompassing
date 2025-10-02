@@ -123,7 +123,7 @@ TO authenticated USING (
 #### Clients Table
 ```sql
 -- Clients see self, therapists see assigned clients, admins see all
-CREATE POLICY "clients_access" ON clients FOR ALL 
+CREATE POLICY "clients_access" ON clients FOR ALL
 TO authenticated USING (
   CASE 
     WHEN auth.is_admin() THEN true
@@ -137,6 +137,15 @@ TO authenticated USING (
   END
 );
 ```
+
+### Client Self-Service Boundaries
+
+- Client-scoped JWTs now flow through `app.user_has_role_for_org('client', organization_id, NULL, id)`.
+  This ensures the authenticated user can only read or change the client row that matches both their user id and organization context.
+- Session- and billing-level checks mirror that behavior by passing the target `session_id` into `user_has_role_for_org` and
+  ensuring the session's `client_id` resolves to the authenticated user before any rows are returned or written.
+- `WITH CHECK` clauses match the `USING` predicates to guarantee clients cannot escalate privileges by writing data for other
+  organizations while still being able to maintain their own profile, session, and billing records.
 
 ## API Routes
 

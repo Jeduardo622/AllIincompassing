@@ -7,6 +7,8 @@ import {
   validateTimezonePayload,
   type TimezoneValidationPayload,
 } from "../_shared/timezone.ts";
+import { getUserOrThrow } from "../_shared/auth.ts";
+import { evaluateTherapistAuthorization } from "../_shared/authorization.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,15 +44,6 @@ function jsonResponse(
   });
 }
 
-async function ensureAuthenticated(req: Request) {
-  const client = createRequestClient(req);
-  const { data, error } = await client.auth.getUser();
-  if (error || !data?.user) {
-    throw jsonResponse({ success: false, error: "Unauthorized" }, 401);
-  }
-  return data.user;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -61,7 +54,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const user = await ensureAuthenticated(req);
+    const requestClient = createRequestClient(req);
+    const user = await getUserOrThrow(requestClient);
     const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
     const normalizedKey = idempotencyKey.length > 0 ? idempotencyKey : null;
     const idempotencyService = createSupabaseIdempotencyService(supabaseAdmin);
@@ -139,6 +133,55 @@ Deno.serve(async (req) => {
       }
     }
 
+    const uniqueHoldKeys = Array.from(
+      new Set(occurrencePayloads.map((occurrence) => occurrence.hold_key).filter(Boolean)),
+    );
+
+    if (uniqueHoldKeys.length === 0) {
+      return respond({ success: false, error: "Hold key is required" }, 400);
+    }
+
+    const { data: holdRecords, error: holdFetchError } = await supabaseAdmin
+      .from("session_holds")
+      .select("hold_key, therapist_id, client_id")
+      .in("hold_key", uniqueHoldKeys);
+
+    if (holdFetchError) {
+      console.error("Failed to load session holds for authorization", holdFetchError);
+      return respond({ success: false, error: "Authorization lookup failed" }, 500);
+    }
+
+    const holdAuthorizationMap = new Map<string, { therapist_id: string; client_id: string }>();
+    if (Array.isArray(holdRecords)) {
+      for (const record of holdRecords) {
+        if (record?.hold_key && record?.therapist_id) {
+          holdAuthorizationMap.set(record.hold_key, {
+            therapist_id: record.therapist_id as string,
+            client_id: record.client_id as string,
+          });
+        }
+      }
+    }
+
+    const checkedTherapists = new Set<string>();
+    for (const holdKey of uniqueHoldKeys) {
+      const target = holdAuthorizationMap.get(holdKey);
+      if (!target) {
+        continue;
+      }
+
+      if (checkedTherapists.has(target.therapist_id)) {
+        continue;
+      }
+
+      const authorization = await evaluateTherapistAuthorization(requestClient, target.therapist_id);
+      if (!authorization.ok) {
+        return respond(authorization.failure.body, authorization.failure.status);
+      }
+
+      checkedTherapists.add(target.therapist_id);
+    }
+
     const confirmedSessions: Record<string, unknown>[] = [];
 
     for (const occurrence of occurrencePayloads) {
@@ -163,6 +206,7 @@ Deno.serve(async (req) => {
           CLIENT_CONFLICT: 409,
           HOLD_NOT_FOUND: 410,
           HOLD_EXPIRED: 410,
+          FORBIDDEN: 403,
         };
         const status = statusMap[data?.error_code as string] ?? 409;
         return respond({

@@ -12,6 +12,7 @@ messages and retry guidance.
 | `CLIENT_CONFLICT` | The client already has a confirmed session that overlaps the requested range. | 409 |
 | `THERAPIST_HOLD_CONFLICT` | A non-expired hold already reserves the overlapping range for the therapist. | 409 |
 | `CLIENT_HOLD_CONFLICT` | A non-expired hold already reserves the overlapping range for the client. | 409 |
+| `FORBIDDEN` | The authenticated actor is not permitted to manage holds for the target therapist. | 403 |
 
 The new `THERAPIST_HOLD_CONFLICT` and `CLIENT_HOLD_CONFLICT` codes are emitted both during the
 pre-insert range check and by the database exclusion constraints. Callers should treat them as

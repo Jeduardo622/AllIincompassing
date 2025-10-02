@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { Session } from "../types";
 import type { HoldResponse } from "../lib/sessionHolds";
 
@@ -58,7 +59,52 @@ export interface BookSessionResult {
   cpt: DerivedCpt;
 }
 
-export type BookSessionApiRequestBody = Omit<BookSessionRequest, "idempotencyKey" | "accessToken">;
+const nonEmptyString = z.string().trim().min(1);
+
+const isoDateTime = z.string().datetime({ offset: true });
+
+const recurrenceSchema = z.object({
+  rule: nonEmptyString,
+  count: z.number().int().positive().optional(),
+  until: isoDateTime.optional(),
+  exceptions: z.array(isoDateTime).optional(),
+  timeZone: nonEmptyString.optional(),
+});
+
+const bookingOverridesSchema = z.object({
+  cptCode: nonEmptyString.optional(),
+  modifiers: z.array(nonEmptyString).optional(),
+});
+
+const sessionSchema = z
+  .object({
+    therapist_id: nonEmptyString,
+    client_id: nonEmptyString,
+    start_time: isoDateTime,
+    end_time: isoDateTime,
+    id: nonEmptyString.optional(),
+    status: nonEmptyString.optional(),
+    notes: z.string().optional(),
+    created_at: isoDateTime.optional(),
+    created_by: nonEmptyString.nullable().optional(),
+    updated_at: isoDateTime.optional(),
+    updated_by: nonEmptyString.nullable().optional(),
+    duration_minutes: z.number().int().positive().nullable().optional(),
+    recurrence: recurrenceSchema.nullable().optional(),
+  })
+  .passthrough();
+
+export const bookSessionApiRequestBodySchema = z.object({
+  session: sessionSchema,
+  startTimeOffsetMinutes: z.number().int(),
+  endTimeOffsetMinutes: z.number().int(),
+  timeZone: nonEmptyString,
+  holdSeconds: z.number().int().min(0).optional(),
+  overrides: bookingOverridesSchema.optional(),
+  recurrence: recurrenceSchema.nullable().optional(),
+});
+
+export type BookSessionApiRequestBody = z.infer<typeof bookSessionApiRequestBodySchema>;
 
 export interface BookSessionApiResponse {
   success: boolean;

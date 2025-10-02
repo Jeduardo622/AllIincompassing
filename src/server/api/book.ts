@@ -1,10 +1,13 @@
 import "../bootstrapSupabase";
 import { bookSession } from "../bookSession";
-import type {
-  BookSessionApiRequestBody,
-  BookSessionApiResponse,
-  BookSessionRequest,
+import {
+  bookSessionApiRequestBodySchema,
+  type BookSessionApiRequestBody,
+  type BookSessionApiResponse,
+  type BookSessionRequest,
 } from "../types";
+import { logger } from "../../lib/logger/logger";
+import { toError } from "../../lib/logger/normalizeError";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -61,17 +64,32 @@ export async function bookHandler(request: Request): Promise<Response> {
     );
   }
 
-  let body: BookSessionApiRequestBody;
+  let rawBody: unknown;
   try {
-    body = await request.json();
+    rawBody = await request.json();
   } catch (error) {
-    console.error("Failed to parse booking payload", error);
+    logger.warn("Failed to parse booking payload", { error: toError(error), context: { handler: "bookHandler" } });
     return jsonResponse({ success: false, error: "Invalid JSON body" }, 400);
   }
 
-  if (!body || typeof body !== "object" || !body.session) {
-    return jsonResponse({ success: false, error: "Missing session payload" }, 400);
+  const parseResult = bookSessionApiRequestBodySchema.safeParse(rawBody);
+
+  if (!parseResult.success) {
+    logger.warn("Rejected invalid booking payload", {
+      metadata: parseResult.error.issues.map((issue) => ({
+        code: issue.code,
+        path: issue.path.join("."),
+        message: issue.message,
+      })),
+      context: { handler: "bookHandler" },
+    });
+    return jsonResponse(
+      { success: false, error: "Invalid request body", code: "invalid_request" },
+      400,
+    );
   }
+
+  const body: BookSessionApiRequestBody = parseResult.data;
 
   try {
     const idempotencyKey = request.headers.get("Idempotency-Key") ?? undefined;
@@ -84,8 +102,15 @@ export async function bookHandler(request: Request): Promise<Response> {
     const status = typeof (error as { status?: number })?.status === "number"
       ? (error as { status: number }).status
       : 500;
-    const message = error instanceof Error ? error.message : "Failed to book session";
-    console.error("Session booking failed", error);
-    return jsonResponse({ success: false, error: message }, status);
+    const normalizedError = toError(error, "Booking failed");
+    logger.error("Session booking failed", {
+      error: normalizedError,
+      metadata: {
+        status,
+        name: normalizedError.name,
+      },
+      context: { handler: "bookHandler" },
+    });
+    return jsonResponse({ success: false, error: "Booking failed" }, status);
   }
 }

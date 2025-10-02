@@ -36,14 +36,14 @@ AllIncompassing delivers therapist scheduling, billing, and operational telemetr
 - **Node.js 18+** and npm or another package manager supported by the repo (pnpm, yarn).
 - **Supabase CLI** (installed globally or via `npx`) with access to the project reference `wnnjeqheqxxyrgsjmygy`.
 - **Environment variables** available in your shell: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_ACCESS_TOKEN`.
-- **Vite runtime env file** – `.env` should provide `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Include `VITE_SUPABASE_EDGE_URL` when targeting a custom Edge Functions domain.
+- **Vite runtime env file** – copy `.env.example` to `.env.codex` (preferred) or `.env`, then replace every `****` placeholder. The runtime loader in `src/server/env.ts` reads `.env.codex` by default, so keeping that filename avoids additional configuration. Provide `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_SUPABASE_EDGE_URL` values that mirror the non-prefixed Supabase settings.
 
 > ℹ️ Run `./scripts/setup.sh` to validate Supabase credentials, generate database types, and create the `.env` file automatically. The script also configures `~/.supabase/config.toml` for non-interactive CLI sessions.
 
 ### Bootstrapping the app
 
 1. Install dependencies: `npm install`
-2. Populate the `.env` file (or rerun `./scripts/setup.sh` after exporting Supabase variables).
+2. Copy `.env.example` to `.env.codex` and populate the placeholders (or rerun `./scripts/setup.sh` after exporting Supabase variables).
 3. Start the development server: `npm run dev`
 4. Optional helpers:
    - `npm run dev:clean` – clear caches before launching Vite.

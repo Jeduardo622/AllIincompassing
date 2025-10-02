@@ -7,6 +7,8 @@ import {
   validateTimezonePayload,
   type TimezoneValidationPayload,
 } from "../_shared/timezone.ts";
+import { getUserOrThrow } from "../_shared/auth.ts";
+import { evaluateTherapistAuthorization } from "../_shared/authorization.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,14 +47,6 @@ function jsonResponse(
   });
 }
 
-async function ensureAuthenticated(req: Request) {
-  const client = createRequestClient(req);
-  const { data, error } = await client.auth.getUser();
-  if (error || !data?.user) {
-    throw jsonResponse({ success: false, error: "Unauthorized" }, 401);
-  }
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -63,7 +57,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    await ensureAuthenticated(req);
+    const requestClient = createRequestClient(req);
+    const user = await getUserOrThrow(requestClient);
     const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
     const normalizedKey = idempotencyKey.length > 0 ? idempotencyKey : null;
     const idempotencyService = createSupabaseIdempotencyService(supabaseAdmin);
@@ -104,6 +99,11 @@ Deno.serve(async (req) => {
       return respond({ success: false, error: "Missing required fields" }, 400);
     }
 
+    const authorization = await evaluateTherapistAuthorization(requestClient, payload.therapist_id);
+    if (!authorization.ok) {
+      return respond(authorization.failure.body, authorization.failure.status);
+    }
+
     const occurrencePayloads = Array.isArray(payload.occurrences) && payload.occurrences.length > 0
       ? payload.occurrences
       : [payload];
@@ -132,6 +132,7 @@ Deno.serve(async (req) => {
         p_end_time: occurrence.end_time,
         p_session_id: payload.session_id ?? null,
         p_hold_seconds: payload.hold_seconds ?? 300,
+        p_actor_id: user.id,
       });
 
       if (error) {
@@ -151,6 +152,7 @@ Deno.serve(async (req) => {
           HOLD_EXISTS: 409,
           THERAPIST_CONFLICT: 409,
           CLIENT_CONFLICT: 409,
+          FORBIDDEN: 403,
         };
         const status = statusMap[data?.error_code as string] ?? 409;
 

@@ -1894,6 +1894,101 @@ describe('session holds enforce role-scoped access', () => {
   });
 });
 
+describe('session hold edge function authorization', () => {
+  beforeAll(async () => {
+    if (!runTests || !serviceClient || !orgAContext || !orgBContext) {
+      return;
+    }
+
+    await ensureSessionHoldsSeeded();
+  });
+
+  it('prevents therapists from acquiring holds for other organizations', async () => {
+    if (!runTests || !orgAContext || !orgBContext) {
+      console.log('⏭️  Skipping edge function authorization test - setup incomplete.');
+      return;
+    }
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const { start, end } = generateHoldWindow(90);
+      const { data, error } = await supabaseOrgA.functions.invoke('sessions-hold', {
+        body: {
+          therapist_id: orgBContext.therapistId,
+          client_id: orgBContext.clientId,
+          start_time: start,
+          end_time: end,
+          start_time_offset_minutes: 0,
+          end_time_offset_minutes: 0,
+          time_zone: 'UTC',
+        },
+      });
+
+      expect(error).toBeTruthy();
+      const typedError = error as { status?: number; message?: string } | null;
+      expect(typedError?.status).toBe(403);
+
+      if (data) {
+        const responseBody = data as { success?: boolean; error?: string };
+        expect(responseBody.success).toBe(false);
+        expect((responseBody.error ?? '').toLowerCase()).toContain('forbidden');
+      }
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+
+  it('prevents therapists from confirming holds owned by another organization', async () => {
+    if (!runTests || !serviceClient || !orgAContext || !orgBContext || !sessionHoldIdsByOrg) {
+      console.log('⏭️  Skipping edge function authorization test - setup incomplete.');
+      return;
+    }
+
+    const holdQuery = await serviceClient
+      .from('session_holds')
+      .select('hold_key, therapist_id, client_id, start_time, end_time')
+      .eq('id', sessionHoldIdsByOrg.orgB)
+      .single();
+
+    if (holdQuery.error || !holdQuery.data) {
+      throw holdQuery.error ?? new Error('Expected seeded session hold for authorization test');
+    }
+
+    const holdRecord = holdQuery.data;
+
+    const supabaseOrgA = await signInTherapist(orgAContext);
+    try {
+      const { data, error } = await supabaseOrgA.functions.invoke('sessions-confirm', {
+        body: {
+          hold_key: holdRecord.hold_key,
+          session: {
+            therapist_id: holdRecord.therapist_id,
+            client_id: holdRecord.client_id,
+            start_time: holdRecord.start_time,
+            end_time: holdRecord.end_time,
+            status: 'scheduled',
+          },
+          start_time_offset_minutes: 0,
+          end_time_offset_minutes: 0,
+          time_zone: 'UTC',
+        },
+      });
+
+      expect(error).toBeTruthy();
+      const typedError = error as { status?: number; message?: string } | null;
+      expect(typedError?.status).toBe(403);
+
+      if (data) {
+        const responseBody = data as { success?: boolean; error?: string };
+        expect(responseBody.success).toBe(false);
+        expect((responseBody.error ?? '').toLowerCase()).toContain('forbidden');
+      }
+    } finally {
+      await supabaseOrgA.auth.signOut();
+    }
+  });
+});
+
 describe('session transcription consent enforcement', () => {
   beforeAll(async () => {
     if (!runTests || !serviceClient || !orgAContext || !orgBContext) {

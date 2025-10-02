@@ -1,0 +1,80 @@
+name: lighthouse-ci
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      preview_url:
+        description: 'Preview URL to audit (overrides automatic detection)'
+        required: false
+        type: string
+
+jobs:
+  lhci:
+    name: Lighthouse CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      INPUT_PREVIEW_URL: ${{ github.event.inputs.preview_url }}
+      VAR_PREVIEW_URL: ${{ vars.LIGHTHOUSE_PREVIEW_URL }}
+      SECRET_PREVIEW_URL: ${{ secrets.LIGHTHOUSE_PREVIEW_URL }}
+      NETLIFY_SITE: velvety-cendol-dae4d6.netlify.app
+      GITHUB_HEAD_REF_SAFE: ${{ github.head_ref || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve preview URL
+        id: preview
+        run: |
+          set -euo pipefail
+          candidate="${INPUT_PREVIEW_URL:-}" || true
+          if [ -z "$candidate" ]; then
+            candidate="${VAR_PREVIEW_URL:-}" || true
+          fi
+          if [ -z "$candidate" ]; then
+            candidate="${SECRET_PREVIEW_URL:-}" || true
+          fi
+
+          if [ -z "$candidate" ]; then
+            branch_slug=$(printf '%s' "${GITHUB_HEAD_REF_SAFE}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g' | sed -E 's/^-+|-+$//g')
+            if [ -n "$branch_slug" ]; then
+              inferred="https://${branch_slug}--${NETLIFY_SITE}/"
+              if curl -s --head --location --max-time 10 "$inferred" | grep -qi "^HTTP/.* 200"; then
+                candidate="$inferred"
+              fi
+            fi
+          fi
+
+          if [ -z "$candidate" ]; then
+            echo "::error::Preview URL missing. Provide it via the workflow input, repository variable LIGHTHOUSE_PREVIEW_URL, or secret LIGHTHOUSE_PREVIEW_URL." >&2
+            exit 1
+          fi
+
+          echo "url=${candidate%/}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Lighthouse CI
+        run: npm install --no-save @lhci/cli@0.13.1
+
+      - name: Run Lighthouse CI
+        env:
+          TARGET_URL: ${{ steps.preview.outputs.url }}
+        run: |
+          npx lhci autorun \
+            --config=lighthouserc.json \
+            --collect.url="$TARGET_URL" \
+            --collect.url="$TARGET_URL/start" \
+            --collect.url="$TARGET_URL/login"
+
+      - name: Upload Lighthouse report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-${{ github.run_id }}
+          path: .lighthouseci

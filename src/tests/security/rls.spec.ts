@@ -1287,6 +1287,198 @@ describe('row level security for multi-tenant tables', () => {
     }
   });
 
+  it('allows clients to read and update only their own client record', async () => {
+    if (!runTests || !orgAContext || !orgBContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const client = await signInClient(orgAContext);
+    let originalPreferred: string | null = null;
+    try {
+      const ownRow = await client
+        .from('clients')
+        .select('id, organization_id, preferred_language')
+        .eq('id', orgAContext.clientId)
+        .maybeSingle();
+
+      expect(ownRow.error).toBeNull();
+      expect(ownRow.data?.id).toBe(orgAContext.clientId);
+      expect(ownRow.data?.organization_id).toBe(orgAContext.organizationId);
+
+      originalPreferred = ownRow.data?.preferred_language ?? null;
+      const newPreferred = `client-pref-${randomSuffix()}`;
+
+      const updated = await client
+        .from('clients')
+        .update({ preferred_language: newPreferred })
+        .eq('id', orgAContext.clientId)
+        .select('preferred_language')
+        .maybeSingle();
+
+      expect(updated.error).toBeNull();
+      expect(updated.data?.preferred_language).toBe(newPreferred);
+
+      const crossRead = await client
+        .from('clients')
+        .select('id')
+        .eq('id', orgBContext.clientId);
+
+      expect(crossRead.error).toBeNull();
+      expect(Array.isArray(crossRead.data)).toBe(true);
+      expect(crossRead.data).toHaveLength(0);
+
+      const crossUpdate = await client
+        .from('clients')
+        .update({ preferred_language: 'unauthorized' })
+        .eq('id', orgBContext.clientId)
+        .select('id');
+
+      const crossAffected = Array.isArray(crossUpdate.data) ? crossUpdate.data.length : 0;
+      expectRlsViolation(crossUpdate.error, crossAffected);
+    } finally {
+      await client
+        .from('clients')
+        .update({ preferred_language: originalPreferred })
+        .eq('id', orgAContext.clientId);
+
+      await client.auth.signOut();
+    }
+  });
+
+  it('allows clients to manage only sessions that belong to them', async () => {
+    if (!runTests || !orgAContext || !orgBContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const client = await signInClient(orgAContext);
+    let originalNotes: string | null = null;
+    try {
+      const ownSession = await client
+        .from('sessions')
+        .select('id, client_id, notes')
+        .eq('id', orgAContext.sessionId)
+        .maybeSingle();
+
+      expect(ownSession.error).toBeNull();
+      expect(ownSession.data?.id).toBe(orgAContext.sessionId);
+      expect(ownSession.data?.client_id).toBe(orgAContext.clientId);
+
+      originalNotes = ownSession.data?.notes ?? null;
+      const updatedNotes = `Client note ${randomSuffix()}`;
+
+      const updateResult = await client
+        .from('sessions')
+        .update({ notes: updatedNotes })
+        .eq('id', orgAContext.sessionId)
+        .select('notes')
+        .maybeSingle();
+
+      expect(updateResult.error).toBeNull();
+      expect(updateResult.data?.notes).toBe(updatedNotes);
+
+      const crossRead = await client
+        .from('sessions')
+        .select('id')
+        .eq('id', orgBContext.sessionId);
+
+      expect(crossRead.error).toBeNull();
+      expect(Array.isArray(crossRead.data)).toBe(true);
+      expect(crossRead.data).toHaveLength(0);
+
+      const crossUpdate = await client
+        .from('sessions')
+        .update({ notes: 'unauthorized note' })
+        .eq('id', orgBContext.sessionId)
+        .select('id');
+
+      const crossCount = Array.isArray(crossUpdate.data) ? crossUpdate.data.length : 0;
+      expectRlsViolation(crossUpdate.error, crossCount);
+    } finally {
+      await client
+        .from('sessions')
+        .update({ notes: originalNotes })
+        .eq('id', orgAContext.sessionId);
+
+      await client.auth.signOut();
+    }
+  });
+
+  it('restricts billing records to the authenticated client session scope', async () => {
+    if (!runTests || !orgAContext || !orgBContext) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    await ensureBillingRecordsSeeded();
+    if (!billingRecordIdsByOrg) {
+      throw new Error('Billing records were not seeded for client coverage tests');
+    }
+
+    const client = await signInClient(orgAContext);
+    let originalStatus: string | null = null;
+    let targetRecordId: string | null = null;
+    try {
+      const ownRecords = await client
+        .from('billing_records')
+        .select('id, session_id, status')
+        .eq('session_id', orgAContext.sessionId);
+
+      expect(ownRecords.error).toBeNull();
+      const ownRows = Array.isArray(ownRecords.data) ? ownRecords.data : [];
+      expect(ownRows.length).toBeGreaterThan(0);
+      ownRows.forEach(row => {
+        expect(row.session_id).toBe(orgAContext.sessionId);
+      });
+
+      targetRecordId = ownRows[0]?.id ?? null;
+      if (!targetRecordId) {
+        throw new Error('Expected at least one billing record id for the client session');
+      }
+
+      originalStatus = ownRows[0]?.status ?? null;
+      const newStatus = originalStatus === 'pending' ? 'review' : 'pending';
+
+      const updateResult = await client
+        .from('billing_records')
+        .update({ status: newStatus })
+        .eq('id', targetRecordId)
+        .select('status')
+        .maybeSingle();
+
+      expect(updateResult.error).toBeNull();
+      expect(updateResult.data?.status).toBe(newStatus);
+
+      const crossRead = await client
+        .from('billing_records')
+        .select('id')
+        .eq('session_id', orgBContext.sessionId);
+
+      expect(crossRead.error).toBeNull();
+      expect(Array.isArray(crossRead.data)).toBe(true);
+      expect(crossRead.data).toHaveLength(0);
+
+      const crossUpdate = await client
+        .from('billing_records')
+        .update({ status: 'unauthorized' })
+        .eq('id', billingRecordIdsByOrg.orgB)
+        .select('id');
+
+      const crossCount = Array.isArray(crossUpdate.data) ? crossUpdate.data.length : 0;
+      expectRlsViolation(crossUpdate.error, crossCount);
+    } finally {
+      if (targetRecordId) {
+        await client
+          .from('billing_records')
+          .update({ status: originalStatus })
+          .eq('id', targetRecordId);
+      }
+
+      await client.auth.signOut();
+    }
+  });
+
   it('allows therapists to create clients within their organization via RPC', async () => {
     if (!runTests || !orgAContext) {
       console.log('⏭️  Skipping RLS test - setup incomplete.');

@@ -4,6 +4,85 @@ import { logger } from './logger/logger';
 import { redactPhi } from './logger/redactPhi';
 import { toError } from './logger/normalizeError';
 
+const hasBrowserEnvironment = typeof window !== 'undefined' && typeof navigator !== 'undefined';
+
+const safeNavigator = (): Navigator | undefined => (typeof navigator !== 'undefined' ? navigator : undefined);
+const safeWindow = (): Window | undefined => (typeof window !== 'undefined' ? window : undefined);
+const safeLocationHref = (): string | undefined => safeWindow()?.location?.href;
+const safeUserAgent = (): string | undefined => safeNavigator()?.userAgent;
+const hasPerformanceObserverSupport = typeof PerformanceObserver !== 'undefined';
+
+const getLocalStorageItem = (key: string): string | null => {
+  if (typeof localStorage === 'undefined') {
+    return null;
+  }
+
+  try {
+    return localStorage.getItem(key);
+  } catch (error) {
+    logger.error('Failed to read from local storage', {
+      error: toError(error, 'Local storage read failed'),
+      metadata: {
+        scope: 'errorTracking.storage.read',
+        key
+      }
+    });
+    return null;
+  }
+};
+
+const setLocalStorageItem = (key: string, value: string): void => {
+  if (typeof localStorage === 'undefined') {
+    return;
+  }
+
+  try {
+    localStorage.setItem(key, value);
+  } catch (error) {
+    logger.error('Failed to write to local storage', {
+      error: toError(error, 'Local storage write failed'),
+      metadata: {
+        scope: 'errorTracking.storage.write',
+        key
+      }
+    });
+  }
+};
+
+const removeLocalStorageItem = (key: string): void => {
+  if (typeof localStorage === 'undefined') {
+    return;
+  }
+
+  try {
+    localStorage.removeItem(key);
+  } catch (error) {
+    logger.error('Failed to remove local storage item', {
+      error: toError(error, 'Local storage remove failed'),
+      metadata: {
+        scope: 'errorTracking.storage.remove',
+        key
+      }
+    });
+  }
+};
+
+const randomId = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  return Math.random().toString(36).slice(2, 10);
+};
+
+const now = (): number => {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+
+  return Date.now();
+};
+
 interface ErrorContext {
   component?: string;
   function?: string;
@@ -65,13 +144,18 @@ const sanitizeFunctionIdentifier = (value: unknown): string => {
 
 class ErrorTracker {
   private static instance: ErrorTracker;
+  private readonly isBrowserEnvironment: boolean;
   private errorQueue: Array<any> = [];
-  private isOnline = navigator.onLine;
+  private isOnline = safeNavigator()?.onLine ?? true;
   private flushInterval: NodeJS.Timeout | null = null;
 
   constructor() {
-    this.initializeErrorTracking();
-    this.startPeriodicFlush();
+    this.isBrowserEnvironment = hasBrowserEnvironment;
+
+    if (this.isBrowserEnvironment) {
+      this.initializeErrorTracking();
+      this.startPeriodicFlush();
+    }
   }
 
   static getInstance(): ErrorTracker {
@@ -82,31 +166,41 @@ class ErrorTracker {
   }
 
   private initializeErrorTracking() {
+    if (!this.isBrowserEnvironment) {
+      return;
+    }
+
+    const browserWindow = safeWindow();
+
+    if (!browserWindow) {
+      return;
+    }
+
     // Global error handler
-    window.addEventListener('error', (event) => {
+    browserWindow.addEventListener('error', (event) => {
       this.trackError(event.error, {
         component: 'global',
-        url: window.location.href,
+        url: browserWindow.location.href,
         timestamp: new Date()
       });
     });
 
     // Unhandled promise rejections
-    window.addEventListener('unhandledrejection', (event) => {
+    browserWindow.addEventListener('unhandledrejection', (event) => {
       this.trackError(new Error(event.reason), {
         component: 'promise',
-        url: window.location.href,
+        url: browserWindow.location.href,
         timestamp: new Date()
       });
     });
 
     // Online/offline status
-    window.addEventListener('online', () => {
+    browserWindow.addEventListener('online', () => {
       this.isOnline = true;
       this.flushErrorQueue();
     });
 
-    window.addEventListener('offline', () => {
+    browserWindow.addEventListener('offline', () => {
       this.isOnline = false;
     });
   }
@@ -118,8 +212,8 @@ class ErrorTracker {
     const baseContext: ErrorContext = {
       ...(context ?? {}),
       timestamp: new Date(),
-      userAgent: navigator.userAgent,
-      url: window.location.href
+      ...(safeUserAgent() ? { userAgent: safeUserAgent() } : {}),
+      ...(safeLocationHref() ? { url: safeLocationHref() } : {})
     };
 
     const sanitizedDetails = sanitizeRecord(details) as AIErrorDetails;
@@ -153,8 +247,8 @@ class ErrorTracker {
     const baseContext: ErrorContext = {
       ...(context ?? {}),
       timestamp: new Date(),
-      userAgent: navigator.userAgent,
-      url: window.location.href
+      ...(safeUserAgent() ? { userAgent: safeUserAgent() } : {}),
+      ...(safeLocationHref() ? { url: safeLocationHref() } : {})
     };
 
     const sanitizedContext = sanitizeRecord(baseContext) as ErrorContext;
@@ -180,15 +274,30 @@ class ErrorTracker {
       });
 
       // Log to local storage for offline scenarios
-      const alerts = JSON.parse(localStorage.getItem('performance_alerts') || '[]');
+      const storedAlerts = getLocalStorageItem('performance_alerts');
+      const alerts = storedAlerts
+        ? (() => {
+            try {
+              return JSON.parse(storedAlerts);
+            } catch (parseError) {
+              logger.error('Failed to parse performance alerts from local storage', {
+                error: toError(parseError, 'Performance alerts parse failed'),
+                metadata: {
+                  scope: 'errorTracking.performanceAlert'
+                }
+              });
+              return [];
+            }
+          })()
+        : [];
       alerts.push({
         ...alert,
         timestamp: new Date().toISOString(),
-        id: crypto.randomUUID()
+        id: randomId()
       });
-      
+
       // Keep only last 50 alerts
-      localStorage.setItem('performance_alerts', JSON.stringify(alerts.slice(-50)));
+      setLocalStorageItem('performance_alerts', JSON.stringify(alerts.slice(-50)));
 
     } catch (error) {
       logger.error('Failed to track performance alert', {
@@ -203,7 +312,7 @@ class ErrorTracker {
   /**
    * Log AI performance metrics for monitoring
    */
-  private async logAIPerformanceMetric(metrics: {
+  public async logAIPerformanceMetric(metrics: {
     responseTime: number;
     cacheHit: boolean;
     tokenUsage: number;
@@ -243,7 +352,7 @@ class ErrorTracker {
   private queueError(errorData: any): void {
     this.errorQueue.push({
       ...errorData,
-      id: crypto.randomUUID(),
+      id: randomId(),
       timestamp: new Date().toISOString()
     });
 
@@ -324,7 +433,7 @@ class ErrorTracker {
       }
 
       // Clear from local storage
-      localStorage.removeItem('queued_errors');
+      removeLocalStorageItem('queued_errors');
 
     } catch (error) {
       logger.error('Failed to flush error queue', {
@@ -339,7 +448,22 @@ class ErrorTracker {
 
       // Store in local storage for persistence
       try {
-        const existingErrors = JSON.parse(localStorage.getItem('queued_errors') || '[]');
+        const existingErrorsRaw = getLocalStorageItem('queued_errors');
+        const existingErrors = existingErrorsRaw
+          ? (() => {
+              try {
+                return JSON.parse(existingErrorsRaw);
+              } catch (parseError) {
+                logger.error('Failed to parse queued errors from local storage', {
+                  error: toError(parseError, 'Queued errors parse failed'),
+                  metadata: {
+                    scope: 'errorTracking.flush'
+                  }
+                });
+                return [];
+              }
+            })()
+          : [];
         const sanitizedExistingErrors = Array.isArray(existingErrors)
           ? existingErrors.map((queuedError: any) => ({
             ...queuedError,
@@ -357,7 +481,7 @@ class ErrorTracker {
           details: sanitizeRecord(queuedError?.details)
         }));
 
-        localStorage.setItem('queued_errors', JSON.stringify([
+        setLocalStorageItem('queued_errors', JSON.stringify([
           ...sanitizedExistingErrors,
           ...sanitizedNewErrors
         ].slice(-100))); // Keep last 100 errors
@@ -409,7 +533,22 @@ class ErrorTracker {
    * Get recent errors for debugging
    */
   getRecentErrors(limit: number = 10): any[] {
-    const localErrors = JSON.parse(localStorage.getItem('queued_errors') || '[]');
+    const localErrorsRaw = getLocalStorageItem('queued_errors');
+    const localErrors = localErrorsRaw
+      ? (() => {
+          try {
+            return JSON.parse(localErrorsRaw);
+          } catch (parseError) {
+            logger.error('Failed to parse recent errors from local storage', {
+              error: toError(parseError, 'Recent errors parse failed'),
+              metadata: {
+                scope: 'errorTracking.getRecentErrors'
+              }
+            });
+            return [];
+          }
+        })()
+      : [];
     return [...this.errorQueue, ...localErrors]
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, limit);
@@ -419,7 +558,23 @@ class ErrorTracker {
    * Get performance alerts from local storage
    */
   getPerformanceAlerts(): any[] {
-    return JSON.parse(localStorage.getItem('performance_alerts') || '[]');
+    const storedAlerts = getLocalStorageItem('performance_alerts');
+
+    if (!storedAlerts) {
+      return [];
+    }
+
+    try {
+      return JSON.parse(storedAlerts);
+    } catch (parseError) {
+      logger.error('Failed to parse performance alerts during retrieval', {
+        error: toError(parseError, 'Performance alerts retrieval failed'),
+        metadata: {
+          scope: 'errorTracking.getPerformanceAlerts'
+        }
+      });
+      return [];
+    }
   }
 
   /**
@@ -427,8 +582,8 @@ class ErrorTracker {
    */
   clearErrorData(): void {
     this.errorQueue = [];
-    localStorage.removeItem('queued_errors');
-    localStorage.removeItem('performance_alerts');
+    removeLocalStorageItem('queued_errors');
+    removeLocalStorageItem('performance_alerts');
   }
 
   /**
@@ -442,16 +597,61 @@ class ErrorTracker {
   }
 }
 
+type ErrorTrackerApi = Pick<
+  ErrorTracker,
+  | 'trackAIError'
+  | 'trackError'
+  | 'trackPerformanceAlert'
+  | 'logAIPerformanceMetric'
+  | 'getRecentErrors'
+  | 'getPerformanceAlerts'
+  | 'clearErrorData'
+  | 'destroy'
+>;
+
+const serverSafeErrorTracker: ErrorTrackerApi = {
+  async trackAIError() {
+    // No-op in non-browser environments
+  },
+  trackError() {
+    // No-op in non-browser environments
+  },
+  async trackPerformanceAlert() {
+    // No-op in non-browser environments
+  },
+  async logAIPerformanceMetric() {
+    // No-op in non-browser environments
+  },
+  getRecentErrors() {
+    return [];
+  },
+  getPerformanceAlerts() {
+    return [];
+  },
+  clearErrorData() {
+    // No-op in non-browser environments
+  },
+  destroy() {
+    // No-op in non-browser environments
+  }
+};
+
+export const getErrorTracker = (): ErrorTrackerApi => (
+  hasBrowserEnvironment
+    ? ErrorTracker.getInstance()
+    : serverSafeErrorTracker
+);
+
 // Performance monitoring hooks
 export const usePerformanceMonitoring = () => {
-  const errorTracker = ErrorTracker.getInstance();
+  const errorTracker = getErrorTracker();
 
   const trackAIPerformance = async (
     operation: () => Promise<any>,
     functionName: string,
     expectedTokens?: number
   ) => {
-    const startTime = performance.now();
+    const startTime = now();
     let success = false;
     let tokenUsage = 0;
     let cacheHit = false;
@@ -468,8 +668,8 @@ export const usePerformanceMonitoring = () => {
 
       return result;
     } catch (error) {
-      const responseTime = performance.now() - startTime;
-      
+      const responseTime = now() - startTime;
+
       await errorTracker.trackAIError(error as Error, {
         functionCalled: functionName,
         responseTime,
@@ -480,7 +680,7 @@ export const usePerformanceMonitoring = () => {
 
       throw error;
     } finally {
-      const responseTime = performance.now() - startTime;
+      const responseTime = now() - startTime;
 
       // Track performance metrics
       if (success) {
@@ -506,9 +706,13 @@ export const usePerformanceMonitoring = () => {
   };
 
   const trackPagePerformance = (_pageName: string) => {
+    if (!hasBrowserEnvironment || !hasPerformanceObserverSupport) {
+      return () => {};
+    }
+
     const observer = new PerformanceObserver((list) => {
       const entries = list.getEntries();
-      
+
       entries.forEach(async (entry) => {
         if (entry.entryType === 'navigation') {
           const navEntry = entry as PerformanceNavigationTiming;
@@ -554,8 +758,8 @@ function determineErrorType(error: Error): AIErrorDetails['errorType'] {
   return 'invalid_response';
 }
 
-// Export singleton instance
-export const errorTracker = ErrorTracker.getInstance();
+// Export singleton instance (browser) or no-op (server)
+export const errorTracker = getErrorTracker();
 
 // Error boundary helper for React components
 export const withErrorTracking = <P extends object>(
@@ -574,8 +778,12 @@ export const withErrorTracking = <P extends object>(
           });
         };
 
+        if (typeof window === 'undefined') {
+          return undefined;
+        }
+
         window.addEventListener('error', handleError);
-        
+
         return () => window.removeEventListener('error', handleError);
       }, []);
 
@@ -589,5 +797,3 @@ export const withErrorTracking = <P extends object>(
     );
   });
 };
-
-export default ErrorTracker; 

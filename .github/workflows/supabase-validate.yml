@@ -1,0 +1,45 @@
+name: Supabase Validate
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+      - '.github/workflows/supabase-validate.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/migrations/**'
+
+jobs:
+  lint-migrations:
+    if: github.event_name == 'pull_request'
+    name: Lint migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          access-token: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      - name: Run Supabase migration lint
+        run: supabase db lint --project-ref wnnjeqheqxxyrgsjmygy
+
+  test-main:
+    if: github.event_name == 'push'
+    name: Run application tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run unit tests
+        run: npm test -- --run --reporter=verbose
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RUN_DB_IT: '1'

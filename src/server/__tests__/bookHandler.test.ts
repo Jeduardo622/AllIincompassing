@@ -1,14 +1,69 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const bookSessionMock = vi.hoisted(() => vi.fn());
+const loggerMock = vi.hoisted(() => ({
+  error: vi.fn(),
+  warn: vi.fn(),
+  info: vi.fn(),
+  debug: vi.fn(),
+}));
 
 vi.mock("../bookSession", () => ({
   bookSession: bookSessionMock,
 }));
 
+vi.mock("../../lib/logger/logger", () => ({
+  logger: loggerMock,
+}));
+
 const importBookHandler = async () => {
   const module = await import("../api/book");
   return module.bookHandler;
+};
+
+const toHeaderObject = (headers: HeadersInit | undefined): Record<string, string> => {
+  if (!headers) {
+    return {};
+  }
+
+  if (headers instanceof Headers) {
+    return Object.fromEntries(headers.entries());
+  }
+
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(headers);
+  }
+
+  return headers as Record<string, string>;
+};
+
+const createRequest = (body: unknown, overrides: RequestInit = {}) => {
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: "Bearer valid-token",
+    ...toHeaderObject(overrides.headers),
+  };
+
+  const { headers: _headers, ...rest } = overrides;
+
+  return new Request("http://localhost/api/book", {
+    method: "POST",
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+    ...rest,
+  });
+};
+
+const validPayload = {
+  session: {
+    therapist_id: "therapist-1",
+    client_id: "client-1",
+    start_time: "2025-01-01T10:00:00Z",
+    end_time: "2025-01-01T11:00:00Z",
+  },
+  startTimeOffsetMinutes: 0,
+  endTimeOffsetMinutes: 0,
+  timeZone: "UTC",
 };
 
 const TEST_SUPABASE_URL = "https://testing.supabase.co";
@@ -24,6 +79,10 @@ const ORIGINAL_ENV = {
 beforeEach(async () => {
   vi.clearAllMocks();
   bookSessionMock.mockReset();
+  loggerMock.error.mockReset();
+  loggerMock.warn.mockReset();
+  loggerMock.info.mockReset();
+  loggerMock.debug.mockReset();
 
   const runtimeConfig = await import("../../lib/runtimeConfig");
   runtimeConfig.resetRuntimeSupabaseConfigForTests();
@@ -158,24 +217,8 @@ describe("bookHandler", () => {
     });
 
     const bookHandler = await importBookHandler();
-    const response = await bookHandler(new Request("http://localhost/api/book", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Idempotency-Key": "abc-123",
-        Authorization: "Bearer valid-token",
-      },
-      body: JSON.stringify({
-        session: {
-          therapist_id: "therapist-1",
-          client_id: "client-1",
-          start_time: "2025-01-01T10:00:00Z",
-          end_time: "2025-01-01T11:00:00Z",
-        },
-        startTimeOffsetMinutes: 0,
-        endTimeOffsetMinutes: 0,
-        timeZone: "UTC",
-      }),
+    const response = await bookHandler(createRequest(validPayload, {
+      headers: { "Idempotency-Key": "abc-123" },
     }));
 
     expect(response.status).toBe(200);
@@ -189,33 +232,53 @@ describe("bookHandler", () => {
     }));
   });
 
-  it("surfaces booking errors", async () => {
+  it("rejects invalid payloads", async () => {
+    const bookHandler = await importBookHandler();
+    const invalidPayload = {
+      ...validPayload,
+      session: {
+        ...validPayload.session,
+        start_time: "invalid",
+      },
+    };
+
+    const response = await bookHandler(createRequest(invalidPayload));
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.success).toBe(false);
+    expect(body.error).toBe("Invalid request body");
+    expect(body.code).toBe("invalid_request");
+    expect(bookSessionMock).not.toHaveBeenCalled();
+    expect(loggerMock.warn).toHaveBeenCalledWith(
+      "Rejected invalid booking payload",
+      expect.objectContaining({
+        metadata: expect.arrayContaining([
+          expect.objectContaining({ path: expect.stringContaining("session.start_time") }),
+        ]),
+      }),
+    );
+  });
+
+  it("sanitizes booking errors", async () => {
     bookSessionMock.mockRejectedValueOnce(new Error("conflict"));
 
     const bookHandler = await importBookHandler();
-    const response = await bookHandler(new Request("http://localhost/api/book", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer valid-token",
-      },
-      body: JSON.stringify({
-        session: {
-          therapist_id: "therapist-1",
-          client_id: "client-1",
-          start_time: "2025-01-01T10:00:00Z",
-          end_time: "2025-01-01T11:00:00Z",
-        },
-        startTimeOffsetMinutes: 0,
-        endTimeOffsetMinutes: 0,
-        timeZone: "UTC",
-      }),
-    }));
+    const response = await bookHandler(createRequest(validPayload));
 
     expect(response.status).toBe(500);
     const body = await response.json();
     expect(body.success).toBe(false);
-    expect(body.error).toBe("conflict");
+    expect(body.error).toBe("Booking failed");
+    expect(body.error).not.toMatch(/conflict/i);
+    expect(body.error).not.toMatch(/error/i);
     expect(bookSessionMock).toHaveBeenCalledWith(expect.objectContaining({ accessToken: "valid-token" }));
+    expect(loggerMock.error).toHaveBeenCalledWith(
+      "Session booking failed",
+      expect.objectContaining({
+        error: expect.objectContaining({ message: "conflict" }),
+        metadata: expect.objectContaining({ status: 500 }),
+      }),
+    );
   });
 });

@@ -74,7 +74,8 @@ BEGIN
       $function_body$;
     $create_function$;
   END IF;
-END $$;
+END;
+$$;
 
 -- Create function to get user roles in app schema
 DO $$
@@ -101,7 +102,8 @@ BEGIN
       $function_body$;
     $create_function$;
   END IF;
-END $$;
+END;
+$$;
 
 -- Update existing RLS policies to be role-aware
 

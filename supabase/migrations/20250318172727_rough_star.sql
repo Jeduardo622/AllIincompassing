@@ -48,61 +48,38 @@ INSERT INTO roles (name, description) VALUES
   ('receptionist', 'Front desk staff with basic access')
 ON CONFLICT (name) DO NOTHING;
 
--- Create function to check user role (avoid creating in auth schema to prevent permission issues)
-DO $$
-BEGIN
-  PERFORM 1 FROM pg_proc p
-  JOIN pg_namespace n ON n.oid = p.pronamespace
-  WHERE n.nspname = 'app' AND p.proname = 'user_has_role' AND p.proargtypes = '25'::regtype::oid::oidvector; -- text arg
+CREATE SCHEMA IF NOT EXISTS app;
 
-  IF NOT FOUND THEN
-    EXECUTE $create_function$
-      CREATE OR REPLACE FUNCTION app.user_has_role(role_name text)
-      RETURNS boolean
-      LANGUAGE sql
-      STABLE
-      SECURITY DEFINER
-      SET search_path = public
-      AS $function_body$
-        select exists (
-          select 1
-          from public.user_roles ur
-          join public.roles r on r.id = ur.role_id
-          where ur.user_id = (select auth.uid())
-            and r.name = role_name
-        );
-      $function_body$;
-    $create_function$;
-  END IF;
-END;
+CREATE OR REPLACE FUNCTION app.user_has_role(role_name text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  select exists (
+    select 1
+    from public.user_roles ur
+    join public.roles r on r.id = ur.role_id
+    where ur.user_id = (select auth.uid())
+      and r.name = role_name
+  );
 $$;
 
 -- Create function to get user roles in app schema
-DO $$
-BEGIN
-  PERFORM 1 FROM pg_proc p
-  JOIN pg_namespace n ON n.oid = p.pronamespace
-  WHERE n.nspname = 'app' AND p.proname = 'get_user_roles' AND p.proargtypes = ''::oidvector;
-
-  IF NOT FOUND THEN
-    EXECUTE $create_function$
-      CREATE OR REPLACE FUNCTION app.get_user_roles()
-      RETURNS text[]
-      LANGUAGE sql
-      STABLE
-      SECURITY DEFINER
-      SET search_path = public
-      AS $function_body$
-        select array(
-          select r.name
-          from public.user_roles ur
-          join public.roles r on r.id = ur.role_id
-          where ur.user_id = (select auth.uid())
-        );
-      $function_body$;
-    $create_function$;
-  END IF;
-END;
+CREATE OR REPLACE FUNCTION app.get_user_roles()
+RETURNS text[]
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  select array(
+    select r.name
+    from public.user_roles ur
+    join public.roles r on r.id = ur.role_id
+    where ur.user_id = (select auth.uid())
+  );
 $$;
 
 -- Update existing RLS policies to be role-aware

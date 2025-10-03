@@ -2,12 +2,30 @@
 
 ## Summary Findings
 
-- ✅ **Branching setup health:** Supabase remains configured at the repository root. `supabase/config.toml` and the migrations directory live at `./supabase`, aligning with the integration’s expectations for automatic preview database provisioning and teardown on pull requests.【F:supabase/config.toml†L1-L40】【F:docs/supabase_branching.md†L9-L31】
-- ❌ **Migration hygiene status:** Most scripts are additive, but `supabase/migrations/20250501150957_withered_heart.sql` drops the `authorized_hours` column without a data backfill, which is destructive and irreversible on preview and production databases.【F:supabase/migrations/20250501150957_withered_heart.sql†L15-L28】 This migration should be refactored into a staged rollout (add new columns, copy values, then drop the legacy column once data is migrated).
-- 🟧 **Env/secrets review:** `.env.example` now documents all Supabase credentials with placeholders, and the runbook clarifies that preview keys come from the Supabase dashboard while CI pulls them from GitHub secrets.【F:.env.example†L1-L57】【F:docs/supabase_branching.md†L46-L61】 Verify the Supabase GitHub integration continues syncing these secrets so workflows can lint migrations and run tests.【F:.github/workflows/supabase-validate.yml†L1-L45】
+- ✅ **Branching setup health:** Supabase configuration files remain at the repository root (`supabase/config.toml`, `supabase/migrations/`), aligning with the dashboard settings for automatic preview provisioning and cleanup.【F:supabase/config.toml†L1-L95】【F:docs/supabase_branching.md†L8-L33】
+- ❌ **Migration hygiene status:** `supabase/migrations/20250501150957_withered_heart.sql` drops the `authorized_hours` column without a data backfill, which is destructive on preview and production databases. Additional policy-cleanup migrations rely solely on `DROP POLICY IF EXISTS`, so confirm replacement policies exist before promotion.【F:supabase/migrations/20250501150957_withered_heart.sql†L1-L24】【F:supabase/migrations/20250920120300_remove_legacy_session_client_therapist_policies.sql†L1-L27】
+- 🟧 **Env/secrets review:** `.env.example` documents all Supabase credentials with masked placeholders, and the runbook explains how preview keys flow from the dashboard into CI. Ensure the Supabase GitHub integration keeps syncing secrets for the validation workflow.【F:.env.example†L1-L56】【F:docs/supabase_branching.md†L53-L75】【F:.github/workflows/supabase-validate.yml†L1-L45】
+
+## Evidence & Notes
+
+### Branching Setup
+
+- Supabase CLI configuration resides in `supabase/config.toml`, confirming the integration is pointed at the repo root as required for preview automation.【F:supabase/config.toml†L1-L95】
+- The branching runbook details lifecycle expectations (creation, updates, teardown) and includes manual verification steps to audit preview environments from the dashboard.【F:docs/supabase_branching.md†L19-L52】
+
+### Migration Hygiene
+
+- The `authorized_hours` column drop in `20250501150957_withered_heart.sql` lacks a staged data migration. Treat this as a blocker until a forward-only strategy is prepared.【F:supabase/migrations/20250501150957_withered_heart.sql†L15-L24】
+- Policy cleanup migrations such as `20250920120300_remove_legacy_session_client_therapist_policies.sql` rely on `DROP POLICY IF EXISTS`. Confirm successor policies exist and document the security intent in the accompanying PRs.【F:supabase/migrations/20250920120300_remove_legacy_session_client_therapist_policies.sql†L1-L27】
+- Run `supabase db lint` locally before each PR to catch ordering or dependency issues. The Supabase Validate workflow enforces this check on CI.【F:.github/workflows/supabase-validate.yml†L10-L34】
+
+### Environment & Secrets
+
+- `.env.example` covers all required Supabase keys (URL, anon, edge, service role, access token) plus Vite mirrors, guiding developers to copy values from preview projects.【F:.env.example†L1-L45】
+- The runbook reiterates where to find preview keys, how they propagate to GitHub Actions, and warns against exposing the service-role key in client bundles.【F:docs/supabase_branching.md†L53-L80】
 
 ## Next Steps
 
-1. Rewrite `20250501150957_withered_heart.sql` as a forward-only migration that preserves existing `authorized_hours` data (e.g., add new columns, copy data, then sunset the old column in a follow-up release).
-2. Schedule a quarterly audit of the migrations directory to catch future destructive operations early and ensure naming stays consistently timestamped.
-3. Monitor the Supabase Validate workflow logs to confirm preview credentials remain synchronized and `supabase db lint` keeps running on every pull request.
+1. Refactor `20250501150957_withered_heart.sql` into a staged rollout that backfills data before dropping legacy columns (or split into additive + cleanup migrations).
+2. Audit recent policy-drop migrations and document the replacement policies to ensure RLS coverage remains intact.
+3. Periodically validate that Supabase preview secrets remain synced to GitHub by checking recent runs of `supabase-validate.yml` for credential errors.

@@ -21,7 +21,6 @@ export type Database = {
           admin_user_id: string | null
           created_at: string | null
           id: string
-          organization_id: string | null
           target_user_id: string | null
         }
         Insert: {
@@ -30,7 +29,6 @@ export type Database = {
           admin_user_id?: string | null
           created_at?: string | null
           id?: string
-          organization_id?: string | null
           target_user_id?: string | null
         }
         Update: {
@@ -39,7 +37,6 @@ export type Database = {
           admin_user_id?: string | null
           created_at?: string | null
           id?: string
-          organization_id?: string | null
           target_user_id?: string | null
         }
         Relationships: []
@@ -75,29 +72,7 @@ export type Database = {
           last_accessed?: string | null
           response_data?: Json
         }
-        Relationships: [
-          {
-            foreignKeyName: "ai_session_notes_client_id_fkey",
-            columns: ["client_id"],
-            isOneToOne: false,
-            referencedRelation: "clients",
-            referencedColumns: ["id"],
-          },
-          {
-            foreignKeyName: "ai_session_notes_session_id_fkey",
-            columns: ["session_id"],
-            isOneToOne: false,
-            referencedRelation: "sessions",
-            referencedColumns: ["id"],
-          },
-          {
-            foreignKeyName: "ai_session_notes_therapist_id_fkey",
-            columns: ["therapist_id"],
-            isOneToOne: false,
-            referencedRelation: "therapists",
-            referencedColumns: ["id"],
-          },
-        ]
+        Relationships: []
       }
       ai_performance_metrics: {
         Row: {
@@ -499,15 +474,37 @@ export type Database = {
           regex_pattern?: string
           updated_at?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "behavioral_patterns_created_by_fkey",
-            columns: ["created_by"],
-            isOneToOne: false,
-            referencedRelation: "therapists",
-            referencedColumns: ["id"],
-          },
-        ]
+        Relationships: []
+      }
+      billing_modifiers: {
+        Row: {
+          billing_note: string | null
+          code: string
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          updated_at: string
+        }
+        Insert: {
+          billing_note?: string | null
+          code: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Update: {
+          billing_note?: string | null
+          code?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Relationships: []
       }
       billing_records: {
         Row: {
@@ -645,10 +642,10 @@ export type Database = {
           client_id: string | null
           created_at: string | null
           created_by: string | null
-          deleted_at: string | null
-          deleted_by: string | null
           date_of_birth: string | null
           daycare_after_school: boolean | null
+          deleted_at: string | null
+          deleted_by: string | null
           diagnosis: string[] | null
           documents: Json | null
           email: string | null
@@ -705,10 +702,10 @@ export type Database = {
           client_id?: string | null
           created_at?: string | null
           created_by?: string | null
-          deleted_at?: string | null
-          deleted_by?: string | null
           date_of_birth?: string | null
           daycare_after_school?: boolean | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           diagnosis?: string[] | null
           documents?: Json | null
           email?: string | null
@@ -765,10 +762,10 @@ export type Database = {
           client_id?: string | null
           created_at?: string | null
           created_by?: string | null
-          deleted_at?: string | null
-          deleted_by?: string | null
           date_of_birth?: string | null
           daycare_after_school?: boolean | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           diagnosis?: string[] | null
           documents?: Json | null
           email?: string | null
@@ -1095,25 +1092,25 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "feature_flag_audit_logs_feature_flag_id_fkey",
-            columns: ["feature_flag_id"],
-            isOneToOne: false,
-            referencedRelation: "feature_flags",
-            referencedColumns: ["id"],
+            foreignKeyName: "feature_flag_audit_logs_feature_flag_id_fkey"
+            columns: ["feature_flag_id"]
+            isOneToOne: false
+            referencedRelation: "feature_flags"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "feature_flag_audit_logs_organization_id_fkey",
-            columns: ["organization_id"],
-            isOneToOne: false,
-            referencedRelation: "organizations",
-            referencedColumns: ["id"],
+            foreignKeyName: "feature_flag_audit_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "feature_flag_audit_logs_plan_code_fkey",
-            columns: ["plan_code"],
-            isOneToOne: false,
-            referencedRelation: "plans",
-            referencedColumns: ["code"],
+            foreignKeyName: "feature_flag_audit_logs_plan_code_fkey"
+            columns: ["plan_code"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["code"]
           },
         ]
       }
@@ -1186,18 +1183,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "organization_feature_flags_feature_flag_id_fkey",
-            columns: ["feature_flag_id"],
-            isOneToOne: false,
-            referencedRelation: "feature_flags",
-            referencedColumns: ["id"],
+            foreignKeyName: "organization_feature_flags_feature_flag_id_fkey"
+            columns: ["feature_flag_id"]
+            isOneToOne: false
+            referencedRelation: "feature_flags"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "organization_feature_flags_organization_id_fkey",
-            columns: ["organization_id"],
-            isOneToOne: false,
-            referencedRelation: "organizations",
-            referencedColumns: ["id"],
+            foreignKeyName: "organization_feature_flags_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1225,18 +1222,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "organization_plans_organization_id_fkey",
-            columns: ["organization_id"],
-            isOneToOne: true,
-            referencedRelation: "organizations",
-            referencedColumns: ["id"],
+            foreignKeyName: "organization_plans_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "organization_plans_plan_code_fkey",
-            columns: ["plan_code"],
-            isOneToOne: false,
-            referencedRelation: "plans",
-            referencedColumns: ["code"],
+            foreignKeyName: "organization_plans_plan_code_fkey"
+            columns: ["plan_code"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["code"]
           },
         ]
       }
@@ -1808,15 +1805,7 @@ export type Database = {
           template_type?: string
           updated_at?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "session_note_templates_created_by_fkey",
-            columns: ["created_by"],
-            isOneToOne: false,
-            referencedRelation: "therapists",
-            referencedColumns: ["id"],
-          },
-        ]
+        Relationships: []
       }
       session_transcript_segments: {
         Row: {
@@ -2390,6 +2379,26 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _is_admin: {
+        Args: { uid: string }
+        Returns: boolean
+      }
+      _is_therapist: {
+        Args: { uid: string }
+        Returns: boolean
+      }
+      acquire_session_hold: {
+        Args: {
+          p_actor_id?: string
+          p_client_id: string
+          p_end_time: string
+          p_hold_seconds?: number
+          p_session_id?: string
+          p_start_time: string
+          p_therapist_id: string
+        }
+        Returns: Json
+      }
       admin_reset_user_password: {
         Args: {
           create_if_not_exists?: boolean
@@ -2412,7 +2421,7 @@ export type Database = {
         }[]
       }
       assign_admin_role: {
-        Args: { user_email: string; organization_id: string; reason?: string | null }
+        Args: { organization_id: string; reason?: string; user_email: string }
         Returns: undefined
       }
       assign_therapist_role: {
@@ -2488,6 +2497,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
+      confirm_session_hold: {
+        Args: { p_actor_id?: string; p_hold_key: string; p_session: Json }
+        Returns: Json
+      }
       create_super_admin: {
         Args: { user_email: string }
         Returns: undefined
@@ -2517,6 +2530,230 @@ export type Database = {
       ensure_user_has_admin_role: {
         Args: Record<PropertyKey, never> | { p_user_id: string }
         Returns: undefined
+      }
+      gbt_bit_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_bool_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_bool_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_bpchar_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_bytea_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_cash_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_cash_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_date_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_date_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_decompress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_enum_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_enum_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_float4_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_float4_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_float8_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_float8_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_inet_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_int2_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_int2_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_int4_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_int4_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_int8_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_int8_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_intv_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_intv_decompress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_intv_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_macad_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_macad_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_macad8_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_macad8_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_numeric_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_oid_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_oid_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_text_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_time_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_time_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_timetz_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_ts_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_ts_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_tstz_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_uuid_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_uuid_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_var_decompress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbt_var_fetch: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbtreekey_var_in: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbtreekey_var_out: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbtreekey16_in: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbtreekey16_out: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbtreekey2_in: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbtreekey2_out: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbtreekey32_in: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbtreekey32_out: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbtreekey4_in: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbtreekey4_out: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbtreekey8_in: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gbtreekey8_out: {
+        Args: { "": unknown }
+        Returns: unknown
       }
       generate_semantic_cache_key: {
         Args: { p_context_hash?: string; p_query_text: string }

@@ -56,14 +56,14 @@ BEGIN
   WHERE n.nspname = 'app' AND p.proname = 'user_has_role' AND p.proargtypes = '25'::regtype::oid::oidvector; -- text arg
 
   IF NOT FOUND THEN
-    EXECUTE $$
+    EXECUTE $create_function$
       CREATE OR REPLACE FUNCTION app.user_has_role(role_name text)
       RETURNS boolean
       LANGUAGE sql
       STABLE
       SECURITY DEFINER
       SET search_path = public
-      AS $$
+      AS $function_body$
         select exists (
           select 1
           from public.user_roles ur
@@ -71,8 +71,8 @@ BEGIN
           where ur.user_id = (select auth.uid())
             and r.name = role_name
         );
-      $$;
-    $$;
+      $function_body$;
+    $create_function$;
   END IF;
 END $$;
 
@@ -84,22 +84,22 @@ BEGIN
   WHERE n.nspname = 'app' AND p.proname = 'get_user_roles' AND p.proargtypes = ''::oidvector;
 
   IF NOT FOUND THEN
-    EXECUTE $$
+    EXECUTE $create_function$
       CREATE OR REPLACE FUNCTION app.get_user_roles()
       RETURNS text[]
       LANGUAGE sql
       STABLE
       SECURITY DEFINER
       SET search_path = public
-      AS $$
+      AS $function_body$
         select array(
           select r.name
           from public.user_roles ur
           join public.roles r on r.id = ur.role_id
           where ur.user_id = (select auth.uid())
         );
-      $$;
-    $$;
+      $function_body$;
+    $create_function$;
   END IF;
 END $$;
 

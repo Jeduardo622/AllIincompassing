@@ -164,6 +164,9 @@ export interface Session {
   updated_at: string;
   updated_by: string | null;
   duration_minutes?: number | null;
+  payer_slug?: string | null;
+  payer_id?: string | null;
+  payer_name?: string | null;
   therapist?: { id: string; full_name: string };
   client?: { id: string; full_name: string };
 }

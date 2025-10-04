@@ -160,6 +160,69 @@ describe("bookSession", () => {
     });
   });
 
+  it("persists payer-specific CPT metadata bundles", async () => {
+    const bookSession = await importBookSession();
+    mockedRequestSessionHold.mockResolvedValueOnce({
+      holdKey: "hold-key",
+      holdId: "hold-id",
+      startTime: basePayload.session.start_time,
+      endTime: basePayload.session.end_time,
+      expiresAt: "2025-01-01T00:05:00Z",
+      holds: [
+        {
+          holdKey: "hold-key",
+          holdId: "hold-id",
+          startTime: basePayload.session.start_time,
+          endTime: basePayload.session.end_time,
+          expiresAt: "2025-01-01T00:05:00Z",
+        },
+      ],
+    });
+
+    const confirmedSession: Session = {
+      id: "session-caloptima",
+      client_id: basePayload.session.client_id,
+      therapist_id: basePayload.session.therapist_id,
+      start_time: basePayload.session.start_time,
+      end_time: basePayload.session.end_time,
+      status: "scheduled",
+      notes: "",
+      created_at: "2025-01-01T09:00:00Z",
+      created_by: "user-1",
+      updated_at: "2025-01-01T09:00:00Z",
+      updated_by: "user-1",
+      duration_minutes: 60,
+      payer_slug: "caloptima-health",
+    };
+
+    mockedConfirmSessionBooking.mockResolvedValueOnce({
+      session: confirmedSession,
+      sessions: [confirmedSession],
+      roundedDurationMinutes: confirmedSession.duration_minutes ?? null,
+    });
+
+    const payload = {
+      ...basePayload,
+      session: {
+        ...basePayload.session,
+        session_type: "Individual",
+        payer_slug: "CalOptima Health",
+      },
+    } as const;
+
+    await bookSession(payload);
+
+    expect(mockedPersistSessionCptMetadata).toHaveBeenCalledTimes(1);
+    expect(mockedPersistSessionCptMetadata).toHaveBeenCalledWith({
+      sessionId: confirmedSession.id,
+      cpt: expect.objectContaining({
+        code: "97153",
+        modifiers: expect.arrayContaining(["U7", "U8"]),
+      }),
+      billedMinutes: confirmedSession.duration_minutes,
+    });
+  });
+
   it("releases the hold when confirmation fails", async () => {
     const bookSession = await importBookSession();
     mockedRequestSessionHold.mockResolvedValueOnce({
@@ -444,6 +507,66 @@ describe("bookSession", () => {
       sessionId: fulfilled[0]?.value.session.id,
       cpt: expect.objectContaining({ code: expect.any(String) }),
       billedMinutes: expect.any(Number),
+    });
+  });
+
+  it("persists CPT metadata once per unique session id", async () => {
+    const bookSession = await importBookSession();
+    mockedRequestSessionHold.mockResolvedValueOnce({
+      holdKey: "hold-key",
+      holdId: "hold-id",
+      startTime: basePayload.session.start_time,
+      endTime: basePayload.session.end_time,
+      expiresAt: "2025-01-01T00:05:00Z",
+      holds: [
+        {
+          holdKey: "hold-key",
+          holdId: "hold-id",
+          startTime: basePayload.session.start_time,
+          endTime: basePayload.session.end_time,
+          expiresAt: "2025-01-01T00:05:00Z",
+        },
+      ],
+    });
+
+    const confirmedSession: Session = {
+      id: "session-duplicate",
+      client_id: basePayload.session.client_id,
+      therapist_id: basePayload.session.therapist_id,
+      start_time: basePayload.session.start_time,
+      end_time: basePayload.session.end_time,
+      status: "scheduled",
+      notes: "",
+      created_at: "2025-01-01T09:00:00Z",
+      created_by: "user-1",
+      updated_at: "2025-01-01T09:00:00Z",
+      updated_by: "user-1",
+      duration_minutes: 60,
+    };
+
+    mockedConfirmSessionBooking.mockResolvedValueOnce({
+      session: confirmedSession,
+      sessions: [
+        confirmedSession,
+        { ...confirmedSession },
+        { ...confirmedSession, id: "session-duplicate" },
+      ],
+      roundedDurationMinutes: confirmedSession.duration_minutes ?? null,
+    });
+
+    await bookSession({
+      ...basePayload,
+      session: {
+        ...basePayload.session,
+        id: confirmedSession.id,
+      },
+    });
+
+    expect(mockedPersistSessionCptMetadata).toHaveBeenCalledTimes(1);
+    expect(mockedPersistSessionCptMetadata).toHaveBeenCalledWith({
+      sessionId: confirmedSession.id,
+      cpt: expect.objectContaining({ code: "97153" }),
+      billedMinutes: confirmedSession.duration_minutes,
     });
   });
 });

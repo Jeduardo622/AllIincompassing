@@ -434,9 +434,29 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
     ? confirmed.sessions
     : [confirmed.session];
 
+  const uniqueSessionsMap = new Map<string, typeof sessionsToPersist[number]>();
+  for (const session of sessionsToPersist) {
+    if (!session || typeof session !== "object") {
+      continue;
+    }
+
+    const identifier = typeof session.id === "string" ? session.id : null;
+    if (!identifier) {
+      continue;
+    }
+
+    if (!uniqueSessionsMap.has(identifier)) {
+      uniqueSessionsMap.set(identifier, session);
+    }
+  }
+
+  const uniqueSessions = uniqueSessionsMap.size > 0
+    ? Array.from(uniqueSessionsMap.values())
+    : sessionsToPersist;
+
   try {
     await Promise.all(
-      sessionsToPersist.map(async (session) => {
+      uniqueSessions.map(async (session) => {
         const billedMinutes = typeof session.duration_minutes === "number" && Number.isFinite(session.duration_minutes)
           ? session.duration_minutes
           : cpt.durationMinutes;

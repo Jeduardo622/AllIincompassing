@@ -9,13 +9,14 @@ import {
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { processMessage } from "../lib/ai";
+import { processMessage, AssistantGuardrailError } from "../lib/ai";
 import { supabase } from "../lib/supabase";
 import { cancelSessions } from "../lib/sessionCancellation";
 import { showSuccess, showError } from "../lib/toast";
 import { errorTracker } from "../lib/errorTracking";
 import { logger } from "../lib/logger/logger";
 import { useAuth } from "../lib/authContext";
+import { getRoleAllowedTools } from "../lib/aiGuardrails";
 // import type { Session, Client, Therapist, Authorization, AuthorizationService } from "../types";
 
 interface Message {
@@ -40,7 +41,7 @@ export default function ChatBot() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
 
   // Load conversation ID from localStorage on component mount
   useEffect(() => {
@@ -78,7 +79,7 @@ export default function ChatBot() {
     ]);
 
     try {
-      if (!session?.access_token) {
+      if (!session?.access_token || !session.user?.id) {
         const authError = new Error('Active session is required to call edge functions');
         errorTracker.trackAIError(authError, {
           functionCalled: "ChatBot_processMessage",
@@ -97,6 +98,25 @@ export default function ChatBot() {
         return;
       }
 
+      if (!profile) {
+        const profileError = new Error('Active profile is required to use the assistant');
+        errorTracker.trackAIError(profileError, {
+          functionCalled: "ChatBot_processMessage",
+          errorType: "auth_error",
+        });
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "We could not confirm your permissions for the assistant. Please refresh and try again.",
+            status: "error",
+          },
+        ]);
+        setError("Unable to verify your permissions. Please refresh the page and try again.");
+        showError("Unable to verify your permissions. Please refresh the page and try again.");
+        return;
+      }
+
       // Add placeholder for assistant response
       setMessages((prev) => [
         ...prev,
@@ -110,12 +130,19 @@ export default function ChatBot() {
       setIsLoading(true);
 
       // Process the message
+      const allowedTools = getRoleAllowedTools(profile.role);
+
       const response = await processMessage(
         userMessage,
         {
           url: window.location.href,
           userAgent: navigator.userAgent,
           conversationId: conversationId || undefined,
+          actor: {
+            id: session.user.id,
+            role: profile.role,
+          },
+          requestedTools: allowedTools,
         },
         { accessToken: session.access_token }
       );
@@ -633,6 +660,35 @@ export default function ChatBot() {
         }
       }
     } catch (error) {
+      if (error instanceof AssistantGuardrailError) {
+        const guardrailMessage =
+          "You do not have permission to run that assistant command. Please contact an administrator if you believe this is a mistake.";
+
+        logger.warn('Assistant request blocked by guardrail', {
+          metadata: error.audit,
+        });
+
+        errorTracker.trackAIError(error, {
+          functionCalled: "ChatBot_processMessage",
+          errorType: "guardrail_violation",
+          audit: error.audit as unknown as Record<string, unknown>,
+        });
+
+        setMessages((prev) => [
+          ...prev.slice(0, -1),
+          {
+            role: "assistant",
+            content:
+              "I can't help with that request because it exceeds the permissions for your account.",
+            status: "error",
+          },
+        ]);
+
+        setError(guardrailMessage);
+        showError(guardrailMessage);
+        return;
+      }
+
       logger.error('Chat bot message processing failed', {
         error,
         context: { component: 'ChatBot', operation: 'handleSubmit' }

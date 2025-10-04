@@ -47,14 +47,20 @@ describe('AI edge function authentication', () => {
     );
 
     const result = await processMessage(
-      'Hello?',
-      { url: 'http://localhost', userAgent: 'jest', conversationId: undefined },
+      ' Hello?\u0007 ',
+      {
+        url: 'http://localhost',
+        userAgent: 'jest',
+        conversationId: undefined,
+        actor: { id: 'user-1', role: 'admin' },
+      },
       { accessToken }
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${edgeBase}ai-agent-optimized`,
+    const [optimizedUrl, optimizedInit] = fetchMock.mock.calls[0];
+    expect(optimizedUrl).toBe(`${edgeBase}ai-agent-optimized`);
+    expect(optimizedInit).toEqual(
       expect.objectContaining({
         headers: expect.objectContaining({
           apikey: anonKey,
@@ -62,6 +68,23 @@ describe('AI edge function authentication', () => {
         }),
       })
     );
+
+    const requestBody = JSON.parse((optimizedInit as RequestInit).body as string);
+    expect(requestBody.message).toBe('Hello?');
+    expect(requestBody.context.guardrails.allowedTools).toEqual([
+      'schedule_session',
+      'modify_session',
+      'cancel_sessions',
+      'create_client',
+      'update_client',
+      'create_authorization',
+      'update_authorization',
+      'initiate_client_onboarding',
+    ]);
+    expect(requestBody.context.guardrails.audit).toMatchObject({
+      actorId: 'user-1',
+      reason: 'approved',
+    });
     expect(result.response).toBe('Hello there');
   });
 
@@ -74,7 +97,7 @@ describe('AI edge function authentication', () => {
 
     const result = await processMessage(
       'Trigger fallback',
-      { url: 'http://localhost', userAgent: 'jest' },
+      { url: 'http://localhost', userAgent: 'jest', actor: { id: 'user-1', role: 'admin' } },
       { accessToken }
     );
 

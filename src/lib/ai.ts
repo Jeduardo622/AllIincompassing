@@ -1,6 +1,12 @@
 // import { supabase } from './supabase';
 import { errorTracker } from './errorTracking';
 import { buildSupabaseEdgeUrl, getSupabaseAnonKey } from './runtimeConfig';
+import {
+  evaluateAssistantGuardrails,
+  AssistantGuardrailError,
+  type GuardrailActor,
+  type AssistantTool,
+} from './aiGuardrails';
 
 export interface EdgeAuthContext {
   accessToken: string;
@@ -28,6 +34,14 @@ const buildEdgeRequestInit = (payload: unknown, auth: EdgeAuthContext): RequestI
   };
 };
 
+export interface AssistantRequestContext {
+  url: string;
+  userAgent: string;
+  conversationId?: string;
+  actor?: GuardrailActor | null;
+  requestedTools?: AssistantTool[];
+}
+
 interface AIResponse {
   response: string;
   action?: unknown;
@@ -39,17 +53,38 @@ interface AIResponse {
 
 export async function processMessage(
   message: string,
-  context: {
-    url: string;
-    userAgent: string;
-    conversationId?: string;
-  },
+  context: AssistantRequestContext,
   auth: EdgeAuthContext
 ): Promise<AIResponse> {
+  const guardrailEvaluation = evaluateAssistantGuardrails({
+    message,
+    actor: context.actor,
+    requestedTools: context.requestedTools,
+    metadata: {
+      url: context.url,
+      userAgent: context.userAgent,
+      conversationId: context.conversationId,
+    },
+  });
+
+  const requestPayload = {
+    message: guardrailEvaluation.sanitizedMessage,
+    context: {
+      url: context.url,
+      userAgent: context.userAgent,
+      conversationId: context.conversationId,
+      actor: context.actor,
+      guardrails: {
+        allowedTools: guardrailEvaluation.allowedTools,
+        audit: guardrailEvaluation.auditTrail,
+      },
+    },
+  };
+
   try {
     // First try the optimized ai-agent endpoint
     const apiUrl = buildSupabaseEdgeUrl('ai-agent-optimized');
-    const response = await fetch(apiUrl, buildEdgeRequestInit({ message, context }, auth));
+    const response = await fetch(apiUrl, buildEdgeRequestInit(requestPayload, auth));
 
     if (!response.ok) {
       console.warn(`Optimized AI agent failed with status: ${response.status}, falling back to process-message`);
@@ -57,7 +92,7 @@ export async function processMessage(
       const fallbackUrl = buildSupabaseEdgeUrl('process-message');
       const fallbackResponse = await fetch(
         fallbackUrl,
-        buildEdgeRequestInit({ message, context }, auth)
+        buildEdgeRequestInit(requestPayload, auth)
       );
       
       if (!fallbackResponse.ok) {
@@ -70,6 +105,9 @@ export async function processMessage(
     const data = await response.json();
     return data;
   } catch (error) {
+    if (error instanceof AssistantGuardrailError) {
+      throw error;
+    }
     console.error('Error processing message:', error);
     if (error instanceof Error) {
       console.error('Error details:', error.stack);
@@ -85,6 +123,9 @@ export async function processMessage(
     };
   }
 }
+
+export { AssistantGuardrailError } from './aiGuardrails';
+export type { AssistantTool, GuardrailActor, GuardrailAudit } from './aiGuardrails';
 
 // Function to get client details
 export async function getClientDetails(clientId: string, auth: EdgeAuthContext): Promise<any> {

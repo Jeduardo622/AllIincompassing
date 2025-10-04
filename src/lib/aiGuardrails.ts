@@ -228,6 +228,7 @@ export const evaluateAssistantGuardrails = (
       redactedPrompt: '',
       metadata: input.metadata,
     };
+    logger.warn('AI guardrail rejected request without actor context', { metadata: audit });
     throw new AssistantGuardrailError('Unable to verify assistant permissions for this request', audit);
   }
 

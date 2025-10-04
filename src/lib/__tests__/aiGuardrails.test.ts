@@ -22,6 +22,34 @@ describe('assistant guardrails', () => {
     vi.restoreAllMocks();
   });
 
+  it('requires actor context and logs audit metadata when missing', () => {
+    expect(() =>
+      evaluateAssistantGuardrails({
+        message: 'Hello assistant',
+        actor: undefined,
+      })
+    ).toThrow(AssistantGuardrailError);
+
+    const logEntry = warnSpy.mock.calls.find(
+      ([message]) => message === 'AI guardrail rejected request without actor context'
+    );
+
+    expect(logEntry).toBeDefined();
+    const [, payload] = logEntry ?? [];
+    expect(payload).toEqual(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          actorId: 'unknown',
+          actorRole: 'client',
+          actionDenied: true,
+          reason: 'invalid_message',
+          traceId: expect.stringMatching(/^(trace_|[0-9a-f-]{8})/),
+          timestamp: expect.any(String),
+        }),
+      })
+    );
+  });
+
   it('sanitizes messages, redacts PHI, and approves allowed tool requests', () => {
     const result = evaluateAssistantGuardrails({
       message: '\u0000Schedule session for client Jane  ',
@@ -34,6 +62,7 @@ describe('assistant guardrails', () => {
     expect(result.allowedTools).toEqual(['schedule_session', 'create_client']);
     expect(result.auditTrail.actorRole).toBe('admin');
     expect(result.auditTrail.traceId).toMatch(/^(trace_|[0-9a-f-]{8})/);
+    expect(Date.parse(result.auditTrail.timestamp)).not.toBeNaN();
     expect(result.auditTrail.reason).toBe('approved');
     expect(result.auditTrail.allowedTools).toEqual(['schedule_session', 'create_client']);
     expect(result.auditTrail.toolUsed).toBe('schedule_session');

@@ -1,11 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  ClearinghouseSandboxClient,
+  SANDBOX_PAYER_FIXTURES,
   InMemoryEdi837Repository,
   ingestClaimDenials,
   runEdi837ExportPipeline,
+  runClearinghouseDryRun,
   type ClaimDenialInput,
   type EdiClaim,
 } from "../edi837";
+import { logger } from "../../lib/logger/logger";
 
 const makeClaim = (suffix: number, overrides?: Partial<EdiClaim>): EdiClaim => {
   const base: EdiClaim = {
@@ -90,6 +94,10 @@ const makeClaim = (suffix: number, overrides?: Partial<EdiClaim>): EdiClaim => {
         serviceDate: `2025-02-${String(10 + suffix).padStart(2, "0")}`,
       },
     ],
+    payer: {
+      id: "MEDICAID_TX",
+      name: "Texas Medicaid",
+    },
   };
 
   return {
@@ -106,6 +114,14 @@ const makeClaim = (suffix: number, overrides?: Partial<EdiClaim>): EdiClaim => {
 };
 
 describe("EDI 837 export pipeline", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("exports pending claims and records denial ingestion", async () => {
     const repository = new InMemoryEdi837Repository([
       makeClaim(1),
@@ -158,5 +174,112 @@ describe("EDI 837 export pipeline", () => {
       billingRecordId: "billing-2",
       notes: expect.stringContaining("Missing required attachment"),
     });
+  });
+
+  it("runs a clearinghouse dry run, logs acknowledgments, and ingests denials", async () => {
+    const repository = new InMemoryEdi837Repository([
+      makeClaim(1, {
+        payer: { id: "MEDICAID_TX", name: "Texas Medicaid" },
+        serviceLines: [
+          {
+            lineNumber: 1,
+            cptCode: "97153",
+            modifiers: [],
+            units: 1,
+            chargeAmount: 150,
+            serviceDate: "2025-02-11",
+          },
+          {
+            lineNumber: 2,
+            cptCode: "97155",
+            modifiers: [],
+            units: 1,
+            chargeAmount: 95,
+            serviceDate: "2025-02-11",
+          },
+        ],
+      }),
+      makeClaim(2, {
+        payer: { id: "BCBS_NY", name: "BlueCross BlueShield NY" },
+        serviceLines: [
+          {
+            lineNumber: 1,
+            cptCode: "97153",
+            modifiers: [],
+            units: 1,
+            chargeAmount: 200,
+            serviceDate: "2025-02-12",
+          },
+        ],
+      }),
+    ]);
+
+    const infoSpy = vi.spyOn(logger, "info");
+    const warnSpy = vi.spyOn(logger, "warn");
+
+    const clearinghouse = new ClearinghouseSandboxClient(SANDBOX_PAYER_FIXTURES, {
+      now: () => new Date("2025-02-13T14:30:00.000Z"),
+    });
+
+    const result = await runClearinghouseDryRun({
+      repository,
+      generatorOptions: {
+        senderId: "SUBMITTER",
+        receiverId: "CLEARINGHOUSE",
+        usageIndicator: "T",
+        interchangeControlNumber: "000000910",
+        groupControlNumber: "000000911",
+        transactionSetControlNumber: "0006",
+      },
+      clearinghouseClient: clearinghouse,
+      now: new Date("2025-02-12T10:15:30.000Z"),
+      fileNamePrefix: "837P_JOB",
+      auditContext: { triggeredBy: "dry-run" },
+    });
+
+    expect(result.exported).toBe(true);
+    expect(result.acknowledgment).toBeDefined();
+    expect(result.acknowledgment?.status).toBe("accepted_with_errors");
+    expect(result.denialRecords).toHaveLength(1);
+    expect(result.denialRecords[0]).toMatchObject({
+      billingRecordId: "billing-1",
+      denialCode: "CO16",
+    });
+
+    const statusHistory = repository.getStatusHistory();
+    const acknowledgmentStatuses = statusHistory.filter((status) =>
+      (status.notes ?? "").includes("Clearinghouse ack"),
+    );
+    expect(acknowledgmentStatuses).toHaveLength(2);
+
+    const rejectionStatuses = statusHistory.filter((status) => status.status === "rejected");
+    expect(rejectionStatuses).toHaveLength(1);
+    expect(rejectionStatuses[0].billingRecordId).toBe("billing-1");
+
+    expect(infoSpy).toHaveBeenCalledWith(
+      "Clearinghouse acknowledgment received",
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          ackId: result.acknowledgment?.id,
+          status: "accepted_with_errors",
+          payerSummaries: expect.arrayContaining([
+            expect.objectContaining({ payerId: "MEDICAID_TX", denied: 1 }),
+          ]),
+          context: { triggeredBy: "dry-run" },
+        }),
+      }),
+    );
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Clearinghouse denial recorded",
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          billingRecordId: "billing-1",
+          denialCode: "CO16",
+          ackId: result.acknowledgment?.id,
+          context: { triggeredBy: "dry-run" },
+        }),
+      }),
+    );
   });
 });

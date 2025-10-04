@@ -51,6 +51,12 @@ export interface EdiProvider {
   phone?: string | null;
 }
 
+export interface EdiPayer {
+  id: string;
+  name?: string | null;
+  clearinghouseId?: string | null;
+}
+
 export interface EdiClaim {
   sessionId: string;
   serviceDate: string;
@@ -62,6 +68,7 @@ export interface EdiClaim {
   renderingProvider: EdiProvider;
   billingRecord: EdiBillingRecordSummary;
   serviceLines: EdiServiceLine[];
+  payer?: EdiPayer | null;
 }
 
 export interface EdiClaimStatusUpdate {
@@ -132,4 +139,38 @@ export interface Edi837Repository {
   saveExportFile(payload: SaveEdiExportFileInput): Promise<EdiExportFileRecord>;
   recordClaimStatuses(updates: EdiClaimStatusUpdate[]): Promise<void>;
   ingestClaimDenials(denials: ClaimDenialInput[]): Promise<ClaimDenialRecord[]>;
+}
+
+export type ClearinghouseAcknowledgmentStatus = "accepted" | "accepted_with_errors" | "rejected";
+
+export interface ClearinghousePayerSummary {
+  payerId: string;
+  payerName?: string | null;
+  accepted: number;
+  denied: number;
+}
+
+export interface ClearinghouseAcknowledgment {
+  id: string;
+  status: ClearinghouseAcknowledgmentStatus;
+  receivedAt: string;
+  notes?: string | null;
+  payerSummaries: ClearinghousePayerSummary[];
+  raw?: Record<string, unknown> | null;
+}
+
+export interface ClearinghouseSubmissionPayload {
+  transaction: Edi837Transaction;
+  file: EdiExportFileRecord;
+  claims: EdiClaim[];
+}
+
+export interface ClearinghouseSubmissionResult {
+  acknowledgment: ClearinghouseAcknowledgment;
+  denials: ClaimDenialInput[];
+  rawResponse?: Record<string, unknown>;
+}
+
+export interface ClearinghouseClient {
+  submit837(payload: ClearinghouseSubmissionPayload): Promise<ClearinghouseSubmissionResult>;
 }

@@ -277,6 +277,7 @@ const toEdiClaim = (
       status: isClaimStatusCode(billingRow.status) ? billingRow.status : "pending",
     },
     serviceLines: ediServiceLines,
+    payer: null,
   };
 };
 

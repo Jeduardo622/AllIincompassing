@@ -45,7 +45,18 @@ describe("ChatBot scheduling", () => {
     mockedProcessMessage.mockResolvedValue(defaultScheduleAction);
     mockedCancelSessions.mockReset();
     mockedUseAuth.mockReturnValue({
-      session: { access_token: "test-jwt" },
+      session: {
+        access_token: "test-jwt",
+        user: { id: "user-123" },
+      },
+      profile: {
+        id: "user-123",
+        email: "user@example.com",
+        role: "admin",
+        is_active: true,
+        created_at: "2025-01-01T00:00:00Z",
+        updated_at: "2025-01-01T00:00:00Z",
+      },
     } as unknown as ReturnType<typeof useAuth>);
     localStorage.clear();
   });
@@ -140,7 +151,7 @@ describe("ChatBot scheduling", () => {
   });
 
   it("notifies when no auth session is present", async () => {
-    mockedUseAuth.mockReturnValue({ session: null } as unknown as ReturnType<typeof useAuth>);
+    mockedUseAuth.mockReturnValue({ session: null, profile: null } as unknown as ReturnType<typeof useAuth>);
 
     renderWithProviders(<ChatBot />);
     await userEvent.click(document.getElementById("chat-trigger")!);

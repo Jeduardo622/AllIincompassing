@@ -98,7 +98,14 @@ interface AIErrorDetails {
   tokenUsage?: number;
   responseTime?: number;
   cacheAttempted?: boolean;
-  errorType: 'timeout' | 'rate_limit' | 'invalid_response' | 'function_error' | 'network_error';
+  audit?: Record<string, unknown>;
+  errorType:
+    | 'timeout'
+    | 'rate_limit'
+    | 'invalid_response'
+    | 'function_error'
+    | 'network_error'
+    | 'guardrail_violation';
 }
 
 interface PerformanceAlert {

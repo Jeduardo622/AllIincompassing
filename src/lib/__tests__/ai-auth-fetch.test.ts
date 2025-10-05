@@ -5,6 +5,7 @@ import {
   getTherapistDetails,
   getAuthorizationDetails,
 } from '../ai';
+import { GUARDRAIL_AUDIT_VERSION } from '../aiGuardrails';
 import {
   setRuntimeSupabaseConfig,
   resetRuntimeSupabaseConfigForTests,
@@ -93,6 +94,13 @@ describe('AI edge function authentication', () => {
       expect.arrayContaining(['schedule_session'])
     );
     expect(requestBody.context.guardrails.audit.traceId).toMatch(/^(trace_|[0-9a-f-]{8})/);
+    expect(requestBody.context.guardrails.auditLog).toMatchObject({
+      auditVersion: GUARDRAIL_AUDIT_VERSION,
+      actorRole: 'admin',
+      actionDenied: false,
+      redactedPrompt: 'Hello?',
+      traceId: requestBody.context.guardrails.audit.traceId,
+    });
     expect(result.response).toBe('Hello there');
   });
 

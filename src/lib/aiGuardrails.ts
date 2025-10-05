@@ -31,6 +31,7 @@ export interface GuardrailActor {
 }
 
 export interface GuardrailAudit {
+  auditVersion: string;
   traceId: string;
   actorId: string;
   actorRole: AssistantRole;
@@ -43,7 +44,25 @@ export interface GuardrailAudit {
   actionDenied: boolean;
   messagePreview: string;
   redactedPrompt: string;
-  truncated?: boolean;
+  truncated: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface GuardrailAuditLogEntry {
+  auditVersion: string;
+  traceId: string;
+  actorId: string;
+  actorRole: AssistantRole;
+  timestamp: string;
+  reason: GuardrailAudit['reason'];
+  allowedTools: AssistantTool[];
+  deniedTools: AssistantTool[];
+  requestedTools: AssistantTool[];
+  toolUsed: AssistantTool | null;
+  actionDenied: boolean;
+  messagePreview: string;
+  redactedPrompt: string;
+  truncated: boolean;
   metadata?: Record<string, unknown>;
 }
 
@@ -58,20 +77,25 @@ export interface GuardrailEvaluation {
   sanitizedMessage: string;
   allowedTools: AssistantTool[];
   auditTrail: GuardrailAudit;
+  auditLog: GuardrailAuditLogEntry;
 }
 
 export class AssistantGuardrailError extends Error {
   readonly audit: GuardrailAudit;
+  readonly auditLog: GuardrailAuditLogEntry;
 
-  constructor(message: string, audit: GuardrailAudit) {
+  constructor(message: string, audit: GuardrailAudit, auditLog: GuardrailAuditLogEntry) {
     super(message);
     this.name = 'AssistantGuardrailError';
     this.audit = audit;
+    this.auditLog = auditLog;
   }
 }
 
 const MAX_MESSAGE_LENGTH = 4000;
 const CONTROL_CHARACTERS = /[\p{C}]/gu;
+
+export const GUARDRAIL_AUDIT_VERSION = '2025-10-guardrails-v1';
 
 const ROLE_ORDER: AssistantRole[] = ['client', 'therapist', 'admin', 'super_admin'];
 
@@ -158,6 +182,26 @@ const sanitizeMessage = (
   return { sanitized: collapsedWhitespace, redacted, truncated: false };
 };
 
+export const toGuardrailAuditLogEntry = (
+  audit: GuardrailAudit
+): GuardrailAuditLogEntry => ({
+  auditVersion: audit.auditVersion,
+  traceId: audit.traceId,
+  actorId: audit.actorId,
+  actorRole: audit.actorRole,
+  timestamp: audit.timestamp,
+  reason: audit.reason,
+  allowedTools: audit.allowedTools,
+  deniedTools: audit.deniedTools,
+  requestedTools: audit.requestedTools,
+  toolUsed: audit.toolUsed,
+  actionDenied: audit.actionDenied,
+  messagePreview: audit.messagePreview,
+  redactedPrompt: audit.redactedPrompt,
+  truncated: audit.truncated,
+  metadata: audit.metadata,
+});
+
 export const getRoleAllowedTools = (role: AssistantRole): AssistantTool[] => {
   if (roleToolCache.has(role)) {
     return roleToolCache.get(role) ?? [];
@@ -214,6 +258,7 @@ export const evaluateAssistantGuardrails = (
   const traceId = generateTraceId();
   if (!actor || !actor.id || !actor.role) {
     const audit: GuardrailAudit = {
+      auditVersion: GUARDRAIL_AUDIT_VERSION,
       traceId,
       actorId: actor?.id ?? 'unknown',
       actorRole: actor?.role ?? 'client',
@@ -226,15 +271,22 @@ export const evaluateAssistantGuardrails = (
       actionDenied: true,
       messagePreview: '',
       redactedPrompt: '',
+      truncated: false,
       metadata: input.metadata,
     };
-    logger.warn('AI guardrail rejected request without actor context', { metadata: audit });
-    throw new AssistantGuardrailError('Unable to verify assistant permissions for this request', audit);
+    const auditLog = toGuardrailAuditLogEntry(audit);
+    logger.warn('AI guardrail rejected request without actor context', { metadata: auditLog });
+    throw new AssistantGuardrailError(
+      'Unable to verify assistant permissions for this request',
+      audit,
+      auditLog
+    );
   }
 
   const sanitized = sanitizeMessage(input.message);
   if (!sanitized.sanitized) {
     const audit: GuardrailAudit = {
+      auditVersion: GUARDRAIL_AUDIT_VERSION,
       traceId,
       actorId: actor.id,
       actorRole: actor.role,
@@ -250,13 +302,15 @@ export const evaluateAssistantGuardrails = (
       truncated: sanitized.truncated,
       metadata: input.metadata,
     };
-    logger.warn('AI guardrail rejected empty or invalid message', { metadata: audit });
-    throw new AssistantGuardrailError('Assistant prompt rejected by guardrails', audit);
+    const auditLog = toGuardrailAuditLogEntry(audit);
+    logger.warn('AI guardrail rejected empty or invalid message', { metadata: auditLog });
+    throw new AssistantGuardrailError('Assistant prompt rejected by guardrails', audit, auditLog);
   }
 
   const violation = DISALLOWED_PATTERNS.find(({ pattern }) => pattern.test(sanitized.sanitized));
   if (violation) {
     const audit: GuardrailAudit = {
+      auditVersion: GUARDRAIL_AUDIT_VERSION,
       traceId,
       actorId: actor.id,
       actorRole: actor.role,
@@ -275,8 +329,9 @@ export const evaluateAssistantGuardrails = (
         violation: violation.description,
       },
     };
-    logger.warn('AI guardrail blocked high-risk prompt', { metadata: audit });
-    throw new AssistantGuardrailError('Assistant prompt violates safety guardrails', audit);
+    const auditLog = toGuardrailAuditLogEntry(audit);
+    logger.warn('AI guardrail blocked high-risk prompt', { metadata: auditLog });
+    throw new AssistantGuardrailError('Assistant prompt violates safety guardrails', audit, auditLog);
   }
 
   const { allowed, denied } = normalizeRequestedTools(actor, input.requestedTools);
@@ -286,6 +341,7 @@ export const evaluateAssistantGuardrails = (
   const messagePreview = buildMessagePreview(sanitized.redacted);
 
   const audit: GuardrailAudit = {
+    auditVersion: GUARDRAIL_AUDIT_VERSION,
     traceId,
     actorId: actor.id,
     actorRole: actor.role,
@@ -302,15 +358,18 @@ export const evaluateAssistantGuardrails = (
     metadata: input.metadata,
   };
 
+  const auditLog = toGuardrailAuditLogEntry(audit);
+
   if (denied.length > 0) {
-    logger.warn('AI guardrail denied tool permissions for request', { metadata: audit });
-    throw new AssistantGuardrailError('Assistant tools not permitted for current role', audit);
+    logger.warn('AI guardrail denied tool permissions for request', { metadata: auditLog });
+    throw new AssistantGuardrailError('Assistant tools not permitted for current role', audit, auditLog);
   }
 
-  logger.info('AI guardrail approved assistant request', { metadata: audit });
+  logger.info('AI guardrail approved assistant request', { metadata: auditLog });
   return {
     sanitizedMessage: sanitized.redacted,
     allowedTools: allowed,
     auditTrail: audit,
+    auditLog,
   };
 };

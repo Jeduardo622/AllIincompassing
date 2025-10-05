@@ -77,6 +77,7 @@ export async function processMessage(
       guardrails: {
         allowedTools: guardrailEvaluation.allowedTools,
         audit: guardrailEvaluation.auditTrail,
+        auditLog: guardrailEvaluation.auditLog,
       },
     },
   };

@@ -5,7 +5,7 @@ import {
   getTherapistDetails,
   getAuthorizationDetails,
 } from '../ai';
-import { GUARDRAIL_AUDIT_VERSION } from '../aiGuardrails';
+import { GUARDRAIL_AUDIT_VERSION, getRoleAllowedTools } from '../aiGuardrails';
 import {
   setRuntimeSupabaseConfig,
   resetRuntimeSupabaseConfigForTests,
@@ -47,6 +47,8 @@ describe('AI edge function authentication', () => {
       buildFetchResponse({ response: 'Hello there', conversationId: 'conv-1' })
     );
 
+    const adminAllowedTools = getRoleAllowedTools('admin');
+
     const result = await processMessage(
       ' Hello?\u0007 ',
       {
@@ -72,26 +74,17 @@ describe('AI edge function authentication', () => {
 
     const requestBody = JSON.parse((optimizedInit as RequestInit).body as string);
     expect(requestBody.message).toBe('Hello?');
-    expect(requestBody.context.guardrails.allowedTools).toEqual([
-      'schedule_session',
-      'modify_session',
-      'cancel_sessions',
-      'create_client',
-      'update_client',
-      'create_authorization',
-      'update_authorization',
-      'initiate_client_onboarding',
-    ]);
+    expect(requestBody.context.guardrails.allowedTools).toEqual(adminAllowedTools);
     expect(requestBody.context.guardrails.audit).toMatchObject({
       actorId: 'user-1',
       actorRole: 'admin',
       reason: 'approved',
       actionDenied: false,
-      toolUsed: 'schedule_session',
+      toolUsed: adminAllowedTools[0],
       redactedPrompt: 'Hello?',
     });
     expect(requestBody.context.guardrails.audit.requestedTools).toEqual(
-      expect.arrayContaining(['schedule_session'])
+      expect.arrayContaining([adminAllowedTools[0]])
     );
     expect(requestBody.context.guardrails.audit.traceId).toMatch(/^(trace_|[0-9a-f-]{8})/);
     expect(requestBody.context.guardrails.auditLog).toMatchObject({

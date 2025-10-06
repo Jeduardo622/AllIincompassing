@@ -68,6 +68,74 @@ jobs:
             exit 1
           fi
 
+      - name: Build canary
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist
+
+      - name: Preview smoke (deploy preview)
+        run: |
+          url="${PREVIEW_URL:-${DEPLOY_PRIME_URL:-${URL:-}}}"
+          if [ -z "$url" ]; then
+            echo "No preview URL available; skipping smoke check."
+            exit 0
+          fi
+          echo "Running preview smoke against $url"
+          PREVIEW_URL="$url" npm run preview:smoke
+
       - name: Skipped typegen (repo var missing)
         if: ${{ vars.SUPABASE_PROJECT_ID == '' }}
         run: echo "SUPABASE_PROJECT_ID repo variable not set; skipping typegen."
+
+  deploy-staging:
+    needs: build
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.staging_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: .
+
+      - name: Deploy to Netlify staging
+        id: deploy
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_STAGING_SITE_ID }}
+        run: |
+          if [ -z "$NETLIFY_AUTH_TOKEN" ] || [ -z "$NETLIFY_SITE_ID" ]; then
+            echo "::error::NETLIFY_AUTH_TOKEN or NETLIFY_STAGING_SITE_ID is not set."
+            exit 1
+          fi
+          npx netlify deploy \
+            --dir=dist \
+            --site=$NETLIFY_SITE_ID \
+            --auth=$NETLIFY_AUTH_TOKEN \
+            --context=staging \
+            --message "Staging deploy ${GITHUB_SHA}" \
+            --json > deploy.json
+          node -e "const fs=require('fs');const data=JSON.parse(fs.readFileSync('deploy.json','utf8'));if(!data.deploy_url){throw new Error('Missing deploy_url in Netlify response');}console.log('Staging deploy URL:',data.deploy_url);fs.appendFileSync(process.env.GITHUB_OUTPUT,`staging_url=${data.deploy_url}\n`);"
+
+      - name: Smoke test staging deployment
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.staging_url }}
+        run: |
+          if [ -z "$PREVIEW_URL" ]; then
+            echo "::error::Missing staging URL output from deploy step."
+            exit 1
+          fi
+          npm run preview:smoke

@@ -57,11 +57,17 @@ AllIncompassing delivers therapist scheduling, billing, and operational telemetr
 | --- | --- |
 | Lint TypeScript & React files | `npm run lint` |
 | Unit tests (Vitest) | `npm test` |
+| CI-aligned unit tests + coverage | `npm run test:ci` |
 | Coverage report | `npm run test:coverage` |
+| Focused/Skipped test guard | `npm run ci:check-focused` |
+| Coverage threshold verification | `npm run ci:verify-coverage` |
 | Type checking | `npm run typecheck` |
 | UI test runner | `npm run test:ui` |
 | Cypress end-to-end suite | `npm run test:e2e` or `npm run test:e2e:open` |
 | Route integrity tests | `npm run test:routes` or `npm run test:routes:open` |
+
+> CI fails if `.only`/`.skip` usages slip outside `tests/utils/testControls.ts` or if line coverage drops below 85% in
+> `coverage/coverage-summary.json`. Run the focus guard and coverage verification commands locally before opening a PR.
 
 ### Supabase connection diagnostics
 

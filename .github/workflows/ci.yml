@@ -44,12 +44,18 @@ jobs:
       - name: Run typecheck
         run: npm run typecheck
 
+      - name: Ensure no focused or skipped tests are committed
+        run: npm run ci:check-focused
+
       - name: Run unit tests
-        run: npm test -- --run --reporter=verbose | tee vitest-output.log
+        run: vitest run --coverage --run --reporter=verbose --coverage.reporter=json-summary | tee vitest-output.log
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           RUN_DB_IT: '1'
+
+      - name: Verify coverage threshold
+        run: npm run ci:verify-coverage
 
       - name: Ensure RLS tests executed
         if: ${{ always() }}

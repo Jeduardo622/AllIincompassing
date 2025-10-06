@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect } from 'vitest';
+import { selectTest } from '../utils/testControls';
 
 const SUPABASE_URL = process.env.SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY as string;
@@ -31,7 +32,12 @@ async function callRpc(
 describe('Admin role assignments', () => {
   const tokenOrgA = process.env.TEST_JWT_ORG_A as string;
 
-  it.skip('removes admins within the same organization', async () => {
+  const removalTest = selectTest({
+    run: process.env.RUN_ADMIN_ROLE_REMOVAL_TEST === 'true',
+    reason: 'Seeded admin fixtures required. Enable by setting RUN_ADMIN_ROLE_REMOVAL_TEST=true.',
+  });
+
+  removalTest('removes admins within the same organization', async () => {
     if (!tokenOrgA) return;
 
     const { status: orgStatus, json: orgJson } = await callRpc('current_user_organization_id', tokenOrgA);

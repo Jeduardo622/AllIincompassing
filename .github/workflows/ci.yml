@@ -79,7 +79,7 @@ jobs:
             exit 0
           fi
           echo "Running preview smoke against $url"
-          PREVIEW_URL="$url" npm run preview:smoke
+          node scripts/preview-smoke.js --url "$url"
 
       - name: Skipped typegen (repo var missing)
         if: ${{ vars.SUPABASE_PROJECT_ID == '' }}

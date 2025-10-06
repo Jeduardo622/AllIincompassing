@@ -67,6 +67,7 @@ jobs:
         with:
           name: web-dist
           path: dist
+          if-no-files-found: error
 
       - name: Preview smoke (deploy preview)
         run: |

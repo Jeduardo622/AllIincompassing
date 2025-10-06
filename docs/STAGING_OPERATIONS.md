@@ -29,8 +29,8 @@ This playbook captures the operational steps required to stand up and maintain t
 The GitHub Actions workflow (`.github/workflows/ci.yml`) now includes an automated `deploy-staging` job with the following behavior:
 
 1. **Trigger** – runs on pushes to `develop` after the primary `build` job succeeds.
-2. **Build** – executes `npm ci` and `npm run build` in a fresh runner to keep parity with production outputs.
-3. **Deploy** – calls `npx netlify-cli deploy --context=staging` using `NETLIFY_AUTH_TOKEN` and `NETLIFY_STAGING_SITE_ID`, capturing the resulting `deploy_url` as a job output and environment URL.
+2. **Build artifact reuse** – downloads the `web-dist` artifact produced by the `build` job instead of rebuilding, guaranteeing the same bundle reaches both preview smoke and staging.
+3. **Deploy** – calls `npx netlify deploy --context=staging` using `NETLIFY_AUTH_TOKEN` and `NETLIFY_STAGING_SITE_ID`, capturing the resulting `deploy_url` as a job output and environment URL.
 4. **Smoke** – runs `npm run preview:smoke` with the staging URL to verify `/api/runtime-config` and the SPA root document. Failures bubble up as job failures.
 5. **Status checks** – require the `deploy-staging` job for `develop` merges so staging stays healthy.
 

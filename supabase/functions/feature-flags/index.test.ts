@@ -311,3 +311,131 @@ Deno.test("updates existing organizations and normalizes slugs", async () => {
   assertEquals(auditRecord.previous_state, existingOrganization);
   assert(body.organization.updated_at);
 });
+
+Deno.test("rejects invalid organization metadata", async () => {
+  let tableRequested = false;
+
+  const client = {
+    from: () => {
+      tableRequested = true;
+      throw new Error("Database should not be queried when metadata is invalid");
+    },
+  } as unknown as SupabaseClient;
+
+  const response = await handleFeatureFlagAdmin({
+    req: createRequest("POST", {
+      action: "upsertOrganization",
+      organization: {
+        id: "6f299315-15d6-4a86-8bb8-1f9f60dedaf5",
+        metadata: {
+          seats: {
+            licensed: 5,
+            active: 8,
+          },
+        },
+      },
+    }),
+    userContext: createUserContext(),
+    db: client,
+  });
+
+  assertEquals(tableRequested, false);
+  assertEquals(response.status, 400);
+  const body = (await response.json()) as { error: string };
+  assertEquals(body.error.includes("Invalid organization metadata"), true);
+});
+
+Deno.test("persists sanitized organization metadata", async () => {
+  const updates: Record<string, unknown>[] = [];
+  const audits: unknown[] = [];
+
+  const existingOrganization = {
+    id: "org-2",
+    name: "Bright Future",
+    slug: "bright-future",
+    metadata: { notes: "legacy" },
+    created_at: "yesterday",
+    updated_at: "yesterday",
+  };
+
+  const client = {
+    from: (table: string) => {
+      if (table === "organizations") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () => Promise.resolve({ data: existingOrganization, error: null }),
+            }),
+          }),
+          update: (values: Record<string, unknown>) => {
+            updates.push(values);
+            return {
+              eq: () => ({
+                select: () => ({
+                  single: () =>
+                    Promise.resolve({
+                      data: {
+                        ...existingOrganization,
+                        ...values,
+                        metadata: values.metadata,
+                        updated_at: "now",
+                      },
+                      error: null,
+                    }),
+                }),
+              }),
+            };
+          },
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "feature_flag_audit_logs") {
+        return {
+          insert: (values: Record<string, unknown>) => {
+            audits.push(values);
+            return Promise.resolve({ data: null, error: null });
+          },
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      throw new Error(`Unexpected table requested: ${table}`);
+    },
+  } as unknown as SupabaseClient;
+
+  const response = await handleFeatureFlagAdmin({
+    req: createRequest("POST", {
+      action: "upsertOrganization",
+      organization: {
+        id: "org-2",
+        metadata: {
+          billing: {
+            contact: {
+              name: "  Casey Ops  ",
+              email: "ops@example.com  ",
+            },
+            cycle: "monthly",
+          },
+          seats: { licensed: 50, active: 25 },
+          tags: ["beta", "priority"],
+        },
+      },
+    }),
+    userContext: createUserContext(),
+    db: client,
+  });
+
+  assertEquals(response.status, 200);
+  assertEquals(updates.length, 1);
+  const updatePayload = updates[0] as { metadata?: Record<string, unknown> };
+  assert(updatePayload.metadata);
+  const metadata = updatePayload.metadata as {
+    billing: { contact: { name: string; email: string } };
+    seats: { licensed: number; active: number };
+    tags: string[];
+  };
+  assertEquals(metadata.billing.contact.name, "Casey Ops");
+  assertEquals(metadata.billing.contact.email, "ops@example.com");
+  assertEquals(metadata.seats.active, 25);
+  assertEquals(metadata.tags.includes("beta"), true);
+  assertEquals(audits.length, 1);
+});

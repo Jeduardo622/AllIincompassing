@@ -70,6 +70,17 @@ AllIncompassing delivers therapist scheduling, billing, and operational telemetr
 > CI fails if `.only`/`.skip` usages slip outside `tests/utils/testControls.ts` or if line coverage drops below 85% in
 > `coverage/coverage-summary.json`. Run the focus guard and coverage verification commands locally before opening a PR.
 
+### CI pipeline stages
+
+The main CI workflow (`.github/workflows/ci.yml`) runs the following stages in order:
+
+1. Secrets validation, service-role audit, conditional Supabase type generation, lint, and type-check.
+2. Unit tests with coverage enforcement and an RLS guard to ensure the Supabase environment executed correctly.
+3. **Build canary** – `npm run build` compiles the production bundle so build regressions are caught before deploy previews.
+4. **Preview smoke** – when a deploy-preview URL is exposed (`PREVIEW_URL`, `DEPLOY_PRIME_URL`, or `URL`), CI runs `node scripts/preview-smoke.js --url "$PREVIEW_URL"` to verify `/api/runtime-config` responds with Supabase credentials and the root HTML renders. The job fails automatically on non-200 responses or missing runtime config keys.
+
+If the smoke test fails, re-run it locally with the preview URL shown in the workflow logs. Use `node scripts/preview-smoke.js --url <deploy-preview>` to reproduce the failure, and inspect the masked runtime-config output to confirm Supabase values are wired correctly.
+
 ### Supabase connection diagnostics
 
 - Connection diagnostics automatically execute only in Vite development builds so production deployments do not trigger auth, table, or RPC probes on every boot.

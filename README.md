@@ -59,6 +59,7 @@ AllIncompassing delivers therapist scheduling, billing, and operational telemetr
 | Unit tests (Vitest) | `npm test` |
 | CI-aligned unit tests + coverage | `npm run test:ci` |
 | Coverage report | `npm run test:coverage` |
+| Secrets preflight | `npm run ci:secrets` |
 | Focused/Skipped test guard | `npm run ci:check-focused` |
 | Coverage threshold verification | `npm run ci:verify-coverage` |
 | Type checking | `npm run typecheck` |

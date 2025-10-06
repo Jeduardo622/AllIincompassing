@@ -1,5 +1,6 @@
 import { z } from "npm:zod@3.23.8";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
+import { organizationMetadataSchema, type OrganizationMetadata } from "./schema.ts";
 import {
   createProtectedRoute,
   corsHeaders,
@@ -75,7 +76,7 @@ const upsertOrganizationSchema = z.object({
       .refine(value => !value || slugPattern.test(value), {
         message: "Slug may contain only lowercase letters, numbers, and hyphens",
       }),
-    metadata: z.record(z.unknown()).optional(),
+    metadata: organizationMetadataSchema.optional(),
   }),
 });
 
@@ -107,13 +108,22 @@ const normalizeSlug = (value: string | null | undefined): string | null => {
   return sanitized.length > 0 ? sanitized : null;
 };
 
-const safeMetadata = (value: Record<string, unknown> | undefined) => {
-  if (!value) return {};
-  try {
-    return JSON.parse(JSON.stringify(value));
-  } catch {
-    return {};
+const sanitizeOrganizationMetadata = (
+  value: Record<string, unknown> | OrganizationMetadata | undefined,
+): OrganizationMetadata | undefined => {
+  if (value === undefined) {
+    return undefined;
   }
+
+  const result = organizationMetadataSchema.safeParse(value);
+
+  if (!result.success) {
+    const issue = result.error.issues[0];
+    const message = issue?.message ?? "Invalid organization metadata";
+    throw respond(400, { error: `Invalid organization metadata: ${message}` });
+  }
+
+  return JSON.parse(JSON.stringify(result.data)) as OrganizationMetadata;
 };
 
 const parseActionPayload = (raw: unknown): ParsedAction => {
@@ -267,6 +277,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
 
         if (audit.error) {
           console.error("Failed to write feature flag audit log", audit.error);
+          return handleError(500, "Unable to persist feature flag audit trail");
         }
 
         logApiAccess(req.method, ADMIN_PATH, userContext, 201);
@@ -316,6 +327,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
 
         if (audit.error) {
           console.error("Failed to log global flag update", audit.error);
+          return handleError(500, "Unable to persist feature flag audit trail");
         }
 
         logApiAccess(req.method, ADMIN_PATH, userContext, 200);
@@ -412,6 +424,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
 
         if (audit.error) {
           console.error("Failed to log organization feature flag change", audit.error);
+          return handleError(500, "Unable to persist feature flag audit trail");
         }
 
         logApiAccess(req.method, ADMIN_PATH, userContext, 200);
@@ -522,6 +535,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
 
         if (audit.error) {
           console.error("Failed to log plan assignment", audit.error);
+          return handleError(500, "Unable to persist feature flag audit trail");
         }
 
         logApiAccess(req.method, ADMIN_PATH, userContext, 200);
@@ -531,6 +545,8 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
       case "upsertOrganization": {
         const { organization } = parsed;
         const normalizedSlug = normalizeSlug(organization.slug);
+        const sanitizedMetadata = sanitizeOrganizationMetadata(organization.metadata);
+        const metadataProvided = organization.metadata !== undefined;
 
         const existing = await db
           .from("organizations")
@@ -545,16 +561,19 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
 
         let record;
         if (existing.data) {
+          const updatePayload: Record<string, unknown> = {
+            name: organization.name ?? existing.data.name,
+            slug: normalizedSlug ?? existing.data.slug,
+            updated_by: actorId,
+          };
+
+          if (metadataProvided) {
+            updatePayload.metadata = sanitizedMetadata ?? {};
+          }
+
           const update = await db
             .from("organizations")
-            .update({
-              name: organization.name ?? existing.data.name,
-              slug: normalizedSlug ?? existing.data.slug,
-              metadata: Object.keys(organization.metadata ?? {}).length
-                ? safeMetadata(organization.metadata)
-                : existing.data.metadata,
-              updated_by: actorId,
-            })
+            .update(updatePayload)
             .eq("id", organization.id)
             .select("id, name, slug, metadata, created_at, updated_at")
             .single();
@@ -578,6 +597,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
 
           if (audit.error) {
             console.error("Failed to log organization update", audit.error);
+            return handleError(500, "Unable to persist feature flag audit trail");
           }
         } else {
           const insert = await db
@@ -586,7 +606,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
               id: organization.id,
               name: organization.name ?? null,
               slug: normalizedSlug,
-              metadata: safeMetadata(organization.metadata),
+              metadata: sanitizedMetadata ?? {},
               created_by: actorId,
               updated_by: actorId,
             })
@@ -612,6 +632,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
 
           if (audit.error) {
             console.error("Failed to log organization creation", audit.error);
+            return handleError(500, "Unable to persist feature flag audit trail");
           }
         }
 

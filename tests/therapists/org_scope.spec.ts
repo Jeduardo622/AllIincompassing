@@ -43,7 +43,7 @@ describe('Therapist RPC organization scoping', () => {
     expect([200, 204]).toContain(allowed.status);
 
     const denied = await callRpc('get_dropdown_data', tokenOrgB);
-    expect([200, 204]).toContain(denied.status);
+    expect([200, 204, 403]).toContain(denied.status);
 
     const therapists = Array.isArray((denied.json as any)?.therapists)
       ? (denied.json as any).therapists
@@ -52,8 +52,18 @@ describe('Therapist RPC organization scoping', () => {
       ? (denied.json as any).clients
       : [];
 
-    expect(therapists.length).toBe(0);
-    expect(clients.length).toBe(0);
+    if (denied.status === 403) {
+      const payload = (denied.json ?? {}) as Record<string, unknown>;
+      const message = typeof payload.error === 'string'
+        ? payload.error
+        : typeof payload.message === 'string'
+          ? payload.message
+          : '';
+      expect(message.toLowerCase()).toContain('denied');
+    } else {
+      expect(therapists.length).toBe(0);
+      expect(clients.length).toBe(0);
+    }
 
     if (Array.isArray((allowed.json as any)?.therapists) && (allowed.json as any).therapists.length > 0) {
       expect((allowed.json as any).therapists.length).toBeGreaterThan(therapists.length);
@@ -77,10 +87,22 @@ describe('Therapist RPC organization scoping', () => {
     expect([200, 204]).toContain(allowed.status);
 
     const denied = await callRpc('get_sessions_optimized', tokenOrgB, payload);
-    expect([200, 204]).toContain(denied.status);
+    expect([200, 204, 403]).toContain(denied.status);
+
+    if (denied.status === 403) {
+      const payloadDenied = (denied.json ?? {}) as Record<string, unknown>;
+      const message = typeof payloadDenied.error === 'string'
+        ? payloadDenied.error
+        : typeof payloadDenied.message === 'string'
+          ? payloadDenied.message
+          : '';
+      expect(message.toLowerCase()).toContain('denied');
+    }
 
     const sessions = Array.isArray(denied.json) ? (denied.json as any[]) : [];
-    expect(sessions.length).toBe(0);
+    if (denied.status !== 403) {
+      expect(sessions.length).toBe(0);
+    }
 
     if (Array.isArray(allowed.json) && (allowed.json as any[]).length > 0) {
       expect((allowed.json as any[]).length).toBeGreaterThan(sessions.length);
@@ -99,7 +121,17 @@ describe('Therapist RPC organization scoping', () => {
     expect([200, 204]).toContain(allowed.status);
 
     const denied = await callRpc('get_schedule_data_batch', tokenOrgB, payload);
-    expect([200, 204]).toContain(denied.status);
+    expect([200, 204, 403]).toContain(denied.status);
+
+    if (denied.status === 403) {
+      const payloadDenied = (denied.json ?? {}) as Record<string, unknown>;
+      const message = typeof payloadDenied.error === 'string'
+        ? payloadDenied.error
+        : typeof payloadDenied.message === 'string'
+          ? payloadDenied.message
+          : '';
+      expect(message.toLowerCase()).toContain('denied');
+    }
 
     const sessions = Array.isArray((denied.json as any)?.sessions)
       ? (denied.json as any).sessions
@@ -111,9 +143,11 @@ describe('Therapist RPC organization scoping', () => {
       ? (denied.json as any).clients
       : [];
 
-    expect(sessions.length).toBe(0);
-    expect(therapists.length).toBe(0);
-    expect(clients.length).toBe(0);
+    if (denied.status !== 403) {
+      expect(sessions.length).toBe(0);
+      expect(therapists.length).toBe(0);
+      expect(clients.length).toBe(0);
+    }
 
     if (Array.isArray((allowed.json as any)?.sessions) && (allowed.json as any).sessions.length > 0) {
       expect((allowed.json as any).sessions.length).toBeGreaterThan(sessions.length);

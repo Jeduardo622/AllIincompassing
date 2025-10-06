@@ -5,6 +5,16 @@
 [build.environment]
   NODE_VERSION = "20"
 
+[context.staging]
+  command = "npm run build"
+  publish = "dist"
+
+  # Netlify injects staging Supabase credentials via the UI.
+  # Keep build parity with production while exposing the runtime context flag.
+  [context.staging.environment]
+    NODE_VERSION = "20"
+    VITE_RUNTIME_ENV = "staging"
+
 ## Runtime config endpoint must precede SPA catch-all
 [[redirects]]
   from = "/api/runtime-config"

@@ -44,12 +44,37 @@ If a preview project fails to provision, check the Supabase dashboard activity f
 - Avoid destructive operations (`DROP TABLE`, `DROP COLUMN`) unless wrapped in safe guards (e.g., `IF EXISTS`, concurrent index creation). Coordinate any breaking change with the backend lead and document mitigation steps in the pull request.
 - Before opening a PR, run `supabase db lint` or `supabase db push --dry-run` locally to validate the migration set.
 
+### Promoting to Staging (`develop`)
+
+The platform team maintains a dedicated Supabase project for staging that mirrors the production schema but uses lower-cost infrastructure. Provision the project from the Supabase dashboard and document its project reference ID in 1Password alongside the Netlify staging site ID. Do **not** reuse production credentials.
+
+1. Merge approved changes into the `develop` branch once preview smoke tests succeed.
+2. In the Supabase dashboard, switch to the staging project and run **Promote branch** → `develop` to sync migrations.
+3. Confirm RLS policies and seed scripts ran successfully by executing `supabase db diff --project-ref <staging-ref> --schema public --linked` locally. The diff should be empty.
+4. Rotate the staging service role key after major schema updates (see [Environment Matrix](./ENVIRONMENT_MATRIX.md)). Update the Netlify staging environment variables with the rotated key (mask values as `****` in screenshots or logs).
+
 ### Promoting to Production (`main`)
 
 1. Resolve all review comments and ensure the preview branch tests pass.
 2. Merge the PR into `main`. Supabase automatically deploys migrations in `supabase/migrations/` to the production project because “Deploy to production” is enabled for `main`.
 3. Monitor the Supabase dashboard deployment logs. If a migration fails, follow the rollback/forward-fix plan documented in the PR.
 4. Regenerate generated types (e.g., `npm run typegen`) after production deploys if schema changes affect the application code.
+
+### Migration Promotion Flow Overview
+
+```mermaid
+sequenceDiagram
+    participant Dev as Preview Branch
+    participant Staging as Staging Project
+    participant Prod as Production Project
+    Dev->>Dev: Run migrations via preview automation
+    Dev->>Staging: Merge to develop & promote branch
+    Staging->>Staging: Smoke test staging URL
+    Staging->>Prod: Merge to main & auto deploy
+    Prod->>Prod: Post-deploy health checks
+```
+
+If staging promotion fails, roll back by restoring the previous staging backup (Supabase dashboard → Database Backups) and re-running migrations locally to reproduce the failure before retrying the promotion.
 
 ## Troubleshooting
 

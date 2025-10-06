@@ -27,6 +27,9 @@ jobs:
         with:
           access-token: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
+      - name: Validate secrets configuration
+        run: npm run ci:secrets
+
       # Always run the SERVICE_ROLE audit
       - run: npm run audit:service-role
 

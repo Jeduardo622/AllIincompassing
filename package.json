@@ -14,6 +14,7 @@
     "test:auth": "vitest run --reporter=verbose --config vitest.config.ts src/lib/__tests__/auth.test.ts",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
+    "test:ci": "vitest run --coverage --run --reporter=verbose --coverage.reporter=json-summary",
     "test:e2e": "cypress run",
     "test:e2e:open": "cypress open",
     "bolt:dev": "vite --host 0.0.0.0",
@@ -37,7 +38,9 @@
     "audit:service-role": "node scripts/audit-service-role-usage.cjs",
     "preview:smoke": "node scripts/preview-smoke.js --url $PREVIEW_URL",
     "typegen": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/lib/db.types.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "ci:check-focused": "node scripts/ci/check-focused-tests.mjs",
+    "ci:verify-coverage": "node scripts/ci/verify-coverage.mjs"
   },
   "dependencies": {
     "@headlessui/react": "^1.7.18",

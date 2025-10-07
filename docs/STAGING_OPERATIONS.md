@@ -5,15 +5,18 @@ This playbook captures the operational steps required to stand up and maintain t
 ## Netlify staging context
 
 1. In Netlify, open the site **AllIincompassing** → **Site configuration** → **Environment variables**.
-2. Create a new deploy context named `staging` (Netlify UI → **Build & deploy** → **Continuous deployment** → **Deploy contexts**).
-3. Point the context at the `develop` branch. Branch deploys from `develop` should publish to the staging URL.
-4. Add the Supabase staging credentials as environment variables:
+2. Ensure the `netlify.toml` `[context.staging]` block remains present; it mirrors the production build (same command/publish directory) while exposing `VITE_RUNTIME_ENV=staging` for telemetry.
+3. Point the deploy context at the `develop` branch. Branch deploys from `develop` publish to the staging URL.
+4. Add the Supabase staging credentials as environment variables (configure in the Netlify UI, do **not** commit raw values):
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `SUPABASE_ACCESS_TOKEN`
 5. Store the raw values in the shared secrets manager (1Password vault `Platform / Supabase`). Paste only redacted values (e.g., `****`) into pull requests or chat logs.
-6. Trigger a staging build from the Netlify UI to ensure the new context provisions correctly.
+6. Stage-specific Netlify secrets:
+   - `NETLIFY_AUTH_TOKEN`
+   - `NETLIFY_STAGING_SITE_ID`
+7. Trigger a staging build from the Netlify UI to ensure the updated context provisions correctly.
 
 ## Supabase staging project
 
@@ -23,18 +26,15 @@ This playbook captures the operational steps required to stand up and maintain t
 
 ## GitHub Actions staging deployment job
 
-Platform engineering must extend the existing deployment workflow with a staging job. Because `.github/` changes are restricted for Codex agents, implement this update manually with the following guardrails:
+The GitHub Actions workflow (`.github/workflows/ci.yml`) now includes an automated `deploy-staging` job with the following behavior:
 
-1. Trigger the job on pushes to `develop` and manual `workflow_dispatch` invocations.
-2. Reuse the build artifacts from the primary job to avoid duplicate installs.
-3. Publish the build to Netlify via `netlify deploy --prod-if-unlocked=false --context=staging` using the staging site ID and auth token.
-4. After deploy, run smoke tests against the staging URL:
-   ```bash
-   PREVIEW_URL=$STAGING_URL npm run preview:smoke
-   ```
-5. Mark the job as a required status check before merging into `main`.
+1. **Trigger** – runs on pushes to `develop` after the primary `build` job succeeds.
+2. **Build artifact reuse** – downloads the `web-dist` artifact produced by the `build` job instead of rebuilding, guaranteeing the same bundle reaches both preview smoke and staging.
+3. **Deploy** – calls `npx netlify deploy --context=staging` using `NETLIFY_AUTH_TOKEN` and `NETLIFY_STAGING_SITE_ID`, capturing the resulting `deploy_url` as a job output and environment URL.
+4. **Smoke** – runs `npm run preview:smoke` with the staging URL to verify `/api/runtime-config` and the SPA root document. Failures bubble up as job failures.
+5. **Status checks** – require the `deploy-staging` job for `develop` merges so staging stays healthy.
 
-Document the final workflow in this repository once infrastructure changes land.
+If secrets are missing, the job fails early with an actionable error. Update Netlify secrets and re-run the workflow to recover.
 
 ## Smoke test expectations
 

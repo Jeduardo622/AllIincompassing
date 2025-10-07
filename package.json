@@ -36,12 +36,14 @@
     "auth:fix": "node scripts/apply-auth-fixes.js",
     "auth:test": "node scripts/test-super-admin-creation.js",
     "audit:service-role": "node scripts/audit-service-role-usage.cjs",
-    "preview:smoke": "node scripts/preview-smoke.js --url $PREVIEW_URL",
+    "preview:smoke": "tsx scripts/smoke-preview.ts --url $PREVIEW_URL",
+    "build:canary": "node scripts/ci/build-canary.mjs",
     "typegen": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/lib/db.types.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "ci:secrets": "tsx scripts/check-secrets.ts",
     "ci:check-focused": "node scripts/ci/check-focused-tests.mjs",
-    "ci:verify-coverage": "node scripts/ci/verify-coverage.mjs"
+    "ci:verify-coverage": "node scripts/ci/verify-coverage.mjs",
+    "prepare": "husky"
   },
   "dependencies": {
     "@headlessui/react": "^1.7.18",
@@ -78,6 +80,7 @@
     "@vitejs/plugin-react": "^4.5.2",
     "@vitest/coverage-v8": "^3.2.4",
     "@vitest/ui": "^3.2.4",
+    "husky": "^9.1.4",
     "autoprefixer": "^10.4.18",
     "cypress": "^13.17.0",
     "eslint": "^9.9.1",

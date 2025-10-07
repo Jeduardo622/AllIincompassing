@@ -15,10 +15,12 @@ npm run preview:smoke --url https://deploy-preview-123--<yoursite>.netlify.app
 
 2) What it verifies
 - index.html renders and contains the root div
-- /api/runtime-config returns 200 JSON with supabaseUrl and supabaseAnonKey
+- `/api/runtime-config` returns 200 JSON with Supabase URL + anon key
+- Supabase `auth/v1/health` responds 200 (auth edge healthy)
+- Anonymous Supabase auth flow returns no active session (guardrails intact)
 
 3) CI integration & debugging
-- `.github/workflows/ci.yml` runs `node scripts/preview-smoke.js --url "$PREVIEW_URL"` whenever a deploy-preview URL is exposed by Netlify. Missing preview URLs skip the check.
+- `.github/workflows/ci.yml` runs `npm run preview:smoke -- --url "$PREVIEW_URL"` whenever a deploy-preview URL is exposed by Netlify. Missing preview URLs skip the check.
 - The job fails on non-200 responses or missing runtime-config keys; rerun the same command locally with the URL surfaced in the workflow logs to debug.
 - Secrets printed by the script remain masked (anon keys are redacted), so it is safe to copy relevant output into incident reports.
 

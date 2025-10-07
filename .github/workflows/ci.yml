@@ -41,7 +41,9 @@ jobs:
         run: npm run ci:check-focused
 
       - name: Run unit tests
-        run: vitest run --coverage --run --reporter=verbose --coverage.reporter=json-summary | tee vitest-output.log
+        run: |
+          set -eo pipefail
+          vitest run --coverage --run --reporter=verbose --coverage.reporter=json-summary | tee vitest-output.log
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}

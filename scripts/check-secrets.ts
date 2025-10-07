@@ -3,6 +3,44 @@ import { pathToFileURL } from 'node:url';
 type EnvGroup = {
   readonly name: string;
   readonly keys: readonly string[];
+  readonly requiredInCi?: boolean;
+  readonly environments?: readonly string[];
+};
+
+const normalizeGroupName = (name: string): string => name.trim().toLowerCase();
+
+const parseExplicitFilter = (): Set<string> | undefined => {
+  const raw = process.env.CI_REQUIRED_SECRET_GROUPS;
+  if (!raw) {
+    return undefined;
+  }
+
+  const parts = raw
+    .split(',')
+    .map((part) => normalizeGroupName(part))
+    .filter((part) => part.length > 0);
+
+  if (parts.length === 0) {
+    return undefined;
+  }
+
+  return new Set(parts);
+};
+
+const shouldCheckGroup = (group: EnvGroup, filter: Set<string> | undefined, envName: string | undefined): boolean => {
+  if (filter) {
+    return filter.has(normalizeGroupName(group.name));
+  }
+
+  if (group.environments && group.environments.length > 0) {
+    return group.environments.includes(envName ?? '');
+  }
+
+  if (group.requiredInCi && process.env.CI !== 'true' && process.env.REQUIRE_EXTENDED_SECRETS !== '1') {
+    return false;
+  }
+
+  return true;
 };
 
 export const REQUIRED_ENV_GROUPS: readonly EnvGroup[] = [
@@ -32,11 +70,33 @@ export const REQUIRED_ENV_GROUPS: readonly EnvGroup[] = [
     name: 'Test JWTs',
     keys: ['TEST_JWT_ORG_A', 'TEST_JWT_ORG_B', 'TEST_JWT_SUPER_ADMIN'],
   },
+  {
+    name: 'Netlify Deploy',
+    keys: ['NETLIFY_AUTH_TOKEN', 'NETLIFY_STAGING_SITE_ID', 'NETLIFY_PRODUCTION_SITE_ID'],
+    requiredInCi: true,
+  },
+  {
+    name: 'Clearinghouse Sandbox',
+    keys: ['CLEARINGHOUSE_SANDBOX_API_KEY', 'CLEARINGHOUSE_SANDBOX_CLIENT_ID'],
+    requiredInCi: true,
+  },
+  {
+    name: 'Telemetry',
+    keys: ['TELEMETRY_WRITE_KEY'],
+    requiredInCi: true,
+  },
 ];
 
 export function collectMissingEnvVars(env: NodeJS.ProcessEnv): string[] {
-  return REQUIRED_ENV_GROUPS.flatMap((group) =>
-    group.keys.filter((key) => {
+  const filter = parseExplicitFilter();
+  const environmentName = process.env.DEPLOYMENT_ENVIRONMENT;
+
+  return REQUIRED_ENV_GROUPS.flatMap((group) => {
+    if (!shouldCheckGroup(group, filter, environmentName)) {
+      return [];
+    }
+
+    return group.keys.filter((key) => {
       const value = env[key];
       if (value === undefined) {
         return true;
@@ -47,8 +107,8 @@ export function collectMissingEnvVars(env: NodeJS.ProcessEnv): string[] {
       }
 
       return false;
-    }),
-  );
+    });
+  });
 }
 
 export function formatMissingMessage(missingKeys: string[]): string {

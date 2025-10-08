@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const COVERAGE_FILE = path.join(process.cwd(), 'coverage', 'coverage-summary.json');
-const MIN_LINE_COVERAGE = 85;
+const MIN_LINE_COVERAGE = 90;
 
 const formatPct = (value) => `${value.toFixed(2)}%`;
 

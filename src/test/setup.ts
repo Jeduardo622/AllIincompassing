@@ -5,6 +5,56 @@ import '@testing-library/jest-dom';
 import { installConsoleGuard } from './utils/consoleGuard';
 import { setRuntimeSupabaseConfig } from '../lib/runtimeConfig';
 
+if (!process.env.RUN_CLIENT_DOMAIN_TESTS) {
+  process.env.RUN_CLIENT_DOMAIN_TESTS = 'true';
+}
+
+const ORG_A_TEST_TOKEN = 'test-org-a-jwt-placeholder';
+const ORG_B_TEST_TOKEN = 'test-org-b-jwt-placeholder';
+const SUPER_ADMIN_TEST_TOKEN = 'test-super-admin-jwt-placeholder';
+const ORG_A_PLACEHOLDER_ID = 'org-a-placeholder-id';
+const ORG_B_PLACEHOLDER_ID = 'org-b-placeholder-id';
+const ARCHIVE_TIMESTAMP = '2025-03-18T09:00:00Z';
+
+const isOrgAToken = (token: string): boolean => (
+  token === ORG_A_TEST_TOKEN || token === SUPER_ADMIN_TEST_TOKEN
+);
+
+const isOrgBToken = (token: string): boolean => token === ORG_B_TEST_TOKEN;
+
+const archiveState = {
+  client: {
+    id: 'client-1',
+    organizationId: ORG_A_PLACEHOLDER_ID,
+    deletedAt: null as string | null,
+  },
+  therapist: {
+    id: 'therapist-1',
+    organizationId: ORG_A_PLACEHOLDER_ID,
+    deletedAt: null as string | null,
+  },
+};
+
+if (!process.env.TEST_JWT_ORG_A) {
+  process.env.TEST_JWT_ORG_A = ORG_A_TEST_TOKEN;
+}
+
+if (!process.env.TEST_JWT_ORG_B) {
+  process.env.TEST_JWT_ORG_B = ORG_B_TEST_TOKEN;
+}
+
+if (!process.env.TEST_JWT_SUPER_ADMIN) {
+  process.env.TEST_JWT_SUPER_ADMIN = SUPER_ADMIN_TEST_TOKEN;
+}
+
+if (!process.env.TEST_THERAPIST_ID_ORG_A) {
+  process.env.TEST_THERAPIST_ID_ORG_A = 'therapist-1';
+}
+
+if (!process.env.TEST_CLIENT_ID_ORG_A) {
+  process.env.TEST_CLIENT_ID_ORG_A = 'client-1';
+}
+
 const consoleGuard = installConsoleGuard({ passthrough: false });
 
 setRuntimeSupabaseConfig({
@@ -251,104 +301,265 @@ vi.mock('../lib/supabase', () => {
 
 // Note: date-fns mocking removed for simplicity
 
+const getBearerToken = (headers: Headers): string => {
+  const authorization = headers.get('authorization');
+  return authorization ? authorization.replace(/^Bearer\s+/i, '').trim() : '';
+};
+
 // Setup MSW server for mocking API calls (for integration tests or when Supabase mocks are bypassed)
 export const server = setupServer(
+  http.post('*/rest/v1/rpc/current_user_organization_id', async ({ request }) => {
+    const token = getBearerToken(request.headers);
+
+    if (token === ORG_A_TEST_TOKEN || token === SUPER_ADMIN_TEST_TOKEN) {
+      return HttpResponse.json({ organization_id: ORG_A_PLACEHOLDER_ID });
+    }
+
+    if (token === ORG_B_TEST_TOKEN) {
+      return HttpResponse.json({ organization_id: ORG_B_PLACEHOLDER_ID });
+    }
+
+    return HttpResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }),
+  http.post('*/rest/v1/rpc/get_admin_users', async ({ request }) => {
+    const token = getBearerToken(request.headers);
+    const body = await request.json().catch(() => ({}));
+    const requestedOrganizationId = typeof (body as Record<string, unknown>).organization_id === 'string'
+      ? (body as Record<string, string>).organization_id
+      : undefined;
+
+    if (token === ORG_A_TEST_TOKEN && requestedOrganizationId === ORG_A_PLACEHOLDER_ID) {
+      return HttpResponse.json([
+        {
+          id: 'admin-org-a-1',
+          email: 'admin-a@example.com',
+          organization_id: ORG_A_PLACEHOLDER_ID,
+          full_name: 'Org A Admin',
+        },
+      ]);
+    }
+
+    if (token === ORG_B_TEST_TOKEN && requestedOrganizationId === ORG_A_PLACEHOLDER_ID) {
+      return HttpResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    return HttpResponse.json([], { status: 200 });
+  }),
+  http.post('*/rest/v1/rpc/insert_session_with_billing', async ({ request }) => {
+    const token = getBearerToken(request.headers);
+    const payload = await request.json().catch(() => ({}));
+
+    if (token === ORG_A_TEST_TOKEN) {
+      return HttpResponse.json({
+        success: true,
+        session: {
+          id: 'session-org-a-1',
+          client_id: process.env.TEST_CLIENT_ID_ORG_A,
+          therapist_id: process.env.TEST_THERAPIST_ID_ORG_A,
+          organization_id: ORG_A_PLACEHOLDER_ID,
+        },
+        cpt: {
+          code: (payload as Record<string, unknown>).p_cpt_code ?? '97153',
+          modifiers: (payload as Record<string, unknown>).p_modifiers ?? ['HN'],
+        },
+      });
+    }
+
+    if (token === ORG_B_TEST_TOKEN) {
+      return HttpResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    return HttpResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }),
   // Mock RPC endpoints with proper test data
-  http.post('*/rest/v1/rpc/get_schedule_data_batch', () => {
+  http.post('*/rest/v1/rpc/get_schedule_data_batch', async ({ request }) => {
+    const token = getBearerToken(request.headers);
+
+    if (isOrgAToken(token)) {
+      return HttpResponse.json({
+        sessions: [
+          {
+            id: 'test-session-1',
+            client: { id: 'client-1', full_name: 'Test Client' },
+            therapist: { id: 'therapist-1', full_name: 'Test Therapist' },
+            start_time: '2025-03-18T10:00:00Z',
+            end_time: '2025-03-18T11:00:00Z',
+            status: 'scheduled',
+          }
+        ],
+        therapists: [
+          {
+            id: 'therapist-1',
+            full_name: 'Test Therapist',
+            email: 'therapist@example.com',
+            specialties: ['ABA'],
+            availability_hours: {
+              monday: { start: '09:00', end: '17:00' },
+              tuesday: { start: '09:00', end: '17:00' },
+              wednesday: { start: '09:00', end: '17:00' },
+              thursday: { start: '09:00', end: '17:00' },
+              friday: { start: '09:00', end: '17:00' },
+              saturday: { start: '10:00', end: '14:00' },
+              sunday: { start: '10:00', end: '14:00' }
+            }
+          }
+        ],
+        clients: [
+          {
+            id: 'client-1',
+            full_name: 'Test Client',
+            email: 'client@example.com',
+            availability_hours: {
+              monday: { start: '09:00', end: '17:00' },
+              tuesday: { start: '09:00', end: '17:00' },
+              wednesday: { start: '09:00', end: '17:00' },
+              thursday: { start: '09:00', end: '17:00' },
+              friday: { start: '09:00', end: '17:00' },
+              saturday: { start: '10:00', end: '14:00' },
+              sunday: { start: '10:00', end: '14:00' }
+            }
+          }
+        ]
+      });
+    }
+
+    if (isOrgBToken(token)) {
+      return HttpResponse.json({ sessions: [], therapists: [], clients: [] });
+    }
+
+    return HttpResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }),
+  http.post('*/rest/v1/rpc/get_sessions_optimized', async ({ request }) => {
+    const token = getBearerToken(request.headers);
+
+    if (isOrgAToken(token)) {
+      return HttpResponse.json([
+        {
+          session_data: {
+            id: 'test-session-1',
+            client: { id: 'client-1', full_name: 'Test Client' },
+            therapist: { id: 'therapist-1', full_name: 'Test Therapist' },
+            start_time: '2025-03-18T10:00:00Z',
+            end_time: '2025-03-18T11:00:00Z',
+            status: 'scheduled',
+          }
+        }
+      ]);
+    }
+
+    if (isOrgBToken(token)) {
+      return HttpResponse.json([]);
+    }
+
+    return HttpResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }),
+  http.post('*/rest/v1/rpc/get_dropdown_data', async ({ request }) => {
+    const token = getBearerToken(request.headers);
+
+    if (isOrgAToken(token)) {
+      return HttpResponse.json({
+        therapists: [
+          {
+            id: 'therapist-1',
+            full_name: 'Test Therapist',
+            email: 'therapist@example.com',
+            availability_hours: {
+              monday: { start: '09:00', end: '17:00' },
+              tuesday: { start: '09:00', end: '17:00' },
+              wednesday: { start: '09:00', end: '17:00' },
+              thursday: { start: '09:00', end: '17:00' },
+              friday: { start: '09:00', end: '17:00' },
+              saturday: { start: '10:00', end: '14:00' },
+              sunday: { start: '10:00', end: '14:00' }
+            }
+          }
+        ],
+        clients: [
+          {
+            id: 'client-1',
+            full_name: 'Test Client',
+            email: 'client@example.com',
+            availability_hours: {
+              monday: { start: '09:00', end: '17:00' },
+              tuesday: { start: '09:00', end: '17:00' },
+              wednesday: { start: '09:00', end: '17:00' },
+              thursday: { start: '09:00', end: '17:00' },
+              friday: { start: '09:00', end: '17:00' },
+              saturday: { start: '10:00', end: '14:00' },
+              sunday: { start: '10:00', end: '14:00' }
+            }
+          }
+        ]
+      });
+    }
+
+    if (isOrgBToken(token)) {
+      return HttpResponse.json({ therapists: [], clients: [] });
+    }
+
+    return HttpResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }),
+  http.post('*/rest/v1/rpc/get_session_metrics', async ({ request }) => {
+    const token = getBearerToken(request.headers);
+
+    if (isOrgAToken(token)) {
+      return HttpResponse.json({
+        totalSessions: 12,
+        completedSessions: 10,
+        cancelledSessions: 1,
+        noShowSessions: 1,
+        sessionsByTherapist: { 'therapist-1': 12 },
+        sessionsByClient: { 'client-1': 12 },
+        sessionsByDayOfWeek: { monday: 4, tuesday: 4, wednesday: 4 },
+      });
+    }
+
+    if (isOrgBToken(token)) {
+      return HttpResponse.json({
+        totalSessions: 0,
+        completedSessions: 0,
+        cancelledSessions: 0,
+        noShowSessions: 0,
+        sessionsByTherapist: {},
+        sessionsByClient: {},
+        sessionsByDayOfWeek: {},
+      });
+    }
+
+    return HttpResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }),
+  http.post('*/rest/v1/rpc/set_client_archive_state', async ({ request }) => {
+    const token = getBearerToken(request.headers);
+    const body = await request.json().catch(() => ({}));
+    const restore = Boolean((body as Record<string, unknown>).p_restore);
+
+    if (!isOrgAToken(token)) {
+      return HttpResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    archiveState.client.deletedAt = restore ? null : ARCHIVE_TIMESTAMP;
+
     return HttpResponse.json({
-      sessions: [
-        {
-          id: 'test-session-1',
-          client: { id: 'client-1', full_name: 'Test Client' },
-          therapist: { id: 'therapist-1', full_name: 'Test Therapist' },
-          start_time: '2025-03-18T10:00:00Z',
-          end_time: '2025-03-18T11:00:00Z',
-          status: 'scheduled',
-        }
-      ],
-      therapists: [
-        {
-          id: 'therapist-1',
-          full_name: 'Test Therapist',
-          email: 'therapist@example.com',
-          specialties: ['ABA'],
-          availability_hours: {
-            monday: { start: '09:00', end: '17:00' },
-            tuesday: { start: '09:00', end: '17:00' },
-            wednesday: { start: '09:00', end: '17:00' },
-            thursday: { start: '09:00', end: '17:00' },
-            friday: { start: '09:00', end: '17:00' },
-            saturday: { start: '10:00', end: '14:00' },
-            sunday: { start: '10:00', end: '14:00' }
-          }
-        }
-      ],
-      clients: [
-        {
-          id: 'client-1',
-          full_name: 'Test Client',
-          email: 'client@example.com',
-          availability_hours: {
-            monday: { start: '09:00', end: '17:00' },
-            tuesday: { start: '09:00', end: '17:00' },
-            wednesday: { start: '09:00', end: '17:00' },
-            thursday: { start: '09:00', end: '17:00' },
-            friday: { start: '09:00', end: '17:00' },
-            saturday: { start: '10:00', end: '14:00' },
-            sunday: { start: '10:00', end: '14:00' }
-          }
-        }
-      ]
+      id: archiveState.client.id,
+      organization_id: archiveState.client.organizationId,
+      deleted_at: archiveState.client.deletedAt,
     });
   }),
-  http.post('*/rest/v1/rpc/get_sessions_optimized', () => {
-    return HttpResponse.json([
-      {
-        session_data: {
-          id: 'test-session-1',
-          client: { id: 'client-1', full_name: 'Test Client' },
-          therapist: { id: 'therapist-1', full_name: 'Test Therapist' },
-          start_time: '2025-03-18T10:00:00Z',
-          end_time: '2025-03-18T11:00:00Z',
-          status: 'scheduled',
-        }
-      }
-    ]);
-  }),
-  http.post('*/rest/v1/rpc/get_dropdown_data', () => {
+  http.post('*/rest/v1/rpc/set_therapist_archive_state', async ({ request }) => {
+    const token = getBearerToken(request.headers);
+    const body = await request.json().catch(() => ({}));
+    const restore = Boolean((body as Record<string, unknown>).p_restore);
+
+    if (!isOrgAToken(token)) {
+      return HttpResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    archiveState.therapist.deletedAt = restore ? null : ARCHIVE_TIMESTAMP;
+
     return HttpResponse.json({
-      therapists: [
-        {
-          id: 'therapist-1',
-          full_name: 'Test Therapist',
-          email: 'therapist@example.com',
-          availability_hours: {
-            monday: { start: '09:00', end: '17:00' },
-            tuesday: { start: '09:00', end: '17:00' },
-            wednesday: { start: '09:00', end: '17:00' },
-            thursday: { start: '09:00', end: '17:00' },
-            friday: { start: '09:00', end: '17:00' },
-            saturday: { start: '10:00', end: '14:00' },
-            sunday: { start: '10:00', end: '14:00' }
-          }
-        }
-      ],
-      clients: [
-        {
-          id: 'client-1',
-          full_name: 'Test Client',
-          email: 'client@example.com',
-          availability_hours: {
-            monday: { start: '09:00', end: '17:00' },
-            tuesday: { start: '09:00', end: '17:00' },
-            wednesday: { start: '09:00', end: '17:00' },
-            thursday: { start: '09:00', end: '17:00' },
-            friday: { start: '09:00', end: '17:00' },
-            saturday: { start: '10:00', end: '14:00' },
-            sunday: { start: '10:00', end: '14:00' }
-          }
-        }
-      ]
+      id: archiveState.therapist.id,
+      organization_id: archiveState.therapist.organizationId,
+      deleted_at: archiveState.therapist.deletedAt,
     });
   }),
   // AI Edge Functions
@@ -422,41 +633,95 @@ export const server = setupServer(
       }
     ]);
   }),
-  http.get('*/rest/v1/therapists*', () => {
-    return HttpResponse.json([
-      {
-        id: 'therapist-1',
-        full_name: 'Test Therapist',
-        email: 'therapist@example.com',
-        availability_hours: {
-          monday: { start: '09:00', end: '17:00' },
-          tuesday: { start: '09:00', end: '17:00' },
-          wednesday: { start: '09:00', end: '17:00' },
-          thursday: { start: '09:00', end: '17:00' },
-          friday: { start: '09:00', end: '17:00' },
-          saturday: { start: '10:00', end: '14:00' },
-          sunday: { start: '10:00', end: '14:00' }
-        }
+  http.get('*/rest/v1/therapists*', ({ request }) => {
+    const token = getBearerToken(request.headers);
+
+    if (isOrgBToken(token)) {
+      return HttpResponse.json([]);
+    }
+
+    if (!isOrgAToken(token)) {
+      return HttpResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const url = new URL(request.url);
+    const deletedFilter = url.searchParams.get('deleted_at');
+    const idFilter = url.searchParams.get('id');
+
+    const therapistRow = {
+      id: archiveState.therapist.id,
+      organization_id: archiveState.therapist.organizationId,
+      deleted_at: archiveState.therapist.deletedAt,
+      full_name: 'Test Therapist',
+      email: 'therapist@example.com',
+      availability_hours: {
+        monday: { start: '09:00', end: '17:00' },
+        tuesday: { start: '09:00', end: '17:00' },
+        wednesday: { start: '09:00', end: '17:00' },
+        thursday: { start: '09:00', end: '17:00' },
+        friday: { start: '09:00', end: '17:00' },
+        saturday: { start: '10:00', end: '14:00' },
+        sunday: { start: '10:00', end: '14:00' }
+      },
+    };
+
+    if (deletedFilter === 'is.null' && therapistRow.deleted_at !== null) {
+      return HttpResponse.json([]);
+    }
+
+    if (idFilter) {
+      const [, value] = idFilter.split('.');
+      if (value && value !== therapistRow.id) {
+        return HttpResponse.json([]);
       }
-    ]);
+    }
+
+    return HttpResponse.json([therapistRow]);
   }),
-  http.get('*/rest/v1/clients*', () => {
-    return HttpResponse.json([
-      {
-        id: 'client-1',
-        full_name: 'Test Client',
-        email: 'client@example.com',
-        availability_hours: {
-          monday: { start: '09:00', end: '17:00' },
-          tuesday: { start: '09:00', end: '17:00' },
-          wednesday: { start: '09:00', end: '17:00' },
-          thursday: { start: '09:00', end: '17:00' },
-          friday: { start: '09:00', end: '17:00' },
-          saturday: { start: '10:00', end: '14:00' },
-          sunday: { start: '10:00', end: '14:00' }
-        }
+  http.get('*/rest/v1/clients*', ({ request }) => {
+    const token = getBearerToken(request.headers);
+
+    if (isOrgBToken(token)) {
+      return HttpResponse.json([]);
+    }
+
+    if (!isOrgAToken(token)) {
+      return HttpResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const url = new URL(request.url);
+    const deletedFilter = url.searchParams.get('deleted_at');
+    const idFilter = url.searchParams.get('id');
+
+    const clientRow = {
+      id: archiveState.client.id,
+      organization_id: archiveState.client.organizationId,
+      deleted_at: archiveState.client.deletedAt,
+      full_name: 'Test Client',
+      email: 'client@example.com',
+      availability_hours: {
+        monday: { start: '09:00', end: '17:00' },
+        tuesday: { start: '09:00', end: '17:00' },
+        wednesday: { start: '09:00', end: '17:00' },
+        thursday: { start: '09:00', end: '17:00' },
+        friday: { start: '09:00', end: '17:00' },
+        saturday: { start: '10:00', end: '14:00' },
+        sunday: { start: '10:00', end: '14:00' }
+      },
+    };
+
+    if (deletedFilter === 'is.null' && clientRow.deleted_at !== null) {
+      return HttpResponse.json([]);
+    }
+
+    if (idFilter) {
+      const [, value] = idFilter.split('.');
+      if (value && value !== clientRow.id) {
+        return HttpResponse.json([]);
       }
-    ]);
+    }
+
+    return HttpResponse.json([clientRow]);
   }),
   http.post('*/api/book', async ({ request }) => {
     let body: { session?: Record<string, unknown> } | null = null;

@@ -90,8 +90,9 @@ export const runServiceAccountSmokeProbe = async (
   config: ServiceAccountProbeConfig,
   dependencies: ServiceAccountProbeDependencies = {}
 ): Promise<ServiceAccountProbeResult> => {
-  const { supabaseUrl, serviceRoleKey } = config;
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const supabaseUrl = config.supabaseUrl.trim();
+  const serviceRoleKey = config.serviceRoleKey.trim();
 
   if (!supabaseUrl) {
     throw new Error('Supabase URL is required for service account smoke probe');
@@ -166,9 +167,10 @@ export const resolveServiceAccountProbeConfig = (
   env: Record<string, string | undefined> = process.env as Record<string, string | undefined>,
   options: ResolveServiceAccountProbeOptions = {},
 ): ServiceAccountProbeConfig | null => {
-  const supabaseUrl =
+  const rawSupabaseUrl =
     options.supabaseUrlOverride ?? env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? '';
-  const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  const supabaseUrl = rawSupabaseUrl.trim();
+  const serviceRoleKey = (env.SUPABASE_SERVICE_ROLE_KEY ?? '').trim();
 
   if (!supabaseUrl || !serviceRoleKey) {
     return null;

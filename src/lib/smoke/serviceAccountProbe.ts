@@ -93,23 +93,42 @@ export const runServiceAccountSmokeProbe = async (
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const supabaseUrl = config.supabaseUrl.trim();
   const serviceRoleKey = config.serviceRoleKey.trim();
-
-  if (!supabaseUrl) {
-    throw new Error('Supabase URL is required for service account smoke probe');
-  }
-
-  if (!serviceRoleKey) {
-    throw new Error('Supabase service role key is required for service account smoke probe');
-  }
+  const supabaseUrlForLog = supabaseUrl || '<empty>';
+  const maskedServiceRoleKey = maskSecret(serviceRoleKey);
 
   const now = dependencies.now ?? (() => Date.now());
   const start = now();
 
+  const finalizeFailure = (error: Error, timedOut: boolean): ServiceAccountProbeResult => {
+    const end = now();
+    const durationMs = end - start;
+
+    logger.error('[smoke] Service account probe failed', {
+      error,
+      metadata: {
+        scope: 'smoke.serviceAccount',
+        supabaseUrl: supabaseUrlForLog,
+        serviceRoleKey: maskedServiceRoleKey,
+        durationMs,
+        timedOut,
+      },
+    });
+
+    return { ok: false, durationMs, error, timedOut };
+  };
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return finalizeFailure(
+      new Error('Service account probe requires a Supabase URL and service role key'),
+      false,
+    );
+  }
+
   logger.info('[smoke] Service account probe starting', {
     metadata: {
       scope: 'smoke.serviceAccount',
-      supabaseUrl,
-      serviceRoleKey: maskSecret(serviceRoleKey),
+      supabaseUrl: supabaseUrlForLog,
+      serviceRoleKey: maskedServiceRoleKey,
     },
   });
 
@@ -144,22 +163,8 @@ export const runServiceAccountSmokeProbe = async (
 
     return { ok: true, durationMs, timedOut: false };
   } catch (unknownError) {
-    const end = now();
-    const durationMs = end - start;
     const error = toError(unknownError, 'Service account smoke probe failed');
-
-    logger.error('[smoke] Service account probe failed', {
-      error,
-      metadata: {
-        scope: 'smoke.serviceAccount',
-        supabaseUrl,
-        serviceRoleKey: maskSecret(serviceRoleKey),
-        durationMs,
-        timedOut,
-      },
-    });
-
-    return { ok: false, durationMs, error, timedOut };
+    return finalizeFailure(error, timedOut);
   }
 };
 

@@ -117,6 +117,35 @@ describe('week-2 remediation verification', () => {
     );
   });
 
+  it('fails fast when trimmed configuration values are empty', async () => {
+    const createClient = vi.fn();
+    const now = vi.fn().mockReturnValueOnce(50).mockReturnValueOnce(75);
+
+    const result = await runServiceAccountSmokeProbe(
+      { supabaseUrl: '   \n\t  ', serviceRoleKey: '\n\t   ' },
+      { createClient, now },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.timedOut).toBe(false);
+    expect(result.durationMs).toBe(25);
+    expect(result.error).toBeInstanceOf(Error);
+    expect(result.error?.message).toContain('requires a Supabase URL and service role key');
+    expect(createClient).not.toHaveBeenCalled();
+    expect(loggerMock.info).not.toHaveBeenCalled();
+    expect(loggerMock.error).toHaveBeenCalledWith(
+      expect.stringContaining('Service account probe failed'),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          supabaseUrl: '<empty>',
+          serviceRoleKey: '<empty>',
+          durationMs: 25,
+          timedOut: false,
+        }),
+      }),
+    );
+  });
+
   it('fails fast and marks timeout when admin API stalls', async () => {
     vi.useFakeTimers();
 

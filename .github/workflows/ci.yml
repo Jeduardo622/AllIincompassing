@@ -83,14 +83,61 @@ jobs:
             exit 0
           fi
           echo "Running preview smoke against $url"
-          PREVIEW_URL="$url" npm run preview:smoke
+          PREVIEW_URL="$url" npm run preview:smoke:remote
 
       - name: Skipped typegen (repo var missing)
         if: ${{ vars.SUPABASE_PROJECT_ID == '' }}
         run: echo "SUPABASE_PROJECT_ID repo variable not set; skipping typegen."
 
-  deploy-staging:
+  preview:
     needs: build
+    runs-on: ubuntu-latest
+    env:
+      PREVIEW_HOST: 127.0.0.1
+      PREVIEW_PORT: 4173
+      PREVIEW_PROTOCOL: http
+      PREVIEW_OUTPUT_DIR: out
+    outputs:
+      preview-url: ${{ steps.publish-preview.outputs.preview_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.16.0
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build preview artifacts
+        run: npm run preview:build
+      - name: Run preview smoke
+        id: run-preview-smoke
+        run: |
+          set +e
+          npm run preview:smoke
+          status=$?
+          if [ $status -ne 0 ]; then
+            echo "::error::❌ Preview build or smoke test failed — downstream tasks halted."
+            exit $status
+          fi
+      - name: Run preview smoke (JUnit)
+        run: |
+          set +e
+          npm run preview:smoke -- --reporter=junit
+          status=$?
+          if [ $status -ne 0 ]; then
+            echo "::error::❌ Preview build or smoke test failed — downstream tasks halted."
+            exit $status
+          fi
+      - name: Publish preview URL
+        id: publish-preview
+        run: |
+          host="${PREVIEW_HOST:-127.0.0.1}"
+          port="${PREVIEW_PORT:-4173}"
+          protocol="${PREVIEW_PROTOCOL:-http}"
+          echo "preview_url=${protocol}://${host}:${port}" >> "$GITHUB_OUTPUT"
+
+  deploy-staging:
+    needs: [build, preview]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' }}
     runs-on: ubuntu-latest
     environment:
@@ -136,4 +183,4 @@ jobs:
             echo "::error::Missing staging URL output from deploy step."
             exit 1
           fi
-          npm run preview:smoke
+          npm run preview:smoke:remote

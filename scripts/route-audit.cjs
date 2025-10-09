@@ -77,7 +77,7 @@ const API_ENDPOINTS = {
   '/functions/v1/ai-transcription': { type: 'edge_function', name: 'ai-transcription', path: 'supabase/functions/ai-transcription' },
   '/functions/v1/ai-session-note-generator': { type: 'edge_function', name: 'ai-session-note-generator', path: 'supabase/functions/ai-session-note-generator' },
   '/functions/v1/ai-agent-optimized': { type: 'edge_function', name: 'ai-agent-optimized', path: 'supabase/functions/ai-agent-optimized' },
-];
+};
 
 // Test roles for authentication
 const TEST_ROLES = ['client', 'therapist', 'admin', 'super_admin'];

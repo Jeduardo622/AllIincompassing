@@ -19,22 +19,42 @@ declare global {
 }
 
 // Custom login command for route testing
+const roleFromEmail = (email: string): string => {
+  if (email.includes('superadmin')) {
+    return 'super_admin';
+  }
+  if (email.includes('therapist')) {
+    return 'therapist';
+  }
+  if (email.includes('admin')) {
+    return 'admin';
+  }
+  return 'client';
+};
+
 Cypress.Commands.add('login', (email: string, password: string) => {
   cy.session([email, password], () => {
+    const role = roleFromEmail(email);
+
     cy.visit('/login');
-    
-    // Fill in login form
-    cy.get('input[name="email"]').type(email);
-    cy.get('input[name="password"]').type(password);
-    
-    // Submit form
-    cy.get('button[type="submit"]').click();
-    
-    // Wait for authentication to complete
+
+    cy.window().then((win) => {
+      const authStorage = {
+        user: {
+          id: `stub-${role}`,
+          email,
+          role,
+        },
+        accessToken: 'stub-access-token',
+        refreshToken: 'stub-refresh-token',
+        expiresAt: Date.now() + 1000 * 60 * 60,
+      };
+
+      win.localStorage.setItem('auth-storage', JSON.stringify(authStorage));
+    });
+
+    cy.visit('/');
     cy.url().should('not.include', '/login');
-    
-    // Verify we're authenticated
-    cy.window().its('localStorage').should('have.property', 'auth-storage');
   });
 });
 

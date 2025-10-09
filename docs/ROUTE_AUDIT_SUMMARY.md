@@ -8,7 +8,7 @@ This document summarizes the comprehensive route audit system implemented to ens
 
 ### Components Implemented
 
-1. **Route Audit Script** (`scripts/route-audit.js`)
+1. **Route Audit Script** (`scripts/route-audit.cjs`)
    - Comprehensive enumeration of all UI routes
    - Headless browser testing with Playwright
    - Network request interception and analysis

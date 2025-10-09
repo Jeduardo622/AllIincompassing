@@ -7,7 +7,8 @@ This execspec captures the evidence required to advance through the remediation 
 ### Task D0-1: Preview Smoke Stability
 
 - [ ] Owner confirmation: Platform (J. Alvarez)
-  - [ ] GitHub Actions run ID for `npm run preview:smoke`: `GH-`
+- [ ] GitHub Actions run ID for `npm run preview:smoke`: `GH-`
+  - ✅ Preview build + smoke pipeline implemented via `npm run preview:build` and `npm run preview:smoke` (see `jobs.preview` in `.github/workflows/ci.yml`).
   - [ ] Netlify deploy/build log URL: `<https://app.netlify.com/sites/...>`
   - [ ] Screenshot or attachment confirming dashboard baselines from [Preview Environment Smoke Guide](../../docs/PREVIEW_SMOKE.md#monitoring-expectations).
   - [ ] Incident ticket ID documenting regressions (if any) linked back to [Route Audit Completion Summary](../../ROUTE_AUDIT_COMPLETION_SUMMARY.md#%F0%9F%93%8A-route-coverage-matrix).

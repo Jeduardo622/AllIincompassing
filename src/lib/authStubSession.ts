@@ -152,34 +152,7 @@ const normaliseRole = (payload: StubPayload): Role | null => {
   return role as Role;
 };
 
-const deriveRefreshToken = (params: { explicit?: string | null; role: Role; id: string }): string | null => {
-  if (params.explicit && params.explicit.length > 0) {
-    return params.explicit;
-  }
-
-  if (!params.id || !params.role) {
-    return null;
-  }
-
-  return `stub-refresh-${params.role}-${params.id}`;
-};
-
-const deriveAccessToken = (params: { explicit?: string | null; role: Role; id: string }): string | null => {
-  if (params.explicit && params.explicit.length > 0) {
-    return params.explicit;
-  }
-
-  if (!params.id || !params.role) {
-    return null;
-  }
-
-  return `stub-access-${params.role}-${params.id}`;
-};
-
-const normaliseStubPayload = (
-  payload: StubPayload,
-  now: number,
-): { state: StubAuthState; persistablePayload: StubPayload } | null => {
+const normaliseStubPayload = (payload: StubPayload, now: number): StubAuthState | null => {
   const role = normaliseRole(payload);
   if (!role) {
     return null;
@@ -187,16 +160,8 @@ const normaliseStubPayload = (
 
   const id = toOptionalString(payload.user?.id) ?? `stub-${role}`;
   const email = toOptionalString(payload.user?.email) ?? `${role}@example.com`;
-  const accessToken = deriveAccessToken({
-    explicit: toOptionalString(payload.accessToken) ?? toOptionalString(payload.access_token),
-    role,
-    id,
-  });
-  const refreshToken = deriveRefreshToken({
-    explicit: toOptionalString(payload.refreshToken) ?? toOptionalString(payload.refresh_token),
-    role,
-    id,
-  });
+  const accessToken = toOptionalString(payload.accessToken) ?? toOptionalString(payload.access_token);
+  const refreshToken = toOptionalString(payload.refreshToken) ?? toOptionalString(payload.refresh_token);
   const expiresAt = normaliseExpiresAt(payload.expiresAt ?? payload.expires_at, now);
 
   if (!accessToken || !refreshToken || !expiresAt || !id || !email) {
@@ -208,33 +173,10 @@ const normaliseStubPayload = (
   const session = buildSession({ accessToken, refreshToken, expiresAt, now, user: supabaseUser });
   const profile = buildProfile({ id, email, role, nowIso, user: payload.user, profile: payload.profile ?? null });
 
-  const baseUser = (typeof payload.user === 'object' && payload.user !== null ? payload.user : {}) as Record<string, unknown>;
-
-  const persistablePayload: StubPayload = {
-    ...payload,
-    user: {
-      ...baseUser,
-      id,
-      email,
-      role,
-    },
-    role,
-    accessToken,
-    refreshToken,
-    expiresAt,
-    access_token: accessToken,
-    refresh_token: refreshToken,
-    expires_at: Math.floor(expiresAt / 1000),
-    profile: payload.profile ?? null,
-  };
-
   return {
-    state: {
-      user: supabaseUser,
-      session,
-      profile,
-    },
-    persistablePayload,
+    user: supabaseUser,
+    session,
+    profile,
   };
 };
 
@@ -255,13 +197,12 @@ export const readStubAuthState = (now = Date.now()): StubAuthState | null => {
 
   try {
     const parsed = JSON.parse(raw) as StubPayload;
-    const normalised = normaliseStubPayload(parsed, now);
-    if (!normalised) {
+    const state = normaliseStubPayload(parsed, now);
+    if (!state) {
       currentWindow.localStorage.removeItem(STUB_AUTH_STORAGE_KEY);
       return null;
     }
-    currentWindow.localStorage.setItem(STUB_AUTH_STORAGE_KEY, JSON.stringify(normalised.persistablePayload));
-    return normalised.state;
+    return state;
   } catch {
     currentWindow.localStorage.removeItem(STUB_AUTH_STORAGE_KEY);
     return null;

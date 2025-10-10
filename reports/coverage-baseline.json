@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2025-02-15T03:05:00Z",
+  "source": "npx vitest run src/lib/__tests__/authStubSession.test.ts src/server/routes/__tests__/guards.test.ts src/preview/__tests__/config.test.ts --coverage --coverage.reporter=json-summary",
+  "requirements": [
+    {
+      "module": "src/lib/authStubSession.ts",
+      "description": "Auth stub session loader must retain ≥93% line coverage to guard Cypress login flows.",
+      "minLineCoverage": 93
+    },
+    {
+      "module": "src/server/routes/guards.ts",
+      "description": "Route guard matrix enforcement requires ≥95% coverage across guard variants.",
+      "minLineCoverage": 95
+    },
+    {
+      "module": "src/preview/config.ts",
+      "description": "Preview configuration sanitizer needs ≥95% coverage for CI environment safety.",
+      "minLineCoverage": 95
+    }
+  ]
+}

@@ -1,10 +1,131 @@
 [
-  {"item":"Client onboarding org guardrails","effort":"M","start":"2025-07-15","end":"2025-07-22","deps":[]},
-  {"item":"Archive audit triggers (clients/therapists)","effort":"M","start":"2025-07-15","end":"2025-07-24","deps":[]},
-  {"item":"Admin RPC pagination hardening","effort":"M","start":"2025-07-22","end":"2025-07-29","deps":["Client onboarding org guardrails"]},
-  {"item":"Therapist schedule validation & throttling","effort":"L","start":"2025-07-24","end":"2025-08-05","deps":["Archive audit triggers (clients/therapists)"]},
-  {"item":"Impersonation audit persistence upgrade","effort":"M","start":"2025-07-29","end":"2025-08-06","deps":["Admin RPC pagination hardening"]},
-  {"item":"Feature flag metadata schema & history","effort":"M","start":"2025-08-01","end":"2025-08-09","deps":["Impersonation audit persistence upgrade"]},
-  {"item":"UI accessibility & loading improvements","effort":"M","start":"2025-08-05","end":"2025-08-12","deps":["Therapist schedule validation & throttling"]},
-  {"item":"Admin audit export automation","effort":"S","start":"2025-08-07","end":"2025-08-10","deps":["Admin RPC pagination hardening"]}
+  {
+    "item": "Client onboarding org guardrails",
+    "effort": "M",
+    "start": "2025-07-15",
+    "end": "2025-07-22",
+    "deps": []
+  },
+  {
+    "item": "Archive audit triggers (clients/therapists)",
+    "effort": "M",
+    "start": "2025-07-15",
+    "end": "2025-07-24",
+    "deps": []
+  },
+  {
+    "item": "Admin RPC pagination hardening",
+    "effort": "M",
+    "start": "2025-07-22",
+    "end": "2025-07-29",
+    "deps": [
+      "Client onboarding org guardrails"
+    ]
+  },
+  {
+    "item": "Therapist schedule validation & throttling",
+    "effort": "L",
+    "start": "2025-07-24",
+    "end": "2025-08-05",
+    "deps": [
+      "Archive audit triggers (clients/therapists)"
+    ]
+  },
+  {
+    "item": "Impersonation audit persistence upgrade",
+    "effort": "M",
+    "start": "2025-07-29",
+    "end": "2025-08-06",
+    "deps": [
+      "Admin RPC pagination hardening"
+    ]
+  },
+  {
+    "item": "Feature flag metadata schema & history",
+    "effort": "M",
+    "start": "2025-08-01",
+    "end": "2025-08-09",
+    "deps": [
+      "Impersonation audit persistence upgrade"
+    ]
+  },
+  {
+    "item": "UI accessibility & loading improvements",
+    "effort": "M",
+    "start": "2025-08-05",
+    "end": "2025-08-12",
+    "deps": [
+      "Therapist schedule validation & throttling"
+    ]
+  },
+  {
+    "item": "Admin audit export automation",
+    "effort": "S",
+    "start": "2025-08-07",
+    "end": "2025-08-10",
+    "deps": [
+      "Admin RPC pagination hardening"
+    ]
+  },
+  {
+    "item": "Compliance dashboard automation",
+    "effort": "S",
+    "start": "2025-10-11",
+    "end": "2025-10-12",
+    "deps": []
+  },
+  {
+    "item": "Weekly route audit – Week 1",
+    "effort": "S",
+    "start": "2025-10-13",
+    "end": "2025-10-17",
+    "deps": [
+      "Compliance dashboard automation"
+    ]
+  },
+  {
+    "item": "Weekly route audit – Week 2",
+    "effort": "S",
+    "start": "2025-10-20",
+    "end": "2025-10-24",
+    "deps": [
+      "Compliance dashboard automation"
+    ]
+  },
+  {
+    "item": "Weekly route audit – Week 3",
+    "effort": "S",
+    "start": "2025-10-27",
+    "end": "2025-10-31",
+    "deps": [
+      "Compliance dashboard automation"
+    ]
+  },
+  {
+    "item": "Weekly route audit – Week 4",
+    "effort": "S",
+    "start": "2025-11-03",
+    "end": "2025-11-07",
+    "deps": [
+      "Compliance dashboard automation"
+    ]
+  },
+  {
+    "item": "Weekly route audit – Week 5",
+    "effort": "S",
+    "start": "2025-11-10",
+    "end": "2025-11-14",
+    "deps": [
+      "Compliance dashboard automation"
+    ]
+  },
+  {
+    "item": "Weekly route audit – Week 6",
+    "effort": "S",
+    "start": "2025-11-17",
+    "end": "2025-11-21",
+    "deps": [
+      "Compliance dashboard automation"
+    ]
+  }
 ]

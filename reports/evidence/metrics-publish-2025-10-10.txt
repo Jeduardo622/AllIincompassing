@@ -1,0 +1,16 @@
+
+> allincompassing@0.0.0 metrics:publish
+> tsx src/scripts/metrics/publishDashboard.ts --dry-run
+
+Publishing compliance dashboard (dry-run)
+- Source: reports/dashboard-backups/compliance-dashboard-2025-10-10T19-09-52-309Z.json
+- Generated at: 2025-10-10T19:09:52.309Z
+- Alerts: 0
+Metrics:
+- Route success rate: 100 (pass)
+- Average route render time: 694 (pass)
+- Routes exceeding render-time budget: 0 (pass)
+- Unique API endpoints exercised: 1 (pass)
+- Preview smoke validations: 4/4 (pass)
+- Supabase auth health (preview): healthy (pass)
+✅ Dashboard publish check complete.

@@ -8,7 +8,7 @@ This document summarizes the comprehensive route audit system implemented to ens
 
 ### Components Implemented
 
-1. **Route Audit Script** (`scripts/route-audit.js`)
+1. **Route Audit Script** (`scripts/route-audit.cjs`)
    - Comprehensive enumeration of all UI routes
    - Headless browser testing with Playwright
    - Network request interception and analysis
@@ -256,10 +256,18 @@ npm run dev
 ## Support & Maintenance
 
 ### Regular Tasks
-1. **Weekly**: Run route audit against production
-2. **Monthly**: Review and update stub functions
-3. **Quarterly**: Performance optimization review
-4. **Annually**: Security audit and penetration testing
+1. **Weekly**: Run the automated route audit against production and preview environments.
+   - Calendar events are generated via `npm run metrics:schedule -- --start=2025-10-13 --weeks=6` and reflected in [`reports/timeline.json`](../reports/timeline.json).
+   - Staging parity is enforced by mirroring this cadence in [Staging Operations Handbook – Weekly rituals](./STAGING_OPERATIONS.md#weekly-rituals).
+   - Evidence from each run is appended to [`docs/analytics/compliance-dashboard.md`](./analytics/compliance-dashboard.md) and archived under `reports/dashboard-backups/`.
+2. **Monthly**: Review and update stub functions.
+3. **Quarterly**: Performance optimization review.
+4. **Annually**: Security audit and penetration testing.
+
+### Automation Runbooks
+- Generate compliance dashboards: `npm run metrics:generate`
+- Publish dashboard status to stakeholders: `npm run metrics:publish -- --dry-run`
+- Refresh weekly audit cadence: `npm run metrics:schedule -- --start=<yyyy-mm-dd> --weeks=<n>`
 
 ### Troubleshooting
 - Check network tab for failed requests

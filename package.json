@@ -27,6 +27,7 @@
     "db:health:production": "node scripts/production-health-check.js",
     "pipeline:health": "npm run db:check:security && npm run db:check:performance && npm run db:health:report",
     "verify-auth": "node scripts/verify-auth-system.js",
+    "audit:routes": "tsx scripts/route-audit.ts",
     "audit:routes": "node scripts/route-audit.cjs",
     "fix:routes": "node scripts/fix-route-mismatches.js",
     "test:routes": "tsx scripts/run-cypress.ts",

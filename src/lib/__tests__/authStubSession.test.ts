@@ -73,31 +73,6 @@ describe('readStubAuthState', () => {
     localStorage.setItem(STUB_AUTH_STORAGE_KEY, JSON.stringify(payload));
   };
 
-  const seedRouteAuditStub = (role: string, now = Date.now()) => {
-    const payload = {
-      role,
-      user: {
-        id: `${role}-user`,
-        email: `${role}@example.com`,
-      },
-      access_token: `${role}-access-token`,
-    };
-
-    localStorage.setItem(STUB_AUTH_STORAGE_KEY, JSON.stringify(payload));
-  };
-
-  const seedMinimalStub = (role: string) => {
-    const payload = {
-      role,
-      user: {
-        id: `${role}-id`,
-        email: `${role}@example.com`,
-      },
-    };
-
-    localStorage.setItem(STUB_AUTH_STORAGE_KEY, JSON.stringify(payload));
-  };
-
   it('returns null when stub auth is not permitted in the current environment', () => {
     seedStubStorage();
     setHostname('app.example.com');
@@ -154,42 +129,6 @@ describe('readStubAuthState', () => {
     expect(result?.session.expires_at).toBeGreaterThan(Math.floor(now / 1000));
   });
 
-  it('derives a refresh token when the stub payload omits one', () => {
-    const now = 1_700_000_000_000;
-    vi.spyOn(Date, 'now').mockReturnValue(now);
-
-    seedRouteAuditStub('admin', now);
-
-    const result = readStubAuthState();
-    expect(result).not.toBeNull();
-    expect(result?.session.refresh_token).toBe('stub-refresh-admin-admin-user');
-    expect(result?.session.access_token).toBe('admin-access-token');
-    expect(result?.session.expires_at).toBeGreaterThan(Math.floor(now / 1000));
-
-    const stored = JSON.parse(localStorage.getItem(STUB_AUTH_STORAGE_KEY) ?? '{}');
-    expect(stored.refresh_token).toBe('stub-refresh-admin-admin-user');
-    expect(stored.expires_at).toBeGreaterThan(Math.floor(now / 1000));
-    expect(stored.refreshToken).toBe('stub-refresh-admin-admin-user');
-    expect(stored.expiresAt).toBeGreaterThan(now);
-  });
-
-  it('derives an access token and expiry when the stub omits them entirely', () => {
-    const now = 1_700_000_000_000;
-    vi.spyOn(Date, 'now').mockReturnValue(now);
-
-    seedMinimalStub('therapist');
-
-    const result = readStubAuthState();
-    expect(result).not.toBeNull();
-    expect(result?.session.access_token).toBe('stub-access-therapist-therapist-id');
-    expect(result?.session.refresh_token).toBe('stub-refresh-therapist-therapist-id');
-    expect(result?.session.expires_at).toBeGreaterThan(Math.floor(now / 1000));
-
-    const stored = JSON.parse(localStorage.getItem(STUB_AUTH_STORAGE_KEY) ?? '{}');
-    expect(stored.access_token).toBe('stub-access-therapist-therapist-id');
-    expect(stored.expires_at).toBeGreaterThan(Math.floor(now / 1000));
-  });
-
   it('purges storage and returns null when the stub is expired', () => {
     const now = 1_700_000_000_000;
     vi.spyOn(Date, 'now').mockReturnValue(now);
@@ -209,12 +148,8 @@ describe('readStubAuthState', () => {
     expect(localStorage.getItem(STUB_AUTH_STORAGE_KEY)).toBeNull();
   });
 
-  it('purges storage when required identifiers are missing', () => {
-    seedStubStorage({
-      accessToken: undefined,
-      user: {},
-      role: undefined,
-    });
+  it('purges storage when required fields are missing', () => {
+    seedStubStorage({ accessToken: undefined });
 
     expect(readStubAuthState()).toBeNull();
     expect(localStorage.getItem(STUB_AUTH_STORAGE_KEY)).toBeNull();

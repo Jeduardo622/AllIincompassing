@@ -30,6 +30,8 @@ npm run preview:smoke:remote -- --url https://deploy-preview-123--<yoursite>.net
 - `.github/workflows/ci.yml` runs `npm run preview:build` followed by `npm run preview:smoke` and archives `preview-smoke.log` / `preview-smoke-junit.log` artifacts for downstream reviewers.
 - The dedicated `preview` job exposes a local preview URL via job outputs, while the `audit` job enforces the regression checks described in [Production Readiness Runbook §CI/CD Expectations](./PRODUCTION_READINESS_RUNBOOK.md#cicd-expectations).
 - The job fails on non-200 responses or missing runtime-config keys; rerun the same command locally with the URL surfaced in the workflow logs (or the attached artifacts) to debug.
+- `.github/workflows/ci.yml` runs `npm run preview:build` followed by `npm run preview:smoke`. Deploy preview URLs still trigger `npm run preview:smoke:remote`.
+- The job fails on non-200 responses or missing runtime-config keys; rerun the same command locally with the URL surfaced in the workflow logs to debug.
 - Secrets printed by the script remain masked (anon keys are redacted), so it is safe to copy relevant output into incident reports.
 
 Exit codes

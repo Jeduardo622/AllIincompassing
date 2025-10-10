@@ -152,18 +152,6 @@ const normaliseRole = (payload: StubPayload): Role | null => {
   return role as Role;
 };
 
-const deriveRefreshToken = (params: { explicit?: string | null; role: Role; id: string }): string | null => {
-  if (params.explicit && params.explicit.length > 0) {
-    return params.explicit;
-  }
-
-  if (!params.id || !params.role) {
-    return null;
-  }
-
-  return `stub-refresh-${params.role}-${params.id}`;
-};
-
 const normaliseStubPayload = (payload: StubPayload, now: number): StubAuthState | null => {
   const role = normaliseRole(payload);
   if (!role) {
@@ -173,11 +161,7 @@ const normaliseStubPayload = (payload: StubPayload, now: number): StubAuthState 
   const id = toOptionalString(payload.user?.id) ?? `stub-${role}`;
   const email = toOptionalString(payload.user?.email) ?? `${role}@example.com`;
   const accessToken = toOptionalString(payload.accessToken) ?? toOptionalString(payload.access_token);
-  const refreshToken = deriveRefreshToken({
-    explicit: toOptionalString(payload.refreshToken) ?? toOptionalString(payload.refresh_token),
-    role,
-    id,
-  });
+  const refreshToken = toOptionalString(payload.refreshToken) ?? toOptionalString(payload.refresh_token);
   const expiresAt = normaliseExpiresAt(payload.expiresAt ?? payload.expires_at, now);
 
   if (!accessToken || !refreshToken || !expiresAt || !id || !email) {

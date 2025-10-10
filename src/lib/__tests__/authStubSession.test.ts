@@ -73,19 +73,6 @@ describe('readStubAuthState', () => {
     localStorage.setItem(STUB_AUTH_STORAGE_KEY, JSON.stringify(payload));
   };
 
-  const seedRouteAuditStub = (role: string, now = Date.now()) => {
-    const payload = {
-      role,
-      user: {
-        id: `${role}-user`,
-        email: `${role}@example.com`,
-      },
-      access_token: `${role}-access-token`,
-    };
-
-    localStorage.setItem(STUB_AUTH_STORAGE_KEY, JSON.stringify(payload));
-  };
-
   it('returns null when stub auth is not permitted in the current environment', () => {
     seedStubStorage();
     setHostname('app.example.com');
@@ -139,19 +126,6 @@ describe('readStubAuthState', () => {
     expect(result).not.toBeNull();
     expect(result?.user.email).toBe('legacy@example.com');
     expect(result?.profile.role).toBe('therapist');
-    expect(result?.session.expires_at).toBeGreaterThan(Math.floor(now / 1000));
-  });
-
-  it('derives a refresh token when the stub payload omits one', () => {
-    const now = 1_700_000_000_000;
-    vi.spyOn(Date, 'now').mockReturnValue(now);
-
-    seedRouteAuditStub('admin', now);
-
-    const result = readStubAuthState();
-    expect(result).not.toBeNull();
-    expect(result?.session.refresh_token).toBe('stub-refresh-admin-admin-user');
-    expect(result?.session.access_token).toBe('admin-access-token');
     expect(result?.session.expires_at).toBeGreaterThan(Math.floor(now / 1000));
   });
 

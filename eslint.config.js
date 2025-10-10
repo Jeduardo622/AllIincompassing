@@ -100,9 +100,11 @@ export default tseslint.config(
   },
   // Cypress root config file
   {
-    files: ['cypress.config.ts'],
-    rules: {
-      '@typescript-eslint/no-unused-vars': 'off',
+    files: ['cypress.config.cjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'script',
+      globals: globals.node,
     },
   },
   // Node scripts

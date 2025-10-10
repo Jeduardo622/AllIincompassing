@@ -140,6 +140,22 @@ jobs:
           name: preview-smoke-junit-log
           path: preview-smoke-junit.log
           if-no-files-found: warn
+          set +e
+          npm run preview:smoke
+          status=$?
+          if [ $status -ne 0 ]; then
+            echo "::error::❌ Preview build or smoke test failed — downstream tasks halted."
+            exit $status
+          fi
+      - name: Run preview smoke (JUnit)
+        run: |
+          set +e
+          npm run preview:smoke -- --reporter=junit
+          status=$?
+          if [ $status -ne 0 ]; then
+            echo "::error::❌ Preview build or smoke test failed — downstream tasks halted."
+            exit $status
+          fi
       - name: Publish preview URL
         id: publish-preview
         run: |

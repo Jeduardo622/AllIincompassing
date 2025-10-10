@@ -1,0 +1,900 @@
+{
+  "timestamp": "2025-10-09T20:01:26.211Z",
+  "summary": {
+    "totalRoutes": 43,
+    "successfulRoutes": 43,
+    "failedRoutes": 0,
+    "totalApiCalls": 47,
+    "uniqueApiCalls": 1,
+    "mismatches": 0,
+    "fixes": 0
+  },
+  "routes": [
+    {
+      "path": "/login",
+      "component": "Login",
+      "role": null,
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:00:55.156Z"
+        }
+      ],
+      "renderTime": 944
+    },
+    {
+      "path": "/signup",
+      "component": "Signup",
+      "role": null,
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:00:56.099Z"
+        }
+      ],
+      "renderTime": 734
+    },
+    {
+      "path": "/unauthorized",
+      "component": "Unauthorized",
+      "role": null,
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:00:56.823Z"
+        }
+      ],
+      "renderTime": 676
+    },
+    {
+      "path": "/",
+      "component": "Dashboard",
+      "role": "client",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:00:57.775Z"
+        }
+      ],
+      "renderTime": 696
+    },
+    {
+      "path": "/schedule",
+      "component": "Schedule",
+      "role": "client",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:00:58.471Z"
+        }
+      ],
+      "renderTime": 673
+    },
+    {
+      "path": "/therapists/:therapistId",
+      "component": "TherapistDetails",
+      "role": "client",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:00:59.153Z"
+        }
+      ],
+      "renderTime": 678
+    },
+    {
+      "path": "/documentation",
+      "component": "Documentation",
+      "role": "client",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:00:59.832Z"
+        }
+      ],
+      "renderTime": 697
+    },
+    {
+      "path": "/",
+      "component": "Dashboard",
+      "role": "therapist",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:00.788Z"
+        }
+      ],
+      "renderTime": 709
+    },
+    {
+      "path": "/schedule",
+      "component": "Schedule",
+      "role": "therapist",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:01.499Z"
+        }
+      ],
+      "renderTime": 688
+    },
+    {
+      "path": "/clients",
+      "component": "Clients",
+      "role": "therapist",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:02.192Z"
+        }
+      ],
+      "renderTime": 701
+    },
+    {
+      "path": "/clients/:clientId",
+      "component": "ClientDetails",
+      "role": "therapist",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:02.897Z"
+        }
+      ],
+      "renderTime": 678
+    },
+    {
+      "path": "/clients/new",
+      "component": "ClientOnboarding",
+      "role": "therapist",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:03.579Z"
+        }
+      ],
+      "renderTime": 673
+    },
+    {
+      "path": "/therapists/:therapistId",
+      "component": "TherapistDetails",
+      "role": "therapist",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:04.257Z"
+        }
+      ],
+      "renderTime": 688
+    },
+    {
+      "path": "/documentation",
+      "component": "Documentation",
+      "role": "therapist",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:04.951Z"
+        }
+      ],
+      "renderTime": 669
+    },
+    {
+      "path": "/authorizations",
+      "component": "Authorizations",
+      "role": "therapist",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:05.625Z"
+        }
+      ],
+      "renderTime": 673
+    },
+    {
+      "path": "/",
+      "component": "Dashboard",
+      "role": "admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:06.563Z"
+        }
+      ],
+      "renderTime": 679
+    },
+    {
+      "path": "/schedule",
+      "component": "Schedule",
+      "role": "admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:07.254Z"
+        }
+      ],
+      "renderTime": 704
+    },
+    {
+      "path": "/clients",
+      "component": "Clients",
+      "role": "admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:07.956Z"
+        }
+      ],
+      "renderTime": 674
+    },
+    {
+      "path": "/clients/:clientId",
+      "component": "ClientDetails",
+      "role": "admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:08.631Z"
+        }
+      ],
+      "renderTime": 668
+    },
+    {
+      "path": "/clients/new",
+      "component": "ClientOnboarding",
+      "role": "admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:09.305Z"
+        }
+      ],
+      "renderTime": 678
+    },
+    {
+      "path": "/therapists",
+      "component": "Therapists",
+      "role": "admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:09.986Z"
+        }
+      ],
+      "renderTime": 680
+    },
+    {
+      "path": "/therapists/:therapistId",
+      "component": "TherapistDetails",
+      "role": "admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:10.669Z"
+        }
+      ],
+      "renderTime": 673
+    },
+    {
+      "path": "/therapists/new",
+      "component": "TherapistOnboarding",
+      "role": "admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:11.348Z"
+        }
+      ],
+      "renderTime": 669
+    },
+    {
+      "path": "/documentation",
+      "component": "Documentation",
+      "role": "admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:12.020Z"
+        }
+      ],
+      "renderTime": 699
+    },
+    {
+      "path": "/authorizations",
+      "component": "Authorizations",
+      "role": "admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:12.725Z"
+        }
+      ],
+      "renderTime": 677
+    },
+    {
+      "path": "/billing",
+      "component": "Billing",
+      "role": "admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:13.404Z"
+        }
+      ],
+      "renderTime": 672
+    },
+    {
+      "path": "/monitoring",
+      "component": "MonitoringDashboard",
+      "role": "admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:14.097Z"
+        }
+      ],
+      "renderTime": 733
+    },
+    {
+      "path": "/reports",
+      "component": "Reports",
+      "role": "admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:14.817Z"
+        }
+      ],
+      "renderTime": 677
+    },
+    {
+      "path": "/settings",
+      "component": "Settings",
+      "role": "admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:15.505Z"
+        }
+      ],
+      "renderTime": 716
+    },
+    {
+      "path": "/",
+      "component": "Dashboard",
+      "role": "super_admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:16.507Z"
+        }
+      ],
+      "renderTime": 719
+    },
+    {
+      "path": "/schedule",
+      "component": "Schedule",
+      "role": "super_admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:17.229Z"
+        }
+      ],
+      "renderTime": 702
+    },
+    {
+      "path": "/clients",
+      "component": "Clients",
+      "role": "super_admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:17.932Z"
+        }
+      ],
+      "renderTime": 712
+    },
+    {
+      "path": "/clients/:clientId",
+      "component": "ClientDetails",
+      "role": "super_admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:18.653Z"
+        }
+      ],
+      "renderTime": 694
+    },
+    {
+      "path": "/clients/new",
+      "component": "ClientOnboarding",
+      "role": "super_admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:19.352Z"
+        }
+      ],
+      "renderTime": 704
+    },
+    {
+      "path": "/therapists",
+      "component": "Therapists",
+      "role": "super_admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:20.052Z"
+        }
+      ],
+      "renderTime": 700
+    },
+    {
+      "path": "/therapists/:therapistId",
+      "component": "TherapistDetails",
+      "role": "super_admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:20.760Z"
+        }
+      ],
+      "renderTime": 731
+    },
+    {
+      "path": "/therapists/new",
+      "component": "TherapistOnboarding",
+      "role": "super_admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:21.496Z"
+        }
+      ],
+      "renderTime": 671
+    },
+    {
+      "path": "/documentation",
+      "component": "Documentation",
+      "role": "super_admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:22.163Z"
+        }
+      ],
+      "renderTime": 681
+    },
+    {
+      "path": "/authorizations",
+      "component": "Authorizations",
+      "role": "super_admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:22.852Z"
+        }
+      ],
+      "renderTime": 669
+    },
+    {
+      "path": "/billing",
+      "component": "Billing",
+      "role": "super_admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:23.522Z"
+        }
+      ],
+      "renderTime": 660
+    },
+    {
+      "path": "/monitoring",
+      "component": "MonitoringDashboard",
+      "role": "super_admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:24.188Z"
+        }
+      ],
+      "renderTime": 665
+    },
+    {
+      "path": "/reports",
+      "component": "Reports",
+      "role": "super_admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:24.855Z"
+        }
+      ],
+      "renderTime": 696
+    },
+    {
+      "path": "/settings",
+      "component": "Settings",
+      "role": "super_admin",
+      "status": "success",
+      "errors": [],
+      "networkCalls": [
+        {
+          "url": "http://127.0.0.1:4173/api/runtime-config",
+          "method": "GET",
+          "timestamp": "2025-10-09T20:01:25.559Z"
+        }
+      ],
+      "renderTime": 670
+    }
+  ],
+  "apiCalls": [
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:00:55.156Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:00:56.099Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:00:56.823Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:00:57.510Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:00:57.775Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:00:58.471Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:00:59.153Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:00:59.832Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:00.530Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:00.788Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:01.499Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:02.192Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:02.897Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:03.579Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:04.257Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:04.951Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:05.625Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:06.321Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:06.563Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:07.254Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:07.956Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:08.631Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:09.305Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:09.986Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:10.669Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:11.348Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:12.020Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:12.725Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:13.404Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:14.097Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:14.817Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:15.505Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:16.225Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:16.507Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:17.229Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:17.932Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:18.653Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:19.352Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:20.052Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:20.760Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:21.496Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:22.163Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:22.852Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:23.522Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:24.188Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:24.855Z"
+    },
+    {
+      "url": "http://127.0.0.1:4173/api/runtime-config",
+      "method": "GET",
+      "timestamp": "2025-10-09T20:01:25.559Z"
+    }
+  ],
+  "mismatches": [],
+  "fixes": [],
+  "recommendations": [],
+  "reportPath": "/workspace/AllIincompassing/reports/evidence/route-audit-report-2025-10-09T20-01-26-211Z.json"
+}

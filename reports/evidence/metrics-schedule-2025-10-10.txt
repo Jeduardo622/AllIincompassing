@@ -1,0 +1,8 @@
+
+> allincompassing@0.0.0 metrics:schedule
+> tsx src/scripts/metrics/updateRouteAuditTimeline.ts --start=2025-10-13 --weeks=6
+
+Route audit timeline updated.
+- Weekly audits scheduled: 6
+- First audit window: 2025-10-13 – 2025-10-17
+- Timeline entries total: 15

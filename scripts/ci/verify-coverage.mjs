@@ -96,11 +96,15 @@ const assertModuleCoverage = (summary, baseline) => {
       throw new Error(
         `Coverage summary is missing metrics for ${normalizedModule}. Ensure vitest collects coverage for this module.`,
       );
+    const coverageEntry = summary?.[module];
+    if (!coverageEntry) {
+      throw new Error(`Coverage summary is missing metrics for ${module}. Ensure vitest collects coverage for this module.`);
     }
 
     const actualPct = coverageEntry?.lines?.pct;
     if (typeof actualPct !== 'number' || Number.isNaN(actualPct)) {
       throw new Error(`Coverage data for ${normalizedModule} is missing line percentage information.`);
+      throw new Error(`Coverage data for ${module} is missing line percentage information.`);
     }
 
     if (actualPct < minLineCoverage) {
@@ -112,6 +116,11 @@ const assertModuleCoverage = (summary, baseline) => {
     console.log(
       `Module ${normalizedModule} meets line coverage ${formatPct(actualPct)} / ${formatPct(minLineCoverage)} requirement.`,
     );
+        `Module ${module} line coverage ${formatPct(actualPct)} is below the required ${formatPct(minLineCoverage)} threshold.`,
+      );
+    }
+
+    console.log(`Module ${module} meets line coverage ${formatPct(actualPct)} / ${formatPct(minLineCoverage)} requirement.`);
   }
 };
 
@@ -140,3 +149,7 @@ if (executedViaCli()) {
     process.exitCode = 1;
   });
 }
+run().catch((error) => {
+  console.error(error.message ?? error);
+  process.exitCode = 1;
+});

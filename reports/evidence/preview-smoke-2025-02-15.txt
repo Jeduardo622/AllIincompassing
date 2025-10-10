@@ -1,0 +1,19 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> allincompassing@0.0.0 preview:smoke
+> tsx scripts/run-preview-smoke.ts
+
+[preview] Smoke configuration -> host=127.0.0.1 port=4173 protocol=http outDir=/workspace/AllIincompassing/out url=http://127.0.0.1:4173
+[preview] Preview server ready on http://127.0.0.1:4173 serving out.
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+[smoke] Target http://127.0.0.1:4173
+[smoke] index.html -> OK
+[smoke] runtime-config -> {
+  supabaseUrl: 'http://127.0.0.1:4173/__supabase',
+  supabaseAnonKey: 'previe***ey',
+  supabaseEdgeUrl: 'http:/***ns'
+}
+[smoke] Supabase auth health -> OK
+[smoke] Supabase anon auth -> OK
+[smoke] PASS
+[preview] Smoke suite completed successfully.

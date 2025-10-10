@@ -1,0 +1,4 @@
+2025-10-09 baseline verification
+- Runtime config endpoint responded 200 with masked Supabase keys (see log chunks `e179ff`, `d001ed`).
+- Supabase auth health check returned 200 and no active session (preview stubs).
+- Smoke run confirmed index and guard endpoints load without console errors; see `reports/evidence/preview-smoke-log.txt`.

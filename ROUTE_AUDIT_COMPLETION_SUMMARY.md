@@ -13,7 +13,7 @@ Successfully implemented a comprehensive route audit system that ensures all UI 
 - **✅ Route parameter handling** - Support for dynamic routes like `/clients/:id`
 
 ### 2. Automated Testing Infrastructure
-- **✅ Playwright headless browser testing** - `scripts/route-audit.js`
+- **✅ Playwright headless browser testing** - `scripts/route-audit.cjs`
 - **✅ Cypress integration tests** - `cypress/e2e/routes_integrity.cy.ts`
 - **✅ Network call interception** - Monitors all API requests
 - **✅ Authentication flow testing** - Tests all 4 user roles
@@ -76,7 +76,7 @@ Successfully implemented a comprehensive route audit system that ensures all UI 
 
 ## 🛠️ Tools & Scripts Created
 
-### Route Audit Script (`scripts/route-audit.js`)
+### Route Audit Script (`scripts/route-audit.cjs`)
 - Comprehensive route testing with Playwright
 - Network request monitoring
 - Role-based authentication simulation

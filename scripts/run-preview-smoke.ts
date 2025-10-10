@@ -1,3 +1,13 @@
+import { spawn } from 'node:child_process';
+import process from 'node:process';
+
+import { describePreviewConfig, resolvePreviewConfig } from '../src/preview/config';
+import {
+  ensureBuildArtifactsExist,
+  ensureSupabaseEnv,
+  startPreviewServer,
+  type PreviewServerHandle,
+} from './lib/preview-runtime';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -47,6 +57,8 @@ const runCommand = async (command: string, args: readonly string[], env: NodeJS.
   });
 };
 
+const logServerReady = (configDescription: string): void => {
+  console.log(`[preview] Preview server ready on ${configDescription}.`);
 const forwardRuntimeConfig = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
   const url = req.url ?? '/api/runtime-config';
   const method = req.method ?? 'GET';
@@ -156,6 +168,11 @@ const main = async (): Promise<void> => {
   const previewConfig = resolvePreviewConfig(process.env);
   console.log(`[preview] Smoke configuration -> ${describePreviewConfig(previewConfig)}`);
 
+  ensureBuildArtifactsExist(previewConfig);
+  ensureSupabaseEnv(previewConfig);
+
+  const server: PreviewServerHandle = await startPreviewServer(previewConfig);
+  logServerReady(`http://${previewConfig.host}:${previewConfig.port} serving ${previewConfig.outDir}`);
   ensureBuildArtifactsExist(previewConfig.outDir);
   ensureSupabaseEnv(previewConfig.host, previewConfig.port);
 

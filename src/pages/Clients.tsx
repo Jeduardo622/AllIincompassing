@@ -22,6 +22,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { fetchClients } from '../lib/clients/fetchers';
 import type { Client } from '../types';
 import ClientModal from '../components/ClientModal';
 import CSVImport from '../components/CSVImport';
@@ -50,15 +51,7 @@ const Clients = () => {
 
   const { data: clients = [], isLoading } = useQuery({
     queryKey: ['clients'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('clients')
-        .select('*')
-        .order('full_name');
-      
-      if (error) throw error;
-      return data || [];
-    },
+    queryFn: () => fetchClients(),
   });
 
   // Calculate total units for each client - Moved up before it's used

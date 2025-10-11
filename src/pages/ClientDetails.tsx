@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { User, FileText, ClipboardCheck, Contact as FileContract, ArrowLeft, Calendar, AlertCircle, Clock } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { fetchClientById } from '../lib/clients/fetchers';
 import ProfileTab from '../components/ClientDetails/ProfileTab';
 import SessionNotesTab from '../components/ClientDetails/SessionNotesTab';
 import PreAuthTab from '../components/ClientDetails/PreAuthTab';
@@ -19,15 +19,8 @@ export default function ClientDetails() {
     queryKey: ['client', clientId],
     queryFn: async () => {
       if (!clientId) throw new Error('Client ID is required');
-      
-      const { data, error } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('id', clientId)
-        .single();
-      
-      if (error) throw error;
-      return data;
+
+      return fetchClientById(clientId);
     },
     enabled: !!clientId,
   });

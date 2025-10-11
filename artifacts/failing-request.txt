@@ -1,0 +1,6 @@
+curl 'https://wnnjeqheqxxyrgsjmygy.supabase.co/rest/v1/clients?select=*,one_supervision_units(*),parent_consult_units(*)' \
+  -H 'apikey: ****' \
+  -H 'Authorization: Bearer ****'
+
+Response:
+{"code":"PGRST200","details":"Searched for a foreign key relationship between 'clients' and 'one_supervision_units' in the schema 'public', but no matches were found.","hint":"Perhaps you meant 'ai_session_notes' instead of 'one_supervision_units'.","message":"Could not find a relationship between 'clients' and 'one_supervision_units' in the schema cache"}

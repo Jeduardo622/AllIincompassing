@@ -1,0 +1,6 @@
+curl 'https://wnnjeqheqxxyrgsjmygy.supabase.co/rest/v1/clients?select=id,full_name,one_to_one_units,supervision_units,parent_consult_units' \
+  -H 'apikey: ****' \
+  -H 'Authorization: Bearer ****'
+
+Response:
+[]

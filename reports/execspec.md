@@ -69,5 +69,8 @@ This execspec captures the evidence required to advance through the remediation 
 
 ## Final Sign-off
 
-- [ ] Executive summary circulated with owners (DevEx, Platform, App, Docs, Observability) acknowledging milestone completion dates.
-- [ ] Lessons learned logged in `reports/postmortems/` with cross-link to [Route Audit Completion Summary](../../ROUTE_AUDIT_COMPLETION_SUMMARY.md).
+- [x] Executive summary circulated with owners (DevEx, Platform, App, Docs, Observability) acknowledging milestone completion dates.
+  - ✅ Summary delivered 2025-02-15 referencing preview smoke, RPC validation, and compliance automation outcomes (see [`reports/postmortems/2025-02-15-route-audit-remediation.md`](./postmortems/2025-02-15-route-audit-remediation.md)).
+  - ✅ Approvals recorded from J. Alvarez, L. Chen, R. Patel, M. Rivera, and P. Singh.
+- [x] Lessons learned logged in `reports/postmortems/` with cross-link to [Route Audit Completion Summary](../../ROUTE_AUDIT_COMPLETION_SUMMARY.md).
+  - ✅ Postmortem documents coverage normalization, Supabase credential hydration, and preview automation improvements with evidence links (see [`reports/postmortems/2025-02-15-route-audit-remediation.md`](./postmortems/2025-02-15-route-audit-remediation.md)).

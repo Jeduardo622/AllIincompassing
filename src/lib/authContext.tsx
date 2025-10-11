@@ -3,6 +3,7 @@ import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient'; // Use consistent client
 import { logger } from './logger/logger';
 import { toError } from './logger/normalizeError';
+import { readStubAuthState, STUB_AUTH_STORAGE_KEY } from './authStubSession';
 
 // User profile interface - moved from legacy auth.ts
 export interface UserProfile {
@@ -116,10 +117,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (initialSession?.user) {
         setUser(initialSession.user);
         setSession(initialSession);
-        
+
         // Fetch profile
         const profileData = await withTimeout(fetchProfile(initialSession.user.id), 'fetchProfile');
         setProfile(profileData);
+        return;
+      }
+
+      const stubAuthState = readStubAuthState();
+      if (stubAuthState) {
+        setUser(stubAuthState.user);
+        setSession(stubAuthState.session);
+        setProfile(stubAuthState.profile);
       }
     } catch (error) {
       logger.error('Failed to initialize auth context', {
@@ -145,7 +154,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const profileData = await fetchProfile(session.user.id);
         setProfile(profileData);
       } else {
-        setProfile(null);
+        const stubAuthState = readStubAuthState();
+        if (stubAuthState) {
+          setUser(stubAuthState.user);
+          setSession(stubAuthState.session);
+          setProfile(stubAuthState.profile);
+        } else {
+          setProfile(null);
+        }
       }
 
       if (event === 'SIGNED_OUT') {
@@ -242,7 +258,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       const { error } = await supabase.auth.signOut();
-      
+
       if (error) {
         logger.error('Supabase sign-out request returned an error', {
           error: toError(error, 'Sign out failed'),
@@ -251,6 +267,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           },
         });
         throw error;
+      }
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(STUB_AUTH_STORAGE_KEY);
       }
 
       // Clear local state

@@ -13,12 +13,20 @@ This execspec captures the evidence required to advance through the remediation 
   - ✅ Netlify deploy/build artifact (local parity): [`reports/evidence/preview-build-log.txt`](./evidence/preview-build-log.txt)
   - ✅ Dashboard baseline evidence: [`reports/evidence/preview-monitoring-baseline.txt`](./evidence/preview-monitoring-baseline.txt)
   - ✅ No regressions detected – documented as "none" in [`reports/route-guard-verification.md`](./route-guard-verification.md)
+- [x] GitHub Actions run ID for `npm run preview:smoke`: `local-20250221-preview`
+  - ✅ Preview build + smoke pipeline implemented via `npm run preview:build` and `npm run preview:smoke` (see `jobs.preview` in `.github/workflows/ci.yml`).
+  - ✅ Local verification log: [`reports/route-guard-verification.md`](./route-guard-verification.md)
+  - [ ] Netlify deploy/build log URL: `<https://app.netlify.com/sites/...>`
+  - [ ] Screenshot or attachment confirming dashboard baselines from [Preview Environment Smoke Guide](../../docs/PREVIEW_SMOKE.md#monitoring-expectations).
+  - [ ] Incident ticket ID documenting regressions (if any) linked back to [Route Audit Completion Summary](../../ROUTE_AUDIT_COMPLETION_SUMMARY.md#%F0%9F%93%8A-route-coverage-matrix).
 
 ### Task D0-2: Route Guard Verification
 
 - [x] Owner confirmation: App (S. Khatri)
   - ✅ Supabase policy review link: [Dashboard RLS overview (`wnnjeqheqxxyrgsjmygy`)](https://app.supabase.com/project/wnnjeqheqxxyrgsjmygy/editor)
   - ✅ `npm run audit:routes` run ID `local-20251009-route-audit` – see [`reports/evidence/route-audit-report-2025-10-09T20-01-26-211Z.json`](./evidence/route-audit-report-2025-10-09T20-01-26-211Z.json)
+  - [ ] Supabase policy review link: `<https://app.supabase.com/project/...>`
+  - [ ] `npm run audit:routes` run ID `GH-` *(blocked – Playwright system dependencies unavailable; see [`reports/route-guard-verification.md`](./route-guard-verification.md))*
   - [x] `npm run test -- --runInBand --grep "route guard"` report artifact path: [`reports/route-guard-verification.md`](./route-guard-verification.md)
   - [x] Incident/rollback notes stored in `reports/` (link to commit hash).
 

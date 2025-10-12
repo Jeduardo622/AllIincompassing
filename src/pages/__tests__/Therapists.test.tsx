@@ -12,6 +12,7 @@ const invalidateQueries = vi.fn();
 const useQueryMock = vi.fn();
 const mutationHandlers: Array<{ options: any; mutateAsync: ReturnType<typeof vi.fn> }> = [];
 const useMutationMock = vi.fn();
+const isSuperAdminMock = vi.fn(() => true);
 
 vi.mock('@tanstack/react-query', async () => {
   const actual = await vi.importActual<typeof import('@tanstack/react-query')>('@tanstack/react-query');
@@ -23,6 +24,22 @@ vi.mock('@tanstack/react-query', async () => {
     useQueryClient: () => ({
       invalidateQueries,
     }),
+  };
+});
+
+vi.mock('../../lib/authContext', () => ({
+  useAuth: () => ({
+    isSuperAdmin: isSuperAdminMock,
+  }),
+}));
+
+vi.mock('../../lib/toast', async () => {
+  const actual = await vi.importActual<typeof import('../../lib/toast')>('../../lib/toast');
+
+  return {
+    ...actual,
+    showSuccess: vi.fn(),
+    showError: vi.fn(),
   };
 });
 
@@ -59,6 +76,8 @@ beforeEach(() => {
   useQueryMock.mockReset();
   useMutationMock.mockReset();
   mutationHandlers.length = 0;
+  isSuperAdminMock.mockReset();
+  isSuperAdminMock.mockReturnValue(true);
 
   useQueryMock.mockReturnValue({ data: mockTherapists, isLoading: false });
   useMutationMock.mockImplementation((options: any) => {
@@ -101,7 +120,7 @@ describe('Therapists page filtering', () => {
   it('invalidates the therapists query after successful mutations', () => {
     renderWithProviders(<Therapists />);
 
-    expect(mutationHandlers).toHaveLength(3);
+    expect(mutationHandlers).toHaveLength(4);
 
     mutationHandlers.forEach(({ options }) => {
       invalidateQueries.mockClear();
@@ -121,5 +140,28 @@ describe('Therapists page filtering', () => {
       expect(screen.queryByText('Active Therapist')).not.toBeInTheDocument();
       expect(screen.queryByText('Inactive Therapist')).not.toBeInTheDocument();
     });
+  });
+
+  it('invokes the delete mutation when a super admin confirms the action', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderWithProviders(<Therapists />);
+
+    const deleteButtons = screen.getAllByRole('button', { name: /delete/i });
+    expect(deleteButtons).toHaveLength(2);
+
+    await userEvent.click(deleteButtons[0]);
+
+    expect(mutationHandlers[3]?.mutateAsync).toHaveBeenCalledWith('therapist-1');
+
+    confirmSpy.mockRestore();
+  });
+
+  it('hides the delete action when the viewer is not a super admin', () => {
+    isSuperAdminMock.mockReturnValue(false);
+
+    renderWithProviders(<Therapists />);
+
+    expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();
   });
 });

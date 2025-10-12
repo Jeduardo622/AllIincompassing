@@ -12,6 +12,7 @@ import {
   Building,
   UserPlus,
   FileUp,
+  Trash2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Therapist } from '../types';
@@ -21,6 +22,7 @@ import { prepareFormData } from '../lib/validation';
 import { showSuccess, showError } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
 import { toError } from '../lib/logger/normalizeError';
+import { useAuth } from '../lib/authContext';
 
 export const matchesStatusFilter = (
   status: Therapist['status'] | null | undefined,
@@ -45,6 +47,7 @@ const Therapists = () => {
   const [archivedFilter, setArchivedFilter] = useState<'all' | 'active' | 'archived'>('active');
   
   const queryClient = useQueryClient();
+  const { isSuperAdmin } = useAuth();
   const navigate = useNavigate();
 
   const { data: therapists = [], isLoading } = useQuery({
@@ -189,6 +192,32 @@ const Therapists = () => {
     },
   });
 
+  const deleteTherapistMutation = useMutation({
+    mutationFn: async (therapistId: string) => {
+      const { error } = await supabase
+        .from('therapists')
+        .delete()
+        .eq('id', therapistId);
+
+      if (error) {
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['therapists'] });
+      showSuccess('Therapist deleted successfully');
+    },
+    onError: (error, therapistId) => {
+      logger.error('Failed to delete therapist', {
+        error: toError(error, 'Therapist deletion failed'),
+        metadata: {
+          targetTherapistId: therapistId ?? null,
+        },
+      });
+      showError(error);
+    },
+  });
+
   const _handleCreateTherapist = () => {
     setSelectedTherapist(undefined);
     setIsModalOpen(true);
@@ -213,6 +242,22 @@ const Therapists = () => {
     if (window.confirm(`Restore ${therapist.full_name || 'this staff member'}?`)) {
       await archiveTherapistMutation.mutateAsync({ therapistId: therapist.id, restore: true });
     }
+  };
+
+  const handleDeleteTherapist = async (therapist: Therapist) => {
+    if (!isSuperAdmin()) {
+      showError('Only super admins can delete therapists permanently.');
+      return;
+    }
+
+    const therapistLabel = therapist.full_name || 'this staff member';
+    const confirmationMessage = `This action will permanently delete ${therapistLabel} and associated records. This cannot be undone. Continue?`;
+
+    if (!window.confirm(confirmationMessage)) {
+      return;
+    }
+
+    await deleteTherapistMutation.mutateAsync(therapist.id);
   };
 
   const handleSubmit = async (data: Partial<Therapist>) => {
@@ -450,6 +495,7 @@ const Therapists = () => {
                             onClick={() => handleRestoreTherapist(therapist)}
                             className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300"
                             title="Restore therapist"
+                            type="button"
                           >
                             <ArchiveRestore className="w-4 h-4" />
                           </button>
@@ -458,8 +504,23 @@ const Therapists = () => {
                             onClick={() => handleArchiveTherapist(therapist)}
                             className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
                             title="Archive therapist"
+                            type="button"
                           >
                             <Archive className="w-4 h-4" />
+                          </button>
+                        )}
+                        {isSuperAdmin() && (
+                          <button
+                            onClick={() => handleDeleteTherapist(therapist)}
+                            className={`text-red-700 dark:text-red-300 hover:text-red-900 dark:hover:text-red-100 ${
+                              deleteTherapistMutation.isPending ? 'opacity-60 cursor-not-allowed' : ''
+                            }`}
+                            title="Delete therapist"
+                            aria-label={`Delete ${therapist.full_name || 'therapist'}`}
+                            type="button"
+                            disabled={deleteTherapistMutation.isPending}
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         )}
                       </div>

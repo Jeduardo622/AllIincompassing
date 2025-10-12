@@ -30,6 +30,7 @@ import { prepareClientPayload, updateClientRecord } from '../lib/clientPayload';
 import { showSuccess, showError } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
 import { toError } from '../lib/logger/normalizeError';
+import { createClient as createClientRecord } from '../lib/clients/mutations';
 
 const Clients = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -67,12 +68,7 @@ const Clients = () => {
       const parsedClient = prepareClientPayload(newClient, { enforceFullName: true });
 
       // Insert the new client
-      const { data, error } = await supabase.rpc('create_client', {
-        p_client_data: parsedClient,
-      });
-
-      if (error) throw error;
-      return data;
+      return await createClientRecord(supabase, parsedClient);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });

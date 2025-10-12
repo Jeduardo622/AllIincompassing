@@ -19,6 +19,10 @@ import type { Client } from '../types';
 import { prepareFormData } from '../lib/validation';
 import { logger } from '../lib/logger/logger';
 import { clientSchema, type ClientFormData } from '../lib/validationSchemas';
+import {
+  checkClientEmailExists,
+  createClient as createClientRecord,
+} from '../lib/clients/mutations';
 
 interface ClientOnboardingProps {
   onComplete?: () => void;
@@ -91,21 +95,9 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
   // Check if email already exists in database
   const checkEmailExists = async (email: string): Promise<boolean> => {
     if (!email.trim()) return false;
-    
+
     try {
-      const normalizedEmail = email.toLowerCase().trim();
-      const { data, error } = await supabase.rpc('client_email_exists', { p_email: normalizedEmail });
-
-      if (error) {
-        logger.error('Failed to check onboarding email uniqueness', {
-          error,
-          context: { component: 'ClientOnboarding', operation: 'checkEmailExists' },
-          metadata: { hasEmail: Boolean(email) }
-        });
-        return false;
-      }
-
-      return Boolean(data);
+      return await checkClientEmailExists(supabase, email);
     } catch (error) {
       logger.error('Failed to check onboarding email uniqueness', {
         error,
@@ -161,17 +153,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       });
 
       // Insert client data
-      const { data: client, error } = await supabase.rpc('create_client', {
-        p_client_data: formattedClient
-      });
-
-      if (error) {
-        logger.error('Supabase client creation failed', {
-          error,
-          context: { component: 'ClientOnboarding', operation: 'createClient' }
-        });
-        throw error;
-      }
+      const client = await createClientRecord(supabase, formattedClient);
 
       logger.info('Client onboarding Supabase insert completed', {
         metadata: { hasId: Boolean(client?.id) }

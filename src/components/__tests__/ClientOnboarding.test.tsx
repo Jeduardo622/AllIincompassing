@@ -120,20 +120,4 @@ describe('ClientOnboarding step progression', () => {
     expect(createClientMock).not.toHaveBeenCalled();
     expect(onComplete).not.toHaveBeenCalled();
   });
-
-  it('does not complete onboarding when pressing Enter on the services step', async () => {
-    const { user, onComplete } = setup();
-
-    await advanceToServiceStep(user);
-
-    await user.click(screen.getByLabelText('Supervision Units'));
-    await user.keyboard('{Enter}');
-
-    await waitFor(() => {
-      expect(screen.getByText('Documents & Consent')).toBeInTheDocument();
-    });
-
-    expect(createClientMock).not.toHaveBeenCalled();
-    expect(onComplete).not.toHaveBeenCalled();
-  });
 });

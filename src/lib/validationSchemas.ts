@@ -191,6 +191,11 @@ export const clientFormSchema = z
 
     // Insurance
     insurance_info: insuranceInfoSchema.optional(),
+
+    // Consent
+    documents_consent: z
+      .boolean({ invalid_type_error: 'Consent acknowledgement is required' })
+      .refine(value => value === true, 'Consent acknowledgement is required'),
   })
   .superRefine((data, ctx) => {
     if (data.parent1_first_name && !data.parent1_last_name) {

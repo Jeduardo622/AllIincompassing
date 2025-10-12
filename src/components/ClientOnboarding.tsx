@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -55,7 +55,9 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
     handleSubmit,
     control,
     trigger,
-    formState: { errors, isValid }
+    formState: { errors, isValid },
+    watch,
+    setValue,
   } = useForm<ClientFormData>({
     resolver: zodResolver(clientSchema),
     mode: 'onChange',
@@ -71,8 +73,21 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       supervision_units: 0,
       parent_consult_units: 0,
       availability_hours: DEFAULT_AVAILABILITY,
+      documents_consent: false,
     }
   });
+
+  const documentsConsentAccepted = watch('documents_consent');
+
+  useEffect(() => {
+    if (currentStep === 5) {
+      setValue('documents_consent', false, {
+        shouldDirty: false,
+        shouldTouch: false,
+        shouldValidate: true,
+      });
+    }
+  }, [currentStep, setValue]);
 
   const STEP_FIELDS: Record<number, Array<keyof ClientFormData>> = {
     1: ['first_name', 'last_name', 'date_of_birth', 'email', 'gender', 'phone', 'client_id', 'cin_number'],
@@ -208,6 +223,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
   };
 
   const handleFormSubmit = async (data: ClientFormData) => {
+    if (currentStep < 5) {
+      logger.debug('Client onboarding submission intercepted before final step', {
+        metadata: { attemptedStep: currentStep }
+      });
+      setCurrentStep(prev => Math.min(prev + 1, 5));
+      return;
+    }
+
     logger.debug('Client onboarding form submitted', {
       metadata: {
         servicePreferenceCount: Array.isArray(data.service_preference) ? data.service_preference.length : 0,
@@ -1014,8 +1037,8 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                 <input
                   id="consent"
                   type="checkbox"
-                  defaultChecked={true}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  {...register('documents_consent')}
                 />
               </div>
               <div className="ml-3 text-sm">
@@ -1080,7 +1103,13 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             ) : (
               <button
                 type="submit"
-                disabled={isSubmitting || emailValidationError !== '' || isValidatingEmail || !isValid}
+                disabled={
+                  isSubmitting
+                  || emailValidationError !== ''
+                  || isValidatingEmail
+                  || !isValid
+                  || !documentsConsentAccepted
+                }
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
                 {isSubmitting ? (

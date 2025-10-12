@@ -100,6 +100,9 @@ describe('ClientOnboarding step progression', () => {
       expect(screen.getByText('Documents & Consent')).toBeInTheDocument();
     });
 
+    expect(
+      screen.getByRole('button', { name: 'Complete Onboarding' })
+    ).toBeDisabled();
     expect(createClientMock).not.toHaveBeenCalled();
     expect(onComplete).not.toHaveBeenCalled();
   });
@@ -121,16 +124,36 @@ describe('ClientOnboarding step progression', () => {
     expect(onComplete).not.toHaveBeenCalled();
   });
 
-  it('does not complete onboarding when pressing Enter on the services step', async () => {
+  it('requires consent even when the services next button is double clicked', async () => {
     const { user, onComplete } = setup();
 
     await advanceToServiceStep(user);
 
-    await user.click(screen.getByLabelText('Supervision Units'));
-    await user.keyboard('{Enter}');
+    const nextButton = screen.getByRole('button', { name: 'Next' });
+
+    await user.dblClick(nextButton);
 
     await waitFor(() => {
       expect(screen.getByText('Documents & Consent')).toBeInTheDocument();
+    });
+
+    const submitButton = screen.getByRole('button', { name: 'Complete Onboarding' });
+
+    expect(submitButton).toBeDisabled();
+    expect(createClientMock).not.toHaveBeenCalled();
+
+    const consentCheckbox = screen.getByLabelText('I consent to the collection and processing of this information');
+    await user.click(consentCheckbox);
+
+    await waitFor(() => {
+      expect(submitButton).toBeEnabled();
+    });
+
+    await user.click(submitButton);
+
+    await waitFor(() => {
+      expect(createClientMock).toHaveBeenCalled();
+      expect(onComplete).toHaveBeenCalled();
     });
 
     expect(createClientMock).not.toHaveBeenCalled();

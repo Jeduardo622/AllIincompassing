@@ -262,19 +262,49 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
     if (fields.length > 0) {
       const isStepValid = await trigger(fields, { shouldFocus: true });
       if (!isStepValid) {
-        return;
+        return false;
       }
     }
 
     if (emailValidationError) {
-      return;
+      return false;
     }
 
     setCurrentStep(prev => Math.min(prev + 1, 5));
+    return true;
   };
 
   const prevStep = () => {
     setCurrentStep(prev => Math.max(prev - 1, 1));
+  };
+
+  const processStepSubmission = async () => {
+    if (currentStep < 5) {
+      logger.debug('Client onboarding submission intercepted before final step', {
+        metadata: { attemptedStep: currentStep }
+      });
+      await nextStep();
+      return;
+    }
+
+    await handleSubmit(handleFormSubmit)();
+  };
+
+  const handleWizardSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await processStepSubmission();
+  };
+
+  const handleFormKeyDown = (event: React.KeyboardEvent<HTMLFormElement>) => {
+    if (event.key !== 'Enter' || currentStep >= 5) {
+      return;
+    }
+
+    logger.debug('Client onboarding enter key intercepted before final step', {
+      metadata: { attemptedStep: currentStep }
+    });
+    event.preventDefault();
+    void processStepSubmission();
   };
 
   const renderStepContent = () => {
@@ -1031,7 +1061,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
           currentStep={currentStep}
         />
         
-        <form onSubmit={handleSubmit(handleFormSubmit)}>
+        <form onSubmit={handleWizardSubmit} onKeyDownCapture={handleFormKeyDown}>
           {renderStepContent()}
           
           <div className="mt-8 flex justify-between">

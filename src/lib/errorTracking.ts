@@ -3,6 +3,7 @@ import type { Json } from './generated/database.types';
 import { logger } from './logger/logger';
 import { redactPhi } from './logger/redactPhi';
 import { toError } from './logger/normalizeError';
+import { isMissingRpcFunctionError } from './supabase/isMissingRpcFunctionError';
 
 const hasBrowserEnvironment = typeof window !== 'undefined' && typeof navigator !== 'undefined';
 
@@ -155,6 +156,7 @@ class ErrorTracker {
   private errorQueue: Array<any> = [];
   private isOnline = safeNavigator()?.onLine ?? true;
   private flushInterval: NodeJS.Timeout | null = null;
+  private remoteLoggingDisabled = false;
 
   constructor() {
     this.isBrowserEnvironment = hasBrowserEnvironment;
@@ -404,8 +406,15 @@ class ErrorTracker {
     const errorsToFlush = [...this.errorQueue];
     this.errorQueue = [];
 
+    if (this.remoteLoggingDisabled) {
+      this.errorQueue.unshift(...errorsToFlush);
+      this.persistErrors(errorsToFlush);
+      return;
+    }
+
     try {
       // Log to Supabase
+      const failedErrors: Array<any> = [];
       for (const error of errorsToFlush) {
         const sanitizedType = typeof error.type === 'string'
           ? (redactPhi(error.type) as string)
@@ -435,8 +444,23 @@ class ErrorTracker {
         });
 
         if (rpcError) {
+          if (isMissingRpcFunctionError(rpcError, 'log_error_event')) {
+            this.remoteLoggingDisabled = true;
+            failedErrors.push(sanitizedErrorData);
+            logger.warn('Remote error logging disabled: log_error_event RPC unavailable', {
+              error: toError(rpcError, 'log_error_event RPC missing'),
+              metadata: { pendingErrors: errorsToFlush.length },
+              track: false,
+            });
+            continue;
+          }
           throw rpcError;
         }
+      }
+
+      if (failedErrors.length > 0) {
+        this.errorQueue.unshift(...failedErrors);
+        this.persistErrors(failedErrors);
       }
 
       // Clear from local storage
@@ -448,58 +472,64 @@ class ErrorTracker {
         metadata: {
           scope: 'errorTracking.flush',
         },
+        track: false,
       });
 
       // Re-queue errors for retry
       this.errorQueue.unshift(...errorsToFlush);
 
-      // Store in local storage for persistence
-      try {
-        const existingErrorsRaw = getLocalStorageItem('queued_errors');
-        const existingErrors = existingErrorsRaw
-          ? (() => {
-              try {
-                return JSON.parse(existingErrorsRaw);
-              } catch (parseError) {
-                logger.error('Failed to parse queued errors from local storage', {
-                  error: toError(parseError, 'Queued errors parse failed'),
-                  metadata: {
-                    scope: 'errorTracking.flush'
-                  }
-                });
-                return [];
-              }
-            })()
-          : [];
-        const sanitizedExistingErrors = Array.isArray(existingErrors)
-          ? existingErrors.map((queuedError: any) => ({
-            ...queuedError,
-            message: sanitizeMessage(queuedError?.message),
-            stack: sanitizeOptionalString(queuedError?.stack),
-            context: sanitizeRecord(queuedError?.context),
-            details: sanitizeRecord(queuedError?.details)
-          }))
-          : [];
-        const sanitizedNewErrors = errorsToFlush.map((queuedError) => ({
+      this.persistErrors(errorsToFlush);
+    }
+  }
+
+  private persistErrors(errorsToPersist: any[]): void {
+    try {
+      const existingErrorsRaw = getLocalStorageItem('queued_errors');
+      const existingErrors = existingErrorsRaw
+        ? (() => {
+            try {
+              return JSON.parse(existingErrorsRaw);
+            } catch (parseError) {
+              logger.error('Failed to parse queued errors from local storage', {
+                error: toError(parseError, 'Queued errors parse failed'),
+                metadata: {
+                  scope: 'errorTracking.flush'
+                },
+                track: false,
+              });
+              return [];
+            }
+          })()
+        : [];
+      const sanitizedExistingErrors = Array.isArray(existingErrors)
+        ? existingErrors.map((queuedError: any) => ({
           ...queuedError,
           message: sanitizeMessage(queuedError?.message),
           stack: sanitizeOptionalString(queuedError?.stack),
           context: sanitizeRecord(queuedError?.context),
           details: sanitizeRecord(queuedError?.details)
-        }));
+        }))
+        : [];
+      const sanitizedNewErrors = errorsToPersist.map((queuedError) => ({
+        ...queuedError,
+        message: sanitizeMessage(queuedError?.message),
+        stack: sanitizeOptionalString(queuedError?.stack),
+        context: sanitizeRecord(queuedError?.context),
+        details: sanitizeRecord(queuedError?.details)
+      }));
 
-        setLocalStorageItem('queued_errors', JSON.stringify([
-          ...sanitizedExistingErrors,
-          ...sanitizedNewErrors
-        ].slice(-100))); // Keep last 100 errors
-      } catch (storageError) {
-        logger.error('Failed to store errors locally', {
-          error: toError(storageError, 'Persisting queued errors failed'),
-          metadata: {
-            scope: 'errorTracking.flush',
-          },
-        });
-      }
+      setLocalStorageItem('queued_errors', JSON.stringify([
+        ...sanitizedExistingErrors,
+        ...sanitizedNewErrors
+      ].slice(-100)));
+    } catch (storageError) {
+      logger.error('Failed to store errors locally', {
+        error: toError(storageError, 'Persisting queued errors failed'),
+        metadata: {
+          scope: 'errorTracking.flush',
+        },
+        track: false,
+      });
     }
   }
 

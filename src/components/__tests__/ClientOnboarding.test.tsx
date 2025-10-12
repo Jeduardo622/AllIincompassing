@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, beforeEach, it, expect, vi } from 'vitest';
 import { fireEvent, screen, waitFor, renderWithProviders } from '../../test/utils';
 import ClientOnboarding from '../ClientOnboarding';
-import { supabase } from '../../lib/supabase';
+import * as clientMutations from '../../lib/clients/mutations';
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
@@ -10,12 +10,17 @@ vi.mock('../../lib/supabase', () => ({
   },
 }));
 
-const rpcMock = supabase.rpc as unknown as ReturnType<typeof vi.fn>;
+vi.mock('../../lib/clients/mutations', () => ({
+  checkClientEmailExists: vi.fn(),
+  createClient: vi.fn(),
+}));
+
+const checkEmailExistsMock = clientMutations.checkClientEmailExists as unknown as ReturnType<typeof vi.fn>;
 
 describe('ClientOnboarding validation', () => {
   beforeEach(() => {
-    rpcMock.mockReset();
-    rpcMock.mockResolvedValue({ data: false, error: null });
+    checkEmailExistsMock.mockReset();
+    checkEmailExistsMock.mockResolvedValue(false);
   });
 
   it('shows required field errors when attempting to proceed without input', async () => {
@@ -40,12 +45,7 @@ describe('ClientOnboarding validation', () => {
   });
 
   it('disables step progression when email already exists', async () => {
-    rpcMock.mockImplementation(async (fn: string) => {
-      if (fn === 'client_email_exists') {
-        return { data: true, error: null };
-      }
-      return { data: null, error: null };
-    });
+    checkEmailExistsMock.mockResolvedValue(true);
 
     renderWithProviders(<ClientOnboarding />);
 
@@ -76,7 +76,7 @@ describe('ClientOnboarding validation', () => {
     fireEvent.blur(emailInput);
 
     await waitFor(() => {
-      expect(rpcMock).toHaveBeenCalledWith('client_email_exists', { p_email: 'jamie@example.com' });
+      expect(checkEmailExistsMock).toHaveBeenCalledWith(expect.anything(), 'jamie@example.com');
     });
 
     await waitFor(() => {

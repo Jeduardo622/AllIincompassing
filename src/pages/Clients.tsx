@@ -20,6 +20,7 @@ import {
   UserPlus,
   FileUp,
   Clock,
+  Trash2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fetchClients } from '../lib/clients/fetchers';
@@ -31,6 +32,7 @@ import { showSuccess, showError } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
 import { toError } from '../lib/logger/normalizeError';
 import { createClient as createClientRecord } from '../lib/clients/mutations';
+import { useAuth } from '../lib/authContext';
 
 const Clients = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -48,6 +50,7 @@ const Clients = () => {
   const { useMemo } = React;
   
   const queryClient = useQueryClient();
+  const { isSuperAdmin } = useAuth();
   const navigate = useNavigate();
 
   const { data: clients = [], isLoading } = useQuery({
@@ -121,6 +124,32 @@ const Clients = () => {
     },
   });
 
+  const deleteClientMutation = useMutation({
+    mutationFn: async (clientId: string) => {
+      const { error } = await supabase
+        .from('clients')
+        .delete()
+        .eq('id', clientId);
+
+      if (error) {
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      showSuccess('Client deleted successfully');
+    },
+    onError: (error, clientId) => {
+      logger.error('Failed to delete client', {
+        error: toError(error, 'Client deletion failed'),
+        metadata: {
+          targetClientId: clientId ?? null,
+        },
+      });
+      showError(error);
+    },
+  });
+
   const _handleCreateClient = () => {
     navigate('/clients/new');
   };
@@ -144,6 +173,22 @@ const Clients = () => {
     if (window.confirm(`Restore ${client.full_name || 'this client'}?`)) {
       await archiveClientMutation.mutateAsync({ clientId: client.id, restore: true });
     }
+  };
+
+  const handleDeleteClient = async (client: Client) => {
+    if (!isSuperAdmin()) {
+      showError('Only super admins can delete clients permanently.');
+      return;
+    }
+
+    const clientLabel = client.full_name || 'this client';
+    const confirmationMessage = `This action will permanently delete ${clientLabel} and associated records. This cannot be undone. Continue?`;
+
+    if (!window.confirm(confirmationMessage)) {
+      return;
+    }
+
+    await deleteClientMutation.mutateAsync(client.id);
   };
 
   const handleSubmit = async (data: Partial<Client>) => {
@@ -509,6 +554,7 @@ const Clients = () => {
                             onClick={() => handleRestoreClient(client)}
                             className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300"
                             title="Restore client"
+                            type="button"
                           >
                             <ArchiveRestore className="w-4 h-4" />
                           </button>
@@ -517,8 +563,23 @@ const Clients = () => {
                             onClick={() => handleArchiveClient(client)}
                             className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
                             title="Archive client"
+                            type="button"
                           >
                             <Archive className="w-4 h-4" />
+                          </button>
+                        )}
+                        {isSuperAdmin() && (
+                          <button
+                            onClick={() => handleDeleteClient(client)}
+                            className={`text-red-700 dark:text-red-300 hover:text-red-900 dark:hover:text-red-100 ${
+                              deleteClientMutation.isPending ? 'opacity-60 cursor-not-allowed' : ''
+                            }`}
+                            title="Delete client"
+                            aria-label={`Delete ${client.full_name || 'client'}`}
+                            type="button"
+                            disabled={deleteClientMutation.isPending}
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         )}
                       </div>

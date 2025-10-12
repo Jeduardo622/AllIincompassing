@@ -6,11 +6,12 @@ import {
   waitFor,
 } from '../../test/utils';
 import Clients from '../Clients';
-
 const invalidateQueries = vi.fn();
 const useQueryMock = vi.fn();
 const mutationHandlers: Array<{ options: any; mutateAsync: ReturnType<typeof vi.fn> }> = [];
 const useMutationMock = vi.fn();
+
+const isSuperAdminMock = vi.fn(() => true);
 
 vi.mock('@tanstack/react-query', async () => {
   const actual = await vi.importActual<typeof import('@tanstack/react-query')>('@tanstack/react-query');
@@ -20,6 +21,22 @@ vi.mock('@tanstack/react-query', async () => {
     useQuery: (options: unknown) => useQueryMock(options),
     useMutation: (options: unknown) => useMutationMock(options),
     useQueryClient: () => ({ invalidateQueries }),
+  };
+});
+
+vi.mock('../../lib/authContext', () => ({
+  useAuth: () => ({
+    isSuperAdmin: isSuperAdminMock,
+  }),
+}));
+
+vi.mock('../../lib/toast', async () => {
+  const actual = await vi.importActual<typeof import('../../lib/toast')>('../../lib/toast');
+
+  return {
+    ...actual,
+    showSuccess: vi.fn(),
+    showError: vi.fn(),
   };
 });
 
@@ -59,6 +76,8 @@ beforeEach(() => {
   useQueryMock.mockReset();
   useMutationMock.mockReset();
   mutationHandlers.length = 0;
+  isSuperAdminMock.mockReset();
+  isSuperAdminMock.mockReturnValue(true);
 
   useQueryMock.mockReturnValue({ data: mockClients, isLoading: false });
   useMutationMock.mockImplementation((options: any) => {
@@ -84,12 +103,39 @@ describe('Clients page filtering', () => {
   it('invalidates the clients query after successful mutations', () => {
     renderWithProviders(<Clients />);
 
-    expect(mutationHandlers).toHaveLength(3);
+    expect(mutationHandlers).toHaveLength(4);
 
-    mutationHandlers.forEach(({ options }) => {
+    mutationHandlers.forEach(({ options }, index) => {
       invalidateQueries.mockClear();
-      options.onSuccess?.({}, { restore: false });
+      if (index === 2) {
+        options.onSuccess?.({}, { restore: false });
+      } else {
+        options.onSuccess?.({});
+      }
       expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['clients'] });
     });
+  });
+
+  it('invokes the delete mutation when a super admin confirms the action', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderWithProviders(<Clients />);
+
+    const deleteButtons = screen.getAllByRole('button', { name: /delete/i });
+    expect(deleteButtons).toHaveLength(1);
+
+    await userEvent.click(deleteButtons[0]);
+
+    expect(mutationHandlers[3]?.mutateAsync).toHaveBeenCalledWith('client-1');
+
+    confirmSpy.mockRestore();
+  });
+
+  it('hides the delete action when the viewer is not a super admin', () => {
+    isSuperAdminMock.mockReturnValue(false);
+
+    renderWithProviders(<Clients />);
+
+    expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();
   });
 });

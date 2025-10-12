@@ -76,4 +76,27 @@ describe('createClient', () => {
 
     await expect(createClient(supabase, { email: 'user@example.com' })).rejects.toEqual({ message: 'insert failed' });
   });
+
+  it('throws when RPC fails for reasons other than missing function', async () => {
+    const { supabase, rpcMock, insertMock } = buildSupabaseMock();
+    rpcMock.mockResolvedValue({ data: null, error: { code: '42501', message: 'permission denied' } });
+    insertMock.mockReturnValue({ select: vi.fn() });
+
+    await expect(createClient(supabase, { email: 'user@example.com' })).rejects.toEqual({
+      code: '42501',
+      message: 'permission denied',
+    });
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it('throws when RPC succeeds without returning a client', async () => {
+    const { supabase, rpcMock, insertMock } = buildSupabaseMock();
+    rpcMock.mockResolvedValue({ data: null, error: null });
+    insertMock.mockReturnValue({ select: vi.fn() });
+
+    await expect(createClient(supabase, { email: 'user@example.com' })).rejects.toThrow(
+      'create_client RPC returned no data',
+    );
+    expect(insertMock).not.toHaveBeenCalled();
+  });
 });

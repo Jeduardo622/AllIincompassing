@@ -104,17 +104,33 @@ export const createClient = async (
 ): Promise<ClientsTable> => {
   const rpcResult = await createClientViaRpc(supabase, payload);
 
-  if (!rpcResult.error && rpcResult.data) {
-    return rpcResult.data;
+  if (!rpcResult.error) {
+    if (rpcResult.data) {
+      return rpcResult.data;
+    }
+
+    const emptyResponseError = new Error('create_client RPC returned no data');
+    logger.error('create_client RPC did not return a client record', {
+      error: toError(emptyResponseError, 'create_client RPC returned no data'),
+      metadata: { providedFields: Object.keys(payload) },
+      track: false,
+    });
+    throw emptyResponseError;
   }
 
-  if (rpcResult.error && !isMissingRpcFunctionError(rpcResult.error, 'create_client')) {
-    logger.warn('create_client RPC failed; attempting direct insert fallback', {
+  if (!isMissingRpcFunctionError(rpcResult.error, 'create_client')) {
+    logger.error('create_client RPC failed', {
       error: toError(rpcResult.error, describePostgrestError(rpcResult.error)),
       metadata: { providedFields: Object.keys(payload) },
       track: false,
     });
+    throw rpcResult.error;
   }
+
+  logger.warn('create_client RPC missing; attempting direct insert fallback', {
+    metadata: { providedFields: Object.keys(payload) },
+    track: false,
+  });
 
   try {
     return await insertClientDirectly(supabase, payload);

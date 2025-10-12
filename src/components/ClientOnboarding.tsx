@@ -208,6 +208,14 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
   };
 
   const handleFormSubmit = async (data: ClientFormData) => {
+    if (currentStep < 5) {
+      logger.debug('Client onboarding submission intercepted before final step', {
+        metadata: { attemptedStep: currentStep }
+      });
+      setCurrentStep(prev => Math.min(prev + 1, 5));
+      return;
+    }
+
     logger.debug('Client onboarding form submitted', {
       metadata: {
         servicePreferenceCount: Array.isArray(data.service_preference) ? data.service_preference.length : 0,

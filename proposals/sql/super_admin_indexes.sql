@@ -1,7 +1,0 @@
--- Super admin domain index proposals (documentation only)
--- 1. CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_profiles_role_org ON public.profiles (role, organization_id);
---    Helps global role management screens filter by tenant/role quickly.
--- 2. CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_ai_conversations_updated_at ON public.ai_conversations (updated_at DESC);
---    Supports retention sweeps invoked by AI orchestration functions.
--- 3. CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_clients_org_created_at ON public.clients (organization_id, created_at DESC);
---    Allows super admins to audit cross-tenant onboarding volumes efficiently.

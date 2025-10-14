@@ -1,0 +1,53 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> allincompassing@0.0.0 preview:build
+> tsx scripts/preview-build.ts
+
+[preview] .env.preview not found; using process environment variables only.
+[preview] Using configuration -> host=127.0.0.1 port=4173 protocol=http outDir=/workspace/AllIincompassing/out url=http://127.0.0.1:4173
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+[36mvite v6.3.6 [32mbuilding for preview...[36m[39m
+transforming...
+[32m✓[39m 2173 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mout/[22m[32mindex.html                                  [39m[1m[2m  1.11 kB[22m[1m[22m[2m │ gzip:   0.47 kB[22m
+[2mout/[22m[2massets/[22m[35mindex-H0Uhomvy.css                   [39m[1m[2m 55.51 kB[22m[1m[22m[2m │ gzip:   8.69 kB[22m
+[2mout/[22m[2massets/[22m[36mDocumentation-PzEtcC-a.js            [39m[1m[2m  0.84 kB[22m[1m[22m[2m │ gzip:   0.35 kB[22m
+[2mout/[22m[2massets/[22m[36mOnboardingSteps-BzvsRUZS.js          [39m[1m[2m  1.61 kB[22m[1m[22m[2m │ gzip:   0.53 kB[22m
+[2mout/[22m[2massets/[22m[36msessionCancellation-tFGJ0K5e.js      [39m[1m[2m  1.76 kB[22m[1m[22m[2m │ gzip:   0.82 kB[22m
+[2mout/[22m[2massets/[22m[36mUnauthorized-BuzEzW6a.js             [39m[1m[2m  3.34 kB[22m[1m[22m[2m │ gzip:   0.92 kB[22m
+[2mout/[22m[2massets/[22m[36mscheduling-BUx1jyvP.js               [39m[1m[2m  6.15 kB[22m[1m[22m[2m │ gzip:   2.68 kB[22m
+[2mout/[22m[2massets/[22m[36mvalidationSchemas-B3dQx0a4.js        [39m[1m[2m  8.36 kB[22m[1m[22m[2m │ gzip:   2.56 kB[22m
+[2mout/[22m[2massets/[22m[36mindex-DrS-WHzV.js                    [39m[1m[2m 10.94 kB[22m[1m[22m[2m │ gzip:   3.25 kB[22m
+[2mout/[22m[2massets/[22m[36mLogin-df8Vj7oe.js                    [39m[1m[2m 11.99 kB[22m[1m[22m[2m │ gzip:   2.62 kB[22m
+[2mout/[22m[2massets/[22m[36mSignup-DPcWcc6i.js                   [39m[1m[2m 16.02 kB[22m[1m[22m[2m │ gzip:   2.85 kB[22m
+[2mout/[22m[2massets/[22m[36mTherapists-DCfEWOJg.js               [39m[1m[2m 20.40 kB[22m[1m[22m[2m │ gzip:   3.62 kB[22m
+[2mout/[22m[2massets/[22m[36mClients-D27H4gTP.js                  [39m[1m[2m 24.44 kB[22m[1m[22m[2m │ gzip:   4.14 kB[22m
+[2mout/[22m[2massets/[22m[36mvalidation-CsezSX17.js               [39m[1m[2m 25.39 kB[22m[1m[22m[2m │ gzip:  10.04 kB[22m
+[2mout/[22m[2massets/[22m[36mbilling-BjF2GyXg.js                  [39m[1m[2m 26.79 kB[22m[1m[22m[2m │ gzip:   2.49 kB[22m
+[2mout/[22m[2massets/[22m[36mmaps-DwSjqVUD.js                     [39m[1m[2m 28.45 kB[22m[1m[22m[2m │ gzip:   7.77 kB[22m
+[2mout/[22m[2massets/[22m[36mCSVImport-r37ggP08.js                [39m[1m[2m 29.33 kB[22m[1m[22m[2m │ gzip:   5.65 kB[22m
+[2mout/[22m[2massets/[22m[36mdates-CpmAn9lr.js                    [39m[1m[2m 30.78 kB[22m[1m[22m[2m │ gzip:   9.04 kB[22m
+[2mout/[22m[2massets/[22m[36mrouter-O9fg4-dM.js                   [39m[1m[2m 31.02 kB[22m[1m[22m[2m │ gzip:  11.28 kB[22m
+[2mout/[22m[2massets/[22m[36mApp-CQ852OwB.js                      [39m[1m[2m 32.69 kB[22m[1m[22m[2m │ gzip:   8.63 kB[22m
+[2mout/[22m[2massets/[22m[36mLayout-C8wuJTYG.js                   [39m[1m[2m 35.60 kB[22m[1m[22m[2m │ gzip:   8.29 kB[22m
+[2mout/[22m[2massets/[22m[36mTherapistModal-CC2rTRn0.js           [39m[1m[2m 35.70 kB[22m[1m[22m[2m │ gzip:   3.91 kB[22m
+[2mout/[22m[2massets/[22m[36mDashboard-DOfK-nKk.js                [39m[1m[2m 36.19 kB[22m[1m[22m[2m │ gzip:   5.07 kB[22m
+[2mout/[22m[2massets/[22m[36mclientPayload-BjVeUa8Q.js            [39m[1m[2m 39.49 kB[22m[1m[22m[2m │ gzip:   4.11 kB[22m
+[2mout/[22m[2massets/[22m[36mAuthorizations-BNg-k1h6.js           [39m[1m[2m 44.26 kB[22m[1m[22m[2m │ gzip:   5.93 kB[22m
+[2mout/[22m[2massets/[22m[36mreports-C_9qivHD.js                  [39m[1m[2m 46.26 kB[22m[1m[22m[2m │ gzip:  11.39 kB[22m
+[2mout/[22m[2massets/[22m[36mTherapistOnboardingPage-6QeMMFtb.js  [39m[1m[2m 53.42 kB[22m[1m[22m[2m │ gzip:   6.12 kB[22m
+[2mout/[22m[2massets/[22m[36mClientOnboardingPage-f51B4DjD.js     [39m[1m[2m 57.35 kB[22m[1m[22m[2m │ gzip:   6.39 kB[22m
+[2mout/[22m[2massets/[22m[36mtypes-DsT5WkpL.js                    [39m[1m[2m 65.07 kB[22m[1m[22m[2m │ gzip:  15.28 kB[22m
+[2mout/[22m[2massets/[22m[36mSchedule-Bk7lVb0L.js                 [39m[1m[2m 96.90 kB[22m[1m[22m[2m │ gzip:  15.45 kB[22m
+[2mout/[22m[2massets/[22m[36mTherapistDetails-BpSvm5ct.js         [39m[1m[2m104.58 kB[22m[1m[22m[2m │ gzip:  12.17 kB[22m
+[2mout/[22m[2massets/[22m[36mMonitoringDashboard-w47hy_n7.js      [39m[1m[2m107.58 kB[22m[1m[22m[2m │ gzip:  15.48 kB[22m
+[2mout/[22m[2massets/[22m[36msupabase-BgfCgt6W.js                 [39m[1m[2m124.30 kB[22m[1m[22m[2m │ gzip:  34.31 kB[22m
+[2mout/[22m[2massets/[22m[36mClientDetails-DJ_kOMwz.js            [39m[1m[2m149.53 kB[22m[1m[22m[2m │ gzip:  16.75 kB[22m
+[2mout/[22m[2massets/[22m[36mSettings-BORwSvF2.js                 [39m[1m[2m174.97 kB[22m[1m[22m[2m │ gzip:  16.94 kB[22m
+[2mout/[22m[2massets/[22m[36mvendor-JqVOJ869.js                   [39m[1m[2m661.07 kB[22m
+[32m✓ built in 12.50s[39m
+[preview] Build completed. Assets available at /workspace/AllIincompassing/out.
+[preview] Baseline preview URL: http://127.0.0.1:4173

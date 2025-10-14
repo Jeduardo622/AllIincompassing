@@ -1,5 +1,0 @@
--- Admin domain RLS improvements (outline only)
--- * Update admin_actions policy to allow SELECT to admins within same organization and super admins; enforce INSERT WITH CHECK so actor org matches payload.
--- * Harden billing_records policy so only finance role or super admins can read totals; admins should see redacted sums.
--- * Add policy on admin_invite_tokens to prevent non-super admins from inserting invites targeting other organizations.
--- * Introduce security definer wrapper for get_dashboard_data to enforce organization_id filter per caller.

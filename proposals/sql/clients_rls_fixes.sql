@@ -1,6 +1,0 @@
--- Clients domain RLS remediation plan (outline only)
--- * Ensure public.clients policy enforces organization match:
---   ALTER POLICY client_roster_access ON public.clients USING (organization_id = app.current_user_organization_id());
--- * Add WITH CHECK policy for inserts via `create_client` to require matching organization_id and creator role in ('admin','super_admin').
--- * Introduce RLS on admin_invite_tokens limiting select/insert/update to admins within same organization or super admins.
--- * Audit `user_has_role_for_org` RPC to confirm it respects soft-deleted users before returning true.

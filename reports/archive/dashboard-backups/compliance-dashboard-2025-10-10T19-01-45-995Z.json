@@ -1,0 +1,87 @@
+{
+  "generatedAt": "2025-10-10T19:01:45.995Z",
+  "source": {
+    "routeAuditReport": "./reports/evidence/route-audit-report-2025-10-09T20-01-26-211Z.json",
+    "previewSmokeLog": "./reports/evidence/preview-smoke-log.txt"
+  },
+  "summary": {
+    "totalRoutes": 43,
+    "routeSuccessRate": 1,
+    "averageRenderTimeMs": 694.19,
+    "slowestRoute": {
+      "path": "/login",
+      "renderTime": 944
+    }
+  },
+  "metrics": [
+    {
+      "id": "route-success-rate",
+      "title": "Route success rate",
+      "category": "route",
+      "status": "pass",
+      "value": 100,
+      "target": ">= 99%",
+      "details": [
+        "43/43 routes succeeded"
+      ]
+    },
+    {
+      "id": "average-render-time",
+      "title": "Average route render time",
+      "category": "route",
+      "status": "pass",
+      "value": 694,
+      "target": "<= 2000ms",
+      "details": [
+        "Collected from 43 routes"
+      ]
+    },
+    {
+      "id": "slow-routes",
+      "title": "Routes exceeding render-time budget",
+      "category": "route",
+      "status": "pass",
+      "value": 0,
+      "target": "0 slow routes",
+      "details": [
+        "All routes within budget"
+      ]
+    },
+    {
+      "id": "api-coverage",
+      "title": "Unique API endpoints exercised",
+      "category": "api",
+      "status": "pass",
+      "value": 1,
+      "target": ">= 1 endpoint",
+      "details": [
+        "47 total calls recorded"
+      ]
+    },
+    {
+      "id": "preview-checks",
+      "title": "Preview smoke validations",
+      "category": "preview",
+      "status": "pass",
+      "value": "4/4",
+      "target": "All smoke checks pass",
+      "details": [
+        "No issues detected"
+      ]
+    },
+    {
+      "id": "preview-supabase-auth",
+      "title": "Supabase auth health (preview)",
+      "category": "preview",
+      "status": "pass",
+      "value": "healthy",
+      "target": "Auth + anonymous access healthy",
+      "details": [
+        "Auth check: OK",
+        "Anon check: OK",
+        "Preview URL unavailable"
+      ]
+    }
+  ],
+  "alerts": []
+}

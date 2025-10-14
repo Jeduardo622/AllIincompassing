@@ -1,0 +1,1 @@
+-- Archived proposal SQL: admins_indexes.sql

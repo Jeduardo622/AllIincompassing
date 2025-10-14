@@ -1,0 +1,1 @@
+-- Archived proposal SQL: therapists_rls_fixes.sql

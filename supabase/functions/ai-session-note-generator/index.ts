@@ -1,6 +1,8 @@
 import { OpenAI } from "npm:openai@5.5.1";
 import { z } from "npm:zod@3.23.8";
 import { errorEnvelope, getRequestId, rateLimit } from "./lib/http/error.ts";
+import { createRequestClient } from "../_shared/database.ts";
+import { getUserOrThrow } from "../_shared/auth.ts";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -185,6 +187,9 @@ Deno.serve(async (req) => {
       return errorEnvelope({ requestId, code: "rate_limited", message: "Too many requests", status: 429, headers: { ...corsHeaders, "Retry-After": String(rl.retryAfter ?? 60) } });
     }
 
+    const db = createRequestClient(req);
+    const user = await getUserOrThrow(db);
+
     const startTime = Date.now();
     const body = await req.json();
     const parsed = NoteSchema.safeParse(body);
@@ -243,6 +248,23 @@ Deno.serve(async (req) => {
         total_tokens: completion.usage?.total_tokens || 0
       }
     };
+
+    // Best-effort metrics logging via RLS-scoped table
+    try {
+      await db.from('ai_performance_metrics').insert({
+        user_id: user.id,
+        function_called: 'ai-session-note-generator',
+        response_time_ms: processingTime,
+        token_usage: {
+          prompt_tokens: completion.usage?.prompt_tokens || 0,
+          completion_tokens: completion.usage?.completion_tokens || 0,
+          total_tokens: completion.usage?.total_tokens || 0
+        },
+        error_occurred: false
+      });
+    } catch (metricsErr) {
+      console.warn('Failed to record AI metrics:', metricsErr);
+    }
 
     return new Response(JSON.stringify(response), { headers: { "Content-Type": "application/json", ...corsHeaders } });
   } catch (error) {

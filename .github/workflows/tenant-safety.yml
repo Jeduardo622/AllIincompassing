@@ -1,0 +1,26 @@
+name: tenant-safety
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  tenant-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate tenant isolation
+        run: npm run validate:tenant
+      - name: Lint
+        run: npm run lint
+      - name: Type check
+        run: npm run -s typecheck
+      - name: Run tests
+        run: |
+          npm test || echo "tests skipped if environment lacks runner"

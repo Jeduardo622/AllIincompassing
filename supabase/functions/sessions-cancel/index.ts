@@ -3,6 +3,17 @@ import {
   createSupabaseIdempotencyService,
   IdempotencyConflictError,
 } from "../_shared/idempotency.ts";
+import { evaluateTherapistAuthorization } from "../_shared/authorization.ts";
+import {
+  requireOrg,
+  assertUserHasOrgRole,
+  orgScopedQuery,
+  MissingOrgContextError,
+  ForbiddenError,
+} from "../_shared/org.ts";
+import { getLogger, type Logger } from "../_shared/logging.ts";
+import { increment } from "../_shared/metrics.ts";
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,8 +30,9 @@ interface CancelPayload {
 }
 
 interface SessionRecord {
-  id?: unknown;
-  status?: unknown;
+  id: string;
+  status: string;
+  therapist_id: string | null;
 }
 
 interface SessionCancellationSummary {
@@ -29,6 +41,14 @@ interface SessionCancellationSummary {
   totalCount: number;
   cancelledSessionIds: string[];
   alreadyCancelledSessionIds: string[];
+}
+
+class BadRequestError extends Error {
+  status = 400;
+  constructor(message: string) {
+    super(message);
+    this.name = "BadRequestError";
+  }
 }
 
 function jsonResponse(
@@ -46,9 +66,8 @@ function jsonResponse(
   });
 }
 
-async function ensureAuthenticated(req: Request) {
-  const client = createRequestClient(req);
-  const { data, error } = await client.auth.getUser();
+async function ensureAuthenticated(db: SupabaseClient) {
+  const { data, error } = await db.auth.getUser();
   if (error || !data?.user) {
     throw jsonResponse({ success: false, error: "Unauthorized" }, 401);
   }
@@ -59,17 +78,8 @@ function normalizeRole(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
   }
-
-  const normalized = value.trim().toLowerCase();
-  return normalized.length > 0 ? normalized : null;
-}
-
-function isAdminRole(role: string | null): boolean {
-  return role === "admin" || role === "super_admin";
-}
-
-function isTherapistRole(role: string | null): boolean {
-  return role === "therapist";
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function normalizeSessionIds(value: unknown): string[] {
@@ -78,16 +88,9 @@ function normalizeSessionIds(value: unknown): string[] {
   }
 
   const seen = new Set<string>();
-  for (const item of value) {
-    let normalized = "";
-    if (typeof item === "string") {
-      normalized = item.trim();
-    } else if (typeof item === "number" || typeof item === "bigint") {
-      normalized = String(item);
-    }
-
-    if (normalized.length > 0) {
-      seen.add(normalized);
+  for (const candidate of value) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      seen.add(candidate.trim());
     }
   }
 
@@ -104,95 +107,284 @@ function buildDateRange(value: unknown): { start: string; end: string } | null {
     return null;
   }
 
-  const [yearStr, monthStr, dayStr] = trimmed.split("-");
-  const year = Number(yearStr);
-  const month = Number(monthStr);
-  const day = Number(dayStr);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (
-    Number.isNaN(date.getTime()) ||
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== month - 1 ||
-    date.getUTCDate() !== day
-  ) {
-    return null;
-  }
-
-  const canonical = `${yearStr}-${monthStr}-${dayStr}`;
-  return {
-    start: `${canonical}T00:00:00`,
-    end: `${canonical}T23:59:59.999`,
-  };
+  const start = `${trimmed}T00:00:00`;
+  const end = `${trimmed}T23:59:59.999`;
+  return { start, end };
 }
 
-function normalizeTherapistId(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
+function parseCancelPayload(input: unknown): {
+  holdKey: string | null;
+  sessionIds: string[];
+  dateRange: { start: string; end: string } | null;
+  therapistId: string | null;
+  reason: string | null;
+} {
+  if (typeof input !== "object" || input === null) {
+    throw new BadRequestError("Invalid request payload");
   }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
+
+  const payload = input as CancelPayload;
+
+  const holdKey =
+    typeof payload.hold_key === "string" && payload.hold_key.trim().length > 0
+      ? payload.hold_key.trim()
+      : null;
+
+  const sessionIds = normalizeSessionIds(payload.session_ids);
+  const dateRange = buildDateRange(payload.date);
+  const therapistId =
+    typeof payload.therapist_id === "string" && payload.therapist_id.trim().length > 0
+      ? payload.therapist_id.trim()
+      : null;
+  const reason =
+    typeof payload.reason === "string" && payload.reason.trim().length > 0
+      ? payload.reason.trim()
+      : null;
+
+  if (!holdKey && sessionIds.length === 0 && !dateRange) {
+    throw new BadRequestError("Must provide hold_key, session_ids, or date");
+  }
+
+  return { holdKey, sessionIds, dateRange, therapistId, reason };
 }
 
-function normalizeReason(value: unknown): string | null | undefined {
-  if (value === undefined) {
-    return undefined;
+async function ensureRoleForCancellation(
+  db: SupabaseClient,
+  orgId: string,
+  role: string | null,
+  userId: string,
+): Promise<boolean> {
+  if (!role) {
+    return false;
   }
 
-  if (value === null) {
-    return null;
+  if (role === "super_admin") {
+    if (await assertUserHasOrgRole(db, orgId, "super_admin")) {
+      return true;
+    }
+    return assertUserHasOrgRole(db, orgId, "admin");
   }
 
-  if (typeof value === "string") {
-    return value;
+  if (role === "admin") {
+    return assertUserHasOrgRole(db, orgId, "admin");
   }
 
-  if (typeof value === "number" || typeof value === "bigint") {
-    return String(value);
+  if (role === "therapist") {
+    return assertUserHasOrgRole(db, orgId, "therapist", { targetTherapistId: userId });
   }
 
-  return undefined;
+  return false;
 }
 
-function parseSessionRecords(data: SessionRecord[] | null): { id: string; status: string }[] {
-  if (!data) {
-    return [];
+async function handleHoldRelease(
+  db: SupabaseClient,
+  orgId: string,
+  holdKey: string,
+  userId: string,
+  role: string | null,
+  logger: Logger,
+) {
+  logger.info("hold.release.requested", { holdKey });
+
+  const { data: hold, error } = await orgScopedQuery(db, "session_holds", orgId)
+    .select("id, therapist_id, client_id, start_time, end_time, expires_at")
+    .eq("hold_key", holdKey)
+    .maybeSingle();
+  increment("org_scoped_query_total", {
+    function: "sessions-cancel",
+    orgId,
+    target: "session_holds",
+  });
+
+  if (error) {
+    logger.error("hold.lookup.error", { error: error.message ?? "unknown" });
+    throw new Error("Failed to release session hold");
   }
 
-  const parsed: { id: string; status: string }[] = [];
-  for (const record of data) {
-    const id = typeof record.id === "string" ? record.id : record.id != null ? String(record.id) : "";
-    const status = typeof record.status === "string" ? record.status : record.status != null ? String(record.status) : "";
+  if (!hold) {
+    logger.warn("hold.scope.denied", { holdKey });
+    increment("tenant_denial_total", {
+      function: "sessions-cancel",
+      orgId,
+      reason: "hold-not-found",
+    });
+    throw new ForbiddenError("Hold not found or scope denied");
+  }
 
-    if (id.length === 0) {
-      continue;
+  if (role === "therapist" && hold.therapist_id !== userId) {
+    logger.warn("hold.scope.denied", {
+      holdKey,
+      reason: "therapist-mismatch",
+      owner: hold.therapist_id,
+    });
+    increment("tenant_denial_total", {
+      function: "sessions-cancel",
+      orgId,
+      reason: "therapist-mismatch",
+    });
+    throw new ForbiddenError("Forbidden");
+  }
+
+  const { data: deleted, error: deleteError } = await db
+    .from("session_holds")
+    .delete()
+    .eq("id", hold.id)
+    .eq("organization_id", orgId)
+    .select("id, hold_key, therapist_id, client_id, start_time, end_time, expires_at")
+    .maybeSingle();
+
+  if (deleteError) {
+    logger.error("hold.release.failed", { holdKey, error: deleteError.message ?? "unknown" });
+    throw new Error(deleteError.message ?? "Failed to release hold");
+  }
+
+  logger.info("hold.released", { holdKey });
+  increment("session_cancel_success_total", {
+    function: "sessions-cancel",
+    orgId,
+    mode: "hold-release",
+  });
+
+  return respondSuccess({
+    released: true,
+    hold: deleted ?? hold,
+  });
+}
+
+function respondSuccess(data: Record<string, unknown>) {
+  return jsonResponse({ success: true, data });
+}
+
+async function handleSessionCancellation(
+  db: SupabaseClient,
+  orgId: string,
+  payload: {
+    sessionIds: string[];
+    dateRange: { start: string; end: string } | null;
+    therapistId: string | null;
+    reason: string | null;
+  },
+  userId: string,
+  role: string | null,
+  logger: Logger,
+) {
+  let query = orgScopedQuery(db, "sessions", orgId)
+    .select("id, status, therapist_id")
+    .order("start_time", { ascending: true });
+
+  if (payload.sessionIds.length > 0) {
+    query = query.in("id", payload.sessionIds);
+  }
+
+  if (payload.dateRange) {
+    query = query
+      .gte("start_time", payload.dateRange.start)
+      .lt("start_time", payload.dateRange.end);
+  }
+
+  if (payload.therapistId) {
+    query = query.eq("therapist_id", payload.therapistId);
+  }
+
+  if (role === "therapist") {
+    query = query.eq("therapist_id", userId);
+  }
+
+  const { data, error } = await query;
+  increment("org_scoped_query_total", {
+    function: "sessions-cancel",
+    orgId,
+    operation: "fetch-sessions",
+  });
+  if (error) {
+    logger.error("session.fetch.error", { error: error.message ?? "unknown" });
+    throw new Error(error.message ?? "Failed to load sessions");
+  }
+
+  const sessions = (data ?? []) as SessionRecord[];
+
+  if (payload.sessionIds.length > 0) {
+    const fetchedIds = new Set(sessions.map(session => session.id));
+    if (fetchedIds.size !== payload.sessionIds.length) {
+      logger.warn("session.scope.denied", {
+        targetSessionIds: payload.sessionIds,
+        reason: "session-scope-mismatch",
+      });
+      increment("tenant_denial_total", {
+        function: "sessions-cancel",
+        orgId,
+        reason: "session-scope-mismatch",
+      });
+      throw new ForbiddenError("Forbidden");
+    }
+  }
+
+  if (sessions.length === 0) {
+    logger.info("session.cancel.noop", { reason: "no-sessions" });
+    return respondSuccess({
+      summary: {
+        cancelledCount: 0,
+        alreadyCancelledCount: 0,
+        totalCount: 0,
+        cancelledSessionIds: [],
+        alreadyCancelledSessionIds: [],
+      } satisfies SessionCancellationSummary,
+    });
+  }
+
+  const cancellableIds = sessions
+    .filter(session => session.status !== "cancelled")
+    .map(session => session.id);
+
+  if (cancellableIds.length > 0) {
+    const updates: Record<string, unknown> = {
+      status: "cancelled",
+      updated_by: userId,
+    };
+    if (payload.reason) {
+      updates.notes = payload.reason;
     }
 
-    parsed.push({ id, status });
-  }
+    let updateQuery = db
+      .from("sessions")
+      .update(updates)
+      .in("id", cancellableIds)
+      .select("id");
 
-  return parsed;
-}
+    if (role === "therapist") {
+      updateQuery = updateQuery.eq("therapist_id", userId);
+    }
 
-function summarizeCancellation(
-  matched: { id: string; status: string }[],
-  cancelledIds: string[],
-): SessionCancellationSummary {
-  const cancelledSet = new Set(cancelledIds);
-  const alreadyCancelled: string[] = [];
-
-  for (const session of matched) {
-    if (session.status === "cancelled" && !cancelledSet.has(session.id)) {
-      alreadyCancelled.push(session.id);
+    const { error: updateError } = await updateQuery.eq("organization_id", orgId);
+    if (updateError) {
+      throw new Error(updateError.message ?? "Failed to cancel sessions");
     }
   }
 
-  return {
-    cancelledCount: cancelledIds.length,
-    alreadyCancelledCount: alreadyCancelled.length,
-    totalCount: matched.length,
-    cancelledSessionIds: cancelledIds,
-    alreadyCancelledSessionIds: alreadyCancelled,
+  const alreadyCancelledIds = sessions
+    .filter(session => session.status === "cancelled")
+    .map(session => session.id);
+
+  const summary: SessionCancellationSummary = {
+    cancelledCount: cancellableIds.length,
+    alreadyCancelledCount: alreadyCancelledIds.length,
+    totalCount: sessions.length,
+    cancelledSessionIds: cancellableIds,
+    alreadyCancelledSessionIds: alreadyCancelledIds,
   };
+
+  logger.info("session.cancel.completed", {
+    cancelledCount: summary.cancelledCount,
+    alreadyCancelledCount: summary.alreadyCancelledCount,
+  });
+  increment("session_cancel_success_total", {
+    function: "sessions-cancel",
+    orgId,
+    mode: "cancel",
+    cancelled: summary.cancelledCount,
+  });
+
+  return respondSuccess({ summary });
 }
 
 Deno.serve(async (req) => {
@@ -204,8 +396,16 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: "Method not allowed" }, 405);
   }
 
+  const db = createRequestClient(req);
+  const baseLogger = getLogger(req, { functionName: "sessions-cancel" });
+  let userLogger: Logger = baseLogger;
+  let scopedLogger: Logger | null = null;
+  let currentOrgId: string | null = null;
+
   try {
-    const user = await ensureAuthenticated(req);
+    const user = await ensureAuthenticated(db);
+    userLogger = baseLogger.with({ userId: user.id });
+    userLogger.info("request.authenticated");
     const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
     const normalizedKey = idempotencyKey.length > 0 ? idempotencyKey : null;
     const idempotencyService = createSupabaseIdempotencyService(supabaseAdmin);
@@ -221,202 +421,124 @@ Deno.serve(async (req) => {
       }
     }
 
-    const respond = async (body: Record<string, unknown>, status: number = 200) => {
-      if (!normalizedKey) {
-        return jsonResponse(body, status);
-      }
+    const orgId = await requireOrg(db);
+    currentOrgId = orgId;
+    scopedLogger = userLogger.with({ orgId });
+    scopedLogger.info("request.org-scoped");
 
-      try {
-        await idempotencyService.persist(normalizedKey, "sessions-cancel", body, status);
-      } catch (error) {
-        if (error instanceof IdempotencyConflictError) {
-          return jsonResponse({ success: false, error: error.message }, 409);
-        }
-        throw error;
-      }
-
-      return jsonResponse(body, status, { "Idempotency-Key": normalizedKey });
-    };
-
-    const payload = await req.json() as CancelPayload;
-
-    const { data: profile, error: profileError } = await supabaseAdmin
+    const { data: profile, error: profileError } = await db
       .from("profiles")
       .select("role")
       .eq("id", user.id)
       .maybeSingle();
 
     if (profileError) {
-      console.error("sessions-cancel profile lookup error", profileError);
-      return respond({
-        success: false,
-        error: profileError.message ?? "Failed to determine user role",
-      }, 500);
+      throw new Error(profileError.message ?? "Failed to resolve user role");
     }
 
-    const profileRecord = profile as Record<string, unknown> | null;
-    const role = normalizeRole(profileRecord?.role);
-    const isAdmin = isAdminRole(role);
-    const isTherapist = isTherapistRole(role);
-
-    if (!isAdmin && !isTherapist) {
-      return respond({ success: false, error: "Forbidden" }, 403);
-    }
-
-    if (payload?.hold_key) {
-      const holdKey = typeof payload.hold_key === "string" ? payload.hold_key.trim() : "";
-      if (holdKey.length === 0) {
-        return respond({ success: false, error: "Missing required fields" }, 400);
-      }
-
-      let holdQuery = supabaseAdmin
-        .from("session_holds")
-        .delete()
-        .eq("hold_key", holdKey);
-
-      if (isTherapist) {
-        holdQuery = holdQuery.eq("therapist_id", user.id);
-      }
-
-      const { data, error } = await holdQuery
-        .select("id, hold_key, therapist_id, client_id, start_time, end_time, expires_at")
-        .maybeSingle();
-
-      if (error) {
-        console.error("sessions-cancel delete hold error", error);
-        return respond({ success: false, error: error.message ?? "Failed to cancel hold" }, 500);
-      }
-
-      if (!data) {
-        return respond({ success: true, data: { released: false } });
-      }
-
-      const hold = data as Record<string, unknown>;
-
-      return respond({
-        success: true,
-        data: {
-          released: true,
-          hold: {
-            id: String(hold.id ?? ""),
-            holdKey: String(hold.hold_key ?? ""),
-            therapistId: String(hold.therapist_id ?? ""),
-            clientId: String(hold.client_id ?? ""),
-            startTime: String(hold.start_time ?? ""),
-            endTime: String(hold.end_time ?? ""),
-            expiresAt: String(hold.expires_at ?? ""),
-          },
-        },
+    const role = normalizeRole(profile?.role);
+    const roleAllowed = await ensureRoleForCancellation(db, orgId, role, user.id);
+    if (!roleAllowed) {
+      const denialLogger = scopedLogger ?? userLogger;
+      denialLogger.warn("authorization.denied", { reason: "role-denied" });
+      increment("tenant_denial_total", {
+        function: "sessions-cancel",
+        orgId,
+        reason: "role-denied",
       });
+      throw new ForbiddenError("Forbidden");
     }
 
-    const sessionIds = normalizeSessionIds(payload?.session_ids);
-    const dateRange = buildDateRange(payload?.date);
-    const therapistId = normalizeTherapistId(payload?.therapist_id);
-    const reason = normalizeReason(payload?.reason);
+    const payload = parseCancelPayload(await req.json());
 
-    if (isTherapist && therapistId && therapistId !== user.id) {
-      return respond({ success: false, error: "Forbidden" }, 403);
-    }
-
-    if (isTherapist && sessionIds.length > 0) {
-      const { data: ownershipData, error: ownershipError } = await supabaseAdmin
-        .from("sessions")
-        .select("id")
-        .eq("therapist_id", user.id)
-        .in("id", sessionIds);
-
-      if (ownershipError) {
-        console.error("sessions-cancel ownership check error", ownershipError);
-        return respond({
-          success: false,
-          error: ownershipError.message ?? "Failed to verify sessions",
-        }, 500);
+    if (payload.therapistId) {
+      const authorization = await evaluateTherapistAuthorization(db, payload.therapistId);
+      if (!authorization.ok) {
+        const denyLogger = scopedLogger ?? userLogger;
+        denyLogger.warn("authorization.denied", {
+          reason: "therapist-authorization-failed",
+          therapistId: payload.therapistId,
+        });
+        increment("tenant_denial_total", {
+          function: "sessions-cancel",
+          orgId,
+          reason: "therapist-authorization",
+        });
+        return jsonResponse(authorization.failure.body, authorization.failure.status);
       }
+    }
 
-      const ownedIds = new Set(
-        parseSessionRecords(ownershipData as SessionRecord[] | null).map((session) => session.id),
+    const activeLogger = scopedLogger ?? userLogger;
+
+    let response: Response;
+    if (payload.holdKey) {
+      response = await handleHoldRelease(db, orgId, payload.holdKey, user.id, role, activeLogger);
+    } else {
+      response = await handleSessionCancellation(
+        db,
+        orgId,
+        {
+          sessionIds: payload.sessionIds,
+          dateRange: payload.dateRange,
+          therapistId: payload.therapistId,
+          reason: payload.reason,
+        },
+        user.id,
+        role,
+        activeLogger,
       );
+    }
 
-      if (ownedIds.size !== sessionIds.length) {
-        return respond({ success: false, error: "Forbidden" }, 403);
+    if (normalizedKey) {
+      try {
+        const body = (await response.clone().json()) as Record<string, unknown>;
+        await idempotencyService.persist(normalizedKey, "sessions-cancel", body, response.status);
+      } catch (error) {
+        if (error instanceof IdempotencyConflictError) {
+          return jsonResponse({ success: false, error: error.message }, 409);
+        }
+        throw error;
       }
     }
 
-    if (sessionIds.length === 0 && !dateRange) {
-      return respond({ success: false, error: "Must provide session_ids or date" }, 400);
-    }
-
-    const targetTherapistId = isTherapist ? user.id : therapistId;
-
-    let selectQuery = supabaseAdmin.from("sessions");
-    if (sessionIds.length > 0) {
-      selectQuery = selectQuery.in("id", sessionIds);
-    }
-    if (dateRange) {
-      selectQuery = selectQuery
-        .gte("start_time", dateRange.start)
-        .lt("start_time", dateRange.end);
-    }
-    if (targetTherapistId) {
-      selectQuery = selectQuery.eq("therapist_id", targetTherapistId);
-    }
-
-    const { data: matchedSessions, error: fetchError } = await selectQuery.select("id, status");
-
-    if (fetchError) {
-      console.error("sessions-cancel fetch sessions error", fetchError);
-      return respond({ success: false, error: fetchError.message ?? "Failed to load sessions" }, 500);
-    }
-
-    const parsedSessions = parseSessionRecords(matchedSessions as SessionRecord[] | null);
-
-    if (parsedSessions.length === 0) {
-      const summary = summarizeCancellation(parsedSessions, []);
-      return respond({ success: true, data: summary });
-    }
-
-    const cancellableIds = parsedSessions
-      .filter((session) => session.status !== "cancelled")
-      .map((session) => session.id);
-
-    let cancelledIds: string[] = [];
-
-    if (cancellableIds.length > 0) {
-      const updates: Record<string, unknown> = { status: "cancelled", updated_by: user.id };
-      if (reason !== undefined) {
-        updates.notes = reason;
-      }
-
-      let updateQuery = supabaseAdmin
-        .from("sessions")
-        .update(updates)
-        .in("id", cancellableIds);
-
-      if (targetTherapistId) {
-        updateQuery = updateQuery.eq("therapist_id", targetTherapistId);
-      }
-
-      const { data: updated, error: updateError } = await updateQuery.select("id");
-
-      if (updateError) {
-        console.error("sessions-cancel update error", updateError);
-        return respond({ success: false, error: updateError.message ?? "Failed to cancel sessions" }, 500);
-      }
-
-      if (Array.isArray(updated)) {
-        cancelledIds = updated
-          .map((row) => (typeof row.id === "string" ? row.id : row.id != null ? String(row.id) : ""))
-          .filter((id) => id.length > 0);
-      }
-    }
-
-    const summary = summarizeCancellation(parsedSessions, cancelledIds);
-    return respond({ success: true, data: summary });
+    activeLogger.info("request.completed");
+    return response;
   } catch (error) {
-    if (error instanceof Response) return error;
-    console.error("sessions-cancel error", error);
-    const message = error instanceof Error ? error.message : "Internal server error";
-    return jsonResponse({ success: false, error: message }, 500);
+    const errorLogger = scopedLogger ?? userLogger ?? baseLogger;
+    if (error instanceof MissingOrgContextError) {
+      errorLogger.warn("request.denied", { reason: "missing-org-context" });
+      increment("tenant_denial_total", {
+        function: "sessions-cancel",
+        reason: "missing-org",
+      });
+      return jsonResponse({ success: false, error: error.message }, 403);
+    }
+
+    if (error instanceof ForbiddenError) {
+      errorLogger.warn("request.denied", { reason: error.message });
+      increment("tenant_denial_total", {
+        function: "sessions-cancel",
+        orgId: currentOrgId ?? undefined,
+        reason: "forbidden-error",
+      });
+      return jsonResponse({ success: false, error: error.message }, 403);
+    }
+
+    if (error instanceof BadRequestError) {
+      return jsonResponse({ success: false, error: error.message }, error.status);
+    }
+
+    if (error instanceof Response) {
+      return error;
+    }
+
+    errorLogger.error("request.failed", { error: (error as Error).message ?? "unknown" });
+    return jsonResponse({ success: false, error: "Internal server error" }, 500);
   }
 });
+
+export const __TESTING__ = {
+  handleSessionCancellation,
+  handleHoldRelease,
+  parseCancelPayload,
+};

@@ -46,6 +46,7 @@
     "ci:secrets": "tsx scripts/check-secrets.ts",
     "ci:check-focused": "node scripts/ci/check-focused-tests.mjs",
     "ci:verify-coverage": "node scripts/ci/verify-coverage.mjs",
+    "validate:tenant": "npx tsx scripts/check-tenant-safety.ts",
     "prepare": "husky"
   },
   "dependencies": {

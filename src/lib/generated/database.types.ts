@@ -666,8 +666,6 @@ export type Database = {
           notes: string | null
           one_to_one_units: number | null
           organization_id: string | null
-          updated_at: string
-          updated_by: string | null
           parent_consult_units: number | null
           parent1_email: string | null
           parent1_first_name: string | null
@@ -689,6 +687,8 @@ export type Database = {
           status: string
           supervision_units: number | null
           unscheduled_hours: number | null
+          updated_at: string
+          updated_by: string | null
           zip_code: string | null
         }
         Insert: {
@@ -726,8 +726,6 @@ export type Database = {
           notes?: string | null
           one_to_one_units?: number | null
           organization_id?: string | null
-          updated_at?: string
-          updated_by?: string | null
           parent_consult_units?: number | null
           parent1_email?: string | null
           parent1_first_name?: string | null
@@ -749,6 +747,8 @@ export type Database = {
           status?: string
           supervision_units?: number | null
           unscheduled_hours?: number | null
+          updated_at?: string
+          updated_by?: string | null
           zip_code?: string | null
         }
         Update: {
@@ -786,8 +786,6 @@ export type Database = {
           notes?: string | null
           one_to_one_units?: number | null
           organization_id?: string | null
-          updated_at?: string
-          updated_by?: string | null
           parent_consult_units?: number | null
           parent1_email?: string | null
           parent1_first_name?: string | null
@@ -809,6 +807,8 @@ export type Database = {
           status?: string
           supervision_units?: number | null
           unscheduled_hours?: number | null
+          updated_at?: string
+          updated_by?: string | null
           zip_code?: string | null
         }
         Relationships: []
@@ -927,6 +927,42 @@ export type Database = {
         }
         Relationships: []
       }
+      cpt_codes: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          is_active: boolean
+          long_description: string | null
+          service_setting: string | null
+          short_description: string
+          typical_duration_minutes: number | null
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          long_description?: string | null
+          service_setting?: string | null
+          short_description: string
+          typical_duration_minutes?: number | null
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          long_description?: string | null
+          service_setting?: string | null
+          short_description?: string
+          typical_duration_minutes?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       db_performance_metrics: {
         Row: {
           cache_hit: boolean | null
@@ -1014,45 +1050,6 @@ export type Database = {
           url?: string | null
           user_agent?: string | null
           user_id?: string | null
-        }
-        Relationships: []
-      }
-      file_cabinet_settings: {
-        Row: {
-          allowed_file_types: string[] | null
-          category_name: string
-          created_at: string | null
-          description: string | null
-          id: string
-          is_active: boolean | null
-          max_file_size_mb: number | null
-          requires_signature: boolean | null
-          retention_period_days: number | null
-          updated_at: string | null
-        }
-        Insert: {
-          allowed_file_types?: string[] | null
-          category_name: string
-          created_at?: string | null
-          description?: string | null
-          id?: string
-          is_active?: boolean | null
-          max_file_size_mb?: number | null
-          requires_signature?: boolean | null
-          retention_period_days?: number | null
-          updated_at?: string | null
-        }
-        Update: {
-          allowed_file_types?: string[] | null
-          category_name?: string
-          created_at?: string | null
-          description?: string | null
-          id?: string
-          is_active?: boolean | null
-          max_file_size_mb?: number | null
-          requires_signature?: boolean | null
-          retention_period_days?: number | null
-          updated_at?: string | null
         }
         Relationships: []
       }
@@ -1147,6 +1144,213 @@ export type Database = {
           metadata?: Json | null
           updated_at?: string
           updated_by?: string | null
+        }
+        Relationships: []
+      }
+      file_cabinet_settings: {
+        Row: {
+          allowed_file_types: string[] | null
+          category_name: string
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          max_file_size_mb: number | null
+          requires_signature: boolean | null
+          retention_period_days: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          allowed_file_types?: string[] | null
+          category_name: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_file_size_mb?: number | null
+          requires_signature?: boolean | null
+          retention_period_days?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          allowed_file_types?: string[] | null
+          category_name?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_file_size_mb?: number | null
+          requires_signature?: boolean | null
+          retention_period_days?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      function_performance_logs: {
+        Row: {
+          executed_at: string | null
+          executed_by: string | null
+          execution_time_ms: number
+          function_name: string
+          id: string
+          parameters: Json | null
+          result_size: number | null
+        }
+        Insert: {
+          executed_at?: string | null
+          executed_by?: string | null
+          execution_time_ms: number
+          function_name: string
+          id?: string
+          parameters?: Json | null
+          result_size?: number | null
+        }
+        Update: {
+          executed_at?: string | null
+          executed_by?: string | null
+          execution_time_ms?: number
+          function_name?: string
+          id?: string
+          parameters?: Json | null
+          result_size?: number | null
+        }
+        Relationships: []
+      }
+      impersonation_audit: {
+        Row: {
+          actor_ip: unknown | null
+          actor_organization_id: string
+          actor_user_agent: string | null
+          actor_user_id: string
+          created_at: string
+          expires_at: string
+          id: string
+          issued_at: string
+          reason: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          target_organization_id: string
+          target_user_id: string
+          token_jti: string
+        }
+        Insert: {
+          actor_ip?: unknown | null
+          actor_organization_id: string
+          actor_user_agent?: string | null
+          actor_user_id: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          issued_at?: string
+          reason?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          target_organization_id: string
+          target_user_id: string
+          token_jti: string
+        }
+        Update: {
+          actor_ip?: unknown | null
+          actor_organization_id?: string
+          actor_user_agent?: string | null
+          actor_user_id?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          issued_at?: string
+          reason?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          target_organization_id?: string
+          target_user_id?: string
+          token_jti?: string
+        }
+        Relationships: []
+      }
+      insurance_providers: {
+        Row: {
+          contact_phone: string | null
+          created_at: string | null
+          fax: string | null
+          id: string
+          name: string
+          type: string
+          updated_at: string | null
+          website: string | null
+        }
+        Insert: {
+          contact_phone?: string | null
+          created_at?: string | null
+          fax?: string | null
+          id?: string
+          name: string
+          type: string
+          updated_at?: string | null
+          website?: string | null
+        }
+        Update: {
+          contact_phone?: string | null
+          created_at?: string | null
+          fax?: string | null
+          id?: string
+          name?: string
+          type?: string
+          updated_at?: string | null
+          website?: string | null
+        }
+        Relationships: []
+      }
+      locations: {
+        Row: {
+          address_line1: string | null
+          address_line2: string | null
+          city: string | null
+          created_at: string | null
+          email: string | null
+          fax: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          operating_hours: Json | null
+          phone: string | null
+          state: string | null
+          type: string
+          updated_at: string | null
+          zip_code: string | null
+        }
+        Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          created_at?: string | null
+          email?: string | null
+          fax?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          operating_hours?: Json | null
+          phone?: string | null
+          state?: string | null
+          type: string
+          updated_at?: string | null
+          zip_code?: string | null
+        }
+        Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          created_at?: string | null
+          email?: string | null
+          fax?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          operating_hours?: Json | null
+          phone?: string | null
+          state?: string | null
+          type?: string
+          updated_at?: string | null
+          zip_code?: string | null
         }
         Relationships: []
       }
@@ -1270,150 +1474,6 @@ export type Database = {
         }
         Relationships: []
       }
-      plans: {
-        Row: {
-          code: string
-          created_at: string
-          description: string | null
-          is_active: boolean
-          name: string
-          updated_at: string
-        }
-        Insert: {
-          code: string
-          created_at?: string
-          description?: string | null
-          is_active?: boolean
-          name: string
-          updated_at?: string
-        }
-        Update: {
-          code?: string
-          created_at?: string
-          description?: string | null
-          is_active?: boolean
-          name?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      function_performance_logs: {
-        Row: {
-          executed_at: string | null
-          executed_by: string | null
-          execution_time_ms: number
-          function_name: string
-          id: string
-          parameters: Json | null
-          result_size: number | null
-        }
-        Insert: {
-          executed_at?: string | null
-          executed_by?: string | null
-          execution_time_ms: number
-          function_name: string
-          id?: string
-          parameters?: Json | null
-          result_size?: number | null
-        }
-        Update: {
-          executed_at?: string | null
-          executed_by?: string | null
-          execution_time_ms?: number
-          function_name?: string
-          id?: string
-          parameters?: Json | null
-          result_size?: number | null
-        }
-        Relationships: []
-      }
-      insurance_providers: {
-        Row: {
-          contact_phone: string | null
-          created_at: string | null
-          fax: string | null
-          id: string
-          name: string
-          type: string
-          updated_at: string | null
-          website: string | null
-        }
-        Insert: {
-          contact_phone?: string | null
-          created_at?: string | null
-          fax?: string | null
-          id?: string
-          name: string
-          type: string
-          updated_at?: string | null
-          website?: string | null
-        }
-        Update: {
-          contact_phone?: string | null
-          created_at?: string | null
-          fax?: string | null
-          id?: string
-          name?: string
-          type?: string
-          updated_at?: string | null
-          website?: string | null
-        }
-        Relationships: []
-      }
-      locations: {
-        Row: {
-          address_line1: string | null
-          address_line2: string | null
-          city: string | null
-          created_at: string | null
-          email: string | null
-          fax: string | null
-          id: string
-          is_active: boolean | null
-          name: string
-          operating_hours: Json | null
-          phone: string | null
-          state: string | null
-          type: string
-          updated_at: string | null
-          zip_code: string | null
-        }
-        Insert: {
-          address_line1?: string | null
-          address_line2?: string | null
-          city?: string | null
-          created_at?: string | null
-          email?: string | null
-          fax?: string | null
-          id?: string
-          is_active?: boolean | null
-          name: string
-          operating_hours?: Json | null
-          phone?: string | null
-          state?: string | null
-          type: string
-          updated_at?: string | null
-          zip_code?: string | null
-        }
-        Update: {
-          address_line1?: string | null
-          address_line2?: string | null
-          city?: string | null
-          created_at?: string | null
-          email?: string | null
-          fax?: string | null
-          id?: string
-          is_active?: boolean | null
-          name?: string
-          operating_hours?: Json | null
-          phone?: string | null
-          state?: string | null
-          type?: string
-          updated_at?: string | null
-          zip_code?: string | null
-        }
-        Relationships: []
-      }
       performance_alerts: {
         Row: {
           alert_type: string
@@ -1495,12 +1555,37 @@ export type Database = {
         }
         Relationships: []
       }
+      plans: {
+        Row: {
+          code: string
+          created_at: string
+          description: string | null
+          is_active: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description?: string | null
+          is_active?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          description?: string | null
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
           created_at: string | null
-          deleted_at: string | null
-          deleted_by: string | null
           email: string
           first_name: string | null
           full_name: string | null
@@ -1517,8 +1602,6 @@ export type Database = {
         Insert: {
           avatar_url?: string | null
           created_at?: string | null
-          deleted_at?: string | null
-          deleted_by?: string | null
           email: string
           first_name?: string | null
           full_name?: string | null
@@ -1535,8 +1618,6 @@ export type Database = {
         Update: {
           avatar_url?: string | null
           created_at?: string | null
-          deleted_at?: string | null
-          deleted_by?: string | null
           email?: string
           first_name?: string | null
           full_name?: string | null
@@ -1765,6 +1846,157 @@ export type Database = {
         }
         Relationships: []
       }
+      session_cpt_entries: {
+        Row: {
+          billed_minutes: number | null
+          cpt_code_id: string
+          created_at: string
+          id: string
+          is_primary: boolean
+          line_number: number
+          notes: string | null
+          organization_id: string | null
+          rate: number | null
+          session_id: string
+          units: number
+          updated_at: string
+        }
+        Insert: {
+          billed_minutes?: number | null
+          cpt_code_id: string
+          created_at?: string
+          id?: string
+          is_primary?: boolean
+          line_number?: number
+          notes?: string | null
+          organization_id?: string | null
+          rate?: number | null
+          session_id: string
+          units?: number
+          updated_at?: string
+        }
+        Update: {
+          billed_minutes?: number | null
+          cpt_code_id?: string
+          created_at?: string
+          id?: string
+          is_primary?: boolean
+          line_number?: number
+          notes?: string | null
+          organization_id?: string | null
+          rate?: number | null
+          session_id?: string
+          units?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_cpt_entries_cpt_code_id_fkey"
+            columns: ["cpt_code_id"]
+            isOneToOne: false
+            referencedRelation: "cpt_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_cpt_entries_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_cpt_modifiers: {
+        Row: {
+          modifier_id: string
+          position: number
+          session_cpt_entry_id: string
+        }
+        Insert: {
+          modifier_id: string
+          position: number
+          session_cpt_entry_id: string
+        }
+        Update: {
+          modifier_id?: string
+          position?: number
+          session_cpt_entry_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_cpt_modifiers_modifier_id_fkey"
+            columns: ["modifier_id"]
+            isOneToOne: false
+            referencedRelation: "billing_modifiers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_cpt_modifiers_session_cpt_entry_id_fkey"
+            columns: ["session_cpt_entry_id"]
+            isOneToOne: false
+            referencedRelation: "session_cpt_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_holds: {
+        Row: {
+          client_id: string
+          created_at: string
+          end_time: string
+          expires_at: string
+          hold_key: string
+          id: string
+          session_id: string | null
+          start_time: string
+          therapist_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          end_time: string
+          expires_at?: string
+          hold_key: string
+          id?: string
+          session_id?: string | null
+          start_time: string
+          therapist_id: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          end_time?: string
+          expires_at?: string
+          hold_key?: string
+          id?: string
+          session_id?: string | null
+          start_time?: string
+          therapist_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_holds_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_holds_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_holds_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       session_note_templates: {
         Row: {
           compliance_requirements: Json | null
@@ -1814,11 +2046,11 @@ export type Database = {
           created_at: string | null
           end_time: number
           id: string
+          organization_id: string | null
           session_id: string
           speaker: string
           start_time: number
           text: string
-          organization_id: string | null
         }
         Insert: {
           behavioral_markers?: Json | null
@@ -1826,11 +2058,11 @@ export type Database = {
           created_at?: string | null
           end_time: number
           id?: string
+          organization_id?: string | null
           session_id: string
           speaker: string
           start_time: number
           text: string
-          organization_id?: string | null
         }
         Update: {
           behavioral_markers?: Json | null
@@ -1838,11 +2070,11 @@ export type Database = {
           created_at?: string | null
           end_time?: number
           id?: string
+          organization_id?: string | null
           session_id?: string
           speaker?: string
           start_time?: number
           text?: string
-          organization_id?: string | null
         }
         Relationships: [
           {
@@ -1859,31 +2091,31 @@ export type Database = {
           confidence_score: number | null
           created_at: string | null
           id: string
+          organization_id: string | null
           processed_transcript: string
           raw_transcript: string
           session_id: string
           updated_at: string | null
-          organization_id: string | null
         }
         Insert: {
           confidence_score?: number | null
           created_at?: string | null
           id?: string
+          organization_id?: string | null
           processed_transcript: string
           raw_transcript: string
           session_id: string
           updated_at?: string | null
-          organization_id?: string | null
         }
         Update: {
           confidence_score?: number | null
           created_at?: string | null
           id?: string
+          organization_id?: string | null
           processed_transcript?: string
           raw_transcript?: string
           session_id?: string
           updated_at?: string | null
-          organization_id?: string | null
         }
         Relationships: [
           {
@@ -1901,11 +2133,11 @@ export type Database = {
           created_at: string | null
           duration_minutes: number | null
           end_time: string
+          has_transcription_consent: boolean
           id: string
           location_type: string | null
           notes: string | null
           organization_id: string | null
-          has_transcription_consent: boolean
           rate_per_hour: number | null
           session_type: string | null
           start_time: string
@@ -1918,11 +2150,11 @@ export type Database = {
           created_at?: string | null
           duration_minutes?: number | null
           end_time: string
+          has_transcription_consent?: boolean
           id?: string
           location_type?: string | null
           notes?: string | null
           organization_id?: string | null
-          has_transcription_consent?: boolean
           rate_per_hour?: number | null
           session_type?: string | null
           start_time: string
@@ -1935,11 +2167,11 @@ export type Database = {
           created_at?: string | null
           duration_minutes?: number | null
           end_time?: string
+          has_transcription_consent?: boolean
           id?: string
           location_type?: string | null
           notes?: string | null
           organization_id?: string | null
-          has_transcription_consent?: boolean
           rate_per_hour?: number | null
           session_type?: string | null
           start_time?: string
@@ -2116,8 +2348,8 @@ export type Database = {
           max_daily_travel_minutes: number | null
           medicaid_id: string | null
           middle_name: string | null
-          organization_id: string | null
           npi_number: string | null
+          organization_id: string | null
           phone: string | null
           practitioner_id: string | null
           preferred_areas: string[] | null
@@ -2158,8 +2390,8 @@ export type Database = {
           max_daily_travel_minutes?: number | null
           medicaid_id?: string | null
           middle_name?: string | null
-          organization_id?: string | null
           npi_number?: string | null
+          organization_id?: string | null
           phone?: string | null
           practitioner_id?: string | null
           preferred_areas?: string[] | null
@@ -2200,8 +2432,8 @@ export type Database = {
           max_daily_travel_minutes?: number | null
           medicaid_id?: string | null
           middle_name?: string | null
-          organization_id?: string | null
           npi_number?: string | null
+          organization_id?: string | null
           phone?: string | null
           practitioner_id?: string | null
           preferred_areas?: string[] | null
@@ -2769,7 +3001,7 @@ export type Database = {
         Returns: Json
       }
       get_admin_users: {
-        Args: { organization_id: string }
+        Args: Record<PropertyKey, never>
         Returns: Json
       }
       get_ai_cache_metrics: {
@@ -2793,6 +3025,8 @@ export type Database = {
           | { p_end_date: string; p_start_date: string }
           | { p_end_date: string; p_start_date: string }
         Returns: {
+          approval_rate: number
+          approval_ratio: number
           approved_authorizations: number
           denied_authorizations: number
           expired_authorizations: number
@@ -2800,7 +3034,6 @@ export type Database = {
           total_approved_units: number
           total_authorizations: number
           total_requested_units: number
-          units_by_service_code: Json
         }[]
       }
       get_billing_metrics: {
@@ -2809,9 +3042,10 @@ export type Database = {
           | { p_end_date: string; p_start_date: string }
         Returns: {
           amount_by_client: Json
-          amount_by_status: Json
+          collection_rate: number
           paid_amount: number
           pending_amount: number
+          records_by_status: Json
           rejected_amount: number
           total_billed: number
         }[]
@@ -2867,6 +3101,10 @@ export type Database = {
           reasoning: Json
           suggested_time: string
         }[]
+      }
+      get_organization_id_from_metadata: {
+        Args: { p_metadata: Json }
+        Returns: string
       }
       get_performance_metrics: {
         Args: { p_time_range?: string }
@@ -2961,7 +3199,6 @@ export type Database = {
         Returns: {
           client_id: string
           client_name: string
-          created_at: string
           end_time: string
           id: string
           notes: string
@@ -3009,6 +3246,15 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      insert_session_with_billing: {
+        Args: {
+          p_cpt_code: string
+          p_modifiers?: string[]
+          p_session: Json
+          p_session_id?: string
+        }
+        Returns: Json
+      }
       is_admin: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -3052,19 +3298,6 @@ export type Database = {
               p_user_id?: string
             }
         Returns: undefined
-      }
-      log_error_event: {
-        Args: {
-          p_error_type: string
-          p_message: string
-          p_stack_trace?: string | null
-          p_context?: Json | null
-          p_details?: Json | null
-          p_severity?: string | null
-          p_url?: string | null
-          p_user_agent?: string | null
-        }
-        Returns: null
       }
       log_db_performance: {
         Args:
@@ -3113,25 +3346,13 @@ export type Database = {
       prune_session_transcripts: {
         Args: { retention_days?: number }
         Returns: {
-          deleted_transcripts: number
           deleted_segments: number
+          deleted_transcripts: number
         }[]
       }
       remove_user_role: {
         Args: { removed_by_uuid?: string; role_name: string; user_uuid: string }
         Returns: boolean
-      }
-      client_email_exists: {
-        Args: { p_email: string }
-        Returns: boolean
-      }
-      create_client: {
-        Args: { p_client_data: Json }
-        Returns: Database["public"]["Tables"]["clients"]["Row"]
-      }
-      current_user_organization_id: {
-        Args: Record<PropertyKey, never>
-        Returns: string | null
       }
       resolve_performance_alert: {
         Args: { p_alert_id: string; p_resolution_note?: string }
@@ -3151,16 +3372,6 @@ export type Database = {
       }
       user_has_role: {
         Args: { role_name: string } | { role_name: string; user_uuid?: string }
-        Returns: boolean
-      }
-      user_has_role_for_org: {
-        Args: {
-          role_name: string
-          target_client_id?: string | null
-          target_organization_id?: string | null
-          target_session_id?: string | null
-          target_therapist_id?: string | null
-        }
         Returns: boolean
       }
       validate_performance_improvements: {

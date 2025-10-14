@@ -1,5 +1,5 @@
 import { OpenAI } from "npm:openai@5.5.1";
-import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
+import { createRequestClient } from "../_shared/database.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 import { z } from "npm:zod@3.23.8";
 import { errorEnvelope, getRequestId, rateLimit } from "./lib/http/error.ts";
@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const parsed = TranscriptionSchema.safeParse(body);
     if (!parsed.success) return errorEnvelope({ requestId, code: "invalid_body", message: "Invalid request body", status: 400, headers: corsHeaders });
-    const { audio, model = "whisper-1", language = "en", prompt, session_id, chunk_index } = parsed.data;
+    const { audio, model = "whisper-1", language = "en", prompt, session_id } = parsed.data;
 
     let resolvedSessionId: string | null = null;
     if (session_id) {
@@ -91,15 +91,13 @@ Deno.serve(async (req) => {
 
     if (resolvedSessionId) {
       try {
-        const insertResult = await supabaseAdmin.from("session_transcript_segments").insert({
+        const insertResult = await db.from("session_transcript_segments").insert({
           session_id: resolvedSessionId,
-          chunk_index: chunk_index ?? 0,
-          start_time: response.start_time ?? 0,
-          end_time: response.end_time ?? 0,
+          start_time: Math.round(response.start_time ?? 0),
+          end_time: Math.round(response.end_time ?? 0),
           text: response.text,
           confidence: response.confidence,
-          speaker: "unknown",
-          created_at: new Date().toISOString(),
+          speaker: "therapist",
         });
 
         if (insertResult.error) {

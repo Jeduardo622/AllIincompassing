@@ -2293,6 +2293,7 @@ export type Database = {
           end_time: string
           id: string
           is_recurring: boolean | null
+          organization_id: string | null
           service_types: string[] | null
           start_time: string
           therapist_id: string
@@ -2304,6 +2305,7 @@ export type Database = {
           end_time: string
           id?: string
           is_recurring?: boolean | null
+          organization_id?: string | null
           service_types?: string[] | null
           start_time: string
           therapist_id: string
@@ -2315,6 +2317,7 @@ export type Database = {
           end_time?: string
           id?: string
           is_recurring?: boolean | null
+          organization_id?: string | null
           service_types?: string[] | null
           start_time?: string
           therapist_id?: string

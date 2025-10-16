@@ -89,7 +89,13 @@ export default createProtectedRoute(async (req: Request, userContext) => {
     const { reportType, startDate, endDate, therapistId, clientId, status } = parsed.value;
     const therapistScope = await resolveTherapistScope(db, userContext, orgId);
 
-    await ensureRequestedIdsWithinOrg(db, orgId, { therapistId, clientId }, scopedLogger);
+    await ensureRequestedIdsWithinOrg(
+      db,
+      orgId,
+      { therapistId, clientId },
+      scopedLogger,
+      callerRole as Role,
+    );
 
     scopedLogger.info("report.requested", {
       reportType,
@@ -251,6 +257,7 @@ async function ensureRequestedIdsWithinOrg(
   orgId: string,
   options: { therapistId?: string; clientId?: string },
   logger: Logger,
+  callerRole: Role,
 ): Promise<void> {
   if (options.therapistId) {
     const { data } = await orgScopedQuery(db, "therapists", orgId)
@@ -265,6 +272,21 @@ async function ensureRequestedIdsWithinOrg(
         reason: "therapist-out-of-scope",
       });
       throw new ForbiddenError("Therapist scope denied");
+    }
+
+    if (callerRole === "therapist") {
+      const allowed = await assertUserHasOrgRole(db, orgId, "therapist", {
+        targetTherapistId: options.therapistId,
+      });
+      if (!allowed) {
+        logger.warn("scope.denied", { target: "therapist", targetId: options.therapistId, reason: "role" });
+        increment("tenant_denial_total", {
+          function: "generate-report",
+          orgId,
+          reason: "therapist-out-of-scope",
+        });
+        throw new ForbiddenError("Therapist scope denied");
+      }
     }
   }
 

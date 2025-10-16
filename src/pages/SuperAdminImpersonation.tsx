@@ -338,7 +338,7 @@ export const SuperAdminImpersonation: React.FC = () => {
           <span className="text-sm text-slate-500">Auto-refreshing every 15 seconds</span>
         </div>
         {impersonationsQuery.isLoading ? (
-          <p className="mt-4 text-sm text-slate-500">Loading impersonation activity…</p>
+          <p className="mt-4 text-sm text-slate-500" aria-live="polite">Loading impersonation activity…</p>
         ) : impersonations.length === 0 ? (
           <p className="mt-4 text-sm text-slate-500">No impersonation activity recorded.</p>
         ) : (
@@ -364,7 +364,7 @@ export const SuperAdminImpersonation: React.FC = () => {
                       <td className="whitespace-nowrap px-4 py-2 text-sm text-slate-800">{entry.target_user_id}</td>
                       <td className="max-w-xs px-4 py-2 text-sm text-slate-600">{entry.reason ?? '—'}</td>
                       <td className="whitespace-nowrap px-4 py-2 text-sm text-slate-600">{new Date(entry.issued_at).toLocaleString()}</td>
-                      <td className="whitespace-nowrap px-4 py-2 text-sm text-slate-600">{countdown}</td>
+                      <td className="whitespace-nowrap px-4 py-2 text-sm text-slate-600" aria-live="polite">{countdown}</td>
                       <td className={`whitespace-nowrap px-4 py-2 text-sm font-medium ${statusColor}`}>
                         {entry.revoked_at ? 'Revoked' : isExpired ? 'Expired' : 'Active'}
                       </td>

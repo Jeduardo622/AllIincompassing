@@ -183,7 +183,7 @@ async function handleInvite(req: Request, userContext: UserContext) {
       .maybeSingle()) as InviteLookupResult;
 
     if (existingInvite.error) {
-      console.error("Failed to lookup existing invite", existingInvite.error);
+      console.error("Failed to lookup existing invite", { code: 'invite_lookup_failed' });
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
       return jsonResponse(500, { error: "invite_lookup_failed" });
     }
@@ -204,7 +204,7 @@ async function handleInvite(req: Request, userContext: UserContext) {
         .eq("id", activeInvite.id);
 
       if (deleteError) {
-        console.error("Failed to prune expired invite", deleteError);
+        console.error("Failed to prune expired invite", { code: 'invite_prune_failed' });
       }
     }
 
@@ -225,20 +225,20 @@ async function handleInvite(req: Request, userContext: UserContext) {
       .single()) as InsertInviteResult;
 
     if (insertedInvite.error || !insertedInvite.data) {
-      console.error("Failed to insert invite token", insertedInvite.error);
+      console.error("Failed to insert invite token", { code: 'invite_insert_failed' });
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
       return jsonResponse(500, { error: "invite_creation_failed" });
     }
 
     const { emailServiceUrl, portalBaseUrl } = ensureEmailServiceConfig();
     if (!emailServiceUrl) {
-      console.error("ADMIN_INVITE_EMAIL_URL is not configured");
+      console.error("ADMIN_INVITE_EMAIL_URL is not configured", { code: 'invite_email_url_missing' });
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
       return jsonResponse(500, { error: "email_service_unconfigured" });
     }
 
     if (!portalBaseUrl) {
-      console.error("ADMIN_PORTAL_URL is not configured");
+      console.error("ADMIN_PORTAL_URL is not configured", { code: 'portal_url_missing' });
       logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
       return jsonResponse(500, { error: "portal_url_unconfigured" });
     }
@@ -269,7 +269,7 @@ async function handleInvite(req: Request, userContext: UserContext) {
     });
 
     if (actionError) {
-      console.warn("Failed to log admin invite action", actionError);
+      console.warn("Failed to log admin invite action", { code: 'admin_action_log_failed' });
     }
 
     if (emailResult.status === "failed") {
@@ -283,7 +283,7 @@ async function handleInvite(req: Request, userContext: UserContext) {
       expiresAt: expiresAt.toISOString(),
     });
   } catch (error) {
-    console.error("Unexpected admin invite error", error);
+    console.error("Unexpected admin invite error", { code: 'unexpected_invite_error' });
     logApiAccess("POST", ADMIN_INVITE_PATH, userContext, 500);
     return jsonResponse(500, { error: "internal_server_error" });
   }

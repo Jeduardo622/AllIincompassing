@@ -40,6 +40,15 @@ export default createProtectedRoute(async (req: Request, userContext) => {
     const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") || "50", 10), 1), 100);
     const search = url.searchParams.get("search")?.trim().toLowerCase();
 
+    // Cross-org guard: if caller is not super_admin, require organizationId to match caller metadata org
+    const { data: authRes } = await adminClient.auth.getUser();
+    const meta = (authRes?.user?.user_metadata ?? {}) as Record<string, unknown>;
+    const callerOrg = (meta.organization_id as string) ?? (meta.organizationId as string) ?? null;
+    if (userContext.profile.role !== 'super_admin' && callerOrg && callerOrg !== organizationId) {
+      logApiAccess("GET", "/admin/users", userContext, 403);
+      return respond(403, { error: "cross_org_access_forbidden" });
+    }
+
     const { data: rpcUsers, error } = await adminClient.rpc("get_admin_users", { organization_id: organizationId });
 
     if (error) {

@@ -7,6 +7,7 @@ import {
   RouteOptions,
 } from "../_shared/auth-middleware.ts";
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
+import { getLogger } from "../_shared/logging.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -107,6 +108,10 @@ const loadTargetUser = async (payload: { targetUserId?: string; targetUserEmail?
 };
 
 export default createProtectedRoute(async (req, userContext) => {
+  const logger = getLogger(req, {
+    functionName: "super-admin-impersonate",
+    userId: userContext.user.id,
+  });
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
@@ -229,6 +234,7 @@ export default createProtectedRoute(async (req, userContext) => {
       .setIssuer("super-admin-impersonate")
       .sign(jwtSecret);
 
+    // Persist audit BEFORE returning token; if persistence fails, abort
     const { data: insertedAudit, error: insertError } = await requestClient
       .from("impersonation_audit")
       .insert({
@@ -248,8 +254,18 @@ export default createProtectedRoute(async (req, userContext) => {
       .single();
 
     if (insertError || !insertedAudit) {
-      console.error("Failed to persist impersonation audit entry", insertError);
+      logger.error("audit_persist_failed", { error: insertError ?? "unknown" });
       return buildErrorResponse(500, "Unable to record impersonation audit");
+    }
+
+    // Enqueue revocation job for safety (processed by background worker/cron)
+    const { error: queueError } = await requestClient.rpc("enqueue_impersonation_revocation", {
+      p_audit_id: insertedAudit.id,
+      p_token_jti: tokenJti,
+    });
+    if (queueError) {
+      // Non-fatal; token still issued, but we log for ops visibility
+      logger.warn("revocation_queue_enqueue_failed", { error: queueError });
     }
 
     logApiAccess("POST", "/super-admin/impersonate", userContext, 201);
@@ -267,7 +283,7 @@ export default createProtectedRoute(async (req, userContext) => {
       },
     );
   } catch (error) {
-    console.error("Failed to issue impersonation token", error);
+    logger.error("issue_error", { error: error instanceof Error ? error.message : String(error) });
     return buildErrorResponse(500, "Failed to create impersonation token");
   }
 }, RouteOptions.superAdmin);

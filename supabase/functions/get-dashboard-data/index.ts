@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { errorEnvelope, getRequestId, rateLimit, IsoDateSchema } from '../lib/http/error.ts'
 import { createRequestClient } from "../_shared/database.ts";
-import { getUserOrThrow } from "../_shared/auth.ts";
+import { createProtectedRoute, RouteOptions, corsHeaders } from "../_shared/auth-middleware.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -17,7 +17,7 @@ interface DashboardData {
   quickStats: { activeClients: number; activeTherapists: number; thisMonthRevenue: number; attendanceRate: number; };
 }
 
-Deno.serve(async (req: Request) => {
+async function handler(req: Request) {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -26,7 +26,6 @@ Deno.serve(async (req: Request) => {
     const requestId = getRequestId(req)
 
     const db = createRequestClient(req);
-    await getUserOrThrow(db);
 
     const ip = req.headers.get('x-forwarded-for') || 'unknown'
     const rl = rateLimit(`dashboard:${ip}`, 60, 60_000)
@@ -54,30 +53,39 @@ Deno.serve(async (req: Request) => {
     monthStart.setDate(1);
     const monthStartStr = monthStart.toISOString().split('T')[0];
 
+    // derive caller organization from auth metadata
+    const { data: authUser } = await db.auth.getUser();
+    const meta = (authUser?.user?.user_metadata ?? {}) as Record<string, unknown>;
+    const callerOrgId = (meta.organization_id as string) ?? (meta.organizationId as string) ?? null;
+
     const { data: todaySessions, error: todayError } = await db
       .from('sessions')
       .select('id, status, start_time, end_time')
-      .gte('start_time', `${today}T00:00:00`).lte('start_time', `${today}T23:59:59`);
+      .gte('start_time', `${today}T00:00:00`).lte('start_time', `${today}T23:59:59`)
+      .maybeSingle();
     if (todayError) throw todayError;
 
     const { data: weekSessions, error: weekError } = await db
       .from('sessions')
       .select('id, status, client_id, therapist_id')
-      .gte('start_time', `${weekStartStr}T00:00:00`).lte('start_time', `${(endDate ?? today)}T23:59:59`);
+      .gte('start_time', `${weekStartStr}T00:00:00`).lte('start_time', `${(endDate ?? today)}T23:59:59`)
+      .then(res => res);
     if (weekError) throw weekError;
 
     const { count: activeClientsCount, error: clientError } = await db
       .from('clients')
       .select('id', { count: 'exact', head: true })
       .is('deleted_at', null)
-      .eq('status', 'active');
+      .eq('status', 'active')
+      .eq('organization_id', callerOrgId ?? undefined);
     if (clientError) throw clientError;
 
     const { count: activeTherapistsCount, error: therapistError } = await db
       .from('therapists')
       .select('id', { count: 'exact', head: true })
       .is('deleted_at', null)
-      .eq('status', 'active');
+      .eq('status', 'active')
+      .eq('organization_id', callerOrgId ?? undefined);
     if (therapistError) throw therapistError;
 
     const thirtyDaysFromNow = new Date();
@@ -97,7 +105,10 @@ Deno.serve(async (req: Request) => {
     if (recentError) throw recentError;
 
     const { data: monthlyBilling, error: billingError } = await db
-      .from('billing_records').select('amount_paid').gte('created_at', `${monthStartStr}T00:00:00`);
+      .from('billing_records')
+      .select('amount_paid')
+      .eq('organization_id', callerOrgId ?? undefined)
+      .gte('created_at', `${monthStartStr}T00:00:00`);
     if (billingError) throw billingError;
 
     const todaysSessionsData = {
@@ -144,4 +155,6 @@ Deno.serve(async (req: Request) => {
     console.error('Dashboard data error:', error)
     return errorEnvelope({ requestId, code: 'internal_error', message: 'Unexpected error', status: 500 })
   }
-})
+}
+
+export default createProtectedRoute(handler, RouteOptions.admin)

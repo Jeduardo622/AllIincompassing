@@ -21,6 +21,7 @@ export type Database = {
           admin_user_id: string | null
           created_at: string | null
           id: string
+          organization_id: string | null
           target_user_id: string | null
         }
         Insert: {
@@ -29,6 +30,7 @@ export type Database = {
           admin_user_id?: string | null
           created_at?: string | null
           id?: string
+          organization_id?: string | null
           target_user_id?: string | null
         }
         Update: {
@@ -37,7 +39,68 @@ export type Database = {
           admin_user_id?: string | null
           created_at?: string | null
           id?: string
+          organization_id?: string | null
           target_user_id?: string | null
+        }
+        Relationships: []
+      }
+      admin_invite_tokens: {
+        Row: {
+          created_at: string
+          created_by: string
+          email: string
+          expires_at: string
+          id: string
+          organization_id: string
+          role: Database["public"]["Enums"]["role_type"]
+          token_hash: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          email: string
+          expires_at: string
+          id?: string
+          organization_id: string
+          role?: Database["public"]["Enums"]["role_type"]
+          token_hash: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          organization_id?: string
+          role?: Database["public"]["Enums"]["role_type"]
+          token_hash?: string
+        }
+        Relationships: []
+      }
+      impersonation_revocation_queue: {
+        Row: {
+          audit_id: string
+          created_at: string
+          error: string | null
+          id: string
+          processed_at: string | null
+          token_jti: string
+        }
+        Insert: {
+          audit_id: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          processed_at?: string | null
+          token_jti: string
+        }
+        Update: {
+          audit_id?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          processed_at?: string | null
+          token_jti?: string
         }
         Relationships: []
       }
@@ -2613,6 +2676,26 @@ export type Database = {
     Functions: {
       _is_admin: {
         Args: { uid: string }
+        Returns: boolean
+      }
+      ,
+      enqueue_impersonation_revocation: {
+        Args: { p_audit_id: string; p_token_jti: string }
+        Returns: undefined
+      }
+      ,
+      prune_admin_actions: {
+        Args: { retention_days?: number }
+        Returns: number
+      }
+      ,
+      validate_organization_metadata: {
+        Args: { obj: Json }
+        Returns: boolean
+      }
+      ,
+      validate_feature_flag_metadata: {
+        Args: { obj: Json }
         Returns: boolean
       }
       _is_therapist: {

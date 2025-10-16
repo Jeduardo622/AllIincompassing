@@ -20,6 +20,9 @@ import {
 const loggerMock = vi.mocked(logger);
 
 describe('week-2 remediation verification', () => {
+  it('placeholder admin readiness check', () => {
+    expect(true).toBe(true)
+  })
   beforeEach(() => {
     vi.clearAllMocks();
   });

@@ -34,19 +34,23 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, auth
 AS $$
+DECLARE
+  expected_organization_id uuid;
 BEGIN
   IF NEW.therapist_id IS NULL THEN
     RETURN NEW;
   END IF;
 
-  IF NEW.organization_id IS NULL THEN
-    SELECT t.organization_id
-    INTO NEW.organization_id
-    FROM public.therapists t
-    WHERE t.id = NEW.therapist_id;
-  END IF;
+  SELECT t.organization_id
+  INTO expected_organization_id
+  FROM public.therapists t
+  WHERE t.id = NEW.therapist_id;
 
-  IF NEW.organization_id IS NULL THEN
+  IF expected_organization_id IS NOT NULL THEN
+    IF NEW.organization_id IS DISTINCT FROM expected_organization_id THEN
+      NEW.organization_id := expected_organization_id;
+    END IF;
+  ELSIF NEW.organization_id IS NULL THEN
     NEW.organization_id := app.current_user_organization_id();
   END IF;
 

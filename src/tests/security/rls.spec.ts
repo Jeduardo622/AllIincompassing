@@ -112,6 +112,7 @@ const createdConversationIds: string[] = [];
 const createdSessionNoteTemplateIds: string[] = [];
 const createdAdminActionIds: string[] = [];
 const createdTherapistClientIds: string[] = [];
+const createdTherapistCertificationIds: string[] = [];
 
 let sessionCptEntryIdsByOrg: OrgRecordIds | null = null;
 let sessionCptModifierIdsByOrg: OrgRecordIds | null = null;
@@ -126,6 +127,7 @@ let conversationIdsByOrg: OrgRecordIds | null = null;
 let sessionNoteTemplateIdsByOrg: OrgRecordIds | null = null;
 let sessionTranscriptSegmentIdsByOrg: OrgRecordIds | null = null;
 let therapistRpcClientId: string | null = null;
+let therapistCertificationIdsByOrg: OrgRecordIds | null = null;
 
 const userSessionIdsByUser = new Map<string, string>();
 
@@ -270,6 +272,41 @@ const createAdminFixture = async (organizationId: string): Promise<AdminContext>
   }
 
   return { email, password, userId, organizationId };
+};
+
+const createTherapistCertificationFixture = async (
+  context: TenantContext,
+  label: string,
+): Promise<string> => {
+  if (!serviceClient) {
+    throw new Error('Service client not initialized');
+  }
+
+  const insertResult = await serviceClient
+    .from('therapist_certifications')
+    .insert({
+      therapist_id: context.therapistId,
+      name: `${label} Board Certification`,
+      type: 'license',
+      issue_date: '2024-01-01',
+      expiry_date: '2025-01-01',
+      file_url: `https://example.com/${label}-cert.pdf`,
+      file_name: `${label}-cert.pdf`,
+      file_type: 'application/pdf',
+      file_size: 2048,
+      status: 'active',
+      organization_id: context.organizationId,
+    })
+    .select('id')
+    .single();
+
+  if (insertResult.error || !insertResult.data) {
+    throw insertResult.error ?? new Error('Failed to insert therapist certification fixture');
+  }
+
+  const certificationId = insertResult.data.id;
+  createdTherapistCertificationIds.push(certificationId);
+  return certificationId;
 };
 
 const signInWithPassword = async (email: string, password: string): Promise<TypedClient> => {
@@ -845,6 +882,12 @@ beforeAll(async () => {
   adminContext = await createAdminFixture(orgAId);
   otherAdminContext = await createAdminFixture(orgBId);
 
+  if (orgAContext && orgBContext) {
+    const orgACertId = await createTherapistCertificationFixture(orgAContext, 'org-a');
+    const orgBCertId = await createTherapistCertificationFixture(orgBContext, 'org-b');
+    therapistCertificationIdsByOrg = { orgA: orgACertId, orgB: orgBCertId };
+  }
+
   const { data: existingSettings, error: companyFetchError } = await serviceClient
     .from('company_settings')
     .select('id, company_name')
@@ -945,6 +988,100 @@ describe('admin organization scoping', () => {
       expect(data?.data?.therapistId).toBe(orgAContext.therapistId);
     } finally {
       await adminClient.auth.signOut();
+    }
+  });
+});
+
+describe('therapist certifications organization scoping', () => {
+  it('allows admins to manage certifications for therapists in their organization', async () => {
+    if (!runTests || !adminContext || !therapistCertificationIdsByOrg) {
+      console.log('⏭️  Skipping certification admin test - setup incomplete.');
+      return;
+    }
+
+    const adminClient = await signInAdmin(adminContext);
+    try {
+      const { data, error } = await adminClient
+        .from('therapist_certifications')
+        .select('id, therapist_id, organization_id, notes')
+        .eq('id', therapistCertificationIdsByOrg.orgA);
+
+      expect(error).toBeNull();
+      expect(data).toBeTruthy();
+      expect(data).toHaveLength(1);
+      expect(data?.[0]?.organization_id).toBe(adminContext.organizationId);
+
+      const updateResult = await adminClient
+        .from('therapist_certifications')
+        .update({ notes: 'verified by admin' })
+        .eq('id', therapistCertificationIdsByOrg.orgA)
+        .select('notes')
+        .single();
+
+      expect(updateResult.error).toBeNull();
+      expect(updateResult.data?.notes).toBe('verified by admin');
+    } finally {
+      await adminClient.auth.signOut();
+    }
+  });
+
+  it('prevents admins from accessing certifications for other organizations', async () => {
+    if (!runTests || !adminContext || !therapistCertificationIdsByOrg) {
+      console.log('⏭️  Skipping certification cross-org test - setup incomplete.');
+      return;
+    }
+
+    const adminClient = await signInAdmin(adminContext);
+    try {
+      const { data, error } = await adminClient
+        .from('therapist_certifications')
+        .select('id')
+        .eq('id', therapistCertificationIdsByOrg.orgB);
+
+      expect(error).toBeNull();
+      expect(data).toBeTruthy();
+      expect(data).toHaveLength(0);
+
+      const updateResult = await adminClient
+        .from('therapist_certifications')
+        .update({ notes: 'should be rejected' })
+        .eq('id', therapistCertificationIdsByOrg.orgB)
+        .select('id');
+
+      expectRlsViolation(updateResult.error, updateResult.data?.length ?? 0);
+    } finally {
+      await adminClient.auth.signOut();
+    }
+  });
+
+  it('allows therapists to update their own certifications but not cross-organization records', async () => {
+    if (!runTests || !orgAContext || !therapistCertificationIdsByOrg) {
+      console.log('⏭️  Skipping certification therapist test - setup incomplete.');
+      return;
+    }
+
+    const therapistClient = await signInTherapist(orgAContext);
+    try {
+      const updateResult = await therapistClient
+        .from('therapist_certifications')
+        .update({ notes: 'self-updated credential' })
+        .eq('id', therapistCertificationIdsByOrg.orgA)
+        .select('notes')
+        .single();
+
+      expect(updateResult.error).toBeNull();
+      expect(updateResult.data?.notes).toBe('self-updated credential');
+
+      const crossOrgQuery = await therapistClient
+        .from('therapist_certifications')
+        .select('id')
+        .eq('id', therapistCertificationIdsByOrg.orgB);
+
+      expect(crossOrgQuery.error).toBeNull();
+      expect(crossOrgQuery.data).toBeTruthy();
+      expect(crossOrgQuery.data).toHaveLength(0);
+    } finally {
+      await therapistClient.auth.signOut();
     }
   });
 });
@@ -1126,6 +1263,10 @@ afterAll(async () => {
 
   if (createdTherapistClientIds.length > 0) {
     await serviceClient.from('clients').delete().in('id', createdTherapistClientIds);
+  }
+
+  if (createdTherapistCertificationIds.length > 0) {
+    await serviceClient.from('therapist_certifications').delete().in('id', createdTherapistCertificationIds);
   }
 
   if (createdSessionHoldIds.length > 0) {

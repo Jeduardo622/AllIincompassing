@@ -2342,6 +2342,7 @@ export type Database = {
           issue_date: string
           name: string
           notes: string | null
+          organization_id: string
           status: string
           therapist_id: string
           type: string
@@ -2358,6 +2359,7 @@ export type Database = {
           issue_date: string
           name: string
           notes?: string | null
+          organization_id: string
           status?: string
           therapist_id: string
           type: string
@@ -2374,12 +2376,20 @@ export type Database = {
           issue_date?: string
           name?: string
           notes?: string | null
+          organization_id?: string
           status?: string
           therapist_id?: string
           type?: string
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "therapist_certifications_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "therapist_certifications_therapist_id_fkey"
             columns: ["therapist_id"]

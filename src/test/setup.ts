@@ -35,6 +35,164 @@ const archiveState = {
   },
 };
 
+const globalWithDeno = globalThis as typeof globalThis & { Deno?: { env: { get: (key: string) => string } } };
+if (!globalWithDeno.Deno) {
+  globalWithDeno.Deno = {
+    env: {
+      get(key: string) {
+        return process.env[key] ?? '';
+      },
+    },
+  };
+}
+
+if (typeof globalWithDeno.Deno.serve !== 'function') {
+  globalWithDeno.Deno.serve = () => undefined;
+}
+
+const resolveOrgIdForToken = (token: string): string | null => {
+  if (token === ORG_A_TEST_TOKEN || token === SUPER_ADMIN_TEST_TOKEN) {
+    return ORG_A_PLACEHOLDER_ID;
+  }
+  if (token === ORG_B_TEST_TOKEN) {
+    return ORG_B_PLACEHOLDER_ID;
+  }
+  // Default to org A when tests do not propagate a token through fetch.
+  return ORG_A_PLACEHOLDER_ID;
+};
+
+const clientIdsByOrg: Record<string, string[]> = {
+  [ORG_A_PLACEHOLDER_ID]: [process.env.TEST_CLIENT_ID_ORG_A ?? 'client-1'],
+  [ORG_B_PLACEHOLDER_ID]: [process.env.TEST_CLIENT_ID_ORG_B ?? 'client-2'],
+};
+
+type PostgrestResult = { data: unknown; error: { message: string } | null };
+
+const createPostgrestBuilder = (table: string, token: string | null) => {
+  const filters: Array<{ column: string; value: unknown }> = [];
+
+  const resolveResult = (): PostgrestResult => {
+    const orgFilter = filters.find(filter => filter.column === 'organization_id');
+    const idFilter = filters.find(filter => filter.column === 'id');
+
+    if (table === 'therapists' && typeof idFilter?.value === 'string') {
+      const orgId = typeof orgFilter?.value === 'string' ? orgFilter.value : resolveOrgIdForToken(token ?? '');
+      const allowedIds = orgId ? therapistIdsByOrg[orgId] ?? [] : [];
+      return allowedIds.includes(idFilter.value)
+        ? { data: { id: idFilter.value }, error: null }
+        : { data: null, error: null };
+    }
+
+    if (table === 'clients' && typeof idFilter?.value === 'string') {
+      const orgId = typeof orgFilter?.value === 'string' ? orgFilter.value : resolveOrgIdForToken(token ?? '');
+      const allowedIds = orgId ? clientIdsByOrg[orgId] ?? [] : [];
+      return allowedIds.includes(idFilter.value)
+        ? { data: { id: idFilter.value }, error: null }
+        : { data: null, error: null };
+    }
+
+    if (table === 'user_therapist_links') {
+      const orgId = resolveOrgIdForToken(token ?? '');
+      const therapistIds = orgId ? therapistIdsByOrg[orgId] ?? [] : [];
+      return {
+        data: therapistIds.map(currentId => ({ therapist_id: currentId })),
+        error: null,
+      };
+    }
+
+    return { data: [], error: null };
+  };
+
+  const builder: any = {};
+  builder.select = vi.fn(() => builder);
+  builder.insert = vi.fn(() => builder);
+  builder.update = vi.fn(() => builder);
+  builder.delete = vi.fn(() => builder);
+  builder.eq = vi.fn((column: string, value: unknown) => {
+    filters.push({ column, value });
+    return builder;
+  });
+  builder.in = vi.fn(() => builder);
+  builder.gte = vi.fn(() => builder);
+  builder.lte = vi.fn(() => builder);
+  builder.order = vi.fn(() => builder);
+  builder.limit = vi.fn(() => builder);
+  builder.returns = vi.fn(() => builder);
+  builder.then = (resolve: (value: PostgrestResult) => unknown) => Promise.resolve(resolve(resolveResult()));
+  builder.maybeSingle = vi.fn(async () => resolveResult());
+  builder.single = vi.fn(async () => resolveResult());
+  return builder;
+};
+
+const createClientStub = (token: string | null) => {
+  const client = {
+    auth: {
+      getUser: vi.fn(async () => ({
+        data: token
+          ? { user: { id: token, email: `${token}@example.com` } }
+          : { user: null },
+        error: null,
+      })),
+    },
+    from: vi.fn((table: string) => createPostgrestBuilder(table, token)),
+    rpc: vi.fn(async (functionName: string, params: Record<string, unknown> = {}) => {
+      if (functionName === 'current_user_organization_id') {
+        return { data: token ? resolveOrgIdForToken(token) : null, error: null };
+      }
+
+      if (functionName === 'user_has_role_for_org') {
+        const roleName = typeof params.role_name === 'string' ? params.role_name : '';
+        const targetOrgId = typeof params.target_organization_id === 'string' ? params.target_organization_id : undefined;
+        const orgForToken = token ? resolveOrgIdForToken(token) : null;
+
+        if (!orgForToken || (targetOrgId && targetOrgId !== orgForToken)) {
+          return { data: false, error: null };
+        }
+
+        if (roleName === 'admin' || roleName === 'super_admin') {
+          return { data: true, error: null };
+        }
+
+        if (roleName === 'therapist') {
+          const requestedTherapist = typeof params.target_therapist_id === 'string'
+            ? params.target_therapist_id
+            : undefined;
+
+          if (!requestedTherapist) {
+            return { data: true, error: null };
+          }
+
+          const orgToCheck = targetOrgId ?? orgForToken;
+          const allowedTherapists = orgToCheck ? therapistIdsByOrg[orgToCheck] ?? [] : [];
+          return { data: allowedTherapists.includes(requestedTherapist), error: null };
+        }
+
+        return { data: false, error: null };
+      }
+
+      return { data: null, error: null };
+    }),
+  } as const;
+
+  return client;
+};
+
+vi.mock('npm:@supabase/supabase-js@2.50.0', () => {
+  const createClient = vi.fn((_: string, __: string, options?: { global?: { headers?: Record<string, string> } }) => {
+    const authHeader = options?.global?.headers?.Authorization ?? '';
+    const token = authHeader.startsWith('Bearer ')
+      ? authHeader.slice('Bearer '.length)
+      : null;
+
+    return createClientStub(token);
+  });
+
+  return {
+    createClient,
+    default: { createClient },
+  };
+});
+
 if (!process.env.TEST_JWT_ORG_A) {
   process.env.TEST_JWT_ORG_A = ORG_A_TEST_TOKEN;
 }
@@ -306,20 +464,60 @@ const getBearerToken = (headers: Headers): string => {
   return authorization ? authorization.replace(/^Bearer\s+/i, '').trim() : '';
 };
 
+const therapistIdsByOrg: Record<string, string[]> = {
+  [ORG_A_PLACEHOLDER_ID]: [process.env.TEST_THERAPIST_ID_ORG_A ?? 'therapist-1'],
+  [ORG_B_PLACEHOLDER_ID]: [process.env.TEST_THERAPIST_ID_ORG_B ?? 'therapist-2'],
+};
+
 // Setup MSW server for mocking API calls (for integration tests or when Supabase mocks are bypassed)
 export const server = setupServer(
   http.post('*/rest/v1/rpc/current_user_organization_id', async ({ request }) => {
     const token = getBearerToken(request.headers);
+    const orgId = resolveOrgIdForToken(token);
 
-    if (token === ORG_A_TEST_TOKEN || token === SUPER_ADMIN_TEST_TOKEN) {
-      return HttpResponse.json({ organization_id: ORG_A_PLACEHOLDER_ID });
+    if (!orgId) {
+      return HttpResponse.json(null, { status: 403 });
     }
 
-    if (token === ORG_B_TEST_TOKEN) {
-      return HttpResponse.json({ organization_id: ORG_B_PLACEHOLDER_ID });
+    return HttpResponse.json(orgId);
+  }),
+  http.post('*/rest/v1/rpc/user_has_role_for_org', async ({ request }) => {
+    const token = getBearerToken(request.headers);
+    const orgIdForToken = resolveOrgIdForToken(token);
+    const payload = await request.json().catch(() => ({} as Record<string, unknown>));
+    const roleName = typeof payload.role_name === 'string' ? payload.role_name : '';
+    const requestedOrgId = typeof payload.target_organization_id === 'string'
+      ? payload.target_organization_id
+      : undefined;
+
+    const orgMatches = requestedOrgId ? requestedOrgId === orgIdForToken : Boolean(orgIdForToken);
+    if (!orgMatches) {
+      return HttpResponse.json(false);
     }
 
-    return HttpResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (roleName === 'admin' || roleName === 'super_admin') {
+      return HttpResponse.json(true);
+    }
+
+    if (roleName === 'therapist') {
+      const requestedTherapistId = typeof payload.target_therapist_id === 'string'
+        ? payload.target_therapist_id
+        : undefined;
+
+      if (!requestedTherapistId) {
+        return HttpResponse.json(true);
+      }
+
+      const allowedTherapists = requestedOrgId
+        ? therapistIdsByOrg[requestedOrgId] ?? []
+        : orgIdForToken
+          ? therapistIdsByOrg[orgIdForToken] ?? []
+          : [];
+
+      return HttpResponse.json(allowedTherapists.includes(requestedTherapistId));
+    }
+
+    return HttpResponse.json(false);
   }),
   http.post('*/rest/v1/rpc/get_admin_users', async ({ request }) => {
     const token = getBearerToken(request.headers);

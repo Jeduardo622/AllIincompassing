@@ -156,7 +156,7 @@ describe('ClientOnboarding step progression', () => {
       expect(onComplete).toHaveBeenCalled();
     });
 
-    expect(createClientMock).not.toHaveBeenCalled();
-    expect(onComplete).not.toHaveBeenCalled();
+    expect(createClientMock).toHaveBeenCalledTimes(1);
+    expect(onComplete).toHaveBeenCalledTimes(1);
   });
 });

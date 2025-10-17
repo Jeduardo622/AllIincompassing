@@ -8,11 +8,10 @@ describe("RLS coverage for therapists / clients / billing_records", () => {
   it("allows same-org reads and blocks cross-org", () => {
     const therapists = seed.therapists.filter(row => row.organization_id === "org-a");
     expect(therapists).toHaveLength(1);
-    expect(() =>
-      seed.therapists
-        .filter(row => row.organization_id === "org-a")
-        .find(row => row.id === "ther-002"),
-    ).toBeUndefined();
+    const crossOrgTherapist = seed.therapists
+      .filter(row => row.organization_id === "org-a")
+      .find(row => row.id === "ther-002");
+    expect(crossOrgTherapist).toBeUndefined();
   });
 
   it("denies cross-org billing updates", () => {

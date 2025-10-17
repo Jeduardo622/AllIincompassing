@@ -83,6 +83,22 @@ const sessionsData = [
   },
 ];
 
+const ORG_A_PLACEHOLDER_ID = 'org-a-placeholder-id';
+const ORG_B_PLACEHOLDER_ID = 'org-b-placeholder-id';
+
+const therapistsData = [
+  {
+    id: 'therapist-1',
+    organization_id: ORG_A_PLACEHOLDER_ID,
+    full_name: 'Therapist One',
+  },
+  {
+    id: 'therapist-2',
+    organization_id: ORG_A_PLACEHOLDER_ID,
+    full_name: 'Therapist Two',
+  },
+];
+
 function parseFilterValues(values: string[]): string[] {
   const parsed: string[] = [];
   for (const value of values) {
@@ -147,22 +163,24 @@ vi.mock('../supabase/functions/_shared/auth-middleware.ts', () => ({
 vi.mock('../supabase/functions/_shared/database.ts', () => {
   const baseUrl = 'http://localhost';
 
-  type QueryFilter = { column: string; operator: 'eq' | 'gte' | 'lte' | 'in'; value: string };
-  type QueryResponse = { data: unknown[] | null; error: { message: string } | null };
+type QueryFilter = { column: string; operator: 'eq' | 'gte' | 'lte' | 'in'; value: string };
+type QueryResponse = { data: unknown | unknown[] | null; error: { message: string } | null };
 
-  interface MockQueryBuilder extends PromiseLike<QueryResponse> {
-    select(value: string): MockQueryBuilder;
-    eq(column: string, value: string): MockQueryBuilder;
-    gte(column: string, value: string): MockQueryBuilder;
-    lte(column: string, value: string): MockQueryBuilder;
-    in(column: string, values: string[] | string): MockQueryBuilder;
-    returns(): MockQueryBuilder;
-    order(): MockQueryBuilder;
-  }
+interface MockQueryBuilder extends PromiseLike<QueryResponse> {
+  select(value: string): MockQueryBuilder;
+  eq(column: string, value: string): MockQueryBuilder;
+  gte(column: string, value: string): MockQueryBuilder;
+  lte(column: string, value: string): MockQueryBuilder;
+  in(column: string, values: string[] | string): MockQueryBuilder;
+  returns(): MockQueryBuilder;
+  order(): MockQueryBuilder;
+  maybeSingle(): MockQueryBuilder;
+}
 
   const createQuery = (table: string): MockQueryBuilder => {
     const filters: QueryFilter[] = [];
     let selection = '*';
+    let singleResult = false;
 
     const builder: MockQueryBuilder = {
       select(value: string) {
@@ -192,6 +210,10 @@ vi.mock('../supabase/functions/_shared/database.ts', () => {
       order() {
         return builder;
       },
+      maybeSingle() {
+        singleResult = true;
+        return builder;
+      },
       then<TResult1 = QueryResponse, TResult2 = never>(
         onFulfilled?: (result: QueryResponse) => TResult1 | PromiseLike<TResult1>,
         onRejected?: (error: unknown) => TResult2 | PromiseLike<TResult2>,
@@ -212,7 +234,13 @@ vi.mock('../supabase/functions/_shared/database.ts', () => {
           if (!response.ok) {
             return { data: null, error: { message: response.statusText } } satisfies QueryResponse;
           }
-          return { data: (payload ?? []) as unknown[], error: null } satisfies QueryResponse;
+          const rows = (payload ?? []) as unknown[];
+          if (singleResult) {
+            singleResult = false;
+            const first = Array.isArray(rows) ? rows.at(0) ?? null : null;
+            return { data: first, error: null } satisfies QueryResponse;
+          }
+          return { data: rows, error: null } satisfies QueryResponse;
         })();
 
         return promise.then(onFulfilled, onRejected);
@@ -226,9 +254,13 @@ vi.mock('../supabase/functions/_shared/database.ts', () => {
     from(table: string) {
       return createQuery(table);
     },
-    rpc(functionName: string) {
+    rpc(functionName: string, params?: Record<string, unknown>) {
       return (async () => {
-        const response = await fetch(`${baseUrl}/rest/v1/rpc/${functionName}`, { method: 'POST' });
+        const response = await fetch(`${baseUrl}/rest/v1/rpc/${functionName}`, {
+          method: 'POST',
+          headers: params ? { 'Content-Type': 'application/json' } : undefined,
+          body: params ? JSON.stringify(params) : undefined,
+        });
         const payload = response.status === 204 ? null : await response.json();
         if (!response.ok) {
           return { data: null, error: { message: response.statusText } };
@@ -332,6 +364,22 @@ function registerAccessHandlers() {
         therapists: { id: session.therapist_id, full_name: session.therapist_id === 'therapist-1' ? 'Therapist One' : 'Therapist Two' },
         clients: { id: session.client_id, full_name: session.client_id === 'client-1' ? 'Alpha Client' : 'Beta Client' },
       })));
+    }),
+    http.get('http://localhost/rest/v1/therapists', ({ request }) => {
+      const url = new URL(request.url);
+      const orgFilters = parseFilterValues(url.searchParams.getAll('organization_id'));
+      const idFilters = parseFilterValues(url.searchParams.getAll('id'));
+
+      let filtered = therapistsData;
+      if (orgFilters.length > 0) {
+        filtered = filtered.filter(record => orgFilters.includes(record.organization_id));
+      }
+
+      if (idFilters.length > 0) {
+        filtered = filtered.filter(record => idFilters.includes(record.id));
+      }
+
+      return HttpResponse.json(filtered);
     }),
   );
 }

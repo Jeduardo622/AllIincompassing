@@ -1,4 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { randomUUID } from 'crypto';
+import { describe, it, expect, afterAll } from 'vitest';
+import { selectSuite } from '../utils/testControls';
 
 const SUPABASE_URL = process.env.SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY as string;
@@ -23,6 +25,32 @@ async function callRpc(
     json = await response.json();
   } catch (error) {
     // Functions like get_sessions_optimized return 204 when empty.
+  }
+
+  return { status: response.status, json };
+}
+
+async function callRest(
+  path: string,
+  token: string,
+  init: RequestInit = {}
+) {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method: init.method ?? 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${token}`,
+      ...(init.headers ?? {}),
+    },
+    body: init.body,
+  });
+
+  let json: unknown = null;
+  try {
+    json = await response.json();
+  } catch (error) {
+    // DELETE/204 responses return no content.
   }
 
   return { status: response.status, json };
@@ -182,5 +210,131 @@ describe('Therapist RPC organization scoping', () => {
     if ((allowed.json as any)?.totalSessions > 0) {
       expect((allowed.json as any).totalSessions).toBeGreaterThan(metrics.totalSessions as number);
     }
+  });
+});
+
+const runAvailabilitySuite =
+  process.env.RUN_THERAPIST_AVAILABILITY_TESTS === 'true' &&
+  Boolean(process.env.TEST_JWT_ORG_A) &&
+  Boolean(process.env.TEST_THERAPIST_ID_ORG_A);
+
+const availabilitySuite = selectSuite({
+  run: runAvailabilitySuite,
+  reason:
+    'Set RUN_THERAPIST_AVAILABILITY_TESTS=true and configure TEST_JWT_ORG_A, TEST_THERAPIST_ID_ORG_A credentials.',
+});
+
+availabilitySuite('Therapist availability organization scoping', () => {
+  const tokenOrgA = process.env.TEST_JWT_ORG_A as string;
+  const tokenOrgB = process.env.TEST_JWT_ORG_B as string;
+  const therapistIdOrgA = process.env.TEST_THERAPIST_ID_ORG_A as string;
+  const availabilitySelect = 'id,therapist_id,organization_id,day_of_week,start_time,end_time';
+
+  let availabilityId: string | null = null;
+  let scopedOrganizationId: string | null = null;
+
+  it('allows same-organization therapist to manage scoped availability', async () => {
+    if (!tokenOrgA || !therapistIdOrgA) return;
+
+    const therapistResponse = await callRest(
+      `therapists?id=eq.${therapistIdOrgA}&select=id,organization_id`,
+      tokenOrgA
+    );
+    expect([200, 204]).toContain(therapistResponse.status);
+
+    const therapistRows = Array.isArray(therapistResponse.json)
+      ? (therapistResponse.json as Array<Record<string, string | null>>)
+      : [];
+    const therapistOrg = therapistRows[0]?.organization_id ?? null;
+
+    const payload = {
+      id: randomUUID(),
+      therapist_id: therapistIdOrgA,
+      day_of_week: 'monday',
+      start_time: '09:00:00',
+      end_time: '09:45:00',
+      service_types: ['consultation'],
+    };
+
+    const insertResponse = await callRest(
+      `therapist_availability?select=${availabilitySelect}`,
+      tokenOrgA,
+      {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    expect([200, 201]).toContain(insertResponse.status);
+
+    const insertedRows = Array.isArray(insertResponse.json)
+      ? (insertResponse.json as Array<Record<string, string>>)
+      : [];
+    expect(insertedRows.length).toBe(1);
+
+    const record = insertedRows[0];
+    availabilityId = record.id;
+    scopedOrganizationId = record.organization_id;
+
+    expect(record.therapist_id).toBe(therapistIdOrgA);
+    expect(scopedOrganizationId).toBeTruthy();
+    if (therapistOrg) {
+      expect(scopedOrganizationId).toBe(therapistOrg);
+    }
+
+    const readResponse = await callRest(
+      `therapist_availability?id=eq.${availabilityId}&select=${availabilitySelect}`,
+      tokenOrgA
+    );
+
+    expect([200, 204]).toContain(readResponse.status);
+
+    const readRows = Array.isArray(readResponse.json)
+      ? (readResponse.json as Array<Record<string, string>>)
+      : [];
+    expect(readRows.length).toBe(1);
+    expect(readRows[0].id).toBe(availabilityId);
+    expect(readRows[0].organization_id).toBe(scopedOrganizationId);
+  });
+
+  it('denies cross-organization therapists from reading availability', async () => {
+    if (!tokenOrgB || !availabilityId) return;
+
+    const response = await callRest(
+      `therapist_availability?id=eq.${availabilityId}&select=${availabilitySelect}`,
+      tokenOrgB
+    );
+
+    expect([200, 204, 401, 403]).toContain(response.status);
+
+    if (response.status === 403 || response.status === 401) {
+      const payload = (response.json ?? {}) as Record<string, unknown>;
+      const message = typeof payload.error === 'string'
+        ? payload.error
+        : typeof payload.message === 'string'
+          ? payload.message
+          : '';
+      expect(message.toLowerCase()).toContain('denied');
+      return;
+    }
+
+    const rows = Array.isArray(response.json)
+      ? (response.json as Array<Record<string, unknown>>)
+      : [];
+    expect(rows.length).toBe(0);
+  });
+
+  afterAll(async () => {
+    if (!tokenOrgA || !availabilityId) return;
+
+    await callRest(
+      `therapist_availability?id=eq.${availabilityId}`,
+      tokenOrgA,
+      {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+      }
+    );
   });
 });

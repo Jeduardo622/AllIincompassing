@@ -308,20 +308,24 @@ BEGIN
     RETURN false;
   END IF;
 
-  IF role_name = 'client' AND resolved_client_id IS NOT NULL THEN
-    IF caller_id = resolved_client_id THEN
-      RETURN true;
-    END IF;
+  IF role_name = 'client' THEN
+    IF resolved_client_id IS NOT NULL THEN
+      IF caller_id = resolved_client_id THEN
+        RETURN true;
+      END IF;
 
-    IF EXISTS (
-      SELECT 1
-      FROM public.client_guardians cg
-      WHERE cg.guardian_id = caller_id
-        AND cg.client_id = resolved_client_id
-        AND cg.organization_id = resolved_org
-        AND cg.deleted_at IS NULL
-    ) THEN
-      RETURN true;
+      IF EXISTS (
+        SELECT 1
+        FROM public.client_guardians cg
+        WHERE cg.guardian_id = caller_id
+          AND cg.client_id = resolved_client_id
+          AND cg.organization_id = resolved_org
+          AND cg.deleted_at IS NULL
+      ) THEN
+        RETURN true;
+      END IF;
+
+      RETURN false;
     END IF;
   END IF;
 

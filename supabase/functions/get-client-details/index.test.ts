@@ -156,3 +156,24 @@ Deno.test("client can retrieve own record when scoped to organization", async ()
   assertEquals(body.client.id, userId);
 });
 
+Deno.test("client without guardian link is denied when role helper returns false", async () => {
+  const userId = "client-unauthorized";
+  const clientId = userId;
+  const db = createMockSupabaseClient({
+    userId,
+    rpcAccess: ({ role_name }) => role_name !== "client",
+    clients: [{ id: clientId, full_name: "Self Client" }],
+    sessions: [],
+  });
+
+  const response = await handleGetClientDetails({
+    req: createRequest({ clientId }),
+    userContext: createUserContext("client", userId),
+    db,
+  });
+
+  const body = await response.json();
+  assertEquals(response.status, 403);
+  assertEquals(body.error, "Access denied");
+});
+

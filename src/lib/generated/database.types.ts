@@ -2010,6 +2010,7 @@ export type Database = {
           expires_at: string
           hold_key: string
           id: string
+          organization_id: string
           session_id: string | null
           start_time: string
           therapist_id: string
@@ -2021,6 +2022,7 @@ export type Database = {
           expires_at?: string
           hold_key: string
           id?: string
+          organization_id?: string
           session_id?: string | null
           start_time: string
           therapist_id: string
@@ -2032,11 +2034,19 @@ export type Database = {
           expires_at?: string
           hold_key?: string
           id?: string
+          organization_id?: string
           session_id?: string | null
           start_time?: string
           therapist_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "session_holds_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "session_holds_client_id_fkey"
             columns: ["client_id"]

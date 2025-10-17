@@ -16,11 +16,100 @@ const ORG_A_PLACEHOLDER_ID = 'org-a-placeholder-id';
 const ORG_B_PLACEHOLDER_ID = 'org-b-placeholder-id';
 const ARCHIVE_TIMESTAMP = '2025-03-18T09:00:00Z';
 
-const isOrgAToken = (token: string): boolean => (
-  token === ORG_A_TEST_TOKEN || token === SUPER_ADMIN_TEST_TOKEN
+const DEFAULT_THERAPIST_ID_ORG_A = 'therapist-1';
+const DEFAULT_THERAPIST_ID_ORG_B = 'therapist-2';
+
+if (!process.env.TEST_THERAPIST_ID_ORG_A) {
+  process.env.TEST_THERAPIST_ID_ORG_A = DEFAULT_THERAPIST_ID_ORG_A;
+}
+
+if (!process.env.TEST_THERAPIST_ID_ORG_B) {
+  process.env.TEST_THERAPIST_ID_ORG_B = DEFAULT_THERAPIST_ID_ORG_B;
+}
+
+if (!process.env.TEST_JWT_ORG_A) {
+  process.env.TEST_JWT_ORG_A = ORG_A_TEST_TOKEN;
+}
+
+if (!process.env.TEST_JWT_ORG_B) {
+  process.env.TEST_JWT_ORG_B = ORG_B_TEST_TOKEN;
+}
+
+if (!process.env.TEST_JWT_SUPER_ADMIN) {
+  process.env.TEST_JWT_SUPER_ADMIN = SUPER_ADMIN_TEST_TOKEN;
+}
+
+if (!process.env.TEST_CLIENT_ID_ORG_A) {
+  process.env.TEST_CLIENT_ID_ORG_A = 'client-1';
+}
+
+if (!process.env.TEST_CLIENT_ID_ORG_B) {
+  process.env.TEST_CLIENT_ID_ORG_B = 'client-2';
+}
+
+if (!process.env.TEST_JWT_THERAPIST_ORG_A) {
+  process.env.TEST_JWT_THERAPIST_ORG_A = process.env.TEST_THERAPIST_ID_ORG_A;
+}
+
+if (!process.env.TEST_JWT_THERAPIST_ORG_B) {
+  process.env.TEST_JWT_THERAPIST_ORG_B = process.env.TEST_THERAPIST_ID_ORG_B;
+}
+
+const THERAPIST_ORG_A_TEST_TOKEN = process.env.TEST_JWT_THERAPIST_ORG_A!;
+const THERAPIST_ORG_B_TEST_TOKEN = process.env.TEST_JWT_THERAPIST_ORG_B!;
+
+type TherapistTokenContext = {
+  token: string;
+  therapistId: string;
+  organizationId: string;
+};
+
+const therapistTokenContexts: TherapistTokenContext[] = [
+  {
+    token: THERAPIST_ORG_A_TEST_TOKEN,
+    therapistId: process.env.TEST_THERAPIST_ID_ORG_A!,
+    organizationId: ORG_A_PLACEHOLDER_ID,
+  },
+  {
+    token: THERAPIST_ORG_B_TEST_TOKEN,
+    therapistId: process.env.TEST_THERAPIST_ID_ORG_B!,
+    organizationId: ORG_B_PLACEHOLDER_ID,
+  },
+];
+
+const resolveTherapistContextForToken = (token: string): TherapistTokenContext | null => (
+  therapistTokenContexts.find(context => context.token === token) ?? null
 );
 
-const isOrgBToken = (token: string): boolean => token === ORG_B_TEST_TOKEN;
+const resolveTherapistContextForId = (therapistId: string): TherapistTokenContext | null => (
+  therapistTokenContexts.find(context => context.therapistId === therapistId) ?? null
+);
+
+const isOrgAToken = (token: string): boolean => (
+  token === ORG_A_TEST_TOKEN
+  || token === SUPER_ADMIN_TEST_TOKEN
+  || token === THERAPIST_ORG_A_TEST_TOKEN
+);
+
+const isOrgBToken = (token: string): boolean => (
+  token === ORG_B_TEST_TOKEN
+  || token === THERAPIST_ORG_B_TEST_TOKEN
+);
+
+type TokenRole = 'admin' | 'super_admin' | 'therapist';
+
+const resolveRoleForToken = (token: string): TokenRole | null => {
+  if (token === SUPER_ADMIN_TEST_TOKEN) {
+    return 'super_admin';
+  }
+  if (token === ORG_A_TEST_TOKEN || token === ORG_B_TEST_TOKEN) {
+    return 'admin';
+  }
+  if (resolveTherapistContextForToken(token)) {
+    return 'therapist';
+  }
+  return null;
+};
 
 const archiveState = {
   client: {
@@ -51,12 +140,21 @@ if (typeof globalWithDeno.Deno.serve !== 'function') {
 }
 
 const resolveOrgIdForToken = (token: string): string | null => {
+  if (!token) {
+    return ORG_A_PLACEHOLDER_ID;
+  }
   if (token === ORG_A_TEST_TOKEN || token === SUPER_ADMIN_TEST_TOKEN) {
     return ORG_A_PLACEHOLDER_ID;
   }
   if (token === ORG_B_TEST_TOKEN) {
     return ORG_B_PLACEHOLDER_ID;
   }
+
+  const therapistContext = resolveTherapistContextForToken(token);
+  if (therapistContext) {
+    return therapistContext.organizationId;
+  }
+
   // Default to org A when tests do not propagate a token through fetch.
   return ORG_A_PLACEHOLDER_ID;
 };
@@ -192,26 +290,6 @@ vi.mock('npm:@supabase/supabase-js@2.50.0', () => {
     default: { createClient },
   };
 });
-
-if (!process.env.TEST_JWT_ORG_A) {
-  process.env.TEST_JWT_ORG_A = ORG_A_TEST_TOKEN;
-}
-
-if (!process.env.TEST_JWT_ORG_B) {
-  process.env.TEST_JWT_ORG_B = ORG_B_TEST_TOKEN;
-}
-
-if (!process.env.TEST_JWT_SUPER_ADMIN) {
-  process.env.TEST_JWT_SUPER_ADMIN = SUPER_ADMIN_TEST_TOKEN;
-}
-
-if (!process.env.TEST_THERAPIST_ID_ORG_A) {
-  process.env.TEST_THERAPIST_ID_ORG_A = 'therapist-1';
-}
-
-if (!process.env.TEST_CLIENT_ID_ORG_A) {
-  process.env.TEST_CLIENT_ID_ORG_A = 'client-1';
-}
 
 const consoleGuard = installConsoleGuard({ passthrough: false });
 
@@ -462,6 +540,19 @@ vi.mock('../lib/supabase', () => {
 const getBearerToken = (headers: Headers): string => {
   const authorization = headers.get('authorization');
   return authorization ? authorization.replace(/^Bearer\s+/i, '').trim() : '';
+};
+
+const parseEqFilter = (value: string | null): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  const [operator, ...rest] = value.split('.');
+  if (operator !== 'eq') {
+    return null;
+  }
+
+  return rest.join('.');
 };
 
 const therapistIdsByOrg: Record<string, string[]> = {
@@ -920,6 +1011,62 @@ export const server = setupServer(
     }
 
     return HttpResponse.json([clientRow]);
+  }),
+  http.get('*/rest/v1/storage.objects*', ({ request }) => {
+    const token = getBearerToken(request.headers);
+    if (!token) {
+      return HttpResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const orgId = resolveOrgIdForToken(token);
+    if (!orgId) {
+      return HttpResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const url = new URL(request.url);
+    const bucketId = parseEqFilter(url.searchParams.get('bucket_id'));
+    const objectName = parseEqFilter(url.searchParams.get('name'));
+
+    if (bucketId !== 'therapist-documents' || !objectName) {
+      return HttpResponse.json([]);
+    }
+
+    const pathSegments = objectName.split('/');
+    if (pathSegments.length < 2 || pathSegments[0] !== 'therapists') {
+      return HttpResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const therapistId = pathSegments[1];
+    const therapistContext = resolveTherapistContextForId(therapistId);
+    if (!therapistContext) {
+      return HttpResponse.json([], { status: 404 });
+    }
+
+    const callerRole = resolveRoleForToken(token);
+    const callerTherapistContext = resolveTherapistContextForToken(token) ?? null;
+    const sharesOrganization = therapistContext.organizationId === orgId;
+    const callerIsTherapistOwner = Boolean(
+      callerTherapistContext && callerTherapistContext.therapistId === therapistId,
+    );
+
+    const isAuthorized = sharesOrganization && (
+      callerRole === 'admin'
+      || callerRole === 'super_admin'
+      || (callerRole === 'therapist' && callerIsTherapistOwner)
+    );
+
+    if (!isAuthorized) {
+      return HttpResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    return HttpResponse.json([
+      {
+        id: 'mock-object-id',
+        bucket_id: 'therapist-documents',
+        name: objectName,
+        owner: therapistId,
+      },
+    ]);
   }),
   http.post('*/api/book', async ({ request }) => {
     let body: { session?: Record<string, unknown> } | null = null;

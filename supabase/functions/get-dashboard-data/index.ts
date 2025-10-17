@@ -17,6 +17,28 @@ interface DashboardData {
   quickStats: { activeClients: number; activeTherapists: number; thisMonthRevenue: number; attendanceRate: number; };
 }
 
+type TodaySession = {
+  id: string
+  status: string
+  start_time: string
+  end_time: string | null
+}
+
+const aggregateTodaysSessions = (
+  sessions: TodaySession[] | null | undefined,
+  totalCount?: number | null,
+): DashboardData['todaysSessions'] => {
+  const list = Array.isArray(sessions) ? sessions : []
+  const total = typeof totalCount === 'number' ? totalCount : list.length
+
+  return {
+    total,
+    completed: list.filter(session => session.status === 'completed').length,
+    pending: list.filter(session => session.status === 'scheduled').length,
+    cancelled: list.filter(session => session.status === 'cancelled').length,
+  }
+}
+
 async function handler(req: Request) {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -58,11 +80,12 @@ async function handler(req: Request) {
     const meta = (authUser?.user?.user_metadata ?? {}) as Record<string, unknown>;
     const callerOrgId = (meta.organization_id as string) ?? (meta.organizationId as string) ?? null;
 
-    const { data: todaySessions, error: todayError } = await db
+    const { data: todaySessions, error: todayError, count: todaySessionsCount } = await db
       .from('sessions')
-      .select('id, status, start_time, end_time')
-      .gte('start_time', `${today}T00:00:00`).lte('start_time', `${today}T23:59:59`)
-      .maybeSingle();
+      .select('id, status, start_time, end_time', { count: 'exact' })
+      .gte('start_time', `${today}T00:00:00`)
+      .lte('start_time', `${today}T23:59:59`)
+      .returns<TodaySession[]>()
     if (todayError) throw todayError;
 
     const { data: weekSessions, error: weekError } = await db
@@ -111,12 +134,7 @@ async function handler(req: Request) {
       .gte('created_at', `${monthStartStr}T00:00:00`);
     if (billingError) throw billingError;
 
-    const todaysSessionsData = {
-      total: todaySessions?.length || 0,
-      completed: todaySessions?.filter(s => s.status === 'completed').length || 0,
-      pending: todaySessions?.filter(s => s.status === 'scheduled').length || 0,
-      cancelled: todaySessions?.filter(s => s.status === 'cancelled').length || 0,
-    };
+    const todaysSessionsData = aggregateTodaysSessions(todaySessions, todaySessionsCount)
 
     const uniqueClients = new Set(weekSessions?.map(s => s.client_id)).size;
     const uniqueTherapists = new Set(weekSessions?.map(s => s.therapist_id)).size;
@@ -155,6 +173,10 @@ async function handler(req: Request) {
     console.error('Dashboard data error:', error)
     return errorEnvelope({ requestId, code: 'internal_error', message: 'Unexpected error', status: 500 })
   }
+}
+
+export const __TESTING__ = {
+  aggregateTodaysSessions,
 }
 
 export default createProtectedRoute(handler, RouteOptions.admin)

@@ -8,14 +8,52 @@ type QueryResult = { data: unknown[]; error: null };
 const makeSelectBuilder = (result: QueryResult) => {
   const builder: any = {};
   const chain = () => builder;
+  const eqFilters = new Map<string, unknown>();
+  const inFilters = new Map<string, unknown[]>();
+
+  const applyFilters = () => {
+    if (!Array.isArray(result.data)) {
+      return [];
+    }
+
+    return result.data.filter(row => {
+      if (!row || typeof row !== "object") {
+        return false;
+      }
+
+      for (const [column, value] of eqFilters.entries()) {
+        if ((row as Record<string, unknown>)[column] !== value) {
+          return false;
+        }
+      }
+
+      for (const [column, values] of inFilters.entries()) {
+        const candidate = (row as Record<string, unknown>)[column];
+        if (!values.some(item => item === candidate)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  };
 
   builder.select = vi.fn(() => chain());
-  builder.eq = vi.fn(() => chain());
-  builder.in = vi.fn(() => chain());
+  builder.eq = vi.fn((column: string, value: unknown) => {
+    eqFilters.set(column, value);
+    return chain();
+  });
+  builder.in = vi.fn((column: string, values: unknown[]) => {
+    const normalized = Array.isArray(values) ? values : [values];
+    inFilters.set(column, normalized);
+    return chain();
+  });
   builder.gte = vi.fn(() => chain());
   builder.lt = vi.fn(() => chain());
   builder.order = vi.fn(() => chain());
-  builder.then = (resolve: (value: QueryResult) => unknown) => resolve(result);
+  builder.then = (resolve: (value: QueryResult) => unknown) => (
+    resolve({ data: applyFilters(), error: result.error })
+  );
   return builder;
 };
 

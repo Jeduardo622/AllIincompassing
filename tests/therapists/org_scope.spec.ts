@@ -230,6 +230,7 @@ availabilitySuite('Therapist availability organization scoping', () => {
   const therapistIdOrgA = process.env.TEST_THERAPIST_ID_ORG_A as string;
   const availabilitySelect = 'id,therapist_id,organization_id,day_of_week,start_time,end_time';
 
+  const createdAvailabilityIds: string[] = [];
   let availabilityId: string | null = null;
   let scopedOrganizationId: string | null = null;
 
@@ -275,6 +276,7 @@ availabilitySuite('Therapist availability organization scoping', () => {
 
     const record = insertedRows[0];
     availabilityId = record.id;
+    createdAvailabilityIds.push(record.id);
     scopedOrganizationId = record.organization_id;
 
     expect(record.therapist_id).toBe(therapistIdOrgA);
@@ -325,16 +327,57 @@ availabilitySuite('Therapist availability organization scoping', () => {
     expect(rows.length).toBe(0);
   });
 
-  afterAll(async () => {
-    if (!tokenOrgA || !availabilityId) return;
+  it('auto-populates organization scope when admins create availability', async () => {
+    const tokenOrgAAdmin = process.env.TEST_JWT_ORG_A_ADMIN as string;
 
-    await callRest(
-      `therapist_availability?id=eq.${availabilityId}`,
-      tokenOrgA,
+    if (!tokenOrgAAdmin || !therapistIdOrgA) return;
+
+    const payload = {
+      id: randomUUID(),
+      therapist_id: therapistIdOrgA,
+      day_of_week: 'tuesday',
+      start_time: '10:00:00',
+      end_time: '10:45:00',
+      service_types: ['consultation'],
+    };
+
+    const response = await callRest(
+      `therapist_availability?select=${availabilitySelect}`,
+      tokenOrgAAdmin,
       {
-        method: 'DELETE',
-        headers: { Prefer: 'return=minimal' },
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(payload),
       }
+    );
+
+    expect([200, 201]).toContain(response.status);
+
+    const rows = Array.isArray(response.json)
+      ? (response.json as Array<Record<string, string>>)
+      : [];
+
+    expect(rows.length).toBe(1);
+
+    const record = rows[0];
+    createdAvailabilityIds.push(record.id);
+
+    expect(record.organization_id).toBeTruthy();
+    if (scopedOrganizationId) {
+      expect(record.organization_id).toBe(scopedOrganizationId);
+    }
+  });
+
+  afterAll(async () => {
+    if (!tokenOrgA) return;
+
+    await Promise.all(
+      createdAvailabilityIds.map(id =>
+        callRest(`therapist_availability?id=eq.${id}`, tokenOrgA, {
+          method: 'DELETE',
+          headers: { Prefer: 'return=minimal' },
+        })
+      )
     );
   });
 });

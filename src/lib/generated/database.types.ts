@@ -3167,6 +3167,37 @@ export type Database = {
         Args: { p_client_id: string }
         Returns: Json
       }
+      get_guardian_client_portal: {
+        Args: { p_client_id?: string | null }
+        Returns: {
+          client_date_of_birth: string | null
+          client_email: string | null
+          client_full_name: string
+          client_id: string
+          client_phone: string | null
+          client_status: string | null
+          guardian_is_primary: boolean
+          guardian_notes: Json
+          guardian_relationship: string | null
+          upcoming_sessions: Json
+        }[]
+      }
+      guardian_upcoming_sessions: {
+        Args: {
+          p_client_id: string
+          p_guardian_id: string
+          p_organization_id: string
+        }
+        Returns: Json
+      }
+      guardian_visible_notes: {
+        Args: {
+          p_client_id: string
+          p_guardian_id: string
+          p_organization_id: string
+        }
+        Returns: Json
+      }
       get_client_metrics: {
         Args:
           | Record<PropertyKey, never>

@@ -26,6 +26,14 @@ interface AdminContext {
   organizationId: string;
 }
 
+interface GuardianContext {
+  email: string;
+  password: string;
+  userId: string;
+  organizationId: string;
+  linkedClientId: string;
+}
+
 type OrgRecordIds = { orgA: string; orgB: string };
 
 const importMetaEnv =
@@ -113,6 +121,8 @@ const createdSessionNoteTemplateIds: string[] = [];
 const createdAdminActionIds: string[] = [];
 const createdTherapistClientIds: string[] = [];
 const createdTherapistCertificationIds: string[] = [];
+const createdGuardianUserIds: string[] = [];
+const createdClientGuardianIds: string[] = [];
 
 let sessionCptEntryIdsByOrg: OrgRecordIds | null = null;
 let sessionCptModifierIdsByOrg: OrgRecordIds | null = null;
@@ -128,6 +138,7 @@ let sessionNoteTemplateIdsByOrg: OrgRecordIds | null = null;
 let sessionTranscriptSegmentIdsByOrg: OrgRecordIds | null = null;
 let therapistRpcClientId: string | null = null;
 let therapistCertificationIdsByOrg: OrgRecordIds | null = null;
+let clientRoleId: string | null = null;
 
 const userSessionIdsByUser = new Map<string, string>();
 
@@ -336,6 +347,10 @@ const signInAdmin = async (context: AdminContext): Promise<TypedClient> => {
 
 const signInClient = async (context: TenantContext): Promise<TypedClient> => {
   return signInWithPassword(context.clientEmail, context.clientPassword);
+};
+
+const signInGuardian = async (context: GuardianContext): Promise<TypedClient> => {
+  return signInWithPassword(context.email, context.password);
 };
 
 const expectRlsViolation = (error: PostgrestError | null, fallbackRowCount = 0) => {
@@ -852,6 +867,87 @@ const ensureSessionTranscriptSegmentsSeeded = async (): Promise<void> => {
   sessionTranscriptSegmentIdsByOrg = { orgA: orgASegmentId, orgB: orgBSegmentId };
 };
 
+const resolveClientRoleId = async (): Promise<string> => {
+  if (clientRoleId) {
+    return clientRoleId;
+  }
+
+  if (!serviceClient) {
+    throw new Error('Service client not initialized');
+  }
+
+  const { data, error } = await serviceClient
+    .from('roles')
+    .select('id')
+    .eq('name', 'client')
+    .single();
+
+  if (error || !data) {
+    throw error ?? new Error('Client role not found');
+  }
+
+  clientRoleId = data.id;
+  return clientRoleId;
+};
+
+const createGuardianFixture = async (tenant: TenantContext): Promise<GuardianContext> => {
+  if (!serviceClient) {
+    throw new Error('Service client not initialized');
+  }
+
+  const email = `guardian.${tenant.organizationId}.${Date.now()}@example.com`;
+  const password = `P@ssw0rd-${Math.random().toString(36).slice(2, 10)}`;
+
+  const { data: createdUser, error: createGuardianError } = await serviceClient.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { organization_id: tenant.organizationId },
+  });
+
+  if (createGuardianError || !createdUser?.user) {
+    throw createGuardianError ?? new Error('Guardian user creation failed');
+  }
+
+  const guardianId = createdUser.user.id;
+  createdGuardianUserIds.push(guardianId);
+
+  await serviceClient.from('profiles').update({ role: 'client' }).eq('id', guardianId);
+
+  const resolvedRoleId = await resolveClientRoleId();
+  await serviceClient
+    .from('user_roles')
+    .insert({ user_id: guardianId, role_id: resolvedRoleId })
+    .onConflict('user_id, role_id')
+    .ignore();
+
+  const { data: insertedGuardian, error: guardianInsertError } = await serviceClient
+    .from('client_guardians')
+    .insert({
+      organization_id: tenant.organizationId,
+      client_id: tenant.clientId,
+      guardian_id: guardianId,
+      relationship: 'parent',
+      is_primary: true,
+    })
+    .select('id')
+    .single();
+
+  if (guardianInsertError || !insertedGuardian) {
+    throw guardianInsertError ?? new Error('Failed to create client guardian link');
+  }
+
+  createdClientGuardianIds.push(insertedGuardian.id);
+
+  return {
+    email,
+    password,
+    userId: guardianId,
+    organizationId: tenant.organizationId,
+    linkedClientId: tenant.clientId,
+  };
+};
+
 beforeAll(async () => {
   if (!SHOULD_RUN_RLS_TESTS) {
     console.warn('⏭️  Skipping RLS security tests - environment not configured.');
@@ -1236,6 +1332,96 @@ describe('AI cache and telemetry logs restrict standard users', () => {
   });
 });
 
+describe('guardian portal access', () => {
+  let guardianContext: GuardianContext | null = null;
+
+  beforeAll(async () => {
+    if (!runTests || !orgAContext) {
+      return;
+    }
+
+    guardianContext = await createGuardianFixture(orgAContext);
+  });
+
+  it('allows guardians to fetch only their linked clients', async () => {
+    if (!runTests || !guardianContext) {
+      console.log('⏭️  Skipping guardian RPC test - setup incomplete.');
+      return;
+    }
+
+    const guardianClient = await signInGuardian(guardianContext);
+    try {
+      const { data, error } = await guardianClient.rpc('get_guardian_client_portal');
+
+      expect(error).toBeNull();
+      expect(Array.isArray(data)).toBe(true);
+      expect(data).toHaveLength(1);
+      expect(data?.[0]?.client_id).toBe(guardianContext.linkedClientId);
+    } finally {
+      await guardianClient.auth.signOut();
+    }
+  });
+
+  it('prevents guardians from pivoting into unrelated organization clients', async () => {
+    if (!runTests || !guardianContext || !orgBContext) {
+      console.log('⏭️  Skipping guardian isolation test - setup incomplete.');
+      return;
+    }
+
+    const guardianClient = await signInGuardian(guardianContext);
+    try {
+      const { data, error } = await guardianClient.rpc('get_guardian_client_portal', {
+        p_client_id: orgBContext.clientId,
+      });
+
+      expect(error).toBeNull();
+      expect(Array.isArray(data) ? data.length : 0).toBe(0);
+    } finally {
+      await guardianClient.auth.signOut();
+    }
+  });
+
+  it('allows therapists to continue fetching clients within their organization', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping therapist access test - setup incomplete.');
+      return;
+    }
+
+    const therapistClient = await signInTherapist(orgAContext);
+    try {
+      const { data, error } = await therapistClient
+        .from('clients')
+        .select('id')
+        .eq('organization_id', orgAContext.organizationId);
+
+      expect(error).toBeNull();
+      expect(Array.isArray(data) && data.length > 0).toBe(true);
+    } finally {
+      await therapistClient.auth.signOut();
+    }
+  });
+
+  it('allows admins to continue fetching clients within their organization', async () => {
+    if (!runTests || !adminContext) {
+      console.log('⏭️  Skipping admin access test - setup incomplete.');
+      return;
+    }
+
+    const adminClient = await signInAdmin(adminContext);
+    try {
+      const { data, error } = await adminClient
+        .from('clients')
+        .select('id')
+        .eq('organization_id', adminContext.organizationId);
+
+      expect(error).toBeNull();
+      expect(Array.isArray(data) && data.length > 0).toBe(true);
+    } finally {
+      await adminClient.auth.signOut();
+    }
+  });
+});
+
 afterAll(async () => {
   if (!runTests || !serviceClient) {
     return;
@@ -1271,6 +1457,17 @@ afterAll(async () => {
 
   if (createdSessionHoldIds.length > 0) {
     await serviceClient.from('session_holds').delete().in('id', createdSessionHoldIds);
+  }
+
+  if (createdClientGuardianIds.length > 0) {
+    await serviceClient.from('client_guardians').delete().in('id', createdClientGuardianIds);
+  }
+
+  if (createdGuardianUserIds.length > 0) {
+    await serviceClient.from('user_roles').delete().in('user_id', createdGuardianUserIds);
+    for (const guardianId of createdGuardianUserIds) {
+      await serviceClient.auth.admin.deleteUser(guardianId);
+    }
   }
 
   if (createdSessionCptModifierIds.length > 0) {

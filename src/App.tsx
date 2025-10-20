@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './lib/authContext';
 import { useTheme } from './lib/theme';
+import { useAuth } from './lib/authContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import PrivateRoute from './components/PrivateRoute';
 import RoleGuard from './components/RoleGuard';
@@ -27,6 +28,7 @@ const Settings = React.lazy(() => import('./pages/Settings'));
 const Unauthorized = React.lazy(() => import('./pages/Unauthorized'));
 const Authorizations = React.lazy(() => import('./pages/Authorizations'));
 const Reports = React.lazy(() => import('./pages/Reports'));
+const FamilyDashboard = React.lazy(() => import('./pages/FamilyDashboard'));
 
 // Loading component
 const LoadingSpinner = () => (
@@ -57,6 +59,18 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+const DashboardLanding: React.FC = () => {
+  const { hasRole, hasAnyRole } = useAuth();
+
+  const isGuardian = hasRole('client') && !hasAnyRole(['therapist', 'admin', 'super_admin']);
+
+  if (isGuardian) {
+    return <Navigate to="/family" replace />;
+  }
+
+  return <Dashboard />;
+};
 
 function App() {
   const { isDark } = useTheme();
@@ -90,7 +104,7 @@ function App() {
                     </PrivateRoute>
                   }>
                     {/* Dashboard - accessible to all authenticated users */}
-                    <Route index element={<Dashboard />} />
+                    <Route index element={<DashboardLanding />} />
 
                     {/* Schedule - accessible to all authenticated users */}
                     <Route path="schedule" element={<Schedule />} />
@@ -167,6 +181,16 @@ function App() {
                         <Reports />
                       </RoleGuard>
                     } />
+
+                    {/* Family Dashboard - guardian only */}
+                    <Route
+                      path="family"
+                      element={
+                        <RoleGuard roles={['client']}>
+                          <FamilyDashboard />
+                        </RoleGuard>
+                      }
+                    />
 
                     {/* Settings - admin and super_admin only */}
                     <Route path="settings" element={

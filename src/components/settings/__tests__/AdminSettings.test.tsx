@@ -373,6 +373,35 @@ describe('Guardian approvals', () => {
     });
   });
 
+  it('shows an empty state when no guardian requests are returned for the organization', async () => {
+    rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
+      if (functionName === 'get_admin_users') {
+        return { data: [], error: null };
+      }
+
+      if (functionName === 'guardian_link_queue_admin_view') {
+        expect(params).toMatchObject({
+          p_organization_id: '11111111-1111-1111-1111-111111111111',
+          p_status: 'pending',
+        });
+        return { data: [], error: null };
+      }
+
+      if (defaultRpcImplementation) {
+        return defaultRpcImplementation(functionName, params as never);
+      }
+
+      return fallbackRpc(functionName, params);
+    });
+
+    renderWithProviders(<AdminSettings />);
+
+    expect(await screen.findByText('Guardian Access Requests')).toBeInTheDocument();
+    expect(
+      await screen.findByText('No guardian access requests are waiting for review.')
+    ).toBeInTheDocument();
+  });
+
   it('approves guardians with selected clients and notes', async () => {
     const approvalSpy = vi.fn().mockResolvedValue({ data: null, error: null });
 

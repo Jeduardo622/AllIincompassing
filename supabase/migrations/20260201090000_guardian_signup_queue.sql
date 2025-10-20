@@ -316,7 +316,7 @@ BEGIN
     q.processed_at,
     q.processed_by
   FROM public.guardian_link_queue q
-  WHERE COALESCE(q.organization_id, v_org) = v_org
+  WHERE q.organization_id = v_org
     AND (v_status = 'any' OR q.status = v_status)
   ORDER BY q.created_at ASC;
 END;

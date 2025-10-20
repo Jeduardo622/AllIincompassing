@@ -256,6 +256,205 @@ describe('AdminSettings logging', () => {
   });
 });
 
+describe('Guardian approvals', () => {
+  const guardianRequest = {
+    id: 'queue-1',
+    guardian_id: 'guardian-1',
+    guardian_email: 'guardian@example.com',
+    status: 'pending',
+    organization_id: '11111111-1111-1111-1111-111111111111',
+    invite_token: 'INVITE-ABC',
+    metadata: {
+      guardian_organization_hint: 'Northwind Academy',
+      guardian_invite_token: 'INVITE-ABC',
+      signup_role: 'guardian',
+    },
+    requested_client_ids: null,
+    approved_client_ids: null,
+    created_at: new Date('2025-02-01T12:00:00Z').toISOString(),
+    updated_at: new Date('2025-02-01T12:00:00Z').toISOString(),
+    processed_at: null,
+    processed_by: null,
+  } as const;
+
+  const mockClient = {
+    id: 'client-1',
+    first_name: 'Kai',
+    last_name: 'River',
+    full_name: 'Kai River',
+  };
+
+  let fromSpy: ReturnType<typeof vi.spyOn> | null = null;
+
+  beforeEach(() => {
+    const authStub = {
+      user: {
+        user_metadata: {
+          organization_id: '11111111-1111-1111-1111-111111111111',
+        },
+      },
+      profile: null,
+      session: null,
+      loading: false,
+      signIn: vi.fn(),
+      signUp: vi.fn(),
+      signOut: vi.fn(),
+      resetPassword: vi.fn(),
+      updateProfile: vi.fn(),
+      hasRole: vi.fn(() => true),
+      hasAnyRole: vi.fn(() => true),
+      isAdmin: vi.fn(() => true),
+      isSuperAdmin: vi.fn(() => false),
+    } as unknown as ReturnType<typeof useAuth>;
+
+    vi.mocked(useAuth).mockReturnValue(authStub);
+
+    rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
+      if (functionName === 'get_admin_users') {
+        return { data: [], error: null };
+      }
+
+      if (functionName === 'guardian_link_queue_admin_view') {
+        expect(params).toMatchObject({
+          p_organization_id: '11111111-1111-1111-1111-111111111111',
+          p_status: 'pending',
+        });
+        return { data: [guardianRequest], error: null };
+      }
+
+      if (defaultRpcImplementation) {
+        return defaultRpcImplementation(functionName, params as never);
+      }
+
+      return fallbackRpc(functionName, params);
+    });
+
+    fromSpy = vi.spyOn(supabase, 'from').mockImplementation((table: string) => {
+      if (table === 'clients') {
+        const query: any = {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockImplementation(function () {
+            if ((query.order.mock.calls?.length ?? 0) > 1) {
+              return Promise.resolve({ data: [mockClient], error: null });
+            }
+            return query;
+          }),
+        };
+        return query;
+      }
+
+      const passthrough: any = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(),
+      };
+      return passthrough;
+    });
+  });
+
+  afterEach(() => {
+    rpcMock.mockImplementation(defaultRpcImplementation ?? fallbackRpc);
+    fromSpy?.mockRestore();
+    fromSpy = null;
+  });
+
+  it('renders guardian queue entries with metadata hints', async () => {
+    renderWithProviders(<AdminSettings />);
+
+    expect(await screen.findByText('Guardian Access Requests')).toBeInTheDocument();
+    expect(await screen.findByText('guardian@example.com')).toBeInTheDocument();
+    expect(screen.getByText(/Organization hint/i)).toHaveTextContent('Northwind Academy');
+    expect(screen.getByText(/Invite code/i)).toHaveTextContent('INVITE-ABC');
+
+    const select = screen.getByLabelText('Select dependents to link');
+    await waitFor(() => {
+      expect(within(select).getByRole('option', { name: /Kai River/i })).toBeInTheDocument();
+    });
+  });
+
+  it('shows an empty state when no guardian requests are returned for the organization', async () => {
+    rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
+      if (functionName === 'get_admin_users') {
+        return { data: [], error: null };
+      }
+
+      if (functionName === 'guardian_link_queue_admin_view') {
+        expect(params).toMatchObject({
+          p_organization_id: '11111111-1111-1111-1111-111111111111',
+          p_status: 'pending',
+        });
+        return { data: [], error: null };
+      }
+
+      if (defaultRpcImplementation) {
+        return defaultRpcImplementation(functionName, params as never);
+      }
+
+      return fallbackRpc(functionName, params);
+    });
+
+    renderWithProviders(<AdminSettings />);
+
+    expect(await screen.findByText('Guardian Access Requests')).toBeInTheDocument();
+    expect(
+      await screen.findByText('No guardian access requests are waiting for review.')
+    ).toBeInTheDocument();
+  });
+
+  it('approves guardians with selected clients and notes', async () => {
+    const approvalSpy = vi.fn().mockResolvedValue({ data: null, error: null });
+
+    rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
+      if (functionName === 'get_admin_users') {
+        return { data: [], error: null };
+      }
+
+      if (functionName === 'guardian_link_queue_admin_view') {
+        return { data: [guardianRequest], error: null };
+      }
+
+      if (functionName === 'approve_guardian_request') {
+        approvalSpy(params);
+        return { data: [{ guardian_id: guardianRequest.guardian_id, approved_client_ids: ['client-1'] }], error: null };
+      }
+
+      if (defaultRpcImplementation) {
+        return defaultRpcImplementation(functionName, params as never);
+      }
+
+      return fallbackRpc(functionName, params);
+    });
+
+    renderWithProviders(<AdminSettings />);
+
+    const select = await screen.findByLabelText('Select dependents to link');
+    await userEvent.selectOptions(select, ['client-1']);
+
+    const relationshipInput = screen.getByLabelText('Relationship label');
+    await userEvent.type(relationshipInput, 'Parent');
+
+    const notesInput = screen.getByLabelText('Internal notes (optional)');
+    await userEvent.type(notesInput, 'Approved manually during onboarding.');
+
+    const approveButton = screen.getByRole('button', { name: /Approve guardian access/i });
+    await userEvent.click(approveButton);
+
+    await waitFor(() => {
+      expect(approvalSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          p_request_id: guardianRequest.id,
+          p_client_ids: ['client-1'],
+          p_relationship: 'Parent',
+          p_resolution_notes: 'Approved manually during onboarding.',
+        })
+      );
+    });
+
+    expect(showSuccess).toHaveBeenCalledWith('Guardian request approved successfully');
+  });
+});
+
 describe('AdminSettings accessibility', () => {
   beforeEach(() => {
     const authStub = {

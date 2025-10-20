@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Shield, Mail, Calendar, Key } from 'lucide-react';
+import { Plus, Trash2, Shield, Mail, Calendar, Key, Users, Link2, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showSuccess, showError } from '../../lib/toast';
 import { logger } from '../../lib/logger/logger';
@@ -32,6 +32,27 @@ interface AdminFormData {
   reason: string;
 }
 
+interface GuardianQueueEntry {
+  id: string;
+  guardian_id: string;
+  guardian_email: string;
+  status: string;
+  organization_id: string | null;
+  invite_token: string | null;
+  metadata: Record<string, unknown> | null;
+  requested_client_ids: string[] | null;
+  approved_client_ids: string[] | null;
+  created_at: string;
+  updated_at: string;
+  processed_at: string | null;
+  processed_by: string | null;
+}
+
+interface ClientOption {
+  id: string;
+  displayName: string;
+}
+
 export default function AdminSettings() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
@@ -47,6 +68,9 @@ export default function AdminSettings() {
   });
   const [newPassword, setNewPassword] = useState('');
   const [accessError, setAccessError] = useState<string | null>(null);
+  const [selectedClientsByRequest, setSelectedClientsByRequest] = useState<Record<string, string[]>>({});
+  const [relationshipByRequest, setRelationshipByRequest] = useState<Record<string, string>>({});
+  const [notesByRequest, setNotesByRequest] = useState<Record<string, string>>({});
 
   const addAdminEmailRef = useRef<HTMLInputElement>(null);
   const resetPasswordInputRef = useRef<HTMLInputElement>(null);
@@ -99,6 +123,78 @@ export default function AdminSettings() {
     retry: false,
   });
 
+  const {
+    data: guardianRequests = [],
+    isLoading: isGuardianQueueLoading,
+    error: guardianQueueError,
+  } = useQuery<GuardianQueueEntry[], Error>({
+    queryKey: ['guardian-link-queue', organizationId],
+    queryFn: async () => {
+      if (!organizationId) {
+        const missingError = new Error('Organization context is required to review guardian requests.');
+        (missingError as Error & { status?: number }).status = 400;
+        throw missingError;
+      }
+
+      const { data, error } = await supabase.rpc('guardian_link_queue_admin_view', {
+        p_organization_id: organizationId,
+        p_status: 'pending',
+      });
+
+      if (error) {
+        const rpcError = error as PostgrestError & { status?: number };
+        const mapped = new Error(
+          rpcError.code === '42501'
+            ? 'You do not have permission to review guardian requests for this organization.'
+            : error.message || 'Failed to load guardian requests.'
+        );
+        (mapped as Error & { status?: number }).status = rpcError.code === '42501' ? 403 : 500;
+        throw mapped;
+      }
+
+      return (data as GuardianQueueEntry[] | null) ?? [];
+    },
+    enabled: Boolean(organizationId),
+    retry: false,
+  });
+
+  const {
+    data: guardianClients = [],
+    isLoading: isGuardianClientsLoading,
+    error: guardianClientsError,
+  } = useQuery<ClientOption[], Error>({
+    queryKey: ['guardian-link-clients', organizationId],
+    queryFn: async () => {
+      if (!organizationId) {
+        return [];
+      }
+
+      const { data, error } = await supabase
+        .from('clients')
+        .select('id, full_name, first_name, last_name')
+        .eq('organization_id', organizationId)
+        .order('last_name', { ascending: true, nullsLast: true })
+        .order('first_name', { ascending: true, nullsLast: true });
+
+      if (error) {
+        throw error;
+      }
+
+      return (data ?? []).map((client) => {
+        const first = typeof client.first_name === 'string' ? client.first_name : '';
+        const last = typeof client.last_name === 'string' ? client.last_name : '';
+        const fullName = typeof client.full_name === 'string' ? client.full_name : '';
+        const displayName = fullName || [first, last].filter(Boolean).join(' ');
+        return {
+          id: client.id,
+          displayName: displayName || client.id,
+        };
+      });
+    },
+    enabled: Boolean(organizationId),
+    retry: false,
+  });
+
   useEffect(() => {
     if (!adminsError) {
       if (organizationId) {
@@ -114,6 +210,25 @@ export default function AdminSettings() {
       showError(adminsError);
     }
   }, [adminsError, organizationId]);
+
+  useEffect(() => {
+    if (!guardianQueueError) {
+      return;
+    }
+
+    const status = (guardianQueueError as Error & { status?: number }).status;
+    if (!status || status >= 500) {
+      showError(guardianQueueError);
+    }
+  }, [guardianQueueError]);
+
+  useEffect(() => {
+    if (!guardianClientsError) {
+      return;
+    }
+
+    showError(guardianClientsError);
+  }, [guardianClientsError]);
 
   const createAdminMutation = useMutation({
     mutationFn: async (data: AdminFormData) => {
@@ -240,6 +355,57 @@ export default function AdminSettings() {
     },
   });
 
+  const approveGuardianMutation = useMutation({
+    mutationFn: async ({
+      requestId,
+      clientIds,
+      relationship,
+      notes,
+    }: {
+      requestId: string;
+      clientIds: string[];
+      relationship: string | undefined;
+      notes: string | undefined;
+    }) => {
+      const payload = {
+        p_request_id: requestId,
+        p_client_ids: clientIds.length > 0 ? clientIds : null,
+        p_relationship: relationship && relationship.trim().length > 0 ? relationship.trim() : null,
+        p_resolution_notes: notes && notes.trim().length > 0 ? notes.trim() : null,
+      };
+
+      const { error } = await supabase.rpc('approve_guardian_request', payload);
+
+      if (error) {
+        logger.error('Guardian approval RPC failed', {
+          error,
+          context: { component: 'AdminSettings', operation: 'approveGuardianRequest' },
+          metadata: { requestId, clientCount: clientIds.length },
+        });
+        throw error;
+      }
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['guardian-link-queue', organizationId] });
+      setSelectedClientsByRequest((previous) => ({
+        ...previous,
+        [variables.requestId]: [],
+      }));
+      setRelationshipByRequest((previous) => ({
+        ...previous,
+        [variables.requestId]: '',
+      }));
+      setNotesByRequest((previous) => ({
+        ...previous,
+        [variables.requestId]: '',
+      }));
+      showSuccess('Guardian request approved successfully');
+    },
+    onError: (error) => {
+      showError(error);
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       email: '',
@@ -250,6 +416,36 @@ export default function AdminSettings() {
       organization_id: organizationId ?? null,
       reason: '',
     });
+  };
+
+  const updateClientSelections = (requestId: string, selections: string[]) => {
+    setSelectedClientsByRequest((previous) => ({
+      ...previous,
+      [requestId]: selections,
+    }));
+  };
+
+  const updateRelationship = (requestId: string, value: string) => {
+    setRelationshipByRequest((previous) => ({
+      ...previous,
+      [requestId]: value,
+    }));
+  };
+
+  const updateNotes = (requestId: string, value: string) => {
+    setNotesByRequest((previous) => ({
+      ...previous,
+      [requestId]: value,
+    }));
+  };
+
+  const getMetadataValue = (entry: GuardianQueueEntry, key: string) => {
+    if (!entry.metadata) {
+      return undefined;
+    }
+
+    const raw = entry.metadata[key];
+    return typeof raw === 'string' ? raw : undefined;
   };
 
   const closeCreateAdminModal = () => {
@@ -296,11 +492,29 @@ export default function AdminSettings() {
   const handlePasswordReset = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAdmin) return;
-    
+
     await resetPasswordMutation.mutateAsync({
       email: selectedAdmin.email,
       password: newPassword
     });
+  };
+
+  const handleApproveGuardian = async (entry: GuardianQueueEntry) => {
+    const selectedClients = selectedClientsByRequest[entry.id] ?? [];
+    try {
+      await approveGuardianMutation.mutateAsync({
+        requestId: entry.id,
+        clientIds: selectedClients,
+        relationship: relationshipByRequest[entry.id],
+        notes: notesByRequest[entry.id],
+      });
+    } catch (error) {
+      logger.error('Guardian approval action failed', {
+        error,
+        context: { component: 'AdminSettings', operation: 'handleApproveGuardian' },
+        metadata: { requestId: entry.id, selectedClientCount: selectedClients.length },
+      });
+    }
   };
 
   const handleInputChange = (
@@ -392,6 +606,171 @@ export default function AdminSettings() {
           ))}
         </div>
       )}
+
+      <div className="border-t border-gray-200 dark:border-gray-700 pt-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h2 className="text-lg font-medium text-gray-900 dark:text-white flex items-center gap-2">
+            <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            Guardian Access Requests
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Review guardian signups and connect them to the correct dependents.
+          </p>
+        </div>
+
+        {!organizationId ? (
+          <div className="rounded-md border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-200">
+            Guardian approvals require an organization context. Confirm your account has an organization ID assigned.
+          </div>
+        ) : isGuardianQueueLoading || isGuardianClientsLoading ? (
+          <div className="text-center py-4">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
+          </div>
+        ) : guardianRequests.length === 0 ? (
+          <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-dark-lighter dark:text-gray-300">
+            No guardian access requests are waiting for review.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {guardianRequests.map((request) => {
+              const selectedClientIds = selectedClientsByRequest[request.id] ?? [];
+              const relationshipValue = relationshipByRequest[request.id] ?? '';
+              const notesValue = notesByRequest[request.id] ?? '';
+              const organizationHint = getMetadataValue(request, 'guardian_organization_hint');
+              const inviteCode = request.invite_token ?? getMetadataValue(request, 'guardian_invite_token');
+              const disableApprove = approveGuardianMutation.isPending || selectedClientIds.length === 0;
+              const clientSelectId = `guardian-client-select-${request.id}`;
+              const relationshipInputId = `guardian-relationship-${request.id}`;
+              const notesTextareaId = `guardian-notes-${request.id}`;
+
+              return (
+                <div
+                  key={request.id}
+                  className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-dark-lighter p-4 shadow-sm space-y-4"
+                >
+                  <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start">
+                    <div className="space-y-1">
+                      <div className="flex items-center text-sm text-gray-700 dark:text-gray-200">
+                        <Mail className="h-4 w-4 mr-2 text-gray-400" />
+                        {request.guardian_email}
+                      </div>
+                      <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
+                        <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+                        Requested {new Date(request.created_at).toLocaleString()}
+                      </div>
+                      {organizationHint && (
+                        <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
+                          <Link2 className="h-4 w-4 mr-2 text-gray-400" />
+                          Organization hint: {organizationHint}
+                        </div>
+                      )}
+                      {inviteCode && (
+                        <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
+                          <CheckCircle2 className="h-4 w-4 mr-2 text-gray-400" />
+                          Invite code: {inviteCode}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-xs uppercase tracking-wide text-blue-600 dark:text-blue-300 font-semibold">
+                      {request.status}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label
+                        className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                        htmlFor={clientSelectId}
+                      >
+                        Select dependents to link
+                      </label>
+                      {guardianClients.length === 0 ? (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          No clients are available for this organization yet.
+                        </p>
+                      ) : (
+                        <select
+                          id={clientSelectId}
+                          multiple
+                          value={selectedClientIds}
+                          onChange={(event) =>
+                            updateClientSelections(
+                              request.id,
+                              Array.from(event.target.selectedOptions).map((option) => option.value)
+                            )
+                          }
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-gray-900 dark:text-gray-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 h-32"
+                        >
+                          {guardianClients.map((client) => (
+                            <option key={client.id} value={client.id}>
+                              {client.displayName}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Hold Ctrl (Windows) or Cmd (Mac) to select multiple children.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label
+                          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                          htmlFor={relationshipInputId}
+                        >
+                          Relationship label
+                        </label>
+                        <input
+                          id={relationshipInputId}
+                          type="text"
+                          value={relationshipValue}
+                          onChange={(event) => updateRelationship(request.id, event.target.value)}
+                          placeholder="e.g., Parent or Legal Guardian"
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-gray-900 dark:text-gray-200 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                          htmlFor={notesTextareaId}
+                        >
+                          Internal notes (optional)
+                        </label>
+                        <textarea
+                          id={notesTextareaId}
+                          value={notesValue}
+                          onChange={(event) => updateNotes(request.id, event.target.value)}
+                          rows={2}
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-gray-900 dark:text-gray-200 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleApproveGuardian(request)}
+                      disabled={disableApprove}
+                      className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
+                    >
+                      {approveGuardianMutation.isPending ? (
+                        <span className="flex items-center gap-2">
+                          <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                          Approving...
+                        </span>
+                      ) : (
+                        'Approve guardian access'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Create Admin Modal */}
       <Modal

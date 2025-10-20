@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { 
-  User, Mail, Calendar, Phone, MapPin, 
+import {
+  User, Mail, Calendar, Phone, MapPin,
   Edit2, Plus, CheckCircle, AlertTriangle, RefreshCw,
   FileText
 } from 'lucide-react';
@@ -11,59 +11,34 @@ import { showSuccess, showError } from '../../lib/toast';
 import ClientModal from '../ClientModal';
 import AddGeneralNoteModal from '../AddGeneralNoteModal';
 import type { Note, Issue } from '../../types';
+import { useClientIssues, useClientNotes } from '../../lib/clients/hooks';
+import { useAuth } from '../../lib/authContext';
 
 interface ProfileTabProps {
   client: { id: string; full_name: string; client_id?: string; date_of_birth?: string; email?: string; phone?: string; street_address?: string; city?: string; state?: string; zip_code?: string; gender?: string; cin_number?: string };
+  viewerRole?: 'client' | 'therapist' | 'admin' | 'super_admin';
 }
 
-export default function ProfileTab({ client }: ProfileTabProps) {
+export default function ProfileTab({ client, viewerRole }: ProfileTabProps) {
+  const { profile, user } = useAuth();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
   const [isAddIssueModalOpen, setIsAddIssueModalOpen] = useState(false);
-  
-  // Mock data for notes and issues
-  const [notes, setNotes] = useState<Note[]>([
-    {
-      id: '1',
-      content: 'Client reported difficulty with transitions during last session. Recommended visual schedule for home use.',
-      author: 'Jane Smith, BCBA',
-      created_at: '2025-05-15T14:30:00Z',
-      is_visible_to_parent: true,
-      status: 'open'
-    },
-    {
-      id: '2',
-      content: 'Parent requested information about summer program options. Sent email with details about our social skills group.',
-      author: 'John Doe, RBT',
-      created_at: '2025-05-10T09:15:00Z',
-      is_visible_to_parent: true,
-      status: 'resolved'
-    }
-  ]);
-  
-  const [issues, setIssues] = useState<Issue[]>([
-    {
-      id: '1',
-      category: 'Authorization',
-      description: 'Current authorization expires in 30 days. Need to submit renewal.',
-      status: 'Open',
-      priority: 'High',
-      date_opened: '2025-05-01T00:00:00Z',
-      last_action: '2025-05-01T00:00:00Z'
-    },
-    {
-      id: '2',
-      category: 'Scheduling',
-      description: 'Client requested change to Tuesday afternoon sessions starting next month.',
-      status: 'In Progress',
-      priority: 'Medium',
-      date_opened: '2025-04-28T00:00:00Z',
-      last_action: '2025-05-05T00:00:00Z'
-    }
-  ]);
+
+  const activeRole = viewerRole ?? profile?.role;
+  const isGuardianView = activeRole === 'client';
+
+  const {
+    data: notes = [],
+    isLoading: isLoadingNotes,
+  } = useClientNotes(client.id);
+  const {
+    data: issues = [],
+    isLoading: isLoadingIssues,
+  } = useClientIssues(client.id);
   
   const queryClient = useQueryClient();
-  
+
   const updateClientMutation = useMutation({
     mutationFn: async (updatedClient: Partial<ProfileTabProps['client']>) => {
       return updateClientRecord(supabase, client.id, updatedClient);
@@ -77,43 +52,98 @@ export default function ProfileTab({ client }: ProfileTabProps) {
       showError(error);
     },
   });
-  
-  const handleAddNote = (newNote: Omit<Note, 'id' | 'created_at' | 'author'>) => {
-    const note: Note = {
-      id: Date.now().toString(),
-      content: newNote.content,
-      author: 'Current User', // This would be the actual logged-in user
-      created_at: new Date().toISOString(),
-      is_visible_to_parent: newNote.is_visible_to_parent,
-      status: newNote.status
-    };
-    
-    setNotes([note, ...notes]);
-    setIsAddNoteModalOpen(false);
+
+  const addNoteMutation = useMutation({
+    mutationFn: async (newNote: Omit<Note, 'id' | 'created_at' | 'author'>) => {
+      const payload = {
+        client_id: client.id,
+        content: newNote.content,
+        status: newNote.status,
+        is_visible_to_parent: newNote.is_visible_to_parent,
+        is_visible_to_therapist: true,
+        created_by: user?.id ?? null,
+      };
+
+      const { error } = await supabase.from('client_notes').insert(payload);
+      if (error) {
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client-notes', client.id, 'all'] });
+      queryClient.invalidateQueries({ queryKey: ['client-notes', client.id, 'parent'] });
+      setIsAddNoteModalOpen(false);
+      showSuccess('Note added successfully');
+    },
+    onError: (error) => {
+      showError(error);
+    },
+  });
+
+  const addIssueMutation = useMutation({
+    mutationFn: async (issue: Omit<Issue, 'id' | 'date_opened' | 'last_action'>) => {
+      const timestamp = new Date().toISOString();
+      const payload = {
+        client_id: client.id,
+        category: issue.category,
+        description: issue.description,
+        status: issue.status,
+        priority: issue.priority,
+        date_opened: timestamp,
+        last_action: timestamp,
+        created_by: user?.id ?? null,
+      };
+
+      const { error } = await supabase.from('client_issues').insert(payload);
+      if (error) {
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client-issues', client.id] });
+      setIsAddIssueModalOpen(false);
+      showSuccess('Issue added successfully');
+    },
+    onError: (error) => {
+      showError(error);
+    },
+  });
+
+  const updateIssueStatusMutation = useMutation({
+    mutationFn: async ({ issueId, newStatus }: { issueId: string; newStatus: Issue['status'] }) => {
+      const { error } = await supabase
+        .from('client_issues')
+        .update({ status: newStatus, last_action: new Date().toISOString() })
+        .eq('id', issueId);
+
+      if (error) {
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client-issues', client.id] });
+      showSuccess('Issue status updated');
+    },
+    onError: (error) => {
+      showError(error);
+    },
+  });
+
+  const handleAddNote = async (newNote: Omit<Note, 'id' | 'created_at' | 'author'>) => {
+    await addNoteMutation.mutateAsync(newNote);
   };
-  
-  const handleAddIssue = (issue: Omit<Issue, 'id' | 'date_opened' | 'last_action'>) => {
-    const newIssue: Issue = {
-      ...issue,
-      id: Date.now().toString(),
-      date_opened: new Date().toISOString(),
-      last_action: new Date().toISOString()
-    };
-    
-    setIssues([newIssue, ...issues]);
-    setIsAddIssueModalOpen(false);
+
+  const handleAddIssue = async (issue: Omit<Issue, 'id' | 'date_opened' | 'last_action'>) => {
+    await addIssueMutation.mutateAsync(issue);
   };
-  
+
   const handleUpdateIssueStatus = (issueId: string, newStatus: Issue['status']) => {
-    setIssues(issues.map(issue => 
-      issue.id === issueId 
-        ? { ...issue, status: newStatus, last_action: new Date().toISOString() } 
-        : issue
-    ));
+    updateIssueStatusMutation.mutate({ issueId, newStatus });
   };
   
-  const getStatusIcon = (status: Note['status']) => {
-    switch (status) {
+  const getStatusIcon = (status: string | null | undefined) => {
+    const normalized = status?.toLowerCase();
+    switch (normalized) {
       case 'resolved':
         return <CheckCircle className="w-5 h-5 text-green-500" />;
       case 'open':
@@ -124,27 +154,29 @@ export default function ProfileTab({ client }: ProfileTabProps) {
         return null;
     }
   };
-  
-  const getPriorityClass = (priority: Issue['priority']) => {
-    switch (priority) {
-      case 'High':
+
+  const getPriorityClass = (priority: string | null | undefined) => {
+    const normalized = priority?.toLowerCase();
+    switch (normalized) {
+      case 'high':
         return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300';
-      case 'Medium':
+      case 'medium':
         return 'bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300';
-      case 'Low':
+      case 'low':
         return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300';
       default:
         return 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-300';
     }
   };
-  
-  const getStatusClass = (status: Issue['status']) => {
-    switch (status) {
-      case 'Open':
+
+  const getStatusClass = (status: string | null | undefined) => {
+    const normalized = status?.toLowerCase();
+    switch (normalized) {
+      case 'open':
         return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300';
-      case 'In Progress':
+      case 'in progress':
         return 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300';
-      case 'Resolved':
+      case 'resolved':
         return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300';
       default:
         return 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-300';
@@ -167,14 +199,16 @@ export default function ProfileTab({ client }: ProfileTabProps) {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => setIsEditModalOpen(true)}
-            className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
-            type="button"
-          >
-            <Edit2 className="w-4 h-4 mr-1" />
-            Edit
-          </button>
+          {!isGuardianView && (
+            <button
+              onClick={() => setIsEditModalOpen(true)}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+              type="button"
+            >
+              <Edit2 className="w-4 h-4 mr-1" />
+              Edit
+            </button>
+          )}
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
@@ -238,50 +272,69 @@ export default function ProfileTab({ client }: ProfileTabProps) {
           </div>
         </div>
       </div>
-      
+
       {/* Notes Panel */}
       <div className="bg-white dark:bg-dark-lighter rounded-lg border dark:border-gray-700 p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-medium text-gray-900 dark:text-white">Notes</h2>
-          <button
-            onClick={() => setIsAddNoteModalOpen(true)}
-            className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
-            type="button"
-          >
-            <Plus className="w-4 h-4 mr-1" />
-            Add Note
-          </button>
+          {!isGuardianView && (
+            <button
+              onClick={() => setIsAddNoteModalOpen(true)}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+              type="button"
+              disabled={addNoteMutation.isPending}
+            >
+              {addNoteMutation.isPending ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-3 w-3 animate-spin rounded-full border-b-2 border-white" />
+                  Saving…
+                </span>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Note
+                </>
+              )}
+            </button>
+          )}
         </div>
-        
+
         <div className="space-y-4">
-          {notes.length === 0 ? (
-            <p className="text-center text-gray-500 dark:text-gray-400 py-8">
-              No notes found. Add your first note to get started.
-            </p>
+          {isLoadingNotes ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-blue-600" />
+            </div>
+          ) : notes.length === 0 ? (
+            <p className="text-center text-gray-500 dark:text-gray-400 py-8">No notes found.</p>
           ) : (
             notes.map(note => (
-              <div 
-                key={note.id} 
+              <div
+                key={note.id}
                 className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700"
               >
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center">
                     {getStatusIcon(note.status)}
                     <span className="ml-2 font-medium text-gray-900 dark:text-white">
-                      {note.author}
+                      {note.createdByName ?? note.createdBy ?? 'Care team member'}
                     </span>
                   </div>
                   <div className="text-sm text-gray-500 dark:text-gray-400">
-                    {new Date(note.created_at).toLocaleString()}
+                    {note.createdAt ? new Date(note.createdAt).toLocaleString() : '—'}
                   </div>
                 </div>
                 <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                  {note.content}
+                  {note.content || 'No note content provided.'}
                 </p>
-                <div className="mt-2 flex items-center">
-                  {note.is_visible_to_parent && (
+                <div className="mt-2 flex items-center gap-2">
+                  {note.isVisibleToParent && (
                     <span className="text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300 px-2 py-0.5 rounded">
                       Visible to parent
+                    </span>
+                  )}
+                  {!note.isVisibleToTherapist && (
+                    <span className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300 px-2 py-0.5 rounded">
+                      Hidden from therapist
                     </span>
                   )}
                 </div>
@@ -290,127 +343,132 @@ export default function ProfileTab({ client }: ProfileTabProps) {
           )}
         </div>
       </div>
-      
+
       {/* Issues Log */}
       <div className="bg-white dark:bg-dark-lighter rounded-lg border dark:border-gray-700 p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-medium text-gray-900 dark:text-white">Issues Log</h2>
-          <button
-            onClick={() => setIsAddIssueModalOpen(true)}
-            className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
-            type="button"
-          >
-            <Plus className="w-4 h-4 mr-1" />
-            Add Issue
-          </button>
-        </div>
-        
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-800">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Category
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Description
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Priority
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Date Opened
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Last Action
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-dark-lighter divide-y divide-gray-200 dark:divide-gray-700">
-              {issues.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
-                    No issues found.
-                  </td>
-                </tr>
+          {!isGuardianView && (
+            <button
+              onClick={() => setIsAddIssueModalOpen(true)}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+              type="button"
+              disabled={addIssueMutation.isPending}
+            >
+              {addIssueMutation.isPending ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-3 w-3 animate-spin rounded-full border-b-2 border-white" />
+                  Saving…
+                </span>
               ) : (
-                issues.map(issue => (
+                <>
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Issue
+                </>
+              )}
+            </button>
+          )}
+        </div>
+
+        {isLoadingIssues ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-blue-600" />
+          </div>
+        ) : issues.length === 0 ? (
+          <p className="text-center text-gray-500 dark:text-gray-400 py-8">No active issues tracked.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-800">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Category
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Description
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Priority
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Date Opened
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Last Action
+                  </th>
+                  {!isGuardianView && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody className="bg-white dark:bg-dark-lighter divide-y divide-gray-200 dark:divide-gray-700">
+                {issues.map(issue => (
                   <tr key={issue.id}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-gray-900 dark:text-white">
-                        {issue.category}
-                      </span>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                      {issue.category ?? '—'}
                     </td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm text-gray-900 dark:text-white">
-                        {issue.description}
-                      </span>
+                    <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300">
+                      {issue.description ?? '—'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusClass(issue.status)}`}>
-                        {issue.status}
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusClass(issue.status)}`}>
+                        {issue.status ?? 'Unknown'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityClass(issue.priority)}`}>
-                        {issue.priority}
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getPriorityClass(issue.priority)}`}>
+                        {issue.priority ?? 'Unassigned'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-gray-500 dark:text-gray-400">
-                        {new Date(issue.date_opened).toLocaleDateString()}
-                      </span>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                      {issue.dateOpened ? new Date(issue.dateOpened).toLocaleDateString() : '—'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-gray-500 dark:text-gray-400">
-                        {new Date(issue.last_action).toLocaleDateString()}
-                      </span>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                      {issue.lastAction ? new Date(issue.lastAction).toLocaleDateString() : '—'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex space-x-2">
-                        {issue.status !== 'Open' && (
+                    {!isGuardianView && (
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                        <div className="flex space-x-2">
                           <button
                             onClick={() => handleUpdateIssueStatus(issue.id, 'Open')}
-                            className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                            className="px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50"
                             type="button"
+                            disabled={updateIssueStatusMutation.isPending}
                           >
                             Open
                           </button>
-                        )}
-                        {issue.status !== 'In Progress' && (
                           <button
                             onClick={() => handleUpdateIssueStatus(issue.id, 'In Progress')}
-                            className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                            className="px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50"
                             type="button"
+                            disabled={updateIssueStatusMutation.isPending}
                           >
                             In Progress
                           </button>
-                        )}
-                        {issue.status !== 'Resolved' && (
                           <button
                             onClick={() => handleUpdateIssueStatus(issue.id, 'Resolved')}
-                            className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                            className="px-2 py-1 text-xs font-medium text-green-600 hover:text-green-800 disabled:opacity-50"
                             type="button"
+                            disabled={updateIssueStatusMutation.isPending}
                           >
-                            Resolve
+                            Resolved
                           </button>
-                        )}
-                      </div>
-                    </td>
+                        </div>
+                      </td>
+                    )}
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
-      
+
       {/* Edit Client Modal */}
       {isEditModalOpen && (
         <ClientModal
@@ -423,13 +481,14 @@ export default function ProfileTab({ client }: ProfileTabProps) {
       
       {/* Add Note Modal */}
       <AddGeneralNoteModal
-        isOpen={isAddNoteModalOpen}
+        isOpen={!isGuardianView && isAddNoteModalOpen}
         onClose={() => setIsAddNoteModalOpen(false)}
         onSubmit={handleAddNote}
+        currentUser={profile?.full_name ?? profile?.email ?? 'Current User'}
       />
-      
+
       {/* Add Issue Modal */}
-      {isAddIssueModalOpen && (
+      {!isGuardianView && isAddIssueModalOpen && (
         <AddIssueModal
           onClose={() => setIsAddIssueModalOpen(false)}
           onSubmit={handleAddIssue}

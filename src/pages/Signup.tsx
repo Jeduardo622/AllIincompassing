@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Calendar, Shield, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
@@ -12,7 +12,9 @@ export default function Signup() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [role, setRole] = useState<'client' | 'therapist' | 'admin'>('client');
+  const [role, setRole] = useState<'client' | 'guardian' | 'therapist' | 'admin'>('client');
+  const [guardianOrganizationHint, setGuardianOrganizationHint] = useState('');
+  const [guardianInviteToken, setGuardianInviteToken] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
@@ -20,12 +22,37 @@ export default function Signup() {
   const navigate = useNavigate();
   const { signUp, user } = useAuth();
 
+  const isGuardianSignup = role === 'guardian';
+
+  const normalizedGuardianInputs = useMemo(() => {
+    const organizationHint = guardianOrganizationHint.trim();
+    const inviteToken = guardianInviteToken.trim();
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const normalizedOrganizationId = uuidRegex.test(organizationHint)
+      ? organizationHint
+      : null;
+
+    return {
+      organizationHint,
+      inviteToken,
+      normalizedOrganizationId,
+    };
+  }, [guardianOrganizationHint, guardianInviteToken]);
+
   useEffect(() => {
     // Redirect if user is already logged in
     if (user) {
       navigate('/', { replace: true });
     }
   }, [user, navigate]);
+
+  useEffect(() => {
+    if (!isGuardianSignup) {
+      setGuardianOrganizationHint('');
+      setGuardianInviteToken('');
+    }
+  }, [isGuardianSignup]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,15 +85,42 @@ export default function Signup() {
       return;
     }
 
+    if (isGuardianSignup && !normalizedGuardianInputs.organizationHint && !normalizedGuardianInputs.inviteToken) {
+      const guardianError =
+        'Please enter either your organization ID or the invite code you received from your provider.';
+      setError(guardianError);
+      showError(guardianError);
+      return;
+    }
+
     try {
       setLoading(true);
-      
-      const { error } = await signUp(email, password, {
+
+      const metadata: Record<string, unknown> = {
         first_name: firstName,
         last_name: lastName,
         full_name: `${firstName} ${lastName}`.trim(),
-        role: role,
-      });
+        signup_role: role,
+        role: role === 'guardian' ? 'client' : role,
+      };
+
+      if (isGuardianSignup) {
+        metadata.guardian_signup = true;
+
+        if (normalizedGuardianInputs.organizationHint) {
+          metadata.guardian_organization_hint = normalizedGuardianInputs.organizationHint;
+        }
+
+        if (normalizedGuardianInputs.inviteToken) {
+          metadata.guardian_invite_token = normalizedGuardianInputs.inviteToken;
+        }
+
+        if (normalizedGuardianInputs.normalizedOrganizationId) {
+          metadata.organization_id = normalizedGuardianInputs.normalizedOrganizationId;
+        }
+      }
+
+      const { error } = await signUp(email, password, metadata);
 
       if (error) {
         const normalizedError = toError(error, 'Signup failed');
@@ -76,6 +130,9 @@ export default function Signup() {
           metadata: {
             role,
             attemptedEmail: email,
+            guardianSignup: isGuardianSignup,
+            hasGuardianOrganizationHint: Boolean(normalizedGuardianInputs.organizationHint),
+            hasGuardianInviteToken: Boolean(normalizedGuardianInputs.inviteToken),
           },
         });
         setError(error.message);
@@ -98,6 +155,9 @@ export default function Signup() {
         metadata: {
           role,
           attemptedEmail: email,
+          guardianSignup: isGuardianSignup,
+          hasGuardianOrganizationHint: Boolean(normalizedGuardianInputs.organizationHint),
+          hasGuardianInviteToken: Boolean(normalizedGuardianInputs.inviteToken),
         },
       });
       const message = err instanceof Error ? err.message : 'Failed to create account';
@@ -145,10 +205,13 @@ export default function Signup() {
                   id="role"
                   name="role"
                   value={role}
-                  onChange={(e) => setRole(e.target.value as 'client' | 'therapist' | 'admin')}
+                  onChange={(e) =>
+                    setRole(e.target.value as 'client' | 'guardian' | 'therapist' | 'admin')
+                  }
                   className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-dark dark:text-white sm:text-sm"
                 >
                   <option value="client">Client - Access sessions and schedule</option>
+                  <option value="guardian">Guardian - Access approved dependents</option>
                   <option value="therapist">Therapist - Manage clients and sessions</option>
                   <option value="admin">Admin - Full system access</option>
                 </select>
@@ -197,6 +260,60 @@ export default function Signup() {
                 </div>
               </div>
             </div>
+
+            {isGuardianSignup && (
+              <div className="space-y-4">
+                <div>
+                  <label
+                    htmlFor="guardian-organization"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    Organization ID
+                  </label>
+                  <div className="mt-1">
+                    <input
+                      id="guardian-organization"
+                      name="guardian-organization"
+                      type="text"
+                      value={guardianOrganizationHint}
+                      onChange={(event) => setGuardianOrganizationHint(event.target.value)}
+                      placeholder="e.g., organization UUID or short code"
+                      className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-dark dark:text-white sm:text-sm"
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Optional. Provide the organization identifier you received from your care team.
+                  </p>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="guardian-invite"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    Invite code
+                  </label>
+                  <div className="mt-1">
+                    <input
+                      id="guardian-invite"
+                      name="guardian-invite"
+                      type="text"
+                      value={guardianInviteToken}
+                      onChange={(event) => setGuardianInviteToken(event.target.value)}
+                      placeholder="Code shared by your care team"
+                      className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-dark dark:text-white sm:text-sm"
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Required if you do not have an organization ID. We use this to route your request for approval.
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+                  We will notify administrators in your organization. You will only see your dependents after an approval is completed.
+                </div>
+              </div>
+            )}
 
             {/* Email */}
             <div>
@@ -302,6 +419,7 @@ export default function Signup() {
             <h3 className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-2">Account Types:</h3>
             <div className="space-y-1 text-sm text-blue-700 dark:text-blue-400">
               <p><strong>Client:</strong> Book sessions, view schedules, access your records</p>
+              <p><strong>Guardian:</strong> Request access to dependents and view approved updates</p>
               <p><strong>Therapist:</strong> Manage clients, create session notes, view schedules</p>
               <p><strong>Admin:</strong> Full system access, user management, reporting</p>
             </div>

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { 
-  Calendar, Users, FileText, CreditCard, LayoutDashboard, 
-  UserCog, LogOut, Settings, MessageSquare, Sun, Moon, 
-  FileCheck, Menu, X, RefreshCw, User, BarChart, Activity
+  Calendar, Users, FileText, CreditCard, LayoutDashboard,
+  UserCog, LogOut, Settings, MessageSquare, Sun, Moon,
+  FileCheck, Menu, X, RefreshCw, User, BarChart, Activity,
+  UserCircle2
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/theme';
@@ -77,9 +78,15 @@ export default function Sidebar() {
   };
 
   const navItems = [
-    { 
-      icon: LayoutDashboard, 
-      label: 'Dashboard', 
+    {
+      icon: UserCircle2,
+      label: 'Family',
+      path: '/family',
+      roles: ['client']
+    },
+    {
+      icon: LayoutDashboard,
+      label: 'Dashboard',
       path: '/',
       roles: [] // accessible to all authenticated users
     },

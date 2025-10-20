@@ -7,6 +7,7 @@ import ProfileTab from '../components/ClientDetails/ProfileTab';
 import SessionNotesTab from '../components/ClientDetails/SessionNotesTab';
 import PreAuthTab from '../components/ClientDetails/PreAuthTab';
 import ServiceContractsTab from '../components/ClientDetails/ServiceContractsTab';
+import { useAuth } from '../lib/authContext';
 
 type TabType = 'profile' | 'session-notes' | 'pre-auth' | 'contracts';
 
@@ -14,6 +15,7 @@ export default function ClientDetails() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('profile');
+  const { profile } = useAuth();
 
   const { data: client, isLoading } = useQuery({
     queryKey: ['client', clientId],
@@ -104,7 +106,7 @@ export default function ClientDetails() {
         </div>
 
         <div className="p-6">
-          {activeTab === 'profile' && <ProfileTab client={client} />}
+          {activeTab === 'profile' && <ProfileTab client={client} viewerRole={profile?.role} />}
           {activeTab === 'session-notes' && <SessionNotesTab client={client} />}
           {activeTab === 'pre-auth' && <PreAuthTab client={client} />}
           {activeTab === 'contracts' && <ServiceContractsTab client={client} />}

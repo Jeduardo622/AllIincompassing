@@ -1279,6 +1279,68 @@ export type Database = {
         }
         Relationships: []
       }
+      guardian_link_queue: {
+        Row: {
+          approved_client_ids: string[] | null
+          created_at: string
+          created_by: string | null
+          guardian_email: string
+          guardian_id: string
+          id: string
+          invite_token: string | null
+          metadata: Json
+          organization_id: string | null
+          processed_at: string | null
+          processed_by: string | null
+          requested_client_ids: string[] | null
+          resolution_notes: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          approved_client_ids?: string[] | null
+          created_at?: string
+          created_by?: string | null
+          guardian_email: string
+          guardian_id: string
+          id?: string
+          invite_token?: string | null
+          metadata?: Json
+          organization_id?: string | null
+          processed_at?: string | null
+          processed_by?: string | null
+          requested_client_ids?: string[] | null
+          resolution_notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          approved_client_ids?: string[] | null
+          created_at?: string
+          created_by?: string | null
+          guardian_email?: string
+          guardian_id?: string
+          id?: string
+          invite_token?: string | null
+          metadata?: Json
+          organization_id?: string | null
+          processed_at?: string | null
+          processed_by?: string | null
+          requested_client_ids?: string[] | null
+          resolution_notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guardian_link_queue_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       impersonation_audit: {
         Row: {
           actor_ip: unknown | null
@@ -2758,6 +2820,18 @@ export type Database = {
           workload_distribution: Json
         }[]
       }
+      approve_guardian_request: {
+        Args: {
+          p_request_id: string
+          p_client_ids?: string[] | null
+          p_relationship?: string | null
+          p_resolution_notes?: string | null
+        }
+        Returns: {
+          approved_client_ids: string[] | null
+          guardian_id: string
+        }[]
+      }
       assign_admin_role: {
         Args: { organization_id: string; reason?: string; user_email: string }
         Returns: undefined
@@ -3180,6 +3254,25 @@ export type Database = {
           guardian_notes: Json
           guardian_relationship: string | null
           upcoming_sessions: Json
+        }[]
+      }
+      guardian_link_queue_admin_view: {
+        Args: { p_organization_id?: string | null; p_status?: string | null }
+        Returns: {
+          approved_client_ids: string[] | null
+          created_at: string
+          guardian_email: string
+          guardian_id: string
+          id: string
+          invite_token: string | null
+          metadata: Json
+          organization_id: string | null
+          processed_at: string | null
+          processed_by: string | null
+          requested_client_ids: string[] | null
+          resolution_notes: string | null
+          status: string
+          updated_at: string
         }[]
       }
       guardian_upcoming_sessions: {

@@ -37,74 +37,41 @@ const unauthorized = () => json({ error: 'unauthorized' }, { status: 401, header
 
 const sanitizeTable = (t: unknown) => (typeof t === 'string' && /^[a-zA-Z0-9_.]+$/.test(t) ? t : null);
 
+const RPC_ALLOWLIST = new Set<string>([
+  // Read-only or safe diagnostics RPCs only
+  'get_dashboard_data',
+  'get_client_metrics',
+  'get_therapist_metrics',
+  'get_authorization_metrics',
+]);
+
+function audit(event: string, details: Record<string, unknown>) {
+  const payload = {
+    ts: new Date().toISOString(),
+    event,
+    details,
+  };
+  console.log(JSON.stringify(payload));
+}
+
 async function handleRpc(req: Request) {
   const body = await req.json().catch(() => ({}));
   const { name, args } = body as { name?: string; args?: Record<string, unknown> };
   if (!name || typeof name !== 'string') return json({ error: 'invalid function name' }, { status: 400, headers: corsHeaders });
+  if (!RPC_ALLOWLIST.has(name)) {
+    audit('mcp.rpc.blocked', { name });
+    return json({ error: 'rpc_not_allowed' }, { status: 403, headers: corsHeaders });
+  }
   const { data, error } = await supabase.rpc(name, args ?? {});
   if (error) return json({ error: error.message }, { status: 400, headers: corsHeaders });
+  audit('mcp.rpc.success', { name });
   return json({ data }, { headers: corsHeaders });
 }
 
-async function handleTable(req: Request, path: string) {
-  const [, , action] = path.split('/'); // /table/<action>
-  const body = await req.json().catch(() => ({}));
-  const table = sanitizeTable((body as { table?: string }).table);
-  if (!table) return json({ error: 'invalid table' }, { status: 400, headers: corsHeaders });
-  const selector = typeof (body as { select?: string }).select === 'string' && (body as { select?: string }).select!.length > 0 ? (body as { select?: string }).select! : '*';
-
-  const applyMatch = (q: any) => {
-    const m = (body as { match?: Record<string, unknown> }).match ?? {};
-    for (const [k, v] of Object.entries(m)) q = q.eq(k, v as any);
-    return q;
-  };
-
-  if (action === 'insert') {
-    const rows = (body as { rows?: unknown; values?: unknown }).rows ?? (body as { values?: unknown }).values;
-    if (!rows) return json({ error: 'missing rows' }, { status: 400, headers: corsHeaders });
-    const { data, error } = await supabase.from(table).insert(rows as any).select(selector);
-    if (error) return json({ error: error.message }, { status: 400, headers: corsHeaders });
-    return json({ data }, { headers: corsHeaders });
-  }
-
-  if (action === 'upsert') {
-    const rows = (body as { rows?: unknown; values?: unknown }).rows ?? (body as { values?: unknown }).values;
-    if (!rows) return json({ error: 'missing rows' }, { status: 400, headers: corsHeaders });
-    const { data, error } = await supabase.from(table).upsert(rows as any, { onConflict: (body as { onConflict?: string }).onConflict }).select(selector);
-    if (error) return json({ error: error.message }, { status: 400, headers: corsHeaders });
-    return json({ data }, { headers: corsHeaders });
-  }
-
-  if (action === 'update') {
-    const values = (body as { values?: unknown }).values;
-    if (!values) return json({ error: 'missing values' }, { status: 400, headers: corsHeaders });
-    let q: any = supabase.from(table).update(values as any).select(selector);
-    q = applyMatch(q);
-    const { data, error } = await q;
-    if (error) return json({ error: error.message }, { status: 400, headers: corsHeaders });
-    return json({ data }, { headers: corsHeaders });
-  }
-
-  if (action === 'delete') {
-    let q: any = supabase.from(table).delete().select(selector);
-    q = applyMatch(q);
-    const { data, error } = await q;
-    if (error) return json({ error: error.message }, { status: 400, headers: corsHeaders });
-    return json({ data }, { headers: corsHeaders });
-  }
-
-  if (action === 'select') {
-    let q: any = supabase
-      .from(table)
-      .select(selector)
-      .limit(Math.max(1, Math.min(1000, Number((body as { limit?: number }).limit) || 100)));
-    q = applyMatch(q);
-    const { data, error } = await q;
-    if (error) return json({ error: error.message }, { status: 400, headers: corsHeaders });
-    return json({ data }, { headers: corsHeaders });
-  }
-
-  return json({ error: 'unknown action' }, { status: 404, headers: corsHeaders });
+// Disable generic table surface: all table access is blocked
+async function handleTable(): Promise<Response> {
+  audit('mcp.table.blocked', {});
+  return json({ error: 'table_access_blocked' }, { status: 403, headers: corsHeaders });
 }
 
 Deno.serve(async (req: Request) => {
@@ -115,7 +82,7 @@ Deno.serve(async (req: Request) => {
   }
   if (!isAuthorized(req)) return unauthorized();
   if (req.method === 'POST' && url.pathname === '/rpc') return handleRpc(req);
-  if (req.method === 'POST' && url.pathname.startsWith('/table/')) return handleTable(req, url.pathname);
+  if (req.method === 'POST' && url.pathname.startsWith('/table/')) return handleTable();
   return json({ error: 'not_found' }, { status: 404, headers: corsHeaders });
 });
 

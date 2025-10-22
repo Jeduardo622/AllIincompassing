@@ -145,9 +145,22 @@ export const useDashboardData = () => {
   return useQuery({
     queryKey: generateCacheKey.dashboard(),
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_dashboard_data');
-      if (error) throw error;
-      return data;
+      // Proxy through server to enforce SECURITY INVOKER policy and org checks
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = new Headers({ 'Accept': 'application/json' });
+      if (session?.access_token) {
+        headers.set('Authorization', `Bearer ${session.access_token}`);
+      }
+      const response = await fetch('/api/dashboard', { method: 'GET', headers });
+      if (!response.ok) {
+        const status = response.status;
+        const payload = await response.json().catch(() => ({}));
+        const message = typeof payload?.error === 'string' ? payload.error : 'Failed to load dashboard data';
+        const error = new Error(message) as Error & { status?: number };
+        error.status = status;
+        throw error;
+      }
+      return response.json();
     },
     staleTime: CACHE_STRATEGIES.DASHBOARD.summary,
     refetchInterval: 2 * 60 * 1000, // Auto-refresh every 2 minutes

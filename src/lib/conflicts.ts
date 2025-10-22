@@ -203,7 +203,8 @@ export async function suggestAlternativeTimes(
 ): Promise<AlternativeTime[]> {
   const { excludeSessionId, timeZone = 'UTC' } = options;
   try {
-    const { data, error } = await supabase.functions.invoke('suggest-alternative-times', {
+    const { edgeInvoke } = await import('./edgeInvoke');
+    const { data, error, status } = await edgeInvoke<{ alternatives?: AlternativeTime[] }>('suggest-alternative-times', {
       body: {
         startTime,
         endTime,
@@ -219,11 +220,11 @@ export async function suggestAlternativeTimes(
     });
 
     if (error) {
-      console.error('Error suggesting alternative times:', error);
+      console.error('Error suggesting alternative times:', { message: error.message, status });
       return [];
     }
 
-    return data.alternatives || [];
+    return (data?.alternatives) || [];
   } catch (error) {
     console.error('Error suggesting alternative times:', error);
     return [];

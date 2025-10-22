@@ -37,6 +37,7 @@
     "auth:fix": "node scripts/apply-auth-fixes.js",
     "auth:test": "node scripts/test-super-admin-creation.js",
     "audit:service-role": "node scripts/audit-service-role-usage.cjs",
+    "validate:client-supabase": "tsx scripts/scan-client-supabase.ts",
     "preview:build": "tsx scripts/preview-build.ts",
     "preview:smoke": "tsx scripts/run-preview-smoke.ts",
     "preview:smoke:remote": "tsx scripts/smoke-preview.ts",

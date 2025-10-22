@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { edgeInvoke } from '../lib/edgeInvoke';
 import { useAuth } from '../lib/authContext';
 import { showError, showSuccess } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
@@ -91,15 +92,15 @@ export const SuperAdminFeatureFlags: React.FC = () => {
     queryKey: QUERY_KEY,
     enabled: isSuperAdmin,
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke('feature-flags', {
-        body: { action: 'list' },
-      });
+      const { data, error, status } = await edgeInvoke<FeatureFlagPayload>('feature-flags', { body: { action: 'list' } });
 
       if (error) {
         logger.error('Failed to load feature flag administration data', {
           error: toError(error, 'Feature flag list failed'),
         });
-        throw error;
+        const mapped = new Error(error.message) as Error & { status?: number };
+        mapped.status = (status as number) ?? undefined;
+        throw mapped;
       }
 
       const payload = (data ?? {}) as Partial<FeatureFlagPayload>;
@@ -117,17 +118,17 @@ export const SuperAdminFeatureFlags: React.FC = () => {
 
   const createFlagMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.functions.invoke('feature-flags', {
-        body: {
-          action: 'createFlag',
-          flagKey: newFlagKey.trim(),
-          description: newFlagDescription.trim() || undefined,
-          defaultEnabled: newFlagDefaultEnabled,
-        },
-      });
+      const { error, status } = await edgeInvoke('feature-flags', { body: {
+        action: 'createFlag',
+        flagKey: newFlagKey.trim(),
+        description: newFlagDescription.trim() || undefined,
+        defaultEnabled: newFlagDefaultEnabled,
+      } });
 
       if (error) {
-        throw error;
+        const mapped = new Error(error.message) as Error & { status?: number };
+        mapped.status = (status as number) ?? undefined;
+        throw mapped;
       }
     },
     onSuccess: () => {
@@ -147,16 +148,16 @@ export const SuperAdminFeatureFlags: React.FC = () => {
 
   const updateGlobalFlagMutation = useMutation({
     mutationFn: async (variables: { flagId: string; enabled: boolean }) => {
-      const { error } = await supabase.functions.invoke('feature-flags', {
-        body: {
-          action: 'updateGlobalFlag',
-          flagId: variables.flagId,
-          enabled: variables.enabled,
-        },
-      });
+      const { error, status } = await edgeInvoke('feature-flags', { body: {
+        action: 'updateGlobalFlag',
+        flagId: variables.flagId,
+        enabled: variables.enabled,
+      } });
 
       if (error) {
-        throw error;
+        const mapped = new Error(error.message) as Error & { status?: number };
+        mapped.status = (status as number) ?? undefined;
+        throw mapped;
       }
     },
     onSuccess: () => {
@@ -173,17 +174,17 @@ export const SuperAdminFeatureFlags: React.FC = () => {
 
   const setOrganizationFlagMutation = useMutation({
     mutationFn: async (variables: { organizationId: string; flagId: string; enabled: boolean }) => {
-      const { error } = await supabase.functions.invoke('feature-flags', {
-        body: {
-          action: 'setOrgFlag',
-          organizationId: variables.organizationId,
-          flagId: variables.flagId,
-          enabled: variables.enabled,
-        },
-      });
+      const { error, status } = await edgeInvoke('feature-flags', { body: {
+        action: 'setOrgFlag',
+        organizationId: variables.organizationId,
+        flagId: variables.flagId,
+        enabled: variables.enabled,
+      } });
 
       if (error) {
-        throw error;
+        const mapped = new Error(error.message) as Error & { status?: number };
+        mapped.status = (status as number) ?? undefined;
+        throw mapped;
       }
     },
     onSuccess: () => {
@@ -200,16 +201,16 @@ export const SuperAdminFeatureFlags: React.FC = () => {
 
   const setOrganizationPlanMutation = useMutation({
     mutationFn: async (variables: { organizationId: string; planCode: string | null }) => {
-      const { error } = await supabase.functions.invoke('feature-flags', {
-        body: {
-          action: 'setOrgPlan',
-          organizationId: variables.organizationId,
-          planCode: variables.planCode,
-        },
-      });
+      const { error, status } = await edgeInvoke('feature-flags', { body: {
+        action: 'setOrgPlan',
+        organizationId: variables.organizationId,
+        planCode: variables.planCode,
+      } });
 
       if (error) {
-        throw error;
+        const mapped = new Error(error.message) as Error & { status?: number };
+        mapped.status = (status as number) ?? undefined;
+        throw mapped;
       }
     },
     onSuccess: () => {
@@ -231,19 +232,19 @@ export const SuperAdminFeatureFlags: React.FC = () => {
         throw new Error('Organization ID must be a valid UUID.');
       }
 
-      const { error } = await supabase.functions.invoke('feature-flags', {
-        body: {
-          action: 'upsertOrganization',
-          organization: {
-            id: normalizedId,
-            name: organizationNameInput.trim() || undefined,
-            slug: organizationSlugInput.trim() ? toSlug(organizationSlugInput) : undefined,
-          },
+      const { error, status } = await edgeInvoke('feature-flags', { body: {
+        action: 'upsertOrganization',
+        organization: {
+          id: normalizedId,
+          name: organizationNameInput.trim() || undefined,
+          slug: organizationSlugInput.trim() ? toSlug(organizationSlugInput) : undefined,
         },
-      });
+      } });
 
       if (error) {
-        throw error;
+        const mapped = new Error(error.message) as Error & { status?: number };
+        mapped.status = (status as number) ?? undefined;
+        throw mapped;
       }
     },
     onSuccess: () => {

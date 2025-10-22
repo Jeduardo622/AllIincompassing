@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { edgeInvoke } from '../lib/edgeInvoke';
 import { useAuth } from '../lib/authContext';
 import { showSuccess, showError } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
@@ -105,12 +106,12 @@ export const SuperAdminImpersonation: React.FC = () => {
         reason,
       });
 
-      const { data, error } = await supabase.functions.invoke('super-admin-impersonate', {
-        body: payload.body,
-      });
+      const { data, error, status } = await edgeInvoke('super-admin-impersonate', { body: payload.body });
 
       if (error) {
-        throw new Error(error.message ?? 'Failed to issue impersonation token');
+        const mapped = new Error(error.message ?? 'Failed to issue impersonation token') as Error & { status?: number };
+        mapped.status = (status as number) ?? undefined;
+        throw mapped;
       }
 
       const response = data as { token: string; expiresAt: string; auditId: string; expiresInMinutes: number } | null;
@@ -144,12 +145,12 @@ export const SuperAdminImpersonation: React.FC = () => {
     { auditId: string; silent?: boolean }
   >({
     mutationFn: async ({ auditId }) => {
-      const { data, error } = await supabase.functions.invoke('super-admin-impersonate', {
-        body: { action: 'revoke', auditId },
-      });
+      const { data, error, status } = await edgeInvoke('super-admin-impersonate', { body: { action: 'revoke', auditId } });
 
       if (error) {
-        throw new Error(error.message ?? 'Failed to revoke impersonation token');
+        const mapped = new Error(error.message ?? 'Failed to revoke impersonation token') as Error & { status?: number };
+        mapped.status = (status as number) ?? undefined;
+        throw mapped;
       }
 
       const response = data as { revoked: boolean; auditId: string } | null;

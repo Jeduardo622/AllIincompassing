@@ -13,7 +13,7 @@ import ThemeToggle from './ThemeToggle';
 import { logger } from '../lib/logger/logger';
 
 export default function Sidebar() {
-  const { signOut, hasRole, user, profile } = useAuth();
+  const { signOut, hasRole, hasAnyRole, user, profile } = useAuth();
   const { isDark } = useTheme();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -160,6 +160,12 @@ export default function Sidebar() {
     </button>
   );
 
+  const canAccessChatAssistant = hasAnyRole([
+    'therapist',
+    'admin',
+    'super_admin'
+  ]);
+
   return (
     <>
       <MobileMenuButton />
@@ -259,16 +265,18 @@ export default function Sidebar() {
         </nav>
 
         <div className="mt-auto space-y-1 p-4">
-          <button
-            onClick={() => {
-              document.getElementById('chat-trigger')?.click();
-              setIsMobileMenuOpen(false);
-            }}
-            className="flex items-center w-full px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
-          >
-            <MessageSquare className="h-5 w-5 mr-3" />
-            Chat Assistant
-          </button>
+          {canAccessChatAssistant && (
+            <button
+              onClick={() => {
+                document.getElementById('chat-trigger')?.click();
+                setIsMobileMenuOpen(false);
+              }}
+              className="flex items-center w-full px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
+            >
+              <MessageSquare className="h-5 w-5 mr-3" />
+              Chat Assistant
+            </button>
+          )}
           
           <button
             onClick={() => {
@@ -296,7 +304,7 @@ export default function Sidebar() {
           </button>
         </div>
         
-        <ChatBot />
+        {canAccessChatAssistant && <ChatBot />}
         <ThemeToggle />
       </aside>
 

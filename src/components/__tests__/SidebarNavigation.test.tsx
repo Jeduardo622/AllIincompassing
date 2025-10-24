@@ -100,4 +100,45 @@ describe("Sidebar navigation active styling", () => {
     expect(screen.getByRole("link", { name: /monitoring/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /settings/i })).toBeInTheDocument();
   });
+
+  it("hides the chat assistant for guardian users", () => {
+    const hasRole = vi.fn(
+      (role: "client" | "therapist" | "admin" | "super_admin") => role === "client"
+    );
+
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole,
+      user: {
+        email: "guardian@example.com",
+        user_metadata: {},
+      },
+      profile: {
+        role: "client",
+      },
+      hasAnyRole: vi.fn((roles: ("client" | "therapist" | "admin" | "super_admin")[]) =>
+        roles.some(role => hasRole(role))
+      ),
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Sidebar />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByRole("button", { name: /chat assistant/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chatbot-mock")).not.toBeInTheDocument();
+  });
+
+  it("shows the chat assistant for therapist users", () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Sidebar />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("button", { name: /chat assistant/i })).toBeInTheDocument();
+    expect(screen.getByTestId("chatbot-mock")).toBeInTheDocument();
+  });
 });

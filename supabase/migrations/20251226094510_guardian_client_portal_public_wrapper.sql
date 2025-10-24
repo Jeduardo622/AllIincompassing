@@ -30,3 +30,5 @@ AS $$
 $$;
 
 GRANT EXECUTE ON FUNCTION public.get_guardian_client_portal(uuid) TO authenticated;
+
+

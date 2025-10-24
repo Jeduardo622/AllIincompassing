@@ -173,7 +173,7 @@ BEGIN
   FROM guardian_clients gc
   JOIN public.clients c ON c.id = gc.client_id
   WHERE c.deleted_at IS NULL
-    AND app.user_has_role_for_org(''client'', gc.organization_id, NULL, c.id)
+    AND app.user_has_role_for_org('client', gc.organization_id, NULL, c.id)
     AND (p_client_id IS NULL OR c.id = p_client_id)
   ORDER BY c.full_name;
 END;

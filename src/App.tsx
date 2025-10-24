@@ -198,6 +198,11 @@ function App() {
                         <Settings />
                       </RoleGuard>
                     } />
+                    <Route path="settings/:tabId" element={
+                      <RoleGuard roles={['admin', 'super_admin']}>
+                        <Settings />
+                      </RoleGuard>
+                    } />
 
                     {/* Catch all - redirect to dashboard */}
                     <Route path="*" element={<Navigate to="/" replace />} />

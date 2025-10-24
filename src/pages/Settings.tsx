@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import OrganizationSettings from '../components/settings/OrganizationSettings';
 import { Building, Users, FileText, Briefcase, Settings as SettingsIcon, Shield, User } from 'lucide-react';
 import CompanySettings from '../components/settings/CompanySettings';
 import LocationSettings from '../components/settings/LocationSettings';
@@ -8,10 +10,45 @@ import FileCabinetSettings from '../components/settings/FileCabinetSettings';
 import AdminSettings from '../components/settings/AdminSettings';
 import UserSettings from '../components/settings/UserSettings';
 
-type Tab = 'user' | 'company' | 'locations' | 'service-lines' | 'referring-providers' | 'file-cabinet' | 'admins';
+type Tab =
+  | 'user'
+  | 'company'
+  | 'locations'
+  | 'service-lines'
+  | 'referring-providers'
+  | 'file-cabinet'
+  | 'admins'
+  | 'organizations';
 
 export default function Settings() {
-  const [activeTab, setActiveTab] = useState<Tab>('user');
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const initialTab = useMemo<Tab>(() => {
+    const path = location.pathname.toLowerCase();
+    const match = path.match(/\/settings\/(.+)$/);
+    if (match && match[1]) {
+      const candidate = match[1] as Tab;
+      const allowed: Tab[] = [
+        'user',
+        'company',
+        'locations',
+        'service-lines',
+        'referring-providers',
+        'file-cabinet',
+        'admins',
+        'organizations',
+      ];
+      if (allowed.includes(candidate)) return candidate;
+    }
+    return 'user';
+  }, [location.pathname]);
+
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   const tabs = [
     { id: 'user' as Tab, name: 'Personal Settings', icon: User },
@@ -21,6 +58,7 @@ export default function Settings() {
     { id: 'referring-providers' as Tab, name: 'Referring Providers', icon: Users },
     { id: 'file-cabinet' as Tab, name: 'File Cabinet Settings', icon: FileText },
     { id: 'admins' as Tab, name: 'Admin Users', icon: Shield },
+    { id: 'organizations' as Tab, name: 'Organizations', icon: Building },
   ];
 
   return (
@@ -37,7 +75,10 @@ export default function Settings() {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    navigate(tab.id === 'user' ? '/settings' : `/settings/${tab.id}`);
+                  }}
                   className={`
                     group inline-flex items-center px-6 py-4 border-b-2 font-medium text-sm
                     ${
@@ -70,6 +111,7 @@ export default function Settings() {
           {activeTab === 'referring-providers' && <ReferringProviderSettings />}
           {activeTab === 'file-cabinet' && <FileCabinetSettings />}
           {activeTab === 'admins' && <AdminSettings />}
+          {activeTab === 'organizations' && <OrganizationSettings />}
         </div>
       </div>
     </div>

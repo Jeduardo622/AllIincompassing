@@ -23,7 +23,7 @@ RETURNS TABLE (
 )
 LANGUAGE sql
 SECURITY DEFINER
-SET search_path = public, app
+SET search_path = public, auth
 AS $$
   SELECT *
   FROM app.get_guardian_client_portal(p_client_id);

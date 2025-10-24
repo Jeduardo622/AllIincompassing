@@ -32,3 +32,12 @@
 - Default expiration is 72 hours and can be overridden per request within 1–168 hours.
 - Super admins may invite admins into any organization; standard admins are restricted to their own organization context.
 - Expired invites are automatically replaced on subsequent requests; active invites must be explicitly revoked in the database if re-sending is required before expiration.
+
+## Organization creation
+
+- If your account is missing an organization, go to `Settings → Organizations` and create one.
+- Eligibility:
+  - Super admins can always create organizations.
+  - Admins without an organization can create their initial organization; upon creation their `organization_id` metadata is set automatically.
+- The UI calls the `feature-flags` Edge Function with action `upsertOrganization`, which persists a row in `public.organizations`.
+- After creation, proceed to `Settings → Admin Users` to add additional administrators.

@@ -87,7 +87,7 @@ export default function AdminSettings() {
 
   useEffect(() => {
     if (!organizationId) {
-      setAccessError('Your account is missing an organization. Please contact support.');
+      setAccessError('Your account is missing an organization.');
       setFormData((previous) => ({ ...previous, organization_id: null }));
       return;
     }
@@ -545,7 +545,10 @@ export default function AdminSettings() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
         </div>
       ) : accessError ? (
-        <div className="text-center py-4 text-red-600 dark:text-red-400">{accessError}</div>
+        <div className="text-center py-4 text-red-600 dark:text-red-400">
+          {accessError}{' '}
+          <a href="/settings/organizations" className="underline text-blue-600 dark:text-blue-400">Create organization</a>
+        </div>
       ) : admins.length === 0 ? (
         <div className="text-center py-4 text-gray-500 dark:text-gray-400">
           No admin users found
@@ -620,7 +623,9 @@ export default function AdminSettings() {
 
         {!organizationId ? (
           <div className="rounded-md border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-200">
-            Guardian approvals require an organization context. Confirm your account has an organization ID assigned.
+            Guardian approvals require an organization context.{' '}
+            <a href="/settings/organizations" className="font-semibold underline text-indigo-700 dark:text-indigo-300">Create your organization</a>{' '}
+            to proceed.
           </div>
         ) : isGuardianQueueLoading || isGuardianClientsLoading ? (
           <div className="text-center py-4">

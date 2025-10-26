@@ -1,0 +1,46 @@
+{
+  "requestedUrl": "https://app.allincompassing.ai/",
+  "finalUrl": "https://app.allincompassing.ai/login",
+  "formFactor": "desktop",
+  "throttlingMethod": "simulate",
+  "scores": {
+    "performance": 1,
+    "accessibility": 0.88,
+    "best-practices": 1,
+    "seo": 0.82
+  },
+  "metrics": {
+    "LCP": 455.694,
+    "CLS": 0,
+    "TBT": 0,
+    "FCP": 448.194,
+    "INP": null
+  },
+  "opportunities": [
+    {
+      "id": "redirects",
+      "title": "Avoid multiple page redirects",
+      "savingsMs": 480.694
+    },
+    {
+      "id": "unused-javascript",
+      "title": "Reduce unused JavaScript",
+      "savingsMs": 120
+    },
+    {
+      "id": "server-response-time",
+      "title": "Initial server response time was short",
+      "savingsMs": 0
+    },
+    {
+      "id": "uses-rel-preconnect",
+      "title": "Preconnect to required origins",
+      "savingsMs": 0
+    },
+    {
+      "id": "offscreen-images",
+      "title": "Defer offscreen images",
+      "savingsMs": 0
+    }
+  ]
+}

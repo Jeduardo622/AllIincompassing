@@ -29,6 +29,23 @@
 
 ---
 
+## 🧰 MCP Tooling
+
+The project standardizes on the following MCP servers. These are configured locally via `.cursor/mcp.json` and must not be committed.
+
+- **supabase**: Hosted Supabase project access for docs, database, functions, branching, storage, logs. No self‑hosted/local DB.
+- **MCP_DOCKER**: Docker MCP gateway for containerized tools. Use for exploratory tooling; do not commit infra changes.
+- **lighthouse**: Web audits for performance, accessibility, best‑practices, SEO, PWA. Requires a Chromium browser. If needed, set `CHROME_PATH` to the browser executable.
+  - Typical tools: `get_performance_score`, `run_audit` ([lighthouse-mcp GitHub](https://github.com/priyankark/lighthouse-mcp)).
+- **playwright**: Browser automation for E2E smoke/regression and artifact capture (screenshots, console logs, timings).
+  - Typical tools: `browser_navigate`, `browser_click`, `browser_wait_for`, `browser_take_screenshot`.
+
+Notes
+- `.cursor/mcp.json` is user‑local. Propose changes in PRs, but never commit secrets or environment‑specific paths.
+- Prefer testing against hosted/staging URLs; avoid `localhost` for Supabase endpoints.
+
+---
+
 ## 🏗️ Coding‑standards
 
 - **TypeScript / React** – follow Airbnb style via project ESLint + Prettier settings ([gist.github.com](https://gist.github.com/ruvnet/ba1497632143ea9f12062c9c2c1879ad?utm_source=chatgpt.com)).
@@ -36,6 +53,45 @@
 - **Testing** – every logic change needs a Jest test; run `npm test`, `eslint .`, and `tsc --noEmit` before opening a PR ([datacamp.com](https://www.datacamp.com/tutorial/openai-codex?utm_source=chatgpt.com)).
 - **Commits** – use Conventional Commits (`feat(scope): summary`) ([gist.github.com](https://gist.github.com/ruvnet/ba1497632143ea9f12062c9c2c1879ad?utm_source=chatgpt.com)).
 - **Coverage** – maintain ≥ 90 % line coverage; CI fails below this threshold.
+
+---
+
+## 📐 MCP Usage Rules & Boundaries
+
+- **Supabase (hosted only)**: Do not point to self‑hosted or `localhost:54321`. The app must source `SUPABASE_URL` from `.env.local` and use the hosted project.
+- **Secrets**: Never echo/API‑return secrets in MCP outputs. Mask tokens as `****` in logs/artifacts.
+- **User management**: Prefer Supabase CLI for admin tasks (e.g., create/reset users). Avoid dashboard‑only workflows in automation.
+- **Config locality**: Keep `.cursor/mcp.json` local; do not commit environment‑specific paths such as `CHROME_PATH`.
+- **Infra boundaries**: Do not commit changes to `.github/**`, `infra/**`, `Dockerfile`, `.env`, `.supabase/config.toml`. Propose instead.
+
+---
+
+## 🔁 Standard Workflows (MCP‑first)
+
+### Frontend performance audit (Lighthouse)
+- When: new pages, major UI changes, or regressions suspected.
+- Run:
+  - Mobile (default throttling): `get_performance_score url=<page>`
+  - Full audit (desktop): `run_audit url=<page> device=desktop throttling=false categories=[performance,accessibility,best-practices,seo]`
+- Output expectations: overall scores, top opportunities (LCP, CLS, TBT), and concrete fix list.
+
+### E2E smoke/regression (Playwright)
+- When: critical flows (sign‑in, checkout, settings), before release.
+- Run minimal path:
+  - `browser_navigate url=<page>` → `browser_wait_for text="<selector/text>"`
+  - `browser_click element="<desc>"` → `browser_take_screenshot`
+- Output expectations: screenshots per step, timing notes, any console/network errors.
+
+### Database changes (Supabase)
+- Migrations: create locally (`supabase migration new` or `db diff --use-migrations`), apply via cloud: `supabase db push -p wnnjeqheqxxyrgsjmygy`.
+- Types: regenerate after push:
+  ```bash
+  supabase gen types typescript \
+    --schema public \
+    -p wnnjeqheqxxyrgsjmygy \
+    > src/lib/generated/database.types.ts
+  ```
+- Security: enable RLS on new tables and add at least one policy matching intended access.
 
 ---
 
@@ -74,6 +130,16 @@ The CI pipeline will:
 - Bullet 1
 - Bullet 2
 
+### MCP Evidence
+- Lighthouse:
+  - URL(s): <page>
+  - Device: mobile/desktop; Throttling: on/off
+  - Scores: performance / accessibility / best‑practices / SEO / PWA
+  - Top opportunities/regressions: <brief list>
+- Playwright:
+  - Flows covered: <list>
+  - Artifacts: <screenshots/logs links or attachments>
+
 ### Tests added/updated
 - jest/path/to/test.ts
 
@@ -82,11 +148,26 @@ The CI pipeline will:
 - [ ] `eslint .` passed
 - [ ] `tsc --noEmit` passed
 - [ ] Supabase types regenerated
+- [ ] Lighthouse audit attached (with scores + opportunities)
+- [ ] Critical flows validated via Playwright (artifacts attached)
+- [ ] No secrets present in artifacts/logs
 ```
 
 PR body rules sourced from Codex docs on AGENTS.md PR‑guidance ([baoyu.io](https://baoyu.io/blog/codex-system-prompt?utm_source=chatgpt.com)).
 
 ---
+
+## 🛠️ MCP Troubleshooting
+
+- Lighthouse
+  - Ensure a Chromium family browser is installed. If detection fails, set `CHROME_PATH` to the browser executable (e.g., `C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe`).
+  - If `npx` is blocked by proxy/SSL interception, install globally and run via `lighthouse-mcp`.
+  - For CI or headless desktops, add `--chrome-flags="--headless=new"` if invoking Lighthouse directly.
+- Playwright
+  - Use `browser_wait_for` before interactions; capture `browser_take_screenshot` at key checkpoints.
+  - If downloads or popups are blocked by policy, run locally or adjust browser permissions.
+- Docker gateway
+  - Ensure containers are running and labeled per gateway requirements if you rely on containerized MCP servers.
 
 ## 📜 Changelog
 

@@ -1,0 +1,26 @@
+{
+  "ts": "1761510929280",
+  "users": [
+    {
+      "id": "60cb718c-3229-4e73-bcb7-76eb58d760b2",
+      "email": "client.e2e.1761510929280@example.com",
+      "role": "client"
+    },
+    {
+      "id": "1a449840-607e-46f7-8e92-ec690f15fbe8",
+      "email": "therapist.e2e.1761510929280@example.com",
+      "role": "therapist"
+    },
+    {
+      "id": "7553d070-4f9d-4687-b3f7-82bad6a01022",
+      "email": "admin.e2e.1761510929280@example.com",
+      "role": "admin"
+    },
+    {
+      "id": "021c9bcb-3788-44ff-b3d5-377520e17e67",
+      "email": "superadmin.e2e.1761510929280@example.com",
+      "role": "superadmin"
+    }
+  ],
+  "passwordHint": "Str0ng!Pass#<ts>"
+}

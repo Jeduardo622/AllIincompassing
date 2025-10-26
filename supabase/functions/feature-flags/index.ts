@@ -1,5 +1,5 @@
 import { z } from "npm:zod@3.23.8";
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
 import { organizationMetadataSchema, type OrganizationMetadata } from "./schema.ts";
 import {
   createProtectedRoute,
@@ -7,10 +7,24 @@ import {
   logApiAccess,
   RouteOptions,
   type UserContext,
-} from "../_shared/auth-middleware.ts";
-import { createRequestClient } from "../_shared/database.ts";
+} from "./_shared/auth-middleware.ts";
+import { createRequestClient } from "./_shared/database.ts";
 
 const ADMIN_PATH = "/super-admin/feature-flags";
+
+// Runtime CORS (restricted origin) for GET and GET preflight
+const ALLOWED_ORIGIN = "https://app.allincompassing.ai";
+const RUNTIME_CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type",
+  Vary: "Origin",
+};
+
+const withCors = (init: ResponseInit = {}): ResponseInit => ({
+  ...init,
+  headers: { ...(init.headers ?? {}), ...RUNTIME_CORS_HEADERS },
+});
 
 const respond = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), {
@@ -653,7 +667,63 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
   }
 }
 
-export default createProtectedRoute(
+// Note: default export is the `handler` below to support GET/OPTIONS CORS logic.
+
+// --- Public runtime flags (JWT required) + strict CORS for GET ---
+// Keep admin POST routes via protected handler but add a top-level wrapper to
+// serve authenticated GET with restricted CORS and fast OPTIONS.
+
+const protectedAdminHandler = createProtectedRoute(
   (req, userContext) => handleFeatureFlagAdmin({ req, userContext, db: createRequestClient(req) }),
   RouteOptions.superAdmin,
 );
+
+export async function handler(req: Request): Promise<Response> {
+  // Fast CORS preflight: allow GET from the app origin only. If the preflight
+  // is for POST (admin UI), delegate to the protected handler which uses the
+  // shared CORS implementation.
+  if (req.method === "OPTIONS") {
+    const requested = (req.headers.get("Access-Control-Request-Method") || "").toUpperCase();
+    if (!requested || requested === "GET") {
+      return new Response(null, withCors({ status: 204 }));
+    }
+    return protectedAdminHandler(req);
+  }
+
+  // Authenticated runtime GET
+  if (req.method === "GET") {
+    const authz = req.headers.get("authorization") ?? "";
+    if (!authz.toLowerCase().startsWith("bearer ")) {
+      return new Response(JSON.stringify({ error: "missing_token" }), withCors({ status: 401, headers: { "Content-Type": "application/json" } }));
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: authz } } },
+    );
+
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) {
+      return new Response(JSON.stringify({ error: "invalid_token" }), withCors({ status: 401, headers: { "Content-Type": "application/json" } }));
+    }
+
+    // Minimal sample flags payload; extend with real evaluation as needed.
+    return new Response(
+      JSON.stringify({ flags: { newDashboard: true } }),
+      withCors({ status: 200, headers: { "Content-Type": "application/json" } }),
+    );
+  }
+
+  // Delegate all other methods (e.g., admin POST) to protected handler.
+  const adminResp = await protectedAdminHandler(req);
+  // Normalize CORS for admin responses to the app origin (safe for same-origin admin UI).
+  const hdrs = new Headers(adminResp.headers);
+  hdrs.set("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
+  hdrs.set("Vary", "Origin");
+  const body = await adminResp.text();
+  return new Response(body, { status: adminResp.status, headers: hdrs });
+}
+
+// Deno entrypoint
+export default handler;

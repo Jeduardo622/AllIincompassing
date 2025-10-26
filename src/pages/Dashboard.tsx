@@ -1,96 +1,34 @@
 import React, { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Users, Calendar, Clock, AlertCircle } from 'lucide-react';
-import { useAuth } from '../lib/authContext';
 import DashboardCard from '../components/DashboardCard';
 import ReportsSummary from '../components/Dashboard/ReportsSummary';
 import { useDashboardData } from '../lib/optimizedQueries';
-import {
-  DASHBOARD_FALLBACK_ALLOWED_ROLES,
-  REDACTED_CLIENT_METRICS,
-  buildRedactedDashboardFallback,
-  fetchBillingAlertsFallback,
-  fetchClientMetricsFallback,
-  fetchIncompleteSessionsFallback,
-  fetchTodaySessionsFallback,
-} from '../lib/dashboardFallback';
-
-type SessionSummary = ReturnType<typeof fetchTodaySessionsFallback> extends Promise<(infer T)[]> ? T : never;
-type BillingAlertSummary = ReturnType<typeof fetchBillingAlertsFallback> extends Promise<(infer T)[]> ? T : never;
-type ClientMetricsSummary = Awaited<ReturnType<typeof fetchClientMetricsFallback>>;
+ 
+type SessionSummary = {
+  id: string;
+  start_time: string;
+  status: string | null;
+  therapist?: { id: string; full_name: string | null } | null;
+  client?: { id: string; full_name: string | null } | null;
+  __redacted?: boolean;
+};
+type BillingAlertSummary = { id: string; amount: number | string | null; status: string | null; created_at: string | null; __redacted?: boolean };
+type ClientMetricsSummary = { total: number; active: number; totalUnits: number; redacted?: boolean };
 
 const Dashboard = () => {
-  // PHASE 3 OPTIMIZATION: Use optimized dashboard data hook
-  const { data: dashboardData, isLoading: isLoadingDashboard } = useDashboardData();
-  const { user, hasAnyRole } = useAuth();
-
-  const fallbackRoles = useMemo(
-    () => [...DASHBOARD_FALLBACK_ALLOWED_ROLES] as ('client' | 'therapist' | 'admin' | 'super_admin')[],
-    []
-  );
-
-  const fallbackAuthorized = useMemo(
-    () => Boolean(user) && hasAnyRole(fallbackRoles),
-    [user, hasAnyRole, fallbackRoles]
-  );
-
-  const {
-    data: fallbackClientMetrics,
-    isLoading: isLoadingFallbackMetrics,
-  } = useQuery<ClientMetricsSummary>({
-    queryKey: ['dashboard', 'clientMetrics', 'fallback'],
-    queryFn: () => fetchClientMetricsFallback(),
-    enabled: fallbackAuthorized && !dashboardData?.clientMetrics,
-  });
-
-  const {
-    data: fallbackTodaySessions = [],
-    isLoading: isLoadingTodaySessions,
-  } = useQuery<SessionSummary[]>({
-    queryKey: ['sessions', 'today', 'fallback'],
-    queryFn: () => fetchTodaySessionsFallback(),
-    enabled: fallbackAuthorized && !dashboardData?.todaySessions,
-  });
-
-  const {
-    data: fallbackIncompleteSessions = [],
-    isLoading: isLoadingIncompleteSessions,
-  } = useQuery<SessionSummary[]>({
-    queryKey: ['sessions', 'incomplete', 'fallback'],
-    queryFn: () => fetchIncompleteSessionsFallback(),
-    enabled: fallbackAuthorized && !dashboardData?.incompleteSessions,
-  });
-
-  const {
-    data: fallbackBillingAlerts = [],
-    isLoading: isLoadingBillingAlerts,
-  } = useQuery<BillingAlertSummary[]>({
-    queryKey: ['billing', 'alerts', 'fallback'],
-    queryFn: () => fetchBillingAlertsFallback(),
-    enabled: fallbackAuthorized && !dashboardData?.billingAlerts,
-  });
-
-  const redactedFallback = useMemo(
-    () => (!fallbackAuthorized ? buildRedactedDashboardFallback() : null),
-    [fallbackAuthorized]
-  );
+  // Use optimized dashboard data hook backed by /api/dashboard only
+  const { data: dashboardData, isLoading: isLoadingDashboard, error: dashboardError } = useDashboardData();
 
   const displayData = useMemo(() => {
-    const todaySessions =
-      (dashboardData?.todaySessions as SessionSummary[] | undefined) ??
-      (fallbackAuthorized ? fallbackTodaySessions : redactedFallback?.todaySessions ?? []);
-    const incompleteSessions =
-      (dashboardData?.incompleteSessions as SessionSummary[] | undefined) ??
-      (fallbackAuthorized ? fallbackIncompleteSessions : redactedFallback?.incompleteSessions ?? []);
-    const billingAlerts =
-      (dashboardData?.billingAlerts as BillingAlertSummary[] | undefined) ??
-      (fallbackAuthorized ? fallbackBillingAlerts : redactedFallback?.billingAlerts ?? []);
-    const clientMetrics =
-      (dashboardData?.clientMetrics as ClientMetricsSummary | undefined) ??
-      (fallbackAuthorized
-        ? fallbackClientMetrics ?? { total: 0, active: 0, totalUnits: 0 }
-        : redactedFallback?.clientMetrics ?? REDACTED_CLIENT_METRICS);
+    const todaySessions = (dashboardData?.todaySessions as SessionSummary[] | undefined) ?? [];
+    const incompleteSessions = (dashboardData?.incompleteSessions as SessionSummary[] | undefined) ?? [];
+    const billingAlerts = (dashboardData?.billingAlerts as BillingAlertSummary[] | undefined) ?? [];
+    const clientMetrics = (dashboardData?.clientMetrics as ClientMetricsSummary | undefined) ?? {
+      total: 0,
+      active: 0,
+      totalUnits: 0,
+    };
 
     return {
       todaySessions,
@@ -99,28 +37,16 @@ const Dashboard = () => {
       clientMetrics,
       therapistMetrics: dashboardData?.therapistMetrics || { total: 0, active: 0, totalHours: 0 },
     };
-  }, [
-    dashboardData,
-    fallbackAuthorized,
-    fallbackBillingAlerts,
-    fallbackClientMetrics,
-    fallbackIncompleteSessions,
-    fallbackTodaySessions,
-    redactedFallback,
-  ]);
+  }, [dashboardData]);
 
   const remainingSessions = displayData.todaySessions.filter(
     (session) => !session.__redacted && new Date(session.start_time) > new Date()
   );
 
-  const isTodaySessionsRedacted = displayData.todaySessions.some((session) => session.__redacted);
-  const isIncompleteSessionsRedacted = displayData.incompleteSessions.some((session) => session.__redacted);
-  const isBillingAlertsRedacted = displayData.billingAlerts.some((record) => record.__redacted);
-  const isClientMetricsRedacted = displayData.clientMetrics.redacted === true;
-
-  const fallbackLoading =
-    fallbackAuthorized &&
-    (isLoadingFallbackMetrics || isLoadingTodaySessions || isLoadingIncompleteSessions || isLoadingBillingAlerts);
+  const isTodaySessionsRedacted = false;
+  const isIncompleteSessionsRedacted = false;
+  const isBillingAlertsRedacted = false;
+  const isClientMetricsRedacted = false;
 
   const activeClientsValue = isClientMetricsRedacted
     ? '--'
@@ -144,10 +70,19 @@ const Dashboard = () => {
     : displayData.billingAlerts.length.toString();
   const billingAlertsTrend = isBillingAlertsRedacted ? 'Restricted' : 'Needs attention';
 
-  if ((isLoadingDashboard || fallbackLoading) && !displayData.todaySessions.length && !isTodaySessionsRedacted) {
+  if (isLoadingDashboard && !displayData.todaySessions.length) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (dashboardError) {
+    return (
+      <div className="p-6 bg-red-50 dark:bg-red-900/20 rounded-lg">
+        <h2 className="text-lg font-semibold text-red-800 dark:text-red-200 mb-2">Dashboard unavailable</h2>
+        <p className="text-sm text-red-700 dark:text-red-300">Failed to load dashboard data. Please refresh or try again later.</p>
       </div>
     );
   }

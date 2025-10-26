@@ -439,3 +439,490 @@ Deno.test("persists sanitized organization metadata", async () => {
   assertEquals(metadata.tags.includes("beta"), true);
   assertEquals(audits.length, 1);
 });
+
+Deno.test("updates global flag and writes audit logs", async () => {
+  const audits: unknown[] = [];
+
+  const existingFlag = {
+    id: "flag-xyz",
+    flag_key: "deep-insights",
+    description: "Deep insights feature",
+    default_enabled: false,
+    metadata: null,
+    created_at: "yesterday",
+    updated_at: "yesterday",
+  };
+
+  const client = {
+    from: (table: string) => {
+      if (table === "feature_flags") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: existingFlag, error: null }),
+            }),
+          }),
+          update: (values: Record<string, unknown>) => ({
+            eq: () => ({
+              select: () => ({
+                single: () =>
+                  Promise.resolve({
+                    data: { ...existingFlag, ...values, updated_at: "now" },
+                    error: null,
+                  }),
+              }),
+            }),
+          }),
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "feature_flag_audit_logs") {
+        return {
+          insert: (values: Record<string, unknown>) => {
+            audits.push(values);
+            return Promise.resolve({ data: null, error: null });
+          },
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      throw new Error(`Unexpected table requested: ${table}`);
+    },
+  } as unknown as SupabaseClient;
+
+  const response = await handleFeatureFlagAdmin({
+    req: createRequest("POST", { action: "updateGlobalFlag", flagId: "flag-xyz", enabled: true }),
+    userContext: createUserContext(),
+    db: client,
+  });
+
+  assertEquals(response.status, 200);
+  const body = (await response.json()) as { flag: { default_enabled: boolean } };
+  assertEquals(body.flag.default_enabled, true);
+  assertEquals(audits.length, 1);
+  const auditRecord = audits[0] as { action: string; previous_state: unknown; new_state: unknown };
+  assertEquals(auditRecord.action, "update_global_flag");
+});
+
+Deno.test("returns 404 when updating a non-existent global flag", async () => {
+  const client = {
+    from: (table: string) => {
+      if (table === "feature_flags") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: null, error: { code: "PGRST116" } }),
+            }),
+          }),
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+      throw new Error(`Unexpected table requested: ${table}`);
+    },
+  } as unknown as SupabaseClient;
+
+  const response = await handleFeatureFlagAdmin({
+    req: createRequest("POST", { action: "updateGlobalFlag", flagId: "missing-flag", enabled: true }),
+    userContext: createUserContext(),
+    db: client,
+  });
+
+  assertEquals(response.status, 404);
+});
+
+Deno.test("inserts organization flag override and writes audit logs", async () => {
+  const inserts: Record<string, unknown>[] = [];
+  const audits: unknown[] = [];
+
+  const client = {
+    from: (table: string) => {
+      if (table === "organizations") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: { id: "org-1", name: "Acme" }, error: null }),
+            }),
+          }),
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "feature_flags") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () =>
+                Promise.resolve({ data: { id: "flag-1", flag_key: "new-dashboard", default_enabled: false }, error: null }),
+            }),
+          }),
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "organization_feature_flags") {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: () => Promise.resolve({ data: null, error: null }),
+              }),
+            }),
+          }),
+          insert: (values: Record<string, unknown>) => {
+            inserts.push(values);
+            return {
+              select: () => ({
+                single: () =>
+                  Promise.resolve({
+                    data: {
+                      id: "of-1",
+                      organization_id: values.organization_id,
+                      feature_flag_id: values.feature_flag_id,
+                      is_enabled: values.is_enabled,
+                      created_at: "now",
+                      updated_at: "now",
+                      created_by: values.created_by,
+                      updated_by: values.updated_by,
+                    },
+                    error: null,
+                  }),
+              }),
+            };
+          },
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "feature_flag_audit_logs") {
+        return {
+          insert: (values: Record<string, unknown>) => {
+            audits.push(values);
+            return Promise.resolve({ data: null, error: null });
+          },
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      throw new Error(`Unexpected table requested: ${table}`);
+    },
+  } as unknown as SupabaseClient;
+
+  const response = await handleFeatureFlagAdmin({
+    req: createRequest("POST", { action: "setOrgFlag", organizationId: "org-1", flagId: "flag-1", enabled: true }),
+    userContext: createUserContext(),
+    db: client,
+  });
+
+  assertEquals(response.status, 200);
+  const body = (await response.json()) as { organizationFeatureFlag: { is_enabled: boolean } };
+  assertEquals(body.organizationFeatureFlag.is_enabled, true);
+  assertEquals(inserts.length > 0, true);
+  assertEquals(audits.length, 1);
+  const auditRecord = audits[0] as { action: string };
+  assertEquals(auditRecord.action, "set_org_flag");
+});
+
+Deno.test("updates organization flag override and writes audit logs", async () => {
+  const updates: Record<string, unknown>[] = [];
+  const audits: unknown[] = [];
+
+  const existingOverride = {
+    id: "of-2",
+    organization_id: "org-1",
+    feature_flag_id: "flag-1",
+    is_enabled: false,
+  };
+
+  const client = {
+    from: (table: string) => {
+      if (table === "organizations") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: { id: "org-1", name: "Acme" }, error: null }),
+            }),
+          }),
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "feature_flags") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: { id: "flag-1", flag_key: "new-dashboard" }, error: null }),
+            }),
+          }),
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "organization_feature_flags") {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: () => Promise.resolve({ data: existingOverride, error: null }),
+              }),
+            }),
+          }),
+          update: (values: Record<string, unknown>) => {
+            updates.push(values);
+            return {
+              eq: () => ({
+                select: () => ({
+                  single: () =>
+                    Promise.resolve({
+                      data: { ...existingOverride, ...values, updated_at: "now" },
+                      error: null,
+                    }),
+                }),
+              }),
+            };
+          },
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "feature_flag_audit_logs") {
+        return {
+          insert: (values: Record<string, unknown>) => {
+            audits.push(values);
+            return Promise.resolve({ data: null, error: null });
+          },
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      throw new Error(`Unexpected table requested: ${table}`);
+    },
+  } as unknown as SupabaseClient;
+
+  const response = await handleFeatureFlagAdmin({
+    req: createRequest("POST", { action: "setOrgFlag", organizationId: "org-1", flagId: "flag-1", enabled: true }),
+    userContext: createUserContext(),
+    db: client,
+  });
+
+  assertEquals(response.status, 200);
+  const body = (await response.json()) as { organizationFeatureFlag: { is_enabled: boolean } };
+  assertEquals(body.organizationFeatureFlag.is_enabled, true);
+  assertEquals(updates.length, 1);
+  assertEquals(audits.length, 1);
+});
+
+Deno.test("returns 404 when organization not found for setOrgFlag", async () => {
+  const client = {
+    from: (table: string) => {
+      if (table === "organizations") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: null, error: { code: "PGRST116" } }),
+            }),
+          }),
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+      throw new Error(`Unexpected table requested: ${table}`);
+    },
+  } as unknown as SupabaseClient;
+
+  const response = await handleFeatureFlagAdmin({
+    req: createRequest("POST", { action: "setOrgFlag", organizationId: "missing-org", flagId: "flag-1", enabled: true }),
+    userContext: createUserContext(),
+    db: client,
+  });
+
+  assertEquals(response.status, 404);
+});
+
+Deno.test("assigns organization plan (insert) and writes audit logs", async () => {
+  const inserts: Record<string, unknown>[] = [];
+  const audits: unknown[] = [];
+
+  const client = {
+    from: (table: string) => {
+      if (table === "organizations") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: { id: "org-9", name: "Zen" }, error: null }),
+            }),
+          }),
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "plans") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: { code: "professional" }, error: null }),
+            }),
+          }),
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "organization_plans") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () => Promise.resolve({ data: null, error: null }),
+            }),
+          }),
+          insert: (values: Record<string, unknown>) => {
+            inserts.push(values);
+            return {
+              select: () => ({
+                single: () =>
+                  Promise.resolve({
+                    data: {
+                      organization_id: values.organization_id,
+                      plan_code: values.plan_code,
+                      assigned_at: "now",
+                      assigned_by: values.assigned_by,
+                      notes: values.notes ?? null,
+                    },
+                    error: null,
+                  }),
+              }),
+            };
+          },
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "feature_flag_audit_logs") {
+        return {
+          insert: (values: Record<string, unknown>) => {
+            audits.push(values);
+            return Promise.resolve({ data: null, error: null });
+          },
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      throw new Error(`Unexpected table requested: ${table}`);
+    },
+  } as unknown as SupabaseClient;
+
+  const response = await handleFeatureFlagAdmin({
+    req: createRequest("POST", { action: "setOrgPlan", organizationId: "org-9", planCode: "professional", notes: "VIP" }),
+    userContext: createUserContext(),
+    db: client,
+  });
+
+  assertEquals(response.status, 200);
+  const body = (await response.json()) as { organizationPlan: { plan_code: string; notes: string | null } };
+  assertEquals(body.organizationPlan.plan_code, "professional");
+  assertEquals(body.organizationPlan.notes, "VIP");
+  assertEquals(inserts.length, 1);
+  assertEquals(audits.length, 1);
+});
+
+Deno.test("updates organization plan and writes audit logs", async () => {
+  const updates: Record<string, unknown>[] = [];
+  const audits: unknown[] = [];
+
+  const existing = {
+    organization_id: "org-7",
+    plan_code: "standard",
+    assigned_at: "past",
+    assigned_by: "admin-1",
+    notes: "old",
+  };
+
+  const client = {
+    from: (table: string) => {
+      if (table === "organizations") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: { id: "org-7", name: "Acme" }, error: null }),
+            }),
+          }),
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "plans") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: { code: "enterprise" }, error: null }),
+            }),
+          }),
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "organization_plans") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () => Promise.resolve({ data: existing, error: null }),
+            }),
+          }),
+          update: (values: Record<string, unknown>) => {
+            updates.push(values);
+            return {
+              eq: () => ({
+                select: () => ({
+                  single: () =>
+                    Promise.resolve({
+                      data: { ...existing, ...values },
+                      error: null,
+                    }),
+                }),
+              }),
+            };
+          },
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "feature_flag_audit_logs") {
+        return {
+          insert: (values: Record<string, unknown>) => {
+            audits.push(values);
+            return Promise.resolve({ data: null, error: null });
+          },
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      throw new Error(`Unexpected table requested: ${table}`);
+    },
+  } as unknown as SupabaseClient;
+
+  const response = await handleFeatureFlagAdmin({
+    req: createRequest("POST", { action: "setOrgPlan", organizationId: "org-7", planCode: "enterprise" }),
+    userContext: createUserContext(),
+    db: client,
+  });
+
+  assertEquals(response.status, 200);
+  const body = (await response.json()) as { organizationPlan: { plan_code: string } };
+  assertEquals(body.organizationPlan.plan_code, "enterprise");
+  assertEquals(updates.length, 1);
+  assertEquals(audits.length, 1);
+});
+
+Deno.test("returns 404 when assigning a non-existent plan", async () => {
+  const client = {
+    from: (table: string) => {
+      if (table === "organizations") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: { id: "org-10", name: "Org" }, error: null }),
+            }),
+          }),
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "plans") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: null, error: { code: "PGRST116" } }),
+            }),
+          }),
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      throw new Error(`Unexpected table requested: ${table}`);
+    },
+  } as unknown as SupabaseClient;
+
+  const response = await handleFeatureFlagAdmin({
+    req: createRequest("POST", { action: "setOrgPlan", organizationId: "org-10", planCode: "unknown" }),
+    userContext: createUserContext(),
+    db: client,
+  });
+
+  assertEquals(response.status, 404);
+});

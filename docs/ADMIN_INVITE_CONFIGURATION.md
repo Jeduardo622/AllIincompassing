@@ -40,4 +40,7 @@
   - Super admins can always create organizations.
   - Admins without an organization can create their initial organization; upon creation their `organization_id` metadata is set automatically.
 - The UI calls the `feature-flags` Edge Function with action `upsertOrganization`, which persists a row in `public.organizations`.
+- Metadata behavior:
+  - Create: when `metadata` is omitted, it initializes to `{}`.
+  - Update: when `metadata` is omitted, existing `metadata` is preserved and not cleared.
 - After creation, proceed to `Settings → Admin Users` to add additional administrators.

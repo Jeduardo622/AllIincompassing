@@ -312,6 +312,76 @@ Deno.test("updates existing organizations and normalizes slugs", async () => {
   assert(body.organization.updated_at);
 });
 
+Deno.test("does not overwrite metadata when omitted in organization update", async () => {
+  const updates: Record<string, unknown>[] = [];
+  const audits: unknown[] = [];
+
+  const existingOrganization = {
+    id: "org-3",
+    name: "Gamma",
+    slug: "gamma",
+    metadata: { tier: "enterprise", tags: ["vip"] },
+    created_at: "yesterday",
+    updated_at: "yesterday",
+  };
+
+  const client = {
+    from: (table: string) => {
+      if (table === "organizations") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () => Promise.resolve({ data: existingOrganization, error: null }),
+            }),
+          }),
+          update: (values: Record<string, unknown>) => {
+            updates.push(values);
+            return {
+              eq: () => ({
+                select: () => ({
+                  single: () =>
+                    Promise.resolve({
+                      data: { ...existingOrganization, ...values, updated_at: "now" },
+                      error: null,
+                    }),
+                }),
+              }),
+            };
+          },
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "feature_flag_audit_logs") {
+        return {
+          insert: (values: Record<string, unknown>) => {
+            audits.push(values);
+            return Promise.resolve({ data: null, error: null });
+          },
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      throw new Error(`Unexpected table requested: ${table}`);
+    },
+  } as unknown as SupabaseClient;
+
+  const response = await handleFeatureFlagAdmin({
+    req: createRequest("POST", {
+      action: "upsertOrganization",
+      organization: { id: "org-3", name: "Gamma Updated" },
+    }),
+    userContext: createUserContext(),
+    db: client,
+  });
+
+  assertEquals(response.status, 200);
+  const body = (await response.json()) as { organization: { metadata: unknown } };
+  assertEquals(updates.length, 1);
+  const updatePayload = updates[0] as Record<string, unknown>;
+  assertEquals("metadata" in updatePayload, false);
+  assertEquals(body.organization.metadata, existingOrganization.metadata);
+  assertEquals(audits.length, 1);
+});
+
 Deno.test("rejects invalid organization metadata", async () => {
   let tableRequested = false;
 

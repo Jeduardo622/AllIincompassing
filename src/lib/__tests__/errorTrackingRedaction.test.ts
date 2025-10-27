@@ -126,15 +126,17 @@ describe('ErrorTracker PHI redaction', () => {
     const flushCall = rpcMock.mock.calls.find(([fn]) => fn === 'log_error_event');
     expect(flushCall).toBeDefined();
     const flushArgs = flushCall?.[1] as Record<string, unknown>;
-    expect(flushArgs.p_message).toContain(REDACTED_VALUE);
-    expect(String(flushArgs.p_message)).not.toContain('patient@example.com');
-    expect(flushArgs.p_stack_trace).toContain(REDACTED_VALUE);
+    const payload = flushArgs?.payload as Record<string, unknown>;
+    expect(payload).toBeDefined();
+    expect(String(payload.message)).toContain(REDACTED_VALUE);
+    expect(String(payload.message)).not.toContain('patient@example.com');
+    expect(String(payload.stack)).toContain(REDACTED_VALUE);
 
-    const context = flushArgs.p_context as { userAgent?: string } | null;
+    const context = payload.context as { userAgent?: string } | null;
     expect(context).toBeTruthy();
     expect(context?.userAgent).toContain(REDACTED_VALUE);
 
-    const details = flushArgs.p_details as { functionCalled?: string } | null;
+    const details = payload.details as { functionCalled?: string } | null;
     expect(details).toBeTruthy();
     expect(details?.functionCalled).toContain(REDACTED_VALUE);
   });

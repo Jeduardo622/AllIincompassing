@@ -432,15 +432,22 @@ class ErrorTracker {
           details: sanitizedDetails
         };
 
+        const enableRemoteLogging = (import.meta as any)?.env?.VITE_ENABLE_REMOTE_ERROR_LOGGING ?? '1';
+        if (String(enableRemoteLogging) !== '1') {
+          continue;
+        }
+
         const { error: rpcError } = await supabase.rpc('log_error_event', {
-          p_error_type: sanitizedType,
-          p_message: sanitizedMessage,
-          p_stack_trace: sanitizedStack ?? null,
-          p_context: (sanitizedContext ?? null) as Json | null,
-          p_details: (sanitizedDetails ?? null) as Json | null,
-          p_severity: this.calculateSeverity(sanitizedErrorData),
-          p_url: (sanitizedContext?.url ?? null) as string | null,
-          p_user_agent: (sanitizedContext?.userAgent ?? null) as string | null
+          payload: {
+            error_type: sanitizedType,
+            message: sanitizedMessage,
+            stack: sanitizedStack ?? null,
+            context: (sanitizedContext ?? null) as Json | null,
+            details: (sanitizedDetails ?? null) as Json | null,
+            severity: this.calculateSeverity(sanitizedErrorData),
+            url: (sanitizedContext?.url ?? null) as string | null,
+            user_agent: (sanitizedContext?.userAgent ?? null) as string | null,
+          } as unknown as Json,
         });
 
         if (rpcError) {

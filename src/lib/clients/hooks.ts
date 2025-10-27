@@ -29,9 +29,18 @@ const buildClientNotesKey = (clientId: string, options?: FetchClientNotesOptions
 ];
 
 export const useGuardianClients = () => {
+  const { profile } = useAuth();
+  const isGuardian = profile?.role === 'client';
+
   return useQuery<GuardianPortalClient[], Error>({
     queryKey: ['guardian', 'clients'] satisfies GuardianClientsQueryKey,
-    queryFn: () => fetchGuardianClients(),
+    queryFn: async () => {
+      if (!isGuardian) {
+        return [];
+      }
+      return fetchGuardianClients();
+    },
+    enabled: Boolean(isGuardian),
   });
 };
 
@@ -111,17 +120,18 @@ export const useConfirmGuardianContact = () => {
 };
 
 export const useGuardianContactMetadata = () => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const isGuardian = profile?.role === 'client';
 
   return useQuery<GuardianContactMetadataEntry[], Error>({
     queryKey: ['guardian', 'contact', user?.id ?? 'anonymous'] satisfies GuardianContactMetadataKey,
     queryFn: async () => {
-      if (!user?.id) {
+      if (!user?.id || !isGuardian) {
         return [];
       }
 
       return fetchGuardianContactMetadata(user.id);
     },
-    enabled: Boolean(user?.id),
+    enabled: Boolean(user?.id) && Boolean(isGuardian),
   });
 };

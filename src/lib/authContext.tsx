@@ -356,31 +356,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const hasRole = useCallback((role: 'client' | 'therapist' | 'admin' | 'super_admin') => {
     if (!profile) return false;
-    
-    // Role hierarchy: super_admin > admin > therapist > client
+    // Prefer explicit roles from JWT if present; fallback to profile.role
+    const tokenRoles = Array.isArray((session as any)?.user?.user_metadata?.roles)
+      ? ((session as any).user.user_metadata.roles as string[])
+      : null;
+
+    const effectiveRole = ((): 'client' | 'therapist' | 'admin' | 'super_admin' => {
+      if (tokenRoles?.includes('super_admin')) return 'super_admin';
+      if (tokenRoles?.includes('admin')) return 'admin';
+      if (tokenRoles?.includes('therapist')) return 'therapist';
+      return profile.role;
+    })();
+
     const roleHierarchy: Record<string, number> = {
-      'super_admin': 4,
-      'admin': 3,
-      'therapist': 2,
-      'client': 1,
+      super_admin: 4,
+      admin: 3,
+      therapist: 2,
+      client: 1,
     };
-    
-    return roleHierarchy[profile.role] >= roleHierarchy[role];
-  }, [profile]);
+    return roleHierarchy[effectiveRole] >= roleHierarchy[role];
+  }, [profile, session]);
 
   const hasAnyRole = useCallback((roles: ('client' | 'therapist' | 'admin' | 'super_admin')[]) => {
     if (!profile) return false;
-    
+    const tokenRoles = Array.isArray((session as any)?.user?.user_metadata?.roles)
+      ? ((session as any).user.user_metadata.roles as string[])
+      : null;
+    const effectiveRole = ((): 'client' | 'therapist' | 'admin' | 'super_admin' => {
+      if (tokenRoles?.includes('super_admin')) return 'super_admin';
+      if (tokenRoles?.includes('admin')) return 'admin';
+      if (tokenRoles?.includes('therapist')) return 'therapist';
+      return profile.role;
+    })();
     const roleHierarchy: Record<string, number> = {
-      'super_admin': 4,
-      'admin': 3,
-      'therapist': 2,
-      'client': 1,
+      super_admin: 4,
+      admin: 3,
+      therapist: 2,
+      client: 1,
     };
-    
-    const userLevel = roleHierarchy[profile.role];
-    return roles.some(role => userLevel >= roleHierarchy[role]);
-  }, [profile]);
+    const userLevel = roleHierarchy[effectiveRole];
+    return roles.some((r) => userLevel >= roleHierarchy[r]);
+  }, [profile, session]);
 
   const isAdmin = useCallback(() => {
     return profile?.role === 'admin' || profile?.role === 'super_admin';

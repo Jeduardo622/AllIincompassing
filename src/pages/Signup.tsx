@@ -101,7 +101,8 @@ export default function Signup() {
         last_name: lastName,
         full_name: `${firstName} ${lastName}`.trim(),
         signup_role: role,
-        role: role === 'guardian' ? 'client' : role,
+        // Never allow public self-serve to request admin. Guardians map to client.
+        role: role === 'guardian' ? 'client' : (role === 'admin' ? 'client' : role),
       };
 
       if (isGuardianSignup) {
@@ -213,12 +214,12 @@ export default function Signup() {
                   <option value="client">Client - Access sessions and schedule</option>
                   <option value="guardian">Guardian - Access approved dependents</option>
                   <option value="therapist">Therapist - Manage clients and sessions</option>
-                  <option value="admin">Admin - Full system access</option>
+                  {/* Admin is invite/approval only; hidden from self-serve */}
                 </select>
               </div>
               <div className="mt-1 flex items-center text-xs text-gray-500 dark:text-gray-400">
                 <Shield className="h-3 w-3 mr-1" />
-                Admin accounts require approval before activation
+                Admin accounts require an invite and approval. Contact your organization admin.
               </div>
             </div>
 

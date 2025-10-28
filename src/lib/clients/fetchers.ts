@@ -361,7 +361,7 @@ export const confirmGuardianContactInfo = async (
     .select('id, metadata')
     .eq('guardian_id', guardianId)
     .eq('client_id', clientId)
-    .eq('deleted_at', null)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (fetchError) {
@@ -403,7 +403,7 @@ export const fetchGuardianContactMetadata = async (
     .from('client_guardians')
     .select('client_id, metadata')
     .eq('guardian_id', guardianId)
-    .eq('deleted_at', null);
+    .is('deleted_at', null);
 
   if (error) {
     throw error;

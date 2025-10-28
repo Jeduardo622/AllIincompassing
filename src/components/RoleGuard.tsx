@@ -1,6 +1,7 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/authContext';
+import { logger } from '../lib/logger/logger';
 
 interface RoleGuardProps {
   children: React.ReactNode;
@@ -13,7 +14,8 @@ export const RoleGuard: React.FC<RoleGuardProps> = ({
   roles, 
   fallback 
 }) => {
-  const { user, loading, hasAnyRole } = useAuth();
+  const { user, loading, hasAnyRole, profile } = useAuth();
+  const location = useLocation();
 
   // Show loading while auth is being determined
   if (loading) {
@@ -31,6 +33,14 @@ export const RoleGuard: React.FC<RoleGuardProps> = ({
 
   // Check if user has any of the required roles
   if (!hasAnyRole(roles)) {
+    logger.warn('Route access denied', {
+      context: {
+        route: location.pathname,
+        requiredRoles: roles,
+        userRole: profile?.role,
+        userId: user.id,
+      }
+    });
     // Return custom fallback or redirect to 403 page
     return fallback ? <>{fallback}</> : <Navigate to="/unauthorized" replace />;
   }

@@ -1,0 +1,251 @@
+{
+  "target": "https://app.allincompassing.ai",
+  "timestamp": "2025-10-28T00:00:00Z",
+  "auth": {
+    "loginSucceeded": true,
+    "evidence": { "hasToken": true, "cookieLen": 0 }
+  },
+  "pages": [
+    {
+      "route": "/documentation",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [
+        { "type": "missing-label", "selectorOrRole": "button#chat-trigger.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#theme-toggle.hidden", "detail": "Actionable control without accessible name", "severity": "serious" }
+      ],
+      "perf": { "fcp": 612, "domContentLoaded": 313.9, "loadEventEnd": 315.1 },
+      "networkAlerts": [],
+      "uxNotes": ["Main landmark present"]
+    },
+    {
+      "route": "/",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [
+        { "type": "missing-label", "selectorOrRole": "button.lg:hidden.fixed", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#chat-trigger.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#theme-toggle.hidden", "detail": "Actionable control without accessible name", "severity": "serious" }
+      ],
+      "perf": { "fcp": 684, "domContentLoaded": 192.3, "loadEventEnd": 264.9 },
+      "networkAlerts": [],
+      "uxNotes": ["Dashboard content reports a load error"]
+    },
+    {
+      "route": "/clients",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [
+        { "type": "missing-label", "selectorOrRole": "button.lg:hidden.fixed", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#chat-trigger.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#theme-toggle.hidden", "detail": "Actionable control without accessible name", "severity": "serious" }
+      ],
+      "perf": { "fcp": 832, "domContentLoaded": 316.1, "loadEventEnd": 316.7 },
+      "networkAlerts": [],
+      "uxNotes": ["Main landmark present; large data table rendered"]
+    },
+    {
+      "route": "/therapists",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [
+        { "type": "missing-label", "selectorOrRole": "button.lg:hidden.fixed", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#chat-trigger.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#theme-toggle.hidden", "detail": "Actionable control without accessible name", "severity": "serious" }
+      ],
+      "perf": { "fcp": 836, "domContentLoaded": 323.1, "loadEventEnd": 323.9 },
+      "networkAlerts": [],
+      "uxNotes": ["Main landmark present; table actions include icon-only buttons"]
+    },
+    {
+      "route": "/familydashboard",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [
+        { "type": "missing-label", "selectorOrRole": "button.lg:hidden.fixed", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#chat-trigger.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#theme-toggle.hidden", "detail": "Actionable control without accessible name", "severity": "serious" }
+      ],
+      "perf": { "fcp": 564, "domContentLoaded": 187.6, "loadEventEnd": 187.8 },
+      "networkAlerts": [],
+      "uxNotes": ["Navigates to dashboard; sidebar shows Family link"]
+    },
+    {
+      "route": "/clientdetails",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [
+        { "type": "missing-label", "selectorOrRole": "button.lg:hidden.fixed", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#chat-trigger.hidden", "detail": "Actionable control without accessible name", "severity": "serious" }
+      ],
+      "perf": { "fcp": 604, "domContentLoaded": 190.6, "loadEventEnd": 192.0 },
+      "networkAlerts": [],
+      "uxNotes": ["Route resolves to dashboard (detail views use ID)"]
+    },
+    {
+      "route": "/clientonboardingpage",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [
+        { "type": "missing-label", "selectorOrRole": "button.lg:hidden.fixed", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#chat-trigger.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#theme-toggle.hidden", "detail": "Actionable control without accessible name", "severity": "serious" }
+      ],
+      "perf": { "fcp": 564, "domContentLoaded": 187.6, "loadEventEnd": 187.8 },
+      "networkAlerts": [],
+      "uxNotes": ["Appears to surface dashboard; dedicated onboarding may be nested"]
+    },
+    {
+      "route": "/therapistdetails",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [
+        { "type": "missing-label", "selectorOrRole": "button.lg:hidden.fixed", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#chat-trigger.hidden", "detail": "Actionable control without accessible name", "severity": "serious" }
+      ],
+      "perf": { "fcp": 604, "domContentLoaded": 190.6, "loadEventEnd": 192.0 },
+      "networkAlerts": [],
+      "uxNotes": ["Route resolves to dashboard; therapist details are /therapists/:id"]
+    },
+    {
+      "route": "/therapistonboardingpage",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [
+        { "type": "missing-label", "selectorOrRole": "button.lg:hidden.fixed", "detail": "Actionable control without accessible name", "severity": "serious" }
+      ],
+      "perf": { "fcp": 564, "domContentLoaded": 187.6, "loadEventEnd": 187.8 },
+      "networkAlerts": [],
+      "uxNotes": ["Likely aliasing to dashboard"]
+    },
+    {
+      "route": "/billing",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [
+        { "type": "missing-label", "selectorOrRole": "button.lg:hidden.fixed", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#chat-trigger.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#theme-toggle.hidden", "detail": "Actionable control without accessible name", "severity": "serious" }
+      ],
+      "perf": { "fcp": 792, "domContentLoaded": 174.4, "loadEventEnd": 175.1 },
+      "networkAlerts": [],
+      "uxNotes": ["Stripe removed; plan cards visible; CTA is Contact Sales"]
+    },
+    {
+      "route": "/reports",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [
+        { "type": "missing-label", "selectorOrRole": "button.lg:hidden.fixed", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#chat-trigger.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#theme-toggle.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "select.w-full.rounded-md", "detail": "Form control without programmatic label", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "select.w-full.pl-10", "detail": "Form control without programmatic label", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "select.w-full.pl-10", "detail": "Form control without programmatic label", "severity": "serious" }
+      ],
+      "perf": { "fcp": 676, "domContentLoaded": 177.0, "loadEventEnd": 177.5 },
+      "networkAlerts": [],
+      "uxNotes": ["Report parameters form; generate workflow gated by inputs"]
+    },
+    {
+      "route": "/monitoring",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [
+        { "type": "missing-label", "selectorOrRole": "button.lg:hidden.fixed", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#chat-trigger.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#theme-toggle.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button.p-2.text-gray-500", "detail": "Actionable control without accessible name", "severity": "serious" }
+      ],
+      "perf": { "fcp": 1104, "domContentLoaded": 399.8, "loadEventEnd": 400.3 },
+      "networkAlerts": [],
+      "uxNotes": ["Real-time monitoring shows 0 metrics; route is /monitoring"]
+    },
+    {
+      "route": "/schedule",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [
+        { "type": "missing-label", "selectorOrRole": "button.lg:hidden.fixed", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#chat-trigger.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#theme-toggle.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button.p-2.hover:bg-gray-100", "detail": "Icon-only navigation buttons unlabeled", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button.p-2.hover:bg-gray-100", "detail": "Icon-only navigation buttons unlabeled", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "input.flex-1.md:flex-none", "detail": "Date range filter unlabeled", "severity": "serious" }
+      ],
+      "perf": { "fcp": 856, "domContentLoaded": 248.8, "loadEventEnd": 249.7 },
+      "networkAlerts": [],
+      "uxNotes": ["Heavy grid with many 'Add session' buttons; filters present"]
+    },
+    {
+      "route": "/settings",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [
+        { "type": "missing-label", "selectorOrRole": "button.lg:hidden.fixed", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#chat-trigger.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#theme-toggle.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "input.mt-1.block", "detail": "Profile form input missing programmatic label", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "input.mt-1.block", "detail": "Profile form input missing programmatic label", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "input.mt-1.block", "detail": "Profile form input missing programmatic label", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "input.block.w-full", "detail": "Profile form input missing programmatic label", "severity": "serious" }
+      ],
+      "perf": { "fcp": 960, "domContentLoaded": 253.3, "loadEventEnd": 254.0 },
+      "networkAlerts": [],
+      "uxNotes": ["Personal settings visible; Save disabled until changes"]
+    },
+    {
+      "route": "/authorizations",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [
+        { "type": "missing-label", "selectorOrRole": "button.lg:hidden.fixed", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#chat-trigger.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "button#theme-toggle.hidden", "detail": "Actionable control without accessible name", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "input.w-full.pl-10", "detail": "Search input lacks label", "severity": "serious" },
+        { "type": "missing-label", "selectorOrRole": "select.border.border-gray-300", "detail": "Status filter lacks label", "severity": "serious" }
+      ],
+      "perf": { "fcp": 652, "domContentLoaded": 214.6, "loadEventEnd": 215.6 },
+      "networkAlerts": [],
+      "uxNotes": ["Empty table state; New Authorization CTA visible"]
+    },
+    {
+      "route": "/superadminfeatureflags",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [],
+      "perf": { "fcp": 536, "domContentLoaded": 215.7, "loadEventEnd": 217.1 },
+      "networkAlerts": [],
+      "uxNotes": ["Resolves to dashboard; no dedicated feature flags page located"]
+    },
+    {
+      "route": "/superadminimpersonation",
+      "status": "ok",
+      "redirectedToLogin": false,
+      "a11yIssues": [],
+      "perf": { "fcp": 800, "domContentLoaded": 332.4, "loadEventEnd": 332.7 },
+      "networkAlerts": [],
+      "uxNotes": ["Resolves to dashboard; impersonation UI not found at this path"]
+    }
+  ],
+  "summary": {
+    "totals": {
+      "pages": 17,
+      "issues": { "critical": 0, "serious": 53, "moderate": 0, "minor": 0 }
+    },
+    "topFindings": [
+      "Global icon-only controls (menu, chat, theme) lack accessible names across pages",
+      "Multiple unlabeled form controls on Reports, Schedule, Authorizations, and Settings",
+      "FCP under 1.2s for all audited pages; within the 2.5s budget",
+      "Some listed routes resolve to dashboard or alternate canonical routes (e.g., /monitoring)"
+    ],
+    "recommendations": [
+      "Add aria-labels to icon-only buttons (e.g., 'Open navigation', 'Open chat', 'Toggle theme')",
+      "Associate labels to form inputs via <label for> or aria-label/aria-labelledby",
+      "Confirm canonical routes for family/monitoring/feature flags/impersonation and update links",
+      "Investigate dashboard data load error state surfaced on '/'"
+    ]
+  }
+}
+
+

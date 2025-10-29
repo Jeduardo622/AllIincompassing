@@ -554,18 +554,20 @@ const Clients = () => {
                             onClick={() => handleRestoreClient(client)}
                             className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300"
                             title="Restore client"
+                            aria-label={`Restore ${client.full_name || 'client'}`}
                             type="button"
                           >
-                            <ArchiveRestore className="w-4 h-4" />
+                            <ArchiveRestore aria-hidden="true" className="w-4 h-4" />
                           </button>
                         ) : (
                           <button
                             onClick={() => handleArchiveClient(client)}
                             className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
                             title="Archive client"
+                            aria-label={`Archive ${client.full_name || 'client'}`}
                             type="button"
                           >
-                            <Archive className="w-4 h-4" />
+                            <Archive aria-hidden="true" className="w-4 h-4" />
                           </button>
                         )}
                         {isSuperAdmin() && (
@@ -579,7 +581,7 @@ const Clients = () => {
                             type="button"
                             disabled={deleteClientMutation.isPending}
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 aria-hidden="true" className="w-4 h-4" />
                           </button>
                         )}
                       </div>

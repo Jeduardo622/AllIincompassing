@@ -711,9 +711,11 @@ export function AIDocumentationDashboard({
                     </div>
                   ) : (
                     sessionNotes.map((note) => (
-                      <div
+                      <button
                         key={note.id}
-                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                        type="button"
+                        aria-pressed={selectedNote?.id === note.id}
+                        className={`text-left w-full p-3 border rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                           selectedNote?.id === note.id
                             ? 'border-blue-500 bg-blue-50'
                             : 'border-gray-200 hover:border-gray-300'
@@ -749,7 +751,7 @@ export function AIDocumentationDashboard({
                             </span>
                           )}
                         </div>
-                      </div>
+                      </button>
                     ))
                   )}
                 </div>

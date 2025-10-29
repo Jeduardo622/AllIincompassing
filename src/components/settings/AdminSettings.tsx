@@ -940,10 +940,11 @@ export default function AdminSettings() {
 
             <form onSubmit={handlePasswordReset} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="admin-new-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   New Password*
                 </label>
                 <input
+                  id="admin-new-password"
                   ref={resetPasswordInputRef}
                   type="password"
                   required

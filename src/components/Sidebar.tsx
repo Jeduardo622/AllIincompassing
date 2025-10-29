@@ -9,12 +9,12 @@ import {
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/theme';
 import ChatBot from './ChatBot';
-import ThemeToggle from './ThemeToggle';
+// Theme is toggled directly via context; no hidden proxy button
 import { logger } from '../lib/logger/logger';
 
 export default function Sidebar() {
   const { signOut, hasRole, hasAnyRole, user, profile } = useAuth();
-  const { isDark } = useTheme();
+  const { isDark, toggleTheme } = useTheme();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -149,13 +149,17 @@ export default function Sidebar() {
   // Mobile menu button
   const MobileMenuButton = () => (
     <button
+      type="button"
       onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-white dark:bg-dark-lighter shadow-lg border border-gray-200 dark:border-gray-700"
+      aria-label={isMobileMenuOpen ? 'Close navigation' : 'Open navigation'}
+      aria-expanded={isMobileMenuOpen}
+      aria-controls="app-sidebar"
     >
       {isMobileMenuOpen ? (
-        <X className="h-6 w-6 text-gray-600 dark:text-gray-300" />
+        <X aria-hidden="true" className="h-6 w-6 text-gray-600 dark:text-gray-300" />
       ) : (
-        <Menu className="h-6 w-6 text-gray-600 dark:text-gray-300" />
+        <Menu aria-hidden="true" className="h-6 w-6 text-gray-600 dark:text-gray-300" />
       )}
     </button>
   );
@@ -170,7 +174,7 @@ export default function Sidebar() {
     <>
       <MobileMenuButton />
       
-      <aside className={`
+      <aside id="app-sidebar" className={`
         fixed lg:static inset-y-0 left-0 z-40
         w-64 bg-white dark:bg-dark-lighter border-r border-gray-200 dark:border-dark-border
         transform lg:transform-none transition-transform duration-200 ease-in-out
@@ -178,14 +182,14 @@ export default function Sidebar() {
         flex flex-col h-screen
       `}>
         <div className="flex items-center p-6">
-          <Calendar className="h-8 w-8 text-blue-600" />
+          <Calendar aria-hidden="true" className="h-8 w-8 text-blue-600" />
           <h1 className="ml-2 text-xl font-bold text-gray-900 dark:text-white">AllIncompassing</h1>
         </div>
         
         {/* User info */}
         <div className="px-6 py-2 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center mb-2">
-            <User className="h-5 w-5 text-gray-500 dark:text-gray-400 mr-2" />
+            <User aria-hidden="true" className="h-5 w-5 text-gray-500 dark:text-gray-400 mr-2" />
             <div className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
               <div>{user?.email}</div>
               {isTherapist && therapistId && (
@@ -204,7 +208,7 @@ export default function Sidebar() {
               className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 flex items-center"
               disabled={isRefreshing}
             >
-              <RefreshCw className={`h-3 w-3 mr-1 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw aria-hidden="true" className={`h-3 w-3 mr-1 ${isRefreshing ? 'animate-spin' : ''}`} />
               {isRefreshing ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
@@ -217,7 +221,7 @@ export default function Sidebar() {
               to={`/therapists/${therapistId}`}
               className="flex items-center w-full px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
             >
-              <User className="h-5 w-5 mr-3 text-blue-600 dark:text-blue-400" />
+              <User aria-hidden="true" className="h-5 w-5 mr-3 text-blue-600 dark:text-blue-400" />
               My Profile
             </Link>
           </div>
@@ -247,6 +251,7 @@ export default function Sidebar() {
                 {({ isActive }) => (
                   <>
                     <Icon
+                      aria-hidden="true"
                       className={`
                         -ml-1 mr-2 h-5 w-5
                         ${
@@ -273,20 +278,20 @@ export default function Sidebar() {
               }}
               className="flex items-center w-full px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
             >
-              <MessageSquare className="h-5 w-5 mr-3" />
+              <MessageSquare aria-hidden="true" className="h-5 w-5 mr-3" />
               Chat Assistant
             </button>
           )}
           
           <button
             onClick={() => {
-              document.getElementById('theme-toggle')?.click();
+              toggleTheme();
               setIsMobileMenuOpen(false);
             }}
             className="flex items-center w-full px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
           >
-            <Sun className="h-5 w-5 mr-3 dark:hidden" />
-            <Moon className="h-5 w-5 mr-3 hidden dark:block" />
+            <Sun aria-hidden="true" className="h-5 w-5 mr-3 dark:hidden" />
+            <Moon aria-hidden="true" className="h-5 w-5 mr-3 hidden dark:block" />
             {isDark ? 'Light Mode' : 'Dark Mode'}
           </button>
           
@@ -299,21 +304,27 @@ export default function Sidebar() {
                 : 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
             }`}
           >
-            <LogOut className={`h-5 w-5 mr-3 ${isSigningOut ? 'animate-pulse' : ''}`} />
+            <LogOut aria-hidden="true" className={`h-5 w-5 mr-3 ${isSigningOut ? 'animate-pulse' : ''}`} />
             {isSigningOut ? 'Signing out...' : 'Sign Out'}
           </button>
         </div>
         
         {canAccessChatAssistant && <ChatBot />}
-        <ThemeToggle />
       </aside>
 
       {/* Overlay for mobile menu */}
       {isMobileMenuOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
-          onClick={() => setIsMobileMenuOpen(false)}
-        />
+        <div className="fixed inset-0 z-30 lg:hidden">
+          <button
+            type="button"
+            aria-label="Close navigation overlay"
+            className="w-full h-full bg-black bg-opacity-50"
+            onClick={() => setIsMobileMenuOpen(false)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') setIsMobileMenuOpen(false);
+            }}
+          />
+        </div>
       )}
     </>
   );

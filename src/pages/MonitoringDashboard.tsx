@@ -662,12 +662,13 @@ export default function MonitoringDashboard() {
           <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Settings</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label htmlFor="auto-refresh-checkbox" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Auto Refresh
               </label>
               <div className="flex items-center space-x-2">
                 <input
                   type="checkbox"
+                  id="auto-refresh-checkbox"
                   checked={autoRefresh}
                   onChange={(e) => setAutoRefresh(e.target.checked)}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -685,9 +686,9 @@ export default function MonitoringDashboard() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Actions
-              </label>
+              </p>
               <div className="flex space-x-2">
                 <button
                   onClick={clearMetrics}

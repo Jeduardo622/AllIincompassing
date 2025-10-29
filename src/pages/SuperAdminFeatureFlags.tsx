@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '../lib/supabase';
 import { edgeInvoke } from '../lib/edgeInvoke';
 import { useAuth } from '../lib/authContext';
 import { showError, showSuccess } from '../lib/toast';

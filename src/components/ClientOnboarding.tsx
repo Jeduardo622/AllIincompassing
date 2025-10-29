@@ -783,9 +783,9 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Service Types
-                </label>
+                </span>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="flex items-center">
                     <input
@@ -893,9 +893,9 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             </div>
             
             <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
                 Availability Schedule
-              </label>
+              </span>
               <Controller
                 name="availability_hours"
                 control={control}
@@ -932,7 +932,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             
             <div className="space-y-4">
               <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label htmlFor="insurance_card_front" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Insurance Card (Front)
                 </label>
                 <div className="flex items-center">
@@ -957,7 +957,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               </div>
               
               <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label htmlFor="insurance_card_back" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Insurance Card (Back)
                 </label>
                 <div className="flex items-center">
@@ -982,7 +982,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               </div>
               
               <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label htmlFor="referral_form" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Referral Form (if available)
                 </label>
                 <div className="flex items-center">
@@ -1007,7 +1007,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               </div>
               
               <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label htmlFor="consent_form" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Consent Form
                 </label>
                 <div className="flex items-center">

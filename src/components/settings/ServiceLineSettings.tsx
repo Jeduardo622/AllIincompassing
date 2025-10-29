@@ -394,10 +394,11 @@ export default function ServiceLineSettings() {
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="service-line-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Name*
                 </label>
                 <input
+                  id="service-line-name"
                   type="text"
                   name="name"
                   required
@@ -409,10 +410,11 @@ export default function ServiceLineSettings() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="service-line-code" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Service Code
                   </label>
                   <input
+                    id="service-line-code"
                     type="text"
                     name="code"
                     value={formData.code}
@@ -422,7 +424,7 @@ export default function ServiceLineSettings() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="service-line-rate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Rate per Hour
                   </label>
                   <div className="relative">
@@ -430,6 +432,7 @@ export default function ServiceLineSettings() {
                       <span className="text-gray-500 dark:text-gray-400">$</span>
                     </div>
                     <input
+                      id="service-line-rate"
                       type="number"
                       name="rate_per_hour"
                       step="0.01"
@@ -443,10 +446,11 @@ export default function ServiceLineSettings() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="service-line-desc" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Description
                 </label>
                 <textarea
+                  id="service-line-desc"
                   name="description"
                   rows={3}
                   value={formData.description}
@@ -514,9 +518,9 @@ export default function ServiceLineSettings() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Available Locations
-                </label>
+                </span>
                 <div className="space-y-2">
                   {locations.map(location => (
                     <div key={location.id} className="flex items-center">

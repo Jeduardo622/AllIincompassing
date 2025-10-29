@@ -102,7 +102,10 @@ export default function AvailabilityEditor({ value = DEFAULT_AVAILABILITY, onCha
                   {day}
                 </h3>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
+              <label
+                className="relative inline-flex items-center cursor-pointer"
+                aria-label={`Toggle ${day} availability`}
+              >
                 <input
                   type="checkbox"
                   checked={isEnabled}
@@ -115,10 +118,11 @@ export default function AvailabilityEditor({ value = DEFAULT_AVAILABILITY, onCha
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor={`${`availability-${day}`.replace(/\s+/g, '-').toLowerCase()}-start`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Start Time
                 </label>
                 <select
+                  id={`${`availability-${day}`.replace(/\s+/g, '-').toLowerCase()}-start`}
                   value={dayValue.start || ''}
                   onChange={(e) => handleDayChange(day, 'start', e.target.value || null)}
                   disabled={!isEnabled}
@@ -134,10 +138,11 @@ export default function AvailabilityEditor({ value = DEFAULT_AVAILABILITY, onCha
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor={`${`availability-${day}`.replace(/\s+/g, '-').toLowerCase()}-end`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   End Time
                 </label>
                 <select
+                  id={`${`availability-${day}`.replace(/\s+/g, '-').toLowerCase()}-end`}
                   value={dayValue.end || ''}
                   onChange={(e) => handleDayChange(day, 'end', e.target.value || null)}
                   disabled={!isEnabled}

@@ -1,7 +1,6 @@
 import { parseISO, isWithinInterval, format } from 'date-fns';
-import { toZonedTime as utcToZonedTime } from 'date-fns-tz';
+import { toZonedTime as utcToZonedTime, fromZonedTime as zonedTimeToUtc } from 'date-fns-tz';
 import type { Session, Therapist, Client } from '../types';
-import { supabase } from './supabase';
 
 export interface Conflict {
   type: 'therapist_unavailable' | 'client_unavailable' | 'session_overlap';
@@ -34,8 +33,9 @@ export async function checkSchedulingConflicts(
   const addedTypes = new Set<Conflict['type']>();
   const { excludeSessionId, timeZone = 'UTC' } = options;
 
-  const startUtc = parseISO(startTime);
-  const endUtc = parseISO(endTime);
+  const hasZoneInfo = (value: string) => /[zZ]|[+-]\d{2}:?\d{2}$/.test(value);
+  const startUtc = hasZoneInfo(startTime) ? parseISO(startTime) : zonedTimeToUtc(startTime, timeZone);
+  const endUtc = hasZoneInfo(endTime) ? parseISO(endTime) : zonedTimeToUtc(endTime, timeZone);
   if (Number.isNaN(startUtc.getTime()) || Number.isNaN(endUtc.getTime())) {
     return conflicts;
   }

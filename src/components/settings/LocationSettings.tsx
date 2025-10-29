@@ -409,10 +409,11 @@ export default function LocationSettings() {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="location-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Location Name*
                   </label>
                   <input
+                    id="location-name"
                     type="text"
                     name="name"
                     required
@@ -423,10 +424,11 @@ export default function LocationSettings() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="location-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Type*
                   </label>
                   <select
+                    id="location-type"
                     name="type"
                     required
                     value={formData.type}
@@ -440,10 +442,11 @@ export default function LocationSettings() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="location-status" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Status
                   </label>
                   <select
+                    id="location-status"
                     name="is_active"
                     value={formData.is_active ? 'true' : 'false'}
                     onChange={handleInputChange}
@@ -462,10 +465,11 @@ export default function LocationSettings() {
 
                 <div className="grid grid-cols-1 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor="location-address-line1" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Address Line 1
                     </label>
                     <input
+                      id="location-address-line1"
                       type="text"
                       name="address_line1"
                       value={formData.address_line1}
@@ -475,10 +479,11 @@ export default function LocationSettings() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor="location-address-line2" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Address Line 2
                     </label>
                     <input
+                      id="location-address-line2"
                       type="text"
                       name="address_line2"
                       value={formData.address_line2}
@@ -489,10 +494,11 @@ export default function LocationSettings() {
 
                   <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label htmlFor="location-city" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         City
                       </label>
                       <input
+                        id="location-city"
                         type="text"
                         name="city"
                         value={formData.city}
@@ -502,10 +508,11 @@ export default function LocationSettings() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label htmlFor="location-state" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         State
                       </label>
                       <input
+                        id="location-state"
                         type="text"
                         name="state"
                         value={formData.state}
@@ -515,10 +522,11 @@ export default function LocationSettings() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label htmlFor="location-zip" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         ZIP Code
                       </label>
                       <input
+                        id="location-zip"
                         type="text"
                         name="zip_code"
                         value={formData.zip_code}
@@ -537,10 +545,11 @@ export default function LocationSettings() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor="location-phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Phone
                     </label>
                     <input
+                      id="location-phone"
                       type="tel"
                       name="phone"
                       value={formData.phone}
@@ -550,10 +559,11 @@ export default function LocationSettings() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor="location-fax" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Fax
                     </label>
                     <input
+                      id="location-fax"
                       type="tel"
                       name="fax"
                       value={formData.fax}
@@ -563,10 +573,11 @@ export default function LocationSettings() {
                   </div>
 
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor="location-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Email
                     </label>
                     <input
+                      id="location-email"
                       type="text" 
                       name="email" 
                       value={formData.email}

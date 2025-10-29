@@ -141,3 +141,14 @@ If the smoke test fails, re-run it locally with the preview URL shown in the wor
 - Ensure `CYPRESS_INSTALL_BINARY=0` when you do not require Cypress binaries in CI (the setup script sets this automatically unless `CYPRESS_RUN=true`).
 
 With these workflows and references, contributors can confidently extend AllIncompassing’s scheduling, billing, and telemetry capabilities while keeping Supabase infrastructure in sync.
+
+### Accessibility conventions
+
+- Provide `aria-label` for icon-only buttons and controls.
+- Ensure every `input`, `select`, and `textarea` has a corresponding `label` with `htmlFor`/`id`.
+- Hide decorative icons with `aria-hidden="true"`.
+- Maintain a single `role="main"` landmark per page.
+
+### Route canonicalization
+
+- Monitoring route canonicalized to `/monitoring` (was `/monitoringdashboard`). Update links accordingly.

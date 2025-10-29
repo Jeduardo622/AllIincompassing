@@ -367,10 +367,11 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                   </h3>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label htmlFor="preauth-insurance" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Insurance Provider
                       </label>
                       <select
+                        id="preauth-insurance"
                         value={wizardData.insurance}
                         onChange={(e) => setWizardData({...wizardData, insurance: e.target.value})}
                         className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -383,10 +384,11 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                     </div>
                     
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label htmlFor="preauth-plan-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Plan Type
                       </label>
                       <select
+                        id="preauth-plan-type"
                         className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                       >
                         <option value="">Select plan type</option>
@@ -397,10 +399,11 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                     </div>
                     
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label htmlFor="preauth-member-id" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Member ID
                       </label>
                       <input
+                        id="preauth-member-id"
                         type="text"
                         className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                         defaultValue={client.client_id || ''}
@@ -488,10 +491,11 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                         
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            <label htmlFor={`preauth-units-${serviceCode}`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                               Units Requested
                             </label>
                             <input
+                              id={`preauth-units-${serviceCode}`}
                               type="number"
                               min="1"
                               value={wizardData.units[serviceCode] || ''}
@@ -507,10 +511,11 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                           </div>
                           
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            <label htmlFor={`preauth-hours-${serviceCode}`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                               Hours Equivalent
                             </label>
                             <input
+                              id={`preauth-hours-${serviceCode}`}
                               type="text"
                               value={((wizardData.units[serviceCode] || 0) / 4).toFixed(2)}
                               readOnly

@@ -333,10 +333,11 @@ function AddCertificationModal({ therapistId, onClose, onSuccess }: AddCertifica
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="cert-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Certification Name*
             </label>
             <input
+              id="cert-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -346,10 +347,11 @@ function AddCertificationModal({ therapistId, onClose, onSuccess }: AddCertifica
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="cert-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Type*
             </label>
             <select
+              id="cert-type"
               value={type}
               onChange={(e) => setType(e.target.value)}
               required
@@ -366,10 +368,11 @@ function AddCertificationModal({ therapistId, onClose, onSuccess }: AddCertifica
           
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="cert-issue" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Issue Date*
               </label>
               <input
+                id="cert-issue"
                 type="date"
                 value={issueDate}
                 onChange={(e) => setIssueDate(e.target.value)}
@@ -379,10 +382,11 @@ function AddCertificationModal({ therapistId, onClose, onSuccess }: AddCertifica
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="cert-expiry" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Expiry Date
               </label>
               <input
+                id="cert-expiry"
                 type="date"
                 value={expiryDate}
                 onChange={(e) => setExpiryDate(e.target.value)}
@@ -392,10 +396,11 @@ function AddCertificationModal({ therapistId, onClose, onSuccess }: AddCertifica
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="cert-notes" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Notes
             </label>
             <textarea
+              id="cert-notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
@@ -404,7 +409,7 @@ function AddCertificationModal({ therapistId, onClose, onSuccess }: AddCertifica
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="certification-file" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Upload File*
             </label>
             <div className="mt-1 flex items-center">

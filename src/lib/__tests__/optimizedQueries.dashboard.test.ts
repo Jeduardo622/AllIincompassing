@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const fetchMock = vi.fn();
 const originalFetch = globalThis.fetch;
 
-vi.mock("../supabaseClient", () => ({
+vi.mock("../supabase", () => ({
   supabase: {
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: "token" } } }),
@@ -25,10 +25,8 @@ describe("useDashboardData proxy", () => {
   it("returns data when /api/dashboard is 200", async () => {
     const payload = { ok: true };
     fetchMock.mockResolvedValue(new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } }));
-    const { useDashboardData } = await import("../optimizedQueries");
-
-    // emulate query fn directly
-    const result = await (useDashboardData() as any).options.queryFn();
+    const { fetchDashboardData } = await import("../optimizedQueries");
+    const result = await fetchDashboardData();
     expect(result).toEqual(payload);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/dashboard",
@@ -38,8 +36,8 @@ describe("useDashboardData proxy", () => {
 
   it("throws error with status on 403", async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 }));
-    const { useDashboardData } = await import("../optimizedQueries");
-    await expect((useDashboardData() as any).options.queryFn()).rejects.toMatchObject({ status: 403 });
+    const { fetchDashboardData } = await import("../optimizedQueries");
+    await expect(fetchDashboardData()).rejects.toMatchObject({ status: 403 });
   });
 });
 

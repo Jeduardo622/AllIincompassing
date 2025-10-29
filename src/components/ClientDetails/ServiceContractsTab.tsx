@@ -110,7 +110,10 @@ export default function ServiceContractsTab({ client: _client }: ServiceContract
               >
                 <div 
                   className="bg-gray-50 dark:bg-gray-800 p-4 flex justify-between items-center cursor-pointer"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => toggleContract(contract.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleContract(contract.id); }}
                 >
                   <div className="flex items-center">
                     <FileContract className="h-5 w-5 text-blue-600 dark:text-blue-400 mr-3" />
@@ -243,10 +246,11 @@ export default function ServiceContractsTab({ client: _client }: ServiceContract
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="helper-cpt-code" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               CPT Code
             </label>
             <select
+              id="helper-cpt-code"
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
               defaultValue=""
             >
@@ -266,11 +270,12 @@ export default function ServiceContractsTab({ client: _client }: ServiceContract
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="helper-units" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Units
             </label>
             <div className="flex items-center">
               <input
+                id="helper-units"
                 type="number"
                 min="1"
                 defaultValue="4"

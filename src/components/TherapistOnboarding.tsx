@@ -583,20 +583,22 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
               <h3 className="text-md font-medium text-purple-800 dark:text-purple-200 mb-2">Facility & Supervision</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="onboarding-facility" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Facility
                   </label>
                   <input
+                    id="onboarding-facility"
                     type="text"
                     {...register('facility')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="onboarding-supervisor" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Supervisor
                   </label>
                   <input
+                    id="onboarding-supervisor"
                     type="text"
                     {...register('supervisor')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -614,10 +616,11 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
             
             <div className="grid grid-cols-1 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="onboarding-street" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Street Address
                 </label>
                 <input
+                  id="onboarding-street"
                   type="text"
                   {...register('street')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -626,30 +629,33 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="onboarding-city" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     City
                   </label>
                   <input
+                    id="onboarding-city"
                     type="text"
                     {...register('city')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="onboarding-state" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     State
                   </label>
                   <input
+                    id="onboarding-state"
                     type="text"
                     {...register('state')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="onboarding-zip" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     ZIP Code
                   </label>
                   <input
+                    id="onboarding-zip"
                     type="text"
                     {...register('zip_code')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -667,9 +673,9 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Service Types
-                </label>
+                </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="flex items-center">
                     <input
@@ -711,9 +717,9 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Specialties
-                </label>
+                </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="flex items-center">
                     <input
@@ -769,10 +775,11 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="onboarding-hours-min" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Minimum Weekly Hours
                 </label>
                 <input
+                  id="onboarding-hours-min"
                   type="number"
                   min="0"
                   {...register('weekly_hours_min', { valueAsNumber: true })}
@@ -781,10 +788,11 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="onboarding-hours-max" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Maximum Weekly Hours
                 </label>
                 <input
+                  id="onboarding-hours-max"
                   type="number"
                   min="0"
                   {...register('weekly_hours_max', { valueAsNumber: true })}
@@ -794,9 +802,9 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
             </div>
             
             <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+              <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
                 Availability Schedule
-              </label>
+              </p>
               <Controller
                 name="availability_hours"
                 control={control}
@@ -833,7 +841,7 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
             
             <div className="space-y-4">
               <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label htmlFor="resume" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Resume/CV
                 </label>
                 <div className="flex flex-col md:flex-row md:items-center">
@@ -904,7 +912,7 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
               </div>
               
               <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label htmlFor="background_check" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Background Check
                 </label>
                 <div className="flex items-center">

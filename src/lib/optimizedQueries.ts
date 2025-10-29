@@ -141,30 +141,40 @@ export const useSessionMetrics = (
  * Batched dashboard data - single query for all dashboard metrics
  * Reduces 5+ separate queries to 1 optimized RPC call
  */
+export const fetchDashboardData = async () => {
+  // Proxy through server to enforce SECURITY INVOKER policy and org checks
+  const headers = new Headers({ 'Accept': 'application/json' });
+  try {
+    const result: any = await (supabase as any)?.auth?.getSession?.();
+    const token = result?.data?.session?.access_token;
+    if (typeof token === 'string' && token.length > 0) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+  } catch {
+    // In tests/SSR, session lookup may fail; proceed without auth header
+  }
+  const response = await fetch('/api/dashboard', { method: 'GET', headers });
+  if (!response.ok) {
+    const status = response.status;
+    const payload = await response.json().catch(() => ({}));
+    const message = typeof payload?.error === 'string' ? payload.error : 'Failed to load dashboard data';
+    const error = new Error(message) as Error & { status?: number };
+    error.status = status;
+    throw error;
+  }
+  return response.json();
+};
+
 export const useDashboardData = () => {
   return useQuery({
     queryKey: generateCacheKey.dashboard(),
-    queryFn: async () => {
-      // Proxy through server to enforce SECURITY INVOKER policy and org checks
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = new Headers({ 'Accept': 'application/json' });
-      if (session?.access_token) {
-        headers.set('Authorization', `Bearer ${session.access_token}`);
-      }
-      const response = await fetch('/api/dashboard', { method: 'GET', headers });
-      if (!response.ok) {
-        const status = response.status;
-        const payload = await response.json().catch(() => ({}));
-        const message = typeof payload?.error === 'string' ? payload.error : 'Failed to load dashboard data';
-        const error = new Error(message) as Error & { status?: number };
-        error.status = status;
-        throw error;
-      }
-      return response.json();
-    },
+    queryFn: fetchDashboardData,
     staleTime: CACHE_STRATEGIES.DASHBOARD.summary,
+    gcTime: CACHE_STRATEGIES.DASHBOARD.summary * 2,
+    keepPreviousData: true,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
     refetchInterval: 2 * 60 * 1000, // Auto-refresh every 2 minutes
-    refetchOnWindowFocus: true, // Dashboard should be fresh when user returns
   });
 };
 

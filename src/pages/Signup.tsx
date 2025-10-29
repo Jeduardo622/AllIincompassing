@@ -173,7 +173,7 @@ export default function Signup() {
     <div className="min-h-screen bg-gray-50 dark:bg-dark flex flex-col justify-center py-12 sm:px-6 lg:px-8 transition-colors">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <Calendar className="h-12 w-12 text-blue-600 dark:text-blue-400" />
+          <Calendar aria-hidden="true" className="h-12 w-12 text-blue-600 dark:text-blue-400" />
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">
           Create your account
@@ -354,6 +354,7 @@ export default function Signup() {
                 <button
                   type="button"
                   className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                   onClick={() => setShowPassword(!showPassword)}
                 >
                   {showPassword ? (
@@ -387,6 +388,7 @@ export default function Signup() {
                 <button
                   type="button"
                   className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  aria-label={showConfirmPassword ? 'Hide value' : 'Show value'}
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 >
                   {showConfirmPassword ? (

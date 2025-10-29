@@ -366,7 +366,7 @@ function testSpeakerIdentification() {
  */
 async function runTests() {
   console.log('🚀 AI Transcription System Test Suite\n');
-  console.log('=' .repeat(50));
+  console.log('='.repeat(50));
   
   const results = {
     transcription: false,
@@ -382,7 +382,7 @@ async function runTests() {
   results.speakerIdentification = testSpeakerIdentification();
   
   // Summary
-  console.log('=' .repeat(50));
+  console.log('='.repeat(50));
   console.log('📊 TEST RESULTS SUMMARY\n');
   
   const testCategories = [
@@ -409,7 +409,7 @@ async function runTests() {
     console.log('⚠️  Some tests failed. Please review the results above.');
   }
   
-  console.log('\n' + '=' .repeat(50));
+  console.log('\n' + '='.repeat(50));
   
   return overallSuccess;
 }

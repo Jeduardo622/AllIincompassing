@@ -160,10 +160,11 @@ export default function CompanySettings() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="company-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Company Name*
             </label>
             <input
+              id="company-name"
               type="text"
               {...register('company_name', { required: 'Company name is required' })}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -174,10 +175,11 @@ export default function CompanySettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="legal-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Legal Name
             </label>
             <input
+              id="legal-name"
               type="text"
               {...register('legal_name')}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -185,10 +187,11 @@ export default function CompanySettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="tax-id" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Tax ID
             </label>
             <input
+              id="tax-id"
               type="text"
               {...register('tax_id')}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -196,10 +199,11 @@ export default function CompanySettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="company-npi" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               NPI Number
             </label>
             <input
+              id="company-npi"
               type="text"
               {...register('npi_number')}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -207,10 +211,11 @@ export default function CompanySettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="medicaid-provider-id" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Medicaid Provider ID
             </label>
             <input
+              id="medicaid-provider-id"
               type="text"
               {...register('medicaid_provider_id')}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -228,10 +233,11 @@ export default function CompanySettings() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="company-phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Phone
             </label>
             <input
+              id="company-phone"
               type="tel"
               {...register('phone')}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -239,10 +245,11 @@ export default function CompanySettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="company-fax" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Fax
             </label>
             <input
+              id="company-fax"
               type="tel"
               {...register('fax')}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -250,10 +257,11 @@ export default function CompanySettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="company-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Email
             </label>
             <input
+              id="company-email"
               type="text"
               {...register('email', {
                 validate: {
@@ -271,10 +279,11 @@ export default function CompanySettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="company-website" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Website
             </label>
             <input
+              id="company-website"
               type="text"
               {...register('website', {
                 validate: {
@@ -302,10 +311,11 @@ export default function CompanySettings() {
 
         <div className="grid grid-cols-1 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="company-address1" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Address Line 1
             </label>
             <input
+              id="company-address1"
               type="text"
               {...register('address_line1')}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -313,10 +323,11 @@ export default function CompanySettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="company-address2" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Address Line 2
             </label>
             <input
+              id="company-address2"
               type="text"
               {...register('address_line2')}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -325,10 +336,11 @@ export default function CompanySettings() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="company-city" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 City
               </label>
               <input
+                id="company-city"
                 type="text"
                 {...register('city')}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -336,21 +348,23 @@ export default function CompanySettings() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="company-state" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 State
               </label>
               <input
+                id="company-state"
                 type="text"
                 {...register('state')}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                className="w-full rounded_md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="company-zip" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 ZIP Code
               </label>
               <input
+                id="company-zip"
                 type="text"
                 {...register('zip_code')}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -369,10 +383,11 @@ export default function CompanySettings() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="company-timezone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Time Zone
             </label>
             <select
+              id="company-timezone"
               {...register('time_zone')}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
             >
@@ -385,10 +400,11 @@ export default function CompanySettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="company-date-format" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Date Format
             </label>
             <select
+              id="company-date-format"
               {...register('date_format')}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
             >
@@ -399,10 +415,11 @@ export default function CompanySettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="company-time-format" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Time Format
             </label>
             <select
+              id="company-time-format"
               {...register('time_format')}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
             >
@@ -412,10 +429,11 @@ export default function CompanySettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="company-currency" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Default Currency
             </label>
             <select
+              id="company-currency"
               {...register('default_currency')}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
             >
@@ -426,10 +444,11 @@ export default function CompanySettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="company-session-duration" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Default Session Duration (minutes)
             </label>
             <input
+              id="company-session-duration"
               type="number"
               {...register('session_duration_default')}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -447,10 +466,11 @@ export default function CompanySettings() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="company-logo-url" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Logo URL
             </label>
             <input
+              id="company-logo-url"
               type="text"
               {...register('logo_url', {
                 validate: {
@@ -468,11 +488,12 @@ export default function CompanySettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="company-primary-color" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Primary Color
             </label>
             <div className="flex items-center space-x-2">
               <input
+                id="company-primary-color"
                 type="color"
                 {...register('primary_color')}
                 className="h-10 w-20 rounded-md border-gray-300 dark:border-gray-600"
@@ -486,11 +507,12 @@ export default function CompanySettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="company-accent-color" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Accent Color
             </label>
             <div className="flex items-center space-x-2">
               <input
+                id="company-accent-color"
                 type="color"
                 {...register('accent_color')}
                 className="h-10 w-20 rounded-md border-gray-300 dark:border-gray-600"

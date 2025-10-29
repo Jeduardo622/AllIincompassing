@@ -88,7 +88,7 @@ export default function Settings() {
                     }
                   `}
                 >
-                  <Icon className={`
+                  <Icon aria-hidden="true" className={`
                     -ml-1 mr-2 h-5 w-5
                     ${
                       activeTab === tab.id

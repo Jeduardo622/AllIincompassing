@@ -8,10 +8,10 @@ export default function Unauthorized() {
   const { profile } = useAuth();
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-dark flex items-center justify-center px-4">
+    <main role="main" className="min-h-screen bg-gray-50 dark:bg-dark flex items-center justify-center px-4">
       <div className="max-w-md w-full text-center">
         <div className="flex justify-center mb-6">
-          <ShieldX className="h-20 w-20 text-red-500" />
+          <ShieldX aria-hidden="true" className="h-20 w-20 text-red-500" />
         </div>
         
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
@@ -46,6 +46,6 @@ export default function Unauthorized() {
           </button>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

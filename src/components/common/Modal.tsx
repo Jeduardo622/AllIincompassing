@@ -153,6 +153,7 @@ export function Modal({
         overlayClassName ??
         'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50'
       }
+      role="presentation"
       onMouseDown={handleOverlayClick}
     >
       <div
@@ -163,7 +164,6 @@ export function Modal({
         aria-describedby={describedById}
         tabIndex={-1}
         className={panelClassName ?? 'w-full max-w-md rounded-lg bg-white p-6 shadow-xl'}
-        onMouseDown={(event) => event.stopPropagation()}
       >
         {children}
       </div>

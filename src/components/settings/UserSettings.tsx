@@ -88,10 +88,11 @@ export default function UserSettings() {
               </h3>
               <div className="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <label htmlFor="first_name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     First Name
                   </label>
                   <input
+                    id="first_name"
                     type="text"
                     {...register('first_name')}
                     className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -99,10 +100,11 @@ export default function UserSettings() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <label htmlFor="last_name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Last Name
                   </label>
                   <input
+                    id="last_name"
                     type="text"
                     {...register('last_name')}
                     className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -110,10 +112,11 @@ export default function UserSettings() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Title
                   </label>
                   <input
+                    id="title"
                     type="text"
                     {...register('title')}
                     className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -121,15 +124,16 @@ export default function UserSettings() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Email
                   </label>
                   <div className="mt-1 flex rounded-md shadow-sm">
                     <div className="relative flex items-stretch flex-grow">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Mail className="h-5 w-5 text-gray-400" />
+                        <Mail aria-hidden="true" className="h-5 w-5 text-gray-400" />
                       </div>
                       <input
+                       id="email"
                        type="text"
                         {...register('email', {
                           required: 'Email is required',
@@ -169,10 +173,11 @@ export default function UserSettings() {
               {isChangingPassword && (
                 <div className="mt-6 space-y-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <label htmlFor="current_password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                       Current Password
                     </label>
                     <input
+                      id="current_password"
                       type="password"
                       {...register('current_password', {
                         required: 'Current password is required',
@@ -185,10 +190,11 @@ export default function UserSettings() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <label htmlFor="new_password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                       New Password
                     </label>
                     <input
+                      id="new_password"
                       type="password"
                       {...register('new_password', {
                         required: 'New password is required',
@@ -205,10 +211,11 @@ export default function UserSettings() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <label htmlFor="confirm_password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                       Confirm New Password
                     </label>
                     <input
+                      id="confirm_password"
                       type="password"
                       {...register('confirm_password', {
                         validate: value => value === newPassword || 'Passwords do not match',

@@ -44,6 +44,7 @@ if (process.env.DEBUG_VITEST_ARGS === '1') {
 const child = spawn(vitestBin, ['vitest', 'run', ...positionalArgs, ...filteredArgs], {
   stdio: 'inherit',
   env: process.env,
+  shell: process.platform === 'win32',
 });
 
 child.on('exit', (code) => {

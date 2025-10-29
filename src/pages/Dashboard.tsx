@@ -18,7 +18,12 @@ type ClientMetricsSummary = { total: number; active: number; totalUnits: number;
 
 const Dashboard = () => {
   // Use optimized dashboard data hook backed by /api/dashboard only
-  const { data: dashboardData, isLoading: isLoadingDashboard, error: dashboardError } = useDashboardData();
+  const { data: dashboardData, isLoading: isLoadingDashboard, error: dashboardError, refetch } = useDashboardData() as unknown as {
+    data: unknown;
+    isLoading: boolean;
+    error: unknown;
+    refetch: () => void;
+  };
 
   const displayData = useMemo(() => {
     const todaySessions = (dashboardData?.todaySessions as SessionSummary[] | undefined) ?? [];
@@ -78,17 +83,25 @@ const Dashboard = () => {
     );
   }
 
-  if (dashboardError) {
-    return (
-      <div className="p-6 bg-red-50 dark:bg-red-900/20 rounded-lg">
-        <h2 className="text-lg font-semibold text-red-800 dark:text-red-200 mb-2">Dashboard unavailable</h2>
-        <p className="text-sm text-red-700 dark:text-red-300">Failed to load dashboard data. Please refresh or try again later.</p>
-      </div>
-    );
-  }
+  const hasError = Boolean(dashboardError);
 
   return (
     <div>
+      {hasError && (
+        <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-red-800 dark:text-red-200 mb-1">Some dashboard data failed to load</h2>
+            <p className="text-sm text-red-700 dark:text-red-300">Showing fallback values. You can retry loading the latest data.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="ml-4 px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Dashboard</h1>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

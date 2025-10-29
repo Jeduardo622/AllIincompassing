@@ -727,6 +727,7 @@ export default function ChatBot() {
         id="chat-trigger"
         onClick={() => setIsOpen(true)}
         className="hidden"
+        aria-label="Open chat assistant"
       />
 
       {isOpen && (

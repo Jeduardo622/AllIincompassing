@@ -495,18 +495,20 @@ const Therapists = () => {
                             onClick={() => handleRestoreTherapist(therapist)}
                             className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300"
                             title="Restore therapist"
+                            aria-label={`Restore ${therapist.full_name || 'therapist'}`}
                             type="button"
                           >
-                            <ArchiveRestore className="w-4 h-4" />
+                            <ArchiveRestore aria-hidden="true" className="w-4 h-4" />
                           </button>
                         ) : (
                           <button
                             onClick={() => handleArchiveTherapist(therapist)}
                             className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
                             title="Archive therapist"
+                            aria-label={`Archive ${therapist.full_name || 'therapist'}`}
                             type="button"
                           >
-                            <Archive className="w-4 h-4" />
+                            <Archive aria-hidden="true" className="w-4 h-4" />
                           </button>
                         )}
                         {isSuperAdmin() && (
@@ -520,7 +522,7 @@ const Therapists = () => {
                             type="button"
                             disabled={deleteTherapistMutation.isPending}
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 aria-hidden="true" className="w-4 h-4" />
                           </button>
                         )}
                       </div>

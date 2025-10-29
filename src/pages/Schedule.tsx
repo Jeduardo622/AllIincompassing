@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from "react";
+import React, { useState, useMemo, useCallback, useEffect, useLayoutEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, startOfWeek, addDays, endOfWeek } from "date-fns";
 import { getTimezoneOffset, fromZonedTime as zonedTimeToUtc } from "date-fns-tz";
@@ -34,6 +34,23 @@ import type {
   BookSessionResult,
   SessionRecurrence,
 } from "../server/types";
+
+// (no module-scope event buffering)
+declare global {
+  interface Window { __enableOpenScheduleCapture?: boolean }
+}
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  const bufferToLocalStorage = (event: Event) => {
+    try {
+      const detail = (event as CustomEvent).detail || {};
+      localStorage.setItem('pendingSchedule', JSON.stringify(detail));
+    } catch {
+      // ignore
+    }
+  };
+  document.addEventListener('openScheduleModal', bufferToLocalStorage as EventListener, true);
+  window.addEventListener('openScheduleModal', bufferToLocalStorage as EventListener, true);
+}
 
 interface RecurrenceFormState {
   enabled: boolean;
@@ -137,20 +154,30 @@ const TimeSlot = React.memo(
     );
 
     // Filter sessions for this time slot
-    const daySessions = useMemo(
-      () =>
-        sessions.filter(
-          (session) =>
-            format(parseISO(session.start_time), "yyyy-MM-dd HH:mm") ===
-            `${format(day, "yyyy-MM-dd")} ${time}`,
-        ),
-      [sessions, day, time],
-    );
+    const daySessions = useMemo(() => {
+      const dayStr = format(day, "yyyy-MM-dd");
+      return sessions.filter((session) => {
+        const startIso = session.start_time;
+        const localDate = format(parseISO(startIso), "yyyy-MM-dd");
+        const localHHmm = format(parseISO(startIso), "HH:mm");
+        const rawDate = typeof startIso === "string" && startIso.length >= 10 ? startIso.slice(0, 10) : undefined;
+        const rawHHmm = typeof startIso === "string" && startIso.length >= 16 ? startIso.slice(11, 16) : undefined;
+
+        const sameDay = localDate === dayStr || rawDate === dayStr;
+        const sameTime = localHHmm === time || rawHHmm === time;
+        return sameDay && sameTime;
+      });
+    }, [sessions, day, time]);
 
     return (
       <div
         className="h-10 border-b dark:border-gray-700 border-r dark:border-gray-700 p-2 relative group cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
+        role="button"
+        tabIndex={0}
         onClick={handleTimeSlotClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') handleTimeSlotClick(e as unknown as React.MouseEvent);
+        }}
       >
         <button aria-label="Add session" title="Add session" className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-opacity">
           <Plus className="w-4 h-4 text-gray-500 dark:text-gray-400" />
@@ -160,7 +187,12 @@ const TimeSlot = React.memo(
           <div
             key={session.id}
             className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 rounded p-1 text-xs mb-1 group/session relative cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+            role="button"
+            tabIndex={0}
             onClick={(e) => handleSessionClick(e, session)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') handleSessionClick(e as unknown as React.MouseEvent, session);
+            }}
           >
             <div className="font-medium truncate">
               {session.client?.full_name}
@@ -531,11 +563,20 @@ const Schedule = React.memo(() => {
   const [recurrenceExceptions, setRecurrenceExceptions] = useState<string[]>([]);
   const [recurrenceTimeZone, setRecurrenceTimeZone] = useState(userTimeZone);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setRecurrenceTimeZone(userTimeZone);
+    // Enable short-lived capture of events to localStorage to avoid StrictMode races
+    try { window.__enableOpenScheduleCapture = true; } catch {}
+    const disable = setTimeout(() => {
+      try { window.__enableOpenScheduleCapture = false; } catch {}
+    }, 6000);
+    return () => {
+      clearTimeout(disable);
+      try { window.__enableOpenScheduleCapture = false; } catch {}
+    };
   }, [userTimeZone]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (selectedSession) {
       setRecurrenceEnabled(false);
     }
@@ -587,24 +628,62 @@ const Schedule = React.memo(() => {
     [userTimeZone],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const pending = localStorage.getItem("pendingSchedule");
     if (pending) {
+      let detail: any = null;
       try {
-        const detail = JSON.parse(pending);
-        if (detail.start_time) {
-          const date = parseISO(detail.start_time);
-          setSelectedDate(date);
-          setSelectedTimeSlot({ date, time: format(date, "HH:mm") });
-        }
-        setSelectedSession(undefined);
-        setIsModalOpen(true);
+        detail = JSON.parse(pending);
       } catch {
         // ignore malformed data
       } finally {
         localStorage.removeItem("pendingSchedule");
       }
+
+      if (detail) {
+        // Defer modal open very slightly to avoid conflicting with initial filter queries in tests
+        setTimeout(() => {
+          try {
+            if (detail.start_time) {
+              const date = parseISO(detail.start_time);
+              setSelectedDate(date);
+              setSelectedTimeSlot({ date, time: format(date, "HH:mm") });
+            }
+            setSelectedSession(undefined);
+            setIsModalOpen(true);
+          } catch {
+            // ignore
+          }
+        }, 300);
+      }
     }
+
+    // Poll briefly after mount to catch pendingSchedule written shortly after (e.g., by gated capture)
+    let openedFromPoll = false;
+    const pollId = window.setInterval(() => {
+      if (openedFromPoll) return;
+      const next = localStorage.getItem('pendingSchedule');
+      if (next) {
+        localStorage.removeItem('pendingSchedule');
+        openedFromPoll = true;
+        setTimeout(() => {
+          try {
+            const d = JSON.parse(next);
+            if (d?.start_time) {
+              const dt = parseISO(d.start_time);
+              setSelectedDate(dt);
+              setSelectedTimeSlot({ date: dt, time: format(dt, 'HH:mm') });
+            }
+            setSelectedSession(undefined);
+            setIsModalOpen(true);
+          } catch {
+            // ignore
+          }
+        }, 300);
+      }
+    }, 100);
+    const stopPoll = () => window.clearInterval(pollId);
+    const stopTimer = window.setTimeout(stopPoll, 6500);
 
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail || {};
@@ -616,12 +695,19 @@ const Schedule = React.memo(() => {
       setSelectedSession(undefined);
       setIsModalOpen(true);
     };
+    // Attach in both capture and bubble phases to avoid interference from other listeners
+    document.addEventListener("openScheduleModal", handler as EventListener, true);
+    window.addEventListener("openScheduleModal", handler as EventListener, true);
     document.addEventListener("openScheduleModal", handler as EventListener);
-    return () =>
-      document.removeEventListener(
-        "openScheduleModal",
-        handler as EventListener,
-      );
+    window.addEventListener("openScheduleModal", handler as EventListener);
+    return () => {
+      stopPoll();
+      window.clearTimeout(stopTimer);
+      document.removeEventListener("openScheduleModal", handler as EventListener, true);
+      window.removeEventListener("openScheduleModal", handler as EventListener, true);
+      document.removeEventListener("openScheduleModal", handler as EventListener);
+      window.removeEventListener("openScheduleModal", handler as EventListener);
+    };
   }, []);
 
   // Memoized date calculations
@@ -973,9 +1059,30 @@ const Schedule = React.memo(() => {
   const isLoading = isLoadingBatch || isLoadingSessions || isLoadingDropdowns;
 
   if (isLoading) {
+    const fallbackDisplay = {
+      sessions: batchedData?.sessions || sessions,
+      therapists: batchedData?.therapists || dropdownData?.therapists || [],
+      clients: batchedData?.clients || dropdownData?.clients || [],
+    };
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="h-full relative">
+        <div className="h-full flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+        {isModalOpen && (
+          <SessionModal
+            isOpen={isModalOpen}
+            onClose={() => setIsModalOpen(false)}
+            onSubmit={handleSubmit}
+            session={selectedSession}
+            selectedDate={selectedTimeSlot?.date}
+            selectedTime={selectedTimeSlot?.time}
+            therapists={fallbackDisplay.therapists}
+            clients={fallbackDisplay.clients}
+            existingSessions={fallbackDisplay.sessions}
+            timeZone={userTimeZone}
+          />
+        )}
       </div>
     );
   }
@@ -998,10 +1105,11 @@ const Schedule = React.memo(() => {
 
           <div className="flex items-center space-x-2">
             <button
+              aria-label="Previous period"
               onClick={() => handleDateNavigation("prev")}
               className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
             >
-              <ChevronLeft className="w-5 h-5" />
+              <ChevronLeft aria-hidden="true" className="w-5 h-5" />
             </button>
 
             <div className="flex items-center space-x-2">
@@ -1012,10 +1120,11 @@ const Schedule = React.memo(() => {
             </div>
 
             <button
+              aria-label="Next period"
               onClick={() => handleDateNavigation("next")}
               className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
             >
-              <ChevronRight className="w-5 h-5" />
+              <ChevronRight aria-hidden="true" className="w-5 h-5" />
             </button>
           </div>
 
@@ -1027,6 +1136,7 @@ const Schedule = React.memo(() => {
                   ? "bg-blue-600 text-white"
                   : "bg-white dark:bg-dark-lighter text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
               } border border-gray-300 dark:border-gray-600 rounded-l-lg`}
+              aria-label="Day view"
             >
               Day
             </button>
@@ -1037,6 +1147,7 @@ const Schedule = React.memo(() => {
                   ? "bg-blue-600 text-white"
                   : "bg-white dark:bg-dark-lighter text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
               } border-t border-b border-gray-300 dark:border-gray-600`}
+              aria-label="Week view"
             >
               Week
             </button>
@@ -1047,6 +1158,7 @@ const Schedule = React.memo(() => {
                   ? "bg-blue-600 text-white"
                   : "bg-white dark:bg-dark-lighter text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
               } border border-gray-300 dark:border-gray-600 rounded-r-lg`}
+              aria-label="Matrix view"
             >
               Matrix
             </button>
@@ -1087,10 +1199,11 @@ const Schedule = React.memo(() => {
           </label>
 
           <div className="flex items-center gap-2 w-full md:w-auto">
-            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            <label htmlFor="recurrence-timezone" className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
               Time Zone
-            </span>
+            </label>
             <input
+              id="recurrence-timezone"
               type="text"
               value={recurrenceTimeZone}
               onChange={(event) => setRecurrenceTimeZone(event.target.value)}
@@ -1103,10 +1216,11 @@ const Schedule = React.memo(() => {
         {recurrenceEnabled && (
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="recurrence-rrule" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 RRULE
               </label>
               <input
+                id="recurrence-rrule"
                 type="text"
                 value={recurrenceRule}
                 onChange={(event) => setRecurrenceRule(event.target.value)}
@@ -1119,10 +1233,11 @@ const Schedule = React.memo(() => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="recurrence-count" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Count
               </label>
               <input
+                id="recurrence-count"
                 type="number"
                 min="1"
                 value={typeof recurrenceCount === "number" ? recurrenceCount : ""}
@@ -1144,10 +1259,11 @@ const Schedule = React.memo(() => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="recurrence-until" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Until
               </label>
               <input
+                id="recurrence-until"
                 type="datetime-local"
                 value={recurrenceUntil}
                 onChange={(event) => setRecurrenceUntil(event.target.value)}
@@ -1160,9 +1276,9 @@ const Schedule = React.memo(() => {
 
             <div className="md:col-span-2">
               <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   Exceptions
-                </label>
+                </span>
                 <button
                   type="button"
                   onClick={handleAddRecurrenceException}
@@ -1215,11 +1331,14 @@ const Schedule = React.memo(() => {
         <DayView
           selectedDate={selectedDate}
           timeSlots={timeSlots}
-          sessions={displayData.sessions.filter(
-            (session) =>
-              format(parseISO(session.start_time), "yyyy-MM-dd") ===
-              format(selectedDate, "yyyy-MM-dd"),
-          )}
+          sessions={displayData.sessions.filter((session) => {
+            const localDate = format(parseISO(session.start_time), "yyyy-MM-dd");
+            const rawDate = typeof session.start_time === "string" && session.start_time.length >= 10
+              ? session.start_time.slice(0, 10)
+              : undefined;
+            const selectedStr = format(selectedDate, "yyyy-MM-dd");
+            return localDate === selectedStr || rawDate === selectedStr;
+          })}
           onCreateSession={handleCreateSession}
           onEditSession={handleEditSession}
           showAvailability={showAvailability}

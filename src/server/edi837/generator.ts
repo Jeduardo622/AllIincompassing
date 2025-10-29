@@ -160,8 +160,14 @@ const buildServiceLineSegment = (
     .map((modifier) => sanitizeAlphaNumeric(modifier))
     .filter((modifier) => modifier.length > 0);
   const procedure = [line.cptCode, ...modifiers].filter((value) => value.length > 0).join(SUB_ELEMENT_SEPARATOR);
-  const date = new Date(line.serviceDate);
-  const serviceDate = Number.isNaN(date.getTime()) ? formatDate(new Date(claim.serviceDate)) : formatDate(date);
+  let serviceDate: string;
+  if (typeof line.serviceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(line.serviceDate)) {
+    // Preserve literal date to avoid timezone drift
+    serviceDate = line.serviceDate.replace(/-/g, "");
+  } else {
+    const date = new Date(line.serviceDate);
+    serviceDate = Number.isNaN(date.getTime()) ? formatDate(new Date(claim.serviceDate)) : formatDate(date);
+  }
   return [
     joinElements(["LX", index + 1]),
     joinElements([

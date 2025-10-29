@@ -444,10 +444,11 @@ export default function ReferringProviderSettings() {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="refprov-first-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     First Name*
                   </label>
                   <input
+                    id="refprov-first-name"
                     type="text"
                     name="first_name"
                     required
@@ -458,10 +459,11 @@ export default function ReferringProviderSettings() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="refprov-last-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Last Name*
                   </label>
                   <input
+                    id="refprov-last-name"
                     type="text"
                     name="last_name"
                     required
@@ -474,10 +476,11 @@ export default function ReferringProviderSettings() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="refprov-credentials" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Credentials
                   </label>
                   <select
+                    id="refprov-credentials"
                     multiple
                     value={formData.credentials.split(',').map(c => c.trim()).filter(Boolean)}
                     onChange={(e) => {
@@ -501,10 +504,11 @@ export default function ReferringProviderSettings() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="refprov-specialty" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Specialty
                   </label>
                   <select
+                    id="refprov-specialty"
                     name="specialty"
                     value={formData.specialty}
                     onChange={handleInputChange}
@@ -522,10 +526,11 @@ export default function ReferringProviderSettings() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="refprov-npi" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     NPI Number
                   </label>
                   <input
+                    id="refprov-npi"
                     type="text"
                     name="npi_number"
                     value={formData.npi_number}
@@ -535,10 +540,11 @@ export default function ReferringProviderSettings() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="refprov-facility" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Facility Name
                   </label>
                   <input
+                    id="refprov-facility"
                     type="text"
                     name="facility_name"
                     value={formData.facility_name}
@@ -555,10 +561,11 @@ export default function ReferringProviderSettings() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor="refprov-phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Phone
                     </label>
                     <input
+                      id="refprov-phone"
                       type="tel"
                       name="phone"
                       value={formData.phone}
@@ -568,10 +575,11 @@ export default function ReferringProviderSettings() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor="refprov-fax" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Fax
                     </label>
                     <input
+                      id="refprov-fax"
                       type="tel"
                       name="fax"
                       value={formData.fax}
@@ -581,10 +589,11 @@ export default function ReferringProviderSettings() {
                   </div>
 
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor="refprov-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Email
                     </label>
                     <input
+                      id="refprov-email"
                       type="text"
                       name="email"
                       value={formData.email}
@@ -607,10 +616,11 @@ export default function ReferringProviderSettings() {
                 </h3>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="refprov-address-line1" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Address Line 1
                   </label>
                   <input
+                    id="refprov-address-line1"
                     type="text"
                     name="address_line1"
                     value={formData.address_line1}
@@ -620,10 +630,11 @@ export default function ReferringProviderSettings() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="refprov-address-line2" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Address Line 2
                   </label>
                   <input
+                    id="refprov-address-line2"
                     type="text"
                     name="address_line2"
                     value={formData.address_line2}
@@ -634,10 +645,11 @@ export default function ReferringProviderSettings() {
 
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor="refprov-city" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       City
                     </label>
                     <input
+                      id="refprov-city"
                       type="text"
                       name="city"
                       value={formData.city}
@@ -647,10 +659,11 @@ export default function ReferringProviderSettings() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor="refprov-state" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       State
                     </label>
                     <input
+                      id="refprov-state"
                       type="text"
                       name="state"
                       value={formData.state}
@@ -660,10 +673,11 @@ export default function ReferringProviderSettings() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor="refprov-zip" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       ZIP Code
                     </label>
                     <input
+                      id="refprov-zip"
                       type="text"
                       name="zip_code"
                       value={formData.zip_code}

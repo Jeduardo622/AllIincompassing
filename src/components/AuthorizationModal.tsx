@@ -204,10 +204,11 @@ export default function AuthorizationModal({
             <h3 className="text-lg font-medium text-blue-900 dark:text-blue-100 mb-4">Authorization Details</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="authorization-number" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Authorization Number
                 </label>
                 <input
+                  id="authorization-number"
                   type="text"
                   {...register('authorization_number')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -218,10 +219,11 @@ export default function AuthorizationModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="member-cin" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   CIN Number
                 </label>
                 <input
+                  id="member-cin"
                   type="text"
                   {...register('member_cin')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -238,10 +240,11 @@ export default function AuthorizationModal({
             <h3 className="text-lg font-medium text-purple-900 dark:text-purple-100 mb-4">Member Information</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="client-id" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Client
                 </label>
                 <select
+                  id="client-id"
                   {...register('client_id')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
@@ -258,10 +261,11 @@ export default function AuthorizationModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="member-phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Member Phone
                 </label>
                 <input
+                  id="member-phone"
                   type="tel"
                   {...register('member_phone')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -269,10 +273,11 @@ export default function AuthorizationModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="member-dob" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Date of Birth
                 </label>
                 <input
+                  id="member-dob"
                   type="date"
                   {...register('member_dob')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -286,10 +291,11 @@ export default function AuthorizationModal({
             <h3 className="text-lg font-medium text-green-900 dark:text-green-100 mb-4">Provider Information</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="provider-id" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Provider
                 </label>
                 <select
+                  id="provider-id"
                   {...register('provider_id')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
@@ -312,10 +318,11 @@ export default function AuthorizationModal({
             <h3 className="text-lg font-medium text-yellow-900 dark:text-yellow-100 mb-4">Diagnosis</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="diagnosis-code" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Diagnosis Code
                 </label>
                 <input
+                  id="diagnosis-code"
                   type="text"
                   {...register('diagnosis_code')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -326,10 +333,11 @@ export default function AuthorizationModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="diagnosis-description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Diagnosis Description
                 </label>
                 <input
+                  id="diagnosis-description"
                   type="text"
                   {...register('diagnosis_description')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -346,10 +354,11 @@ export default function AuthorizationModal({
             <h3 className="text-lg font-medium text-indigo-900 dark:text-indigo-100 mb-4">Authorization Period</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="auth-start-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Start Date
                 </label>
                 <input
+                  id="auth-start-date"
                   type="date"
                   {...register('start_date')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -360,10 +369,11 @@ export default function AuthorizationModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="auth-end-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   End Date
                 </label>
                 <input
+                  id="auth-end-date"
                   type="date"
                   {...register('end_date')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -382,10 +392,11 @@ export default function AuthorizationModal({
               <div key={service.code} className="mb-6 p-4 bg-white dark:bg-dark-lighter rounded-lg shadow-sm">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor={`service-${index}-code`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Service Code
                     </label>
                     <input
+                      id={`service-${index}-code`}
                       type="text"
                       {...register(`services.${index}.code` as const)}
                       defaultValue={service.code}
@@ -399,10 +410,11 @@ export default function AuthorizationModal({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor={`service-${index}-description`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Description
                     </label>
                     <input
+                      id={`service-${index}-description`}
                       type="text"
                       {...register(`services.${index}.description` as const)}
                       defaultValue={service.description}
@@ -416,10 +428,11 @@ export default function AuthorizationModal({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor={`service-${index}-from`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       From Date
                     </label>
                     <input
+                      id={`service-${index}-from`}
                       type="date"
                       {...register(`services.${index}.from_date` as const)}
                       className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -432,10 +445,11 @@ export default function AuthorizationModal({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor={`service-${index}-to`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       To Date
                     </label>
                     <input
+                      id={`service-${index}-to`}
                       type="date"
                       {...register(`services.${index}.to_date` as const)}
                       className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -448,10 +462,11 @@ export default function AuthorizationModal({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor={`service-${index}-units`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Requested Units
                     </label>
                     <input
+                      id={`service-${index}-units`}
                       type="number"
                       {...register(`services.${index}.requested_units` as const, { 
                         min: { value: 1, message: 'Must be greater than 0' },
@@ -467,10 +482,11 @@ export default function AuthorizationModal({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor={`service-${index}-unit-type`} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Unit Type
                     </label>
                     <input
+                      id={`service-${index}-unit-type`}
                       type="text"
                       {...register(`services.${index}.unit_type` as const)}
                       defaultValue={service.unit_type}

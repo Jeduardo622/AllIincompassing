@@ -103,10 +103,11 @@ export default function ClientModal({
             <h3 className="text-lg font-medium text-blue-900 dark:text-blue-100 mb-4">Demographics</h3>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="first-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   First Name
                 </label>
                 <input
+                  id="first-name"
                   type="text"
                   {...register('first_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -117,10 +118,11 @@ export default function ClientModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="middle-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Middle Name
                 </label>
                 <input
+                  id="middle-name"
                   type="text"
                   {...register('middle_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -128,10 +130,11 @@ export default function ClientModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="last-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Last Name
                 </label>
                 <input
+                  id="last-name"
                   type="text"
                   {...register('last_name')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -144,10 +147,11 @@ export default function ClientModal({
 
             <div className="grid grid-cols-3 gap-4 mt-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="dob" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Date of Birth
                 </label>
                 <input
+                  id="dob"
                   type="date"
                   {...register('date_of_birth')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -158,10 +162,11 @@ export default function ClientModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="gender" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Gender
                 </label>
                 <select
+                  id="gender"
                   {...register('gender')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
@@ -176,10 +181,11 @@ export default function ClientModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Email
                 </label>
                 <input
+                  id="email"
                   type="text"
                   {...register('email')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -199,10 +205,11 @@ export default function ClientModal({
               <h4 className="text-md font-medium text-purple-800 dark:text-purple-200 mb-2">Primary Parent/Guardian</h4>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="parent1-first-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     First Name
                   </label>
                   <input
+                    id="parent1-first-name"
                     type="text"
                     {...register('parent1_first_name')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -212,10 +219,11 @@ export default function ClientModal({
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="parent1-last-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Last Name
                   </label>
                   <input
+                    id="parent1-last-name"
                     type="text"
                     {...register('parent1_last_name')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -228,10 +236,11 @@ export default function ClientModal({
               
               <div className="grid grid-cols-2 gap-4 mt-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="parent1-phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Phone
                   </label>
                   <input
+                    id="parent1-phone"
                     type="tel"
                     {...register('parent1_phone')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -241,10 +250,11 @@ export default function ClientModal({
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="parent1-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Email
                   </label>
                   <input
+                    id="parent1-email"
                     type="email"
                     {...register('parent1_email')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -253,10 +263,11 @@ export default function ClientModal({
               </div>
               
               <div className="mt-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="parent1-relationship" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Relationship to Client
                 </label>
                 <select
+                  id="parent1-relationship"
                   {...register('parent1_relationship')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
@@ -277,20 +288,22 @@ export default function ClientModal({
               <h4 className="text-md font-medium text-purple-800 dark:text-purple-200 mb-2">Secondary Parent/Guardian (Optional)</h4>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="parent2-first-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     First Name
                   </label>
                   <input
+                    id="parent2-first-name"
                     type="text"
                     {...register('parent2_first_name')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="parent2-last-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Last Name
                   </label>
                   <input
+                    id="parent2-last-name"
                     type="text"
                     {...register('parent2_last_name')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -300,20 +313,22 @@ export default function ClientModal({
               
               <div className="grid grid-cols-2 gap-4 mt-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="parent2-phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Phone
                   </label>
                   <input
+                    id="parent2-phone"
                     type="tel"
                     {...register('parent2_phone')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="parent2-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Email
                   </label>
                   <input
+                    id="parent2-email"
                     type="email"
                     {...register('parent2_email')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -322,10 +337,11 @@ export default function ClientModal({
               </div>
               
               <div className="mt-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="parent2-relationship" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Relationship to Client
                 </label>
                 <select
+                  id="parent2-relationship"
                   {...register('parent2_relationship')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 >
@@ -346,10 +362,11 @@ export default function ClientModal({
             
             <div className="grid grid-cols-1 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="address-line1" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Street Address
                 </label>
                 <input
+                  id="address-line1"
                   type="text"
                   {...register('address_line1')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -360,10 +377,11 @@ export default function ClientModal({
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="address-line2" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Address Line 2
                 </label>
                 <input
+                  id="address-line2"
                   type="text"
                   {...register('address_line2')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -372,10 +390,11 @@ export default function ClientModal({
               
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="city" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     City
                   </label>
                   <input
+                    id="city"
                     type="text"
                     {...register('city')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -385,10 +404,11 @@ export default function ClientModal({
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="state" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     State
                   </label>
                   <input
+                    id="state"
                     type="text"
                     {...register('state')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -398,10 +418,11 @@ export default function ClientModal({
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="zip" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     ZIP Code
                   </label>
                   <input
+                    id="zip"
                     type="text"
                     {...register('zip_code')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -414,20 +435,22 @@ export default function ClientModal({
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="client-phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Phone
                   </label>
                   <input
+                    id="client-phone"
                     type="tel"
                     {...register('phone')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="client-cin" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     CIN Number
                   </label>
                   <input
+                    id="client-cin"
                     type="text"
                     {...register('cin_number')}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -443,10 +466,11 @@ export default function ClientModal({
             
             <div className="grid grid-cols-1 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="client-id" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Client ID
                 </label>
                 <input
+                  id="client-id"
                   type="text"
                   {...register('client_id')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -458,10 +482,11 @@ export default function ClientModal({
 
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="units-1to1" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     1:1 Units
                   </label>
                   <input
+                    id="units-1to1"
                     type="number"
                     min={0}
                     {...register('one_to_one_units', {
@@ -475,10 +500,11 @@ export default function ClientModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="units-supervision" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Supervision Units
                   </label>
                   <input
+                    id="units-supervision"
                     type="number"
                     min={0}
                     {...register('supervision_units', {
@@ -492,10 +518,11 @@ export default function ClientModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="units-parent" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Parent Consult Units
                   </label>
                   <input
+                    id="units-parent"
                     type="number"
                     min={0}
                     {...register('parent_consult_units', {
@@ -511,7 +538,7 @@ export default function ClientModal({
             </div>
 
             <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="service-preference" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Service Preferences
               </label>
               <Controller
@@ -519,6 +546,7 @@ export default function ClientModal({
                 control={control}
                 render={({ field }) => (
                   <select
+                    id="service-preference"
                     multiple
                     value={field.value}
                     onChange={(e) => {
@@ -539,10 +567,11 @@ export default function ClientModal({
             </div>
 
             <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="insurance-info" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Insurance Information (JSON)
               </label>
               <textarea
+                id="insurance-info"
                 {...register('insurance_info')}
                 rows={3}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"

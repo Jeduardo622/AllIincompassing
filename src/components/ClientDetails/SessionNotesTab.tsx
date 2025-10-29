@@ -145,10 +145,13 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
           ) : (
             <div className="space-y-3">
               {authorizations.map(auth => (
-                <div
+                <button
                   key={auth.id}
+                  type="button"
                   onClick={() => setSelectedAuth(auth.id)}
-                  className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                  aria-pressed={selectedAuth === auth.id}
+                  aria-label={`Select authorization ${auth.authorization_number}`}
+                  className={`text-left w-full p-3 rounded-lg transition-colors ${
                     selectedAuth === auth.id
                       ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
                       : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border-gray-200 dark:border-gray-700'
@@ -172,7 +175,7 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
                       </div>
                     ))}
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}

@@ -367,10 +367,11 @@ const Reports = React.memo(() => {
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="reportType" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Report Type
               </label>
               <select
+                id="reportType"
                 value={reportType}
                 onChange={(e) => setReportType(e.target.value as ReportType)}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -384,11 +385,12 @@ const Reports = React.memo(() => {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                <Calendar className="w-4 h-4 inline mr-1" />
+              <label htmlFor="dateRange" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <Calendar aria-hidden="true" className="w-4 h-4 inline mr-1" />
                 Date Range
               </label>
               <select
+                id="dateRange"
                 value={filters.dateRange}
                 onChange={(e) => setFilters({...filters, dateRange: e.target.value as ReportFilters['dateRange']})}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -404,12 +406,13 @@ const Reports = React.memo(() => {
             {filters.dateRange === 'custom' && (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Start Date
                   </label>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <Calendar aria-hidden="true" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                     <input
+                      id="startDate"
                       type="date"
                       value={filters.startDate}
                       onChange={(e) => setFilters({...filters, startDate: e.target.value})}
@@ -419,12 +422,13 @@ const Reports = React.memo(() => {
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     End Date
                   </label>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <Calendar aria-hidden="true" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                     <input
+                      id="endDate"
                       type="date"
                       value={filters.endDate}
                       onChange={(e) => setFilters({...filters, endDate: e.target.value})}
@@ -437,12 +441,13 @@ const Reports = React.memo(() => {
             
             {(reportType === 'sessions' || reportType === 'authorizations') && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapistId" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Therapist
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <User aria-hidden="true" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <select
+                    id="therapistId"
                     value={filters.therapistId || ''}
                     onChange={(e) => setFilters({...filters, therapistId: e.target.value || undefined})}
                     className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -460,12 +465,13 @@ const Reports = React.memo(() => {
             
             {(reportType === 'sessions' || reportType === 'authorizations' || reportType === 'billing') && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="clientId" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Client
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <User aria-hidden="true" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <select
+                    id="clientId"
                     value={filters.clientId || ''}
                     onChange={(e) => setFilters({...filters, clientId: e.target.value || undefined})}
                     className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -483,12 +489,13 @@ const Reports = React.memo(() => {
             
             {reportType === 'sessions' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="status" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Status
                 </label>
                 <div className="relative">
-                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Clock aria-hidden="true" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <select
+                    id="status"
                     value={filters.status || ''}
                     onChange={(e) => setFilters({...filters, status: e.target.value || undefined})}
                     className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"

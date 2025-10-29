@@ -132,11 +132,12 @@ export default function AddSessionNoteModal({
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="session-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 <Calendar className="w-4 h-4 inline-block mr-1" />
                 Session Date
               </label>
               <input
+                id="session-date"
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
@@ -145,11 +146,12 @@ export default function AddSessionNoteModal({
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="service-code" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 <FileText className="w-4 h-4 inline-block mr-1" />
                 Service Code
               </label>
               <select
+                id="service-code"
                 value={serviceCode}
                 onChange={(e) => setServiceCode(e.target.value)}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -169,11 +171,12 @@ export default function AddSessionNoteModal({
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="start-time" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 <Clock className="w-4 h-4 inline-block mr-1" />
                 Start Time
               </label>
               <input
+                id="start-time"
                 type="time"
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
@@ -182,11 +185,12 @@ export default function AddSessionNoteModal({
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="end-time" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 <Clock className="w-4 h-4 inline-block mr-1" />
                 End Time
               </label>
               <input
+                id="end-time"
                 type="time"
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
@@ -196,10 +200,11 @@ export default function AddSessionNoteModal({
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="therapist-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Therapist
             </label>
             <select
+              id="therapist-select"
               value={therapistId}
               onChange={(e) => setTherapistId(e.target.value)}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -214,9 +219,9 @@ export default function AddSessionNoteModal({
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Goals Addressed
-            </label>
+            </p>
             {goalsAddressed.map((goal, index) => (
               <div key={index} className="flex items-center mb-2">
                 <input
@@ -247,10 +252,11 @@ export default function AddSessionNoteModal({
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="session-notes" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Session Notes
             </label>
             <textarea
+              id="session-notes"
               value={narrative}
               onChange={(e) => setNarrative(e.target.value)}
               rows={5}

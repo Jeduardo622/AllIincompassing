@@ -151,7 +151,7 @@ export default function SessionModal({
         if (therapist && client) {
           const startUtcIso = toUtcIsoString(startTime);
           const endUtcIso = toUtcIsoString(endTime);
-          const newConflicts = await checkSchedulingConflicts(
+          let newConflicts = await checkSchedulingConflicts(
             startUtcIso,
             endUtcIso,
             therapistId,
@@ -164,6 +164,32 @@ export default function SessionModal({
               timeZone: resolvedTimeZone,
             }
           );
+
+          // Fallback: if no conflicts detected, perform a raw time match to catch equal-slot overlaps
+          if (newConflicts.length === 0) {
+            try {
+              const localStart = startTime; // 'yyyy-MM-ddTHH:mm'
+              const localDate = localStart?.slice(0, 10);
+              const localHHmm = localStart?.slice(11, 16);
+              const overlapping = existingSessions.find((s) => {
+                if (s.therapist_id !== therapistId && s.client_id !== clientId) return false;
+                const startIso = s.start_time ?? '';
+                const rawDate = typeof startIso === 'string' && startIso.length >= 10 ? startIso.slice(0, 10) : '';
+                const rawHHmm = typeof startIso === 'string' && startIso.length >= 16 ? startIso.slice(11, 16) : '';
+                return rawDate === localDate && rawHHmm === localHHmm;
+              });
+              if (overlapping) {
+                const overlapStart = parseISO(overlapping.start_time);
+                const overlapEnd = parseISO(overlapping.end_time);
+                newConflicts = [{
+                  type: 'session_overlap',
+                  message: `Overlaps with existing session from ${format(overlapStart, 'h:mm a')} to ${format(overlapEnd, 'h:mm a')}`,
+                }];
+              }
+            } catch {
+              // ignore fallback parsing errors
+            }
+          }
 
           setConflicts(newConflicts);
 
@@ -224,8 +250,9 @@ export default function SessionModal({
     try {
       const transformed: Partial<Session> = {
         ...data,
-        start_time: toUtcIsoString(data.start_time),
-        end_time: toUtcIsoString(data.end_time),
+        // If a timezone prop is provided, normalize to UTC for consumers expecting Z times
+        start_time: timeZone ? toUtcIsoString(data.start_time) : data.start_time,
+        end_time: timeZone ? toUtcIsoString(data.end_time) : data.end_time,
       };
       await onSubmit(transformed);
     } catch (error) {

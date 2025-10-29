@@ -174,6 +174,10 @@ function App() {
                         <MonitoringDashboard />
                       </RoleGuard>
                     } />
+                    {/* Legacy/alias routes */}
+                    <Route path="monitoringdashboard" element={<Navigate to="/monitoring" replace />} />
+                    <Route path="superadminfeatureflags" element={<Navigate to="/settings" replace />} />
+                    <Route path="superadminimpersonation" element={<Navigate to="/settings" replace />} />
                     
                     {/* Reports - admin and super_admin only */}
                     <Route path="reports" element={

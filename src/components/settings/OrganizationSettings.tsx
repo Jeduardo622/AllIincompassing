@@ -22,6 +22,7 @@ export default function OrganizationSettings() {
   const { user, profile } = useAuth();
   const [form, setForm] = useState<CreateOrgState>({ name: '', slug: '' });
   const [isSaving, setIsSaving] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string>('');
 
   const callerOrgId = useMemo(() => {
     const meta = (user?.user_metadata ?? {}) as Record<string, unknown>;
@@ -78,7 +79,9 @@ export default function OrganizationSettings() {
         }
       }
 
-      showSuccess(status === 201 ? 'Organization created' : 'Organization saved');
+      const msg = status === 201 ? 'Organization created' : 'Organization saved';
+      showSuccess(msg);
+      setStatusMessage(msg);
       setForm({ name: '', slug: '' });
     } catch (error) {
       showError(error);
@@ -135,6 +138,12 @@ export default function OrganizationSettings() {
           </button>
         </div>
       </form>
+
+      {statusMessage && (
+        <p role="status" aria-live="polite" className="sr-only">
+          {statusMessage}
+        </p>
+      )}
 
       {profile?.role === 'admin' && !callerOrgId && (
         <p className="mt-2 text-xs text-slate-500">Your account will be linked to the new organization automatically.</p>

@@ -54,10 +54,11 @@ export default function AddGeneralNoteModal({
         
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="note-content" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Note Content
             </label>
             <textarea
+              id="note-content"
               value={noteContent}
               onChange={(e) => setNoteContent(e.target.value)}
               rows={5}
@@ -80,9 +81,9 @@ export default function AddGeneralNoteModal({
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Status
-            </label>
+            </p>
             <div className="flex space-x-4">
               <button
                 type="button"

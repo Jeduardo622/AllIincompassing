@@ -10,6 +10,7 @@ export default function ThemeToggle() {
       id="theme-toggle"
       onClick={toggleTheme}
       className="hidden"
+      aria-label="Toggle theme"
     />
   );
 }

@@ -527,10 +527,11 @@ function AddIssueModal({ onClose, onSubmit }: AddIssueModalProps) {
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="issue-category" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Category
             </label>
             <select
+              id="issue-category"
               value={category}
               onChange={(e) => setCategory(e.target.value as Issue['category'])}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -544,10 +545,11 @@ function AddIssueModal({ onClose, onSubmit }: AddIssueModalProps) {
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="issue-description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Description
             </label>
             <textarea
+              id="issue-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
@@ -558,9 +560,9 @@ function AddIssueModal({ onClose, onSubmit }: AddIssueModalProps) {
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Priority
-            </label>
+            </p>
             <div className="flex space-x-4">
               <button
                 type="button"

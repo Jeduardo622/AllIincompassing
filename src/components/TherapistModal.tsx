@@ -284,10 +284,11 @@ export function TherapistModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-supervisor" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Supervisor
                 </label>
                 <input
+                  id="therapist-supervisor"
                   type="text"
                   {...register('supervisor')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -296,10 +297,11 @@ export function TherapistModal({
             </div>
 
             <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="therapist-facility" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Facility
               </label>
               <input
+                id="therapist-facility"
                 type="text"
                 {...register('facility')}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -307,10 +309,11 @@ export function TherapistModal({
             </div>
 
             <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="therapist-time-zone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Time Zone
               </label>
               <select
+                id="therapist-time-zone"
                 {...register('time_zone')}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
               >
@@ -323,10 +326,11 @@ export function TherapistModal({
             </div>
 
             <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="therapist-street" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Street Address
               </label>
               <input
+                id="therapist-street"
                 type="text"
                 {...register('street')}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -335,10 +339,11 @@ export function TherapistModal({
 
             <div className="grid grid-cols-3 gap-4 mt-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-city" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   City
                 </label>
                 <input
+                  id="therapist-city"
                   type="text"
                   {...register('city')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -346,10 +351,11 @@ export function TherapistModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-state" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   State
                 </label>
                 <input
+                  id="therapist-state"
                   type="text"
                   {...register('state')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -357,10 +363,11 @@ export function TherapistModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-zip" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   ZIP Code
                 </label>
                 <input
+                  id="therapist-zip"
                   type="text"
                   {...register('zip_code')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -374,10 +381,11 @@ export function TherapistModal({
             <h3 className="text-lg font-medium text-purple-900 dark:text-purple-100 mb-4">Professional Information</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-npi" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   NPI Number
                 </label>
                 <input
+                  id="therapist-npi"
                   type="text"
                   {...register('npi_number')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -385,10 +393,11 @@ export function TherapistModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-medicaid" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Medicaid ID
                 </label>
                 <input
+                  id="therapist-medicaid"
                   type="text"
                   {...register('medicaid_id')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -396,10 +405,11 @@ export function TherapistModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-rbt" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   RBT Number
                 </label>
                 <input
+                  id="therapist-rbt"
                   type="text"
                   {...register('rbt_number')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -407,10 +417,11 @@ export function TherapistModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-bcba" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   BCBA Number
                 </label>
                 <input
+                  id="therapist-bcba"
                   type="text"
                   {...register('bcba_number')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
@@ -470,7 +481,7 @@ export function TherapistModal({
             <h3 className="text-lg font-medium text-green-900 dark:text-green-100 mb-4">Service Information</h3>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="therapist-service-types" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Service Types
               </label>
               <Controller
@@ -478,6 +489,7 @@ export function TherapistModal({
                 control={control}
                 render={({ field }) => (
                   <select
+                    id="therapist-service-types"
                     multiple
                     value={field.value}
                     onChange={(e) => {
@@ -498,7 +510,7 @@ export function TherapistModal({
             </div>
 
             <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="therapist-specialties" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Specialties
               </label>
               <Controller
@@ -506,6 +518,7 @@ export function TherapistModal({
                 control={control}
                 render={({ field }) => (
                   <select
+                    id="therapist-specialties"
                     multiple
                     value={field.value}
                     onChange={(e) => {
@@ -527,10 +540,11 @@ export function TherapistModal({
 
             <div className="grid grid-cols-2 gap-4 mt-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-weekly-min" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Minimum Weekly Hours
                 </label>
                 <input
+                  id="therapist-weekly-min"
                   type="number"
                   {...register('weekly_hours_min', { 
                     min: { value: 0, message: 'Must be 0 or greater' },
@@ -543,10 +557,11 @@ export function TherapistModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="therapist-weekly-max" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Maximum Weekly Hours
                 </label>
                 <input
+                  id="therapist-weekly-max"
                   type="number"
                   {...register('weekly_hours_max', { 
                     min: { value: 0, message: 'Must be 0 or greater' },

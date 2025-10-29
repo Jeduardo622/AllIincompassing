@@ -1,0 +1,48 @@
+{
+  "target": "https://app.allincompassing.ai",
+  "timestamp": "2025-10-28T00:00:00Z",
+  "auth": {
+    "loginSucceeded": true,
+    "evidence": {
+      "hasToken": true,
+      "tokenKeyHint": "sb-wnnjeqheqxxyrgsjmygy-auth-token",
+      "cookieLen": 0
+    }
+  },
+  "pages": [
+    {"route":"/signup","status":"ok","redirectedToLogin":false,"finalUrl":"/","a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":null,"loadEventEnd":null},"networkAlerts":[],"uxNotes":["Signup redirected to root due to active session"]},
+    {"route":"/unauthorized","status":"ok","redirectedToLogin":false,"a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":352,"loadEventEnd":353},"networkAlerts":[],"uxNotes":["Access Denied page rendered; role shown: super_admin"]},
+    {"route":"/documentation","status":"ok","redirectedToLogin":false,"a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":null,"loadEventEnd":null},"networkAlerts":[],"uxNotes":["Documentation placeholder present"]},
+    {"route":"/dashboard","status":"ok","redirectedToLogin":false,"a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":386,"loadEventEnd":387},"networkAlerts":["Repeated /api/dashboard requests (~3x)"],"uxNotes":["Dashboard unavailable message (data load failed)"]},
+    {"route":"/familydashboard","status":"ok","redirectedToLogin":false,"finalUrl":"/","a11yIssues":[{"type":"unlabeled-buttons","detail":"2 unlabeled buttons on landing","severity":"minor"}],"perf":{"fcp":null,"domContentLoaded":369,"loadEventEnd":370},"networkAlerts":[],"uxNotes":["Fallback to root; transient 'No role assigned' banner"]},
+    {"route":"/clients","status":"ok","redirectedToLogin":false,"a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":352,"loadEventEnd":353},"networkAlerts":[],"uxNotes":["Clients table with labeled actions"]},
+    {"route":"/clientdetails","status":"ok","redirectedToLogin":false,"finalUrl":"/","a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":null,"loadEventEnd":null},"networkAlerts":[],"uxNotes":["Fallback to root; likely needs /clients/:id"]},
+    {"route":"/clientonboardingpage","status":"ok","redirectedToLogin":false,"finalUrl":"/","a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":null,"loadEventEnd":null},"networkAlerts":[],"uxNotes":["Fallback to root; route not defined"]},
+    {"route":"/therapists","status":"ok","redirectedToLogin":false,"a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":206,"loadEventEnd":207},"networkAlerts":[],"uxNotes":["Therapists list renders; actions labeled"]},
+    {"route":"/therapistdetails","status":"ok","redirectedToLogin":false,"finalUrl":"/","a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":null,"loadEventEnd":null},"networkAlerts":[],"uxNotes":["Fallback to root; likely needs /therapists/:id"]},
+    {"route":"/therapistonboardingpage","status":"ok","redirectedToLogin":false,"finalUrl":"/","a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":null,"loadEventEnd":null},"networkAlerts":[],"uxNotes":["Fallback to root; route not defined"]},
+    {"route":"/billing","status":"ok","redirectedToLogin":false,"a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":193,"loadEventEnd":194},"networkAlerts":[],"uxNotes":["Pricing UI present; Stripe note"]},
+    {"route":"/reports","status":"ok","redirectedToLogin":false,"a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":178,"loadEventEnd":179},"networkAlerts":[],"uxNotes":["Report settings visible"]},
+    {"route":"/monitoringdashboard","status":"ok","redirectedToLogin":false,"finalUrl":"/","a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":null,"loadEventEnd":null},"networkAlerts":[],"uxNotes":["Fallback to root; canonical is /monitoring"]},
+    {"route":"/monitoring","status":"ok","redirectedToLogin":false,"a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":null,"loadEventEnd":null},"networkAlerts":[],"uxNotes":["Monitoring renders: connected, 0 metrics"]},
+    {"route":"/schedule","status":"ok","redirectedToLogin":false,"a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":null,"loadEventEnd":null},"networkAlerts":[],"uxNotes":["Schedule grid with nav controls and recurrence"]},
+    {"route":"/settings","status":"ok","redirectedToLogin":false,"a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":null,"loadEventEnd":null},"networkAlerts":[],"uxNotes":["Personal Settings inputs labeled; tabs present"]},
+    {"route":"/authorizations","status":"ok","redirectedToLogin":false,"a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":null,"loadEventEnd":null},"networkAlerts":[],"uxNotes":["Empty state; search + status filter labeled"]},
+    {"route":"/superadminfeatureflags","status":"ok","redirectedToLogin":false,"finalUrl":"/","a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":null,"loadEventEnd":null},"networkAlerts":[],"uxNotes":["Fallback to root; likely not registered"]},
+    {"route":"/superadminimpersonation","status":"ok","redirectedToLogin":false,"finalUrl":"/","a11yIssues":[],"perf":{"fcp":null,"domContentLoaded":null,"loadEventEnd":null},"networkAlerts":[],"uxNotes":["Fallback to root; likely not registered"]}
+  ],
+  "summary": {
+    "totals": {"pages": 19, "issues": {"critical": 0, "serious": 0, "moderate": 0, "minor": 1}},
+    "topFindings": [
+      "Several protected routes fall back to root (missing route/params)",
+      "Dashboard data fetch failing though session persists",
+      "Duplicate /api/dashboard fetches observed"
+    ],
+    "recommendations": [
+      "Map details/onboarding routes to real paths (use :id) or add 404",
+      "Deduplicate /api/dashboard (cache/query dedupe); keep non-blocking UI",
+      "Sustain a11y hygiene; ensure icon-only controls are labeled"
+    ]
+  }
+}
+

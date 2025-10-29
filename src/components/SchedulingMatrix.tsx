@@ -188,8 +188,9 @@ export default function SchedulingMatrix({
                                       (parseInt(time.split(':')[0]) >= 16 && parseInt(time.split(':')[0]) <= 18);
                     
                     return (
-                      <div
+                      <button
                         key={`${time}-${therapist.id}`}
+                        type="button"
                         className={`h-full border-r dark:border-gray-700 transition-colors relative ${
                           isAvailable
                             ? 'bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30 cursor-pointer'
@@ -200,6 +201,8 @@ export default function SchedulingMatrix({
                             onTimeSlotClick(time);
                           }
                         }}
+                        disabled={!isAvailable}
+                        aria-label={`${therapist.full_name} availability at ${time}`}
                         title={`${therapist.full_name} - ${time}`}
                       >
                         {isRushHour && therapist.avoid_rush_hour && (
@@ -212,7 +215,7 @@ export default function SchedulingMatrix({
                             <Clock className="w-3 h-3 text-gray-500" />
                           </div>
                         )}
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -225,8 +228,9 @@ export default function SchedulingMatrix({
                                       (parseInt(time.split(':')[0]) >= 16 && parseInt(time.split(':')[0]) <= 18);
                     
                     return (
-                      <div
+                      <button
                         key={`${time}-${client.id}`}
+                        type="button"
                         className={`h-full border-r dark:border-gray-700 transition-colors relative ${
                           isAvailable
                             ? 'bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 cursor-pointer'
@@ -237,6 +241,8 @@ export default function SchedulingMatrix({
                             onTimeSlotClick(time);
                           }
                         }}
+                        disabled={!isAvailable}
+                        aria-label={`${client.full_name} availability at ${time}`}
                         title={`${client.full_name} - ${time}`}
                       >
                         {isRushHour && client.avoid_rush_hour && (
@@ -249,7 +255,7 @@ export default function SchedulingMatrix({
                             <Clock className="w-3 h-3 text-gray-500" />
                           </div>
                         )}
-                      </div>
+                      </button>
                     );
                   })}
                 </div>

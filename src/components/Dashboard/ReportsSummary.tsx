@@ -150,7 +150,7 @@ export default function ReportsSummary() {
 
         <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
           <div className="flex justify-between items-center mb-2">
-            <h3 className="text-sm font-medium text-purple-700 dark:text-purple-300">Active Clients</h3>
+            <h3 className="text-sm font-medium text-purple-700 dark:text-purple-300">Active Clients (month)</h3>
             <span className={`text-xs font-medium ${
               clientChange >= 0 
                 ? 'text-green-600 dark:text-green-400' 

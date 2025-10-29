@@ -350,10 +350,11 @@ export default function FileCabinetSettings() {
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="filecat-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Category Name*
                 </label>
                 <input
+                  id="filecat-name"
                   type="text"
                   name="category_name"
                   required
@@ -364,10 +365,11 @@ export default function FileCabinetSettings() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="filecat-desc" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Description
                 </label>
                 <textarea
+                  id="filecat-desc"
                   name="description"
                   rows={3}
                   value={formData.description}
@@ -377,9 +379,9 @@ export default function FileCabinetSettings() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Allowed File Types
-                </label>
+                </span>
                 <div className="space-y-2">
                   {DEFAULT_FILE_TYPES.map(fileType => (
                     <div key={fileType} className="flex items-center">
@@ -403,10 +405,11 @@ export default function FileCabinetSettings() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="filecat-max-size" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Max File Size (MB)
                   </label>
                   <input
+                    id="filecat-max-size"
                     type="number"
                     name="max_file_size_mb"
                     min="1"
@@ -417,10 +420,11 @@ export default function FileCabinetSettings() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="filecat-retention" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Retention Period (Days)
                   </label>
                   <input
+                    id="filecat-retention"
                     type="number"
                     name="retention_period_days"
                     min="0"

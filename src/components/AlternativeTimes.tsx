@@ -45,10 +45,10 @@ export default function AlternativeTimes({
             </p>
           </div>
         ) : sortedAlternatives.map((alt, index) => (
-          <div 
+          <button
             key={index}
-            className="bg-white dark:bg-dark-lighter rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-blue-100 dark:border-blue-900/30"
-            role="button"
+            type="button"
+            className="text-left w-full bg-white dark:bg-dark-lighter rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow border border-blue-100 dark:border-blue-900/30 focus:outline-none focus:ring-2 focus:ring-blue-500"
             aria-label={buildLabel(alt.startTime, alt.endTime)}
             onClick={() => onSelectTime(alt.startTime, alt.endTime)}
           >
@@ -112,7 +112,7 @@ export default function AlternativeTimes({
             <div className="mt-2 text-sm text-gray-600 dark:text-gray-300 pl-11">
               {alt.reason}
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </div>

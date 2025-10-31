@@ -1,0 +1,24 @@
+{
+  "generatedAt": "2025-10-29",
+  "sources": {
+    "advisors": { "security": { "count": 0 } }
+  },
+  "rlsPoliciesInitplan": [
+    {"schema":"public","table":"admin_actions","policyname":"admin_actions_insert_policy","cmd":"INSERT","permissive":"PERMISSIVE","using_expr":null,"with_check_expr":"((admin_user_id = auth.uid()) AND (EXISTS ( SELECT 1 FROM profiles p WHERE ((p.id = auth.uid()) AND (p.role = ANY (ARRAY['admin'::role_type, 'super_admin'::role_type]))))))"},
+    {"schema":"public","table":"admin_actions","policyname":"admin_actions_select_policy","cmd":"SELECT","permissive":"PERMISSIVE","using_expr":"(EXISTS ( SELECT 1 FROM profiles p WHERE ((p.id = auth.uid()) AND (p.role = ANY (ARRAY['admin'::role_type, 'super_admin'::role_type])))))","with_check_expr":null},
+    {"schema":"public","table":"ai_performance_metrics","policyname":"ai_performance_metrics_admin_manage_admin_manage","cmd":"ALL","permissive":"PERMISSIVE","using_expr":"_is_admin(auth.uid())","with_check_expr":"_is_admin(auth.uid())"}
+  ],
+  "duplicatePolicies": [
+    {"schemaname":"public","tablename":"ai_response_cache","cmd":"ALL","roles":"{public}","policy_count":2,"policies":"{admin_all_ai_resp_cache,ai_cache_admin_only_optimized}"},
+    {"schemaname":"public","tablename":"ai_session_notes","cmd":"SELECT","roles":"{public}","policy_count":2,"policies":"{ai_session_notes_select,\"Users can view AI session notes for their sessions\"}"}
+  ],
+  "fkWithoutIndex": [
+    {"table":"feature_flags","fk_name":"feature_flags_created_by_fkey","col":"created_by"},
+    {"table":"feature_flags","fk_name":"feature_flags_updated_by_fkey","col":"updated_by"},
+    {"table":"organization_plans","fk_name":"organization_plans_assigned_by_fkey","col":"assigned_by"},
+    {"table":"organization_plans","fk_name":"organization_plans_plan_code_fkey","col":"plan_code"},
+    {"table":"feature_flag_audit_logs","fk_name":"feature_flag_audit_logs_actor_id_fkey","col":"actor_id"},
+    {"table":"feature_flag_audit_logs","fk_name":"feature_flag_audit_logs_plan_code_fkey","col":"plan_code"},
+    {"table":"impersonation_audit","fk_name":"impersonation_audit_revoked_by_fkey","col":"revoked_by"}
+  ]
+}

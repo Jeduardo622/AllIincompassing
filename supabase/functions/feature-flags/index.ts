@@ -8,7 +8,7 @@ import {
   RouteOptions,
   type UserContext,
 } from "./_shared/auth-middleware.ts";
-import { createRequestClient } from "./_shared/database.ts";
+import { createRequestClient, supabaseAdmin } from "./_shared/database.ts";
 
 const ADMIN_PATH = "/super-admin/feature-flags";
 
@@ -140,6 +140,36 @@ const sanitizeOrganizationMetadata = (
   return JSON.parse(JSON.stringify(result.data)) as OrganizationMetadata;
 };
 
+const asNonEmptyString = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const extractOrganizationIdFromMetadata = (
+  metadata: Record<string, unknown> | null | undefined,
+): string | null => {
+  if (!metadata) return null;
+  const snake = asNonEmptyString(metadata["organization_id"]);
+  if (snake) return snake;
+  const camel = asNonEmptyString(metadata["organizationId"]);
+  return camel;
+};
+
+const resolveCallerOrganizationId = async (userId: string): Promise<string | null> => {
+  const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId);
+
+  if (error || !data?.user) {
+    console.error("Failed to load caller metadata for organization sync", { userId, error });
+    throw respond(500, { error: "Unable to load caller metadata" });
+  }
+
+  const metadata = data.user.user_metadata as Record<string, unknown> | undefined;
+  return extractOrganizationIdFromMetadata(metadata ?? {});
+};
+
 const parseActionPayload = (raw: unknown): ParsedAction => {
   if (!raw || typeof raw !== "object") {
     throw respond(400, { error: "Payload must be an object" });
@@ -188,16 +218,26 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
     return respond(500, { error: "Failed to parse request" });
   }
 
-  const actorId = userContext.user.id;
-
   const handleError = (status: number, message: string) => {
     logApiAccess(req.method, ADMIN_PATH, userContext, status);
     return respond(status, { error: message });
   };
 
+  const actorId = userContext.user.id;
+  const actorRole = userContext.profile.role;
+  const isSuperAdmin = actorRole === "super_admin";
+  const isAdmin = actorRole === "admin";
+
+  if (!isSuperAdmin && !isAdmin) {
+    return handleError(403, "Insufficient permissions");
+  }
+
   try {
     switch (parsed.action) {
       case "list": {
+        if (!isSuperAdmin) {
+          return handleError(403, "Super admin role required");
+        }
         const [flagsRes, orgsRes, orgFlagsRes, plansRes, assignmentsRes] = await Promise.all([
           db
             .from("feature_flags")
@@ -257,6 +297,9 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
       }
 
       case "createFlag": {
+        if (!isSuperAdmin) {
+          return handleError(403, "Super admin role required");
+        }
         const { flagKey, description, defaultEnabled } = parsed;
 
         const insertResult = await db
@@ -299,6 +342,9 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
       }
 
       case "updateGlobalFlag": {
+        if (!isSuperAdmin) {
+          return handleError(403, "Super admin role required");
+        }
         const { flagId, enabled } = parsed;
         const existing = await db
           .from("feature_flags")
@@ -349,6 +395,9 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
       }
 
       case "setOrgFlag": {
+        if (!isSuperAdmin) {
+          return handleError(403, "Super admin role required");
+        }
         const { organizationId, flagId, enabled } = parsed;
 
         const [orgResult, flagResult] = await Promise.all([
@@ -446,6 +495,9 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
       }
 
       case "setOrgPlan": {
+        if (!isSuperAdmin) {
+          return handleError(403, "Super admin role required");
+        }
         const { organizationId, planCode, notes } = parsed;
 
         const orgResult = await db
@@ -557,6 +609,17 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
       }
 
       case "upsertOrganization": {
+        if (!isSuperAdmin) {
+          if (!isAdmin) {
+            return handleError(403, "Insufficient permissions");
+          }
+
+          const callerOrgId = await resolveCallerOrganizationId(actorId);
+          if (callerOrgId) {
+            return handleError(403, "Admins already linked to an organization cannot create additional organizations");
+          }
+        }
+
         const { organization } = parsed;
         const normalizedSlug = normalizeSlug(organization.slug);
         const sanitizedMetadata = sanitizeOrganizationMetadata(organization.metadata);
@@ -675,7 +738,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
 
 const protectedAdminHandler = createProtectedRoute(
   (req, userContext) => handleFeatureFlagAdmin({ req, userContext, db: createRequestClient(req) }),
-  RouteOptions.superAdmin,
+  RouteOptions.admin,
 );
 
 export async function handler(req: Request): Promise<Response> {

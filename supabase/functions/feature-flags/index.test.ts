@@ -2,6 +2,7 @@ import { assert, assertEquals } from "https://deno.land/std@0.224.0/testing/asse
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
 import type { UserContext } from "../_shared/auth-middleware.ts";
 import { handleFeatureFlagAdmin } from "./index.ts";
+import { supabaseAdmin } from "./_shared/database.ts";
 
 type TableResponse = { data: unknown; error: unknown };
 
@@ -40,6 +41,30 @@ const createUserContext = (): UserContext => ({
   profile: { id: "profile-1", email: "super@example.com", role: "super_admin", is_active: true },
 });
 
+const createAdminContext = (): UserContext => ({
+  user: { id: "admin-1", email: "admin@example.com" },
+  profile: { id: "profile-admin-1", email: "admin@example.com", role: "admin", is_active: true },
+});
+
+const stubAdminGetUserById = (metadata: Record<string, unknown>) => {
+  const original = supabaseAdmin.auth.admin.getUserById;
+  supabaseAdmin.auth.admin.getUserById = ((userId: string) =>
+    Promise.resolve({
+      data: {
+        user: {
+          id: userId,
+          email: "stub@example.com",
+          user_metadata: metadata,
+        },
+      },
+      error: null,
+    })) as typeof supabaseAdmin.auth.admin.getUserById;
+
+  return () => {
+    supabaseAdmin.auth.admin.getUserById = original;
+  };
+};
+
 Deno.test("returns 405 when using a non-POST method", async () => {
   const response = await handleFeatureFlagAdmin({
     req: createRequest("GET", null),
@@ -70,6 +95,114 @@ Deno.test("lists feature flag administration data for super admins", async () =>
   assertEquals(body.flags.length, 1);
   assertEquals(body.organizations[0].id, "org-1");
   assertEquals(body.organizationPlans[0].plan_code, "standard");
+});
+
+Deno.test("prevents admins from accessing super-admin feature flag actions", async () => {
+  const response = await handleFeatureFlagAdmin({
+    req: createRequest("POST", { action: "list" }),
+    userContext: createAdminContext(),
+    db: createListClient({}),
+  });
+
+  assertEquals(response.status, 403);
+  const body = await response.json();
+  assertEquals(body.error, "Super admin role required");
+});
+
+Deno.test("prevents admins with an existing organization from creating a new organization", async () => {
+  const restore = stubAdminGetUserById({ organization_id: "org-123" });
+  try {
+    const response = await handleFeatureFlagAdmin({
+      req: createRequest("POST", {
+        action: "upsertOrganization",
+        organization: { id: "org-new", name: "Acme Behavior" },
+      }),
+      userContext: createAdminContext(),
+      db: createListClient({}),
+    });
+
+    assertEquals(response.status, 403);
+    const body = await response.json();
+    assertEquals(body.error, "Admins already linked to an organization cannot create additional organizations");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("allows admins without an organization to create their first organization", async () => {
+  const restore = stubAdminGetUserById({});
+  const inserts: unknown[] = [];
+  const audits: unknown[] = [];
+
+  const client = {
+    from: (table: string) => {
+      if (table === "organizations") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () => Promise.resolve({ data: null, error: null }),
+            }),
+          }),
+          insert: (values: Record<string, unknown>) => {
+            inserts.push(values);
+            return {
+              select: () => ({
+                single: () =>
+                  Promise.resolve({
+                    data: {
+                      id: values.id,
+                      name: values.name,
+                      slug: values.slug,
+                      metadata: values.metadata ?? {},
+                      created_at: "now",
+                      updated_at: "now",
+                    },
+                    error: null,
+                  }),
+              }),
+            };
+          },
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      if (table === "feature_flag_audit_logs") {
+        return {
+          insert: (values: Record<string, unknown>) => {
+            audits.push(values);
+            return Promise.resolve({ data: null, error: null });
+          },
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
+
+      throw new Error(`Unexpected table requested: ${table}`);
+    },
+  } as unknown as SupabaseClient;
+
+  try {
+    const response = await handleFeatureFlagAdmin({
+      req: createRequest("POST", {
+        action: "upsertOrganization",
+        organization: {
+          id: "org-new",
+          name: "Lighthouse Therapy",
+          slug: "lighthouse",
+        },
+      }),
+      userContext: createAdminContext(),
+      db: client,
+    });
+
+    assertEquals(response.status, 201);
+    const body = (await response.json()) as { organization: { id: string; slug: string } };
+    assertEquals(body.organization.id, "org-new");
+    assertEquals(body.organization.slug, "lighthouse");
+    assertEquals(inserts.length, 1);
+    const inserted = inserts[0] as { id: string; name: string; slug: string };
+    assertEquals(inserted.id, "org-new");
+    assertEquals(audits.length, 1);
+  } finally {
+    restore();
+  }
 });
 
 Deno.test("creates feature flags and writes audit logs", async () => {

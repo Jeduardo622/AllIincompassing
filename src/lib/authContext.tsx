@@ -23,11 +23,39 @@ export interface UserProfile {
   updated_at: string;
 }
 
+type Role = UserProfile['role'];
+
+const toRole = (value: unknown): Role | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+
+  switch (normalized) {
+    case 'client':
+    case 'therapist':
+    case 'admin':
+      return normalized;
+    case 'super_admin':
+    case 'superadmin':
+      return 'super_admin';
+    default:
+      return null;
+  }
+};
+
 interface AuthContextType {
   user: User | null;
   profile: UserProfile | null;
   session: Session | null;
   loading: boolean;
+  metadataRole: Role | null;
+  effectiveRole: Role;
+  roleMismatch: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, metadata?: Record<string, unknown>) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -54,6 +82,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const metadataRole = useMemo<Role | null>(() => {
+    if (!user) return null;
+    const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+    const keys = [
+      'role',
+      'signup_role',
+      'signupRole',
+      'default_role',
+      'defaultRole',
+      'primary_role',
+      'primaryRole',
+    ] as const;
+
+    for (const key of keys) {
+      const candidate = toRole(metadata[key]);
+      if (candidate) return candidate;
+    }
+
+    return null;
+  }, [user]);
+
+  const profileRole = profile?.role ?? null;
+
+  const effectiveRole = useMemo<Role>(() => {
+    if (profileRole) return profileRole;
+    if (metadataRole) return metadataRole;
+    return 'client';
+  }, [profileRole, metadataRole]);
+
+  const roleMismatch = useMemo(
+    () => Boolean(profileRole && metadataRole && profileRole !== metadataRole),
+    [profileRole, metadataRole],
+  );
 
   const fetchProfile = useCallback(async (userId: string) => {
     try {
@@ -354,63 +416,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const hasRole = useCallback((role: 'client' | 'therapist' | 'admin' | 'super_admin') => {
-    if (!profile) return false;
-    // Prefer explicit roles from JWT if present; fallback to profile.role
+  const resolveRoleForComparison = useCallback((): Role => {
     const tokenRoles = Array.isArray((session as any)?.user?.user_metadata?.roles)
       ? ((session as any).user.user_metadata.roles as string[])
       : null;
 
-    const effectiveRole = ((): 'client' | 'therapist' | 'admin' | 'super_admin' => {
-      if (tokenRoles?.includes('super_admin')) return 'super_admin';
-      if (tokenRoles?.includes('admin')) return 'admin';
-      if (tokenRoles?.includes('therapist')) return 'therapist';
-      return profile.role;
-    })();
+    if (tokenRoles?.includes('super_admin')) return 'super_admin';
+    if (tokenRoles?.includes('admin')) return 'admin';
+    if (tokenRoles?.includes('therapist')) return 'therapist';
+    if (tokenRoles?.includes('client')) return 'client';
 
-    const roleHierarchy: Record<string, number> = {
-      super_admin: 4,
-      admin: 3,
-      therapist: 2,
-      client: 1,
-    };
-    return roleHierarchy[effectiveRole] >= roleHierarchy[role];
-  }, [profile, session]);
+    return effectiveRole;
+  }, [session, effectiveRole]);
 
-  const hasAnyRole = useCallback((roles: ('client' | 'therapist' | 'admin' | 'super_admin')[]) => {
-    if (!profile) return false;
-    const tokenRoles = Array.isArray((session as any)?.user?.user_metadata?.roles)
-      ? ((session as any).user.user_metadata.roles as string[])
-      : null;
-    const effectiveRole = ((): 'client' | 'therapist' | 'admin' | 'super_admin' => {
-      if (tokenRoles?.includes('super_admin')) return 'super_admin';
-      if (tokenRoles?.includes('admin')) return 'admin';
-      if (tokenRoles?.includes('therapist')) return 'therapist';
-      return profile.role;
-    })();
-    const roleHierarchy: Record<string, number> = {
-      super_admin: 4,
-      admin: 3,
-      therapist: 2,
-      client: 1,
-    };
-    const userLevel = roleHierarchy[effectiveRole];
+  const roleHierarchy: Record<Role, number> = {
+    super_admin: 4,
+    admin: 3,
+    therapist: 2,
+    client: 1,
+  } as const;
+
+  const hasRole = useCallback((role: Role) => {
+    const currentRole = resolveRoleForComparison();
+    return roleHierarchy[currentRole] >= roleHierarchy[role];
+  }, [resolveRoleForComparison]);
+
+  const hasAnyRole = useCallback((roles: Role[]) => {
+    const currentRole = resolveRoleForComparison();
+    const userLevel = roleHierarchy[currentRole];
     return roles.some((r) => userLevel >= roleHierarchy[r]);
-  }, [profile, session]);
+  }, [resolveRoleForComparison]);
 
   const isAdmin = useCallback(() => {
-    return profile?.role === 'admin' || profile?.role === 'super_admin';
-  }, [profile]);
+    return effectiveRole === 'admin' || effectiveRole === 'super_admin';
+  }, [effectiveRole]);
 
   const isSuperAdmin = useCallback(() => {
-    return profile?.role === 'super_admin';
-  }, [profile]);
+    return effectiveRole === 'super_admin';
+  }, [effectiveRole]);
 
   const value = {
     user,
     profile,
     session,
     loading,
+    metadataRole,
+    effectiveRole,
+    roleMismatch,
     signIn,
     signUp,
     signOut,

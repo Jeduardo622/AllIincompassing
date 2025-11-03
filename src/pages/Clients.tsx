@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { useNavigate, Link } from 'react-router-dom';
@@ -45,10 +45,6 @@ const Clients = () => {
   const [sortColumn, setSortColumn] = useState<string>('full_name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [archivedFilter, setArchivedFilter] = useState<'all' | 'active' | 'archived'>('active');
-  
-  // Add missing useMemo import
-  const { useMemo } = React;
-  
   const queryClient = useQueryClient();
   const { isSuperAdmin } = useAuth();
   const navigate = useNavigate();

@@ -31,15 +31,17 @@ export default function OrganizationSettings() {
     return snake || camel || null;
   }, [user]);
 
-  const hasOrgAccess = effectiveRole === 'admin' || effectiveRole === 'super_admin';
-  const hasOrgLock = effectiveRole === 'admin' && Boolean(callerOrgId);
+  const resolvedRole = effectiveRole ?? profile?.role ?? metadataRole ?? null;
+
+  const hasOrgAccess = resolvedRole === 'admin' || resolvedRole === 'super_admin';
+  const hasOrgLock = resolvedRole === 'admin' && Boolean(callerOrgId);
   const metadataPending = !profile?.role && Boolean(metadataRole);
 
   const canSubmit =
     hasOrgAccess &&
     !hasOrgLock &&
-    (!roleMismatch || effectiveRole === 'super_admin') &&
-    (!metadataPending || effectiveRole === 'super_admin');
+    (!roleMismatch || resolvedRole === 'super_admin') &&
+    (!metadataPending || resolvedRole === 'super_admin');
 
   const disabledReason = useMemo(() => {
     if (!hasOrgAccess) {
@@ -48,17 +50,18 @@ export default function OrganizationSettings() {
     if (hasOrgLock) {
       return 'Admins already linked to an organization cannot create additional organizations.';
     }
-    if (roleMismatch && effectiveRole !== 'super_admin') {
+    if (roleMismatch && resolvedRole !== 'super_admin') {
       return 'Your admin access is still syncing. Please sign out and back in, or contact support if the issue persists.';
     }
-    if (metadataPending && effectiveRole !== 'super_admin') {
+    if (metadataPending && resolvedRole !== 'super_admin') {
       return 'Your admin privileges are still syncing. Please wait a moment and try again.';
     }
     return undefined;
-  }, [effectiveRole, hasOrgAccess, hasOrgLock, metadataPending, roleMismatch]);
+  }, [resolvedRole, hasOrgAccess, hasOrgLock, metadataPending, roleMismatch]);
 
   const metadataRoleLabel = metadataRole ? metadataRole.replace('_', ' ') : null;
   const profileRoleLabel = profile?.role ? profile.role.replace('_', ' ') : null;
+  const effectiveRoleLabel = resolvedRole ? resolvedRole.replace('_', ' ') : 'current role';
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -131,7 +134,7 @@ export default function OrganizationSettings() {
 
       {!hasOrgAccess && (
         <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-dark-lighter dark:text-slate-200">
-          Your current access level (<span className="font-medium">{effectiveRole.replace('_', ' ')}</span>) does not permit organization management. Please contact a workspace administrator if you believe this is incorrect.
+          Your current access level (<span className="font-medium">{effectiveRoleLabel}</span>) does not permit organization management. Please contact a workspace administrator if you believe this is incorrect.
         </div>
       )}
 

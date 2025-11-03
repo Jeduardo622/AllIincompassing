@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect, useLayoutEffect } from "react";
+import React, { useState, useMemo, useCallback, useLayoutEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, startOfWeek, addDays, endOfWeek } from "date-fns";
 import { getTimezoneOffset, fromZonedTime as zonedTimeToUtc } from "date-fns-tz";
@@ -60,6 +60,25 @@ interface RecurrenceFormState {
   exceptions: string[];
   timeZone: string;
 }
+
+type PendingScheduleDetail = {
+  start_time?: string;
+};
+
+const toPendingScheduleDetail = (value: unknown): PendingScheduleDetail | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const startTime = record.start_time;
+
+  if (startTime !== undefined && typeof startTime !== "string") {
+    return null;
+  }
+
+  return { start_time: typeof startTime === "string" ? startTime : undefined };
+};
 
 function toTimeZoneAwareIso(value: string | undefined, timeZone: string): string | undefined {
   if (typeof value !== "string") {
@@ -566,13 +585,19 @@ const Schedule = React.memo(() => {
   useLayoutEffect(() => {
     setRecurrenceTimeZone(userTimeZone);
     // Enable short-lived capture of events to localStorage to avoid StrictMode races
-    try { window.__enableOpenScheduleCapture = true; } catch {}
+    try { window.__enableOpenScheduleCapture = true; } catch {
+      /* noop */
+    }
     const disable = setTimeout(() => {
-      try { window.__enableOpenScheduleCapture = false; } catch {}
+      try { window.__enableOpenScheduleCapture = false; } catch {
+        /* noop */
+      }
     }, 6000);
     return () => {
       clearTimeout(disable);
-      try { window.__enableOpenScheduleCapture = false; } catch {}
+      try { window.__enableOpenScheduleCapture = false; } catch {
+        /* noop */
+      }
     };
   }, [userTimeZone]);
 
@@ -631,9 +656,9 @@ const Schedule = React.memo(() => {
   useLayoutEffect(() => {
     const pending = localStorage.getItem("pendingSchedule");
     if (pending) {
-      let detail: any = null;
+      let detail: PendingScheduleDetail | null = null;
       try {
-        detail = JSON.parse(pending);
+        detail = toPendingScheduleDetail(JSON.parse(pending));
       } catch {
         // ignore malformed data
       } finally {
@@ -644,7 +669,7 @@ const Schedule = React.memo(() => {
         // Defer modal open very slightly to avoid conflicting with initial filter queries in tests
         setTimeout(() => {
           try {
-            if (detail.start_time) {
+            if (detail?.start_time) {
               const date = parseISO(detail.start_time);
               setSelectedDate(date);
               setSelectedTimeSlot({ date, time: format(date, "HH:mm") });
@@ -668,9 +693,9 @@ const Schedule = React.memo(() => {
         openedFromPoll = true;
         setTimeout(() => {
           try {
-            const d = JSON.parse(next);
-            if (d?.start_time) {
-              const dt = parseISO(d.start_time);
+            const parsed = toPendingScheduleDetail(JSON.parse(next));
+            if (parsed?.start_time) {
+              const dt = parseISO(parsed.start_time);
               setSelectedDate(dt);
               setSelectedTimeSlot({ date: dt, time: format(dt, 'HH:mm') });
             }
@@ -686,8 +711,8 @@ const Schedule = React.memo(() => {
     const stopTimer = window.setTimeout(stopPoll, 6500);
 
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail || {};
-      if (detail.start_time) {
+      const detail = toPendingScheduleDetail((e as CustomEvent).detail);
+      if (detail?.start_time) {
         const date = parseISO(detail.start_time);
         setSelectedDate(date);
         setSelectedTimeSlot({ date, time: format(date, "HH:mm") });

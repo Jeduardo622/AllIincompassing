@@ -135,6 +135,10 @@ if (!globalWithDeno.Deno) {
   };
 }
 
+import { setupServer } from 'msw/node';
+import { graphql, http } from 'msw';
+import type { Database } from '../lib/generated/database.types';
+
 if (typeof globalWithDeno.Deno.serve !== 'function') {
   globalWithDeno.Deno.serve = () => undefined;
 }
@@ -613,9 +617,29 @@ export const server = setupServer(
   http.post('*/rest/v1/rpc/get_admin_users', async ({ request }) => {
     const token = getBearerToken(request.headers);
     const body = await request.json().catch(() => ({}));
-    const requestedOrganizationId = typeof (body as Record<string, unknown>).organization_id === 'string'
-      ? (body as Record<string, string>).organization_id
-      : undefined;
+    const requestedOrganizationIdRaw = (body as Record<string, unknown>).organization_id;
+    const requestedOrganizationId = typeof requestedOrganizationIdRaw === 'string'
+      ? requestedOrganizationIdRaw
+      : requestedOrganizationIdRaw === null
+        ? null
+        : undefined;
+
+    if (requestedOrganizationId === null) {
+      return HttpResponse.json([
+        {
+          id: 'admin-org-a-1',
+          email: 'admin-a@example.com',
+          organization_id: ORG_A_PLACEHOLDER_ID,
+          full_name: 'Org A Admin',
+        },
+        {
+          id: 'admin-org-b-1',
+          email: 'admin-b@example.com',
+          organization_id: ORG_B_PLACEHOLDER_ID,
+          full_name: 'Org B Admin',
+        },
+      ]);
+    }
 
     if (token === ORG_A_TEST_TOKEN && requestedOrganizationId === ORG_A_PLACEHOLDER_ID) {
       return HttpResponse.json([
@@ -1159,8 +1183,11 @@ export const server = setupServer(
 );
 
 // Determine if we're running integration tests
-const isIntegrationTest = process.env.VITEST_POOL_ID?.includes('Integration') || 
-                          process.argv.some(arg => arg.includes('Integration'));
+const argvContainsIntegration = Array.isArray(process.argv)
+  ? process.argv.some(arg => String(arg).includes('Integration'))
+  : false;
+
+const isIntegrationTest = Boolean(process.env.VITEST_POOL_ID?.includes('Integration') || argvContainsIntegration);
 
 // Start server before all tests
 beforeAll(() => {

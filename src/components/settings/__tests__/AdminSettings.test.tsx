@@ -40,6 +40,7 @@ const rpcMock = vi.mocked(supabase.rpc);
 const defaultRpcImplementation = rpcMock.getMockImplementation();
 const fallbackRpc = defaultRpcImplementation
   ?? (async (_functionName: string, _params?: Record<string, unknown>) => ({ data: null, error: null }));
+const originalFrom = supabase.from.bind(supabase);
 
 let confirmSpy: ReturnType<typeof vi.spyOn> | null = null;
 
@@ -51,7 +52,8 @@ const mockAdminUser = {
   raw_user_meta_data: {
     first_name: 'Ada',
     last_name: 'Admin',
-    title: 'Administrator'
+    title: 'Administrator',
+    organization_id: '11111111-1111-1111-1111-111111111111',
   }
 };
 
@@ -63,6 +65,7 @@ describe('AdminSettings logging', () => {
           organization_id: '11111111-1111-1111-1111-111111111111'
         }
       },
+      effectiveRole: 'admin',
       profile: null,
       session: null,
       loading: false,
@@ -293,6 +296,7 @@ describe('Guardian approvals', () => {
           organization_id: '11111111-1111-1111-1111-111111111111',
         },
       },
+      effectiveRole: 'admin',
       profile: null,
       session: null,
       loading: false,
@@ -455,6 +459,101 @@ describe('Guardian approvals', () => {
   });
 });
 
+describe('AdminSettings super admin access', () => {
+  let fromSpy: ReturnType<typeof vi.spyOn> | null = null;
+
+  beforeEach(() => {
+    const authStub = {
+      user: {
+        user_metadata: {},
+      },
+      effectiveRole: 'super_admin' as const,
+      profile: null,
+      session: null,
+      loading: false,
+      signIn: vi.fn(),
+      signUp: vi.fn(),
+      signOut: vi.fn(),
+      resetPassword: vi.fn(),
+      updateProfile: vi.fn(),
+      hasRole: vi.fn(() => true),
+      hasAnyRole: vi.fn(() => true),
+      isAdmin: vi.fn(() => false),
+      isSuperAdmin: vi.fn(() => true),
+    } as unknown as ReturnType<typeof useAuth>;
+
+    vi.mocked(useAuth).mockReturnValue(authStub);
+    rpcMock.mockClear();
+    rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
+      if (functionName === 'get_admin_users') {
+        return { data: [mockAdminUser], error: null };
+      }
+
+      if (functionName === 'guardian_link_queue_admin_view') {
+        return { data: [], error: null };
+      }
+
+      if (defaultRpcImplementation) {
+        return defaultRpcImplementation(functionName, params as never);
+      }
+      return fallbackRpc(functionName, params);
+    });
+
+    fromSpy = vi.spyOn(supabase, 'from').mockImplementation((table: string) => {
+      if (table === 'organizations') {
+        return {
+          select: () => ({
+            order: () => Promise.resolve({
+              data: [
+                { id: 'org-1', name: 'Acme Behavioral' },
+                { id: 'org-2', name: 'Sunrise Therapy' },
+              ],
+              error: null,
+            }),
+          }),
+        } as never;
+      }
+
+      if (table === 'clients') {
+        const query: any = {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockImplementation(() => Promise.resolve({ data: [], error: null })),
+        };
+        return query;
+      }
+
+      return originalFrom(table) as never;
+    });
+  });
+
+  afterEach(() => {
+    rpcMock.mockImplementation(defaultRpcImplementation ?? fallbackRpc);
+    fromSpy?.mockRestore();
+    fromSpy = null;
+  });
+
+  it('allows super admins to view and filter admins across organizations', async () => {
+    renderWithProviders(<AdminSettings />);
+
+    const filterSelect = await screen.findByDisplayValue('All organizations');
+    expect(filterSelect).toBeInTheDocument();
+
+    const initialAdminCalls = rpcMock.mock.calls.filter(([fnName]) => fnName === 'get_admin_users');
+    expect(initialAdminCalls[0]?.[1]).toMatchObject({ organization_id: null });
+
+    await screen.findByText('Ada Admin');
+    await screen.findByText('11111111-1111-1111-1111-111111111111');
+
+    await userEvent.selectOptions(filterSelect, 'org-1');
+
+    await waitFor(() => {
+      const adminCalls = rpcMock.mock.calls.filter(([fnName]) => fnName === 'get_admin_users');
+      expect(adminCalls.some(([, params]) => params && (params as Record<string, unknown>).organization_id === 'org-1')).toBe(true);
+    });
+  });
+});
+
 describe('AdminSettings accessibility', () => {
   beforeEach(() => {
     const authStub = {
@@ -463,6 +562,7 @@ describe('AdminSettings accessibility', () => {
           organization_id: '22222222-2222-2222-2222-222222222222'
         }
       },
+      effectiveRole: 'admin',
       profile: null,
       session: null,
       loading: false,

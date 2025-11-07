@@ -56,6 +56,22 @@ describe('admin RPC helpers', () => {
     expect(result).toEqual([{ id: '1', email: 'admin@example.com' }]);
   });
 
+  it('allows super admins to omit the organization filter', async () => {
+    const fetchSpy = mockFetch();
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify([{ id: '2', email: 'super@example.com' }]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    const result = await listAdminUsers({ organizationId: undefined });
+
+    const [, init] = fetchSpy.mock.calls[0];
+    expect(init?.body).toBe(JSON.stringify({ organization_id: null }));
+    expect(result).toEqual([{ id: '2', email: 'super@example.com' }]);
+  });
+
   it('falls back to empty array when RPC returns null', async () => {
     const fetchSpy = mockFetch();
     fetchSpy.mockResolvedValue(

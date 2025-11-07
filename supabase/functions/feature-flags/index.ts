@@ -14,6 +14,13 @@ const ADMIN_PATH = "/super-admin/feature-flags";
 
 // Runtime CORS (restricted origin) for GET and GET preflight
 const ALLOWED_ORIGIN = "https://app.allincompassing.ai";
+const ADMIN_CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Client-Info, apikey",
+  "Access-Control-Max-Age": "86400",
+  Vary: "Origin",
+};
 const RUNTIME_CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
   "Access-Control-Allow-Methods": "GET, OPTIONS",
@@ -29,7 +36,7 @@ const withCors = (init: ResponseInit = {}): ResponseInit => ({
 const respond = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...corsHeaders, ...ADMIN_CORS_HEADERS, "Content-Type": "application/json" },
   });
 
 const parseJson = async (req: Request): Promise<unknown> => {
@@ -741,6 +748,28 @@ const protectedAdminHandler = createProtectedRoute(
   RouteOptions.admin,
 );
 
+export const applyAdminCors = async (response: Response): Promise<Response> => {
+  const headers = new Headers(response.headers);
+  headers.set("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
+  headers.set("Vary", "Origin");
+  if (!headers.has("Access-Control-Allow-Methods")) {
+    headers.set("Access-Control-Allow-Methods", ADMIN_CORS_HEADERS["Access-Control-Allow-Methods"]);
+  }
+  if (!headers.has("Access-Control-Allow-Headers")) {
+    headers.set("Access-Control-Allow-Headers", ADMIN_CORS_HEADERS["Access-Control-Allow-Headers"]);
+  }
+  if (!headers.has("Access-Control-Max-Age")) {
+    headers.set("Access-Control-Max-Age", ADMIN_CORS_HEADERS["Access-Control-Max-Age"]);
+  }
+
+  if (response.status === 204 || response.body === null) {
+    return new Response(null, { status: response.status, headers });
+  }
+
+  const payload = await response.text();
+  return new Response(payload, { status: response.status, headers });
+};
+
 export async function handler(req: Request): Promise<Response> {
   // Fast CORS preflight: allow GET from the app origin only. If the preflight
   // is for POST (admin UI), delegate to the protected handler which uses the
@@ -750,7 +779,8 @@ export async function handler(req: Request): Promise<Response> {
     if (!requested || requested === "GET") {
       return new Response(null, withCors({ status: 204 }));
     }
-    return protectedAdminHandler(req);
+    const adminPreflight = await protectedAdminHandler(req);
+    return applyAdminCors(adminPreflight);
   }
 
   // Authenticated runtime GET
@@ -780,12 +810,7 @@ export async function handler(req: Request): Promise<Response> {
 
   // Delegate all other methods (e.g., admin POST) to protected handler.
   const adminResp = await protectedAdminHandler(req);
-  // Normalize CORS for admin responses to the app origin (safe for same-origin admin UI).
-  const hdrs = new Headers(adminResp.headers);
-  hdrs.set("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
-  hdrs.set("Vary", "Origin");
-  const body = await adminResp.text();
-  return new Response(body, { status: adminResp.status, headers: hdrs });
+  return applyAdminCors(adminResp);
 }
 
 // Deno entrypoint

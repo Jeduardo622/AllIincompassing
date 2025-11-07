@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/testing/asserts.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
 import type { UserContext } from "../_shared/auth-middleware.ts";
-import { handleFeatureFlagAdmin } from "./index.ts";
+import { applyAdminCors, handleFeatureFlagAdmin } from "./index.ts";
 import { supabaseAdmin } from "./_shared/database.ts";
 
 type TableResponse = { data: unknown; error: unknown };
@@ -73,6 +73,38 @@ Deno.test("returns 405 when using a non-POST method", async () => {
   });
 
   assertEquals(response.status, 405);
+});
+
+Deno.test("applyAdminCors enforces allowed origin", async () => {
+  const original = new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    },
+  });
+
+  const updated = await applyAdminCors(original);
+  assertEquals(updated.headers.get("Access-Control-Allow-Origin"), "https://app.allincompassing.ai");
+  assertEquals(updated.status, 200);
+  assertEquals(await updated.json(), { ok: true });
+});
+
+Deno.test("applyAdminCors preserves empty bodies for preflight responses", async () => {
+  const original = new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    },
+  });
+
+  const updated = await applyAdminCors(original);
+  assertEquals(updated.headers.get("Access-Control-Allow-Origin"), "https://app.allincompassing.ai");
+  assertEquals(updated.status, 204);
+  assertEquals(await updated.text(), "");
 });
 
 Deno.test("lists feature flag administration data for super admins", async () => {

@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/testing/asserts.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
 import type { UserContext } from "../_shared/auth-middleware.ts";
-import { applyAdminCors, handleFeatureFlagAdmin } from "./index.ts";
+import { applyAdminCors, handleFeatureFlagAdmin, handler } from "./index.ts";
 import { supabaseAdmin } from "./_shared/database.ts";
 
 type TableResponse = { data: unknown; error: unknown };
@@ -29,12 +29,30 @@ const createListClient = (responses: Record<string, TableResponse>): SupabaseCli
   } as unknown as SupabaseClient;
 };
 
-const createRequest = (method: string, body: unknown) =>
-  new Request("https://example.com/feature-flags", {
+const DEFAULT_TEST_ORIGIN = "https://app.allincompassing.ai";
+const EXISTING_ORG_ID = "11111111-1111-1111-1111-111111111111";
+const NEW_ORG_ID = "22222222-2222-2222-2222-222222222222";
+const SECONDARY_ORG_ID = "33333333-3333-3333-3333-333333333333";
+const TERTIARY_ORG_ID = "44444444-4444-4444-4444-444444444444";
+const QUATERNARY_ORG_ID = "55555555-5555-5555-5555-555555555555";
+const QUINARY_ORG_ID = "66666666-6666-6666-6666-666666666666";
+const SENARY_ORG_ID = "77777777-7777-7777-7777-777777777777";
+const FEATURE_FLAG_ID = "88888888-8888-8888-8888-888888888888";
+const SECONDARY_FLAG_ID = "99999999-9999-9999-9999-999999999999";
+const PLAN_CODE = "premium";
+
+const createRequest = (method: string, body: unknown, options: { origin?: string } = {}) => {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (options.origin !== null) {
+    headers.set("Origin", options.origin ?? DEFAULT_TEST_ORIGIN);
+  }
+
+  return new Request("https://example.com/feature-flags", {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: method === "POST" ? JSON.stringify(body) : undefined,
   });
+};
 
 const createUserContext = (): UserContext => ({
   user: { id: "super-admin-1", email: "super@example.com" },
@@ -107,16 +125,45 @@ Deno.test("applyAdminCors preserves empty bodies for preflight responses", async
   assertEquals(await updated.text(), "");
 });
 
+Deno.test("OPTIONS preflight allows allowed origins for admin POST", async () => {
+  const request = new Request("https://wnnjeqheqxxyrgsjmygy.supabase.co/functions/v1/feature-flags", {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://app.allincompassing.ai",
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "authorization,apikey",
+    },
+  });
+
+  const response = await handler(request);
+  assertEquals(response.status, 204);
+  assertEquals(response.headers.get("Access-Control-Allow-Origin"), "https://app.allincompassing.ai");
+  assertEquals(response.headers.get("Access-Control-Allow-Methods"), "POST, OPTIONS");
+});
+
+Deno.test("OPTIONS preflight rejects disallowed origins", async () => {
+  const request = new Request("https://wnnjeqheqxxyrgsjmygy.supabase.co/functions/v1/feature-flags", {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://malicious.example.com",
+      "Access-Control-Request-Method": "POST",
+    },
+  });
+
+  const response = await handler(request);
+  assertEquals(response.status, 403);
+});
+
 Deno.test("lists feature flag administration data for super admins", async () => {
   const response = await handleFeatureFlagAdmin({
     req: createRequest("POST", { action: "list" }),
     userContext: createUserContext(),
     db: createListClient({
-      feature_flags: { data: [{ id: "flag-1", flag_key: "new-dashboard" }], error: null },
-      organizations: { data: [{ id: "org-1", name: "Acme" }], error: null },
-      organization_feature_flags: { data: [{ id: "of-1", organization_id: "org-1", feature_flag_id: "flag-1" }], error: null },
+      feature_flags: { data: [{ id: FEATURE_FLAG_ID, flag_key: "new-dashboard" }], error: null },
+      organizations: { data: [{ id: EXISTING_ORG_ID, name: "Acme" }], error: null },
+      organization_feature_flags: { data: [{ id: "of-1", organization_id: EXISTING_ORG_ID, feature_flag_id: FEATURE_FLAG_ID }], error: null },
       plans: { data: [{ code: "standard", name: "Standard" }], error: null },
-      organization_plans: { data: [{ organization_id: "org-1", plan_code: "standard" }], error: null },
+      organization_plans: { data: [{ organization_id: EXISTING_ORG_ID, plan_code: "standard" }], error: null },
     }),
   });
 
@@ -125,7 +172,7 @@ Deno.test("lists feature flag administration data for super admins", async () =>
   assertEquals(Array.isArray(body.flags), true);
   assertEquals(Array.isArray(body.organizations), true);
   assertEquals(body.flags.length, 1);
-  assertEquals(body.organizations[0].id, "org-1");
+  assertEquals(body.organizations[0].id, EXISTING_ORG_ID);
   assertEquals(body.organizationPlans[0].plan_code, "standard");
 });
 
@@ -142,19 +189,19 @@ Deno.test("prevents admins from accessing super-admin feature flag actions", asy
 });
 
 Deno.test("prevents admins with an existing organization from creating a new organization", async () => {
-  const restore = stubAdminGetUserById({ organization_id: "org-123" });
+  const restore = stubAdminGetUserById({ organization_id: EXISTING_ORG_ID });
   try {
     const response = await handleFeatureFlagAdmin({
       req: createRequest("POST", {
         action: "upsertOrganization",
-        organization: { id: "org-new", name: "Acme Behavior" },
+        organization: { id: NEW_ORG_ID, name: "Acme Behavior" },
       }),
       userContext: createAdminContext(),
       db: createListClient({}),
     });
 
-    assertEquals(response.status, 403);
     const body = await response.json();
+    assertEquals(response.status, 403);
     assertEquals(body.error, "Admins already linked to an organization cannot create additional organizations");
   } finally {
     restore();
@@ -215,7 +262,7 @@ Deno.test("allows admins without an organization to create their first organizat
       req: createRequest("POST", {
         action: "upsertOrganization",
         organization: {
-          id: "org-new",
+          id: NEW_ORG_ID,
           name: "Lighthouse Therapy",
           slug: "lighthouse",
         },
@@ -226,11 +273,11 @@ Deno.test("allows admins without an organization to create their first organizat
 
     assertEquals(response.status, 201);
     const body = (await response.json()) as { organization: { id: string; slug: string } };
-    assertEquals(body.organization.id, "org-new");
+    assertEquals(body.organization.id, NEW_ORG_ID);
     assertEquals(body.organization.slug, "lighthouse");
     assertEquals(inserts.length, 1);
     const inserted = inserts[0] as { id: string; name: string; slug: string };
-    assertEquals(inserted.id, "org-new");
+    assertEquals(inserted.id, NEW_ORG_ID);
     assertEquals(audits.length, 1);
   } finally {
     restore();
@@ -257,7 +304,7 @@ Deno.test("creates feature flags and writes audit logs", async () => {
                 single: () =>
                   Promise.resolve({
                     data: {
-                      id: "flag-123",
+                      id: SECONDARY_FLAG_ID,
                       flag_key: payload.flag_key,
                       description: payload.description ?? null,
                       default_enabled: payload.default_enabled ?? false,
@@ -310,7 +357,7 @@ Deno.test("creates feature flags and writes audit logs", async () => {
   };
   assertEquals(auditRecord.action, "create_flag");
   assertEquals(auditRecord.actor_id, "super-admin-1");
-  assertEquals(auditRecord.feature_flag_id, "flag-123");
+  assertEquals(auditRecord.feature_flag_id, SECONDARY_FLAG_ID);
 });
 
 Deno.test("removes plan assignments when planCode is null", async () => {
@@ -318,7 +365,7 @@ Deno.test("removes plan assignments when planCode is null", async () => {
   const audits: unknown[] = [];
 
   const existingAssignment = {
-    organization_id: "org-1",
+    organization_id: EXISTING_ORG_ID,
     plan_code: "standard",
     assigned_at: "yesterday",
     assigned_by: "super-admin-0",
@@ -331,7 +378,7 @@ Deno.test("removes plan assignments when planCode is null", async () => {
         return {
           select: () => ({
             eq: () => ({
-              single: () => Promise.resolve({ data: { id: "org-1", name: "Acme" }, error: null }),
+              single: () => Promise.resolve({ data: { id: EXISTING_ORG_ID, name: "Acme" }, error: null }),
             }),
           }),
         } as unknown as ReturnType<SupabaseClient["from"]>;
@@ -371,7 +418,7 @@ Deno.test("removes plan assignments when planCode is null", async () => {
   } as unknown as SupabaseClient;
 
   const response = await handleFeatureFlagAdmin({
-    req: createRequest("POST", { action: "setOrgPlan", organizationId: "org-1", planCode: null }),
+    req: createRequest("POST", { action: "setOrgPlan", organizationId: EXISTING_ORG_ID, planCode: null }),
     userContext: createUserContext(),
     db: client,
   });
@@ -394,7 +441,7 @@ Deno.test("updates existing organizations and normalizes slugs", async () => {
   const audits: unknown[] = [];
 
   const existingOrganization = {
-    id: "org-1",
+    id: EXISTING_ORG_ID,
     name: "Acme",
     slug: "acme",
     metadata: { tier: "standard" },
@@ -449,19 +496,19 @@ Deno.test("updates existing organizations and normalizes slugs", async () => {
     req: createRequest("POST", {
       action: "upsertOrganization",
       organization: {
-        id: "org-1",
+        id: EXISTING_ORG_ID,
         name: "Acme Beta",
-        slug: "Acme Beta",
+        slug: "acme-beta",
       },
     }),
     userContext: createUserContext(),
     db: client,
   });
 
-  assertEquals(response.status, 200);
-  const body = (await response.json()) as {
+  const body = await response.json() as {
     organization: { slug: string; updated_at: string };
   };
+  assertEquals(response.status, 200);
   assertEquals(body.organization.slug, "acme-beta");
   assertEquals(updates.length, 1);
   const updatePayload = updates[0] as { slug: string; updated_by: string };
@@ -482,7 +529,7 @@ Deno.test("does not overwrite metadata when omitted in organization update", asy
   const audits: unknown[] = [];
 
   const existingOrganization = {
-    id: "org-3",
+    id: TERTIARY_ORG_ID,
     name: "Gamma",
     slug: "gamma",
     metadata: { tier: "enterprise", tags: ["vip"] },
@@ -532,7 +579,7 @@ Deno.test("does not overwrite metadata when omitted in organization update", asy
   const response = await handleFeatureFlagAdmin({
     req: createRequest("POST", {
       action: "upsertOrganization",
-      organization: { id: "org-3", name: "Gamma Updated" },
+      organization: { id: TERTIARY_ORG_ID, name: "Gamma Updated" },
     }),
     userContext: createUserContext(),
     db: client,
@@ -577,7 +624,7 @@ Deno.test("rejects invalid organization metadata", async () => {
   assertEquals(tableRequested, false);
   assertEquals(response.status, 400);
   const body = (await response.json()) as { error: string };
-  assertEquals(body.error.includes("Invalid organization metadata"), true);
+  assertEquals(body.error, "Active seats cannot exceed licensed seats");
 });
 
 Deno.test("persists sanitized organization metadata", async () => {
@@ -585,7 +632,7 @@ Deno.test("persists sanitized organization metadata", async () => {
   const audits: unknown[] = [];
 
   const existingOrganization = {
-    id: "org-2",
+    id: SECONDARY_ORG_ID,
     name: "Bright Future",
     slug: "bright-future",
     metadata: { notes: "legacy" },
@@ -641,7 +688,7 @@ Deno.test("persists sanitized organization metadata", async () => {
     req: createRequest("POST", {
       action: "upsertOrganization",
       organization: {
-        id: "org-2",
+        id: SECONDARY_ORG_ID,
         metadata: {
           billing: {
             contact: {
@@ -679,7 +726,7 @@ Deno.test("updates global flag and writes audit logs", async () => {
   const audits: unknown[] = [];
 
   const existingFlag = {
-    id: "flag-xyz",
+    id: FEATURE_FLAG_ID,
     flag_key: "deep-insights",
     description: "Deep insights feature",
     default_enabled: false,
@@ -725,7 +772,7 @@ Deno.test("updates global flag and writes audit logs", async () => {
   } as unknown as SupabaseClient;
 
   const response = await handleFeatureFlagAdmin({
-    req: createRequest("POST", { action: "updateGlobalFlag", flagId: "flag-xyz", enabled: true }),
+    req: createRequest("POST", { action: "updateGlobalFlag", flagId: FEATURE_FLAG_ID, enabled: true }),
     userContext: createUserContext(),
     db: client,
   });
@@ -755,7 +802,7 @@ Deno.test("returns 404 when updating a non-existent global flag", async () => {
   } as unknown as SupabaseClient;
 
   const response = await handleFeatureFlagAdmin({
-    req: createRequest("POST", { action: "updateGlobalFlag", flagId: "missing-flag", enabled: true }),
+    req: createRequest("POST", { action: "updateGlobalFlag", flagId: FEATURE_FLAG_ID, enabled: true }),
     userContext: createUserContext(),
     db: client,
   });
@@ -773,7 +820,7 @@ Deno.test("inserts organization flag override and writes audit logs", async () =
         return {
           select: () => ({
             eq: () => ({
-              single: () => Promise.resolve({ data: { id: "org-1", name: "Acme" }, error: null }),
+              single: () => Promise.resolve({ data: { id: EXISTING_ORG_ID, name: "Acme" }, error: null }),
             }),
           }),
         } as unknown as ReturnType<SupabaseClient["from"]>;
@@ -784,7 +831,7 @@ Deno.test("inserts organization flag override and writes audit logs", async () =
           select: () => ({
             eq: () => ({
               single: () =>
-                Promise.resolve({ data: { id: "flag-1", flag_key: "new-dashboard", default_enabled: false }, error: null }),
+                Promise.resolve({ data: { id: FEATURE_FLAG_ID, flag_key: "new-dashboard", default_enabled: false }, error: null }),
             }),
           }),
         } as unknown as ReturnType<SupabaseClient["from"]>;
@@ -837,7 +884,7 @@ Deno.test("inserts organization flag override and writes audit logs", async () =
   } as unknown as SupabaseClient;
 
   const response = await handleFeatureFlagAdmin({
-    req: createRequest("POST", { action: "setOrgFlag", organizationId: "org-1", flagId: "flag-1", enabled: true }),
+    req: createRequest("POST", { action: "setOrgFlag", organizationId: EXISTING_ORG_ID, flagId: FEATURE_FLAG_ID, enabled: true }),
     userContext: createUserContext(),
     db: client,
   });
@@ -857,8 +904,8 @@ Deno.test("updates organization flag override and writes audit logs", async () =
 
   const existingOverride = {
     id: "of-2",
-    organization_id: "org-1",
-    feature_flag_id: "flag-1",
+    organization_id: EXISTING_ORG_ID,
+    feature_flag_id: FEATURE_FLAG_ID,
     is_enabled: false,
   };
 
@@ -868,7 +915,7 @@ Deno.test("updates organization flag override and writes audit logs", async () =
         return {
           select: () => ({
             eq: () => ({
-              single: () => Promise.resolve({ data: { id: "org-1", name: "Acme" }, error: null }),
+              single: () => Promise.resolve({ data: { id: EXISTING_ORG_ID, name: "Acme" }, error: null }),
             }),
           }),
         } as unknown as ReturnType<SupabaseClient["from"]>;
@@ -878,7 +925,7 @@ Deno.test("updates organization flag override and writes audit logs", async () =
         return {
           select: () => ({
             eq: () => ({
-              single: () => Promise.resolve({ data: { id: "flag-1", flag_key: "new-dashboard" }, error: null }),
+              single: () => Promise.resolve({ data: { id: FEATURE_FLAG_ID, flag_key: "new-dashboard" }, error: null }),
             }),
           }),
         } as unknown as ReturnType<SupabaseClient["from"]>;
@@ -924,7 +971,7 @@ Deno.test("updates organization flag override and writes audit logs", async () =
   } as unknown as SupabaseClient;
 
   const response = await handleFeatureFlagAdmin({
-    req: createRequest("POST", { action: "setOrgFlag", organizationId: "org-1", flagId: "flag-1", enabled: true }),
+    req: createRequest("POST", { action: "setOrgFlag", organizationId: EXISTING_ORG_ID, flagId: FEATURE_FLAG_ID, enabled: true }),
     userContext: createUserContext(),
     db: client,
   });
@@ -948,17 +995,29 @@ Deno.test("returns 404 when organization not found for setOrgFlag", async () => 
           }),
         } as unknown as ReturnType<SupabaseClient["from"]>;
       }
+
+      if (table === "feature_flags") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: { id: FEATURE_FLAG_ID, flag_key: "new-dashboard" }, error: null }),
+            }),
+          }),
+        } as unknown as ReturnType<SupabaseClient["from"]>;
+      }
       throw new Error(`Unexpected table requested: ${table}`);
     },
   } as unknown as SupabaseClient;
 
   const response = await handleFeatureFlagAdmin({
-    req: createRequest("POST", { action: "setOrgFlag", organizationId: "missing-org", flagId: "flag-1", enabled: true }),
+    req: createRequest("POST", { action: "setOrgFlag", organizationId: SENARY_ORG_ID, flagId: FEATURE_FLAG_ID, enabled: true }),
     userContext: createUserContext(),
     db: client,
   });
 
+  const body = await response.json() as { error: string };
   assertEquals(response.status, 404);
+  assertEquals(body.error, "Organization not found");
 });
 
 Deno.test("assigns organization plan (insert) and writes audit logs", async () => {
@@ -971,7 +1030,7 @@ Deno.test("assigns organization plan (insert) and writes audit logs", async () =
         return {
           select: () => ({
             eq: () => ({
-              single: () => Promise.resolve({ data: { id: "org-9", name: "Zen" }, error: null }),
+              single: () => Promise.resolve({ data: { id: QUINARY_ORG_ID, name: "Zen" }, error: null }),
             }),
           }),
         } as unknown as ReturnType<SupabaseClient["from"]>;
@@ -1029,7 +1088,7 @@ Deno.test("assigns organization plan (insert) and writes audit logs", async () =
   } as unknown as SupabaseClient;
 
   const response = await handleFeatureFlagAdmin({
-    req: createRequest("POST", { action: "setOrgPlan", organizationId: "org-9", planCode: "professional", notes: "VIP" }),
+    req: createRequest("POST", { action: "setOrgPlan", organizationId: QUINARY_ORG_ID, planCode: "professional", notes: "VIP" }),
     userContext: createUserContext(),
     db: client,
   });
@@ -1047,7 +1106,7 @@ Deno.test("updates organization plan and writes audit logs", async () => {
   const audits: unknown[] = [];
 
   const existing = {
-    organization_id: "org-7",
+    organization_id: QUATERNARY_ORG_ID,
     plan_code: "standard",
     assigned_at: "past",
     assigned_by: "admin-1",
@@ -1060,7 +1119,7 @@ Deno.test("updates organization plan and writes audit logs", async () => {
         return {
           select: () => ({
             eq: () => ({
-              single: () => Promise.resolve({ data: { id: "org-7", name: "Acme" }, error: null }),
+              single: () => Promise.resolve({ data: { id: QUATERNARY_ORG_ID, name: "Acme" }, error: null }),
             }),
           }),
         } as unknown as ReturnType<SupabaseClient["from"]>;
@@ -1114,7 +1173,7 @@ Deno.test("updates organization plan and writes audit logs", async () => {
   } as unknown as SupabaseClient;
 
   const response = await handleFeatureFlagAdmin({
-    req: createRequest("POST", { action: "setOrgPlan", organizationId: "org-7", planCode: "enterprise" }),
+    req: createRequest("POST", { action: "setOrgPlan", organizationId: QUATERNARY_ORG_ID, planCode: "enterprise" }),
     userContext: createUserContext(),
     db: client,
   });
@@ -1133,7 +1192,7 @@ Deno.test("returns 404 when assigning a non-existent plan", async () => {
         return {
           select: () => ({
             eq: () => ({
-              single: () => Promise.resolve({ data: { id: "org-10", name: "Org" }, error: null }),
+              single: () => Promise.resolve({ data: { id: SENARY_ORG_ID, name: "Org" }, error: null }),
             }),
           }),
         } as unknown as ReturnType<SupabaseClient["from"]>;
@@ -1154,7 +1213,7 @@ Deno.test("returns 404 when assigning a non-existent plan", async () => {
   } as unknown as SupabaseClient;
 
   const response = await handleFeatureFlagAdmin({
-    req: createRequest("POST", { action: "setOrgPlan", organizationId: "org-10", planCode: "unknown" }),
+    req: createRequest("POST", { action: "setOrgPlan", organizationId: SENARY_ORG_ID, planCode: "unknown" }),
     userContext: createUserContext(),
     db: client,
   });

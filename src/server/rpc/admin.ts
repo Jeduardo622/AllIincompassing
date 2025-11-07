@@ -168,17 +168,14 @@ export async function listAdminUsers({
   organizationId,
   signal,
 }: {
-  organizationId: string;
+  organizationId?: string | null;
   signal?: AbortSignal;
 }): Promise<AdminUserRecord[]> {
   const normalizedOrgId = organizationId?.trim();
-  if (!normalizedOrgId) {
-    throw new Error('organizationId is required to list admin users');
-  }
 
   const result = await callAdminRpc<AdminUserRecord[]>(
     'get_admin_users',
-    { organization_id: normalizedOrgId },
+    { organization_id: normalizedOrgId ?? null },
     { signal },
   );
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Shield, Mail, Calendar, Key, Users, Link2, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, Shield, Mail, Calendar, Key, Users, Link2, CheckCircle2, Building2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showSuccess, showError } from '../../lib/toast';
 import { logger } from '../../lib/logger/logger';
@@ -54,6 +54,8 @@ interface ClientOption {
 }
 
 export default function AdminSettings() {
+  const ALL_ORGANIZATIONS_VALUE = 'ALL';
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [selectedAdmin, setSelectedAdmin] = useState<AdminUser | null>(null);
@@ -71,12 +73,13 @@ export default function AdminSettings() {
   const [selectedClientsByRequest, setSelectedClientsByRequest] = useState<Record<string, string[]>>({});
   const [relationshipByRequest, setRelationshipByRequest] = useState<Record<string, string>>({});
   const [notesByRequest, setNotesByRequest] = useState<Record<string, string>>({});
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState<string>(ALL_ORGANIZATIONS_VALUE);
 
   const addAdminEmailRef = useRef<HTMLInputElement>(null);
   const resetPasswordInputRef = useRef<HTMLInputElement>(null);
 
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, effectiveRole } = useAuth();
 
   const organizationId = useMemo(() => {
     const metadata = user?.user_metadata ?? {};
@@ -85,26 +88,45 @@ export default function AdminSettings() {
     return snake || camel || null;
   }, [user]);
 
+  const isSuperAdmin = effectiveRole === 'super_admin';
+
+  const activeOrganizationId = useMemo(() => {
+    if (!isSuperAdmin) {
+      return organizationId;
+    }
+    return selectedOrganizationId === ALL_ORGANIZATIONS_VALUE ? null : selectedOrganizationId;
+  }, [isSuperAdmin, organizationId, selectedOrganizationId]);
+
   useEffect(() => {
+    if (isSuperAdmin) {
+      setAccessError(null);
+      setFormData((previous) => ({ ...previous, organization_id: activeOrganizationId ?? null }));
+      return;
+    }
+
     if (!organizationId) {
       setAccessError('Your account is missing an organization.');
       setFormData((previous) => ({ ...previous, organization_id: null }));
       return;
     }
 
+    setAccessError(null);
     setFormData((previous) => ({ ...previous, organization_id: organizationId }));
-  }, [organizationId]);
+  }, [isSuperAdmin, organizationId, activeOrganizationId]);
 
   const { data: admins = [], isLoading, error: adminsError } = useQuery<AdminUser[], Error>({
-    queryKey: ['admins', organizationId],
+    queryKey: ['admins', isSuperAdmin ? selectedOrganizationId : organizationId],
     queryFn: async () => {
-      if (!organizationId) {
+      if (!isSuperAdmin && !organizationId) {
         const missingError = new Error('Organization context is required to load admin users.');
         (missingError as Error & { status?: number }).status = 400;
         throw missingError;
       }
 
-      const { data, error } = await supabase.rpc('get_admin_users', { organization_id: organizationId });
+      const targetOrgId = isSuperAdmin ? activeOrganizationId : organizationId;
+      const { data, error } = await supabase.rpc('get_admin_users', {
+        organization_id: targetOrgId ?? null,
+      });
 
       if (error) {
         const rpcError = error as PostgrestError & { status?: number };
@@ -119,7 +141,29 @@ export default function AdminSettings() {
 
       return (data as AdminUser[] | null) ?? [];
     },
-    enabled: Boolean(organizationId),
+    enabled: isSuperAdmin || Boolean(organizationId),
+    retry: false,
+  });
+
+  const {
+    data: organizationOptions = [],
+    isLoading: isOrganizationOptionsLoading,
+    error: organizationOptionsError,
+  } = useQuery<{ id: string; name: string | null }[], Error>({
+    queryKey: ['all-organizations'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('id, name')
+        .order('name', { ascending: true, nullsFirst: true });
+
+      if (error) {
+        throw error;
+      }
+
+      return (data ?? []).map((org) => ({ id: org.id, name: org.name ?? null }));
+    },
+    enabled: isSuperAdmin,
     retry: false,
   });
 
@@ -128,16 +172,16 @@ export default function AdminSettings() {
     isLoading: isGuardianQueueLoading,
     error: guardianQueueError,
   } = useQuery<GuardianQueueEntry[], Error>({
-    queryKey: ['guardian-link-queue', organizationId],
+    queryKey: ['guardian-link-queue', activeOrganizationId ?? 'ALL'],
     queryFn: async () => {
-      if (!organizationId) {
+      if (!activeOrganizationId) {
         const missingError = new Error('Organization context is required to review guardian requests.');
         (missingError as Error & { status?: number }).status = 400;
         throw missingError;
       }
 
       const { data, error } = await supabase.rpc('guardian_link_queue_admin_view', {
-        p_organization_id: organizationId,
+        p_organization_id: activeOrganizationId,
         p_status: 'pending',
       });
 
@@ -154,7 +198,7 @@ export default function AdminSettings() {
 
       return (data as GuardianQueueEntry[] | null) ?? [];
     },
-    enabled: Boolean(organizationId),
+    enabled: Boolean(activeOrganizationId),
     retry: false,
   });
 
@@ -163,16 +207,16 @@ export default function AdminSettings() {
     isLoading: isGuardianClientsLoading,
     error: guardianClientsError,
   } = useQuery<ClientOption[], Error>({
-    queryKey: ['guardian-link-clients', organizationId],
+    queryKey: ['guardian-link-clients', activeOrganizationId ?? 'ALL'],
     queryFn: async () => {
-      if (!organizationId) {
+      if (!activeOrganizationId) {
         return [];
       }
 
       const { data, error } = await supabase
         .from('clients')
         .select('id, full_name, first_name, last_name')
-        .eq('organization_id', organizationId)
+        .eq('organization_id', activeOrganizationId)
         .order('last_name', { ascending: true, nullsLast: true })
         .order('first_name', { ascending: true, nullsLast: true });
 
@@ -191,25 +235,28 @@ export default function AdminSettings() {
         };
       });
     },
-    enabled: Boolean(organizationId),
+    enabled: Boolean(activeOrganizationId),
     retry: false,
   });
 
   useEffect(() => {
     if (!adminsError) {
-      if (organizationId) {
+      if (!isSuperAdmin && organizationId) {
         setAccessError(null);
       }
       return;
     }
 
     const status = (adminsError as Error & { status?: number }).status;
-    if (status === 403 || status === 400) {
+    if (!isSuperAdmin && (status === 403 || status === 400)) {
       setAccessError(adminsError.message);
-    } else if (status && status >= 400) {
+      return;
+    }
+
+    if (status && status >= 400) {
       showError(adminsError);
     }
-  }, [adminsError, organizationId]);
+  }, [adminsError, isSuperAdmin, organizationId]);
 
   useEffect(() => {
     if (!guardianQueueError) {
@@ -230,23 +277,33 @@ export default function AdminSettings() {
     showError(guardianClientsError);
   }, [guardianClientsError]);
 
+  useEffect(() => {
+    if (!organizationOptionsError) {
+      return;
+    }
+
+    showError(organizationOptionsError);
+  }, [organizationOptionsError]);
+
   const createAdminMutation = useMutation({
     mutationFn: async (data: AdminFormData) => {
-      if (!organizationId) {
+      const targetOrganizationId = isSuperAdmin
+        ? data.organization_id ?? activeOrganizationId
+        : organizationId;
+
+      if (!targetOrganizationId) {
         const error = new Error('Organization context is required to create an admin user.');
         logger.error('Missing organization during admin creation', {
           error,
           context: { component: 'AdminSettings', operation: 'createAdminMutation' },
-          metadata: { hasOrganizationId: false },
+          metadata: { hasOrganizationId: false, isSuperAdmin },
         });
         throw error;
       }
 
-      // Use assign_admin_role function instead of manage_admin_users
       try {
         const trimmedReason = data.reason.trim();
 
-        // First create the user with password
         const { error: signUpError } = await supabase.auth.signUp({
           email: data.email,
           password: data.password,
@@ -256,17 +313,16 @@ export default function AdminSettings() {
               last_name: data.last_name,
               title: data.title,
               is_admin: true,
-              organization_id: organizationId,
+              organization_id: targetOrganizationId,
             },
           },
         });
 
         if (signUpError) throw signUpError;
 
-        // Then assign admin role
         const { error: assignError } = await supabase.rpc('assign_admin_role', {
           user_email: data.email,
-          organization_id: organizationId,
+          organization_id: targetOrganizationId,
           reason: trimmedReason,
         });
 
@@ -278,14 +334,17 @@ export default function AdminSettings() {
           metadata: {
             hasEmail: Boolean(data.email),
             hasProfileDetails: Boolean(data.first_name || data.last_name || data.title),
-            hasOrganizationId: Boolean(organizationId),
+            hasOrganizationId: Boolean(targetOrganizationId),
+            isSuperAdmin,
           },
         });
         throw error;
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admins', organizationId] });
+      queryClient.invalidateQueries({
+        queryKey: ['admins', isSuperAdmin ? selectedOrganizationId : organizationId],
+      });
       setIsModalOpen(false);
       resetForm();
       showSuccess('Admin user created successfully');
@@ -342,7 +401,9 @@ export default function AdminSettings() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admins'] });
+      queryClient.invalidateQueries({
+        queryKey: ['admins', isSuperAdmin ? selectedOrganizationId : organizationId],
+      });
       showSuccess('Admin user removed successfully');
     },
     onError: (error) => {
@@ -386,7 +447,9 @@ export default function AdminSettings() {
       }
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['guardian-link-queue', organizationId] });
+      queryClient.invalidateQueries({
+        queryKey: ['guardian-link-queue', activeOrganizationId ?? 'ALL'],
+      });
       setSelectedClientsByRequest((previous) => ({
         ...previous,
         [variables.requestId]: [],
@@ -413,7 +476,7 @@ export default function AdminSettings() {
       first_name: '',
       last_name: '',
       title: '',
-      organization_id: organizationId ?? null,
+      organization_id: activeOrganizationId ?? null,
       reason: '',
     });
   };
@@ -540,7 +603,35 @@ export default function AdminSettings() {
         </button>
       </div>
 
-      {isLoading ? (
+      {isSuperAdmin && (
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-dark-lighter dark:text-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <p className="font-medium">Organization filter</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Choose an organization to scope admin management or select all to review every workspace.
+            </p>
+          </div>
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <select
+              className="w-full md:w-64 rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-dark dark:text-slate-100"
+              value={selectedOrganizationId}
+              onChange={(event) => setSelectedOrganizationId(event.target.value)}
+            >
+              <option value={ALL_ORGANIZATIONS_VALUE}>All organizations</option>
+              {organizationOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name ?? option.id}
+                </option>
+              ))}
+            </select>
+            {isOrganizationOptionsLoading && (
+              <span className="text-xs text-slate-500 dark:text-slate-400">Loading…</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isLoading || (isSuperAdmin && isOrganizationOptionsLoading) ? (
         <div className="text-center py-4">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
         </div>
@@ -555,58 +646,75 @@ export default function AdminSettings() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {admins.map((admin) => (
-            <div
-              key={admin.id}
-              className="bg-white dark:bg-dark-lighter rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center">
-                  <Shield className="w-10 h-10 text-blue-600 bg-blue-100 dark:bg-blue-900/20 rounded-full p-2" />
-                  <div className="ml-3">
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                      {admin.raw_user_meta_data?.first_name} {admin.raw_user_meta_data?.last_name}
-                    </h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {admin.raw_user_meta_data?.title}
-                    </p>
+          {admins.map((admin) => {
+            const metadata = admin.raw_user_meta_data ?? {};
+            const metaOrgId = typeof metadata?.organization_id === 'string'
+              ? metadata.organization_id
+              : typeof metadata?.organizationId === 'string'
+                ? metadata.organizationId
+                : null;
+
+            return (
+              <div
+                key={admin.id}
+                className="bg-white dark:bg-dark-lighter rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center">
+                    <Shield className="w-10 h-10 text-blue-600 bg-blue-100 dark:bg-blue-900/20 rounded-full p-2" />
+                    <div className="ml-3">
+                      <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                        {metadata?.first_name} {metadata?.last_name}
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {metadata?.title}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => {
+                        setSelectedAdmin(admin);
+                        setIsPasswordModalOpen(true);
+                      }}
+                      className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
+                      title="Reset password"
+                    >
+                      <Key className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(admin.user_id)}
+                      className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
+                      title="Remove admin"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => {
-                      setSelectedAdmin(admin);
-                      setIsPasswordModalOpen(true);
-                    }}
-                    className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
-                    title="Reset password"
-                  >
-                    <Key className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(admin.user_id)}
-                    className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
-                    title="Remove admin"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center text-sm">
-                  <Mail className="w-4 h-4 text-gray-400 mr-2" />
-                  <span className="text-gray-600 dark:text-gray-300">{admin.email}</span>
-                </div>
-                <div className="flex items-center text-sm">
-                  <Calendar className="w-4 h-4 text-gray-400 mr-2" />
-                  <span className="text-gray-500 dark:text-gray-400">
-                    Added {new Date(admin.created_at).toLocaleDateString()}
-                  </span>
+                <div className="space-y-2">
+                  <div className="flex items-center text-sm">
+                    <Mail className="w-4 h-4 text-gray-400 mr-2" />
+                    <span className="text-gray-600 dark:text-gray-300">{admin.email}</span>
+                  </div>
+                  <div className="flex items-center text-sm">
+                    <Calendar className="w-4 h-4 text-gray-400 mr-2" />
+                    <span className="text-gray-500 dark:text-gray-400">
+                      Added {new Date(admin.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  {isSuperAdmin && (
+                    <div className="flex items-center text-sm">
+                      <Building2 className="w-4 h-4 text-gray-400 mr-2" />
+                      <span className="text-gray-500 dark:text-gray-300">
+                        {metaOrgId ?? 'No organization assigned'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -621,11 +729,19 @@ export default function AdminSettings() {
           </p>
         </div>
 
-        {!organizationId ? (
+        {!activeOrganizationId ? (
           <div className="rounded-md border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-200">
-            Guardian approvals require an organization context.{' '}
-            <a href="/settings/organizations" className="font-semibold underline text-indigo-700 dark:text-indigo-300">Create your organization</a>{' '}
-            to proceed.
+            {isSuperAdmin ? (
+              <>
+                Select an organization above to manage guardian requests and onboard dependents.
+              </>
+            ) : (
+              <>
+                Guardian approvals require an organization context.{' '}
+                <a href="/settings/organizations" className="font-semibold underline text-indigo-700 dark:text-indigo-300">Create your organization</a>{' '}
+                to proceed.
+              </>
+            )}
           </div>
         ) : isGuardianQueueLoading || isGuardianClientsLoading ? (
           <div className="text-center py-4">
@@ -868,20 +984,47 @@ export default function AdminSettings() {
 
               <div>
                 <label htmlFor="add-admin-organization" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Organization ID
+                  Organization
                 </label>
-                <input
-                  type="text"
-                  name="organization_id"
-                  value={formData.organization_id ?? ''}
-                  readOnly
-                  id="add-admin-organization"
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                />
-                {!formData.organization_id && (
-                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                    Organization context is required before creating additional admins.
-                  </p>
+                {isSuperAdmin ? (
+                  <>
+                    <select
+                      id="add-admin-organization"
+                      name="organization_id"
+                      value={formData.organization_id ?? ''}
+                      onChange={handleInputChange}
+                      required
+                      className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                    >
+                      <option value="">Select organization</option>
+                      {organizationOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.name ?? option.id}
+                        </option>
+                      ))}
+                    </select>
+                    {!formData.organization_id && (
+                      <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                        Choose an organization before inviting a new admin.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      name="organization_id"
+                      value={formData.organization_id ?? ''}
+                      readOnly
+                      id="add-admin-organization"
+                      className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                    />
+                    {!formData.organization_id && (
+                      <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                        Organization context is required before creating additional admins.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
 

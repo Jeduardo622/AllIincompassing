@@ -12,38 +12,66 @@ import { createRequestClient, supabaseAdmin } from "./_shared/database.ts";
 
 const ADMIN_PATH = "/super-admin/feature-flags";
 
-// Runtime CORS (restricted origin) for GET and GET preflight
-const ALLOWED_ORIGIN = "https://app.allincompassing.ai";
-const ADMIN_CORS_HEADERS: Record<string, string> = {
-  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+const STATIC_ALLOWED_ORIGINS = [
+  "https://app.allincompassing.ai",
+  "https://preview.allincompassing.ai",
+  "https://staging.allincompassing.ai",
+  "http://localhost:3000",
+  "http://localhost:5173",
+];
+const envAllowedOrigins = (Deno.env.get("EDGE_ALLOWED_ORIGINS") ?? "")
+  .split(",")
+  .map(value => value.trim())
+  .filter(Boolean);
+
+const ALLOWED_ORIGINS = Array.from(new Set([...STATIC_ALLOWED_ORIGINS, ...envAllowedOrigins]));
+const PRIMARY_ALLOWED_ORIGIN = ALLOWED_ORIGINS[0] ?? "https://app.allincompassing.ai";
+const adminAllowedOrigins = new Set(ALLOWED_ORIGINS);
+
+const resolveRequestOrigin = (req: Request): { origin: string | null; requestedOrigin: string | null } => {
+  const requestedOrigin = req.headers.get("origin");
+  if (!requestedOrigin) {
+    return { origin: null, requestedOrigin: null };
+  }
+
+  if (adminAllowedOrigins.has(requestedOrigin)) {
+    return { origin: requestedOrigin, requestedOrigin };
+  }
+
+  return { origin: null, requestedOrigin };
+};
+
+const buildAdminCorsHeaders = (origin: string | null): Record<string, string> => ({
+  "Access-Control-Allow-Origin": origin ?? PRIMARY_ALLOWED_ORIGIN,
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Client-Info, apikey",
   "Access-Control-Max-Age": "86400",
   Vary: "Origin",
-};
-const RUNTIME_CORS_HEADERS: Record<string, string> = {
-  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+});
+
+const buildRuntimeCorsHeaders = (origin: string | null): Record<string, string> => ({
+  "Access-Control-Allow-Origin": origin ?? PRIMARY_ALLOWED_ORIGIN,
   "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
   Vary: "Origin",
-};
-
-const withCors = (init: ResponseInit = {}): ResponseInit => ({
-  ...init,
-  headers: { ...(init.headers ?? {}), ...RUNTIME_CORS_HEADERS },
 });
 
-const respond = (status: number, body: Record<string, unknown>) =>
+const withCors = (origin: string | null, init: ResponseInit = {}): ResponseInit => ({
+  ...init,
+  headers: { ...(init.headers ?? {}), ...buildRuntimeCorsHeaders(origin) },
+});
+
+const respond = (origin: string | null, status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, ...ADMIN_CORS_HEADERS, "Content-Type": "application/json" },
+    headers: { ...corsHeaders, ...buildAdminCorsHeaders(origin), "Content-Type": "application/json" },
   });
 
-const parseJson = async (req: Request): Promise<unknown> => {
+const parseJson = async (req: Request, origin: string | null): Promise<unknown> => {
   try {
     return await req.json();
   } catch {
-    throw respond(400, { error: "Invalid JSON payload" });
+    throw respond(origin, 400, { error: "Invalid JSON payload" });
   }
 };
 
@@ -131,6 +159,7 @@ const normalizeSlug = (value: string | null | undefined): string | null => {
 
 const sanitizeOrganizationMetadata = (
   value: Record<string, unknown> | OrganizationMetadata | undefined,
+  origin: string | null,
 ): OrganizationMetadata | undefined => {
   if (value === undefined) {
     return undefined;
@@ -141,7 +170,7 @@ const sanitizeOrganizationMetadata = (
   if (!result.success) {
     const issue = result.error.issues[0];
     const message = issue?.message ?? "Invalid organization metadata";
-    throw respond(400, { error: `Invalid organization metadata: ${message}` });
+    throw respond(origin, 400, { error: `Invalid organization metadata: ${message}` });
   }
 
   return JSON.parse(JSON.stringify(result.data)) as OrganizationMetadata;
@@ -165,28 +194,28 @@ const extractOrganizationIdFromMetadata = (
   return camel;
 };
 
-const resolveCallerOrganizationId = async (userId: string): Promise<string | null> => {
+const resolveCallerOrganizationId = async (userId: string, origin: string | null): Promise<string | null> => {
   const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId);
 
   if (error || !data?.user) {
     console.error("Failed to load caller metadata for organization sync", { userId, error });
-    throw respond(500, { error: "Unable to load caller metadata" });
+    throw respond(origin, 500, { error: "Unable to load caller metadata" });
   }
 
   const metadata = data.user.user_metadata as Record<string, unknown> | undefined;
   return extractOrganizationIdFromMetadata(metadata ?? {});
 };
 
-const parseActionPayload = (raw: unknown): ParsedAction => {
+const parseActionPayload = (raw: unknown, origin: string | null): ParsedAction => {
   if (!raw || typeof raw !== "object") {
-    throw respond(400, { error: "Payload must be an object" });
+    throw respond(origin, 400, { error: "Payload must be an object" });
   }
 
   const candidate = raw as { action?: string };
   const actionKey = candidate.action;
 
   if (!actionKey || !(actionKey in schemaByAction)) {
-    throw respond(400, { error: "Unsupported action" });
+    throw respond(origin, 400, { error: "Unsupported action" });
   }
 
   const schema = schemaByAction[actionKey as keyof typeof schemaByAction];
@@ -194,7 +223,7 @@ const parseActionPayload = (raw: unknown): ParsedAction => {
 
   if (!result.success) {
     const message = result.error.issues[0]?.message ?? "Invalid payload";
-    throw respond(400, { error: message });
+    throw respond(origin, 400, { error: message });
   }
 
   return result.data as ParsedAction;
@@ -207,14 +236,24 @@ interface HandlerParams {
 }
 
 export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerParams): Promise<Response> {
+  const { origin, requestedOrigin } = resolveRequestOrigin(req);
+
+  if (requestedOrigin && !origin) {
+    logApiAccess(req.method, ADMIN_PATH, userContext, 403);
+    return new Response(JSON.stringify({ error: "Origin not allowed" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json", Vary: "Origin" },
+    });
+  }
+
   if (req.method !== "POST") {
-    return respond(405, { error: "Method not allowed" });
+    return respond(origin, 405, { error: "Method not allowed" });
   }
 
   let parsed: ParsedAction;
   try {
-    const rawPayload = await parseJson(req);
-    parsed = parseActionPayload(rawPayload);
+    const rawPayload = await parseJson(req, origin);
+    parsed = parseActionPayload(rawPayload, origin);
   } catch (error) {
     if (error instanceof Response) {
       logApiAccess(req.method, ADMIN_PATH, userContext, error.status);
@@ -222,12 +261,12 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
     }
     console.error("Failed to parse feature flag payload", error);
     logApiAccess(req.method, ADMIN_PATH, userContext, 500);
-    return respond(500, { error: "Failed to parse request" });
+    return respond(origin, 500, { error: "Failed to parse request" });
   }
 
   const handleError = (status: number, message: string) => {
     logApiAccess(req.method, ADMIN_PATH, userContext, status);
-    return respond(status, { error: message });
+    return respond(origin, status, { error: message });
   };
 
   const actorId = userContext.user.id;
@@ -294,7 +333,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
         }
 
         logApiAccess(req.method, ADMIN_PATH, userContext, 200);
-        return respond(200, {
+        return respond(origin, 200, {
           flags: flagsRes.data ?? [],
           organizations: orgsRes.data ?? [],
           organizationFlags: orgFlagsRes.data ?? [],
@@ -345,7 +384,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
         }
 
         logApiAccess(req.method, ADMIN_PATH, userContext, 201);
-        return respond(201, { flag: createdFlag });
+        return respond(origin, 201, { flag: createdFlag });
       }
 
       case "updateGlobalFlag": {
@@ -398,7 +437,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
         }
 
         logApiAccess(req.method, ADMIN_PATH, userContext, 200);
-        return respond(200, { flag: updatedFlag });
+        return respond(origin, 200, { flag: updatedFlag });
       }
 
       case "setOrgFlag": {
@@ -498,7 +537,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
         }
 
         logApiAccess(req.method, ADMIN_PATH, userContext, 200);
-        return respond(200, { organizationFeatureFlag: updatedRecord });
+        return respond(origin, 200, { organizationFeatureFlag: updatedRecord });
       }
 
       case "setOrgPlan": {
@@ -612,7 +651,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
         }
 
         logApiAccess(req.method, ADMIN_PATH, userContext, 200);
-        return respond(200, { organizationPlan: updatedAssignment });
+        return respond(origin, 200, { organizationPlan: updatedAssignment });
       }
 
       case "upsertOrganization": {
@@ -621,7 +660,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
             return handleError(403, "Insufficient permissions");
           }
 
-          const callerOrgId = await resolveCallerOrganizationId(actorId);
+          const callerOrgId = await resolveCallerOrganizationId(actorId, origin);
           if (callerOrgId) {
             return handleError(403, "Admins already linked to an organization cannot create additional organizations");
           }
@@ -629,7 +668,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
 
         const { organization } = parsed;
         const normalizedSlug = normalizeSlug(organization.slug);
-        const sanitizedMetadata = sanitizeOrganizationMetadata(organization.metadata);
+        const sanitizedMetadata = sanitizeOrganizationMetadata(organization.metadata, origin);
         const metadataProvided = organization.metadata !== undefined;
 
         const existing = await db
@@ -721,7 +760,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
         }
 
         logApiAccess(req.method, ADMIN_PATH, userContext, existing.data ? 200 : 201);
-        return respond(existing.data ? 200 : 201, { organization: record });
+        return respond(origin, existing.data ? 200 : 201, { organization: record });
       }
 
       default:
@@ -748,18 +787,19 @@ const protectedAdminHandler = createProtectedRoute(
   RouteOptions.admin,
 );
 
-export const applyAdminCors = async (response: Response): Promise<Response> => {
+export const applyAdminCors = async (response: Response, origin: string | null = null): Promise<Response> => {
   const headers = new Headers(response.headers);
-  headers.set("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
+  const corsHeadersForOrigin = buildAdminCorsHeaders(origin);
+  headers.set("Access-Control-Allow-Origin", corsHeadersForOrigin["Access-Control-Allow-Origin"]);
   headers.set("Vary", "Origin");
   if (!headers.has("Access-Control-Allow-Methods")) {
-    headers.set("Access-Control-Allow-Methods", ADMIN_CORS_HEADERS["Access-Control-Allow-Methods"]);
+    headers.set("Access-Control-Allow-Methods", corsHeadersForOrigin["Access-Control-Allow-Methods"]);
   }
   if (!headers.has("Access-Control-Allow-Headers")) {
-    headers.set("Access-Control-Allow-Headers", ADMIN_CORS_HEADERS["Access-Control-Allow-Headers"]);
+    headers.set("Access-Control-Allow-Headers", corsHeadersForOrigin["Access-Control-Allow-Headers"]);
   }
   if (!headers.has("Access-Control-Max-Age")) {
-    headers.set("Access-Control-Max-Age", ADMIN_CORS_HEADERS["Access-Control-Max-Age"]);
+    headers.set("Access-Control-Max-Age", corsHeadersForOrigin["Access-Control-Max-Age"]);
   }
 
   if (response.status === 204 || response.body === null) {
@@ -771,23 +811,34 @@ export const applyAdminCors = async (response: Response): Promise<Response> => {
 };
 
 export async function handler(req: Request): Promise<Response> {
-  // Fast CORS preflight: allow GET from the app origin only. If the preflight
-  // is for POST (admin UI), delegate to the protected handler which uses the
-  // shared CORS implementation.
-  if (req.method === "OPTIONS") {
-    const requested = (req.headers.get("Access-Control-Request-Method") || "").toUpperCase();
-    if (!requested || requested === "GET") {
-      return new Response(null, withCors({ status: 204 }));
-    }
-    const adminPreflight = await protectedAdminHandler(req);
-    return applyAdminCors(adminPreflight);
+  const { origin, requestedOrigin } = resolveRequestOrigin(req);
+
+  if (requestedOrigin && !origin) {
+    return new Response(JSON.stringify({ error: "Origin not allowed" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json", Vary: "Origin" },
+    });
   }
 
-  // Authenticated runtime GET
+  if (req.method === "OPTIONS") {
+    const requestedMethod = (req.headers.get("Access-Control-Request-Method") || "").toUpperCase();
+    if (!requestedMethod || requestedMethod === "GET") {
+      return new Response(null, { status: 204, headers: buildRuntimeCorsHeaders(origin) });
+    }
+
+    const headers = buildAdminCorsHeaders(origin);
+    const requestedHeaders = req.headers.get("Access-Control-Request-Headers");
+    if (requestedHeaders) {
+      headers["Access-Control-Allow-Headers"] = requestedHeaders;
+    }
+
+    return new Response(null, { status: 204, headers });
+  }
+
   if (req.method === "GET") {
     const authz = req.headers.get("authorization") ?? "";
     if (!authz.toLowerCase().startsWith("bearer ")) {
-      return new Response(JSON.stringify({ error: "missing_token" }), withCors({ status: 401, headers: { "Content-Type": "application/json" } }));
+      return new Response(JSON.stringify({ error: "missing_token" }), withCors(origin, { status: 401, headers: { "Content-Type": "application/json" } }));
     }
 
     const supabase = createClient(
@@ -798,19 +849,17 @@ export async function handler(req: Request): Promise<Response> {
 
     const { data: { user }, error } = await supabase.auth.getUser();
     if (error || !user) {
-      return new Response(JSON.stringify({ error: "invalid_token" }), withCors({ status: 401, headers: { "Content-Type": "application/json" } }));
+      return new Response(JSON.stringify({ error: "invalid_token" }), withCors(origin, { status: 401, headers: { "Content-Type": "application/json" } }));
     }
 
-    // Minimal sample flags payload; extend with real evaluation as needed.
     return new Response(
       JSON.stringify({ flags: { newDashboard: true } }),
-      withCors({ status: 200, headers: { "Content-Type": "application/json" } }),
+      withCors(origin, { status: 200, headers: { "Content-Type": "application/json" } }),
     );
   }
 
-  // Delegate all other methods (e.g., admin POST) to protected handler.
   const adminResp = await protectedAdminHandler(req);
-  return applyAdminCors(adminResp);
+  return applyAdminCors(adminResp, origin);
 }
 
 // Deno entrypoint

@@ -1,4 +1,5 @@
-type ZodModule = typeof import("zod");
+// deno-lint-ignore-file no-import-prefix
+type ZodModule = typeof import("npm:zod@3.23.8");
 type ZodNamespace = ZodModule extends { z: infer Namespace } ? Namespace : never;
 
 export const buildOrganizationMetadataSchema = (zLib: ZodNamespace) => {

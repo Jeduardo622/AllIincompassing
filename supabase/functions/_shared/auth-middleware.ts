@@ -1,6 +1,7 @@
+// deno-lint-ignore-file no-import-prefix
 /**
  * Production-Ready Authentication Middleware for Edge Functions
- * 
+ *
  * Enforces role-based access control according to the route matrix:
  * - Public routes: /auth/signup, /auth/login
  * - Authenticated routes: /profiles/me (all authenticated users)
@@ -8,7 +9,16 @@
  * - Super admin routes: /admin/users/:id/roles (super_admin only)
  */
 
-import { createClient } from "npm:@supabase/supabase-js@2.50.0";
+type SupabaseModule = typeof import("npm:@supabase/supabase-js@2.50.0");
+
+let supabaseModulePromise: Promise<SupabaseModule> | null = null;
+
+const loadSupabaseModule = (): Promise<SupabaseModule> => {
+  if (!supabaseModulePromise) {
+    supabaseModulePromise = import("npm:@supabase/supabase-js@2.50.0");
+  }
+  return supabaseModulePromise;
+};
 
 // Role hierarchy for authorization
 export type Role = 'client' | 'therapist' | 'admin' | 'super_admin';
@@ -16,11 +26,11 @@ export type Role = 'client' | 'therapist' | 'admin' | 'super_admin';
 export interface UserContext {
   user: {
     id: string;
-    email: string;
+    email: string | null;
   };
   profile: {
     id: string;
-    email: string;
+    email: string | null;
     role: Role;
     is_active: boolean;
   };
@@ -89,6 +99,7 @@ export async function getUserContext(req: Request): Promise<UserContext | null> 
     return null;
   }
 
+  const { createClient } = await loadSupabaseModule();
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -122,9 +133,9 @@ export async function getUserContext(req: Request): Promise<UserContext | null> 
     return {
       user: {
         id: user.id,
-        email: user.email,
+        email: user.email ?? null,
       },
-      profile,
+      profile: { ...profile, email: profile.email ?? null },
     };
   } catch (error) {
     console.error('Error getting user context:', error);

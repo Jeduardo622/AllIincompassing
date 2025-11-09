@@ -104,6 +104,8 @@ export default defineConfig(() => {
       sourcemap: false,
     },
     server: {
+      host: true,
+      allowedHosts: ['host.docker.internal'],
       fs: {
         strict: false,
       },

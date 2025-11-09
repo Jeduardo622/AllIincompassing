@@ -22,11 +22,19 @@ try {
 }
 const { supabaseUrl, supabaseAnonKey } = resolveSupabaseConfig();
 
+const globalHeaders = {
+  apikey: supabaseAnonKey,
+  Authorization: `Bearer ${supabaseAnonKey}`,
+};
+
 // Browser singleton client. Typed with generated Database.
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
+  },
+  global: {
+    headers: globalHeaders,
   },
 });

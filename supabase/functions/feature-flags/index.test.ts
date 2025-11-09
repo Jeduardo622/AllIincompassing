@@ -1,8 +1,10 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/testing/asserts.ts";
+// deno-lint-ignore-file no-import-prefix
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
 import type { UserContext } from "../_shared/auth-middleware.ts";
 import { applyAdminCors, handleFeatureFlagAdmin, handler } from "./index.ts";
-import { supabaseAdmin } from "./_shared/database.ts";
+
+type LogApiAccess = (method: string, path: string, userContext: UserContext | null, status: number) => void;
 
 type TableResponse = { data: unknown; error: unknown };
 
@@ -64,9 +66,33 @@ const createAdminContext = (): UserContext => ({
   profile: { id: "profile-admin-1", email: "admin@example.com", role: "admin", is_active: true },
 });
 
+const adminClient = {
+  auth: {
+    admin: {
+      getUserById: ((userId: string) =>
+        Promise.resolve({
+          data: {
+            user: {
+              id: userId,
+              email: "stub@example.com",
+              user_metadata: {},
+            },
+          },
+          error: null,
+        })) as SupabaseClient["auth"]["admin"]["getUserById"],
+    },
+  },
+} as unknown as SupabaseClient;
+
+const getSupabaseAdmin = () => adminClient;
+const logApiAccessStub: LogApiAccess = () => undefined;
+
+const executeAdminHandler = (params: { req: Request; userContext: UserContext; db: SupabaseClient }) =>
+  handleFeatureFlagAdmin({ ...params, getSupabaseAdmin, logApiAccess: logApiAccessStub });
+
 const stubAdminGetUserById = (metadata: Record<string, unknown>) => {
-  const original = supabaseAdmin.auth.admin.getUserById;
-  supabaseAdmin.auth.admin.getUserById = ((userId: string) =>
+  const original = adminClient.auth.admin.getUserById;
+  adminClient.auth.admin.getUserById = ((userId: string) =>
     Promise.resolve({
       data: {
         user: {
@@ -76,15 +102,15 @@ const stubAdminGetUserById = (metadata: Record<string, unknown>) => {
         },
       },
       error: null,
-    })) as typeof supabaseAdmin.auth.admin.getUserById;
+    })) as typeof adminClient.auth.admin.getUserById;
 
   return () => {
-    supabaseAdmin.auth.admin.getUserById = original;
+    adminClient.auth.admin.getUserById = original;
   };
 };
 
 Deno.test("returns 405 when using a non-POST method", async () => {
-  const response = await handleFeatureFlagAdmin({
+  const response = await executeAdminHandler({
     req: createRequest("GET", null),
     userContext: createUserContext(),
     db: createListClient({}),
@@ -155,7 +181,7 @@ Deno.test("OPTIONS preflight rejects disallowed origins", async () => {
 });
 
 Deno.test("lists feature flag administration data for super admins", async () => {
-  const response = await handleFeatureFlagAdmin({
+    const response = await executeAdminHandler({
     req: createRequest("POST", { action: "list" }),
     userContext: createUserContext(),
     db: createListClient({
@@ -177,7 +203,7 @@ Deno.test("lists feature flag administration data for super admins", async () =>
 });
 
 Deno.test("prevents admins from accessing super-admin feature flag actions", async () => {
-  const response = await handleFeatureFlagAdmin({
+  const response = await executeAdminHandler({
     req: createRequest("POST", { action: "list" }),
     userContext: createAdminContext(),
     db: createListClient({}),
@@ -191,7 +217,7 @@ Deno.test("prevents admins from accessing super-admin feature flag actions", asy
 Deno.test("prevents admins with an existing organization from creating a new organization", async () => {
   const restore = stubAdminGetUserById({ organization_id: EXISTING_ORG_ID });
   try {
-    const response = await handleFeatureFlagAdmin({
+    const response = await executeAdminHandler({
       req: createRequest("POST", {
         action: "upsertOrganization",
         organization: { id: NEW_ORG_ID, name: "Acme Behavior" },
@@ -258,7 +284,7 @@ Deno.test("allows admins without an organization to create their first organizat
   } as unknown as SupabaseClient;
 
   try {
-    const response = await handleFeatureFlagAdmin({
+    const response = await executeAdminHandler({
       req: createRequest("POST", {
         action: "upsertOrganization",
         organization: {
@@ -333,7 +359,7 @@ Deno.test("creates feature flags and writes audit logs", async () => {
     },
   } as unknown as SupabaseClient;
 
-  const response = await handleFeatureFlagAdmin({
+  const response = await executeAdminHandler({
     req: createRequest("POST", {
       action: "createFlag",
       flagKey: "beta-dashboard",
@@ -417,7 +443,7 @@ Deno.test("removes plan assignments when planCode is null", async () => {
     },
   } as unknown as SupabaseClient;
 
-  const response = await handleFeatureFlagAdmin({
+  const response = await executeAdminHandler({
     req: createRequest("POST", { action: "setOrgPlan", organizationId: EXISTING_ORG_ID, planCode: null }),
     userContext: createUserContext(),
     db: client,
@@ -492,7 +518,7 @@ Deno.test("updates existing organizations and normalizes slugs", async () => {
     },
   } as unknown as SupabaseClient;
 
-  const response = await handleFeatureFlagAdmin({
+  const response = await executeAdminHandler({
     req: createRequest("POST", {
       action: "upsertOrganization",
       organization: {
@@ -576,7 +602,7 @@ Deno.test("does not overwrite metadata when omitted in organization update", asy
     },
   } as unknown as SupabaseClient;
 
-  const response = await handleFeatureFlagAdmin({
+  const response = await executeAdminHandler({
     req: createRequest("POST", {
       action: "upsertOrganization",
       organization: { id: TERTIARY_ORG_ID, name: "Gamma Updated" },
@@ -604,7 +630,7 @@ Deno.test("rejects invalid organization metadata", async () => {
     },
   } as unknown as SupabaseClient;
 
-  const response = await handleFeatureFlagAdmin({
+  const response = await executeAdminHandler({
     req: createRequest("POST", {
       action: "upsertOrganization",
       organization: {
@@ -684,7 +710,7 @@ Deno.test("persists sanitized organization metadata", async () => {
     },
   } as unknown as SupabaseClient;
 
-  const response = await handleFeatureFlagAdmin({
+  const response = await executeAdminHandler({
     req: createRequest("POST", {
       action: "upsertOrganization",
       organization: {
@@ -771,7 +797,7 @@ Deno.test("updates global flag and writes audit logs", async () => {
     },
   } as unknown as SupabaseClient;
 
-  const response = await handleFeatureFlagAdmin({
+  const response = await executeAdminHandler({
     req: createRequest("POST", { action: "updateGlobalFlag", flagId: FEATURE_FLAG_ID, enabled: true }),
     userContext: createUserContext(),
     db: client,
@@ -801,7 +827,7 @@ Deno.test("returns 404 when updating a non-existent global flag", async () => {
     },
   } as unknown as SupabaseClient;
 
-  const response = await handleFeatureFlagAdmin({
+  const response = await executeAdminHandler({
     req: createRequest("POST", { action: "updateGlobalFlag", flagId: FEATURE_FLAG_ID, enabled: true }),
     userContext: createUserContext(),
     db: client,
@@ -883,7 +909,7 @@ Deno.test("inserts organization flag override and writes audit logs", async () =
     },
   } as unknown as SupabaseClient;
 
-  const response = await handleFeatureFlagAdmin({
+  const response = await executeAdminHandler({
     req: createRequest("POST", { action: "setOrgFlag", organizationId: EXISTING_ORG_ID, flagId: FEATURE_FLAG_ID, enabled: true }),
     userContext: createUserContext(),
     db: client,
@@ -970,7 +996,7 @@ Deno.test("updates organization flag override and writes audit logs", async () =
     },
   } as unknown as SupabaseClient;
 
-  const response = await handleFeatureFlagAdmin({
+  const response = await executeAdminHandler({
     req: createRequest("POST", { action: "setOrgFlag", organizationId: EXISTING_ORG_ID, flagId: FEATURE_FLAG_ID, enabled: true }),
     userContext: createUserContext(),
     db: client,
@@ -1009,7 +1035,7 @@ Deno.test("returns 404 when organization not found for setOrgFlag", async () => 
     },
   } as unknown as SupabaseClient;
 
-  const response = await handleFeatureFlagAdmin({
+  const response = await executeAdminHandler({
     req: createRequest("POST", { action: "setOrgFlag", organizationId: SENARY_ORG_ID, flagId: FEATURE_FLAG_ID, enabled: true }),
     userContext: createUserContext(),
     db: client,
@@ -1087,7 +1113,7 @@ Deno.test("assigns organization plan (insert) and writes audit logs", async () =
     },
   } as unknown as SupabaseClient;
 
-  const response = await handleFeatureFlagAdmin({
+  const response = await executeAdminHandler({
     req: createRequest("POST", { action: "setOrgPlan", organizationId: QUINARY_ORG_ID, planCode: "professional", notes: "VIP" }),
     userContext: createUserContext(),
     db: client,
@@ -1172,7 +1198,7 @@ Deno.test("updates organization plan and writes audit logs", async () => {
     },
   } as unknown as SupabaseClient;
 
-  const response = await handleFeatureFlagAdmin({
+  const response = await executeAdminHandler({
     req: createRequest("POST", { action: "setOrgPlan", organizationId: QUATERNARY_ORG_ID, planCode: "enterprise" }),
     userContext: createUserContext(),
     db: client,
@@ -1212,7 +1238,7 @@ Deno.test("returns 404 when assigning a non-existent plan", async () => {
     },
   } as unknown as SupabaseClient;
 
-  const response = await handleFeatureFlagAdmin({
+  const response = await executeAdminHandler({
     req: createRequest("POST", { action: "setOrgPlan", organizationId: SENARY_ORG_ID, planCode: "unknown" }),
     userContext: createUserContext(),
     db: client,

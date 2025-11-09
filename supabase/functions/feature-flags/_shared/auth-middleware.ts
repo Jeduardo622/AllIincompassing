@@ -1,10 +1,20 @@
-import { createClient } from "npm:@supabase/supabase-js@2.50.0";
+// deno-lint-ignore-file no-import-prefix
+type SupabaseModule = typeof import("npm:@supabase/supabase-js@2.50.0");
+
+let supabaseModulePromise: Promise<SupabaseModule> | null = null;
+
+const loadSupabaseModule = (): Promise<SupabaseModule> => {
+  if (!supabaseModulePromise) {
+    supabaseModulePromise = import("npm:@supabase/supabase-js@2.50.0");
+  }
+  return supabaseModulePromise;
+};
 
 export type Role = 'client' | 'therapist' | 'admin' | 'super_admin';
 
 export interface UserContext {
-  user: { id: string; email: string };
-  profile: { id: string; email: string; role: Role; is_active: boolean };
+  user: { id: string; email: string | null };
+  profile: { id: string; email: string | null; role: Role; is_active: boolean };
 }
 
 export interface AuthMiddlewareOptions {
@@ -43,6 +53,7 @@ export async function getUserContext(req: Request): Promise<UserContext | null> 
   const token = extractBearerToken(req);
   if (!token) return null;
 
+  const { createClient } = await loadSupabaseModule();
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -59,7 +70,7 @@ export async function getUserContext(req: Request): Promise<UserContext | null> 
     .single();
   if (!profile) return null;
 
-  return { user: { id: user.id, email: user.email }, profile };
+  return { user: { id: user.id, email: user.email ?? null }, profile: { ...profile, email: profile.email ?? null } };
 }
 
 function hasRequiredRole(userRole: Role, allowedRoles: Role[]): boolean {

@@ -1,14 +1,32 @@
+// deno-lint-ignore-file no-import-prefix
 import { z } from "npm:zod@3.23.8";
-import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
 import { organizationMetadataSchema, type OrganizationMetadata } from "./schema.ts";
-import {
-  createProtectedRoute,
-  corsHeaders,
-  logApiAccess,
-  RouteOptions,
-  type UserContext,
-} from "./_shared/auth-middleware.ts";
-import { createRequestClient, supabaseAdmin } from "./_shared/database.ts";
+
+const SUPABASE_MODULE_SPEC = "npm:@supabase/supabase-js@2.50.0" as const;
+
+type SupabaseModule = typeof import("npm:@supabase/supabase-js@2.50.0");
+type SupabaseClient = import("npm:@supabase/supabase-js@2.50.0").SupabaseClient;
+type UserContext = import("./_shared/auth-middleware.ts").UserContext;
+type AuthMiddlewareOptions = import("./_shared/auth-middleware.ts").AuthMiddlewareOptions;
+
+type ProtectedRouteFactory = (
+  handler: (req: Request, userContext: UserContext) => Promise<Response>,
+  options: AuthMiddlewareOptions,
+) => (req: Request) => Promise<Response>;
+
+interface AuthModule {
+  createProtectedRoute: ProtectedRouteFactory;
+  RouteOptions: {
+    admin: AuthMiddlewareOptions;
+  };
+  logApiAccess: LogApiAccess;
+}
+
+interface DatabaseModule {
+  configureSupabaseModule: (module: SupabaseModule) => void;
+  createRequestClient: (req: Request) => SupabaseClient;
+  getSupabaseAdmin: () => SupabaseClient;
+}
 
 const ADMIN_PATH = "/super-admin/feature-flags";
 
@@ -27,6 +45,96 @@ const envAllowedOrigins = (Deno.env.get("EDGE_ALLOWED_ORIGINS") ?? "")
 const ALLOWED_ORIGINS = Array.from(new Set([...STATIC_ALLOWED_ORIGINS, ...envAllowedOrigins]));
 const PRIMARY_ALLOWED_ORIGIN = ALLOWED_ORIGINS[0] ?? "https://app.allincompassing.ai";
 const adminAllowedOrigins = new Set(ALLOWED_ORIGINS);
+
+const BASE_CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Client-Info, apikey",
+  "Access-Control-Max-Age": "86400",
+};
+
+type LogApiAccess = (method: string, path: string, userContext: UserContext | null, status: number) => void;
+
+let supabaseModulePromise: Promise<SupabaseModule> | null = null;
+const loadSupabaseModule = () => {
+  if (!supabaseModulePromise) {
+    supabaseModulePromise = import(SUPABASE_MODULE_SPEC);
+  }
+  return supabaseModulePromise;
+};
+
+let authModulePromise: Promise<AuthModule> | null = null;
+const loadAuthModule = () => {
+  if (!authModulePromise) {
+    authModulePromise = import("./_shared/auth-middleware.ts").then(module => {
+      const api = module as {
+        createProtectedRoute: ProtectedRouteFactory;
+        RouteOptions: { admin: AuthMiddlewareOptions };
+        logApiAccess: LogApiAccess;
+      };
+      return {
+        createProtectedRoute: api.createProtectedRoute,
+        RouteOptions: api.RouteOptions,
+        logApiAccess: api.logApiAccess,
+      };
+    });
+  }
+  return authModulePromise;
+};
+
+let databaseModulePromise: Promise<DatabaseModule> | null = null;
+const loadDatabaseModule = () => {
+  if (!databaseModulePromise) {
+    databaseModulePromise = import("./_shared/database.ts").then(module => {
+      const api = module as unknown as DatabaseModule;
+      return {
+        configureSupabaseModule: api.configureSupabaseModule,
+        createRequestClient: api.createRequestClient,
+        getSupabaseAdmin: api.getSupabaseAdmin,
+      };
+    });
+  }
+  return databaseModulePromise;
+};
+
+interface InitializedDependencies {
+  authModule: AuthModule;
+  dbModule: DatabaseModule;
+  supabaseModule: SupabaseModule;
+  protectedAdminHandler: (req: Request) => Promise<Response>;
+}
+
+let initializationPromise: Promise<InitializedDependencies> | null = null;
+
+const initializeDependencies = (): Promise<InitializedDependencies> => {
+  if (!initializationPromise) {
+    initializationPromise = (async () => {
+      const [authModule, dbModule, supabaseModule] = await Promise.all([
+        loadAuthModule(),
+        loadDatabaseModule(),
+        loadSupabaseModule(),
+      ]);
+
+      dbModule.configureSupabaseModule(supabaseModule);
+
+      const protectedAdminHandler = authModule.createProtectedRoute(
+        (req, userContext) =>
+          handleFeatureFlagAdmin({
+            req,
+            userContext,
+            db: dbModule.createRequestClient(req),
+            getSupabaseAdmin: dbModule.getSupabaseAdmin,
+            logApiAccess: authModule.logApiAccess,
+          }),
+        authModule.RouteOptions.admin,
+      );
+
+      return { authModule, dbModule, supabaseModule, protectedAdminHandler };
+    })();
+  }
+
+  return initializationPromise;
+};
 
 const resolveRequestOrigin = (req: Request): { origin: string | null; requestedOrigin: string | null } => {
   const requestedOrigin = req.headers.get("origin");
@@ -64,7 +172,7 @@ const withCors = (origin: string | null, init: ResponseInit = {}): ResponseInit 
 const respond = (origin: string | null, status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, ...buildAdminCorsHeaders(origin), "Content-Type": "application/json" },
+    headers: { ...BASE_CORS_HEADERS, ...buildAdminCorsHeaders(origin), "Content-Type": "application/json" },
   });
 
 const parseJson = async (req: Request, origin: string | null): Promise<unknown> => {
@@ -122,7 +230,7 @@ const upsertOrganizationSchema = z.object({
       .trim()
       .max(200)
       .optional()
-      .refine(value => !value || slugPattern.test(value), {
+      .refine((value: string | null | undefined) => !value || slugPattern.test(value), {
         message: "Slug may contain only lowercase letters, numbers, and hyphens",
       }),
     metadata: organizationMetadataSchema.optional(),
@@ -194,8 +302,12 @@ const extractOrganizationIdFromMetadata = (
   return camel;
 };
 
-const resolveCallerOrganizationId = async (userId: string, origin: string | null): Promise<string | null> => {
-  const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId);
+const resolveCallerOrganizationId = async (
+  userId: string,
+  origin: string | null,
+  adminClient: SupabaseClient,
+): Promise<string | null> => {
+  const { data, error } = await adminClient.auth.admin.getUserById(userId);
 
   if (error || !data?.user) {
     console.error("Failed to load caller metadata for organization sync", { userId, error });
@@ -233,9 +345,17 @@ interface HandlerParams {
   req: Request;
   userContext: UserContext;
   db: SupabaseClient;
+  getSupabaseAdmin: () => SupabaseClient;
+  logApiAccess: LogApiAccess;
 }
 
-export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerParams): Promise<Response> {
+export async function handleFeatureFlagAdmin({
+  req,
+  userContext,
+  db,
+  getSupabaseAdmin,
+  logApiAccess,
+}: HandlerParams): Promise<Response> {
   const { origin, requestedOrigin } = resolveRequestOrigin(req);
 
   if (requestedOrigin && !origin) {
@@ -273,6 +393,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
   const actorRole = userContext.profile.role;
   const isSuperAdmin = actorRole === "super_admin";
   const isAdmin = actorRole === "admin";
+  const adminClient = getSupabaseAdmin();
 
   if (!isSuperAdmin && !isAdmin) {
     return handleError(403, "Insufficient permissions");
@@ -660,7 +781,7 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
             return handleError(403, "Insufficient permissions");
           }
 
-          const callerOrgId = await resolveCallerOrganizationId(actorId, origin);
+          const callerOrgId = await resolveCallerOrganizationId(actorId, origin, adminClient);
           if (callerOrgId) {
             return handleError(403, "Admins already linked to an organization cannot create additional organizations");
           }
@@ -778,15 +899,6 @@ export async function handleFeatureFlagAdmin({ req, userContext, db }: HandlerPa
 
 // Note: default export is the `handler` below to support GET/OPTIONS CORS logic.
 
-// --- Public runtime flags (JWT required) + strict CORS for GET ---
-// Keep admin POST routes via protected handler but add a top-level wrapper to
-// serve authenticated GET with restricted CORS and fast OPTIONS.
-
-const protectedAdminHandler = createProtectedRoute(
-  (req, userContext) => handleFeatureFlagAdmin({ req, userContext, db: createRequestClient(req) }),
-  RouteOptions.admin,
-);
-
 export const applyAdminCors = async (response: Response, origin: string | null = null): Promise<Response> => {
   const headers = new Headers(response.headers);
   const corsHeadersForOrigin = buildAdminCorsHeaders(origin);
@@ -835,13 +947,18 @@ export async function handler(req: Request): Promise<Response> {
     return new Response(null, { status: 204, headers });
   }
 
+  const { supabaseModule, protectedAdminHandler } = await initializeDependencies();
+
   if (req.method === "GET") {
     const authz = req.headers.get("authorization") ?? "";
     if (!authz.toLowerCase().startsWith("bearer ")) {
-      return new Response(JSON.stringify({ error: "missing_token" }), withCors(origin, { status: 401, headers: { "Content-Type": "application/json" } }));
+      return new Response(
+        JSON.stringify({ error: "missing_token" }),
+        withCors(origin, { status: 401, headers: { "Content-Type": "application/json" } }),
+      );
     }
 
-    const supabase = createClient(
+    const supabase = supabaseModule.createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
       { global: { headers: { Authorization: authz } } },
@@ -849,7 +966,10 @@ export async function handler(req: Request): Promise<Response> {
 
     const { data: { user }, error } = await supabase.auth.getUser();
     if (error || !user) {
-      return new Response(JSON.stringify({ error: "invalid_token" }), withCors(origin, { status: 401, headers: { "Content-Type": "application/json" } }));
+      return new Response(
+        JSON.stringify({ error: "invalid_token" }),
+        withCors(origin, { status: 401, headers: { "Content-Type": "application/json" } }),
+      );
     }
 
     return new Response(

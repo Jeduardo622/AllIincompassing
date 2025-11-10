@@ -399,20 +399,20 @@ export const fetchGuardianContactMetadata = async (
   guardianId: string,
   client: ClientsSupabaseClient = supabase,
 ): Promise<GuardianContactMetadataEntry[]> => {
-  const { data, error } = await client
-    .from('client_guardians')
-    .select('client_id, metadata')
-    .eq('guardian_id', guardianId)
-    .is('deleted_at', null);
+  const { data, error } = await client.rpc('guardian_contact_metadata', {
+    p_guardian_id: guardianId,
+  });
 
   if (error) {
     throw error;
   }
 
   return (data ?? [])
-    .map((row) => ({
-      clientId: String((row as Record<string, unknown>).client_id ?? ''),
-      metadata: ((row as Record<string, unknown>).metadata as Record<string, unknown> | null) ?? {},
-    }))
+    .map((row) => {
+      const record = row as Record<string, unknown>;
+      const clientId = typeof record.client_id === 'string' ? record.client_id : '';
+      const metadata = (record.metadata as Record<string, unknown> | null) ?? {};
+      return { clientId, metadata };
+    })
     .filter((entry) => Boolean(entry.clientId));
 };

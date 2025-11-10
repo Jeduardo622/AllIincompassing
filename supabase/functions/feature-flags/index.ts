@@ -360,10 +360,7 @@ export async function handleFeatureFlagAdmin({
 
   if (requestedOrigin && !origin) {
     logApiAccess(req.method, ADMIN_PATH, userContext, 403);
-    return new Response(JSON.stringify({ error: "Origin not allowed" }), {
-      status: 403,
-      headers: { "Content-Type": "application/json", Vary: "Origin" },
-    });
+    return respond(origin, 403, { error: "Origin not allowed" });
   }
 
   if (req.method !== "POST") {
@@ -926,10 +923,7 @@ export async function handler(req: Request): Promise<Response> {
   const { origin, requestedOrigin } = resolveRequestOrigin(req);
 
   if (requestedOrigin && !origin) {
-    return new Response(JSON.stringify({ error: "Origin not allowed" }), {
-      status: 403,
-      headers: { "Content-Type": "application/json", Vary: "Origin" },
-    });
+    return respond(origin, 403, { error: "Origin not allowed" });
   }
 
   if (req.method === "OPTIONS") {

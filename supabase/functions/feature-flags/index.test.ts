@@ -178,6 +178,22 @@ Deno.test("OPTIONS preflight rejects disallowed origins", async () => {
 
   const response = await handler(request);
   assertEquals(response.status, 403);
+  assertEquals(response.headers.get("Access-Control-Allow-Origin"), "https://app.allincompassing.ai");
+  const body = (await response.json()) as { error: string };
+  assertEquals(body.error, "Origin not allowed");
+});
+
+Deno.test("admin handler returns 403 with CORS headers when origin is not allowed", async () => {
+  const response = await executeAdminHandler({
+    req: createRequest("POST", { action: "list" }, { origin: "https://malicious.example.com" }),
+    userContext: createUserContext(),
+    db: createListClient({}),
+  });
+
+  assertEquals(response.status, 403);
+  assertEquals(response.headers.get("Access-Control-Allow-Origin"), "https://app.allincompassing.ai");
+  const body = (await response.json()) as { error: string };
+  assertEquals(body.error, "Origin not allowed");
 });
 
 Deno.test("lists feature flag administration data for super admins", async () => {

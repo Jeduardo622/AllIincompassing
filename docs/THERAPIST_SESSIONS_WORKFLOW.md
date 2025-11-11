@@ -91,6 +91,7 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
 - Session booking mutations elevate Supabase `409` conflicts into retry guidance (“slot taken — refresh or pick another time”) without dismissing the modal, keeping therapists in context.
 - `/clients` and `/clients/:clientId` short-circuit client fetches when an organization isn’t selected, aligning the UI with RLS policies and eliminating cross-tenant listing attempts.
 - Client creation now stamps the active organization ID in the payload so new records inherit the correct tenant automatically.
+- Automated coverage: `npm run playwright:schedule-conflict` verifies the retry-hint UI, and `src/lib/__tests__/multiTenantAccess.test.ts` (Supabase MCP) asserts client listings stay tenant-scoped.
 
 ## Therapist Session Lifecycle
 1. **Context loading**

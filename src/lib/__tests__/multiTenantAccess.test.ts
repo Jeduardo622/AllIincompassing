@@ -59,6 +59,7 @@ const createTherapistFixture = async (label: string, organizationId: string): Pr
     full_name: `${label.toUpperCase()} Therapist`,
     specialties: ['aba'],
     max_clients: 5,
+    organization_id: organizationId,
   });
 
   if (therapistInsertError) {
@@ -85,6 +86,7 @@ const createTherapistFixture = async (label: string, organizationId: string): Pr
     email: `${label}.client.${Date.now()}@example.com`,
     full_name: `${label.toUpperCase()} Client`,
     date_of_birth: '2015-01-01',
+    organization_id: organizationId,
   });
 
   if (clientInsertError) {
@@ -222,6 +224,42 @@ describe('multi-tenant access controls', () => {
     expect(error).toBeNull();
     expect(Array.isArray(data)).toBe(true);
     expect(data).toHaveLength(0);
+
+    await supabaseOrgA.auth.signOut();
+  });
+
+  it('returns only in-organization clients when listing all records', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping multi-tenant test - setup incomplete.');
+      return;
+    }
+
+    const supabaseOrgA = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
+
+    const signInResult = await supabaseOrgA.auth.signInWithPassword({
+      email: orgAContext.email,
+      password: orgAContext.password,
+    });
+
+    expect(signInResult.error).toBeNull();
+
+    const { data, error } = await supabaseOrgA
+      .from('clients')
+      .select('id, organization_id')
+      .order('created_at', { ascending: true });
+
+    expect(error).toBeNull();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data?.length).toBeGreaterThan(0);
+
+    const distinctOrgIds = new Set((data ?? []).map(row => row.organization_id));
+    expect(distinctOrgIds.size).toBe(1);
+    expect(distinctOrgIds.has(orgAContext.organizationId)).toBe(true);
 
     await supabaseOrgA.auth.signOut();
   });

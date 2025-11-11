@@ -1,0 +1,3437 @@
+{
+  "generated_from": "C:\\Users\\test\\.cursor\\projects\\c-Users-test-Desktop-AllIincompassing\\agent-tools\\72f13fd7-0c0f-4e11-b111-a8130416561c.txt",
+  "multiple_permissive_policies": [
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "role": "anon",
+      "action": "INSERT",
+      "policies": [
+        "admin_all_ai_perf",
+        "ai_performance_metrics_insert_v2"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "admin_all_ai_perf",
+        "ai_performance_metrics_select_v2"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_processing_logs",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "\"Users can view AI processing logs for their sessions\"",
+        "admin_all_ai_proc_logs"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "anon",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create AI session notes\"",
+        "ai_session_notes_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "ai_session_notes_modify",
+        "consolidated_select_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "anon",
+      "action": "UPDATE",
+      "policies": [
+        "\"Therapists can update their AI session notes\"",
+        "ai_session_notes_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "authorization_services",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "authorization_services_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "authorizations",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "authorizations_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "billing_records",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "billing_records_modify",
+        "billing_records_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "chat_history",
+      "role": "anon",
+      "action": "INSERT",
+      "policies": [
+        "chat_history_owner",
+        "chat_history_user_insert"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "chat_history",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "chat_history_owner",
+        "chat_history_user_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "client_availability",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "client_availability_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "clients_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "insurance_providers",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "insurance_providers_read",
+        "insurance_providers_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "locations",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "locations_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "anon",
+      "action": "DELETE",
+      "policies": [
+        "roles_admin_delete",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "anon",
+      "action": "INSERT",
+      "policies": [
+        "roles_admin_insert",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "roles_admin_write",
+        "roles_select_all"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "anon",
+      "action": "UPDATE",
+      "policies": [
+        "roles_admin_update",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "service_areas",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "service_areas_read",
+        "service_areas_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "service_lines",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "service_lines_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_note_templates",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "session_note_templates_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcript_segments",
+      "role": "anon",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create transcript segments\"",
+        "session_transcript_segments_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcript_segments",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_select_4c9184",
+        "session_transcript_segments_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcripts",
+      "role": "anon",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create session transcripts\"",
+        "session_transcripts_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcripts",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_select_4c9184",
+        "session_transcripts_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "sessions_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapist_availability",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "therapist_availability_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "anon",
+      "action": "INSERT",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "anon",
+      "action": "UPDATE",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_update_self"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "user_therapist_links",
+      "role": "anon",
+      "action": "SELECT",
+      "policies": [
+        "admin_all_ut_links",
+        "user_therapist_links_optimized"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "role": "app_admin_executor",
+      "action": "INSERT",
+      "policies": [
+        "admin_all_ai_perf",
+        "ai_performance_metrics_insert_v2"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "admin_all_ai_perf",
+        "ai_performance_metrics_select_v2"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_processing_logs",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "\"Users can view AI processing logs for their sessions\"",
+        "admin_all_ai_proc_logs"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "app_admin_executor",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create AI session notes\"",
+        "ai_session_notes_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "ai_session_notes_modify",
+        "consolidated_select_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "app_admin_executor",
+      "action": "UPDATE",
+      "policies": [
+        "\"Therapists can update their AI session notes\"",
+        "ai_session_notes_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "authorization_services",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "authorization_services_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "authorizations",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "authorizations_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "billing_records",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "billing_records_modify",
+        "billing_records_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "chat_history",
+      "role": "app_admin_executor",
+      "action": "INSERT",
+      "policies": [
+        "chat_history_owner",
+        "chat_history_user_insert"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "chat_history",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "chat_history_owner",
+        "chat_history_user_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "client_availability",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "client_availability_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "clients_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "insurance_providers",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "insurance_providers_read",
+        "insurance_providers_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "locations",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "locations_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "app_admin_executor",
+      "action": "DELETE",
+      "policies": [
+        "roles_admin_delete",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "app_admin_executor",
+      "action": "INSERT",
+      "policies": [
+        "roles_admin_insert",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "roles_admin_write",
+        "roles_select_all"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "app_admin_executor",
+      "action": "UPDATE",
+      "policies": [
+        "roles_admin_update",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "service_areas",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "service_areas_read",
+        "service_areas_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "service_lines",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "service_lines_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_note_templates",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "session_note_templates_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcript_segments",
+      "role": "app_admin_executor",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create transcript segments\"",
+        "session_transcript_segments_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcript_segments",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_select_4c9184",
+        "session_transcript_segments_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcripts",
+      "role": "app_admin_executor",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create session transcripts\"",
+        "session_transcripts_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcripts",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_select_4c9184",
+        "session_transcripts_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "sessions_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapist_availability",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "therapist_availability_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "app_admin_executor",
+      "action": "INSERT",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "app_admin_executor",
+      "action": "UPDATE",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_update_self"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "user_therapist_links",
+      "role": "app_admin_executor",
+      "action": "SELECT",
+      "policies": [
+        "admin_all_ut_links",
+        "user_therapist_links_optimized"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "admin_actions",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "admin_actions_insert_only",
+        "admin_actions_insert_policy"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "admin_actions",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "admin_actions_select_policy",
+        "admin_actions_select_scoped"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_cache",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "admin_all_ai_cache",
+        "ai_cache_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_cache",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "admin_all_ai_cache",
+        "ai_cache_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_cache",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "admin_all_ai_cache",
+        "ai_cache_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_cache",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "admin_all_ai_cache",
+        "ai_cache_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "admin_all_ai_perf",
+        "ai_performance_metrics_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "admin_all_ai_perf",
+        "ai_performance_metrics_admin_manage_admin_manage",
+        "ai_performance_metrics_insert_v2"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "admin_all_ai_perf",
+        "ai_performance_metrics_admin_manage_admin_manage",
+        "ai_performance_metrics_select_v2"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "admin_all_ai_perf",
+        "ai_performance_metrics_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_processing_logs",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "admin_all_ai_proc_logs",
+        "ai_processing_logs_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_processing_logs",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "admin_all_ai_proc_logs",
+        "ai_proc_logs_authenticated_insert",
+        "ai_processing_logs_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_processing_logs",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "\"Users can view AI processing logs for their sessions\"",
+        "admin_all_ai_proc_logs",
+        "ai_processing_logs_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_processing_logs",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "admin_all_ai_proc_logs",
+        "ai_processing_logs_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_response_cache",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "ai_response_cache_admin_manage",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_response_cache",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "ai_response_cache_admin_manage",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_response_cache",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "ai_response_cache_admin_manage",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_response_cache",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "ai_response_cache_admin_manage",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create AI session notes\"",
+        "ai_session_notes_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "ai_session_notes_modify",
+        "consolidated_select_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "\"Therapists can update their AI session notes\"",
+        "ai_session_notes_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "authorization_services",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "authorization_services_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "authorizations",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "authorizations_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "billing_records",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "billing_records_modify",
+        "org_write_billing_records"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "billing_records",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "billing_records_modify",
+        "org_write_billing_records"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "billing_records",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "billing_records_modify",
+        "billing_records_select",
+        "consolidated_select_700633",
+        "org_write_billing_records"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "billing_records",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "billing_records_modify",
+        "org_write_billing_records"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "chat_history",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "chat_history_owner",
+        "chat_history_user_insert"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "chat_history",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "chat_history_owner",
+        "chat_history_user_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "client_availability",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "client_availability_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "client_guardians",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "admins_read_all_client_guardians",
+        "client_guardians_modify",
+        "client_guardians_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "consolidated_all_4c9184",
+        "org_write_clients"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "org_write_clients"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "clients_select",
+        "consolidated_all_4c9184",
+        "org_read_clients",
+        "org_write_clients"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "consolidated_all_4c9184",
+        "org_write_clients"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "company_settings",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "admin_all_company",
+        "company_settings_admin"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "company_settings",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "admin_all_company",
+        "company_settings_admin"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "company_settings",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "admin_all_company",
+        "company_settings_admin",
+        "consolidated_select_700633"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "company_settings",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "admin_all_company",
+        "company_settings_admin"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "db_performance_metrics",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "consolidated_all_4c9184",
+        "db_performance_metrics_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "db_performance_metrics",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "db_performance_metrics_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "db_performance_metrics",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "db_performance_metrics_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "db_performance_metrics",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "consolidated_all_4c9184",
+        "db_performance_metrics_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "error_logs",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "consolidated_all_4c9184",
+        "error_logs_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "error_logs",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "error_logs_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "error_logs",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "error_logs_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "error_logs",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "consolidated_all_4c9184",
+        "error_logs_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "file_cabinet_settings",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "\"Allow authenticated users to read file cabinet settings\"",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "function_performance_logs",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "consolidated_all_4c9184",
+        "consolidated_all_700633"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "function_performance_logs",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "consolidated_all_700633"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "function_performance_logs",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "consolidated_all_700633"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "function_performance_logs",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "consolidated_all_4c9184",
+        "consolidated_all_700633"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "insurance_providers",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "\"Insurance providers are viewable by authenticated users\"",
+        "insurance_providers_read",
+        "insurance_providers_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "locations",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "\"Allow authenticated users to read locations\"",
+        "consolidated_all_4c9184",
+        "locations_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "performance_alerts",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "consolidated_all_4c9184",
+        "performance_alerts_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "performance_alerts",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "performance_alerts_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "performance_alerts",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "performance_alerts_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "performance_alerts",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "consolidated_all_4c9184",
+        "performance_alerts_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "performance_baselines",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "consolidated_all_4c9184",
+        "performance_baselines_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "performance_baselines",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "performance_baselines_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "performance_baselines",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "performance_baselines_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "performance_baselines",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "consolidated_all_4c9184",
+        "performance_baselines_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "plans",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "\"Super admins can manage plans\"",
+        "\"Super admins can read plans\""
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "profiles",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_select_4c9184",
+        "consolidated_select_700633"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "profiles",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "consolidated_update_4c9184",
+        "profiles_update_admin"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "referring_providers",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "\"Allow authenticated users to read referring providers\"",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "roles_admin_delete",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "roles_admin_insert",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "roles_admin_write",
+        "roles_select_all"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "roles_admin_update",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "scheduling_preferences",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "\"Scheduling preferences are viewable by authenticated users\"",
+        "sched_prefs_owner"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "service_areas",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "\"Service areas are viewable by authenticated users\"",
+        "service_areas_read",
+        "service_areas_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "service_lines",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "\"Allow authenticated users to read service lines\"",
+        "consolidated_all_4c9184",
+        "service_lines_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_holds",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "session_holds_delete_access",
+        "session_holds_disallow_delete"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_holds",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "session_holds_disallow_insert",
+        "session_holds_insert_access"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_holds",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "session_holds_disallow_select",
+        "session_holds_select_access"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_holds",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "session_holds_disallow_update",
+        "session_holds_update_access"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_note_templates",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "session_note_templates_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcript_segments",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create transcript segments\"",
+        "session_transcript_segments_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcript_segments",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_select_4c9184",
+        "session_transcript_segments_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcripts",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create session transcripts\"",
+        "session_transcripts_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcripts",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_select_4c9184",
+        "session_transcripts_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "consolidated_all_4c9184",
+        "org_write_sessions"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "org_write_sessions"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "consolidated_select_700633",
+        "org_write_sessions",
+        "sessions_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "consolidated_all_4c9184",
+        "org_write_sessions"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "system_performance_metrics",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "consolidated_all_4c9184",
+        "system_performance_metrics_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "system_performance_metrics",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "system_performance_metrics_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "system_performance_metrics",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "system_performance_metrics_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "system_performance_metrics",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "consolidated_all_4c9184",
+        "system_performance_metrics_admin_manage_admin_manage"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapist_availability",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "therapist_availability_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "authenticated",
+      "action": "DELETE",
+      "policies": [
+        "org_write_therapists",
+        "therapists_access_optimized"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "authenticated",
+      "action": "INSERT",
+      "policies": [
+        "org_write_therapists",
+        "therapists_access_optimized",
+        "therapists_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_select_700633",
+        "org_write_therapists",
+        "therapists_access_optimized",
+        "therapists_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "authenticated",
+      "action": "UPDATE",
+      "policies": [
+        "org_write_therapists",
+        "therapists_access_optimized",
+        "therapists_update_self"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "user_therapist_links",
+      "role": "authenticated",
+      "action": "SELECT",
+      "policies": [
+        "admin_all_ut_links",
+        "user_therapist_links_optimized"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "role": "authenticator",
+      "action": "INSERT",
+      "policies": [
+        "admin_all_ai_perf",
+        "ai_performance_metrics_insert_v2"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "admin_all_ai_perf",
+        "ai_performance_metrics_select_v2"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_processing_logs",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "\"Users can view AI processing logs for their sessions\"",
+        "admin_all_ai_proc_logs"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "authenticator",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create AI session notes\"",
+        "ai_session_notes_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "ai_session_notes_modify",
+        "consolidated_select_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "authenticator",
+      "action": "UPDATE",
+      "policies": [
+        "\"Therapists can update their AI session notes\"",
+        "ai_session_notes_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "authorization_services",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "authorization_services_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "authorizations",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "authorizations_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "billing_records",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "billing_records_modify",
+        "billing_records_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "chat_history",
+      "role": "authenticator",
+      "action": "INSERT",
+      "policies": [
+        "chat_history_owner",
+        "chat_history_user_insert"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "chat_history",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "chat_history_owner",
+        "chat_history_user_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "client_availability",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "client_availability_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "clients_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "insurance_providers",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "insurance_providers_read",
+        "insurance_providers_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "locations",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "locations_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "authenticator",
+      "action": "DELETE",
+      "policies": [
+        "roles_admin_delete",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "authenticator",
+      "action": "INSERT",
+      "policies": [
+        "roles_admin_insert",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "roles_admin_write",
+        "roles_select_all"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "authenticator",
+      "action": "UPDATE",
+      "policies": [
+        "roles_admin_update",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "service_areas",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "service_areas_read",
+        "service_areas_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "service_lines",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "service_lines_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_note_templates",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "session_note_templates_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcript_segments",
+      "role": "authenticator",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create transcript segments\"",
+        "session_transcript_segments_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcript_segments",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_select_4c9184",
+        "session_transcript_segments_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcripts",
+      "role": "authenticator",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create session transcripts\"",
+        "session_transcripts_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcripts",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_select_4c9184",
+        "session_transcripts_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "sessions_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapist_availability",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "therapist_availability_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "authenticator",
+      "action": "INSERT",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "authenticator",
+      "action": "UPDATE",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_update_self"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "user_therapist_links",
+      "role": "authenticator",
+      "action": "SELECT",
+      "policies": [
+        "admin_all_ut_links",
+        "user_therapist_links_optimized"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "role": "cli_login_postgres",
+      "action": "INSERT",
+      "policies": [
+        "admin_all_ai_perf",
+        "ai_performance_metrics_insert_v2"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "admin_all_ai_perf",
+        "ai_performance_metrics_select_v2"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_processing_logs",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "\"Users can view AI processing logs for their sessions\"",
+        "admin_all_ai_proc_logs"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "cli_login_postgres",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create AI session notes\"",
+        "ai_session_notes_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "ai_session_notes_modify",
+        "consolidated_select_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "cli_login_postgres",
+      "action": "UPDATE",
+      "policies": [
+        "\"Therapists can update their AI session notes\"",
+        "ai_session_notes_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "authorization_services",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "authorization_services_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "authorizations",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "authorizations_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "billing_records",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "billing_records_modify",
+        "billing_records_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "chat_history",
+      "role": "cli_login_postgres",
+      "action": "INSERT",
+      "policies": [
+        "chat_history_owner",
+        "chat_history_user_insert"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "chat_history",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "chat_history_owner",
+        "chat_history_user_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "client_availability",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "client_availability_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "clients_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "insurance_providers",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "insurance_providers_read",
+        "insurance_providers_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "locations",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "locations_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "cli_login_postgres",
+      "action": "DELETE",
+      "policies": [
+        "roles_admin_delete",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "cli_login_postgres",
+      "action": "INSERT",
+      "policies": [
+        "roles_admin_insert",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "roles_admin_write",
+        "roles_select_all"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "cli_login_postgres",
+      "action": "UPDATE",
+      "policies": [
+        "roles_admin_update",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "service_areas",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "service_areas_read",
+        "service_areas_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "service_lines",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "service_lines_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_note_templates",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "session_note_templates_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcript_segments",
+      "role": "cli_login_postgres",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create transcript segments\"",
+        "session_transcript_segments_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcript_segments",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_select_4c9184",
+        "session_transcript_segments_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcripts",
+      "role": "cli_login_postgres",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create session transcripts\"",
+        "session_transcripts_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcripts",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_select_4c9184",
+        "session_transcripts_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "sessions_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapist_availability",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "therapist_availability_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "cli_login_postgres",
+      "action": "INSERT",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "cli_login_postgres",
+      "action": "UPDATE",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_update_self"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "user_therapist_links",
+      "role": "cli_login_postgres",
+      "action": "SELECT",
+      "policies": [
+        "admin_all_ut_links",
+        "user_therapist_links_optimized"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "role": "dashboard_consumer",
+      "action": "INSERT",
+      "policies": [
+        "admin_all_ai_perf",
+        "ai_performance_metrics_insert_v2"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "admin_all_ai_perf",
+        "ai_performance_metrics_select_v2"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_processing_logs",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "\"Users can view AI processing logs for their sessions\"",
+        "admin_all_ai_proc_logs"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "dashboard_consumer",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create AI session notes\"",
+        "ai_session_notes_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "ai_session_notes_modify",
+        "consolidated_select_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "dashboard_consumer",
+      "action": "UPDATE",
+      "policies": [
+        "\"Therapists can update their AI session notes\"",
+        "ai_session_notes_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "authorization_services",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "authorization_services_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "authorizations",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "authorizations_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "billing_records",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "billing_records_modify",
+        "billing_records_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "chat_history",
+      "role": "dashboard_consumer",
+      "action": "INSERT",
+      "policies": [
+        "chat_history_owner",
+        "chat_history_user_insert"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "chat_history",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "chat_history_owner",
+        "chat_history_user_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "client_availability",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "client_availability_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "clients_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "insurance_providers",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "insurance_providers_read",
+        "insurance_providers_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "locations",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "locations_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "dashboard_consumer",
+      "action": "DELETE",
+      "policies": [
+        "roles_admin_delete",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "dashboard_consumer",
+      "action": "INSERT",
+      "policies": [
+        "roles_admin_insert",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "roles_admin_write",
+        "roles_select_all"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "dashboard_consumer",
+      "action": "UPDATE",
+      "policies": [
+        "roles_admin_update",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "service_areas",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "service_areas_read",
+        "service_areas_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "service_lines",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "service_lines_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_note_templates",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "session_note_templates_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcript_segments",
+      "role": "dashboard_consumer",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create transcript segments\"",
+        "session_transcript_segments_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcript_segments",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_select_4c9184",
+        "session_transcript_segments_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcripts",
+      "role": "dashboard_consumer",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create session transcripts\"",
+        "session_transcripts_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcripts",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_select_4c9184",
+        "session_transcripts_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "sessions_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapist_availability",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "therapist_availability_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "dashboard_consumer",
+      "action": "INSERT",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "dashboard_consumer",
+      "action": "UPDATE",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_update_self"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "user_therapist_links",
+      "role": "dashboard_consumer",
+      "action": "SELECT",
+      "policies": [
+        "admin_all_ut_links",
+        "user_therapist_links_optimized"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "role": "dashboard_user",
+      "action": "INSERT",
+      "policies": [
+        "admin_all_ai_perf",
+        "ai_performance_metrics_insert_v2"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "admin_all_ai_perf",
+        "ai_performance_metrics_select_v2"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_processing_logs",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "\"Users can view AI processing logs for their sessions\"",
+        "admin_all_ai_proc_logs"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "dashboard_user",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create AI session notes\"",
+        "ai_session_notes_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "ai_session_notes_modify",
+        "consolidated_select_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "role": "dashboard_user",
+      "action": "UPDATE",
+      "policies": [
+        "\"Therapists can update their AI session notes\"",
+        "ai_session_notes_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "authorization_services",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "authorization_services_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "authorizations",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "authorizations_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "billing_records",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "billing_records_modify",
+        "billing_records_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "chat_history",
+      "role": "dashboard_user",
+      "action": "INSERT",
+      "policies": [
+        "chat_history_owner",
+        "chat_history_user_insert"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "chat_history",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "chat_history_owner",
+        "chat_history_user_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "client_availability",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "client_availability_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "clients_select",
+        "consolidated_all_4c9184"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "insurance_providers",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "insurance_providers_read",
+        "insurance_providers_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "locations",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "locations_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "dashboard_user",
+      "action": "DELETE",
+      "policies": [
+        "roles_admin_delete",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "dashboard_user",
+      "action": "INSERT",
+      "policies": [
+        "roles_admin_insert",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "roles_admin_write",
+        "roles_select_all"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "roles",
+      "role": "dashboard_user",
+      "action": "UPDATE",
+      "policies": [
+        "roles_admin_update",
+        "roles_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "service_areas",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "service_areas_read",
+        "service_areas_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "service_lines",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "service_lines_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_note_templates",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "session_note_templates_read"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcript_segments",
+      "role": "dashboard_user",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create transcript segments\"",
+        "session_transcript_segments_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcript_segments",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_select_4c9184",
+        "session_transcript_segments_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcripts",
+      "role": "dashboard_user",
+      "action": "INSERT",
+      "policies": [
+        "\"Therapists can create session transcripts\"",
+        "session_transcripts_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "session_transcripts",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_select_4c9184",
+        "session_transcripts_modify"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "sessions_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapist_availability",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "consolidated_all_4c9184",
+        "therapist_availability_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "dashboard_user",
+      "action": "INSERT",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_admin_write"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_select"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "role": "dashboard_user",
+      "action": "UPDATE",
+      "policies": [
+        "therapists_access_optimized",
+        "therapists_update_self"
+      ]
+    },
+    {
+      "schema": "public",
+      "table": "user_therapist_links",
+      "role": "dashboard_user",
+      "action": "SELECT",
+      "policies": [
+        "admin_all_ut_links",
+        "user_therapist_links_optimized"
+      ]
+    }
+  ],
+  "unused_indexes": [
+    {
+      "schema": "public",
+      "table": "feature_flag_audit_logs",
+      "index": "feature_flag_audit_logs_actor_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "feature_flag_audit_logs",
+      "index": "feature_flag_audit_logs_plan_code_idx"
+    },
+    {
+      "schema": "public",
+      "table": "feature_flags",
+      "index": "feature_flags_created_by_idx"
+    },
+    {
+      "schema": "public",
+      "table": "feature_flags",
+      "index": "feature_flags_updated_by_idx"
+    },
+    {
+      "schema": "public",
+      "table": "impersonation_audit",
+      "index": "impersonation_audit_revoked_by_idx"
+    },
+    {
+      "schema": "public",
+      "table": "organization_plans",
+      "index": "organization_plans_assigned_by_idx"
+    },
+    {
+      "schema": "public",
+      "table": "organization_plans",
+      "index": "organization_plans_plan_code_idx"
+    },
+    {
+      "schema": "public",
+      "table": "session_holds",
+      "index": "session_holds_client_time_excl"
+    },
+    {
+      "schema": "public",
+      "table": "session_holds",
+      "index": "session_holds_therapist_time_excl"
+    },
+    {
+      "schema": "public",
+      "table": "admin_actions",
+      "index": "admin_actions_org_idx"
+    },
+    {
+      "schema": "public",
+      "table": "admin_actions",
+      "index": "admin_actions_target_user_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "admin_invite_tokens",
+      "index": "admin_invite_tokens_expires_idx"
+    },
+    {
+      "schema": "public",
+      "table": "admin_invite_tokens",
+      "index": "admin_invite_tokens_org_idx"
+    },
+    {
+      "schema": "public",
+      "table": "ai_processing_logs",
+      "index": "ai_processing_logs_session_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "index": "ai_session_notes_client_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "index": "ai_session_notes_session_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "ai_session_notes",
+      "index": "ai_session_notes_therapist_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "authorization_services",
+      "index": "authorization_services_authorization_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "authorizations",
+      "index": "authorizations_insurance_provider_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "behavioral_patterns",
+      "index": "behavioral_patterns_created_by_idx"
+    },
+    {
+      "schema": "public",
+      "table": "billing_records",
+      "index": "billing_records_org_status_created_idx"
+    },
+    {
+      "schema": "public",
+      "table": "billing_records",
+      "index": "billing_records_session_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "billing_records",
+      "index": "billing_records_status_idx"
+    },
+    {
+      "schema": "public",
+      "table": "chat_history",
+      "index": "chat_history_user_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "client_availability",
+      "index": "client_availability_client_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "client_guardians",
+      "index": "client_guardians_client_active_idx"
+    },
+    {
+      "schema": "public",
+      "table": "client_guardians",
+      "index": "client_guardians_guardian_active_idx"
+    },
+    {
+      "schema": "public",
+      "table": "client_guardians",
+      "index": "client_guardians_org_active_idx"
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "index": "clients_org_status_active_idx"
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "index": "clients_organization_deleted_idx"
+    },
+    {
+      "schema": "public",
+      "table": "feature_flag_audit_logs",
+      "index": "feature_flag_audit_logs_action_idx"
+    },
+    {
+      "schema": "public",
+      "table": "feature_flag_audit_logs",
+      "index": "feature_flag_audit_logs_flag_idx"
+    },
+    {
+      "schema": "public",
+      "table": "feature_flag_audit_logs",
+      "index": "feature_flag_audit_logs_org_idx"
+    },
+    {
+      "schema": "public",
+      "table": "file_cabinet_settings",
+      "index": "file_cabinet_settings_category_idx"
+    },
+    {
+      "schema": "public",
+      "table": "admin_actions",
+      "index": "idx_admin_actions_action_type"
+    },
+    {
+      "schema": "public",
+      "table": "admin_actions",
+      "index": "idx_admin_actions_admin_user"
+    },
+    {
+      "schema": "public",
+      "table": "admin_actions",
+      "index": "idx_admin_actions_created_at"
+    },
+    {
+      "schema": "public",
+      "table": "ai_cache",
+      "index": "idx_ai_cache_created_at"
+    },
+    {
+      "schema": "public",
+      "table": "ai_cache",
+      "index": "idx_ai_cache_expires_at"
+    },
+    {
+      "schema": "public",
+      "table": "ai_cache",
+      "index": "idx_ai_cache_function_name"
+    },
+    {
+      "schema": "public",
+      "table": "ai_cache",
+      "index": "idx_ai_cache_last_accessed"
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "index": "idx_ai_metrics_timestamp"
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "index": "idx_ai_performance_function"
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "index": "idx_ai_performance_response_time"
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "index": "idx_ai_performance_timestamp"
+    },
+    {
+      "schema": "public",
+      "table": "ai_performance_metrics",
+      "index": "idx_ai_performance_user_id"
+    },
+    {
+      "schema": "public",
+      "table": "authorizations",
+      "index": "idx_authorizations_client_id"
+    },
+    {
+      "schema": "public",
+      "table": "authorizations",
+      "index": "idx_authorizations_provider_id"
+    },
+    {
+      "schema": "public",
+      "table": "authorizations",
+      "index": "idx_authorizations_status"
+    },
+    {
+      "schema": "public",
+      "table": "billing_records",
+      "index": "idx_billing_records_organization_created_at"
+    },
+    {
+      "schema": "public",
+      "table": "billing_records",
+      "index": "idx_billing_records_organization_status"
+    },
+    {
+      "schema": "public",
+      "table": "client_guardians",
+      "index": "idx_client_guardians_created_by"
+    },
+    {
+      "schema": "public",
+      "table": "client_guardians",
+      "index": "idx_client_guardians_deleted_by"
+    },
+    {
+      "schema": "public",
+      "table": "client_guardians",
+      "index": "idx_client_guardians_updated_by"
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "index": "idx_clients_created_by"
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "index": "idx_clients_deleted_by"
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "index": "idx_clients_full_name"
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "index": "idx_clients_organization_client_id"
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "index": "idx_clients_organization_status"
+    },
+    {
+      "schema": "public",
+      "table": "clients",
+      "index": "idx_clients_updated_by"
+    },
+    {
+      "schema": "public",
+      "table": "conversations",
+      "index": "idx_conversations_user_id"
+    },
+    {
+      "schema": "public",
+      "table": "db_performance_metrics",
+      "index": "idx_db_metrics_timestamp"
+    },
+    {
+      "schema": "public",
+      "table": "error_logs",
+      "index": "idx_error_logs_resolved_by"
+    },
+    {
+      "schema": "public",
+      "table": "error_logs",
+      "index": "idx_error_logs_user_id"
+    },
+    {
+      "schema": "public",
+      "table": "function_performance_logs",
+      "index": "idx_function_performance_logs_executed_by"
+    },
+    {
+      "schema": "public",
+      "table": "impersonation_revocation_queue",
+      "index": "idx_impersonation_revocation_queue_audit_id"
+    },
+    {
+      "schema": "public",
+      "table": "organization_feature_flags",
+      "index": "idx_organization_feature_flags_created_by"
+    },
+    {
+      "schema": "public",
+      "table": "organization_feature_flags",
+      "index": "idx_organization_feature_flags_updated_by"
+    },
+    {
+      "schema": "public",
+      "table": "organizations",
+      "index": "idx_organizations_created_by"
+    },
+    {
+      "schema": "public",
+      "table": "organizations",
+      "index": "idx_organizations_updated_by"
+    },
+    {
+      "schema": "public",
+      "table": "session_cpt_entries",
+      "index": "idx_session_cpt_entries_cpt_code_id"
+    },
+    {
+      "schema": "public",
+      "table": "session_holds",
+      "index": "idx_session_holds_session_id"
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "index": "idx_sessions_client_start_time"
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "index": "idx_sessions_organization_client"
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "index": "idx_sessions_organization_start_time"
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "index": "idx_sessions_organization_therapist"
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "index": "idx_sessions_start_time"
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "index": "idx_sessions_therapist_start_time"
+    },
+    {
+      "schema": "public",
+      "table": "therapist_certifications",
+      "index": "idx_therapist_certifications_therapist_id"
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "index": "idx_therapists_deleted_by"
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "index": "idx_therapists_organization_status"
+    },
+    {
+      "schema": "public",
+      "table": "user_roles",
+      "index": "idx_user_roles_role_id_active"
+    },
+    {
+      "schema": "public",
+      "table": "user_roles",
+      "index": "idx_user_roles_user_id_active"
+    },
+    {
+      "schema": "public",
+      "table": "user_therapist_links",
+      "index": "idx_user_therapist_links_therapist_id"
+    },
+    {
+      "schema": "public",
+      "table": "impersonation_audit",
+      "index": "impersonation_audit_active_idx"
+    },
+    {
+      "schema": "public",
+      "table": "impersonation_audit",
+      "index": "impersonation_audit_actor_idx"
+    },
+    {
+      "schema": "public",
+      "table": "impersonation_audit",
+      "index": "impersonation_audit_target_idx"
+    },
+    {
+      "schema": "public",
+      "table": "locations",
+      "index": "locations_name_idx"
+    },
+    {
+      "schema": "public",
+      "table": "organization_feature_flags",
+      "index": "organization_feature_flags_flag_idx"
+    },
+    {
+      "schema": "public",
+      "table": "organization_feature_flags",
+      "index": "organization_feature_flags_org_idx"
+    },
+    {
+      "schema": "public",
+      "table": "service_lines",
+      "index": "service_lines_name_idx"
+    },
+    {
+      "schema": "public",
+      "table": "session_cpt_entries",
+      "index": "session_cpt_entries_org_session_idx"
+    },
+    {
+      "schema": "public",
+      "table": "session_cpt_entries",
+      "index": "session_cpt_entries_org_session_line_idx"
+    },
+    {
+      "schema": "public",
+      "table": "session_cpt_entries",
+      "index": "session_cpt_entries_session_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "session_cpt_modifiers",
+      "index": "session_cpt_modifiers_entry_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "session_cpt_modifiers",
+      "index": "session_cpt_modifiers_modifier_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "session_holds",
+      "index": "session_holds_expires_at_idx"
+    },
+    {
+      "schema": "public",
+      "table": "session_note_templates",
+      "index": "session_note_templates_created_by_idx"
+    },
+    {
+      "schema": "public",
+      "table": "session_transcript_segments",
+      "index": "session_transcript_segments_session_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "session_transcripts",
+      "index": "session_transcripts_session_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "index": "sessions_client_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "index": "sessions_org_therapist_start_time_idx"
+    },
+    {
+      "schema": "public",
+      "table": "sessions",
+      "index": "sessions_therapist_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "therapist_availability",
+      "index": "therapist_availability_therapist_id_idx"
+    },
+    {
+      "schema": "public",
+      "table": "therapists",
+      "index": "therapists_organization_deleted_idx"
+    },
+    {
+      "schema": "public",
+      "table": "user_roles",
+      "index": "user_roles_granted_by_idx"
+    }
+  ]
+}

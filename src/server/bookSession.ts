@@ -418,8 +418,15 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
       })),
     });
   } catch (error) {
+    const cancelIdempotencyKey = payload.idempotencyKey
+      ? `cancel:${payload.idempotencyKey}`
+      : `cancel:${hold.holdKey}`;
     try {
-      await cancelSessionHold({ holdKey: hold.holdKey, accessToken: payload.accessToken });
+      await cancelSessionHold({
+        holdKey: hold.holdKey,
+        idempotencyKey: cancelIdempotencyKey,
+        accessToken: payload.accessToken,
+      });
     } catch (releaseError) {
       console.warn("Failed to release session hold after confirmation error", releaseError);
     }

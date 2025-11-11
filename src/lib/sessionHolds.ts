@@ -44,6 +44,8 @@ interface EdgeError {
   success: false;
   error?: string;
   code?: string;
+  retryAfter?: string | null;
+  retryAfterSeconds?: number | null;
 }
 
 type HoldEdgeResponse = EdgeSuccess<{
@@ -124,7 +126,25 @@ export async function requestSessionHold(payload: HoldRequest): Promise<HoldResp
   }
 
   if (!response.ok || !body || !body.success) {
-    throw toError(body?.error, "Failed to reserve session slot");
+    const error = toError(body?.error, "Failed to reserve session slot") as Error & {
+      code?: string;
+      status?: number;
+      retryAfter?: string | null;
+      retryAfterSeconds?: number | null;
+    };
+    error.status = response.status;
+    if (body && !body.success) {
+      if (typeof body.code === "string") {
+        error.code = body.code;
+      }
+      if ("retryAfter" in body) {
+        error.retryAfter = body.retryAfter ?? null;
+      }
+      if ("retryAfterSeconds" in body && typeof body.retryAfterSeconds === "number") {
+        error.retryAfterSeconds = body.retryAfterSeconds;
+      }
+    }
+    throw error;
   }
 
   const holds = Array.isArray(body.data.holds) && body.data.holds.length > 0
@@ -197,7 +217,25 @@ export async function confirmSessionBooking(payload: ConfirmRequest): Promise<Co
   }
 
   if (!response.ok || !body || !body.success) {
-    throw toError(body?.error, "Failed to confirm session");
+    const error = toError(body?.error, "Failed to confirm session") as Error & {
+      code?: string;
+      status?: number;
+      retryAfter?: string | null;
+      retryAfterSeconds?: number | null;
+    };
+    error.status = response.status;
+    if (body && !body.success) {
+      if (typeof body.code === "string") {
+        error.code = body.code;
+      }
+      if ("retryAfter" in body) {
+        error.retryAfter = body.retryAfter ?? null;
+      }
+      if ("retryAfterSeconds" in body && typeof body.retryAfterSeconds === "number") {
+        error.retryAfterSeconds = body.retryAfterSeconds;
+      }
+    }
+    throw error;
   }
 
   const { session, sessions, roundedDurationMinutes } = body.data;

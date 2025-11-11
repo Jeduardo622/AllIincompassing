@@ -247,6 +247,7 @@ describe("bookSession", () => {
     await expect(bookSession(basePayload)).rejects.toThrow("unable to confirm");
     expect(mockedCancelSessionHold).toHaveBeenCalledWith({
       holdKey: "hold-key",
+      idempotencyKey: "cancel:hold-key",
       accessToken: basePayload.accessToken,
     });
     expect(mockedPersistSessionCptMetadata).not.toHaveBeenCalled();
@@ -389,7 +390,7 @@ describe("bookSession", () => {
     const therapistId = basePayload.session.therapist_id;
 
     const issuedHolds: Array<{ holdKey: string; clientId: string }> = [];
-    const cancelledHoldKeys: string[] = [];
+    const cancelledHolds: Array<{ holdKey: string; idempotencyKey?: string }> = [];
     const confirmedSlots = new Map<string, Session>();
 
     mockedRequestSessionHold.mockImplementation(async ({ clientId }) => {
@@ -451,8 +452,8 @@ describe("bookSession", () => {
       };
     });
 
-    mockedCancelSessionHold.mockImplementation(async ({ holdKey }) => {
-      cancelledHoldKeys.push(holdKey);
+    mockedCancelSessionHold.mockImplementation(async ({ holdKey, idempotencyKey }) => {
+      cancelledHolds.push({ holdKey, idempotencyKey });
       return { released: true };
     });
 
@@ -495,9 +496,13 @@ describe("bookSession", () => {
     expect(losingHold).toBeDefined();
 
     if (losingHold) {
-      expect(cancelledHoldKeys).toContain(losingHold.holdKey);
+      expect(cancelledHolds).toContainEqual(expect.objectContaining({
+        holdKey: losingHold.holdKey,
+        idempotencyKey: `cancel:${losingHold.holdKey}`,
+      }));
       expect(mockedCancelSessionHold).toHaveBeenCalledWith({
         holdKey: losingHold.holdKey,
+        idempotencyKey: `cancel:${losingHold.holdKey}`,
         accessToken: basePayload.accessToken,
       });
     }

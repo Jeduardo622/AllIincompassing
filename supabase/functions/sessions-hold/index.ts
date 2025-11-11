@@ -9,6 +9,8 @@ import {
 } from "../_shared/timezone.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 import { evaluateTherapistAuthorization } from "../_shared/authorization.ts";
+import { recordSessionAuditEvent } from "../_shared/audit.ts";
+import { resolveSchedulingRetryAfter } from "../_shared/retry-after.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,6 +33,30 @@ interface HoldPayload extends TimezoneValidationPayload {
   hold_seconds?: number;
   occurrences?: HoldOccurrencePayload[];
 }
+
+interface HoldRecord {
+  hold_key: string;
+  id: string;
+  session_id: string | null;
+  start_time: string;
+  end_time: string;
+  expires_at: string;
+}
+
+type ConflictCode =
+  | "THERAPIST_CONFLICT"
+  | "CLIENT_CONFLICT"
+  | "THERAPIST_HOLD_CONFLICT"
+  | "CLIENT_HOLD_CONFLICT"
+  | "HOLD_EXISTS";
+
+const conflictDimensions: Record<ConflictCode, Array<"therapist" | "client">> = {
+  THERAPIST_CONFLICT: ["therapist"],
+  CLIENT_CONFLICT: ["client"],
+  THERAPIST_HOLD_CONFLICT: ["therapist"],
+  CLIENT_HOLD_CONFLICT: ["client"],
+  HOLD_EXISTS: ["therapist", "client"],
+};
 
 function jsonResponse(
   body: Record<string, unknown>,
@@ -74,9 +100,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    const respond = async (body: Record<string, unknown>, status: number = 200) => {
+    const respond = async (
+      body: Record<string, unknown>,
+      status: number = 200,
+      headers: Record<string, string> = {},
+    ) => {
       if (!normalizedKey) {
-        return jsonResponse(body, status);
+        return jsonResponse(body, status, headers);
       }
 
       try {
@@ -91,7 +121,7 @@ Deno.serve(async (req) => {
         throw error;
       }
 
-      return jsonResponse(body, status, { "Idempotency-Key": normalizedKey });
+      return jsonResponse(body, status, { ...headers, "Idempotency-Key": normalizedKey });
     };
 
     const payload = await req.json() as HoldPayload;
@@ -122,7 +152,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const createdHolds: Array<{ hold_key: string; id: string; start_time: string; end_time: string; expires_at: string; }> = [];
+    const createdHolds: HoldRecord[] = [];
 
     for (const occurrence of occurrencePayloads) {
       const { data, error } = await supabaseAdmin.rpc("acquire_session_hold", {
@@ -152,6 +182,8 @@ Deno.serve(async (req) => {
           HOLD_EXISTS: 409,
           THERAPIST_CONFLICT: 409,
           CLIENT_CONFLICT: 409,
+          THERAPIST_HOLD_CONFLICT: 409,
+          CLIENT_HOLD_CONFLICT: 409,
           FORBIDDEN: 403,
         };
         const status = statusMap[data?.error_code as string] ?? 409;
@@ -163,11 +195,33 @@ Deno.serve(async (req) => {
             .in("hold_key", createdHolds.map((hold) => hold.hold_key));
         }
 
+        let headers: Record<string, string> = {};
+        let retryAfterIso: string | null = null;
+        const conflictCode = data?.error_code as ConflictCode | undefined;
+        if (conflictCode && conflictDimensions[conflictCode]) {
+          const retry = await resolveSchedulingRetryAfter(
+            supabaseAdmin,
+            {
+              startTime: occurrence.start_time,
+              endTime: occurrence.end_time,
+              therapistId: payload.therapist_id,
+              clientId: payload.client_id,
+            },
+            conflictDimensions[conflictCode],
+          );
+
+          retryAfterIso = retry.retryAfterIso;
+          if (retry.retryAfterSeconds !== null) {
+            headers = { "Retry-After": retry.retryAfterSeconds.toString() };
+          }
+        }
+
         return respond({
           success: false,
           error: data?.error_message ?? "Unable to hold session",
           code: data?.error_code,
-        }, status);
+          retryAfter: retryAfterIso,
+        }, status, headers);
       }
 
       const hold = data.hold as Record<string, string> | undefined;
@@ -181,12 +235,13 @@ Deno.serve(async (req) => {
         return respond({ success: false, error: "Hold response missing" }, 500);
       }
 
-      createdHolds.push(hold as {
-        hold_key: string;
-        id: string;
-        start_time: string;
-        end_time: string;
-        expires_at: string;
+      createdHolds.push({
+        hold_key: hold.hold_key as string,
+        id: hold.id as string,
+        session_id: (hold.session_id as string | null) ?? null,
+        start_time: hold.start_time as string,
+        end_time: hold.end_time as string,
+        expires_at: hold.expires_at as string,
       });
     }
 
@@ -194,6 +249,22 @@ Deno.serve(async (req) => {
     if (!primaryHold) {
       return respond({ success: false, error: "Failed to create hold" }, 500);
     }
+
+    await Promise.all(createdHolds
+      .filter((hold) => typeof hold.session_id === "string" && hold.session_id.length > 0)
+      .map(async (hold, index) => recordSessionAuditEvent(supabaseAdmin, {
+        sessionId: hold.session_id as string,
+        eventType: "hold_acquired",
+        actorId: user.id,
+        payload: {
+          holdKey: hold.hold_key,
+          startTime: hold.start_time,
+          endTime: hold.end_time,
+          expiresAt: hold.expires_at,
+          occurrenceIndex: index,
+          occurrences: createdHolds.length,
+        },
+      })));
 
     return respond({
       success: true,

@@ -159,7 +159,40 @@ describe("session holds API helpers", () => {
         timeZone: "UTC",
         accessToken: ACCESS_TOKEN,
       }),
-    ).rejects.toThrow(/Therapist already booked/);
+    ).rejects.toMatchObject({
+      message: expect.stringContaining("Therapist already booked"),
+      status: 409,
+    });
+  });
+
+  it("exposes retry metadata when a therapist conflict occurs", async () => {
+    const retryAfter = "2025-01-01T00:10:00Z";
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse({
+        success: false,
+        error: "Therapist already has a session during this time.",
+        code: "THERAPIST_CONFLICT",
+        retryAfter,
+        retryAfterSeconds: 120,
+      }, 409),
+    );
+
+    await expect(
+      requestSessionHold({
+        therapistId: "therapist",
+        clientId: "client",
+        startTime: "2025-01-01T00:00:00Z",
+        endTime: "2025-01-01T01:00:00Z",
+        startTimeOffsetMinutes: 0,
+        endTimeOffsetMinutes: 0,
+        timeZone: "UTC",
+        accessToken: ACCESS_TOKEN,
+      }),
+    ).rejects.toMatchObject({
+      code: "THERAPIST_CONFLICT",
+      retryAfter,
+      retryAfterSeconds: 120,
+    });
   });
 
   it("rejects a second hold when the slot is already reserved", async () => {
@@ -281,6 +314,39 @@ describe("session holds API helpers", () => {
       expect.objectContaining({ method: "POST" }),
       { accessToken: ACCESS_TOKEN },
     );
+  });
+
+  it("surfaces retry metadata when confirmation conflicts with an existing session", async () => {
+    const retryAfter = "2025-01-01T01:30:00Z";
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse({
+        success: false,
+        error: "Therapist already has a session during this time.",
+        code: "THERAPIST_CONFLICT",
+        retryAfter,
+        retryAfterSeconds: 300,
+      }, 409),
+    );
+
+    await expect(
+      confirmSessionBooking({
+        holdKey: "hold-key",
+        session: {
+          therapist_id: "therapist",
+          client_id: "client",
+          start_time: "2025-01-01T00:00:00Z",
+          end_time: "2025-01-01T01:00:00Z",
+        },
+        startTimeOffsetMinutes: 0,
+        endTimeOffsetMinutes: 0,
+        timeZone: "UTC",
+        accessToken: ACCESS_TOKEN,
+      }),
+    ).rejects.toMatchObject({
+      code: "THERAPIST_CONFLICT",
+      retryAfter,
+      retryAfterSeconds: 300,
+    });
   });
 
   it("normalizes duration_minutes using roundedDurationMinutes when provided", async () => {

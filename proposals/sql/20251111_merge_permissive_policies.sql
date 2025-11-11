@@ -45,6 +45,14 @@ begin
       ' OR '
     );
 
+    if using_expr is null or btrim(using_expr) = '' then
+      using_expr := null;
+    end if;
+
+    if check_expr is null or btrim(check_expr) = '' then
+      check_expr := null;
+    end if;
+
     new_polname := format(
       'consolidated_%s_%s',
       lower(rec.cmd),

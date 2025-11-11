@@ -13,6 +13,7 @@ import {
 } from "../_shared/org.ts";
 import { getLogger, type Logger } from "../_shared/logging.ts";
 import { increment } from "../_shared/metrics.ts";
+import { recordSessionAuditEvent } from "../_shared/audit.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
 
 const corsHeaders = {
@@ -33,6 +34,8 @@ interface SessionRecord {
   id: string;
   status: string;
   therapist_id: string | null;
+  start_time: string;
+  end_time: string;
 }
 
 interface SessionCancellationSummary {
@@ -187,7 +190,7 @@ async function handleHoldRelease(
   logger.info("hold.release.requested", { holdKey });
 
   const { data: hold, error } = await orgScopedQuery(db, "session_holds", orgId)
-    .select("id, therapist_id, client_id, start_time, end_time, expires_at")
+    .select("id, session_id, therapist_id, client_id, start_time, end_time, expires_at")
     .eq("hold_key", holdKey)
     .maybeSingle();
   increment("org_scoped_query_total", {
@@ -230,12 +233,29 @@ async function handleHoldRelease(
     .delete()
     .eq("id", hold.id)
     .eq("organization_id", orgId)
-    .select("id, hold_key, therapist_id, client_id, start_time, end_time, expires_at")
+    .select("id, session_id, hold_key, therapist_id, client_id, start_time, end_time, expires_at")
     .maybeSingle();
 
   if (deleteError) {
     logger.error("hold.release.failed", { holdKey, error: deleteError.message ?? "unknown" });
     throw new Error(deleteError.message ?? "Failed to release hold");
+  }
+
+  const releasedHold = deleted ?? hold;
+
+  if (releasedHold.session_id) {
+    await recordSessionAuditEvent(db, {
+      sessionId: releasedHold.session_id,
+      eventType: "hold_released",
+      actorId: userId,
+      payload: {
+        holdKey,
+        startTime: releasedHold.start_time,
+        endTime: releasedHold.end_time,
+        expiresAt: releasedHold.expires_at,
+      },
+      logger,
+    });
   }
 
   logger.info("hold.released", { holdKey });
@@ -247,7 +267,7 @@ async function handleHoldRelease(
 
   return respondSuccess({
     released: true,
-    hold: deleted ?? hold,
+    hold: releasedHold,
   });
 }
 
@@ -269,7 +289,7 @@ async function handleSessionCancellation(
   logger: Logger,
 ) {
   let query = orgScopedQuery(db, "sessions", orgId)
-    .select("id, status, therapist_id")
+    .select("id, status, therapist_id, start_time, end_time")
     .order("start_time", { ascending: true });
 
   if (payload.sessionIds.length > 0) {
@@ -359,6 +379,20 @@ async function handleSessionCancellation(
     if (updateError) {
       throw new Error(updateError.message ?? "Failed to cancel sessions");
     }
+
+    await Promise.all(sessions
+      .filter(session => cancellableIds.includes(session.id))
+      .map(session => recordSessionAuditEvent(db, {
+        sessionId: session.id,
+        eventType: "session_cancelled",
+        actorId: userId,
+        payload: {
+          reason: payload.reason,
+          startTime: session.start_time,
+          endTime: session.end_time,
+        },
+        logger,
+      })));
   }
 
   const alreadyCancelledIds = sessions

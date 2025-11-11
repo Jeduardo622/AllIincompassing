@@ -42,36 +42,7 @@ export type Database = {
           organization_id?: string | null
           target_user_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "admin_actions_admin_user_id_fkey"
-            columns: ["admin_user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "admin_actions_admin_user_id_fkey"
-            columns: ["admin_user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "admin_actions_target_user_id_fkey"
-            columns: ["target_user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "admin_actions_target_user_id_fkey"
-            columns: ["target_user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       admin_invite_tokens: {
         Row: {
@@ -104,22 +75,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["role_type"]
           token_hash?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "admin_invite_tokens_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "admin_invite_tokens_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       ai_cache: {
         Row: {
@@ -554,22 +510,7 @@ export type Database = {
           regex_pattern?: string
           updated_at?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "behavioral_patterns_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "behavioral_patterns_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       billing_modifiers: {
         Row: {
@@ -679,22 +620,7 @@ export type Database = {
           updated_at?: string | null
           user_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "chat_history_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "chat_history_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       client_availability: {
         Row: {
@@ -795,67 +721,11 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "client_guardians_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_guardians_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "client_guardians_deleted_by_fkey"
-            columns: ["deleted_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_guardians_deleted_by_fkey"
-            columns: ["deleted_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "client_guardians_guardian_id_fkey"
-            columns: ["guardian_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_guardians_guardian_id_fkey"
-            columns: ["guardian_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-          {
             foreignKeyName: "client_guardians_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_guardians_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_guardians_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1040,50 +910,7 @@ export type Database = {
           updated_by?: string | null
           zip_code?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "clients_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "clients_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "clients_deleted_by_fkey"
-            columns: ["deleted_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "clients_deleted_by_fkey"
-            columns: ["deleted_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "clients_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "clients_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       company_settings: {
         Row: {
@@ -1197,22 +1024,7 @@ export type Database = {
           updated_at?: string | null
           user_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "conversations_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "conversations_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       cpt_codes: {
         Row: {
@@ -1338,36 +1150,7 @@ export type Database = {
           user_agent?: string | null
           user_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "error_logs_resolved_by_fkey"
-            columns: ["resolved_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "error_logs_resolved_by_fkey"
-            columns: ["resolved_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "error_logs_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "error_logs_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       feature_flag_audit_logs: {
         Row: {
@@ -1404,20 +1187,6 @@ export type Database = {
           previous_state?: Json | null
         }
         Relationships: [
-          {
-            foreignKeyName: "feature_flag_audit_logs_actor_id_fkey"
-            columns: ["actor_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "feature_flag_audit_logs_actor_id_fkey"
-            columns: ["actor_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
           {
             foreignKeyName: "feature_flag_audit_logs_feature_flag_id_fkey"
             columns: ["feature_flag_id"]
@@ -1475,36 +1244,7 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "feature_flags_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "feature_flags_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "feature_flags_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "feature_flags_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       file_cabinet_settings: {
         Row: {
@@ -1573,22 +1313,7 @@ export type Database = {
           parameters?: Json | null
           result_size?: number | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "function_performance_logs_executed_by_fkey"
-            columns: ["executed_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "function_performance_logs_executed_by_fkey"
-            columns: ["executed_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       impersonation_audit: {
         Row: {
@@ -1639,50 +1364,7 @@ export type Database = {
           target_user_id?: string
           token_jti?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "impersonation_audit_actor_user_id_fkey"
-            columns: ["actor_user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "impersonation_audit_actor_user_id_fkey"
-            columns: ["actor_user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "impersonation_audit_revoked_by_fkey"
-            columns: ["revoked_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "impersonation_audit_revoked_by_fkey"
-            columns: ["revoked_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "impersonation_audit_target_user_id_fkey"
-            columns: ["target_user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "impersonation_audit_target_user_id_fkey"
-            columns: ["target_user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       impersonation_revocation_queue: {
         Row: {
@@ -1839,20 +1521,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "organization_feature_flags_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "organization_feature_flags_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-          {
             foreignKeyName: "organization_feature_flags_feature_flag_id_fkey"
             columns: ["feature_flag_id"]
             isOneToOne: false
@@ -1865,20 +1533,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "organization_feature_flags_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "organization_feature_flags_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1905,20 +1559,6 @@ export type Database = {
           plan_code?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "organization_plans_assigned_by_fkey"
-            columns: ["assigned_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "organization_plans_assigned_by_fkey"
-            columns: ["assigned_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
           {
             foreignKeyName: "organization_plans_organization_id_fkey"
             columns: ["organization_id"]
@@ -1966,36 +1606,7 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "organizations_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "organizations_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "organizations_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "organizations_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       performance_alerts: {
         Row: {
@@ -2154,22 +1765,7 @@ export type Database = {
           time_zone?: string | null
           updated_at?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "profiles_id_fkey"
-            columns: ["id"]
-            isOneToOne: true
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "profiles_id_fkey"
-            columns: ["id"]
-            isOneToOne: true
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       referring_providers: {
         Row: {
@@ -2384,6 +1980,61 @@ export type Database = {
         }
         Relationships: []
       }
+      session_audit_logs: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          event_payload: Json
+          event_type: string
+          id: string
+          organization_id: string
+          session_id: string
+          therapist_id: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          event_payload?: Json
+          event_type: string
+          id?: string
+          organization_id: string
+          session_id: string
+          therapist_id?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          event_payload?: Json
+          event_type?: string
+          id?: string
+          organization_id?: string
+          session_id?: string
+          therapist_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_audit_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_audit_logs_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_audit_logs_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       session_cpt_entries: {
         Row: {
           billed_minutes: number | null
@@ -2578,22 +2229,7 @@ export type Database = {
           template_type?: string
           updated_at?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "session_note_templates_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "session_note_templates_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       session_transcript_segments: {
         Row: {
@@ -3009,22 +2645,7 @@ export type Database = {
           weekly_hours_min?: number | null
           zip_code?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "therapists_deleted_by_fkey"
-            columns: ["deleted_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "therapists_deleted_by_fkey"
-            columns: ["deleted_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       user_profiles: {
         Row: {
@@ -3072,22 +2693,7 @@ export type Database = {
           time_zone?: string | null
           updated_at?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "user_profiles_id_fkey"
-            columns: ["id"]
-            isOneToOne: true
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "user_profiles_id_fkey"
-            columns: ["id"]
-            isOneToOne: true
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       user_roles: {
         Row: {
@@ -3119,39 +2725,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "user_roles_granted_by_fkey"
-            columns: ["granted_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "user_roles_granted_by_fkey"
-            columns: ["granted_by"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-          {
             foreignKeyName: "user_roles_role_id_fkey"
             columns: ["role_id"]
             isOneToOne: false
             referencedRelation: "roles"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "user_roles_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "user_roles_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -3189,22 +2767,7 @@ export type Database = {
           user_agent?: string | null
           user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "user_sessions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "user_sessions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
       user_therapist_links: {
         Row: {
@@ -3233,35 +2796,10 @@ export type Database = {
             referencedRelation: "therapists"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "user_therapist_links_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "user_therapist_links_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
         ]
       }
     }
     Views: {
-      admin_users: {
-        Row: {
-          created_at: string | null
-          email: string | null
-          id: string | null
-          raw_user_meta_data: Json | null
-          user_id: string | null
-          user_role_id: string | null
-        }
-        Relationships: []
-      }
       app_users_safe: {
         Row: {
           created_at: string | null
@@ -3278,22 +2816,7 @@ export type Database = {
           email?: string | null
           user_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "profiles_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: true
-            referencedRelation: "admin_users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "profiles_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: true
-            referencedRelation: "admin_users"
-            referencedColumns: ["user_id"]
-          },
-        ]
+        Relationships: []
       }
     }
     Functions: {
@@ -3464,17 +2987,10 @@ export type Database = {
       get_admin_users:
         | {
             Args: { organization_id?: string }
-            Returns: {
-              created_at: string | null
-              email: string | null
-              id: string | null
-              raw_user_meta_data: Json | null
-              user_id: string | null
-              user_role_id: string | null
-            }[]
+            Returns: Database["public"]["CompositeTypes"]["admin_user_row"][]
             SetofOptions: {
               from: "*"
-              to: "admin_users"
+              to: "admin_user_row"
               isOneToOne: false
               isSetofReturn: true
             }
@@ -3804,6 +3320,13 @@ export type Database = {
       }
       get_user_roles: { Args: { p_user_id?: string }; Returns: Json }
       get_user_therapist_id: { Args: never; Returns: string }
+      guardian_contact_metadata: {
+        Args: { p_guardian_id?: string }
+        Returns: {
+          client_id: string
+          metadata: Json
+        }[]
+      }
       insert_session_with_billing: {
         Args: {
           p_cpt_code: string
@@ -3919,6 +3442,15 @@ export type Database = {
           deleted_transcripts: number
         }[]
       }
+      record_session_audit: {
+        Args: {
+          p_actor_id?: string
+          p_event_payload?: Json
+          p_event_type: string
+          p_session_id: string
+        }
+        Returns: undefined
+      }
       remove_user_role: {
         Args: { removed_by_uuid?: string; role_name: string; user_uuid: string }
         Returns: boolean
@@ -3958,7 +3490,13 @@ export type Database = {
         | "super_admin"
     }
     CompositeTypes: {
-      [_ in never]: never
+      admin_user_row: {
+        id: string | null
+        user_role_id: string | null
+        user_id: string | null
+        email: string | null
+        created_at: string | null
+      }
     }
   }
 }

@@ -9,6 +9,8 @@ import {
 } from "../_shared/timezone.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 import { evaluateTherapistAuthorization } from "../_shared/authorization.ts";
+import { recordSessionAuditEvent } from "../_shared/audit.ts";
+import { resolveSchedulingRetryAfter } from "../_shared/retry-after.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,6 +30,13 @@ interface ConfirmPayload
   session: Record<string, unknown>;
   occurrences?: ConfirmOccurrencePayload[];
 }
+
+const conflictDimensions = {
+  THERAPIST_CONFLICT: ["therapist"] as const,
+  CLIENT_CONFLICT: ["client"] as const,
+};
+
+type ConflictCode = keyof typeof conflictDimensions;
 
 function jsonResponse(
   body: Record<string, unknown>,
@@ -71,9 +80,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    const respond = async (body: Record<string, unknown>, status: number = 200) => {
+    const respond = async (
+      body: Record<string, unknown>,
+      status: number = 200,
+      headers: Record<string, string> = {},
+    ) => {
       if (!normalizedKey) {
-        return jsonResponse(body, status);
+        return jsonResponse(body, status, headers);
       }
 
       try {
@@ -88,7 +101,7 @@ Deno.serve(async (req) => {
         throw error;
       }
 
-      return jsonResponse(body, status, { "Idempotency-Key": normalizedKey });
+      return jsonResponse(body, status, { ...headers, "Idempotency-Key": normalizedKey });
     };
 
     const payload = await req.json() as ConfirmPayload;
@@ -143,7 +156,7 @@ Deno.serve(async (req) => {
 
     const { data: holdRecords, error: holdFetchError } = await supabaseAdmin
       .from("session_holds")
-      .select("hold_key, therapist_id, client_id")
+      .select("hold_key, therapist_id, client_id, start_time, end_time")
       .in("hold_key", uniqueHoldKeys);
 
     if (holdFetchError) {
@@ -151,13 +164,20 @@ Deno.serve(async (req) => {
       return respond({ success: false, error: "Authorization lookup failed" }, 500);
     }
 
-    const holdAuthorizationMap = new Map<string, { therapist_id: string; client_id: string }>();
+    const holdAuthorizationMap = new Map<string, {
+      therapist_id: string;
+      client_id: string;
+      start_time: string;
+      end_time: string;
+    }>();
     if (Array.isArray(holdRecords)) {
       for (const record of holdRecords) {
         if (record?.hold_key && record?.therapist_id) {
           holdAuthorizationMap.set(record.hold_key, {
             therapist_id: record.therapist_id as string,
             client_id: record.client_id as string,
+            start_time: record.start_time as string,
+            end_time: record.end_time as string,
           });
         }
       }
@@ -209,11 +229,37 @@ Deno.serve(async (req) => {
           FORBIDDEN: 403,
         };
         const status = statusMap[data?.error_code as string] ?? 409;
+
+        let headers: Record<string, string> = {};
+        let retryAfterIso: string | null = null;
+        const conflictCode = data?.error_code as ConflictCode | undefined;
+        if (conflictCode && conflictDimensions[conflictCode]) {
+          const holdContext = holdAuthorizationMap.get(occurrence.hold_key);
+          if (holdContext) {
+            const retry = await resolveSchedulingRetryAfter(
+              supabaseAdmin,
+              {
+                startTime: holdContext.start_time,
+                endTime: holdContext.end_time,
+                therapistId: holdContext.therapist_id,
+                clientId: holdContext.client_id,
+              },
+              conflictDimensions[conflictCode] as Array<"therapist" | "client">,
+            );
+
+            retryAfterIso = retry.retryAfterIso;
+            if (retry.retryAfterSeconds !== null) {
+              headers = { "Retry-After": retry.retryAfterSeconds.toString() };
+            }
+          }
+        }
+
         return respond({
           success: false,
           error: data?.error_message ?? "Unable to confirm session",
           code: data?.error_code,
-        }, status);
+          retryAfter: retryAfterIso,
+        }, status, headers);
       }
 
       const session = data.session as Record<string, unknown> | undefined;
@@ -254,6 +300,28 @@ Deno.serve(async (req) => {
         duration_minutes: roundedDuration,
       };
     };
+
+    await Promise.all(confirmedSessions.map(async (session, index) => {
+      const sessionId = session?.id;
+      if (typeof sessionId !== "string" || sessionId.length === 0) {
+        return;
+      }
+
+      const occurrence = occurrencePayloads[index] ?? occurrencePayloads[0];
+      await recordSessionAuditEvent(supabaseAdmin, {
+        sessionId,
+        eventType: "session_confirmed",
+        actorId: user.id,
+        payload: {
+          holdKey: occurrence?.hold_key,
+          startTime: session?.start_time,
+          endTime: session?.end_time,
+          roundedDurationMinutes: roundedDuration,
+          occurrenceIndex: index,
+          occurrences: confirmedSessions.length,
+        },
+      });
+    }));
 
     return respond({
       success: true,

@@ -32,3 +32,13 @@ These merges will reduce the Supabase `multiple_permissive_policies` warnings fo
 - Migrations `20251111095000_rls_phase2.sql` + hosted Supabase apply eliminated the duplicate-policy advisories for `public.therapists`, `public.ai_session_notes`, and `public.ai_performance_metrics`.
 - Post-migration advisor run shows `multiple_permissive_policies` WARNs reduced from 288 → 159 overall (zero on the phase-2 targets).
 
+### Phase 3 Targets (Work-in-progress)
+
+| Table | Primary Overlaps | Proposed Direction |
+| --- | --- | --- |
+| `public.billing_records` | `billing_records_modify` (`public`,`ALL`) + `org_write_billing_records` (`authenticated`,`ALL`) + `billing_records_select` (`public`,`SELECT`) + consolidated select | Replace with scoped `billing_records_mutate_scope` (`authenticated`) and `billing_records_select_scope` (admins + org members) to avoid broad `public` `ALL` policies. |
+| `public.clients` | `consolidated_all_4c9184` (`public`,`ALL`) + org read/write policies | Split into `clients_select_scope` and `clients_mutate_scope` per role; restrict admin-only actions and rely on org-specific policies. |
+| `public.sessions` | `consolidated_all_4c9184` (`public`,`ALL`) + org write/select | Refine to admin/org-specific insert/update/delete and selective public read (if needed). |
+| `public.ai_processing_logs` / `public.ai_cache` | Legacy `admin_all_*` `public` `ALL` policies overlapping with authenticated admin manage policies | Drop `public` `ALL` policies; rely on authenticated admin checks + targeted SELECT/INSERT rules. |
+| `public.authorization_services` / `public.authorizations` et al. | Shared `consolidated_all_4c9184` `public` `ALL` policies | Rework to organization-scoped SELECT/UPDATE without `public` `ALL`. |
+

@@ -1,4 +1,5 @@
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
 type EnvGroup = {
   readonly name: string;
@@ -133,13 +134,30 @@ export function checkSecretsAndReport(env: NodeJS.ProcessEnv): { missing: string
   return { missing, exitCode };
 }
 
+const moduleFilePath = fileURLToPath(import.meta.url);
+
 const isExecutedDirectly = (() => {
   const executedFile = process.argv[1];
   if (!executedFile) {
     return false;
   }
 
-  return import.meta.url === pathToFileURL(executedFile).href;
+  const executedFileString =
+    typeof executedFile === 'string'
+      ? executedFile
+      : typeof executedFile === 'object' && executedFile !== null && 'href' in executedFile
+        ? String((executedFile as { href: string }).href)
+        : String(executedFile);
+
+  if (!executedFileString) {
+    return false;
+  }
+
+  const normalizedPath = executedFileString.startsWith('file:')
+    ? fileURLToPath(executedFileString)
+    : path.resolve(executedFileString);
+
+  return path.resolve(normalizedPath) === moduleFilePath;
 })();
 
 if (isExecutedDirectly) {

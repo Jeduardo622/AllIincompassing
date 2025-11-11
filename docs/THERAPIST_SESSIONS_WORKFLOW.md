@@ -86,6 +86,12 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
 ];
 ```
 
+## Front-End Guardrails (2025-11-11)
+- `/schedule` defaults the therapist filter to the signed-in therapist when appropriate, highlights the scoped filter, and pre-fills the session modal so new bookings stay within the tenant boundary.
+- Session booking mutations elevate Supabase `409` conflicts into retry guidance (“slot taken — refresh or pick another time”) without dismissing the modal, keeping therapists in context.
+- `/clients` and `/clients/:clientId` short-circuit client fetches when an organization isn’t selected, aligning the UI with RLS policies and eliminating cross-tenant listing attempts.
+- Client creation now stamps the active organization ID in the payload so new records inherit the correct tenant automatically.
+
 ## Therapist Session Lifecycle
 1. **Context loading**
    - Therapist lands on `/schedule`, triggering Supabase queries constrained by `sessions_scoped_access`. Filter by `organization_id` (JWT claim) and `therapist_id = auth.uid()` to honor the multi-tenant guidance captured in the ABA reference.

@@ -9,6 +9,8 @@ interface SessionFiltersProps {
   selectedClient: string | null;
   onTherapistChange: (therapistId: string | null) => void;
   onClientChange: (clientId: string | null) => void;
+  scopedTherapistId?: string | null;
+  scopedClientId?: string | null;
 }
 
 export default function SessionFilters({
@@ -18,7 +20,12 @@ export default function SessionFilters({
   selectedClient,
   onTherapistChange,
   onClientChange,
+  scopedTherapistId,
+  scopedClientId,
 }: SessionFiltersProps) {
+  const therapistScoped = Boolean(scopedTherapistId && selectedTherapist === scopedTherapistId);
+  const clientScoped = Boolean(scopedClientId && selectedClient === scopedClientId);
+
   return (
     <div className="flex items-center space-x-4 bg-white dark:bg-dark-lighter p-4 rounded-lg shadow mb-6">
       <Filter className="w-5 h-5 text-gray-500 dark:text-gray-400 flex-shrink-0" />
@@ -40,6 +47,11 @@ export default function SessionFilters({
               </option>
             ))}
           </select>
+          {therapistScoped && (
+            <p className="mt-2 text-xs text-blue-600 dark:text-blue-300">
+              Showing sessions for your therapist account. Select &quot;All Therapists&quot; to view the full organization.
+            </p>
+          )}
         </div>
 
         <div className="flex-1">
@@ -59,6 +71,11 @@ export default function SessionFilters({
               </option>
             ))}
           </select>
+          {clientScoped && (
+            <p className="mt-2 text-xs text-blue-600 dark:text-blue-300">
+              Client filter applied automatically from the current context.
+            </p>
+          )}
         </div>
       </div>
     </div>

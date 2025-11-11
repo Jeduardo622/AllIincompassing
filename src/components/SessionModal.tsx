@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { format, addHours, addMinutes, parseISO } from 'date-fns';
 import {
@@ -25,6 +25,10 @@ interface SessionModalProps {
   clients: Client[];
   existingSessions: Session[];
   timeZone?: string;
+  defaultTherapistId?: string | null;
+  defaultClientId?: string | null;
+  retryHint?: string | null;
+  onRetryHintDismiss?: () => void;
 }
 
 export default function SessionModal({
@@ -38,6 +42,10 @@ export default function SessionModal({
   clients,
   existingSessions,
   timeZone,
+  defaultTherapistId,
+  defaultClientId,
+  retryHint,
+  onRetryHintDismiss,
 }: SessionModalProps) {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [alternativeTimes, setAlternativeTimes] = useState<AlternativeTime[]>([]);
@@ -110,8 +118,8 @@ export default function SessionModal({
   
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm({
     defaultValues: {
-      therapist_id: session?.therapist_id || '',
-      client_id: session?.client_id || '',
+      therapist_id: session?.therapist_id || defaultTherapistId || '',
+      client_id: session?.client_id || defaultClientId || '',
       start_time: getDefaultStartTime(),
       end_time: session?.end_time
         ? formatLocalInput(session.end_time)
@@ -130,6 +138,45 @@ export default function SessionModal({
 
   const selectedTherapist = therapists.find(t => t.id === therapistId);
   const selectedClient = clients.find(c => c.id === clientId);
+
+  useEffect(() => {
+    if (session?.therapist_id) {
+      setValue('therapist_id', session.therapist_id);
+    } else if (defaultTherapistId) {
+      setValue('therapist_id', defaultTherapistId);
+    }
+  }, [session?.therapist_id, defaultTherapistId, setValue]);
+
+  useEffect(() => {
+    if (session?.client_id) {
+      setValue('client_id', session.client_id);
+    } else if (defaultClientId) {
+      setValue('client_id', defaultClientId);
+    }
+  }, [session?.client_id, defaultClientId, setValue]);
+
+  const previousFormValues = useRef({
+    startTime,
+    therapistId,
+    clientId,
+  });
+
+  useEffect(() => {
+    if (!onRetryHintDismiss) {
+      previousFormValues.current = { startTime, therapistId, clientId };
+      return;
+    }
+
+    const previous = previousFormValues.current;
+    if (
+      previous.startTime !== startTime ||
+      previous.therapistId !== therapistId ||
+      previous.clientId !== clientId
+    ) {
+      onRetryHintDismiss();
+    }
+    previousFormValues.current = { startTime, therapistId, clientId };
+  }, [startTime, therapistId, clientId, onRetryHintDismiss]);
 
   useEffect(() => {
     if (startTime && therapistId && clientId) {
@@ -321,6 +368,26 @@ export default function SessionModal({
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4">
           <form id="session-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+            {retryHint && (
+              <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/40 dark:bg-blue-900/20">
+                <AlertCircle className="w-5 h-5 text-blue-500 dark:text-blue-300 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-blue-800 dark:text-blue-100 space-y-2">
+                  <div>
+                    <p className="font-medium">Session not saved</p>
+                    <p className="mt-1">{retryHint}</p>
+                  </div>
+                  {onRetryHintDismiss && (
+                    <button
+                      type="button"
+                      onClick={onRetryHintDismiss}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-500 dark:text-blue-300 dark:hover:text-blue-200"
+                    >
+                      Dismiss
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             {conflicts.length > 0 && (
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 rounded-lg p-4">
                 <div className="flex items-center mb-2">

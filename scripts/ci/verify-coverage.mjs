@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const COVERAGE_FILE = path.join(process.cwd(), 'coverage', 'coverage-summary.json');
 const BASELINE_FILE = path.join(process.cwd(), 'reports', 'coverage-baseline.json');
@@ -125,13 +125,30 @@ const run = async () => {
 
 export { createCoverageEntryMap, normalizeModulePath, run };
 
+const scriptFilePath = fileURLToPath(import.meta.url);
+
 const executedViaCli = () => {
   const entryPoint = process.argv[1];
   if (!entryPoint) {
     return false;
   }
 
-  return import.meta.url === pathToFileURL(entryPoint).href;
+  const entryPointString =
+    typeof entryPoint === 'string'
+      ? entryPoint
+      : typeof entryPoint === 'object' && entryPoint !== null && 'href' in entryPoint
+        ? String(entryPoint.href)
+        : String(entryPoint);
+
+  if (!entryPointString) {
+    return false;
+  }
+
+  const normalizedEntry = entryPointString.startsWith('file:')
+    ? fileURLToPath(entryPointString)
+    : path.resolve(entryPointString);
+
+  return path.resolve(normalizedEntry) === scriptFilePath;
 };
 
 if (executedViaCli()) {

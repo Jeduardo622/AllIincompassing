@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '../src/test/setup';
+import { stubDenoEnv } from './utils/stubDeno';
 
 const envValues = new Map<string, string>([
   ['SUPABASE_URL', 'http://localhost'],
@@ -25,21 +26,7 @@ interface TestUserContext {
   profile: TestProfile;
 }
 
-type GlobalWithDeno = typeof globalThis & {
-  Deno?: {
-    env: {
-      get: (key: string) => string;
-    };
-  };
-};
-
-(globalThis as GlobalWithDeno).Deno = {
-  env: {
-    get(key: string) {
-      return envValues.get(key) ?? '';
-    },
-  },
-};
+stubDenoEnv((key) => envValues.get(key) ?? '');
 
 const logApiAccess = vi.fn();
 const userContexts = new Map<string, TestUserContext>();

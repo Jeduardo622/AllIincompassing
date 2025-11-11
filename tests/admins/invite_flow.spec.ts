@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { stubDenoEnv } from '../utils/stubDeno';
 
 type TestRole = 'client' | 'therapist' | 'admin' | 'super_admin';
 
@@ -15,10 +16,6 @@ type TestProfile = TestUser & {
 type TestUserContext = {
   user: TestUser;
   profile: TestProfile;
-};
-
-type GlobalWithDeno = typeof globalThis & {
-  Deno?: { env: { get: (key: string) => string } };
 };
 
 interface StoredInviteToken {
@@ -39,13 +36,7 @@ const envValues = new Map<string, string>([
   ['ADMIN_PORTAL_URL', 'https://admin.example.com'],
 ]);
 
-(globalThis as GlobalWithDeno).Deno = {
-  env: {
-    get(key: string) {
-      return envValues.get(key) ?? '';
-    },
-  },
-};
+stubDenoEnv((key) => envValues.get(key) ?? '');
 
 const logApiAccess = vi.fn();
 const assertAdminOrSuperAdmin = vi.fn(async () => {});

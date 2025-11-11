@@ -2,18 +2,17 @@
 
 ## Supabase Performance Advisories
 
-- `mcp_supabase_get_advisors(type='performance')` re-run at 2025-11-11 still reports the original 394 findings because the newly added migrations have not been applied to the hosted project yet.
-- Once `supabase db push -p wnnjeqheqxxyrgsjmygy` is executed, re-run the advisor to confirm that:
-  - `multiple_permissive_policies` clears for the targeted tables (`roles`, `therapists`, `ai_session_notes`, `ai_performance_metrics`, `chat_history`, `session_transcripts`, `session_transcript_segments`);
-  - `unused_index` counts drop for the tables covered by `20251111091000_prune_unused_indexes.sql`.
+- After applying `perf_rls_consolidation`, `prune_unused_indexes`, and `rls_phase2`, the performance linter now reports 250 findings (159 `multiple_permissive_policies`, 80 `unused_index`, 11 `unindexed_foreign_keys`), down from 394 earlier in the day.
+- Target tables (`therapists`, `ai_session_notes`, `ai_performance_metrics`) no longer appear in the duplicate-policy advisory set.
+- Remaining WARNs are concentrated on other org-scoped tables and will be addressed in a future pass.
 
 ## JS Toolchain
 
-- No frontend/backend TypeScript source files were modified in this iteration, so lint/test/type-check runs are expected to remain unchanged.
-- Recommended post-migration smoke:
-  - `npm test` – confirm integration coverage for therapist roster, AI notes, chat flows.
-  - `eslint .` – ensure SQL-driven changes do not introduce generated type diffs.
-  - `tsc --noEmit` – verify generated Supabase types continue to compile once the schema diff is pushed.
+- Completed smoke suite:
+  - `npm test`
+  - `npm run lint`
+  - `npm run typecheck`
+- No TypeScript type regeneration required (policy-only changes).
 
 ## Follow-up Actions
 

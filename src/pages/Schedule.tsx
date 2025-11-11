@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useLayoutEffect } from "react";
+import React, { useState, useMemo, useCallback, useLayoutEffect, useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, startOfWeek, addDays, endOfWeek } from "date-fns";
 import { getTimezoneOffset, fromZonedTime as zonedTimeToUtc } from "date-fns-tz";
@@ -28,6 +28,8 @@ import { supabase } from "../lib/supabase";
 import { showError, showSuccess } from "../lib/toast";
 import { logger } from "../lib/logger/logger";
 import { toError } from "../lib/logger/normalizeError";
+import { useAuth } from "../lib/authContext";
+import { useActiveOrganizationId } from "../lib/organization";
 import type {
   BookSessionApiRequestBody,
   BookSessionApiResponse,
@@ -314,7 +316,15 @@ async function callBookSessionApi(
 
   if (!response.ok || !body) {
     const message = body?.error ?? "Failed to book session";
-    throw new Error(message);
+    const enhancedError = new Error(message) as Error & { status?: number; retryHint?: string };
+    enhancedError.status = response.status;
+    if (response.status === 409) {
+      enhancedError.retryHint =
+        typeof body?.hint === 'string' && body.hint.length > 0
+          ? body.hint
+          : 'The selected slot was just taken. Refresh the schedule or choose a different time.';
+    }
+    throw enhancedError;
   }
 
   if (!body.success || !body.data) {
@@ -545,6 +555,8 @@ const DayView = React.memo(
 DayView.displayName = "DayView";
 
 const Schedule = React.memo(() => {
+  const { user, profile } = useAuth();
+  const activeOrganizationId = useActiveOrganizationId();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [view, setView] = useState<"day" | "week" | "matrix">("week");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -558,8 +570,39 @@ const Schedule = React.memo(() => {
     null,
   );
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
+  const [scopedTherapistId, setScopedTherapistId] = useState<string | null>(null);
+  const [scopedClientId, setScopedClientId] = useState<string | null>(null);
+  const [retryHint, setRetryHint] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
+
+  const handleScheduleMutationError = useCallback((error: unknown) => {
+    const normalized = toError(error, "Schedule mutation failed");
+    const status = typeof (error as { status?: number } | null | undefined)?.status === 'number'
+      ? (error as { status?: number }).status
+      : undefined;
+
+    if (status === 409) {
+      const hintCandidate = (error as { retryHint?: string } | null | undefined)?.retryHint;
+      const hint = typeof hintCandidate === 'string' && hintCandidate.length > 0
+        ? hintCandidate
+        : 'The selected time slot was just booked. Refresh the schedule or choose a different time.';
+
+      logger.warn('Schedule mutation conflict', {
+        metadata: {
+          hint,
+          error: normalized.message,
+        },
+      });
+
+      setRetryHint(hint);
+      showError(`${normalized.message}. ${hint}`);
+      return;
+    }
+
+    setRetryHint(null);
+    showError(normalized);
+  }, []);
 
   const userTimeZone = useMemo(() => {
     try {
@@ -775,6 +818,83 @@ const Schedule = React.memo(() => {
     clients: batchedData?.clients || dropdownData?.clients || [],
   };
 
+  useEffect(() => {
+    if (selectedTherapist) {
+      return;
+    }
+    if (profile?.role !== 'therapist') {
+      return;
+    }
+
+    const metadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
+    const candidateIds = new Set<string>();
+
+    if (typeof profile?.id === 'string') {
+      candidateIds.add(profile.id);
+    }
+
+    const metadataTherapistSnake = typeof metadata.therapist_id === 'string' ? metadata.therapist_id.trim() : null;
+    if (metadataTherapistSnake) {
+      candidateIds.add(metadataTherapistSnake);
+    }
+
+    const metadataTherapistCamel = typeof metadata.therapistId === 'string' ? metadata.therapistId.trim() : null;
+    if (metadataTherapistCamel) {
+      candidateIds.add(metadataTherapistCamel);
+    }
+
+    const preferences = profile?.preferences;
+    if (preferences && typeof preferences === 'object') {
+      const prefRecord = preferences as Record<string, unknown>;
+      const prefTherapistSnake = typeof prefRecord.therapist_id === 'string' ? prefRecord.therapist_id.trim() : null;
+      if (prefTherapistSnake) {
+        candidateIds.add(prefTherapistSnake);
+      }
+      const prefTherapistCamel = typeof prefRecord.therapistId === 'string' ? prefRecord.therapistId.trim() : null;
+      if (prefTherapistCamel) {
+        candidateIds.add(prefTherapistCamel);
+      }
+    }
+
+    const scopedMatch = displayData.therapists.find((therapist) => candidateIds.has(therapist.id));
+    if (scopedMatch) {
+      setSelectedTherapist(scopedMatch.id);
+      setScopedTherapistId(scopedMatch.id);
+    }
+  }, [selectedTherapist, profile?.role, profile?.id, profile?.preferences, user, displayData.therapists]);
+
+  useEffect(() => {
+    if (
+      selectedTherapist &&
+      !displayData.therapists.some((therapist) => therapist.id === selectedTherapist)
+    ) {
+      setSelectedTherapist(null);
+    }
+  }, [selectedTherapist, displayData.therapists]);
+
+  useEffect(() => {
+    if (
+      selectedClient &&
+      !displayData.clients.some((client) => client.id === selectedClient)
+    ) {
+      setSelectedClient(null);
+    }
+  }, [selectedClient, displayData.clients]);
+
+  const handleTherapistFilterChange = useCallback((therapistId: string | null) => {
+    setSelectedTherapist(therapistId);
+    if (therapistId !== scopedTherapistId) {
+      setScopedTherapistId(null);
+    }
+  }, [scopedTherapistId]);
+
+  const handleClientFilterChange = useCallback((clientId: string | null) => {
+    setSelectedClient(clientId);
+    if (clientId !== scopedClientId) {
+      setScopedClientId(null);
+    }
+  }, [scopedClientId]);
+
   // Optimized mutations with proper error handling
   const createSessionMutation = useMutation({
     mutationFn: async (newSession: Partial<Session>) => {
@@ -809,9 +929,10 @@ const Schedule = React.memo(() => {
       setIsModalOpen(false);
       setSelectedSession(undefined);
       setSelectedTimeSlot(undefined);
+      setRetryHint(null);
     },
     onError: (error) => {
-      showError(error);
+      handleScheduleMutationError(error);
     },
   });
 
@@ -852,9 +973,10 @@ const Schedule = React.memo(() => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
       queryClient.invalidateQueries({ queryKey: ["sessions-batch"] });
       setIsAutoScheduleModalOpen(false);
+      setRetryHint(null);
     },
     onError: (error) => {
-      showError(error);
+      handleScheduleMutationError(error);
     },
   });
 
@@ -903,9 +1025,10 @@ const Schedule = React.memo(() => {
       queryClient.invalidateQueries({ queryKey: ["sessions-batch"] });
       setIsModalOpen(false);
       setSelectedSession(undefined);
+      setRetryHint(null);
     },
     onError: (error) => {
-      showError(error);
+      handleScheduleMutationError(error);
     },
   });
 
@@ -936,6 +1059,7 @@ const Schedule = React.memo(() => {
   // Memoized callbacks
   const handleCreateSession = useCallback(
     (timeSlot: { date: Date; time: string }) => {
+      setRetryHint(null);
       setSelectedTimeSlot(timeSlot);
       setSelectedSession(undefined);
       setIsModalOpen(true);
@@ -944,6 +1068,7 @@ const Schedule = React.memo(() => {
   );
 
   const handleEditSession = useCallback((session: Session) => {
+    setRetryHint(null);
     setSelectedSession(session);
     setSelectedTimeSlot(undefined);
     setIsModalOpen(true);
@@ -966,6 +1091,15 @@ const Schedule = React.memo(() => {
 
   const handleRemoveRecurrenceException = useCallback((index: number) => {
     setRecurrenceExceptions((prev) => prev.filter((_, current) => current !== index));
+  }, []);
+
+  const handleCloseSessionModal = useCallback(() => {
+    setIsModalOpen(false);
+    setRetryHint(null);
+  }, []);
+
+  const dismissRetryHint = useCallback(() => {
+    setRetryHint(null);
   }, []);
 
   const _handleDeleteSession = useCallback(
@@ -1097,7 +1231,7 @@ const Schedule = React.memo(() => {
         {isModalOpen && (
           <SessionModal
             isOpen={isModalOpen}
-            onClose={() => setIsModalOpen(false)}
+            onClose={handleCloseSessionModal}
             onSubmit={handleSubmit}
             session={selectedSession}
             selectedDate={selectedTimeSlot?.date}
@@ -1106,6 +1240,10 @@ const Schedule = React.memo(() => {
             clients={fallbackDisplay.clients}
             existingSessions={fallbackDisplay.sessions}
             timeZone={userTimeZone}
+            defaultTherapistId={selectedTherapist}
+            defaultClientId={selectedClient}
+            retryHint={retryHint}
+            onRetryHintDismiss={dismissRetryHint}
           />
         )}
       </div>
@@ -1114,6 +1252,14 @@ const Schedule = React.memo(() => {
 
   return (
     <div className="h-full">
+      {!activeOrganizationId && (
+        <div className="mb-6 rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-amber-800 dark:text-amber-100">
+          <p className="font-medium">Organization context unavailable</p>
+          <p className="mt-1 text-sm opacity-80">
+            The schedule is scoped per organization. Impersonate a tenant or contact an administrator before booking sessions.
+          </p>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
           Schedule
@@ -1207,8 +1353,10 @@ const Schedule = React.memo(() => {
         clients={displayData.clients}
         selectedTherapist={selectedTherapist}
         selectedClient={selectedClient}
-        onTherapistChange={setSelectedTherapist}
-        onClientChange={setSelectedClient}
+        onTherapistChange={handleTherapistFilterChange}
+        onClientChange={handleClientFilterChange}
+        scopedTherapistId={scopedTherapistId}
+        scopedClientId={scopedClientId}
       />
 
       <div className="mt-6 bg-white dark:bg-dark-lighter border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4">
@@ -1386,7 +1534,7 @@ const Schedule = React.memo(() => {
       {isModalOpen && (
         <SessionModal
           isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
+          onClose={handleCloseSessionModal}
           onSubmit={handleSubmit}
           session={selectedSession}
           selectedDate={selectedTimeSlot?.date}
@@ -1395,6 +1543,10 @@ const Schedule = React.memo(() => {
           clients={displayData.clients}
           existingSessions={displayData.sessions}
           timeZone={userTimeZone}
+          defaultTherapistId={selectedTherapist}
+          defaultClientId={selectedClient}
+          retryHint={retryHint}
+          onRetryHintDismiss={dismissRetryHint}
         />
       )}
 

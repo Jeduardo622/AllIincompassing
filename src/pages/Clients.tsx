@@ -33,6 +33,7 @@ import { logger } from '../lib/logger/logger';
 import { toError } from '../lib/logger/normalizeError';
 import { createClient as createClientRecord } from '../lib/clients/mutations';
 import { useAuth } from '../lib/authContext';
+import { useActiveOrganizationId } from '../lib/organization';
 
 const Clients = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -48,10 +49,17 @@ const Clients = () => {
   const queryClient = useQueryClient();
   const { isSuperAdmin } = useAuth();
   const navigate = useNavigate();
+  const activeOrganizationId = useActiveOrganizationId();
 
-  const { data: clients = [], isLoading } = useQuery({
-    queryKey: ['clients'],
-    queryFn: () => fetchClients(),
+  const { data: clients = [], isLoading, error: clientsError } = useQuery({
+    queryKey: ['clients', activeOrganizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!activeOrganizationId) {
+        throw new Error('Organization context is required to load clients');
+      }
+      return fetchClients({ organizationId: activeOrganizationId });
+    },
+    enabled: Boolean(activeOrganizationId),
   });
 
   // Calculate total units for each client - Moved up before it's used
@@ -63,11 +71,17 @@ const Clients = () => {
 
   const createClientMutation = useMutation({
     mutationFn: async (newClient: Partial<Client>) => {
+      if (!activeOrganizationId) {
+        throw new Error('Organization context is required to create clients');
+      }
       // Format data before submission
       const parsedClient = prepareClientPayload(newClient, { enforceFullName: true });
 
       // Insert the new client
-      return await createClientRecord(supabase, parsedClient);
+      return await createClientRecord(supabase, {
+        ...parsedClient,
+        organization_id: activeOrganizationId,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
@@ -82,6 +96,9 @@ const Clients = () => {
 
   const updateClientMutation = useMutation({
     mutationFn: async (updatedClient: Partial<Client>) => {
+      if (!activeOrganizationId) {
+        throw new Error('Organization context is required to update clients');
+      }
       // Prepare client data with proper formatting
       if (!selectedClient?.id) {
         throw new Error('Missing client identifier for update');
@@ -320,6 +337,22 @@ const Clients = () => {
 
   return (
     <div className="h-full">
+      {!activeOrganizationId && (
+        <div className="mb-6 rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-amber-800 dark:text-amber-100">
+          <p className="font-medium">Select an organization to manage client records.</p>
+          <p className="mt-1 text-sm opacity-80">
+            We couldn&apos;t determine your active organization. Impersonate a tenant or contact an administrator before editing client data.
+          </p>
+        </div>
+      )}
+      {clientsError && (
+        <div className="mb-6 rounded-lg border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-red-700 dark:text-red-200">
+          <p className="font-medium">Client list failed to load.</p>
+          <p className="mt-1 text-sm opacity-80">
+            {clientsError instanceof Error ? clientsError.message : String(clientsError)}
+          </p>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Clients</h1>
         <div className="flex space-x-3">

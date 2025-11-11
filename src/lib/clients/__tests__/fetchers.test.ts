@@ -12,27 +12,31 @@ import {
 describe('clients fetchers', () => {
   it('loads clients using the sanitized select clause', async () => {
     const order = vi.fn().mockResolvedValue({ data: [], error: null });
-    const select = vi.fn().mockReturnValue({ order });
+    const eq = vi.fn().mockReturnValue({ order });
+    const select = vi.fn().mockReturnValue({ eq });
     const from = vi.fn().mockReturnValue({ select });
 
-    await fetchClients({ from } as any);
+    await fetchClients({ organizationId: 'org-1', client: { from } as any });
 
     expect(from).toHaveBeenCalledWith('clients');
     expect(select).toHaveBeenCalledWith(CLIENT_SELECT);
+    expect(eq).toHaveBeenCalledWith('organization_id', 'org-1');
     expect(order).toHaveBeenCalledWith('full_name', { ascending: true });
   });
 
   it('loads an individual client with the sanitized clause', async () => {
     const single = vi.fn().mockResolvedValue({ data: null, error: null } satisfies PostgrestSingleResponse<Client | null>);
-    const eq = vi.fn().mockReturnValue({ single });
-    const select = vi.fn().mockReturnValue({ eq });
+    const secondEq = vi.fn().mockReturnValue({ single });
+    const firstEq = vi.fn().mockReturnValue({ eq: secondEq });
+    const select = vi.fn().mockReturnValue({ eq: firstEq });
     const from = vi.fn().mockReturnValue({ select });
 
-    await fetchClientById('client-123', { from } as any);
+    await fetchClientById('client-123', 'org-1', { from } as any);
 
     expect(from).toHaveBeenCalledWith('clients');
     expect(select).toHaveBeenCalledWith(CLIENT_SELECT);
-    expect(eq).toHaveBeenCalledWith('id', 'client-123');
+    expect(firstEq).toHaveBeenCalledWith('organization_id', 'org-1');
+    expect(secondEq).toHaveBeenCalledWith('id', 'client-123');
     expect(single).toHaveBeenCalled();
   });
 

@@ -8,6 +8,7 @@ import SessionNotesTab from '../components/ClientDetails/SessionNotesTab';
 import PreAuthTab from '../components/ClientDetails/PreAuthTab';
 import ServiceContractsTab from '../components/ClientDetails/ServiceContractsTab';
 import { useAuth } from '../lib/authContext';
+import { useActiveOrganizationId } from '../lib/organization';
 
 type TabType = 'profile' | 'session-notes' | 'pre-auth' | 'contracts';
 
@@ -16,15 +17,17 @@ export default function ClientDetails() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('profile');
   const { profile } = useAuth();
+  const activeOrganizationId = useActiveOrganizationId();
 
-  const { data: client, isLoading } = useQuery({
-    queryKey: ['client', clientId],
+  const { data: client, isLoading, error: clientError } = useQuery({
+    queryKey: ['client', clientId, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
       if (!clientId) throw new Error('Client ID is required');
+      if (!activeOrganizationId) throw new Error('Organization context is required to view client details');
 
-      return fetchClientById(clientId);
+      return fetchClientById(clientId, activeOrganizationId);
     },
-    enabled: !!clientId,
+    enabled: Boolean(clientId && activeOrganizationId),
   });
 
   const tabs = [
@@ -34,10 +37,45 @@ export default function ClientDetails() {
     { id: 'contracts' as TabType, name: 'Service Contracts', icon: FileContract },
   ];
 
+  if (!activeOrganizationId) {
+    return (
+      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg shadow p-8 text-amber-800 dark:text-amber-100">
+        <h2 className="text-xl font-semibold mb-2">Organization context required</h2>
+        <p className="text-sm opacity-80">
+          We couldn&apos;t determine your active organization. Impersonate a tenant or have an administrator assign you before viewing client details.
+        </p>
+        <button
+          onClick={() => navigate('/clients')}
+          className="mt-4 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+        >
+          Return to Clients
+        </button>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (clientError) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded-lg shadow p-8 text-red-700 dark:text-red-200">
+        <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Client failed to load</h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-6">
+          {clientError instanceof Error ? clientError.message : String(clientError)}
+        </p>
+        <button
+          onClick={() => navigate('/clients')}
+          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+        >
+          Return to Clients
+        </button>
       </div>
     );
   }

@@ -10,6 +10,7 @@ export interface UserProfile {
   id: string;
   email: string;
   role: 'client' | 'therapist' | 'admin' | 'super_admin';
+  organization_id?: string | null;
   first_name?: string;
   last_name?: string;
   full_name?: string;

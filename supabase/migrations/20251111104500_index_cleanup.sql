@@ -9,9 +9,6 @@ drop index if exists public.idx_clients_full_name;
 drop index if exists public.idx_clients_updated_by;
 drop index if exists public.idx_clients_created_by;
 
--- public.session_holds
-drop index if exists public.session_holds_client_time_excl;
-drop index if exists public.session_holds_therapist_time_excl;
 drop index if exists public.idx_session_holds_session_id;
 
 -- public.ai_cache
@@ -48,46 +45,46 @@ drop index if exists public.feature_flag_audit_logs_action_idx;
 
 -- Add supporting indexes for foreign keys flagged as unindexed.
 
-create index concurrently if not exists admin_actions_admin_user_id_idx
+create index if not exists admin_actions_admin_user_id_idx
   on public.admin_actions(admin_user_id);
 
-create index concurrently if not exists client_guardians_created_by_idx
+create index if not exists client_guardians_created_by_idx
   on public.client_guardians(created_by);
 
-create index concurrently if not exists client_guardians_deleted_by_idx
+create index if not exists client_guardians_deleted_by_idx
   on public.client_guardians(deleted_by);
 
-create index concurrently if not exists client_guardians_updated_by_idx
+create index if not exists client_guardians_updated_by_idx
   on public.client_guardians(updated_by);
 
-create index concurrently if not exists clients_created_by_idx
+create index if not exists clients_created_by_idx
   on public.clients(created_by);
 
-create index concurrently if not exists clients_deleted_by_idx
+create index if not exists clients_deleted_by_idx
   on public.clients(deleted_by);
 
-create index concurrently if not exists clients_updated_by_idx
+create index if not exists clients_updated_by_idx
   on public.clients(updated_by);
 
-create index concurrently if not exists feature_flag_audit_logs_actor_id_idx
+create index if not exists feature_flag_audit_logs_actor_id_idx
   on public.feature_flag_audit_logs(actor_id);
 
-create index concurrently if not exists feature_flag_audit_logs_plan_code_idx
+create index if not exists feature_flag_audit_logs_plan_code_idx
   on public.feature_flag_audit_logs(plan_code);
 
-create index concurrently if not exists impersonation_audit_actor_user_id_idx
+create index if not exists impersonation_audit_actor_user_id_idx
   on public.impersonation_audit(actor_user_id);
 
-create index concurrently if not exists impersonation_audit_revoked_by_idx
+create index if not exists impersonation_audit_revoked_by_idx
   on public.impersonation_audit(revoked_by);
 
-create index concurrently if not exists session_holds_client_id_idx
+create index if not exists session_holds_client_id_idx
   on public.session_holds(client_id);
 
-create index concurrently if not exists session_holds_therapist_id_idx
+create index if not exists session_holds_therapist_id_idx
   on public.session_holds(therapist_id);
 
-create index concurrently if not exists user_therapist_links_user_id_idx
+create index if not exists user_therapist_links_user_id_idx
   on public.user_therapist_links(user_id);
 
 commit;

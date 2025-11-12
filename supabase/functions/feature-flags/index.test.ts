@@ -35,13 +35,11 @@ const DEFAULT_TEST_ORIGIN = "https://app.allincompassing.ai";
 const EXISTING_ORG_ID = "11111111-1111-1111-1111-111111111111";
 const NEW_ORG_ID = "22222222-2222-2222-2222-222222222222";
 const SECONDARY_ORG_ID = "33333333-3333-3333-3333-333333333333";
-const TERTIARY_ORG_ID = "44444444-4444-4444-4444-444444444444";
-const QUATERNARY_ORG_ID = "55555555-5555-5555-5555-555555555555";
-const QUINARY_ORG_ID = "66666666-6666-6666-6666-666666666666";
-const SENARY_ORG_ID = "77777777-7777-7777-7777-777777777777";
 const FEATURE_FLAG_ID = "88888888-8888-8888-8888-888888888888";
 const SECONDARY_FLAG_ID = "99999999-9999-9999-9999-999999999999";
 const PLAN_CODE = "premium";
+
+Deno.env.set("DEFAULT_ORGANIZATION_ID", EXISTING_ORG_ID);
 
 const createRequest = (method: string, body: unknown, options: { origin?: string } = {}) => {
   const headers = new Headers({ "Content-Type": "application/json" });
@@ -250,54 +248,8 @@ Deno.test("prevents admins with an existing organization from creating a new org
   }
 });
 
-Deno.test("allows admins without an organization to create their first organization", async () => {
+Deno.test("blocks admins without an organization during single-clinic mode", async () => {
   const restore = stubAdminGetUserById({});
-  const inserts: unknown[] = [];
-  const audits: unknown[] = [];
-
-  const client = {
-    from: (table: string) => {
-      if (table === "organizations") {
-        return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: () => Promise.resolve({ data: null, error: null }),
-            }),
-          }),
-          insert: (values: Record<string, unknown>) => {
-            inserts.push(values);
-            return {
-              select: () => ({
-                single: () =>
-                  Promise.resolve({
-                    data: {
-                      id: values.id,
-                      name: values.name,
-                      slug: values.slug,
-                      metadata: values.metadata ?? {},
-                      created_at: "now",
-                      updated_at: "now",
-                    },
-                    error: null,
-                  }),
-              }),
-            };
-          },
-        } as unknown as ReturnType<SupabaseClient["from"]>;
-      }
-
-      if (table === "feature_flag_audit_logs") {
-        return {
-          insert: (values: Record<string, unknown>) => {
-            audits.push(values);
-            return Promise.resolve({ data: null, error: null });
-          },
-        } as unknown as ReturnType<SupabaseClient["from"]>;
-      }
-
-      throw new Error(`Unexpected table requested: ${table}`);
-    },
-  } as unknown as SupabaseClient;
 
   try {
     const response = await executeAdminHandler({
@@ -310,17 +262,12 @@ Deno.test("allows admins without an organization to create their first organizat
         },
       }),
       userContext: createAdminContext(),
-      db: client,
+      db: createListClient({}),
     });
 
-    assertEquals(response.status, 201);
-    const body = (await response.json()) as { organization: { id: string; slug: string } };
-    assertEquals(body.organization.id, NEW_ORG_ID);
-    assertEquals(body.organization.slug, "lighthouse");
-    assertEquals(inserts.length, 1);
-    const inserted = inserts[0] as { id: string; name: string; slug: string };
-    assertEquals(inserted.id, NEW_ORG_ID);
-    assertEquals(audits.length, 1);
+    const body = await response.json();
+    assertEquals(response.status, 403);
+    assertEquals(body.error, "Only the primary clinic can be updated while single-clinic mode is active");
   } finally {
     restore();
   }
@@ -571,7 +518,7 @@ Deno.test("does not overwrite metadata when omitted in organization update", asy
   const audits: unknown[] = [];
 
   const existingOrganization = {
-    id: TERTIARY_ORG_ID,
+    id: EXISTING_ORG_ID,
     name: "Gamma",
     slug: "gamma",
     metadata: { tier: "enterprise", tags: ["vip"] },
@@ -621,7 +568,7 @@ Deno.test("does not overwrite metadata when omitted in organization update", asy
   const response = await executeAdminHandler({
     req: createRequest("POST", {
       action: "upsertOrganization",
-      organization: { id: TERTIARY_ORG_ID, name: "Gamma Updated" },
+      organization: { id: EXISTING_ORG_ID, name: "Gamma Updated" },
     }),
     userContext: createUserContext(),
     db: client,
@@ -674,7 +621,7 @@ Deno.test("persists sanitized organization metadata", async () => {
   const audits: unknown[] = [];
 
   const existingOrganization = {
-    id: SECONDARY_ORG_ID,
+    id: EXISTING_ORG_ID,
     name: "Bright Future",
     slug: "bright-future",
     metadata: { notes: "legacy" },
@@ -730,7 +677,7 @@ Deno.test("persists sanitized organization metadata", async () => {
     req: createRequest("POST", {
       action: "upsertOrganization",
       organization: {
-        id: SECONDARY_ORG_ID,
+        id: EXISTING_ORG_ID,
         metadata: {
           billing: {
             contact: {
@@ -1052,7 +999,7 @@ Deno.test("returns 404 when organization not found for setOrgFlag", async () => 
   } as unknown as SupabaseClient;
 
   const response = await executeAdminHandler({
-    req: createRequest("POST", { action: "setOrgFlag", organizationId: SENARY_ORG_ID, flagId: FEATURE_FLAG_ID, enabled: true }),
+    req: createRequest("POST", { action: "setOrgFlag", organizationId: EXISTING_ORG_ID, flagId: FEATURE_FLAG_ID, enabled: true }),
     userContext: createUserContext(),
     db: client,
   });
@@ -1060,6 +1007,20 @@ Deno.test("returns 404 when organization not found for setOrgFlag", async () => 
   const body = await response.json() as { error: string };
   assertEquals(response.status, 404);
   assertEquals(body.error, "Organization not found");
+});
+
+Deno.test("rejects setOrgFlag for non-default organizations during single-clinic mode", async () => {
+  const client = createListClient({});
+
+  const response = await executeAdminHandler({
+    req: createRequest("POST", { action: "setOrgFlag", organizationId: SECONDARY_ORG_ID, flagId: FEATURE_FLAG_ID, enabled: true }),
+    userContext: createUserContext(),
+    db: client,
+  });
+
+  const body = await response.json() as { error: string };
+  assertEquals(response.status, 403);
+  assertEquals(body.error, "Only the primary clinic can be updated while single-clinic mode is active");
 });
 
 Deno.test("assigns organization plan (insert) and writes audit logs", async () => {
@@ -1072,7 +1033,7 @@ Deno.test("assigns organization plan (insert) and writes audit logs", async () =
         return {
           select: () => ({
             eq: () => ({
-              single: () => Promise.resolve({ data: { id: QUINARY_ORG_ID, name: "Zen" }, error: null }),
+              single: () => Promise.resolve({ data: { id: EXISTING_ORG_ID, name: "Zen" }, error: null }),
             }),
           }),
         } as unknown as ReturnType<SupabaseClient["from"]>;
@@ -1130,7 +1091,7 @@ Deno.test("assigns organization plan (insert) and writes audit logs", async () =
   } as unknown as SupabaseClient;
 
   const response = await executeAdminHandler({
-    req: createRequest("POST", { action: "setOrgPlan", organizationId: QUINARY_ORG_ID, planCode: "professional", notes: "VIP" }),
+    req: createRequest("POST", { action: "setOrgPlan", organizationId: EXISTING_ORG_ID, planCode: "professional", notes: "VIP" }),
     userContext: createUserContext(),
     db: client,
   });
@@ -1148,7 +1109,7 @@ Deno.test("updates organization plan and writes audit logs", async () => {
   const audits: unknown[] = [];
 
   const existing = {
-    organization_id: QUATERNARY_ORG_ID,
+    organization_id: EXISTING_ORG_ID,
     plan_code: "standard",
     assigned_at: "past",
     assigned_by: "admin-1",
@@ -1161,7 +1122,7 @@ Deno.test("updates organization plan and writes audit logs", async () => {
         return {
           select: () => ({
             eq: () => ({
-              single: () => Promise.resolve({ data: { id: QUATERNARY_ORG_ID, name: "Acme" }, error: null }),
+              single: () => Promise.resolve({ data: { id: EXISTING_ORG_ID, name: "Acme" }, error: null }),
             }),
           }),
         } as unknown as ReturnType<SupabaseClient["from"]>;
@@ -1215,7 +1176,7 @@ Deno.test("updates organization plan and writes audit logs", async () => {
   } as unknown as SupabaseClient;
 
   const response = await executeAdminHandler({
-    req: createRequest("POST", { action: "setOrgPlan", organizationId: QUATERNARY_ORG_ID, planCode: "enterprise" }),
+    req: createRequest("POST", { action: "setOrgPlan", organizationId: EXISTING_ORG_ID, planCode: "enterprise" }),
     userContext: createUserContext(),
     db: client,
   });
@@ -1234,7 +1195,7 @@ Deno.test("returns 404 when assigning a non-existent plan", async () => {
         return {
           select: () => ({
             eq: () => ({
-              single: () => Promise.resolve({ data: { id: SENARY_ORG_ID, name: "Org" }, error: null }),
+              single: () => Promise.resolve({ data: { id: EXISTING_ORG_ID, name: "Org" }, error: null }),
             }),
           }),
         } as unknown as ReturnType<SupabaseClient["from"]>;
@@ -1255,10 +1216,24 @@ Deno.test("returns 404 when assigning a non-existent plan", async () => {
   } as unknown as SupabaseClient;
 
   const response = await executeAdminHandler({
-    req: createRequest("POST", { action: "setOrgPlan", organizationId: SENARY_ORG_ID, planCode: "unknown" }),
+    req: createRequest("POST", { action: "setOrgPlan", organizationId: EXISTING_ORG_ID, planCode: "unknown" }),
     userContext: createUserContext(),
     db: client,
   });
 
   assertEquals(response.status, 404);
+  const body = await response.json() as { error?: string };
+  assertEquals(body.error, "Plan not found");
+});
+
+Deno.test("rejects setOrgPlan for non-default organizations during single-clinic mode", async () => {
+  const response = await executeAdminHandler({
+    req: createRequest("POST", { action: "setOrgPlan", organizationId: SECONDARY_ORG_ID, planCode: "professional" }),
+    userContext: createUserContext(),
+    db: createListClient({}),
+  });
+
+  const body = await response.json() as { error: string };
+  assertEquals(response.status, 403);
+  assertEquals(body.error, "Only the primary clinic can be updated while single-clinic mode is active");
 });

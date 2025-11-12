@@ -20,12 +20,14 @@ describe('runtimeConfigHandler', () => {
   it('returns runtime config when env vars are present', async () => {
     process.env.SUPABASE_URL = 'https://example.supabase.co';
     process.env.SUPABASE_ANON_KEY = 'anon-key';
+    process.env.DEFAULT_ORGANIZATION_ID = 'org-default-123';
 
     const response = await runtimeConfigHandler(new Request('http://localhost/api/runtime-config'));
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.supabaseUrl).toBe('https://example.supabase.co');
     expect(payload.supabaseAnonKey).toBe('anon-key');
+    expect(payload.defaultOrganizationId).toBe('org-default-123');
   });
 
   it('loads config values from .env.codex when process env is unset', async () => {
@@ -34,10 +36,12 @@ describe('runtimeConfigHandler', () => {
     writeFileSync(envPath, [
       'SUPABASE_URL=https://file.supabase.co',
       'SUPABASE_ANON_KEY=file-anon',
+      'DEFAULT_ORGANIZATION_ID=org-default-file',
     ].join('\n'));
 
     delete process.env.SUPABASE_URL;
     delete process.env.SUPABASE_ANON_KEY;
+    delete process.env.DEFAULT_ORGANIZATION_ID;
     process.env.CODEX_ENV_PATH = envPath;
     resetEnvCacheForTests();
 
@@ -47,6 +51,7 @@ describe('runtimeConfigHandler', () => {
       const payload = await response.json();
       expect(payload.supabaseUrl).toBe('https://file.supabase.co');
       expect(payload.supabaseAnonKey).toBe('file-anon');
+      expect(payload.defaultOrganizationId).toBe('org-default-file');
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
       delete process.env.CODEX_ENV_PATH;
@@ -66,6 +71,7 @@ describe('runtimeConfigHandler', () => {
   it('rejects unsupported methods', async () => {
     process.env.SUPABASE_URL = 'https://example.supabase.co';
     process.env.SUPABASE_ANON_KEY = 'anon-key';
+    process.env.DEFAULT_ORGANIZATION_ID = 'org-default-123';
 
     const response = await runtimeConfigHandler(new Request('http://localhost/api/runtime-config', { method: 'POST' }));
     expect(response.status).toBe(405);

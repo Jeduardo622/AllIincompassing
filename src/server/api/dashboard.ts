@@ -1,5 +1,6 @@
 import "../bootstrapSupabase";
 import { getRequiredServerEnv } from "../env";
+import { getDefaultOrganizationId } from "../runtimeConfig";
 import { logger } from "../../lib/logger/logger";
 import { toError } from "../../lib/logger/normalizeError";
 
@@ -68,13 +69,30 @@ export async function dashboardHandler(request: Request): Promise<Response> {
       body: "{}",
     });
 
-    if (!orgResult.ok || typeof orgResult.data !== "string" || orgResult.data.length === 0) {
+    const fallbackOrgId = (() => {
+      try {
+        return getDefaultOrganizationId();
+      } catch {
+        return null;
+      }
+    })();
+
+    const resolvedOrganizationId =
+      orgResult.ok && typeof orgResult.data === "string" && orgResult.data.length > 0
+        ? orgResult.data
+        : fallbackOrgId;
+
+    if (!resolvedOrganizationId) {
       return json({ error: "Access denied" }, 403);
+    }
+
+    if ((!orgResult.ok || !orgResult.data) && fallbackOrgId) {
+      logger.warn("Dashboard request falling back to default organization", { fallbackOrgId });
     }
 
     // Optional: basic role check using helper RPC when available
     const roleUrl = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/rpc/user_has_role_for_org`;
-    const rolePayload = { role_name: "org_member", target_organization_id: orgResult.data } as Record<string, unknown>;
+    const rolePayload = { role_name: "org_member", target_organization_id: resolvedOrganizationId } as Record<string, unknown>;
     const roleResult = await fetchJson<boolean>(roleUrl, {
       method: "POST",
       headers: {

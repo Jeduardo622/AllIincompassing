@@ -34,6 +34,7 @@ const ORIGINAL_ENV = {
   SUPABASE_URL: process.env.SUPABASE_URL,
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
   SUPABASE_EDGE_URL: process.env.SUPABASE_EDGE_URL,
+  DEFAULT_ORGANIZATION_ID: process.env.DEFAULT_ORGANIZATION_ID,
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -63,6 +64,7 @@ describe("bookHandler integration", () => {
     process.env.SUPABASE_URL = TEST_SUPABASE_URL;
     process.env.SUPABASE_ANON_KEY = TEST_SUPABASE_ANON_KEY;
     process.env.SUPABASE_EDGE_URL = TEST_SUPABASE_EDGE_URL;
+    process.env.DEFAULT_ORGANIZATION_ID = "org-default-123";
   });
 
   it("calls edge functions with the bearer token from the request", async () => {
@@ -288,6 +290,7 @@ describe("bookHandler integration", () => {
         supabaseUrl,
         supabaseAnonKey,
         supabaseEdgeUrl,
+        defaultOrganizationId: "org-default-123",
       });
 
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -319,6 +322,11 @@ describe("bookHandler integration", () => {
       } else {
         delete process.env.SUPABASE_EDGE_URL;
       }
+      if (typeof originalEnv.DEFAULT_ORGANIZATION_ID === "string") {
+        process.env.DEFAULT_ORGANIZATION_ID = originalEnv.DEFAULT_ORGANIZATION_ID;
+      } else {
+        delete process.env.DEFAULT_ORGANIZATION_ID;
+      }
       vi.doMock("../../lib/supabase", supabaseModuleFactory);
       vi.resetModules();
     }
@@ -340,5 +348,10 @@ afterAll(() => {
     process.env.SUPABASE_EDGE_URL = ORIGINAL_ENV.SUPABASE_EDGE_URL;
   } else {
     delete process.env.SUPABASE_EDGE_URL;
+  }
+  if (typeof ORIGINAL_ENV.DEFAULT_ORGANIZATION_ID === "string") {
+    process.env.DEFAULT_ORGANIZATION_ID = ORIGINAL_ENV.DEFAULT_ORGANIZATION_ID;
+  } else {
+    delete process.env.DEFAULT_ORGANIZATION_ID;
   }
 });

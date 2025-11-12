@@ -8,6 +8,7 @@ describe("dashboardHandler", () => {
     process.env.SUPABASE_URL = "https://example.supabase.co";
     process.env.SUPABASE_ANON_KEY = "anon";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
+    process.env.DEFAULT_ORGANIZATION_ID = "org-default";
     vi.resetModules();
   });
 
@@ -28,10 +29,35 @@ describe("dashboardHandler", () => {
     expect(response.status).toBe(401);
   });
 
-  it("returns 403 when org resolution fails", async () => {
+  it("falls back to the default organization when org resolution fails", async () => {
     const fetchSpy = mockFetch();
     // current_user_organization_id -> 200 null
     fetchSpy.mockResolvedValueOnce(new Response("null", { status: 200, headers: { "content-type": "application/json" } }));
+    // role check for default org
+    fetchSpy.mockResolvedValueOnce(new Response("true", { status: 200, headers: { "content-type": "application/json" } }));
+    // get_dashboard_data
+    const body = { sessions: [] };
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }));
+
+    const { dashboardHandler } = await import("../api/dashboard");
+    const response = await dashboardHandler(createRequest("GET", "token"));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    const roleRequest = fetchSpy.mock.calls[1]?.[1] as RequestInit | undefined;
+    expect(typeof roleRequest?.body).toBe("string");
+    if (typeof roleRequest?.body === "string") {
+      expect(JSON.parse(roleRequest.body)).toMatchObject({ target_organization_id: "org-default" });
+    }
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject(body);
+  });
+
+  it("returns 403 when no organization context is available", async () => {
+    delete process.env.DEFAULT_ORGANIZATION_ID;
+
+    const fetchSpy = mockFetch();
+    fetchSpy.mockResolvedValueOnce(new Response("null", { status: 200, headers: { "content-type": "application/json" } }));
+
     const { dashboardHandler } = await import("../api/dashboard");
     const response = await dashboardHandler(createRequest("GET", "token"));
     expect(fetchSpy).toHaveBeenCalledTimes(1);

@@ -1,6 +1,20 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, screen, waitFor, userEvent } from '../../test/utils';
+import { useActiveOrganizationId } from '../../lib/organization';
+import { showError } from '../../lib/toast';
+
+vi.mock('../../lib/organization', () => ({
+  useActiveOrganizationId: vi.fn(() => 'org-test'),
+}));
+
+vi.mock('../../lib/toast', () => ({
+  showSuccess: vi.fn(),
+  showError: vi.fn(),
+}));
+
+const mockUseActiveOrganizationId = vi.mocked(useActiveOrganizationId);
+const mockShowError = vi.mocked(showError);
 import { TherapistOnboarding } from '../TherapistOnboarding';
 
 describe('TherapistOnboarding validation', () => {
@@ -9,6 +23,11 @@ describe('TherapistOnboarding validation', () => {
     renderWithProviders(<TherapistOnboarding onComplete={handleComplete} />);
     return { handleComplete };
   };
+
+  beforeEach(() => {
+    mockUseActiveOrganizationId.mockReturnValue('org-test');
+    mockShowError.mockClear();
+  });
 
   it('validates basic information before advancing', async () => {
     renderOnboarding();
@@ -67,5 +86,30 @@ describe('TherapistOnboarding validation', () => {
 
     const licenseInput = screen.getByLabelText(/license document upload/i);
     expect(document.activeElement).toBe(licenseInput);
+  });
+
+  it('shows an error when organization context is unavailable', async () => {
+    mockUseActiveOrganizationId.mockReturnValue(null);
+    renderOnboarding();
+
+    await userEvent.type(screen.getByLabelText(/first name/i), 'Sam');
+    await userEvent.type(screen.getByLabelText(/last name/i), 'Morgan');
+    await userEvent.type(screen.getByLabelText(/email/i), 'sam@example.com');
+    await userEvent.click(screen.getByRole('button', { name: /next/i }));
+
+    await userEvent.type(screen.getByLabelText(/license number/i), 'LIC-98765');
+    await userEvent.click(screen.getByRole('button', { name: /next/i }));
+    await userEvent.click(screen.getByRole('button', { name: /next/i }));
+    await userEvent.click(screen.getByRole('button', { name: /next/i }));
+
+    const licenseFile = new File(['test'], 'license.pdf', { type: 'application/pdf' });
+    await userEvent.upload(screen.getByLabelText(/license document upload/i), licenseFile);
+    await userEvent.click(screen.getByLabelText(/i consent to the collection/i));
+
+    await userEvent.click(screen.getByRole('button', { name: /complete onboarding/i }));
+
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledTimes(1);
+    });
   });
 });

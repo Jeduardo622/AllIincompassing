@@ -17,6 +17,7 @@ type PendingRequest = {
 const KEY_LIST = [
   ['SUPABASE_URL', 'supabaseUrl'],
   ['SUPABASE_ANON_KEY', 'supabaseAnonKey'],
+  ['DEFAULT_ORGANIZATION_ID', 'defaultOrganizationId'],
   ['SUPABASE_EDGE_URL', 'supabaseEdgeUrl'],
 ] as const;
 

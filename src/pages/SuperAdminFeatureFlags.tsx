@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from 'react';
+import { Lock } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { edgeInvoke } from '../lib/edgeInvoke';
 import { useAuth } from '../lib/authContext';
 import { showError, showSuccess } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
 import { toError } from '../lib/logger/normalizeError';
+import { getDefaultOrganizationId } from '../lib/runtimeConfig';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -62,17 +64,6 @@ const humanizeKey = (value: string): string => {
     .replace(/\b\w/g, char => char.toUpperCase());
 };
 
-const toSlug = (value: string): string =>
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/-{2,}/g, '-')
-    .replace(/^-+|-+$/g, '');
-
-const isValidUuid = (value: string): boolean =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-
 export const SuperAdminFeatureFlags: React.FC = () => {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
@@ -81,11 +72,14 @@ export const SuperAdminFeatureFlags: React.FC = () => {
   const [newFlagDescription, setNewFlagDescription] = useState('');
   const [newFlagDefaultEnabled, setNewFlagDefaultEnabled] = useState(false);
 
-  const [organizationIdInput, setOrganizationIdInput] = useState('');
-  const [organizationNameInput, setOrganizationNameInput] = useState('');
-  const [organizationSlugInput, setOrganizationSlugInput] = useState('');
-
   const isSuperAdmin = profile?.role === 'super_admin';
+  const defaultOrganizationId = useMemo(() => {
+    try {
+      return getDefaultOrganizationId();
+    } catch {
+      return null;
+    }
+  }, []);
 
   const featureFlagsQuery = useQuery<FeatureFlagPayload>({
     queryKey: QUERY_KEY,
@@ -224,43 +218,6 @@ export const SuperAdminFeatureFlags: React.FC = () => {
     },
   });
 
-  const upsertOrganizationMutation = useMutation({
-    mutationFn: async () => {
-      const normalizedId = organizationIdInput.trim();
-      if (!isValidUuid(normalizedId)) {
-        throw new Error('Organization ID must be a valid UUID.');
-      }
-
-      const { error, status } = await edgeInvoke('feature-flags-v2', { body: {
-        action: 'upsertOrganization',
-        organization: {
-          id: normalizedId,
-          name: organizationNameInput.trim() || undefined,
-          slug: organizationSlugInput.trim() ? toSlug(organizationSlugInput) : undefined,
-        },
-      } });
-
-      if (error) {
-        const mapped = new Error(error.message) as Error & { status?: number };
-        mapped.status = (status as number) ?? undefined;
-        throw mapped;
-      }
-    },
-    onSuccess: () => {
-      invalidate();
-      setOrganizationIdInput('');
-      setOrganizationNameInput('');
-      setOrganizationSlugInput('');
-      showSuccess('Organization saved');
-    },
-    onError: error => {
-      logger.error('Failed to upsert organization', {
-        error: toError(error, 'Organization upsert failed'),
-      });
-      showError(error);
-    },
-  });
-
   const overridesByOrganization = useMemo(() => {
     const map = new Map<string, Map<string, OrganizationFeatureFlagRecord>>();
     featureFlagsQuery.data?.organizationFlags.forEach(record => {
@@ -302,11 +259,6 @@ export const SuperAdminFeatureFlags: React.FC = () => {
     createFlagMutation.mutate();
   };
 
-  const handleOrganizationSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    upsertOrganizationMutation.mutate();
-  };
-
   const flags = featureFlagsQuery.data?.flags ?? [];
   const organizations = featureFlagsQuery.data?.organizations ?? [];
 
@@ -318,59 +270,25 @@ export const SuperAdminFeatureFlags: React.FC = () => {
       </p>
 
       <section className="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-xl font-semibold text-slate-900">Register organization</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Register an organization ID before assigning plans or overrides. Use the UUID embedded in auth metadata.
-        </p>
-        <form className="mt-4 grid gap-4 md:grid-cols-3" onSubmit={handleOrganizationSubmit}>
-          <div className="md:col-span-1">
-            <label className="block text-sm font-medium text-slate-700" htmlFor="organization-id">
-              Organization ID
-            </label>
-            <input
-              id="organization-id"
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              value={organizationIdInput}
-              onChange={event => setOrganizationIdInput(event.target.value)}
-              placeholder="00000000-0000-0000-0000-000000000000"
-              required
-            />
+        <div className="flex items-start gap-4">
+          <Lock className="mt-1 h-5 w-5 text-slate-400" aria-hidden="true" />
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">Organization enrollment locked</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              We are operating in single-clinic mode while we stabilise tenant rollouts. New organizations cannot be created
+              or imported at this time.
+            </p>
+            {defaultOrganizationId ? (
+              <p className="mt-2 text-xs text-slate-500">
+                Active clinic:&nbsp;
+                <span className="font-mono text-xs text-slate-600">{defaultOrganizationId}</span>
+              </p>
+            ) : null}
+            <p className="mt-3 text-xs text-slate-500">
+              Need to migrate org metadata? Coordinate with the platform team to run a supervised back-office script.
+            </p>
           </div>
-          <div className="md:col-span-1">
-            <label className="block text-sm font-medium text-slate-700" htmlFor="organization-name">
-              Display name
-            </label>
-            <input
-              id="organization-name"
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              value={organizationNameInput}
-              onChange={event => setOrganizationNameInput(event.target.value)}
-              placeholder="Acme Behavioral"
-            />
-          </div>
-          <div className="md:col-span-1">
-            <label className="block text-sm font-medium text-slate-700" htmlFor="organization-slug">
-              Slug (optional)
-            </label>
-            <input
-              id="organization-slug"
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              value={organizationSlugInput}
-              onChange={event => setOrganizationSlugInput(event.target.value)}
-              placeholder="acme-behavioral"
-            />
-          </div>
-          <div className="md:col-span-3 flex items-center gap-3">
-            <button
-              type="submit"
-              className="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-400"
-              disabled={upsertOrganizationMutation.isPending}
-            >
-              {upsertOrganizationMutation.isPending ? 'Saving…' : 'Save organization'}
-            </button>
-            <span className="text-xs text-slate-500">Existing organizations will be updated in place.</span>
-          </div>
-        </form>
+        </div>
       </section>
 
       <section className="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -487,7 +405,18 @@ export const SuperAdminFeatureFlags: React.FC = () => {
         </div>
 
         {organizations.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-600">Register an organization to begin configuring overrides.</p>
+          <p className="mt-4 text-sm text-slate-600">
+            No organization records are available yet. All feature overrides default to the primary clinic
+            {defaultOrganizationId ? (
+              <>
+                &nbsp;
+                <span className="font-mono text-xs text-slate-500">{defaultOrganizationId}</span>.
+              </>
+            ) : (
+              '.'
+            )}{' '}
+            Contact the platform team to seed metadata if required.
+          </p>
         ) : (
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200">

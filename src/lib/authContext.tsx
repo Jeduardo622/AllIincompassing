@@ -1,9 +1,18 @@
+const normalizeOrgId = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient'; // Use consistent client
 import { logger } from './logger/logger';
 import { toError } from './logger/normalizeError';
 import { readStubAuthState, STUB_AUTH_STORAGE_KEY } from './authStubSession';
+import { getDefaultOrganizationId } from './runtimeConfig';
 
 // User profile interface - moved from legacy auth.ts
 export interface UserProfile {
@@ -284,12 +293,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signUp = async (email: string, password: string, metadata = {}) => {
     try {
       setLoading(true);
-      
+
+      const normalizedMetadata = { ...metadata } as Record<string, unknown>;
+      const explicitSnake = normalizeOrgId(normalizedMetadata.organization_id);
+      const explicitCamel = normalizeOrgId(normalizedMetadata.organizationId);
+      const defaultOrganizationId = (() => {
+        try {
+          return normalizeOrgId(getDefaultOrganizationId());
+        } catch {
+          return null;
+        }
+      })();
+      const resolvedOrganizationId = explicitSnake ?? explicitCamel ?? defaultOrganizationId;
+
+      if (resolvedOrganizationId) {
+        normalizedMetadata.organization_id = resolvedOrganizationId;
+        normalizedMetadata.organizationId = resolvedOrganizationId;
+      }
+
       const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: metadata,
+          data: normalizedMetadata,
         },
       });
       

@@ -46,6 +46,12 @@ const ALLOWED_ORIGINS = Array.from(new Set([...STATIC_ALLOWED_ORIGINS, ...envAll
 const PRIMARY_ALLOWED_ORIGIN = ALLOWED_ORIGINS[0] ?? "https://app.allincompassing.ai";
 const adminAllowedOrigins = new Set(ALLOWED_ORIGINS);
 
+const DEFAULT_ORGANIZATION_ID = ((): string | null => {
+  const raw = Deno.env.get("DEFAULT_ORGANIZATION_ID") ?? "";
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+})();
+
 const BASE_CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
@@ -564,6 +570,15 @@ export async function handleFeatureFlagAdmin({
         }
         const { organizationId, flagId, enabled } = parsed;
 
+        if (!DEFAULT_ORGANIZATION_ID) {
+          console.error("DEFAULT_ORGANIZATION_ID env var is not configured");
+          return handleError(500, "Organization provisioning is not configured");
+        }
+
+        if (organizationId !== DEFAULT_ORGANIZATION_ID) {
+          return handleError(403, "Only the primary clinic can be updated while single-clinic mode is active");
+        }
+
         const [orgResult, flagResult] = await Promise.all([
           db.from("organizations").select("id, name").eq("id", organizationId).single(),
           db.from("feature_flags").select("id, flag_key, default_enabled").eq("id", flagId).single(),
@@ -663,6 +678,15 @@ export async function handleFeatureFlagAdmin({
           return handleError(403, "Super admin role required");
         }
         const { organizationId, planCode, notes } = parsed;
+
+        if (!DEFAULT_ORGANIZATION_ID) {
+          console.error("DEFAULT_ORGANIZATION_ID env var is not configured");
+          return handleError(500, "Organization provisioning is not configured");
+        }
+
+        if (organizationId !== DEFAULT_ORGANIZATION_ID) {
+          return handleError(403, "Only the primary clinic can be updated while single-clinic mode is active");
+        }
 
         const orgResult = await db
           .from("organizations")
@@ -788,6 +812,15 @@ export async function handleFeatureFlagAdmin({
         const normalizedSlug = normalizeSlug(organization.slug);
         const sanitizedMetadata = sanitizeOrganizationMetadata(organization.metadata, origin);
         const metadataProvided = organization.metadata !== undefined;
+
+        if (!DEFAULT_ORGANIZATION_ID) {
+          console.error("DEFAULT_ORGANIZATION_ID env var is not configured");
+          return handleError(500, "Organization provisioning is not configured");
+        }
+
+        if (organization.id !== DEFAULT_ORGANIZATION_ID) {
+          return handleError(403, "Only the primary clinic can be updated while single-clinic mode is active");
+        }
 
         const existing = await db
           .from("organizations")

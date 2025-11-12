@@ -74,6 +74,7 @@ const ORIGINAL_ENV = {
   SUPABASE_URL: process.env.SUPABASE_URL,
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
   SUPABASE_EDGE_URL: process.env.SUPABASE_EDGE_URL,
+  DEFAULT_ORGANIZATION_ID: process.env.DEFAULT_ORGANIZATION_ID,
 };
 
 beforeEach(async () => {
@@ -90,6 +91,7 @@ beforeEach(async () => {
   process.env.SUPABASE_URL = TEST_SUPABASE_URL;
   process.env.SUPABASE_ANON_KEY = TEST_SUPABASE_ANON_KEY;
   process.env.SUPABASE_EDGE_URL = TEST_SUPABASE_EDGE_URL;
+  process.env.DEFAULT_ORGANIZATION_ID = "org-default-123";
 });
 
 afterAll(() => {
@@ -107,6 +109,11 @@ afterAll(() => {
     process.env.SUPABASE_EDGE_URL = ORIGINAL_ENV.SUPABASE_EDGE_URL;
   } else {
     delete process.env.SUPABASE_EDGE_URL;
+  }
+  if (typeof ORIGINAL_ENV.DEFAULT_ORGANIZATION_ID === "string") {
+    process.env.DEFAULT_ORGANIZATION_ID = ORIGINAL_ENV.DEFAULT_ORGANIZATION_ID;
+  } else {
+    delete process.env.DEFAULT_ORGANIZATION_ID;
   }
 });
 

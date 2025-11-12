@@ -19,6 +19,7 @@ describe('supabase client singleton', () => {
     setRuntimeSupabaseConfig({
       supabaseUrl: 'https://test-project.supabase.co',
       supabaseAnonKey: 'anon-key',
+      defaultOrganizationId: 'org-default-123',
     });
   });
 

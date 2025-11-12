@@ -19,6 +19,9 @@ import AvailabilityEditor from './AvailabilityEditor';
 import { OnboardingSteps } from './OnboardingSteps';
 import type { Therapist } from '../types';
 import { prepareFormData } from '../lib/validation';
+import { useActiveOrganizationId } from '../lib/organization';
+import { toError } from '../lib/logger/normalizeError';
+import { describePostgrestError } from '../lib/supabase/isMissingRpcFunctionError';
 
 interface TherapistOnboardingProps {
   onComplete?: () => void;
@@ -114,6 +117,7 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const activeOrganizationId = useActiveOrganizationId();
   
   // Parse query parameters
   const queryParams = new URLSearchParams(location.search);
@@ -221,7 +225,15 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
       }
     },
     onError: (error) => {
-      showError(error);
+      const normalizedError = toError(error, describePostgrestError(error));
+      logger.error('Therapist onboarding Supabase insert failed', {
+        error: normalizedError,
+        context: { component: 'TherapistOnboarding', operation: 'createTherapistMutation' },
+        metadata: {
+          hasOrganization: Boolean(activeOrganizationId),
+        },
+      });
+      showError(normalizedError);
       setIsSubmitting(false);
     }
   });
@@ -251,6 +263,16 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
   };
 
   const handleFormSubmit = async (data: OnboardingFormData) => {
+    if (!activeOrganizationId) {
+      const missingOrgError = new Error('Organization context is required to onboard a therapist.');
+      logger.error('Therapist onboarding blocked: missing organization context', {
+        error: toError(missingOrgError, 'Organization context missing'),
+        context: { component: 'TherapistOnboarding', operation: 'handleFormSubmit' },
+      });
+      showError(missingOrgError);
+      return;
+    }
+
     const sanitizedData: OnboardingFormData = {
       ...data,
       service_type: Array.isArray(data.service_type) ? data.service_type : [],
@@ -266,6 +288,7 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
     delete (therapistPayload as Record<string, unknown>).resume;
     delete (therapistPayload as Record<string, unknown>).background_check;
     delete (therapistPayload as Record<string, unknown>).certifications;
+    therapistPayload.organization_id = activeOrganizationId;
 
     setIsSubmitting(true);
     try {

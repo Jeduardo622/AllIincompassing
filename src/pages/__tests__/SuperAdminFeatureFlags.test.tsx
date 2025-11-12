@@ -124,24 +124,6 @@ describe('SuperAdminFeatureFlags', () => {
       });
     });
 
-    await userEvent.type(screen.getByLabelText(/Organization ID/i), '11111111-1111-4111-8111-111111111111');
-    await userEvent.type(screen.getByLabelText(/Display name/i), 'New Org');
-    await userEvent.type(screen.getByLabelText(/Slug/i), 'New Org Slug');
-    await userEvent.click(screen.getByRole('button', { name: /Save organization/i }));
-
-    await waitFor(() => {
-      expect(invokeSpy).toHaveBeenCalledWith('feature-flags-v2', {
-        body: expect.objectContaining({
-          action: 'upsertOrganization',
-          organization: {
-            id: '11111111-1111-4111-8111-111111111111',
-            name: 'New Org',
-            slug: 'new-org-slug',
-          },
-        }),
-      });
-    });
-
     expect(showSuccessSpy).toHaveBeenCalled();
     expect(showErrorSpy).not.toHaveBeenCalled();
     expect(loggerSpy).not.toHaveBeenCalledWith(
@@ -202,39 +184,23 @@ describe('SuperAdminFeatureFlags', () => {
     });
   });
 
-  it('surfaces organization save failures', async () => {
+  it('shows single-clinic lock messaging for super admins', () => {
     useAuthSpy.mockReturnValue({ profile: { role: 'super_admin' } } as unknown as ReturnType<typeof authContext.useAuth>);
 
-    invokeSpy.mockImplementation(async (_path: string, options?: { body?: Record<string, unknown> }) => {
-      const action = options?.body?.action;
-      if (action === 'list') {
-        return {
-          data: {
-            flags: [],
-            organizations: [],
-            organizationFlags: [],
-            organizationPlans: [],
-            plans: [],
-          },
-          error: null,
-        };
-      }
-
-      if (action === 'upsertOrganization') {
-        return { data: null, error: new Error('Network failure') };
-      }
-
-      return { data: { ok: true }, error: null };
+    invokeSpy.mockResolvedValueOnce({
+      data: {
+        flags: [],
+        organizations: [],
+        organizationFlags: [],
+        organizationPlans: [],
+        plans: [],
+      },
+      error: null,
     });
 
     renderWithProviders(<SuperAdminFeatureFlags />);
 
-    await userEvent.type(screen.getByLabelText(/Organization ID/i), '11111111-1111-4111-8111-111111111111');
-    await userEvent.type(screen.getByLabelText(/Display name/i), 'Broken Org');
-    await userEvent.click(screen.getByRole('button', { name: /Save organization/i }));
-
-    await waitFor(() => {
-      expect(showErrorSpy).toHaveBeenCalled();
-    });
+    expect(screen.getByText(/Organization enrollment locked/i)).toBeInTheDocument();
+    expect(screen.getByText(/single-clinic mode/i)).toBeInTheDocument();
   });
 });

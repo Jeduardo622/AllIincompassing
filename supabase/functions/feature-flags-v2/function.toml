@@ -1,3 +1,5 @@
+name = "feature-flags-v2"
 verify_jwt = false
+
 
 

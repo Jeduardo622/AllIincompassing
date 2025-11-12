@@ -88,7 +88,7 @@ describe('SuperAdminFeatureFlags', () => {
     await userEvent.click(screen.getByRole('button', { name: /Create flag/i }));
 
     await waitFor(() => {
-      expect(invokeSpy).toHaveBeenCalledWith('feature-flags', {
+      expect(invokeSpy).toHaveBeenCalledWith('feature-flags-v2', {
         body: expect.objectContaining({
           action: 'createFlag',
           flagKey: 'session-audit',
@@ -101,7 +101,7 @@ describe('SuperAdminFeatureFlags', () => {
     await userEvent.click(screen.getByRole('button', { name: /Enable/i }));
 
     await waitFor(() => {
-      expect(invokeSpy).toHaveBeenCalledWith('feature-flags', {
+      expect(invokeSpy).toHaveBeenCalledWith('feature-flags-v2', {
         body: expect.objectContaining({ action: 'updateGlobalFlag', flagId: 'flag-1', enabled: true }),
       });
     });
@@ -109,7 +109,7 @@ describe('SuperAdminFeatureFlags', () => {
     await userEvent.selectOptions(screen.getByLabelText(/Plan assignment/i), 'professional');
 
     await waitFor(() => {
-      expect(invokeSpy).toHaveBeenCalledWith('feature-flags', {
+      expect(invokeSpy).toHaveBeenCalledWith('feature-flags-v2', {
         body: expect.objectContaining({ action: 'setOrgPlan', organizationId: 'org-1', planCode: 'professional' }),
       });
     });
@@ -119,7 +119,7 @@ describe('SuperAdminFeatureFlags', () => {
     );
 
     await waitFor(() => {
-      expect(invokeSpy).toHaveBeenCalledWith('feature-flags', {
+      expect(invokeSpy).toHaveBeenCalledWith('feature-flags-v2', {
         body: expect.objectContaining({ action: 'setOrgFlag', organizationId: 'org-1', flagId: 'flag-1', enabled: false }),
       });
     });
@@ -130,7 +130,7 @@ describe('SuperAdminFeatureFlags', () => {
     await userEvent.click(screen.getByRole('button', { name: /Save organization/i }));
 
     await waitFor(() => {
-      expect(invokeSpy).toHaveBeenCalledWith('feature-flags', {
+      expect(invokeSpy).toHaveBeenCalledWith('feature-flags-v2', {
         body: expect.objectContaining({
           action: 'upsertOrganization',
           organization: {
@@ -196,7 +196,7 @@ describe('SuperAdminFeatureFlags', () => {
     await userEvent.selectOptions(planSelect, '');
 
     await waitFor(() => {
-      expect(invokeSpy).toHaveBeenCalledWith('feature-flags', {
+      expect(invokeSpy).toHaveBeenCalledWith('feature-flags-v2', {
         body: expect.objectContaining({ action: 'setOrgPlan', organizationId: 'org-1', planCode: null }),
       });
     });

@@ -51,7 +51,7 @@ type FeatureFlagPayload = {
   plans: PlanRecord[];
 };
 
-const QUERY_KEY = ['super-admin', 'feature-flags'];
+const QUERY_KEY = ['super-admin', 'feature-flags-v2'];
 
 const humanizeKey = (value: string): string => {
   return value
@@ -91,7 +91,7 @@ export const SuperAdminFeatureFlags: React.FC = () => {
     queryKey: QUERY_KEY,
     enabled: isSuperAdmin,
     queryFn: async () => {
-      const { data, error, status } = await edgeInvoke<FeatureFlagPayload>('feature-flags', { body: { action: 'list' } });
+      const { data, error, status } = await edgeInvoke<FeatureFlagPayload>('feature-flags-v2', { body: { action: 'list' } });
 
       if (error) {
         logger.error('Failed to load feature flag administration data', {
@@ -117,7 +117,7 @@ export const SuperAdminFeatureFlags: React.FC = () => {
 
   const createFlagMutation = useMutation({
     mutationFn: async () => {
-      const { error, status } = await edgeInvoke('feature-flags', { body: {
+      const { error, status } = await edgeInvoke('feature-flags-v2', { body: {
         action: 'createFlag',
         flagKey: newFlagKey.trim(),
         description: newFlagDescription.trim() || undefined,
@@ -147,7 +147,7 @@ export const SuperAdminFeatureFlags: React.FC = () => {
 
   const updateGlobalFlagMutation = useMutation({
     mutationFn: async (variables: { flagId: string; enabled: boolean }) => {
-      const { error, status } = await edgeInvoke('feature-flags', { body: {
+      const { error, status } = await edgeInvoke('feature-flags-v2', { body: {
         action: 'updateGlobalFlag',
         flagId: variables.flagId,
         enabled: variables.enabled,
@@ -173,7 +173,7 @@ export const SuperAdminFeatureFlags: React.FC = () => {
 
   const setOrganizationFlagMutation = useMutation({
     mutationFn: async (variables: { organizationId: string; flagId: string; enabled: boolean }) => {
-      const { error, status } = await edgeInvoke('feature-flags', { body: {
+      const { error, status } = await edgeInvoke('feature-flags-v2', { body: {
         action: 'setOrgFlag',
         organizationId: variables.organizationId,
         flagId: variables.flagId,
@@ -200,7 +200,7 @@ export const SuperAdminFeatureFlags: React.FC = () => {
 
   const setOrganizationPlanMutation = useMutation({
     mutationFn: async (variables: { organizationId: string; planCode: string | null }) => {
-      const { error, status } = await edgeInvoke('feature-flags', { body: {
+      const { error, status } = await edgeInvoke('feature-flags-v2', { body: {
         action: 'setOrgPlan',
         organizationId: variables.organizationId,
         planCode: variables.planCode,
@@ -231,7 +231,7 @@ export const SuperAdminFeatureFlags: React.FC = () => {
         throw new Error('Organization ID must be a valid UUID.');
       }
 
-      const { error, status } = await edgeInvoke('feature-flags', { body: {
+      const { error, status } = await edgeInvoke('feature-flags-v2', { body: {
         action: 'upsertOrganization',
         organization: {
           id: normalizedId,

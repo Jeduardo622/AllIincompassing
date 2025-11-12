@@ -87,7 +87,7 @@ export default function OrganizationSettings() {
     const newOrgId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 
     try {
-      const { error: upsertError, status } = await edgeInvoke('feature-flags', {
+      const { error: upsertError, status } = await edgeInvoke('feature-flags-v2', {
         body: {
           action: 'upsertOrganization',
           organization: {

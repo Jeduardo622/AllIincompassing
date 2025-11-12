@@ -28,6 +28,7 @@ describe('AI edge function authentication', () => {
     setRuntimeSupabaseConfig({
       supabaseUrl: 'https://example.supabase.co',
       supabaseAnonKey: anonKey,
+      defaultOrganizationId: 'org-default-123',
       supabaseEdgeUrl: edgeBase,
     });
 

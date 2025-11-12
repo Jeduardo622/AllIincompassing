@@ -38,6 +38,7 @@ export interface Therapist {
   id: string;
   email: string;
   full_name: string;
+  organization_id?: string | null;
   specialties: string[];
   max_clients: number;
   service_type: string[];

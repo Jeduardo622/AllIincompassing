@@ -9,6 +9,12 @@ The matrix below summarizes how we manage credentials, deployments, and rollback
 | Staging     | `develop`  | Netlify staging context | Dedicated staging project | Netlify staging env vars | GitHub Actions staging job |
 | Production  | `main`     | Netlify production | Primary Supabase project | Netlify production env vars | Production post-deploy checks |
 
+## Single-clinic mode configuration
+
+- All environments must define `DEFAULT_ORGANIZATION_ID` (the UUID of the active clinic). The runtime config endpoint exposes this value to the browser, and the edge functions refuse writes for any other organization.
+- Do **not** point the application at multiple organization IDs while single-clinic mode is enabled; feature flag overrides and plan assignments are now hard-locked to the configured ID.
+- If the value is missing, `/api/dashboard` and feature flag mutations will return `403` because we cannot resolve a safe fallback organization context.
+
 ## Staging credential rotation
 
 1. Schedule a weekly rotation window (Monday 10:00 PT) and announce it in `#platform`.

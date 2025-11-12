@@ -1,6 +1,7 @@
 export interface RuntimeSupabaseConfig {
   supabaseUrl: string;
   supabaseAnonKey: string;
+  defaultOrganizationId: string;
   supabaseEdgeUrl?: string;
 }
 
@@ -22,6 +23,9 @@ const validateConfig = (config: RuntimeSupabaseConfig): void => {
   if (!config.supabaseAnonKey) {
     throw new Error('Supabase runtime config missing `supabaseAnonKey`');
   }
+  if (!config.defaultOrganizationId) {
+    throw new Error('Supabase runtime config missing `defaultOrganizationId`');
+  }
 };
 
 let fetchPromise: Promise<RuntimeSupabaseConfig> | null = null;
@@ -31,6 +35,7 @@ export const setRuntimeSupabaseConfig = (config: RuntimeSupabaseConfig): void =>
   getContainer()[RUNTIME_CONFIG_SYMBOL] = {
     supabaseUrl: config.supabaseUrl,
     supabaseAnonKey: config.supabaseAnonKey,
+    defaultOrganizationId: config.defaultOrganizationId,
     supabaseEdgeUrl: config.supabaseEdgeUrl,
   };
 };
@@ -83,6 +88,8 @@ export const ensureRuntimeSupabaseConfig = async (): Promise<RuntimeSupabaseConf
 export const getSupabaseUrl = (): string => getRuntimeSupabaseConfig().supabaseUrl;
 
 export const getSupabaseAnonKey = (): string => getRuntimeSupabaseConfig().supabaseAnonKey;
+
+export const getDefaultOrganizationId = (): string => getRuntimeSupabaseConfig().defaultOrganizationId;
 
 export const getSupabaseEdgeBaseUrl = (): string => {
   const config = getRuntimeSupabaseConfig();

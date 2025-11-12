@@ -23,6 +23,8 @@ import { showSuccess, showError } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
 import { toError } from '../lib/logger/normalizeError';
 import { useAuth } from '../lib/authContext';
+import { useActiveOrganizationId } from '../lib/organization';
+import { describePostgrestError } from '../lib/supabase/isMissingRpcFunctionError';
 
 export const matchesStatusFilter = (
   status: Therapist['status'] | null | undefined,
@@ -49,6 +51,7 @@ const Therapists = () => {
   const queryClient = useQueryClient();
   const { isSuperAdmin } = useAuth();
   const navigate = useNavigate();
+  const activeOrganizationId = useActiveOrganizationId();
 
   const { data: therapists = [], isLoading } = useQuery({
     queryKey: ['therapists'],
@@ -104,12 +107,17 @@ const Therapists = () => {
 
   const createTherapistMutation = useMutation({
     mutationFn: async (newTherapist: Partial<Therapist>) => {
+      if (!activeOrganizationId) {
+        throw new Error('Organization context is required to create a therapist.');
+      }
+
       // Format data before submission
       const formattedTherapist = prepareFormData(newTherapist);
       
       // Prepare therapist data with proper formatting
       const parsedTherapist = {
         ...formattedTherapist,
+        organization_id: activeOrganizationId,
         service_type: formattedTherapist.service_type,
         specialties: formattedTherapist.specialties,
         preferred_areas: formattedTherapist.preferred_areas,
@@ -134,7 +142,14 @@ const Therapists = () => {
       showSuccess('Therapist saved successfully');
     },
     onError: (error) => {
-      showError(error);
+      const normalizedError = toError(error, describePostgrestError(error));
+      logger.error('Therapist create mutation failed', {
+        error: normalizedError,
+        metadata: {
+          hasOrganization: Boolean(activeOrganizationId),
+        },
+      });
+      showError(normalizedError);
     },
   });
 
@@ -265,6 +280,14 @@ const Therapists = () => {
       if (selectedTherapist) {
         await updateTherapistMutation.mutateAsync(data);
       } else {
+        if (!activeOrganizationId) {
+          const missingOrgError = new Error('Select or configure an organization before onboarding a therapist.');
+          logger.error('Blocked therapist creation: missing organization context', {
+            error: toError(missingOrgError, 'Organization context missing'),
+          });
+          showError(missingOrgError);
+          return;
+        }
         await createTherapistMutation.mutateAsync(data);
       }
     } catch (error) {

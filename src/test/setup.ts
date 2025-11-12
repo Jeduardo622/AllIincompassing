@@ -300,6 +300,7 @@ const consoleGuard = installConsoleGuard({ passthrough: false });
 setRuntimeSupabaseConfig({
   supabaseUrl: 'https://test-project.supabase.co',
   supabaseAnonKey: 'test-anon-key',
+  defaultOrganizationId: 'org-default-123',
 });
 
 beforeEach(() => {

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { useAuth, type UserProfile } from './authContext';
+import { getDefaultOrganizationId } from './runtimeConfig';
 
 const normalizeId = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -36,6 +37,15 @@ export const resolveOrganizationId = ({
     if (prefSnake) return prefSnake;
     const prefCamel = normalizeId(prefRecord.organizationId);
     if (prefCamel) return prefCamel;
+  }
+
+  try {
+    const fallback = normalizeId(getDefaultOrganizationId());
+    if (fallback) {
+      return fallback;
+    }
+  } catch {
+    // Runtime config not initialised yet; no fallback available.
   }
 
   return null;

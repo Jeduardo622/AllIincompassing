@@ -49,7 +49,15 @@ if (originalDispatchEvent) {
         : 'unhandledrejection';
 
     const fallback = new Event(fallbackType);
-    Object.assign(fallback, event);
+    if (event && typeof event === 'object') {
+      for (const key in event as Record<string, unknown>) {
+        try {
+          (fallback as Record<string, unknown>)[key] = (event as Record<string, unknown>)[key];
+        } catch {
+          // Ignore read-only assignments
+        }
+      }
+    }
 
     return originalDispatchEvent(fallback);
   }) as typeof globalThis.dispatchEvent;

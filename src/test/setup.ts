@@ -67,6 +67,58 @@ process.on('unhandledRejection', (reason) => {
   throw reason instanceof Error ? reason : new Error(String(reason));
 });
 
+class TestWebSocket extends EventTarget {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+
+  readonly url: string;
+  readonly protocol: string;
+  readyState = TestWebSocket.CONNECTING;
+  onopen: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onclose: ((event: CloseEvent) => void) | null = null;
+
+  constructor(url: string, protocols?: string | string[]) {
+    super();
+    this.url = url;
+    this.protocol = Array.isArray(protocols) ? protocols[0] ?? '' : protocols ?? '';
+
+    queueMicrotask(() => {
+      this.readyState = TestWebSocket.OPEN;
+      const openEvent = new Event('open');
+      this.dispatchEvent(openEvent);
+    });
+  }
+
+  send(_data: unknown): void {
+    // No-op stub
+  }
+
+  close(): void {
+    if (this.readyState === TestWebSocket.CLOSED) return;
+    this.readyState = TestWebSocket.CLOSING;
+    const closeEvent = new Event('close') as CloseEvent;
+    this.dispatchEvent(closeEvent);
+    this.readyState = TestWebSocket.CLOSED;
+  }
+
+  override dispatchEvent(event: Event): boolean {
+    const handled = super.dispatchEvent(event);
+    const handler = (this as unknown as Record<string, ((ev: Event) => void) | null>)[`on${event.type}`];
+    handler?.call(this, event);
+    return handled;
+  }
+}
+
+Object.defineProperty(globalThis, 'WebSocket', {
+  configurable: true,
+  writable: true,
+  value: TestWebSocket,
+});
+
 if (!process.env.RUN_CLIENT_DOMAIN_TESTS) {
   process.env.RUN_CLIENT_DOMAIN_TESTS = 'true';
 }

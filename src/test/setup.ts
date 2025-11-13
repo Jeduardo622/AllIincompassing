@@ -5,6 +5,60 @@ import '@testing-library/jest-dom';
 import { installConsoleGuard } from './utils/consoleGuard';
 import { setRuntimeSupabaseConfig } from '../lib/runtimeConfig';
 
+if (typeof globalThis.PromiseRejectionEvent !== 'function') {
+  class PromiseRejectionEventPolyfill extends Event {
+    readonly promise: Promise<unknown>;
+    readonly reason: unknown;
+
+    constructor(type: string, init: PromiseRejectionEventInit) {
+      super(type, init);
+      this.promise = init.promise;
+      this.reason = init.reason;
+    }
+  }
+
+  Object.defineProperty(globalThis, 'PromiseRejectionEvent', {
+    value: PromiseRejectionEventPolyfill,
+    configurable: true,
+    writable: true,
+  });
+
+  if (typeof window !== 'undefined') {
+    Object.defineProperty(window, 'PromiseRejectionEvent', {
+      value: PromiseRejectionEventPolyfill,
+      configurable: true,
+      writable: true,
+    });
+  }
+}
+
+const originalDispatchEvent =
+  typeof globalThis.dispatchEvent === 'function'
+    ? globalThis.dispatchEvent.bind(globalThis)
+    : undefined;
+
+if (originalDispatchEvent) {
+  globalThis.dispatchEvent = ((event: Event) => {
+    if (event instanceof Event) {
+      return originalDispatchEvent(event);
+    }
+
+    const fallbackType =
+      typeof (event as { type?: string }).type === 'string'
+        ? (event as { type: string }).type
+        : 'unhandledrejection';
+
+    const fallback = new Event(fallbackType);
+    Object.assign(fallback, event);
+
+    return originalDispatchEvent(fallback);
+  }) as typeof globalThis.dispatchEvent;
+}
+
+process.on('unhandledRejection', (reason) => {
+  throw reason instanceof Error ? reason : new Error(String(reason));
+});
+
 if (!process.env.RUN_CLIENT_DOMAIN_TESTS) {
   process.env.RUN_CLIENT_DOMAIN_TESTS = 'true';
 }

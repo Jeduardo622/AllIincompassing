@@ -183,6 +183,10 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
         full_name: `${formattedData.first_name} ${formattedData.middle_name || ''} ${formattedData.last_name}`.trim()
       };
 
+      if (!formattedTherapist.license_number) {
+        delete formattedTherapist.license_number;
+      }
+
       // Insert therapist data
       const { data: therapist, error } = await supabase
         .from('therapists')

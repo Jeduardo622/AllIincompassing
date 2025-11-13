@@ -43,7 +43,7 @@ interface OnboardingFormData {
   taxonomy_code?: string;
   rbt_number?: string;
   bcba_number?: string;
-  license_number: string;
+  license_number?: string;
 
   // Employment Information
   facility?: string;
@@ -96,7 +96,7 @@ const therapistOnboardingSchema = z
     first_name: z.string().trim().min(1, 'First name is required'),
     last_name: z.string().trim().min(1, 'Last name is required'),
     email: z.string().trim().min(1, 'Email is required').email('Enter a valid email address'),
-    license_number: z.string().trim().min(1, 'License number is required'),
+    license_number: z.string().trim().optional(),
     license: z.instanceof(File).or(z.null()),
   })
   .passthrough()
@@ -143,7 +143,7 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
       weekly_hours_max: 40,
       availability_hours: DEFAULT_AVAILABILITY,
       preferred_areas: [],
-      license_number: '',
+      license_number: undefined,
       license: null,
       resume: null,
       background_check: null,
@@ -167,7 +167,6 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
 
   const stepValidationFields: Record<number, (keyof OnboardingFormData)[]> = {
     1: ['first_name', 'last_name', 'email'],
-    2: ['license_number'],
   };
 
   const createTherapistMutation = useMutation({
@@ -281,7 +280,7 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
     };
 
     const therapistPayload = { ...sanitizedData } as Partial<Therapist> & {
-      license_number: string;
+      license_number?: string | null;
     };
 
     delete (therapistPayload as Record<string, unknown>).license;
@@ -289,6 +288,9 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
     delete (therapistPayload as Record<string, unknown>).background_check;
     delete (therapistPayload as Record<string, unknown>).certifications;
     therapistPayload.organization_id = activeOrganizationId;
+    if (!therapistPayload.license_number) {
+      delete (therapistPayload as Record<string, unknown>).license_number;
+    }
 
     setIsSubmitting(true);
     try {

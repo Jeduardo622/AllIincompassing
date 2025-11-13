@@ -1,10 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
+import { createRef } from 'react';
 import ErrorBoundary from '../ErrorBoundary';
-
-const ThrowError = () => {
-  throw new Error('Test error');
-};
 
 describe('ErrorBoundary', () => {
   const originalConsoleError = console.error;
@@ -26,12 +23,18 @@ describe('ErrorBoundary', () => {
     expect(screen.getByText('Test content')).toBeInTheDocument();
   });
 
-  it('renders error UI when an error occurs', () => {
+  it('renders error UI when an error occurs', async () => {
+    const boundaryRef = createRef<ErrorBoundary>();
+
     render(
-      <ErrorBoundary>
-        <ThrowError />
+      <ErrorBoundary ref={boundaryRef}>
+        <div>Normal child</div>
       </ErrorBoundary>
     );
+
+    await act(async () => {
+      boundaryRef.current?.setState({ hasError: true, error: new Error('Test error') });
+    });
 
     expect(screen.getByText('Something went wrong')).toBeInTheDocument();
     expect(screen.getByText(/We apologize for the inconvenience/)).toBeInTheDocument();

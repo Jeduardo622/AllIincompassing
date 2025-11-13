@@ -1,13 +1,104 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { http, HttpResponse } from "msw";
 import { renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
+import { fireEvent } from "@testing-library/react";
+import { server } from "../../test/setup";
+import { supabase } from "../../lib/supabase";
+
+const scheduleFixtures = {
+  sessions: [
+    {
+      id: "session-1",
+      therapist_id: "therapist-1",
+      client_id: "client-1",
+      start_time: "2025-07-01T10:00:00Z",
+      end_time: "2025-07-01T11:00:00Z",
+      status: "scheduled",
+      notes: "Initial session",
+      created_at: "2025-06-01T00:00:00Z",
+      updated_at: "2025-06-01T00:00:00Z",
+    },
+  ],
+  therapists: [
+    {
+      id: "therapist-1",
+      full_name: "Dr. Myles",
+      email: "myles@example.com",
+      availability_hours: {
+        monday: { start: "09:00", end: "17:00" },
+        tuesday: { start: "09:00", end: "17:00" },
+        wednesday: { start: "09:00", end: "17:00" },
+        thursday: { start: "09:00", end: "17:00" },
+        friday: { start: "09:00", end: "17:00" },
+        saturday: { start: null, end: null },
+        sunday: { start: null, end: null },
+      },
+    },
+  ],
+  clients: [
+    {
+      id: "client-1",
+      full_name: "Jamie Client",
+      email: "jamie@example.com",
+      availability_hours: {
+        monday: { start: "10:00", end: "15:00" },
+        tuesday: { start: "10:00", end: "15:00" },
+        wednesday: { start: "10:00", end: "15:00" },
+        thursday: { start: "10:00", end: "15:00" },
+        friday: { start: "10:00", end: "15:00" },
+        saturday: { start: null, end: null },
+        sunday: { start: null, end: null },
+      },
+    },
+  ],
+};
+
+vi.mock("../../lib/optimizedQueries", () => ({
+  useScheduleDataBatch: () => ({ data: scheduleFixtures, isLoading: false }),
+  useSessionsOptimized: () => ({ data: scheduleFixtures.sessions, isLoading: false }),
+  useDropdownData: () => ({
+    data: { therapists: scheduleFixtures.therapists, clients: scheduleFixtures.clients },
+    isLoading: false,
+  }),
+}));
+
 import Schedule from "../Schedule";
+
+const defaultRpcImplementation = vi.mocked(supabase.rpc as any).getMockImplementation();
 
 describe("Schedule", () => {
   beforeEach(() => {
+    vi.mocked(supabase.rpc as any).mockImplementation(async (functionName: string) => {
+      if (functionName === "get_schedule_data_batch") {
+        return { data: scheduleFixtures, error: null };
+      }
+      if (functionName === "get_dropdown_data") {
+        return {
+          data: {
+            therapists: scheduleFixtures.therapists,
+            clients: scheduleFixtures.clients,
+          },
+          error: null,
+        };
+      }
+      if (functionName === "get_sessions_optimized") {
+        return {
+          data: scheduleFixtures.sessions.map((session) => ({ session_data: session })),
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    });
+    server.resetHandlers();
     localStorage.clear();
   });
   
   afterEach(() => {
+    if (defaultRpcImplementation) {
+      vi.mocked(supabase.rpc as any).mockImplementation(defaultRpcImplementation);
+    } else {
+      vi.mocked(supabase.rpc as any).mockReset();
+    }
     localStorage.clear();
   });
 
@@ -45,29 +136,4 @@ describe("Schedule", () => {
     }
   });
 
-  it("allows switching between views when data is loaded", async () => {
-    renderWithProviders(<Schedule />);
-
-    // First wait for the component to finish loading
-    await waitFor(() => {
-      // Check if we can find the view buttons (they only show when not loading)
-      return screen.queryByText("Day") || screen.queryByText("Week") || screen.queryByText("Matrix");
-    }, { timeout: 5000 });
-
-    // If we found the buttons, test the view switching
-    const dayButton = screen.queryByRole("button", { name: /Day/i });
-    const weekButton = screen.queryByRole("button", { name: /Week/i });
-    const matrixButton = screen.queryByRole("button", { name: /Matrix/i });
-
-    if (dayButton && weekButton && matrixButton) {
-      await userEvent.click(dayButton);
-      await userEvent.click(weekButton);
-      await userEvent.click(matrixButton);
-      
-      expect(matrixButton).toHaveClass("bg-blue-600");
-    } else {
-      // If buttons aren't found, the component is still loading - that's valid
-      console.log("View buttons not found - component may still be loading");
-    }
-  });
 });

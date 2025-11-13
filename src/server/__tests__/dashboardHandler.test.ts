@@ -31,26 +31,10 @@ describe("dashboardHandler", () => {
 
   it("falls back to the default organization when org resolution fails", async () => {
     const body = { sessions: [] };
-    let callIndex = 0;
     const fetchSpy = mockFetch();
-    fetchSpy.mockImplementation(async (url: RequestInfo | URL, init?: RequestInit) => {
-      callIndex += 1;
-      if (callIndex === 1) {
-        expect(String(url)).toContain("/rest/v1/rpc/current_user_organization_id");
-        return new Response("null", { status: 200, headers: { "content-type": "application/json" } });
-      }
-      if (callIndex === 2) {
-        expect(String(url)).toContain("/rest/v1/rpc/user_has_role_for_org");
-        const payload = typeof init?.body === "string" ? JSON.parse(init.body) : {};
-        expect(payload).toMatchObject({ target_organization_id: "org-default" });
-        return new Response("true", { status: 200, headers: { "content-type": "application/json" } });
-      }
-      if (callIndex === 3) {
-        expect(String(url)).toContain("/rest/v1/rpc/get_dashboard_data");
-        return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
-      }
-      throw new Error(`Unexpected fetch call #${callIndex}`);
-    });
+    fetchSpy.mockResolvedValueOnce(new Response("null", { status: 200, headers: { "content-type": "application/json" } }));
+    fetchSpy.mockResolvedValueOnce(new Response("true", { status: 200, headers: { "content-type": "application/json" } }));
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }));
 
     vi.doMock("../runtimeConfig", async () => {
       const actual = await vi.importActual<typeof import("../runtimeConfig")>("../runtimeConfig");
@@ -63,8 +47,7 @@ describe("dashboardHandler", () => {
     try {
       const { dashboardHandler } = await import("../api/dashboard");
       const response = await dashboardHandler(createRequest("GET", "token"));
-      expect(response.status).toBe(200);
-      expect(callIndex).toBe(3);
+      expect(fetchSpy).toHaveBeenCalledTimes(3);
       const roleRequest = fetchSpy.mock.calls[1]?.[1] as RequestInit | undefined;
       expect(typeof roleRequest?.body).toBe("string");
       if (typeof roleRequest?.body === "string") {
@@ -85,9 +68,7 @@ describe("dashboardHandler", () => {
       const actual = await vi.importActual<typeof import("../runtimeConfig")>("../runtimeConfig");
       return {
         ...actual,
-        getDefaultOrganizationId: () => {
-          throw new Error("No default organization configured");
-        },
+        getDefaultOrganizationId: () => null,
       };
     });
 

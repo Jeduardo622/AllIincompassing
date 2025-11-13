@@ -105,10 +105,8 @@ describe("ChatBot scheduling", () => {
 
     await screen.findByText("Sure thing");
 
-    const stored = localStorage.getItem("pendingSchedule");
-    expect(stored).not.toBeNull();
-    const detail = JSON.parse(stored as string);
-    expect(detail.therapist_id).toBe("t1");
+    const stored = window.localStorage.getItem("pendingSchedule");
+    expect(stored).toEqual(JSON.stringify(defaultScheduleAction.action.data));
   });
 
   it("cancels sessions when AI requests cancellation", async () => {

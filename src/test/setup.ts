@@ -123,6 +123,10 @@ if (!process.env.RUN_CLIENT_DOMAIN_TESTS) {
   process.env.RUN_CLIENT_DOMAIN_TESTS = 'true';
 }
 
+if (!process.env.DEFAULT_ORGANIZATION_ID) {
+  process.env.DEFAULT_ORGANIZATION_ID = 'org-default-123';
+}
+
 const ORG_A_TEST_TOKEN = 'test-org-a-jwt-placeholder';
 const ORG_B_TEST_TOKEN = 'test-org-b-jwt-placeholder';
 const SUPER_ADMIN_TEST_TOKEN = 'test-super-admin-jwt-placeholder';

@@ -4,7 +4,9 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { axe, toHaveNoViolations } from 'jest-axe';
 vi.mock('../lib/authContext', async () => {
+  const actual = await vi.importActual<typeof import('../lib/authContext')>('../lib/authContext');
   return {
+    ...actual,
     useAuth: () => ({
       user: null,
       profile: null,
@@ -20,6 +22,7 @@ vi.mock('../lib/authContext', async () => {
       isAdmin: () => false,
       isSuperAdmin: () => false,
     }),
+    AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   };
 });
 

@@ -22,6 +22,7 @@ const ORIGINAL_ENV = {
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
   SUPABASE_EDGE_URL: process.env.SUPABASE_EDGE_URL,
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  DEFAULT_ORGANIZATION_ID: process.env.DEFAULT_ORGANIZATION_ID,
 };
 
 const asRecord = (value: unknown): Record<string, unknown> => {
@@ -67,7 +68,12 @@ describe("booking billing integration", () => {
     } else {
       delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     }
-    delete process.env.DEFAULT_ORGANIZATION_ID;
+
+    if (typeof ORIGINAL_ENV.DEFAULT_ORGANIZATION_ID === "string") {
+      process.env.DEFAULT_ORGANIZATION_ID = ORIGINAL_ENV.DEFAULT_ORGANIZATION_ID;
+    } else {
+      delete process.env.DEFAULT_ORGANIZATION_ID;
+    }
     resetSessionCptClient();
   });
 

@@ -123,7 +123,14 @@ const TestProviders = ({
     }
 
     if (typeof candidate === 'function') {
-      return candidate as typeof authContext.AuthProvider;
+      if (Reflect.has(candidate as object, 'mock')) {
+        return ({ children: providerChildren }: { children: React.ReactNode }) => <>{providerChildren}</>;
+      }
+
+      const ActualProvider = candidate as typeof authContext.AuthProvider;
+      return ({ children: providerChildren }: { children: React.ReactNode }) => (
+        <ActualProvider>{providerChildren}</ActualProvider>
+      );
     }
 
     return ({ children: providerChildren }: { children: React.ReactNode }) => <>{providerChildren}</>;

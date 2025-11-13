@@ -1,9 +1,21 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runtimeConfigHandler } from '../api/runtime-config';
 import { resetEnvCacheForTests } from '../env';
+import { RUNTIME_CONFIG_FALLBACK_ORGANIZATION_ID } from '../runtimeConfig';
+
+const loggerMock = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+}));
+
+vi.mock('../../lib/logger/logger', () => ({
+  logger: loggerMock,
+}));
 
 const originalEnv = { ...process.env };
 
@@ -11,6 +23,10 @@ describe('runtimeConfigHandler', () => {
   beforeEach(() => {
     process.env = { ...originalEnv } as NodeJS.ProcessEnv;
     resetEnvCacheForTests();
+    loggerMock.info.mockReset();
+    loggerMock.warn.mockReset();
+    loggerMock.error.mockReset();
+    loggerMock.debug.mockReset();
   });
 
   afterAll(() => {
@@ -28,6 +44,34 @@ describe('runtimeConfigHandler', () => {
     expect(payload.supabaseUrl).toBe('https://example.supabase.co');
     expect(payload.supabaseAnonKey).toBe('anon-key');
     expect(payload.defaultOrganizationId).toBe('org-default-123');
+  });
+
+  it('falls back to baked-in org id when DEFAULT_ORGANIZATION_ID is missing', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'runtime-config-fallback-'));
+    const envPath = join(tempDir, '.env.codex');
+    writeFileSync(envPath, ['SUPABASE_URL=https://example.supabase.co', 'SUPABASE_ANON_KEY=anon-key'].join('\n'));
+
+    delete process.env.DEFAULT_ORGANIZATION_ID;
+    process.env.SUPABASE_URL = 'https://example.supabase.co';
+    process.env.SUPABASE_ANON_KEY = 'anon-key';
+    process.env.CODEX_ENV_PATH = envPath;
+    resetEnvCacheForTests();
+
+    try {
+      const response = await runtimeConfigHandler(new Request('http://localhost/api/runtime-config'));
+      expect(response.status).toBe(200);
+      const payload = await response.json();
+      expect(payload.defaultOrganizationId).toBe(RUNTIME_CONFIG_FALLBACK_ORGANIZATION_ID);
+      expect(loggerMock.warn).toHaveBeenCalledWith(
+        'DEFAULT_ORGANIZATION_ID missing; falling back to baked-in runtime config default',
+        expect.objectContaining({
+          fallbackOrganizationId: RUNTIME_CONFIG_FALLBACK_ORGANIZATION_ID,
+        }),
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+      delete process.env.CODEX_ENV_PATH;
+    }
   });
 
   it('loads config values from .env.codex when process env is unset', async () => {

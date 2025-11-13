@@ -43,7 +43,7 @@ describe('TherapistOnboarding validation', () => {
     expect(document.activeElement).toBe(firstNameInput);
   });
 
-  it('requires a license number on the professional step', async () => {
+  it('allows advancing past professional step without a license number', async () => {
     renderOnboarding();
 
     await userEvent.type(screen.getByLabelText(/first name/i), 'Jordan');
@@ -54,13 +54,9 @@ describe('TherapistOnboarding validation', () => {
     expect(screen.getByText(/professional information/i)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: /next/i }));
-
     await waitFor(() => {
-      expect(screen.getByText('License number is required')).toBeInTheDocument();
+      expect(screen.getByText(/address & contact information/i)).toBeInTheDocument();
     });
-
-    const licenseNumberInput = screen.getByLabelText(/license number/i);
-    expect(document.activeElement).toBe(licenseNumberInput);
   });
 
   it('requires a license document before submission', async () => {

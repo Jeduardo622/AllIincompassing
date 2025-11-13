@@ -30,38 +30,75 @@ describe("dashboardHandler", () => {
   });
 
   it("falls back to the default organization when org resolution fails", async () => {
-    const fetchSpy = mockFetch();
-    // current_user_organization_id -> 200 null
-    fetchSpy.mockResolvedValueOnce(new Response("null", { status: 200, headers: { "content-type": "application/json" } }));
-    // role check for default org
-    fetchSpy.mockResolvedValueOnce(new Response("true", { status: 200, headers: { "content-type": "application/json" } }));
-    // get_dashboard_data
     const body = { sessions: [] };
-    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }));
+    let callIndex = 0;
+    const fetchSpy = mockFetch();
+    fetchSpy.mockImplementation(async (url: RequestInfo | URL, init?: RequestInit) => {
+      callIndex += 1;
+      if (callIndex === 1) {
+        expect(String(url)).toContain("/rest/v1/rpc/current_user_organization_id");
+        return new Response("null", { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (callIndex === 2) {
+        expect(String(url)).toContain("/rest/v1/rpc/user_has_role_for_org");
+        const payload = typeof init?.body === "string" ? JSON.parse(init.body) : {};
+        expect(payload).toMatchObject({ target_organization_id: "org-default" });
+        return new Response("true", { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (callIndex === 3) {
+        expect(String(url)).toContain("/rest/v1/rpc/get_dashboard_data");
+        return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      throw new Error(`Unexpected fetch call #${callIndex}`);
+    });
 
-    const { dashboardHandler } = await import("../api/dashboard");
-    const response = await dashboardHandler(createRequest("GET", "token"));
+    vi.doMock("../runtimeConfig", async () => {
+      const actual = await vi.importActual<typeof import("../runtimeConfig")>("../runtimeConfig");
+      return {
+        ...actual,
+        getDefaultOrganizationId: () => "org-default",
+      };
+    });
 
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
-    const roleRequest = fetchSpy.mock.calls[1]?.[1] as RequestInit | undefined;
-    expect(typeof roleRequest?.body).toBe("string");
-    if (typeof roleRequest?.body === "string") {
-      expect(JSON.parse(roleRequest.body)).toMatchObject({ target_organization_id: "org-default" });
+    try {
+      const { dashboardHandler } = await import("../api/dashboard");
+      const response = await dashboardHandler(createRequest("GET", "token"));
+      expect(response.status).toBe(200);
+      expect(callIndex).toBe(3);
+      const roleRequest = fetchSpy.mock.calls[1]?.[1] as RequestInit | undefined;
+      expect(typeof roleRequest?.body).toBe("string");
+      if (typeof roleRequest?.body === "string") {
+        expect(JSON.parse(roleRequest.body)).toMatchObject({ target_organization_id: "org-default" });
+      }
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject(body);
+    } finally {
+      vi.doUnmock("../runtimeConfig");
     }
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject(body);
   });
 
   it("returns 403 when no organization context is available", async () => {
-    delete process.env.DEFAULT_ORGANIZATION_ID;
-
     const fetchSpy = mockFetch();
     fetchSpy.mockResolvedValueOnce(new Response("null", { status: 200, headers: { "content-type": "application/json" } }));
 
-    const { dashboardHandler } = await import("../api/dashboard");
-    const response = await dashboardHandler(createRequest("GET", "token"));
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(response.status).toBe(403);
+    vi.doMock("../runtimeConfig", async () => {
+      const actual = await vi.importActual<typeof import("../runtimeConfig")>("../runtimeConfig");
+      return {
+        ...actual,
+        getDefaultOrganizationId: () => {
+          throw new Error("No default organization configured");
+        },
+      };
+    });
+
+    try {
+      const { dashboardHandler } = await import("../api/dashboard");
+      const response = await dashboardHandler(createRequest("GET", "token"));
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(response.status).toBe(403);
+    } finally {
+      vi.doUnmock("../runtimeConfig");
+    }
   });
 
   it("returns payload when RPC succeeds", async () => {

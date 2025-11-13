@@ -1,3 +1,11 @@
+const normalize = (value?: string | null): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const DEFAULT_ORG_FALLBACK = 'org-default-123';
+
 export const handler = async () => {
   // Support multiple possible env var names from Netlify + Supabase integration
   const supabaseUrl =
@@ -12,6 +20,13 @@ export const handler = async () => {
   const supabaseEdgeUrl =
     process.env.SUPABASE_EDGE_URL ||
     process.env.VITE_SUPABASE_EDGE_URL;
+
+  const defaultOrganizationId =
+    normalize(process.env.DEFAULT_ORGANIZATION_ID) ||
+    normalize(process.env.SUPABASE_DEFAULT_ORGANIZATION_ID) ||
+    normalize(process.env.VITE_DEFAULT_ORGANIZATION_ID) ||
+    normalize(process.env.DEFAULT_ORG_ID) ||
+    DEFAULT_ORG_FALLBACK;
 
   if (!supabaseUrl || !supabaseAnonKey) {
     return {
@@ -36,8 +51,8 @@ export const handler = async () => {
       supabaseUrl,
       supabaseAnonKey,
       supabaseEdgeUrl: supabaseEdgeUrl || undefined,
+      defaultOrganizationId,
     }),
   };
 };
-
 

@@ -50,16 +50,22 @@ const Clients = () => {
   const { isSuperAdmin } = useAuth();
   const navigate = useNavigate();
   const activeOrganizationId = useActiveOrganizationId();
+  const isSuperAdminUser = isSuperAdmin();
+  const resolvedOrganizationId = activeOrganizationId ?? null;
+  const loadAllClients = isSuperAdminUser && !resolvedOrganizationId;
 
   const { data: clients = [], isLoading, error: clientsError } = useQuery({
-    queryKey: ['clients', activeOrganizationId ?? 'MISSING_ORG'],
+    queryKey: ['clients', loadAllClients ? 'ALL' : resolvedOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
-      if (!activeOrganizationId) {
+      if (!loadAllClients && !resolvedOrganizationId) {
         throw new Error('Organization context is required to load clients');
       }
-      return fetchClients({ organizationId: activeOrganizationId });
+      return fetchClients({
+        organizationId: loadAllClients ? undefined : resolvedOrganizationId,
+        allowAll: loadAllClients,
+      });
     },
-    enabled: Boolean(activeOrganizationId),
+    enabled: loadAllClients || Boolean(resolvedOrganizationId),
   });
 
   // Calculate total units for each client - Moved up before it's used
@@ -337,7 +343,7 @@ const Clients = () => {
 
   return (
     <div className="h-full">
-      {!activeOrganizationId && (
+      {!isSuperAdminUser && !activeOrganizationId && (
         <div className="mb-6 rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-amber-800 dark:text-amber-100">
           <p className="font-medium">Select an organization to manage client records.</p>
           <p className="mt-1 text-sm opacity-80">

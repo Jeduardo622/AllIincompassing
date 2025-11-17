@@ -169,25 +169,32 @@ const parseGuardianPortalRow = (row: GuardianPortalRpcRow): GuardianPortalClient
 const DEFAULT_ORDER_COLUMN = 'full_name';
 
 interface FetchClientsOptions {
-  organizationId: string;
+  organizationId?: string | null;
   client?: ClientsSupabaseClient;
+  allowAll?: boolean;
 }
 
 export const fetchClients = async (
   options: FetchClientsOptions
 ): Promise<Client[]> => {
-  const { organizationId, client: overrideClient } = options;
-  if (!organizationId) {
+  const { organizationId, client: overrideClient, allowAll = false } = options;
+  if (!allowAll && !organizationId) {
     throw new Error('organizationId is required to fetch clients');
   }
 
   const clientRef = overrideClient ?? supabase;
 
-  const { data, error } = await clientRef
+  let query = clientRef
     .from('clients')
-    .select(CLIENT_SELECT)
-    .eq('organization_id', organizationId)
-    .order(DEFAULT_ORDER_COLUMN, { ascending: true });
+    .select(CLIENT_SELECT);
+
+  if (organizationId) {
+    query = query.eq('organization_id', organizationId);
+  } else if (!allowAll) {
+    throw new Error('organizationId is required to fetch clients');
+  }
+
+  const { data, error } = await query.order(DEFAULT_ORDER_COLUMN, { ascending: true });
 
   if (error) {
     throw error;

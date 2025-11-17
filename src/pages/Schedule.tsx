@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useLayoutEffect, useEffect, useRef } from "react";
+import React, { useState, useMemo, useCallback, useLayoutEffect, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, startOfWeek, addDays, endOfWeek } from "date-fns";
 import { getTimezoneOffset, fromZonedTime as zonedTimeToUtc } from "date-fns-tz";

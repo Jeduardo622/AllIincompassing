@@ -13,7 +13,7 @@ describe('clients fetchers', () => {
   it('loads clients using the sanitized select clause', async () => {
     const order = vi.fn().mockResolvedValue({ data: [], error: null });
     const eq = vi.fn().mockReturnValue({ order });
-    const select = vi.fn().mockReturnValue({ eq });
+    const select = vi.fn().mockReturnValue({ eq, order });
     const from = vi.fn().mockReturnValue({ select });
 
     await fetchClients({ organizationId: 'org-1', client: { from } as any });
@@ -21,6 +21,18 @@ describe('clients fetchers', () => {
     expect(from).toHaveBeenCalledWith('clients');
     expect(select).toHaveBeenCalledWith(CLIENT_SELECT);
     expect(eq).toHaveBeenCalledWith('organization_id', 'org-1');
+    expect(order).toHaveBeenCalledWith('full_name', { ascending: true });
+  });
+
+  it('allows super admins to load all clients when explicitly enabled', async () => {
+    const order = vi.fn().mockResolvedValue({ data: [], error: null });
+    const select = vi.fn().mockReturnValue({ order });
+    const from = vi.fn().mockReturnValue({ select });
+
+    await fetchClients({ allowAll: true, client: { from } as any });
+
+    expect(from).toHaveBeenCalledWith('clients');
+    expect(select).toHaveBeenCalledWith(CLIENT_SELECT);
     expect(order).toHaveBeenCalledWith('full_name', { ascending: true });
   });
 

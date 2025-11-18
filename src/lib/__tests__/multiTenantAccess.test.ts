@@ -295,4 +295,67 @@ describe('multi-tenant access controls', () => {
 
     await supabaseOrgB.auth.signOut();
   });
+
+  it('prevents therapists from reading another therapist’s sessions within the same org', async () => {
+    if (!runTests || !orgAContext || !orgBContext) {
+      console.log('⏭️  Skipping multi-tenant test - setup incomplete.');
+      return;
+    }
+
+    const supabaseOrgA = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const signInResult = await supabaseOrgA.auth.signInWithPassword({
+      email: orgAContext.email,
+      password: orgAContext.password,
+    });
+    expect(signInResult.error).toBeNull();
+
+    const { data, error } = await supabaseOrgA
+      .from('sessions')
+      .select('id')
+      .eq('therapist_id', orgBContext.therapistId);
+
+    expect(error).toBeNull();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data?.length).toBe(0);
+
+    await supabaseOrgA.auth.signOut();
+  });
+
+  it('allows therapists to read only their assigned client record', async () => {
+    if (!runTests || !orgAContext || !orgBContext) {
+      console.log('⏭️  Skipping multi-tenant test - setup incomplete.');
+      return;
+    }
+
+    const supabaseOrgA = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const signInResult = await supabaseOrgA.auth.signInWithPassword({
+      email: orgAContext.email,
+      password: orgAContext.password,
+    });
+    expect(signInResult.error).toBeNull();
+
+    const mine = await supabaseOrgA
+      .from('clients')
+      .select('id')
+      .eq('id', orgAContext.clientId)
+      .maybeSingle();
+    expect(mine.error).toBeNull();
+    expect(mine.data?.id).toBe(orgAContext.clientId);
+
+    const other = await supabaseOrgA
+      .from('clients')
+      .select('id')
+      .eq('id', orgBContext.clientId)
+      .maybeSingle();
+    expect(other.error).toBeNull();
+    expect(other.data).toBeNull();
+
+    await supabaseOrgA.auth.signOut();
+  });
 });

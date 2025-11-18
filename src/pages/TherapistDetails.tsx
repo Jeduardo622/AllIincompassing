@@ -7,6 +7,7 @@ import ProfileTab from '../components/TherapistDetails/ProfileTab';
 import CertificationsTab from '../components/TherapistDetails/CertificationsTab';
 import ScheduleTab from '../components/TherapistDetails/ScheduleTab';
 import ClientsTab from '../components/TherapistDetails/ClientsTab';
+import { useAuth } from '../lib/authContext';
 
 type TabType = 'profile' | 'certifications' | 'schedule' | 'clients';
 
@@ -14,6 +15,7 @@ export default function TherapistDetails() {
   const { therapistId } = useParams<{ therapistId: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('profile');
+  const { profile } = useAuth();
 
   const { data: therapist, isLoading } = useQuery({
     queryKey: ['therapist', therapistId],
@@ -60,6 +62,23 @@ export default function TherapistDetails() {
           className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           Return to Therapists
+        </button>
+      </div>
+    );
+  }
+
+  if (profile?.role === 'therapist' && profile.id !== therapist.id) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded-lg shadow p-8 text-red-700 dark:text-red-200">
+        <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+          You can only view your own therapist profile
+        </h2>
+        <button
+          onClick={() => navigate('/therapists')}
+          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+        >
+          Back to Therapist List
         </button>
       </div>
     );

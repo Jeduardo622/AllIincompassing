@@ -98,6 +98,50 @@ export default function ClientDetails() {
     );
   }
 
+  const isTherapistViewer = profile?.role === 'therapist';
+  const isClientViewer = profile?.role === 'client';
+  const viewingOwnClientRecord = isClientViewer && client.id === profile?.id;
+  const therapistOwnsClient = isTherapistViewer
+    ? client.therapist_id === profile?.id
+    : false;
+
+  if (isTherapistViewer && !therapistOwnsClient) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded-lg shadow p-8 text-red-700 dark:text-red-200">
+        <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+          You are not assigned to this client
+        </h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-6">
+          Please return to your client list. If you believe this is an error, contact an administrator.
+        </p>
+        <button
+          onClick={() => navigate('/clients')}
+          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+        >
+          Back to Clients
+        </button>
+      </div>
+    );
+  }
+
+  if (isClientViewer && !viewingOwnClientRecord) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded-lg shadow p-8 text-red-700 dark:text-red-200">
+        <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+          You can only view your own record
+        </h2>
+        <button
+          onClick={() => navigate('/family')}
+          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+        >
+          Go to Family Dashboard
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full">
       <div className="flex items-center mb-6">

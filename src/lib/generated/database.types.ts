@@ -785,6 +785,8 @@ export type Database = {
           state: string | null
           status: string
           supervision_units: number | null
+          therapist_assigned_at: string | null
+          therapist_id: string | null
           unscheduled_hours: number | null
           updated_at: string
           updated_by: string | null
@@ -845,6 +847,8 @@ export type Database = {
           state?: string | null
           status?: string
           supervision_units?: number | null
+          therapist_assigned_at?: string | null
+          therapist_id?: string | null
           unscheduled_hours?: number | null
           updated_at?: string
           updated_by?: string | null
@@ -905,12 +909,22 @@ export type Database = {
           state?: string | null
           status?: string
           supervision_units?: number | null
+          therapist_assigned_at?: string | null
+          therapist_id?: string | null
           unscheduled_hours?: number | null
           updated_at?: string
           updated_by?: string | null
           zip_code?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "clients_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       company_settings: {
         Row: {

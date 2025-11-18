@@ -2,22 +2,82 @@ import { createRequestClient } from "../_shared/database.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 import { corsHeaders } from '../_shared/cors.ts'
 
-interface SessionFilters { therapist_id?: string; client_id?: string; status?: string; start_date?: string; end_date?: string; location_type?: string; page?: number; limit?: number; }
+interface SessionFilters { status?: string; start_date?: string; end_date?: string; location_type?: string; page?: number; limit?: number; }
 interface OptimizedSessionResponse { sessions: Array<{ id: string; start_time: string; end_time: string; status: string; location_type: string; notes?: string; created_at: string | null; created_by: string | null; updated_at: string | null; updated_by: string | null; therapist: { id: string; full_name: string; email: string; }; client: { id: string; full_name: string; email: string; }; authorization?: { id: string; sessions_remaining: number; }; }>; pagination: { page: number; limit: number; total: number; totalPages: number; hasNextPage: boolean; hasPreviousPage: boolean; }; summary: { totalSessions: number; completedSessions: number; upcomingSessions: number; cancelledSessions: number; }; }
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   try {
     const db = createRequestClient(req);
-    await getUserOrThrow(db);
-
+    const currentUser = await getUserOrThrow(db);
     const url = new URL(req.url);
-    const filters: SessionFilters = { therapist_id: url.searchParams.get('therapist_id') || undefined, client_id: url.searchParams.get('client_id') || undefined, status: url.searchParams.get('status') || undefined, start_date: url.searchParams.get('start_date') || undefined, end_date: url.searchParams.get('end_date') || undefined, location_type: url.searchParams.get('location_type') || undefined, page: parseInt(url.searchParams.get('page') || '1'), limit: Math.min(parseInt(url.searchParams.get('limit') || '50'), 100) };
+    const filters: SessionFilters = {
+      status: url.searchParams.get('status') || undefined,
+      start_date: url.searchParams.get('start_date') || undefined,
+      end_date: url.searchParams.get('end_date') || undefined,
+      location_type: url.searchParams.get('location_type') || undefined,
+      page: parseInt(url.searchParams.get('page') || '1'),
+      limit: Math.min(parseInt(url.searchParams.get('limit') || '50'), 100)
+    };
+
+    const { data: roleRows } = await db.rpc('get_user_roles');
+    const flattenedRoles = Array.isArray(roleRows)
+      ? roleRows.flatMap((entry: { roles?: unknown }) => {
+          const value = entry?.roles;
+          if (Array.isArray(value)) {
+            return value.filter((role): role is string => typeof role === 'string');
+          }
+          if (typeof value === 'string') {
+            try {
+              const parsed = JSON.parse(value);
+              if (Array.isArray(parsed)) {
+                return parsed.filter((role): role is string => typeof role === 'string');
+              }
+            } catch {
+              return value.split(',').map((role) => role.trim()).filter(Boolean);
+            }
+          }
+          return [];
+        })
+      : [];
+    const isAdmin = flattenedRoles.some((role) => role === 'admin' || role === 'super_admin');
+
+    let effectiveTherapistId: string | null = null;
+    if (!isAdmin) {
+      const { data: link } = await db
+        .from('user_therapist_links')
+        .select('therapist_id')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      effectiveTherapistId = link?.therapist_id ?? null;
+
+      if (!effectiveTherapistId) {
+        const { data: selfTherapist } = await db
+          .from('therapists')
+          .select('id')
+          .eq('id', currentUser.id)
+          .maybeSingle();
+        effectiveTherapistId = selfTherapist?.id ?? null;
+      }
+
+      if (!effectiveTherapistId) {
+        return new Response(JSON.stringify({ success: false, error: 'Therapist profile not found' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+    }
+
+    const requestedTherapistId = url.searchParams.get('therapist_id') || undefined;
+    const therapistIdFilter = isAdmin
+      ? requestedTherapistId ?? effectiveTherapistId ?? undefined
+      : effectiveTherapistId ?? undefined;
 
     let query = db.from('sessions').select('id, start_time, end_time, status, location_type, notes, created_at, created_by, updated_at, updated_by, therapist_id, client_id, authorization_id, therapist:therapists!inner(id, full_name, email), client:clients!inner(id, full_name, email), authorization:authorizations(id, authorized_sessions, sessions_used)', { count: 'exact' });
 
-    if (filters.therapist_id) query = query.eq('therapist_id', filters.therapist_id);
-    if (filters.client_id) query = query.eq('client_id', filters.client_id);
+    if (therapistIdFilter) query = query.eq('therapist_id', therapistIdFilter);
+    const clientIdFilter = url.searchParams.get('client_id') || undefined;
+    if (clientIdFilter) query = query.eq('client_id', clientIdFilter);
     if (filters.status) query = query.eq('status', filters.status);
     if (filters.location_type) query = query.eq('location_type', filters.location_type);
     if (filters.start_date) query = query.gte('start_time', `${filters.start_date}T00:00:00`);

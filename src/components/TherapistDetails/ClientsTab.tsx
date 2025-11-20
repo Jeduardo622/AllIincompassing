@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { 
   User, Search, Calendar, Clock, Inbox,
@@ -7,18 +7,42 @@ import {
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '../../lib/supabase';
+import { showSuccess, showError } from '../../lib/toast';
+import { useAuth } from '../../lib/authContext';
 
 interface ClientsTabProps {
   therapist: { id: string };
 }
 
+interface LinkableClient {
+  id: string;
+  full_name: string;
+  email: string | null;
+  therapist_id: string | null;
+  therapist_name: string | null;
+}
+
 export default function ClientsTab({ therapist }: ClientsTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [linkSearchQuery, setLinkSearchQuery] = useState('');
+  const [linkingClientId, setLinkingClientId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { isAdmin, isSuperAdmin } = useAuth();
+  const canManageLinks = isAdmin() || isSuperAdmin();
   
   // Fetch assigned clients
   const { data: assignedClients = [], isLoading: isLoadingClients, error: clientsError } = useQuery({
     queryKey: ['therapist-clients', therapist.id],
     queryFn: async () => {
+      const { data: directAssignments, error: directError } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('therapist_id', therapist.id)
+        .order('full_name', { ascending: true });
+
+      if (directError) throw directError;
+
       // Get unique client IDs from sessions
       const { data: sessions, error: sessionsError } = await supabase
         .from('sessions')
@@ -27,21 +51,37 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
         .order('start_time', { ascending: false });
         
       if (sessionsError) throw sessionsError;
-      
-      // Get unique client IDs
-      const clientIds = [...new Set(sessions.map(s => s.client_id))];
-      
-      if (clientIds.length === 0) return [];
-      
-      // Fetch client details
-      const { data: clients, error: clientsError } = await supabase
-        .from('clients')
-        .select('*')
-        .in('id', clientIds);
-        
-      if (clientsError) throw clientsError;
-      
-      return clients || [];
+
+      const directAssignmentsMap = new Map<string, any>(
+        (directAssignments ?? []).map((client) => [client.id, client]),
+      );
+
+      const sessionClientIds = Array.from(
+        new Set(
+          (sessions ?? [])
+            .map((session) => session.client_id)
+            .filter((clientId): clientId is string => typeof clientId === 'string' && clientId.length > 0),
+        ),
+      );
+
+      const missingClientIds = sessionClientIds.filter(
+        (clientId) => !directAssignmentsMap.has(clientId),
+      );
+
+      if (missingClientIds.length > 0) {
+        const { data: sessionClients, error: historyError } = await supabase
+          .from('clients')
+          .select('*')
+          .in('id', missingClientIds);
+
+        if (historyError) throw historyError;
+
+        (sessionClients ?? []).forEach((client) => {
+          directAssignmentsMap.set(client.id, client);
+        });
+      }
+
+      return Array.from(directAssignmentsMap.values());
     },
   });
   
@@ -102,11 +142,83 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
   const filteredClients = useMemo(() => {
     if (!searchQuery.trim()) return assignedClients;
     
-    return assignedClients.filter(client =>
-      client.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (client.email && client.email.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
+    return assignedClients.filter((client) => {
+      const name = (client.full_name ?? '').toLowerCase();
+      const email = (client.email ?? '').toLowerCase();
+      const query = searchQuery.toLowerCase();
+      return name.includes(query) || email.includes(query);
+    });
   }, [assignedClients, searchQuery]);
+  
+  const { data: linkableClients = [], isLoading: isLoadingLinkableClients } = useQuery<LinkableClient[]>({
+    queryKey: ['linkable-clients', therapist.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('clients')
+        .select(`
+          id,
+          full_name,
+          email,
+          therapist_id,
+          therapist:therapists(full_name)
+        `)
+        .order('full_name', { ascending: true });
+
+      if (error) throw error;
+
+      return (data ?? []).map((client) => ({
+        id: client.id as string,
+        full_name: (client.full_name as string) ?? 'Unnamed client',
+        email: (client.email as string | null) ?? null,
+        therapist_id: (client.therapist_id as string | null) ?? null,
+        therapist_name: (client as unknown as { therapist?: { full_name?: string | null } | null })?.therapist
+          ?.full_name ?? null,
+      }));
+    },
+    enabled: isLinkModalOpen && canManageLinks,
+    staleTime: 30_000,
+  });
+
+  const filteredLinkableClients = useMemo(() => {
+    if (!linkSearchQuery.trim()) return linkableClients;
+    const query = linkSearchQuery.toLowerCase();
+    return linkableClients.filter((client) => {
+      const name = client.full_name.toLowerCase();
+      const email = (client.email ?? '').toLowerCase();
+      return name.includes(query) || email.includes(query);
+    });
+  }, [linkSearchQuery, linkableClients]);
+
+  const linkClientMutation = useMutation({
+    mutationFn: async (clientId: string) => {
+      const { error } = await supabase
+        .from('clients')
+        .update({
+          therapist_id: therapist.id,
+          therapist_assigned_at: new Date().toISOString(),
+        })
+        .eq('id', clientId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      showSuccess('Client linked to therapist');
+      queryClient.invalidateQueries({ queryKey: ['therapist-clients', therapist.id] });
+      queryClient.invalidateQueries({ queryKey: ['linkable-clients', therapist.id] });
+    },
+    onError: (error) => {
+      showError(error);
+    },
+  });
+
+  const handleLinkClient = async (clientId: string) => {
+    setLinkingClientId(clientId);
+    try {
+      await linkClientMutation.mutateAsync(clientId);
+    } finally {
+      setLinkingClientId(null);
+    }
+  };
   
   const isLoading = isLoadingClients || isLoadingSessions;
   const hasError = clientsError || sessionsError;
@@ -140,16 +252,27 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
               Manage your client relationships and view client information
             </p>
           </div>
-          
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="text"
-              placeholder="Search clients..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-dark dark:text-gray-200"
-            />
+
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                placeholder="Search clients..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-dark dark:text-gray-200"
+              />
+            </div>
+            {canManageLinks && (
+              <button
+                type="button"
+                className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                onClick={() => setIsLinkModalOpen(true)}
+              >
+                Link Client
+              </button>
+            )}
           </div>
         </div>
         
@@ -252,7 +375,7 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
                 <div className="flex items-center">
                   <div className="text-right mr-4">
                     <div className="font-medium text-gray-900 dark:text-white">
-                      {format(parseISO(session.start_time), 'h:mm a')}
+                        {format(parseISO(session.start_time), 'h:mm a')}
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">
                       {format(parseISO(session.end_time), 'h:mm a')}
@@ -269,6 +392,124 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
           </div>
         )}
       </div>
+
+      <LinkClientModal
+        isOpen={isLinkModalOpen && canManageLinks}
+        onClose={() => setIsLinkModalOpen(false)}
+        searchValue={linkSearchQuery}
+        onSearchChange={setLinkSearchQuery}
+        clients={filteredLinkableClients}
+        isLoading={isLoadingLinkableClients || linkClientMutation.isPending}
+        onLink={handleLinkClient}
+        linkingClientId={linkingClientId}
+        therapistId={therapist.id}
+      />
     </div>
   );
 }
+
+interface LinkClientModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  searchValue: string;
+  onSearchChange: (value: string) => void;
+  clients: LinkableClient[];
+  isLoading: boolean;
+  onLink: (clientId: string) => void;
+  linkingClientId: string | null;
+  therapistId: string;
+}
+
+const LinkClientModal: React.FC<LinkClientModalProps> = ({
+  isOpen,
+  onClose,
+  searchValue,
+  onSearchChange,
+  clients,
+  isLoading,
+  onLink,
+  linkingClientId,
+  therapistId,
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6">
+      <div className="w-full max-w-2xl rounded-lg bg-white shadow-xl dark:bg-dark-lighter">
+        <div className="flex items-center justify-between border-b px-6 py-4 dark:border-gray-700">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Link Client to Therapist</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Select a client to associate with this therapist profile.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800"
+            aria-label="Close link client modal"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="px-6 py-4 space-y-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={searchValue}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="Search by client name or email..."
+              className="w-full rounded-md border border-gray-300 py-2 pl-10 pr-4 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+            />
+          </div>
+
+          <div className="max-h-96 overflow-y-auto">
+            {isLoading ? (
+              <div className="flex justify-center py-8">
+                <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
+              </div>
+            ) : clients.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-gray-300 py-8 text-center dark:border-gray-700">
+                <p className="text-sm font-medium text-gray-900 dark:text-white">No clients available</p>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  All clients are currently linked to therapists.
+                </p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                {clients.map((client) => {
+                  const alreadyLinkedHere = client.therapist_id === therapistId;
+                  const isLinking = linkingClientId === client.id;
+                  return (
+                    <li key={client.id} className="flex items-center justify-between py-3">
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-white">{client.full_name}</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">{client.email ?? 'No email listed'}</p>
+                        {client.therapist_id && (
+                          <p className="text-xs text-amber-600 dark:text-amber-300">
+                            {alreadyLinkedHere
+                              ? 'Already linked to this therapist'
+                              : `Currently linked to ${client.therapist_name ?? 'another therapist'}`}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onLink(client.id)}
+                        disabled={alreadyLinkedHere || isLinking}
+                        className="rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                      >
+                        {alreadyLinkedHere ? 'Linked' : isLinking ? 'Linking…' : 'Link'}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};

@@ -9,7 +9,7 @@ import {
 const mockConfig = {
   supabaseUrl: 'https://project.supabase.co',
   supabaseAnonKey: 'anon-key',
-  defaultOrganizationId: 'org-default-123',
+  defaultOrganizationId: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
 };
 
 describe('runtimeConfig', () => {

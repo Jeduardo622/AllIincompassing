@@ -4,7 +4,7 @@ const normalize = (value?: string | null): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
-const DEFAULT_ORG_FALLBACK = 'org-default-123';
+const DEFAULT_ORG_FALLBACK = '5238e88b-6198-4862-80a2-dbe15bbeabdd';
 
 export const handler = async () => {
   // Support multiple possible env var names from Netlify + Supabase integration

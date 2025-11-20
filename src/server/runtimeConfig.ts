@@ -2,7 +2,7 @@ import type { RuntimeSupabaseConfig } from '../lib/runtimeConfig';
 import { logger } from '../lib/logger/logger';
 import { getOptionalServerEnv, getRequiredServerEnv } from './env';
 
-export const RUNTIME_CONFIG_FALLBACK_ORGANIZATION_ID = 'org-default-123';
+export const RUNTIME_CONFIG_FALLBACK_ORGANIZATION_ID = '5238e88b-6198-4862-80a2-dbe15bbeabdd';
 
 const resolveDefaultOrganizationId = (): string => {
   const explicit = getOptionalServerEnv('DEFAULT_ORGANIZATION_ID');

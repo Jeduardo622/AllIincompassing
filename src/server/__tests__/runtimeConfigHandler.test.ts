@@ -36,14 +36,14 @@ describe('runtimeConfigHandler', () => {
   it('returns runtime config when env vars are present', async () => {
     process.env.SUPABASE_URL = 'https://example.supabase.co';
     process.env.SUPABASE_ANON_KEY = 'anon-key';
-    process.env.DEFAULT_ORGANIZATION_ID = 'org-default-123';
+    process.env.DEFAULT_ORGANIZATION_ID = '5238e88b-6198-4862-80a2-dbe15bbeabdd';
 
     const response = await runtimeConfigHandler(new Request('http://localhost/api/runtime-config'));
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.supabaseUrl).toBe('https://example.supabase.co');
     expect(payload.supabaseAnonKey).toBe('anon-key');
-    expect(payload.defaultOrganizationId).toBe('org-default-123');
+    expect(payload.defaultOrganizationId).toBe('5238e88b-6198-4862-80a2-dbe15bbeabdd');
   });
 
   it('falls back to baked-in org id when DEFAULT_ORGANIZATION_ID is missing', async () => {
@@ -115,7 +115,7 @@ describe('runtimeConfigHandler', () => {
   it('rejects unsupported methods', async () => {
     process.env.SUPABASE_URL = 'https://example.supabase.co';
     process.env.SUPABASE_ANON_KEY = 'anon-key';
-    process.env.DEFAULT_ORGANIZATION_ID = 'org-default-123';
+    process.env.DEFAULT_ORGANIZATION_ID = '5238e88b-6198-4862-80a2-dbe15bbeabdd';
 
     const response = await runtimeConfigHandler(new Request('http://localhost/api/runtime-config', { method: 'POST' }));
     expect(response.status).toBe(405);

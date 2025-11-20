@@ -91,7 +91,7 @@ beforeEach(async () => {
   process.env.SUPABASE_URL = TEST_SUPABASE_URL;
   process.env.SUPABASE_ANON_KEY = TEST_SUPABASE_ANON_KEY;
   process.env.SUPABASE_EDGE_URL = TEST_SUPABASE_EDGE_URL;
-  process.env.DEFAULT_ORGANIZATION_ID = "org-default-123";
+  process.env.DEFAULT_ORGANIZATION_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
 });
 
 afterAll(() => {

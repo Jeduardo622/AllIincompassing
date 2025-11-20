@@ -15,7 +15,7 @@ const TEST_SUPABASE_URL = "https://testing.supabase.co";
 const TEST_SUPABASE_ANON_KEY = "testing-anon-key";
 const TEST_SUPABASE_EDGE_URL = "https://testing.supabase.co/functions/v1/";
 const TEST_SERVICE_ROLE_KEY = "service-role-test-key";
-const TEST_DEFAULT_ORG_ID = "org-default-123";
+const TEST_DEFAULT_ORG_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
 
 const ORIGINAL_ENV = {
   SUPABASE_URL: process.env.SUPABASE_URL,

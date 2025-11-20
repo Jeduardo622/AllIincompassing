@@ -124,7 +124,7 @@ if (!process.env.RUN_CLIENT_DOMAIN_TESTS) {
 }
 
 if (!process.env.DEFAULT_ORGANIZATION_ID) {
-  process.env.DEFAULT_ORGANIZATION_ID = 'org-default-123';
+  process.env.DEFAULT_ORGANIZATION_ID = '5238e88b-6198-4862-80a2-dbe15bbeabdd';
 }
 
 const ORG_A_TEST_TOKEN = 'test-org-a-jwt-placeholder';
@@ -418,7 +418,7 @@ const consoleGuard = installConsoleGuard({ passthrough: false });
 setRuntimeSupabaseConfig({
   supabaseUrl: 'https://test-project.supabase.co',
   supabaseAnonKey: 'test-anon-key',
-  defaultOrganizationId: 'org-default-123',
+      defaultOrganizationId: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
 });
 
 beforeEach(() => {

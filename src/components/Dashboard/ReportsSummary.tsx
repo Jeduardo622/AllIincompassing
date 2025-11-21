@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { BarChart, TrendingUp, ArrowRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { useDashboardLiveRefresh } from '../../lib/dashboardLiveRefresh';
 
 export default function ReportsSummary() {
   // Get current month date range
@@ -13,6 +14,14 @@ export default function ReportsSummary() {
   // Get last month date range for comparison
   const lastMonthStart = format(startOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd');
   const lastMonthEnd = format(endOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd');
+
+  const { isLiveRole, intervalMs } = useDashboardLiveRefresh();
+  const liveQueryOptions = isLiveRole
+    ? {
+        refetchInterval: intervalMs,
+        refetchIntervalInBackground: true,
+      }
+    : {};
 
   // Fetch current month sessions
   const { data: currentSessions = [] } = useQuery({
@@ -27,6 +36,7 @@ export default function ReportsSummary() {
       if (error) throw error;
       return data || [];
     },
+    ...(liveQueryOptions ?? {}),
   });
 
   // Fetch last month sessions for comparison
@@ -42,6 +52,7 @@ export default function ReportsSummary() {
       if (error) throw error;
       return data || [];
     },
+    ...(liveQueryOptions ?? {}),
   });
 
   // Fetch clients
@@ -55,6 +66,7 @@ export default function ReportsSummary() {
       if (error) throw error;
       return data || [];
     },
+    ...(liveQueryOptions ?? {}),
   });
 
   // Fetch therapists
@@ -68,6 +80,7 @@ export default function ReportsSummary() {
       if (error) throw error;
       return data || [];
     },
+    ...(liveQueryOptions ?? {}),
   });
 
   // Calculate metrics

@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Users, Calendar, Clock, AlertCircle } from 'lucide-react';
 import DashboardCard from '../components/DashboardCard';
 import ReportsSummary from '../components/Dashboard/ReportsSummary';
 import { useDashboardData } from '../lib/optimizedQueries';
+import { useDashboardLiveRefresh } from '../lib/dashboardLiveRefresh';
  
 type SessionSummary = {
   id: string;
@@ -24,6 +25,14 @@ const Dashboard = () => {
     error: unknown;
     refetch: () => void;
   };
+  const { isLiveRole, intervalMs } = useDashboardLiveRefresh();
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  useEffect(() => {
+    if (dashboardData) {
+      setLastUpdated(new Date());
+    }
+  }, [dashboardData]);
 
   const displayData = useMemo(() => {
     const todaySessions = (dashboardData?.todaySessions as SessionSummary[] | undefined) ?? [];
@@ -102,7 +111,29 @@ const Dashboard = () => {
           </button>
         </div>
       )}
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Dashboard</h1>
+      <div className="flex flex-col gap-3 mb-6 md:flex-row md:items-center md:justify-between">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+        <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+          <span
+            className={`inline-flex items-center rounded-full px-3 py-1 font-medium ${
+              isLiveRole
+                ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-200'
+                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-200'
+            }`}
+          >
+            <span
+              className={`mr-1.5 inline-block h-2 w-2 rounded-full ${
+                isLiveRole ? 'bg-green-500' : 'bg-slate-400'
+              }`}
+            />
+            {isLiveRole ? 'Live data' : 'Auto refresh'}
+          </span>
+          <span>
+            Updated {lastUpdated ? format(lastUpdated, 'h:mm:ss a') : '—'} •
+            {isLiveRole ? ` every ${Math.round(intervalMs / 1000)}s` : ' every 2 min'}
+          </span>
+        </div>
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <DashboardCard

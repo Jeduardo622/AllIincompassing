@@ -94,7 +94,19 @@ create policy storage_client_docs_insert_admin_super
   with check (
     bucket_id = 'client-documents'
     and split_part(name,'/',1) = 'clients'
-    and (public.is_admin() or public.is_super_admin())
+    and (
+      public.is_super_admin()
+      or public.is_admin()
+      or (
+        public.has_role('therapist')
+        and exists (
+          select 1
+          from public.sessions s
+          where s.therapist_id = auth.uid()
+            and split_part(name,'/',2) = s.client_id::text
+        )
+      )
+    )
   );
 
 create policy storage_client_docs_update_admin_super
@@ -104,7 +116,19 @@ create policy storage_client_docs_update_admin_super
   using (
     bucket_id = 'client-documents'
     and split_part(name,'/',1) = 'clients'
-    and (public.is_admin() or public.is_super_admin())
+    and (
+      public.is_super_admin()
+      or public.is_admin()
+      or (
+        public.has_role('therapist')
+        and exists (
+          select 1
+          from public.sessions s
+          where s.therapist_id = auth.uid()
+            and split_part(name,'/',2) = s.client_id::text
+        )
+      )
+    )
   );
 
 create policy storage_client_docs_delete_admin_super
@@ -114,7 +138,19 @@ create policy storage_client_docs_delete_admin_super
   using (
     bucket_id = 'client-documents'
     and split_part(name,'/',1) = 'clients'
-    and (public.is_admin() or public.is_super_admin())
+    and (
+      public.is_super_admin()
+      or public.is_admin()
+      or (
+        public.has_role('therapist')
+        and exists (
+          select 1
+          from public.sessions s
+          where s.therapist_id = auth.uid()
+            and split_part(name,'/',2) = s.client_id::text
+        )
+      )
+    )
   );
 
 commit;

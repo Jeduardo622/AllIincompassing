@@ -5,6 +5,7 @@ import { useDebounce } from './performance';
 import type { Session } from '../types';
 import { logger } from './logger/logger';
 import { toError } from './logger/normalizeError';
+import { useDashboardLiveRefresh } from './dashboardLiveRefresh';
 
 // ============================================================================
 // BATCHED SCHEDULE QUERIES (Replaces N+1 queries)
@@ -166,6 +167,7 @@ export const fetchDashboardData = async () => {
 };
 
 export const useDashboardData = () => {
+  const { isLiveRole, intervalMs } = useDashboardLiveRefresh();
   return useQuery({
     queryKey: generateCacheKey.dashboard(),
     queryFn: fetchDashboardData,
@@ -174,7 +176,8 @@ export const useDashboardData = () => {
     keepPreviousData: true,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
-    refetchInterval: 2 * 60 * 1000, // Auto-refresh every 2 minutes
+    refetchInterval: intervalMs,
+    refetchIntervalInBackground: isLiveRole,
   });
 };
 

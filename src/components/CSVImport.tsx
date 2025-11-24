@@ -11,6 +11,8 @@ import {
   type CsvMappedRecord,
   type ImportEntity,
 } from '../lib/importProcessing';
+import { useActiveOrganizationId } from '../lib/organization';
+import { createClient } from '../lib/clients/mutations';
 
 interface CSVImportProps {
   onClose: () => void;
@@ -41,6 +43,7 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose, entityType = 'client' })
   });
   const [step, setStep] = useState<'upload' | 'map' | 'preview' | 'import'>('upload');
   
+  const activeOrganizationId = useActiveOrganizationId();
   const queryClient = useQueryClient();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -156,9 +159,27 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose, entityType = 'client' })
 
   const createEntityMutation = useMutation({
     mutationFn: async (data: Partial<Client> | Partial<Therapist>) => {
+      if (!activeOrganizationId) {
+        throw new Error('Organization context is required to import records.');
+      }
+
+      if (entityType === 'client') {
+        const clientPayload = {
+          ...(data as Partial<Client>),
+          organization_id: activeOrganizationId,
+        };
+
+        return createClient(supabase, clientPayload);
+      }
+
+      const therapistPayload = {
+        ...(data as Partial<Therapist>),
+        organization_id: activeOrganizationId,
+      };
+
       const { data: insertedData, error } = await supabase
-        .from(entityType === 'client' ? 'clients' : 'therapists')
-        .insert([data])
+        .from('therapists')
+        .insert([therapistPayload])
         .select('id')
         .single();
       
@@ -168,6 +189,11 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose, entityType = 'client' })
   });
   
   const processImport = async () => {
+    if (!activeOrganizationId) {
+      showError('Select or configure an organization before importing records.');
+      return;
+    }
+
     setImportStatus({
       total: csvData.length,
       processed: 0,

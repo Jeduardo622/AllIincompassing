@@ -1,213 +1,126 @@
 {
   "rows_written": 29,
-  "added_email_column": true,
-  "missing_required_rows": [
-    {
-      "row": 3,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 4,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 5,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 6,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 7,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 8,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 9,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 10,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 11,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 12,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 13,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 14,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 15,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 16,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 17,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 18,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 19,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 20,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 21,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 22,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 23,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 24,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 25,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 26,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 27,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 28,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 29,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 30,
-      "fields": [
-        "email"
-      ]
-    },
-    {
-      "row": 31,
-      "fields": [
-        "email"
-      ]
-    }
-  ],
-  "missing_email_rows": [
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    17,
-    18,
-    19,
-    20,
-    21,
-    22,
-    23,
-    24,
-    25,
-    26,
-    27,
-    28,
-    29,
-    30,
-    31
-  ],
+  "added_email_column": false,
+  "missing_required_rows": [],
+  "missing_email_rows": [],
   "duplicate_emails": {},
-  "duplicate_client_ids": {}
+  "duplicate_client_ids": {},
+  "placeholder_emails_assigned": [
+    {
+      "row": "3",
+      "email": "405683@clients.placeholder.local"
+    },
+    {
+      "row": "4",
+      "email": "405686@clients.placeholder.local"
+    },
+    {
+      "row": "5",
+      "email": "420340@clients.placeholder.local"
+    },
+    {
+      "row": "6",
+      "email": "420345@clients.placeholder.local"
+    },
+    {
+      "row": "7",
+      "email": "430233@clients.placeholder.local"
+    },
+    {
+      "row": "8",
+      "email": "430236@clients.placeholder.local"
+    },
+    {
+      "row": "9",
+      "email": "430237@clients.placeholder.local"
+    },
+    {
+      "row": "10",
+      "email": "430239@clients.placeholder.local"
+    },
+    {
+      "row": "11",
+      "email": "433177@clients.placeholder.local"
+    },
+    {
+      "row": "12",
+      "email": "433178@clients.placeholder.local"
+    },
+    {
+      "row": "13",
+      "email": "434755@clients.placeholder.local"
+    },
+    {
+      "row": "14",
+      "email": "444664@clients.placeholder.local"
+    },
+    {
+      "row": "15",
+      "email": "446025@clients.placeholder.local"
+    },
+    {
+      "row": "16",
+      "email": "446320@clients.placeholder.local"
+    },
+    {
+      "row": "17",
+      "email": "446334@clients.placeholder.local"
+    },
+    {
+      "row": "18",
+      "email": "449138@clients.placeholder.local"
+    },
+    {
+      "row": "19",
+      "email": "450970@clients.placeholder.local"
+    },
+    {
+      "row": "20",
+      "email": "453324@clients.placeholder.local"
+    },
+    {
+      "row": "21",
+      "email": "455881@clients.placeholder.local"
+    },
+    {
+      "row": "22",
+      "email": "455884@clients.placeholder.local"
+    },
+    {
+      "row": "23",
+      "email": "457140@clients.placeholder.local"
+    },
+    {
+      "row": "24",
+      "email": "459318@clients.placeholder.local"
+    },
+    {
+      "row": "25",
+      "email": "459323@clients.placeholder.local"
+    },
+    {
+      "row": "26",
+      "email": "459342@clients.placeholder.local"
+    },
+    {
+      "row": "27",
+      "email": "459573@clients.placeholder.local"
+    },
+    {
+      "row": "28",
+      "email": "459642@clients.placeholder.local"
+    },
+    {
+      "row": "29",
+      "email": "459719@clients.placeholder.local"
+    },
+    {
+      "row": "30",
+      "email": "460681@clients.placeholder.local"
+    },
+    {
+      "row": "31",
+      "email": "461744@clients.placeholder.local"
+    }
+  ]
 }

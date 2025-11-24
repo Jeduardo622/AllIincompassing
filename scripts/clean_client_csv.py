@@ -7,6 +7,7 @@ from typing import Dict, List
 RAW_PATH = Path("data/client_raw.csv")
 CLEAN_PATH = Path("data/client_cleaned.csv")
 REPORT_PATH = Path("data/client_import_report.json")
+PLACEHOLDER_DOMAIN = "clients.placeholder.local"
 
 STATE_MAP = {
     "ALABAMA": "AL",
@@ -114,7 +115,12 @@ def main() -> None:
         headers.append("Email")
         added_email_column = True
 
-    header_index = {header: idx for idx, header in enumerate(headers)}
+    header_index: Dict[str, int] = {}
+    for idx, header in enumerate(headers):
+        normalized = header.strip()
+        if normalized not in header_index:
+            header_index[normalized] = idx
+
     state_index = header_index.get("State")
     dob_index = header_index.get("DOB")
     first_name_index = header_index.get("First Name")
@@ -123,8 +129,8 @@ def main() -> None:
 
     client_id_index = None
     for name in headers:
-        if "Client ID" in name:
-            client_id_index = header_index[name]
+        if "client id" in name.lower():
+            client_id_index = header_index.get(name.strip())
             break
 
     processed_rows: List[List[str]] = []
@@ -132,6 +138,8 @@ def main() -> None:
     duplicate_client_ids: Dict[str, List[int]] = {}
     missing_required_rows: List[Dict[str, int]] = []
     missing_email_rows: List[int] = []
+    placeholder_assignments: List[Dict[str, str]] = []
+    used_emails: Dict[str, int] = {}
 
     for row_num, row in enumerate(rows, start=header_idx + 2):
         if not any(scrub_cell(cell) for cell in row):
@@ -154,7 +162,39 @@ def main() -> None:
         if email_value:
             duplicate_emails.setdefault(email_value, []).append(row_num)
         else:
-            missing_email_rows.append(row_num)
+            if email_index is not None:
+                base_candidate = ""
+                if client_id_index is not None:
+                    base_candidate = row[client_id_index]
+                if not base_candidate and first_name_index is not None and last_name_index is not None:
+                    first = row[first_name_index].lower().replace(" ", "")
+                    last = row[last_name_index].lower().replace(" ", "")
+                    base_candidate = f"{first}.{last}".strip(".")
+                if not base_candidate:
+                    base_candidate = f"row{row_num}"
+
+                sanitized = (
+                    base_candidate.lower()
+                    .replace(" ", "")
+                    .replace("/", "")
+                    .replace("#", "")
+                    .replace("@", "")
+                    .replace(",", "")
+                )
+                if not sanitized:
+                    sanitized = f"row{row_num}"
+
+                count = used_emails.get(sanitized, 0)
+                used_emails[sanitized] = count + 1
+                if count > 0:
+                    sanitized = f"{sanitized}-{count}"
+
+                placeholder_email = f"{sanitized}@{PLACEHOLDER_DOMAIN}"
+                row[email_index] = placeholder_email
+                placeholder_assignments.append({"row": str(row_num), "email": placeholder_email})
+                duplicate_emails.setdefault(placeholder_email, []).append(row_num)
+            else:
+                missing_email_rows.append(row_num)
 
         if client_id_index is not None:
             client_value = row[client_id_index]
@@ -170,6 +210,11 @@ def main() -> None:
             missing_fields.append("email")
         if dob_index is not None and not row[dob_index]:
             missing_fields.append("date_of_birth")
+
+        # recompute email value for missing-field detection (placeholders count as present)
+        if email_index is not None and row[email_index]:
+            if "email" in missing_fields:
+                missing_fields.remove("email")
 
         if missing_fields:
             missing_required_rows.append({"row": row_num, "fields": missing_fields})
@@ -192,6 +237,7 @@ def main() -> None:
         "duplicate_client_ids": {
             cid: nums for cid, nums in duplicate_client_ids.items() if len(nums) > 1
         },
+        "placeholder_emails_assigned": placeholder_assignments,
     }
 
     REPORT_PATH.write_text(json.dumps(report, indent=2), encoding="utf-8")

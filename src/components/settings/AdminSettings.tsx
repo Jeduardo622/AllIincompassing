@@ -303,30 +303,23 @@ export default function AdminSettings() {
 
       try {
         const trimmedReason = data.reason.trim();
-
-        const { error: signUpError } = await supabase.auth.signUp({
+        const payload = {
           email: data.email,
           password: data.password,
-          options: {
-            data: {
-              first_name: data.first_name,
-              last_name: data.last_name,
-              title: data.title,
-              is_admin: true,
-              organization_id: targetOrganizationId,
-            },
-          },
-        });
-
-        if (signUpError) throw signUpError;
-
-        const { error: assignError } = await supabase.rpc('assign_admin_role', {
-          user_email: data.email,
+          first_name: data.first_name,
+          last_name: data.last_name,
+          title: data.title,
           organization_id: targetOrganizationId,
           reason: trimmedReason,
+        };
+
+        const { error: functionError } = await supabase.functions.invoke('admin-create-user', {
+          body: payload,
         });
 
-        if (assignError) throw assignError;
+        if (functionError) {
+          throw functionError;
+        }
       } catch (error) {
         logger.error('Admin creation mutation failed', {
           error,

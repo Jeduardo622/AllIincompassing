@@ -21,7 +21,12 @@ export default function ClientModal({
   onSubmit,
   client,
 }: ClientModalProps) {
-  const { register, handleSubmit, control, formState: { errors, isSubmitting, isValid, isSubmitted } } = useForm<ClientFormData>({
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors, isSubmitting, isValid, isSubmitted },
+  } = useForm<ClientFormData>({
     resolver: zodResolver(clientSchema),
     mode: 'onChange',
     defaultValues: {
@@ -33,7 +38,7 @@ export default function ClientModal({
       date_of_birth: client?.date_of_birth || '',
       gender: client?.gender || '',
       client_id: client?.client_id || '',
-      insurance_info: client?.insurance_info ? JSON.stringify(client.insurance_info) : '{}',
+      insurance_info: client?.insurance_info ? JSON.stringify(client.insurance_info) : '',
       service_preference: client?.service_preference || [], // Initialize as empty array if no value
       one_to_one_units: client?.one_to_one_units || 0,
       supervision_units: client?.supervision_units || 0,
@@ -65,6 +70,7 @@ export default function ClientModal({
       zip_code: client?.zip_code || '',
       phone: client?.phone || '',
       cin_number: client?.cin_number || '',
+      documents_consent: true,
     },
   });
 
@@ -98,6 +104,13 @@ export default function ClientModal({
         </div>
 
         <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+          <input
+            type="checkbox"
+            {...register('documents_consent')}
+            defaultChecked
+            className="hidden"
+            aria-hidden="true"
+          />
           {/* Demographics */}
           <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
             <h3 className="text-lg font-medium text-blue-900 dark:text-blue-100 mb-4">Demographics</h3>
@@ -575,13 +588,16 @@ export default function ClientModal({
                 {...register('insurance_info')}
                 rows={3}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                placeholder="Enter insurance information in JSON format"
+                placeholder="Enter insurance information in JSON format (optional)"
               />
               {errors.insurance_info && (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">
                   {errors.insurance_info.message as string}
                 </p>
               )}
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Leave blank if insurance details are unavailable.
+              </p>
             </div>
           </div>
 

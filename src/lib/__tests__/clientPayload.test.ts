@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { prepareClientPayload, updateClientRecord } from '../clientPayload';
+import type { Client } from '../../types';
 
 describe('prepareClientPayload', () => {
   it('sanitizes strings and recomputes full_name after sanitization', () => {
@@ -17,7 +18,7 @@ describe('prepareClientPayload', () => {
     expect(payload.last_name).toBe('Doe');
     expect(payload.email).toBe('jane.doe@example.com');
     expect(payload.full_name).toBe('Jane Q Doe');
-    expect(payload.insurance_info).toEqual({});
+    expect(payload.insurance_info).toBeNull();
     expect(payload.service_preference).toEqual(['In-Home', 'Telehealth']);
   });
 
@@ -40,6 +41,26 @@ describe('prepareClientPayload', () => {
     );
 
     expect(payload.full_name).toBe('Legacy Value');
+  });
+
+  it('treats empty insurance info strings as null', () => {
+    const payload = prepareClientPayload({
+      first_name: 'Sample',
+      last_name: 'Client',
+      insurance_info: '',
+    });
+
+    expect(payload.insurance_info).toBeNull();
+  });
+
+  it('strips documents_consent from payload before validation', () => {
+    const payload = prepareClientPayload({
+      first_name: 'Consent',
+      last_name: 'Checked',
+      documents_consent: true,
+    } as Partial<Client> & { documents_consent: boolean });
+
+    expect('documents_consent' in payload).toBe(false);
   });
 });
 

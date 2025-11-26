@@ -551,31 +551,47 @@ export default function ClientModal({
             </div>
 
             <div className="mt-4">
-              <label htmlFor="service-preference" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Service Preferences
               </label>
               <Controller
                 name="service_preference"
                 control={control}
-                render={({ field }) => (
-                  <select
-                    id="service-preference"
-                    multiple
-                    value={field.value}
-                    onChange={(e) => {
-                      const values = Array.from(e.target.selectedOptions, option => option.value);
-                      field.onChange(values);
-                    }}
-                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                  >
-                    <option value="In clinic">In clinic</option>
-                    <option value="In home">In home</option>
-                    <option value="Telehealth">Telehealth</option>
-                  </select>
-                )}
+                render={({ field }) => {
+                  const value = Array.isArray(field.value) ? field.value : [];
+                  const toggleOption = (option: string, checked: boolean) => {
+                    if (checked) {
+                      field.onChange(Array.from(new Set([...value, option])));
+                    } else {
+                      field.onChange(value.filter(item => item !== option));
+                    }
+                  };
+
+                  const options = ['In clinic', 'In home', 'Telehealth'];
+
+                  return (
+                    <div className="space-y-2">
+                      {options.map(option => (
+                        <label
+                          key={option}
+                          className="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-200"
+                        >
+                          <input
+                            type="checkbox"
+                            value={option}
+                            checked={value.includes(option)}
+                            onChange={(e) => toggleOption(option, e.target.checked)}
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-dark dark:border-gray-600"
+                          />
+                          <span>{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                  );
+                }}
               />
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Hold Ctrl/Cmd to select multiple options
+                Select one or more preferred delivery settings.
               </p>
             </div>
 

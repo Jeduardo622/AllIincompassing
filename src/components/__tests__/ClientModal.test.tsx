@@ -56,7 +56,7 @@ describe('ClientModal validation', () => {
     fireEvent.change(getInputByName('date_of_birth'), { target: { value: '2012-05-01' } });
     fireEvent.change(getInputByName('email'), { target: { value: 'jamie@example.com' } });
 
-    const insuranceField = screen.getByPlaceholderText('Enter insurance information in JSON format');
+    const insuranceField = screen.getByPlaceholderText('Enter insurance information in JSON format (optional)');
     fireEvent.change(insuranceField, { target: { value: 'not-json' } });
 
     fireEvent.click(screen.getByRole('button', { name: /create client/i }));
@@ -93,5 +93,34 @@ describe('ClientModal validation', () => {
     });
 
     expect(handleSubmit).not.toHaveBeenCalled();
+  });
+
+  it('submits selected service preferences', async () => {
+    const handleSubmit = vi.fn().mockResolvedValue(undefined);
+
+    renderWithProviders(
+      <ClientModal
+        isOpen
+        onClose={() => {}}
+        onSubmit={handleSubmit}
+      />
+    );
+
+    fireEvent.change(getInputByName('first_name'), { target: { value: 'Jamie' } });
+    fireEvent.change(getInputByName('last_name'), { target: { value: 'Rivera' } });
+    fireEvent.change(getInputByName('date_of_birth'), { target: { value: '2012-05-01' } });
+    fireEvent.change(getInputByName('email'), { target: { value: 'jamie@example.com' } });
+
+    fireEvent.click(screen.getByLabelText('In clinic'));
+    fireEvent.click(screen.getByLabelText('Telehealth'));
+
+    fireEvent.click(screen.getByRole('button', { name: /create client/i }));
+
+    await waitFor(() => {
+      expect(handleSubmit).toHaveBeenCalled();
+    });
+
+    const submitted = handleSubmit.mock.calls[0][0];
+    expect(submitted.service_preference).toEqual(['In clinic', 'Telehealth']);
   });
 });

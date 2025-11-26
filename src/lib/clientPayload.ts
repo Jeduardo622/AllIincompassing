@@ -19,13 +19,23 @@ export const prepareClientPayload = (
   options: PrepareClientPayloadOptions = {}
 ) => {
   const prepared = prepareFormData(clientData);
-
-  const payload: Partial<Client> = {
-    ...prepared,
+  const { documents_consent, ...sanitizedData } = prepared as typeof prepared & {
+    documents_consent?: unknown;
   };
 
-  if ('insurance_info' in prepared) {
-    payload.insurance_info = prepared.insurance_info || {};
+  const payload: Partial<Client> = {
+    ...sanitizedData,
+  };
+
+  if ('insurance_info' in sanitizedData) {
+    const info = sanitizedData.insurance_info;
+    const hasContent =
+      info &&
+      typeof info === 'object' &&
+      !Array.isArray(info) &&
+      Object.keys(info).length > 0;
+
+    payload.insurance_info = hasContent ? info : null;
   }
 
   if ('service_preference' in prepared) {

@@ -126,6 +126,10 @@ export const prepareFormData = <T extends Record<string, any>>(data: T): T => {
       result[key] = sanitizeString(result[key]);
     }
   });
+
+  if (typeof result.state === 'string' && result.state) {
+    result.state = result.state.toUpperCase();
+  }
   
   // Handle empty strings for nullable fields
   const nullableFields = [
@@ -191,13 +195,21 @@ export const prepareFormData = <T extends Record<string, any>>(data: T): T => {
   });
   
   // Handle JSON fields safely
-  if ('insurance_info' in result && typeof result.insurance_info === 'string') {
-    try {
-      const parsed = JSON.parse(result.insurance_info);
-      // Sanitize the parsed object
-      result.insurance_info = sanitizeObject(parsed);
-    } catch {
-      result.insurance_info = {};
+  if ('insurance_info' in result) {
+    if (typeof result.insurance_info === 'string') {
+      const trimmedInsurance = result.insurance_info.trim();
+      if (!trimmedInsurance) {
+        result.insurance_info = null;
+      } else {
+        try {
+          const parsed = JSON.parse(trimmedInsurance);
+          result.insurance_info = sanitizeObject(parsed);
+        } catch {
+          result.insurance_info = null;
+        }
+      }
+    } else if (typeof result.insurance_info === 'object' && result.insurance_info !== null) {
+      result.insurance_info = sanitizeObject(result.insurance_info);
     }
   }
   

@@ -103,49 +103,73 @@ CREATE TYPE role_type AS ENUM ('client', 'therapist', 'admin', 'super_admin');
 - `clients`
 - `therapists`
 - `sessions`
-- `authorizations`
 - `billing_records`
+- `authorizations` / `authorization_services`
+- `client_guardians` / `guardian_users`
+- `therapist_documents`, `therapist_certifications`, `therapist_availability`
+- `session_holds`, `session_notes`, and related tenant-scoped views
+
+Every tenant-owned table added since the guardian and therapist hardening migrations now has RLS enforced with the org-aware helpers introduced in `20251223131500_align_rls_and_grants.sql` and `20251226090000_client_guardians.sql`.
 
 ### Policy Structure
 
-#### Profiles Table
+#### Org-aware helpers
+
+- `app.user_has_role_for_org(...)` is the canonical gate. It accepts either explicit organization IDs or entity IDs (therapist, client, session) and resolves the caller’s organization/guardian context before evaluating role aliases (e.g., `org_admin`, `org_member`).【supabase/migrations/20251223131500_align_rls_and_grants.sql】【supabase/migrations/20251226090000_client_guardians.sql】
+- `app.current_user_id()` and `app.current_user_organization_id()` expose authenticated request claims inside policies, ensuring every predicate is constrained to a single clinic.
+
+#### Sessions (read/write)
+
 ```sql
--- Users can view their own profile, admins can view all
-CREATE POLICY "profiles_select" ON profiles FOR SELECT 
-TO authenticated USING (
-  CASE 
-    WHEN auth.is_admin() THEN true
-    ELSE id = auth.uid()
-  END
-);
+CREATE POLICY org_read_sessions
+  ON public.sessions
+  FOR SELECT
+  TO authenticated
+  USING (
+    organization_id = app.current_user_organization_id()
+    AND app.user_has_role_for_org(app.current_user_id(), organization_id, ARRAY['org_admin', 'org_member'])
+  );
+
+CREATE POLICY org_write_sessions
+  ON public.sessions
+  FOR ALL
+  TO authenticated
+  USING (
+    organization_id = app.current_user_organization_id()
+    AND app.user_has_role_for_org(app.current_user_id(), organization_id, ARRAY['org_admin'])
+  )
+  WITH CHECK (
+    organization_id = app.current_user_organization_id()
+    AND app.user_has_role_for_org(app.current_user_id(), organization_id, ARRAY['org_admin'])
+  );
 ```
 
-#### Clients Table
+Admins inherit full read/write access to their clinic, while therapists/clients participate via the `org_member` alias without receiving write permissions.【supabase/migrations/20251223131500_align_rls_and_grants.sql】
+
+#### Clients & guardian access
+
 ```sql
--- Clients see self, therapists see assigned clients, admins see all
-CREATE POLICY "clients_access" ON clients FOR ALL
-TO authenticated USING (
-  CASE 
-    WHEN auth.is_admin() THEN true
-    WHEN auth.has_role('therapist') THEN EXISTS (
-      SELECT 1 FROM sessions s 
-      WHERE s.client_id = clients.id 
-      AND s.therapist_id = auth.uid()
+CREATE POLICY org_read_clients
+  ON public.clients
+  FOR SELECT
+  TO authenticated
+  USING (
+    organization_id = app.current_user_organization_id()
+    AND (
+      app.user_has_role_for_org(app.current_user_id(), organization_id, ARRAY['org_admin', 'therapist'])
+      OR app.user_has_role_for_org('client', organization_id, NULL, public.clients.id)
     )
-    WHEN auth.has_role('client') THEN id = auth.uid()
-    ELSE false
-  END
-);
+  );
 ```
+
+- `app.user_has_role_for_org('client', ...)` now returns `true` for the client **and** for guardians linked through `client_guardians`, giving caregivers read access without broadening their JWT scope.【supabase/migrations/20251226090000_client_guardians.sql】
+- All other tenant tables (billing, authorizations, therapist resources, session holds) follow the same pattern: require `organization_id = app.current_user_organization_id()` plus one of the helper’s alias arrays, with `WITH CHECK` mirroring `USING`.
 
 ### Client Self-Service Boundaries
 
-- Client-scoped JWTs now flow through `app.user_has_role_for_org('client', organization_id, NULL, id)`.
-  This ensures the authenticated user can only read or change the client row that matches both their user id and organization context.
-- Session- and billing-level checks mirror that behavior by passing the target `session_id` into `user_has_role_for_org` and
-  ensuring the session's `client_id` resolves to the authenticated user before any rows are returned or written.
-- `WITH CHECK` clauses match the `USING` predicates to guarantee clients cannot escalate privileges by writing data for other
-  organizations while still being able to maintain their own profile, session, and billing records.
+- Client-scoped JWTs flow through `app.user_has_role_for_org('client', organization_id, NULL, id)` to validate both identity and organization before returning rows.
+- Session/billing policies pass `session_id` so the helper can resolve the underlying client before granting access.
+- `WITH CHECK` clauses mirror `USING` to ensure clients, guardians, or therapists cannot write across clinics even when holding cached tokens.
 
 ## API Routes
 
@@ -184,21 +208,14 @@ export default createProtectedRoute(async (req, userContext) => {
 
 ## Security Functions
 
-### Role Checking Functions
+### Role & org helpers
 
-```sql
--- Check if user has specific role
-auth.has_role(role_name role_type) -> boolean
-
--- Check if user has any of the specified roles
-auth.has_any_role(role_names role_type[]) -> boolean
-
--- Get user's current role
-auth.get_user_role() -> role_type
-
--- Check if user is admin or super_admin
-auth.is_admin() -> boolean
-```
+- `auth.get_user_roles()` – returns the caller’s role array; used by middleware such as `assertAdminOrSuperAdmin` before allowing admin routes.【supabase/migrations/20250320170909_humble_dawn.sql】【supabase/functions/_shared/auth.ts】
+- `app.user_has_role_for_org(role_name text, target_org uuid, target_therapist uuid, target_client uuid, target_session uuid)` – resolves organization context (including guardianship) and enforces alias permissions (`org_admin`, `org_member`, `org_super_admin`).【supabase/migrations/20251226090000_client_guardians.sql】
+- `app.user_has_role_for_org(target_user_id uuid, target_org uuid, allowed_roles text[])` – convenience wrapper used by modern RLS policies to assert org membership for admins vs members.【supabase/migrations/20251223131500_align_rls_and_grants.sql】
+- `app.is_admin()` / `app.is_super_admin()` – thin wrappers around `app.has_role` used in legacy policies that still rely on boolean helpers.【supabase/migrations/20251120163000_fix_admin_and_client_policy.sql】
+- `public.has_role(role text)` – public alias for `app.has_role`, kept for storage bucket policies and other non-auth schemas.【supabase/migrations/20251121123000_restore_public_role_helpers.sql】
+- `app.current_user_id()` / `app.current_user_organization_id()` – expose request claims inside SQL so policies can join on the caller’s organization safely.【supabase/migrations/20251223131500_align_rls_and_grants.sql】
 
 ### Profile Management
 

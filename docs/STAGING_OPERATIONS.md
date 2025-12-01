@@ -4,25 +4,27 @@ This playbook captures the operational steps required to stand up and maintain t
 
 ## Netlify staging context
 
-1. In Netlify, open the site **AllIincompassing** → **Site configuration** → **Environment variables**.
-2. Ensure the `netlify.toml` `[context.staging]` block remains present; it mirrors the production build (same command/publish directory) while exposing `VITE_RUNTIME_ENV=staging` for telemetry.
-3. Point the deploy context at the `develop` branch. Branch deploys from `develop` publish to the staging URL.
-4. Add the Supabase staging credentials as environment variables (configure in the Netlify UI, do **not** commit raw values):
+1. In Netlify, open the **AllIincompassing** site → **Environment variables**.
+2. The `[context.staging]` block in `netlify.toml` mirrors production (same build command/publish directory) but sets `VITE_RUNTIME_ENV=staging` for telemetry.
+3. Deploy context: `develop` branch → staging URL.
+4. Add environment variables via the Netlify UI (never commit raw values):
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `SUPABASE_ACCESS_TOKEN`
-5. Store the raw values in the shared secrets manager (1Password vault `Platform / Supabase`). Paste only redacted values (e.g., `****`) into pull requests or chat logs.
-6. Stage-specific Netlify secrets:
+   - `DEFAULT_ORGANIZATION_ID`
+   - Any additional runtime secrets (OpenAI, S3, etc.) required for end-to-end flows.
+5. Store raw values in 1Password (`Platform / Supabase`). Only redacted snippets (`****`) belong in PRs or chat logs.
+6. Stage-specific Netlify secrets live in GitHub Actions as well:
    - `NETLIFY_AUTH_TOKEN`
    - `NETLIFY_STAGING_SITE_ID`
-7. Trigger a staging build from the Netlify UI to ensure the updated context provisions correctly.
+7. Trigger a staging build from the Netlify UI or re-run the GitHub Action to confirm the context deploys cleanly.
 
-## Supabase staging project
+## Supabase project usage
 
-- Create a dedicated Supabase project that mirrors production and link it to the `develop` branch. Reference: [Supabase Branching Runbook](./supabase_branching.md#promoting-to-staging-develop).
-- Tag the staging project with `environment: staging` so billing reports remain accurate.
-- Seed the project with anonymized data using the scripts in `scripts/` and validate RLS policies before sharing the credentials with QA.
+- All environments currently share the hosted Supabase project `wnnjeqheqxxyrgsjmygy`. There is no separate “staging” database.
+- Keep `DEFAULT_ORGANIZATION_ID` consistent across Netlify contexts, GitHub secrets, and `.env.local`.
+- When testing schema changes, use Supabase **branches** (`npm run db:branch:create`) rather than provisioning a new project; follow the [Supabase Branching Runbook](./supabase_branching.md) for promotion.
 
 ## GitHub Actions staging deployment job
 
@@ -43,5 +45,5 @@ If secrets are missing, the job fails early with an actionable error. Update Net
 
 ## Incident response
 
-- If the staging deploy fails, roll back by redeploying the last successful build from Netlify’s deploy history.
-- For Supabase regressions, restore the latest staging backup (Dashboard → **Database** → **Backups**) and re-apply migrations from `develop` after the fix ships.
+- If the staging deploy fails, redeploy the last successful build from Netlify’s deploy history or re-run the GitHub Action once secrets are fixed.
+- For Supabase regressions, use the project backups (Dashboard → **Database** → **Backups** / PITR) to restore the hosted project, then re-apply migrations once the fix is ready.

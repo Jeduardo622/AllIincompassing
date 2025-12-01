@@ -46,12 +46,16 @@ If a preview project fails to provision, check the Supabase dashboard activity f
 
 ### Promoting to Staging (`develop`)
 
-The platform team maintains a dedicated Supabase project for staging that mirrors the production schema but uses lower-cost infrastructure. Provision the project from the Supabase dashboard and document its project reference ID in 1Password alongside the Netlify staging site ID. Do **not** reuse production credentials.
+We currently run all environments (preview, staging, production) against the same hosted Supabase project `wnnjeqheqxxyrgsjmygy`. There is no dedicated staging database. Instead, we:
 
-1. Merge approved changes into the `develop` branch once preview smoke tests succeed.
-2. In the Supabase dashboard, switch to the staging project and run **Promote branch** → `develop` to sync migrations.
-3. Confirm RLS policies and seed scripts ran successfully by executing `supabase db diff --project-ref <staging-ref> --schema public --linked` locally. The diff should be empty.
-4. Rotate the staging service role key after major schema updates (see [Environment Matrix](./ENVIRONMENT_MATRIX.md)). Update the Netlify staging environment variables with the rotated key (mask values as `****` in screenshots or logs).
+1. Merge approved changes into the `develop` branch once preview smoke tests succeed (Netlify staging deploy kicks off automatically).
+2. If you need an isolated database before promoting, create a Supabase **branch** via `npm run db:branch:create <name>` or `supabase branches create <name> --project-ref wnnjeqheqxxyrgsjmygy`. Apply migrations there with `supabase db push --project-ref <branch-id>`.
+3. When ready, apply migrations to the hosted project using the Supabase dashboard (**Promote branch** → select your preview) or the CLI:
+   ```bash
+   supabase db push --project-ref wnnjeqheqxxyrgsjmygy
+   ```
+4. Confirm RLS policies/seed scripts ran successfully by executing `supabase db diff --project-ref wnnjeqheqxxyrgsjmygy --schema public --linked`. The diff should be empty.
+5. Rotate service-role keys after major schema updates (see [Environment Matrix](./ENVIRONMENT_MATRIX.md)) and update Netlify staging env vars accordingly (mask values as `****`).
 
 ### Promoting to Production (`main`)
 

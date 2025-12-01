@@ -4,7 +4,7 @@ This runbook documents where critical secrets are stored, who owns each system, 
 
 ## Supabase
 
-- **Source of truth:** Supabase project secrets.
+- **Source of truth:** Supabase dashboard (Project Settings → API) with mirrored entries in 1Password (`Platform / Supabase`).
 - **Managed by:** Platform engineering.
 - **Secrets covered:**
   - `SUPABASE_URL`
@@ -12,11 +12,12 @@ This runbook documents where critical secrets are stored, who owns each system, 
   - `SUPABASE_ANON_KEY`
   - `SUPABASE_SERVICE_ROLE_KEY`
   - `SUPABASE_ACCESS_TOKEN`
+  - `DEFAULT_ORGANIZATION_ID`
 - **Rotation steps:**
-  1. Generate new credentials in the Supabase dashboard (Project Settings → API).
-  2. Update the secrets in GitHub (`Settings → Secrets and variables → Actions`).
-  3. Mirror the values into Netlify environment variables for preview builds.
-  4. Notify developers to refresh their local `.env.codex` via `npm run ci:secrets`.
+  1. Generate fresh anon/service-role keys in the Supabase dashboard. Immediately update the 1Password record so there is a single source of truth.
+  2. Update GitHub Actions secrets (`Settings → Secrets and variables → Actions`) and Netlify environment variables (production + staging contexts). Mask values as `****` in screenshots/logs.
+  3. Run `supabase secrets set` for the hosted project so Edge Functions pick up the rotated keys.
+  4. Ping the team to refresh local `.env.local` files and run `npm run ci:secrets` to verify their environment (the CI workflow calls the same script before builds).
 
 ## OpenAI
 

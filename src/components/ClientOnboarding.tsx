@@ -23,6 +23,7 @@ import {
   checkClientEmailExists,
   createClient as createClientRecord,
 } from '../lib/clients/mutations';
+import { SERVICE_PREFERENCE_OPTIONS } from '../lib/constants/servicePreferences';
 
 interface ClientOnboardingProps {
   onComplete?: () => void;
@@ -787,42 +788,23 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                   Service Types
                 </span>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="in_clinic"
-                      value="In clinic"
-                      {...register('service_preference')}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="in_clinic" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                      In Clinic
-                    </label>
-                  </div>
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="in_home"
-                      value="In home"
-                      {...register('service_preference')}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="in_home" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                      In Home
-                    </label>
-                  </div>
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="telehealth"
-                      value="Telehealth"
-                      {...register('service_preference')}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="telehealth" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                      Telehealth
-                    </label>
-                  </div>
+                  {SERVICE_PREFERENCE_OPTIONS.map(option => {
+                    const id = `service_pref_${option.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+                    return (
+                      <div className="flex items-center" key={option}>
+                        <input
+                          type="checkbox"
+                          id={id}
+                          value={option}
+                          {...register('service_preference')}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor={id} className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
+                          {option}
+                        </label>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
               

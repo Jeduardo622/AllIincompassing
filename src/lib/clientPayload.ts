@@ -19,7 +19,7 @@ export const prepareClientPayload = (
   options: PrepareClientPayloadOptions = {}
 ) => {
   const prepared = prepareFormData(clientData);
-  const { documents_consent, ...sanitizedData } = prepared as typeof prepared & {
+  const { documents_consent: _documentsConsent, ...sanitizedData } = prepared as typeof prepared & {
     documents_consent?: unknown;
   };
 

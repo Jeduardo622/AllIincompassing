@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '../../test/utils';
 import { renderWithProviders } from '../../test/utils';
+import { SCHOOL_DAYCARE_LABEL } from '../../lib/constants/servicePreferences';
 import ClientModal from '../ClientModal';
 
 const getInputByName = (name: string) => {
@@ -122,5 +123,33 @@ describe('ClientModal validation', () => {
 
     const submitted = handleSubmit.mock.calls[0][0];
     expect(submitted.service_preference).toEqual(['In clinic', 'Telehealth']);
+  });
+
+  it('supports the school/daycare/preschool preference option', async () => {
+    const handleSubmit = vi.fn().mockResolvedValue(undefined);
+
+    renderWithProviders(
+      <ClientModal
+        isOpen
+        onClose={() => {}}
+        onSubmit={handleSubmit}
+      />,
+    );
+
+    fireEvent.change(getInputByName('first_name'), { target: { value: 'Luca' } });
+    fireEvent.change(getInputByName('last_name'), { target: { value: 'Diaz' } });
+    fireEvent.change(getInputByName('date_of_birth'), { target: { value: '2015-09-21' } });
+    fireEvent.change(getInputByName('email'), { target: { value: 'luca@example.com' } });
+
+    fireEvent.click(screen.getByLabelText(SCHOOL_DAYCARE_LABEL));
+
+    fireEvent.click(screen.getByRole('button', { name: /create client/i }));
+
+    await waitFor(() => {
+      expect(handleSubmit).toHaveBeenCalled();
+    });
+
+    const submitted = handleSubmit.mock.calls[0][0];
+    expect(submitted.service_preference).toEqual([SCHOOL_DAYCARE_LABEL]);
   });
 });

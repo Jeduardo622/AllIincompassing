@@ -140,6 +140,13 @@ export default function ProfileTab({ client, viewerRole }: ProfileTabProps) {
   const handleUpdateIssueStatus = (issueId: string, newStatus: Issue['status']) => {
     updateIssueStatusMutation.mutate({ issueId, newStatus });
   };
+
+  const updateClientErrorMessage =
+    updateClientMutation.error instanceof Error
+      ? updateClientMutation.error.message
+      : updateClientMutation.error
+        ? 'Failed to update client'
+        : null;
   
   const getStatusIcon = (status: string | null | undefined) => {
     const normalized = status?.toLowerCase();
@@ -476,6 +483,8 @@ export default function ProfileTab({ client, viewerRole }: ProfileTabProps) {
           onClose={() => setIsEditModalOpen(false)}
           onSubmit={updateClientMutation.mutateAsync}
           client={client}
+          isSaving={updateClientMutation.isPending}
+          saveError={updateClientErrorMessage}
         />
       )}
       

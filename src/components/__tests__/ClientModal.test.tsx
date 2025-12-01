@@ -37,7 +37,9 @@ describe('ClientModal validation', () => {
     });
 
     const submitButton = screen.getByRole('button', { name: /create client/i });
-    expect(submitButton).toBeDisabled();
+    await waitFor(() => {
+      expect(submitButton).toBeDisabled();
+    });
     expect(handleSubmit).not.toHaveBeenCalled();
   });
 
@@ -151,5 +153,38 @@ describe('ClientModal validation', () => {
 
     const submitted = handleSubmit.mock.calls[0][0];
     expect(submitted.service_preference).toEqual([SCHOOL_DAYCARE_LABEL]);
+  });
+
+  it('honors external saving state when provided', () => {
+    const handleSubmit = vi.fn();
+
+    renderWithProviders(
+      <ClientModal
+        isOpen
+        onClose={() => {}}
+        onSubmit={handleSubmit}
+        isSaving
+      />,
+    );
+
+    const submitButton = screen.getByRole('button', { name: /create client/i });
+    expect(submitButton).toHaveTextContent('Saving...');
+    expect(submitButton).toBeDisabled();
+  });
+
+  it('shows the provided error banner when saveError is set', () => {
+    const handleSubmit = vi.fn();
+    const errorMessage = 'Unable to save client';
+
+    renderWithProviders(
+      <ClientModal
+        isOpen
+        onClose={() => {}}
+        onSubmit={handleSubmit}
+        saveError={errorMessage}
+      />,
+    );
+
+    expect(screen.getByText(errorMessage)).toBeInTheDocument();
   });
 });

@@ -75,6 +75,14 @@ const Clients = () => {
            (client.parent_consult_units || 0);
   };
 
+  const getClientMutationErrorMessage = (error: unknown) => {
+    if (!error) {
+      return null;
+    }
+    const normalized = toError(error, 'Client mutation failed');
+    return normalized.message;
+  };
+
   const createClientMutation = useMutation({
     mutationFn: async (newClient: Partial<Client>) => {
       if (!activeOrganizationId) {
@@ -277,6 +285,11 @@ const Clients = () => {
       <ChevronUp className="w-4 h-4 inline-block ml-1" /> : 
       <ChevronDown className="w-4 h-4 inline-block ml-1" />;
   };
+
+  const isSavingClient = createClientMutation.isPending || updateClientMutation.isPending;
+  const clientSaveErrorMessage = selectedClient
+    ? getClientMutationErrorMessage(updateClientMutation.error)
+    : getClientMutationErrorMessage(createClientMutation.error);
 
   const filteredClients = clients.filter(client => {
     const matchesSearch = (
@@ -638,6 +651,8 @@ const Clients = () => {
           }}
           onSubmit={handleSubmit}
           client={selectedClient}
+          isSaving={isSavingClient}
+          saveError={clientSaveErrorMessage}
         />
       )}
 

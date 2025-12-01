@@ -7,6 +7,7 @@ import AvailabilityEditor from './AvailabilityEditor';
 // import { showError } from '../lib/toast';
 import { clientSchema, type ClientFormData } from '../lib/validationSchemas';
 import { prepareFormData } from '../lib/validation';
+import { SERVICE_PREFERENCE_OPTIONS } from '../lib/constants/servicePreferences';
 
 interface ClientModalProps {
   isOpen: boolean;
@@ -551,9 +552,9 @@ export default function ClientModal({
             </div>
 
             <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Service Preferences
-              </label>
+              </p>
               <Controller
                 name="service_preference"
                 control={control}
@@ -567,11 +568,9 @@ export default function ClientModal({
                     }
                   };
 
-                  const options = ['In clinic', 'In home', 'Telehealth'];
-
                   return (
                     <div className="space-y-2">
-                      {options.map(option => (
+                      {SERVICE_PREFERENCE_OPTIONS.map(option => (
                         <label
                           key={option}
                           className="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-200"

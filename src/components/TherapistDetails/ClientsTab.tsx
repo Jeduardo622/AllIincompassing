@@ -9,6 +9,7 @@ import { format, parseISO } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 import { showSuccess, showError } from '../../lib/toast';
 import { useAuth } from '../../lib/authContext';
+import type { Client } from '../../types';
 
 interface ClientsTabProps {
   therapist: { id: string };
@@ -52,8 +53,9 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
         
       if (sessionsError) throw sessionsError;
 
-      const directAssignmentsMap = new Map<string, any>(
-        (directAssignments ?? []).map((client) => [client.id, client]),
+      const directAssignmentsList = (directAssignments ?? []) as Client[];
+      const directAssignmentsMap = new Map<string, Client>(
+        directAssignmentsList.map((client) => [client.id, client]),
       );
 
       const sessionClientIds = Array.from(
@@ -77,7 +79,7 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
         if (historyError) throw historyError;
 
         (sessionClients ?? []).forEach((client) => {
-          directAssignmentsMap.set(client.id, client);
+          directAssignmentsMap.set(client.id, client as Client);
         });
       }
 

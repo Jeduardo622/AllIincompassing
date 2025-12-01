@@ -33,14 +33,9 @@
 - Super admins may invite admins into any organization; standard admins are restricted to their own organization context.
 - Expired invites are automatically replaced on subsequent requests; active invites must be explicitly revoked in the database if re-sending is required before expiration.
 
-## Organization creation
+## Organization provisioning status
 
-- If your account is missing an organization, go to `Settings → Organizations` and create one.
-- Eligibility:
-  - Super admins can always create organizations.
-  - Admins without an organization can create their initial organization; upon creation their `organization_id` metadata is set automatically.
-- The UI calls the `feature-flags` Edge Function with action `upsertOrganization`, which persists a row in `public.organizations`.
-- Metadata behavior:
-  - Create: when `metadata` is omitted, it initializes to `{}`.
-  - Update: when `metadata` is omitted, existing `metadata` is preserved and not cleared.
-- After creation, proceed to `Settings → Admin Users` to add additional administrators.
+- **Single-clinic freeze:** The Organizations UI now surfaces a banner explaining that multi-clinic workflows are paused (`OrganizationSettings.tsx`). No self-serve creation UI is available.
+- **Edge function restrictions:** `feature-flags-v2` still exposes the `upsertOrganization` action, but it is limited to the clinic defined by `DEFAULT_ORGANIZATION_ID`. Admins already linked to an organization cannot invoke it, and super admins may only update that single record.
+- **Operational process:** Opening, renaming, or migrating clinics requires intervention from the platform team. Route requests through the ops runbook instead of attempting to call the legacy `feature-flags` function or Supabase dashboard.
+- **Metadata behavior:** When the platform team issues an update via `feature-flags-v2`, omitting `metadata` preserves the existing JSON; providing a payload replaces it (falling back to `{}` when explicitly set to nullish).

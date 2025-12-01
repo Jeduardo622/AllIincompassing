@@ -14,47 +14,30 @@ This document describes the comprehensive database-first CI/CD pipeline implemen
 
 ## 🎯 Overview
 
-The database-first CI/CD pipeline solves critical problems:
+The “database-first” workflow combines a focused GitHub Action (`supabase-validate.yml`), the general CI pipeline, and a set of Supabase CLI scripts. Together they lint migrations, run integration tests against the hosted project (`wnnjeqheqxxyrgsjmygy`), and give contributors tools to spin up Supabase branches when they need isolated data.
 
-- **Database Migration Conflicts**: Each PR gets its own isolated database branch
-- **Security Vulnerabilities**: Automated security scanning with RLS checks
-- **Performance Regressions**: Performance monitoring and slow query detection
-- **Integration Issues**: Comprehensive testing with real database environments
-- **Deployment Safety**: Production health checks and rollback capabilities
+The current implementation does **not** create per-PR Supabase branches automatically. Instead, engineers run the supplied scripts (see [Manual Commands](#-manual-commands)) whenever a feature actually requires a dedicated database copy. CI reuses the shared project and enforces safety via linting and tests.
 
-### Key Benefits
+### Key Components & Benefits
 
-- ✅ **Zero Migration Conflicts**: Isolated database per PR
-- ✅ **Automated Security**: RLS policies, exposed functions, security advisors
-- ✅ **Performance Monitoring**: Slow query detection, index optimization
-- ✅ **Preview Deployments**: Full-stack previews with isolated databases
-- ✅ **Health Reporting**: Comprehensive reports in PR comments
-- ✅ **Production Safety**: Post-deployment health checks
+- ✅ **Migration linting on PRs** – `supabase-validate.yml` runs `supabase db lint` whenever a PR touches `supabase/migrations/**`.【.github/workflows/supabase-validate.yml†L4-L26】
+- ✅ **Hosted-integration tests on push** – the same workflow runs `npm test` with `RUN_DB_IT=1` for pushes to `main`, guaranteeing RLS-aware suites execute against real Supabase credentials.【.github/workflows/supabase-validate.yml†L27-L46】
+- ✅ **Full project CI** – `.github/workflows/ci.yml` adds linting, coverage, Netlify deploys, and smoke tests so schema changes are exercised together with the app code.【.github/workflows/ci.yml†1-L215】
+- ✅ **On-demand previews** – `supabase-preview.yml` provides a manual workflow for rapidly bringing up an ephemeral Supabase stack when deeper QA is needed.【.github/workflows/supabase-preview.yml†1-L37】
+- ✅ **Branch utilities** – `npm run db:branch:create|cleanup` wrap the Supabase CLI so engineers can create, reuse, and destroy database branches without crafting CLI commands by hand.
 
 ## 🔄 Pipeline Flow
 
-### 1. PR Creation/Update
-```mermaid
-graph LR
-    A[PR Created] --> B[Create Supabase Branch]
-    B --> C[Apply Migrations]
-    C --> D[Generate Types]
-    D --> E[Run Tests]
-    E --> F[Security Checks]
-    F --> G[Performance Analysis]
-    G --> H[Deploy Preview]
-    H --> I[Health Report]
-```
-
-### 2. PR Merge to Main
-```mermaid
-graph LR
-    A[PR Merged] --> B[Apply Production Migrations]
-    B --> C[Generate Production Types]
-    C --> D[Deploy Production]
-    D --> E[Production Health Check]
-    E --> F[Cleanup PR Branch]
-```
+1. **Pull request touches migrations**
+   - `supabase-validate.yml` triggers `lint-migrations`, which checks out the PR, installs the Supabase CLI, and runs `supabase db lint --project-ref wnnjeqheqxxyrgsjmygy`. Failures block the PR until policies, functions, and grants pass lint.
+2. **Push to `main`**
+   - `supabase-validate.yml` runs the `test-main` job. It installs dependencies, sets `RUN_DB_IT=1`, injects hosted Supabase credentials, and executes `npm test` so database-backed Vitest suites run with live data.
+3. **Repo-wide CI (`ci.yml`)**
+   - For every PR/push, the standard CI pipeline validates secrets, runs ESLint/TypeScript, executes Vitest with Supabase credentials, enforces coverage, builds canary bundles, and (on `develop`) deploys to Netlify staging before running smoke tests.
+4. **Optional Supabase preview**
+   - When needed, maintainers run `Supabase Preview` via the **Actions** tab to start a local Supabase stack (`supabase start`, `supabase db reset`) for exploratory testing.
+5. **Manual Supabase branch workflow**
+   - If a change needs an isolated database, run `npm run db:branch:create pr-123` locally, apply migrations, and work against that branch. Cleanup via `npm run db:branch:cleanup pr-123` when done. These scripts are not wired into Actions yet, keeping branch creation intentional rather than automatic.
 
 ## ⚙️ Setup Requirements
 
@@ -111,67 +94,55 @@ For local runs, export the same variables and set `RUN_DB_IT=1` before invoking 
 
 ## 🤖 GitHub Actions Workflows
 
-### Main Workflow: `database-first-ci.yml`
+### `supabase-validate.yml`
+- **Triggers**: Pull requests that modify `supabase/migrations/**` and pushes to `main` touching those paths.【.github/workflows/supabase-validate.yml†4-L13】
+- **PR behavior**: Runs `supabase db lint --project-ref wnnjeqheqxxyrgsjmygy` to ensure policies, grants, and SQL syntax conform before review.【.github/workflows/supabase-validate.yml†15-L26】
+- **Push behavior**: Installs dependencies and executes `npm test` with `RUN_DB_IT=1`, pointing to the hosted Supabase environment so RLS and RPC tests run against real data.【.github/workflows/supabase-validate.yml†27-L46】
 
-**Triggers**: PR events (opened, synchronize, reopened, closed) and pushes to main
+### `ci.yml`
+- **Triggers**: All PRs and pushes.
+- **Focus**: Validates secrets, runs ESLint/TypeScript, executes Vitest with Supabase credentials, enforces coverage, builds canary bundles, deploys to Netlify staging on `develop`, and runs smoke tests plus route audits.【.github/workflows/ci.yml†1-L248】
+- **Why it matters for the database**: Because `RUN_DB_IT` is set for Vitest, schema and RLS regressions surface during the general CI build even when migrations are untouched.
 
-**Jobs**:
+### `database-first-ci.yml`
+- **Triggers**: Pushes to `main` and `develop`. (It intentionally omits PR events for now.)【.github/workflows/database-first-ci.yml†1-L12】
+- **Scope**: Currently a thin placeholder that checks out the repository and is ready for future branch automation. We keep it documented so future automation work has a home and we remember it runs on every protected branch push.
 
-1. **setup-pr-environment**
-   - Creates Supabase development branch
-   - Applies migrations to branch database
-   - Generates TypeScript types
-   - Commits updated types back to PR
-
-2. **test-and-validate** (Matrix Strategy)
-   - Unit tests with branch database
-   - Integration tests with real data
-   - E2E tests with Cypress
-
-3. **database-health-check**
-   - Security analysis with Supabase advisors
-   - RLS policy verification
-   - Performance metrics collection
-   - Comments health report on PR
-
-4. **deploy-preview**
-   - Builds application with branch database
-   - Deploys to Netlify preview URL
-   - Comments deployment URL on PR
-
-5. **cleanup-pr-environment** (On PR close)
-   - Deletes Supabase development branch
-   - Removes Netlify preview deployment
-   - Cleans up cache files
-
-6. **production-deploy** (On main push)
-   - Applies migrations to production
-   - Deploys to production Netlify
-   - Runs production health checks
+### `supabase-preview.yml`
+- **Triggers**: Manual `workflow_dispatch`.
+- **Focus**: Starts a local Supabase stack via `supabase start`, resets the database, optionally runs type generation, and surfaces connection info so developers can point their local app at the ephemeral environment.【.github/workflows/supabase-preview.yml†1-L37】
+- **Use case**: Great for QA/debug sessions when you need a clean Supabase instance but don’t want to create a managed branch.
 
 ## 🏥 Database Health Monitoring
 
+CI currently surfaces schema issues through tests and linting; deeper health checks remain opt-in via the supplied scripts. Run them locally, in a Codespace, or from a scheduled job when needed:
+
+- `npm run db:check:security <branch-id>` – wraps Supabase advisors and our RLS/policy checks.
+- `npm run db:check:performance <branch-id>` – scrapes pg_stat views for slow queries, missing indexes, and bloat.
+- `npm run db:health:report <branch-id>` – produces a consolidated Markdown report using the outputs above.
+- `npm run db:health:production` – shortcuts to the production reference (`wnnjeqheqxxyrgsjmygy`) for release audits.
+- `npm run pipeline:health <branch-id>` – convenience script that runs security + performance + report in one go.
+
 ### Security Checks
 
-The pipeline automatically checks for:
+The security script focuses on:
 
-- **RLS Policies**: Ensures all tables have Row Level Security enabled
-- **Exposed Functions**: Verifies functions use SECURITY DEFINER
-- **Security Advisors**: Runs Supabase security recommendations
-- **Critical Vulnerabilities**: Fails CI on critical security issues
+- **RLS coverage** – fails if tables under `public` miss RLS or if policies conflict with helper functions.
+- **Function hardening** – verifies `SECURITY DEFINER` and locked-down `search_path` on helper functions.
+- **Supabase advisors** – relays any high/critical recommendations Supabase emits for the project.
 
 ### Performance Analysis
 
-Performance monitoring includes:
+The performance script highlights:
 
-- **Slow Queries**: Identifies queries > 1000ms total time
-- **Missing Indexes**: Finds tables with high sequential scans
-- **Table Bloat**: Detects tables with high dead tuple ratios
-- **Connection Stats**: Monitors active database connections
+- **Slow queries** – anything over ~1000 ms cumulative time.
+- **Missing/unused indexes** – looks for high seq scans vs. tuples returned.
+- **Table bloat** – flags tables with large dead tuple ratios.
+- **Connection stats** – simple `pg_stat_activity` snapshot for runaway clients.
 
 ### Health Report Format
 
-Each PR gets a comprehensive health report:
+Running `npm run db:health:report branch-id` emits Markdown similar to the following, which you can paste into a PR comment or attach to release notes:
 
 ```markdown
 # 🏥 Database Health Report

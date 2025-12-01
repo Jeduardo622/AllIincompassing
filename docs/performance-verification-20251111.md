@@ -1,10 +1,10 @@
-# Verification Notes – 2025-11-11
+# Performance Verification – 2025-12-01
 
 ## Supabase Performance Advisories
 
-- After applying `perf_rls_consolidation`, `prune_unused_indexes`, and `rls_phase2`, the performance linter now reports 250 findings (159 `multiple_permissive_policies`, 80 `unused_index`, 11 `unindexed_foreign_keys`), down from 394 earlier in the day.
-- Target tables (`therapists`, `ai_session_notes`, `ai_performance_metrics`) no longer appear in the duplicate-policy advisory set.
-- Remaining WARNs are concentrated on other org-scoped tables and will be addressed in a future pass.
+- Latest Supabase advisor run (2025-12-01) shows **82 WARN** (down from 250 on 2025-11-11). Remaining items are mostly `unused_index` on low-volume tables and a handful of `multiple_permissive_policies` flagged for future cleanup.
+- `therapists`, `ai_session_notes`, and `ai_performance_metrics` remain clear of duplicate-policy findings after the `rls_phase3` and `therapist_sessions_enforcement` migrations.
+- `npm run db:check:performance <branch-id>` plus `npm run db:check:security <branch-id>` should run before every release; see `docs/DATABASE_PIPELINE.md` for command details.
 
 ## JS Toolchain
 
@@ -12,10 +12,10 @@
   - `npm test`
   - `npm run lint`
   - `npm run typecheck`
-- No TypeScript type regeneration required (policy-only changes).
+- No TypeScript type regeneration required (policy-only migrations).
 
 ## Follow-up Actions
 
-- Apply migrations to staging before production to validate query plans and collect real `pg_stat_user_indexes` deltas.
-- Monitor for index regression by capturing `pg_stat_statements` after rollout; restore any dropped index needed by emergent workloads.
-
+1. Apply migrations to staging before production to validate query plans and collect fresh `pg_stat_user_indexes` deltas.
+2. Monitor for index regressions via `pg_stat_statements` after rollout; restore any dropped index needed by emergent workloads.
+3. Track the remaining WARNs in the Supabase advisor dashboard and schedule a cleanup pass once higher-priority work clears.

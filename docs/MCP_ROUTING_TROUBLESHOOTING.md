@@ -2,7 +2,7 @@
 
 ## Issue Overview
 
-This document addresses the **known Cursor MCP routing bug** where tool names conflict between different MCP servers, specifically GitHub and Supabase servers both having tools named `list_branches`.
+This document addresses the **known Cursor MCP routing bug** where tool names conflict between different MCP servers (e.g., GitHub and Supabase both exposing `list_branches`). We keep the utilities documented here (`scripts/mcp-routing-fix.js`, `.cursor/mcp.json`) so the team can recover quickly when Cursor misroutes requests.
 
 ## Root Cause Analysis
 
@@ -19,66 +19,43 @@ Based on extensive research and community feedback:
 
 **Status**: ✅ Proven to work
 
-Change your MCP server names to be more specific:
-
-```json
-{
-  "mcpServers": {
-    "supabase-database": {
-      "command": "npx",
-      "args": ["-y", "@supabase/mcp-server-supabase@latest", "--project-ref=YOUR_PROJECT_REF"],
-      "env": {
-        "SUPABASE_ACCESS_TOKEN": "YOUR_TOKEN"
-      }
-    },
-    "github-mcp": {
-      "command": "npx", 
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "YOUR_TOKEN"
-      }
-    }
-  }
-}
-```
+Use the disambiguated names baked into `scripts/mcp-routing-fix.js` (`github-mcp`, `supabase-database`). Running `node scripts/mcp-routing-fix.js supabase-only` (or `github-only`) rewrites `.cursor/mcp.json`, backs up the previous config, and clears the Cursor MCP cache so routing becomes deterministic again.【scripts/mcp-routing-fix.js】【.cursor/mcp.json】
 
 ### Solution 2: Single Server Mode (Most Reliable)
 
 **Status**: ✅ Confirmed working
 
-Run only one MCP server at a time to completely avoid conflicts:
+Keep only the server you need enabled:
 
-#### For Supabase-only usage:
 ```bash
+# Supabase only
 node scripts/mcp-routing-fix.js supabase-only
-```
 
-#### For GitHub-only usage:
-```bash
+# GitHub only
 node scripts/mcp-routing-fix.js github-only
 ```
+
+Each command:
+- Backs up the current config to `.cursor/mcp.backup.json`
+- Writes the requested server definition to `.cursor/mcp.json`
+- Clears known cache directories so Cursor can pick up the change
 
 ### Solution 3: Cache Clearing Protocol
 
 **Status**: ✅ Effective for temporary fixes
 
-1. Clear Cursor MCP cache:
-   ```bash
-   node scripts/mcp-routing-fix.js clear-cache
-   ```
+```bash
+node scripts/mcp-routing-fix.js clear-cache
+```
 
-2. Restart Cursor completely
-3. Wait 30 seconds before reopening
+Followed by a full Cursor restart (the script will prompt you). This removes stale routing data without touching your `.cursor/mcp.json`.
 
 ### Solution 4: Tool Name Validation
 
 **Status**: ⚠️ Research-based workaround
 
-Avoid tools with special characters or conflicts:
-
-- ❌ Tools with hyphens: `list-branches` (Cursor bug)
-- ❌ Conflicting names: `list_branches` when both servers active
-- ✅ Unique names: `supabase_list_branches` vs `github_list_branches`
+- Avoid hyphenated tool names or duplicates until Cursor ships a fix.
+- When creating custom MCP servers, prefer explicit prefixes (e.g., `supabase_list_branches` vs `github_list_branches`).
 
 ## Advanced Debugging Steps
 
@@ -88,11 +65,11 @@ Avoid tools with special characters or conflicts:
 node scripts/mcp-routing-fix.js detect
 ```
 
-Expected output if conflicts exist:
+Sample conflict output:
 ```
 ❌ Tool conflicts detected:
-  - list_branches: github, supabase
-  - create_branch: github, supabase
+  - list_branches: github-mcp, supabase-database
+  - create_branch: github-mcp, supabase-database
 ```
 
 ### Step 2: Check MCP Server Status
@@ -105,17 +82,14 @@ Expected output if conflicts exist:
 
 ### Step 3: Test Tool Routing
 
-Use these specific prompts to test routing:
+Use explicit prefixes so Cursor routes to the intended server:
 
 ```
-Test Supabase routing:
-"Show me my Supabase database branches"
-
-Test GitHub routing:  
-"List my GitHub repository branches for this project"
+Supabase: "using supabase list branches"
+GitHub:   "using github list branches"
 ```
 
-If routing fails, you'll see responses intended for the wrong service.
+If routing fails, the response will reference the wrong service (e.g., trying a Supabase RPC when you asked for GitHub).
 
 ### Step 4: MCP Protocol Validation
 
@@ -144,10 +118,11 @@ Some community members report success by asking for tools with explicit prefixes
 
 ### Workaround 3: Alternative MCP Servers
 
-Consider these conflict-free alternatives:
+Consider these conflict-mitigation tricks:
 
-- **Smithery.ai Supabase Server**: Different tool names
-- **Custom MCP Wrapper**: Create your own wrapper with unique tool names
+- **Prefixing strategy** – Always mention the server name in your prompt (“using supabase …”)
+- **Sequential activation** – Disable all servers, enable only what you need, then switch
+- **Custom wrapper** – If you build additional MCP servers, use unique tool names from day one
 
 ## Environment-Specific Fixes
 

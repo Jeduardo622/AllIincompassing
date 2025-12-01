@@ -1,3 +1,71 @@
+# Agent Operations Guide
+
+This guide gives Codex agents and future automation a single place to reference project guardrails, tool access, and expected workflows.
+
+## Repository Boundaries
+
+- **Writable directories**
+  - `src/**`, `supabase/migrations/**`, `supabase/functions/**`
+  - `docs/**`, `AGENTS.md`, runbooks, and other markdown documentation
+- **Read-only / propose-only**
+  - `.github/**`, `infra/**`, `Dockerfile`, `.supabase/config.toml`, `.env`
+  - Any credentials stored outside version control (1Password, Supabase dashboard)
+- **Coding standards**
+  - TypeScript/React follow the repo ESLint + Prettier rules; run `npm run lint` before submitting patches.
+  - Use **named exports** only; no default exports.
+  - Every logic change requires a Jest/Vitest test (minimum command: `npm test` or the relevant focused suite).
+  - Maintain ≥ 90 % coverage; CI (`npm run ci:verify-coverage`) enforces this threshold.
+
+## MCP Tooling
+
+| MCP server              | Command / location                                           | Primary tools                                               | Notes |
+|-------------------------|-------------------------------------------------------------|-------------------------------------------------------------|-------|
+| `supabase-database`     | `npx -y @supabase/mcp-server-supabase@latest --project-ref=wnnjeqheqxxyrgsjmygy` | `list_tables`, `list_branches`, `execute_sql`, `apply_migration`, etc. | Use hosted Supabase project only; never point to localhost. |
+| `github-mcp` *(optional)* | `npx -y @modelcontextprotocol/server-github`                | Repo inspection, issue metadata                            | Enable only when GitHub automation is required. |
+| Lighthouse MCP          | See `docs/MCP_ROUTING_TROUBLESHOOTING.md`                   | `run_audit`, `get_performance_score`                       | Requires Chromium; set `CHROME_PATH` if not auto-detected. |
+| Playwright MCP          | Browser automation utilities (smoke/baseline screenshots)   | `browser_navigate`, `browser_click`, `browser_take_screenshot` | Prefer MCP browser tooling for quick validation before running full Playwright suites. |
+
+> When conflicts arise between MCP servers (e.g., overlapping tool names), use `node scripts/mcp-routing-fix.js supabase-only` or `github-only` to disambiguate. See `docs/MCP_ROUTING_TROUBLESHOOTING.md` for step-by-step guidance.
+
+## Operational Workflow
+
+1. **Scout & Plan**
+   - Gather context from the relevant doc (runbooks, specs, or issue threads).
+   - If work spans multiple files or systems, create a brief plan before editing (the `create_plan` tool keeps changes reviewable).
+2. **Implement**
+   - Update code and/or documentation, keeping modifications within the writable directories above.
+   - For Supabase schema changes: create a migration under `supabase/migrations/`, run `supabase db lint` locally, and document the change.
+3. **Verify**
+   - Run targeted commands:
+     - Docs-only: `npm run lint:md` *(if applicable)* or rely on markdown lint extension.
+     - Backend/frontend: `npm run lint`, `npm run typecheck`, `npm test`.
+     - Supabase diff: `supabase db diff --schema public --linked` or `npm run db:check:security`.
+   - Preview builds: `npm run preview:build && npm run preview:smoke`.
+4. **Summarize & Hand-off**
+   - Provide a concise summary referencing the files or migrations touched.
+   - Mention any MCP artifacts (runtime-config output, Playwright screenshots, etc.) so reviewers can validate quickly.
+
+## Secrets & Credentials
+
+- Source of truth for Supabase, Netlify, and other production secrets is 1Password (`Platform / Supabase` vault).
+- Use `npm run ci:secrets` locally to ensure required env vars are set; CI runs the same script before tests.
+- Never commit raw keys. When discussing secrets in comments or docs, redact to `****`.
+
+## Release & Branching Quick Reference
+
+- **Preview databases**: Every PR receives an auto-provisioned Supabase preview branch. Treat them as ephemeral; they disappear when the PR closes.
+- **Staging (`develop`)**: We share the same hosted Supabase project; apply migrations via Supabase branches or direct `supabase db push --project-ref wnnnjeqheqxxyrgsjmygy` after smoke tests.
+- **Production (`main`)**: Merges auto-deploy via the Supabase GitHub integration. Monitor dashboard logs and run `npm run preview:smoke:remote` against the production URL if needed.
+
+## Incident & Support
+
+- Tenant isolation, guardian access, session hold resiliency, and onboarding flows each have dedicated runbooks in `docs/`.
+- For MCP routing or tooling conflicts, consult:
+  - `docs/MCP_ROUTING_TROUBLESHOOTING.md`
+  - `scripts/mcp-routing-fix.js`
+  - Preview smoke instructions in `docs/PREVIEW_SMOKE.md`
+
+Keep this guide updated as tooling or processes evolve so every agent executes work with the same context.***
 # AGENTS.md – Operating Rules for Codex Agents
 
 > **Scope** – These rules apply to *all* files under this repository. Any PR opened by an AI agent **must** respect the constraints below. Failures to comply will cause the CI pipeline to reject the change.  (See Codex system‑prompt spec ([baoyu.io](https://baoyu.io/blog/codex-system-prompt?utm_source=chatgpt.com)).)

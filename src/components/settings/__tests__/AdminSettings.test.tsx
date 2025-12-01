@@ -138,21 +138,14 @@ describe('AdminSettings logging', () => {
   });
 
   it('adds organization metadata when creating an admin user', async () => {
-    const assignAdminSpy = vi.fn();
-    const originalSignUp = (supabase.auth as { signUp?: (...args: unknown[]) => unknown }).signUp;
-    const signUpMock = vi.fn().mockResolvedValue({ data: {}, error: null });
-    (supabase.auth as Record<string, unknown>).signUp = signUpMock;
+    const invokeSpy = vi
+      .spyOn(supabase.functions, 'invoke')
+      .mockResolvedValue({ data: null, error: null });
 
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
       if (functionName === 'get_admin_users') {
         return { data: [mockAdminUser], error: null };
       }
-
-      if (functionName === 'assign_admin_role') {
-        assignAdminSpy(params);
-        return { data: null, error: null };
-      }
-
       if (functionName === 'manage_admin_users') {
         return { data: null, error: null };
       }
@@ -183,41 +176,30 @@ describe('AdminSettings logging', () => {
       await userEvent.click(submitButton);
 
       await waitFor(() => {
-        expect(signUpMock).toHaveBeenCalled();
+        expect(invokeSpy).toHaveBeenCalledWith(
+          'admin-create-user',
+          expect.objectContaining({
+            body: expect.objectContaining({
+              email: 'new.admin@example.com',
+              organization_id: '11111111-1111-1111-1111-111111111111',
+              reason: 'Granting admin for coverage.',
+            }),
+          })
+        );
       });
-
-      const signUpOptions = signUpMock.mock.calls[0]?.[0];
-      expect(signUpOptions?.options?.data?.organization_id).toBe('11111111-1111-1111-1111-111111111111');
-      expect(assignAdminSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          user_email: 'new.admin@example.com',
-          organization_id: '11111111-1111-1111-1111-111111111111',
-          reason: 'Granting admin for coverage.',
-        })
-      );
     } finally {
-      if (originalSignUp) {
-        (supabase.auth as Record<string, unknown>).signUp = originalSignUp;
-      } else {
-        delete (supabase.auth as Record<string, unknown>).signUp;
-      }
+      invokeSpy.mockRestore();
     }
   });
 
   it('requires a justification before assigning a new admin user', async () => {
-    const assignAdminSpy = vi.fn();
-    const originalSignUp = (supabase.auth as { signUp?: (...args: unknown[]) => unknown }).signUp;
-    const signUpMock = vi.fn().mockResolvedValue({ data: {}, error: null });
-    (supabase.auth as Record<string, unknown>).signUp = signUpMock;
+    const invokeSpy = vi
+      .spyOn(supabase.functions, 'invoke')
+      .mockResolvedValue({ data: null, error: null });
 
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
       if (functionName === 'get_admin_users') {
         return { data: [mockAdminUser], error: null };
-      }
-
-      if (functionName === 'assign_admin_role') {
-        assignAdminSpy(params);
-        return { data: null, error: null };
       }
 
       if (defaultRpcImplementation) {
@@ -248,13 +230,9 @@ describe('AdminSettings logging', () => {
         );
       });
 
-      expect(assignAdminSpy).not.toHaveBeenCalled();
+      expect(invokeSpy).not.toHaveBeenCalled();
     } finally {
-      if (originalSignUp) {
-        (supabase.auth as Record<string, unknown>).signUp = originalSignUp;
-      } else {
-        delete (supabase.auth as Record<string, unknown>).signUp;
-      }
+      invokeSpy.mockRestore();
     }
   });
 });

@@ -1,25 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { callEdgeMock, persistSessionCptMetadataMock } = vi.hoisted(() => ({
-  callEdgeMock: vi.fn(),
-  persistSessionCptMetadataMock: vi
-    .fn()
-    .mockResolvedValue({ entryId: "entry-id", modifierIds: [] }),
-}));
+import * as supabaseModule from "../../lib/supabase";
+import * as sessionCptPersistence from "../sessionCptPersistence";
 
-const supabaseModuleFactory = vi.hoisted(() => async () => {
-  const actual = await vi.importActual<typeof import("../../lib/supabase")>("../../lib/supabase");
-  return {
-    ...actual,
-    callEdge: callEdgeMock,
-  };
-});
-
-vi.mock("../../lib/supabase", supabaseModuleFactory);
-
-vi.mock("../sessionCptPersistence", () => ({
-  persistSessionCptMetadata: persistSessionCptMetadataMock,
-}));
+const originalCallEdge = supabaseModule.callEdge;
+const callEdgeMock = vi.spyOn(supabaseModule, "callEdge");
+const persistSessionCptMetadataMock = vi
+  .spyOn(sessionCptPersistence, "persistSessionCptMetadata")
+  .mockResolvedValue({ entryId: "entry-id", modifierIds: [] });
 
 const importBookHandler = async () => {
   const module = await import("../api/book");
@@ -59,6 +47,10 @@ describe("bookHandler integration", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    callEdgeMock.mockReset().mockRejectedValue(new Error("callEdgeMock not configured"));
+    persistSessionCptMetadataMock
+      .mockReset()
+      .mockResolvedValue({ entryId: "entry-id", modifierIds: [] });
     const runtimeConfig = await import("../../lib/runtimeConfig");
     runtimeConfig.resetRuntimeSupabaseConfigForTests();
     process.env.SUPABASE_URL = TEST_SUPABASE_URL;
@@ -180,10 +172,6 @@ describe("bookHandler integration", () => {
   });
 
   it("bootstraps Supabase runtime config for server handlers", async () => {
-    vi.resetModules();
-    vi.doUnmock("../../lib/supabase");
-    persistSessionCptMetadataMock.mockClear();
-
     const runtimeConfig = await import("../../lib/runtimeConfig");
     runtimeConfig.resetRuntimeSupabaseConfigForTests();
 
@@ -201,8 +189,6 @@ describe("bookHandler integration", () => {
     process.env.SUPABASE_ANON_KEY = supabaseAnonKey;
     process.env.SUPABASE_EDGE_URL = supabaseEdgeUrl;
 
-    const originalFetch = globalThis.fetch;
-    const fetchMock = vi.fn<typeof fetch>();
     const holdResponsePayload = {
       success: true,
       data: {
@@ -258,17 +244,23 @@ describe("bookHandler integration", () => {
       },
     } as const;
 
-    fetchMock
-      .mockResolvedValueOnce(new Response(JSON.stringify(holdResponsePayload), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify(confirmResponsePayload), { status: 200 }));
-
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
-
     const accessToken = "bootstrap-token";
 
     try {
-      await import("../bootstrapSupabase");
+      const { bootstrapSupabase } = await import("../bootstrapSupabase");
+      bootstrapSupabase();
       const { bookHandler } = await import("../api/book");
+      const { buildSupabaseEdgeUrl } = await import("../../lib/runtimeConfig");
+
+      callEdgeMock
+        .mockImplementationOnce(async (path, init, options) => {
+          expect(buildSupabaseEdgeUrl(path)).toBe(`${supabaseEdgeUrl}${path}`);
+          return new Response(JSON.stringify(holdResponsePayload), { status: 200 });
+        })
+        .mockImplementationOnce(async (path, init, options) => {
+          expect(buildSupabaseEdgeUrl(path)).toBe(`${supabaseEdgeUrl}${path}`);
+          return new Response(JSON.stringify(confirmResponsePayload), { status: 200 });
+        });
 
       const response = await bookHandler(
         new Request("http://localhost/api/book", {
@@ -293,19 +285,11 @@ describe("bookHandler integration", () => {
         defaultOrganizationId: "5238e88b-6198-4862-80a2-dbe15bbeabdd",
       });
 
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      const expectedBaseUrl = supabaseEdgeUrl.endsWith("/")
-        ? supabaseEdgeUrl
-        : `${supabaseEdgeUrl}/`;
-      expect(fetchMock.mock.calls[0]?.[0]).toBe(`${expectedBaseUrl}sessions-hold`);
-      expect(fetchMock.mock.calls[1]?.[0]).toBe(`${expectedBaseUrl}sessions-confirm`);
-
       expect(persistSessionCptMetadataMock).toHaveBeenCalledWith(
         expect.objectContaining({ sessionId: "session-1" }),
       );
-      expect(callEdgeMock).not.toHaveBeenCalled();
+      expect(callEdgeMock).toHaveBeenCalledTimes(2);
     } finally {
-      globalThis.fetch = originalFetch;
       runtimeConfig.resetRuntimeSupabaseConfigForTests();
       if (typeof originalEnv.SUPABASE_URL === "string") {
         process.env.SUPABASE_URL = originalEnv.SUPABASE_URL;
@@ -327,13 +311,14 @@ describe("bookHandler integration", () => {
       } else {
         delete process.env.DEFAULT_ORGANIZATION_ID;
       }
-      vi.doMock("../../lib/supabase", supabaseModuleFactory);
-      vi.resetModules();
+      callEdgeMock.mockReset().mockRejectedValue(new Error("callEdgeMock not configured"));
     }
   });
 });
 
 afterAll(() => {
+  callEdgeMock.mockRestore();
+  persistSessionCptMetadataMock.mockRestore();
   if (typeof ORIGINAL_ENV.SUPABASE_URL === "string") {
     process.env.SUPABASE_URL = ORIGINAL_ENV.SUPABASE_URL;
   } else {

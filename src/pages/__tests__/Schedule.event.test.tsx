@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { renderWithProviders, screen } from "../../test/utils";
 import Schedule from "../Schedule";
 
@@ -33,6 +33,7 @@ describe("Schedule page event listener", () => {
   });
 
   it("opens modal based on pendingSchedule in localStorage", async () => {
+    vi.useFakeTimers();
     const detail = {
       therapist_id: "t1",
       client_id: "c1",
@@ -41,10 +42,14 @@ describe("Schedule page event listener", () => {
     };
     localStorage.setItem("pendingSchedule", JSON.stringify(detail));
 
-    renderWithProviders(<Schedule />);
-    await screen.findByRole("heading", { name: /Schedule/i });
-
-    expect(await screen.findByText(/New Session/i)).toBeInTheDocument();
-    expect(localStorage.getItem("pendingSchedule")).toBeNull();
+    try {
+      renderWithProviders(<Schedule />);
+      await screen.findByRole("heading", { name: /Schedule/i });
+      vi.advanceTimersByTime(400);
+      expect(await screen.findByText(/New Session/i)).toBeInTheDocument();
+      expect(localStorage.getItem("pendingSchedule")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

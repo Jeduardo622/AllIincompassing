@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { X } from 'lucide-react';
@@ -14,6 +14,8 @@ interface ClientModalProps {
   onClose: () => void;
   onSubmit: (data: Partial<Client>) => Promise<void>;
   client?: Client;
+  isSaving?: boolean;
+  saveError?: string | null;
 }
 
 export default function ClientModal({
@@ -21,12 +23,17 @@ export default function ClientModal({
   onClose,
   onSubmit,
   client,
+  isSaving,
+  saveError,
 }: ClientModalProps) {
   const {
     register,
     handleSubmit,
     control,
     formState: { errors, isSubmitting, isValid, isSubmitted },
+    clearErrors,
+    reset,
+    getValues,
   } = useForm<ClientFormData>({
     resolver: zodResolver(clientSchema),
     mode: 'onChange',
@@ -75,6 +82,24 @@ export default function ClientModal({
     },
   });
 
+  const [localError, setLocalError] = useState<string | null>(null);
+  const effectiveIsSaving = typeof isSaving === 'boolean' ? isSaving : isSubmitting;
+  const displayedError = saveError || localError;
+
+  const previousSavingState = useRef(effectiveIsSaving);
+
+  useEffect(() => {
+    const wasSaving = previousSavingState.current;
+    const hasExternalSavingControl = typeof isSaving === 'boolean';
+
+    if (hasExternalSavingControl && wasSaving && !effectiveIsSaving) {
+      clearErrors();
+      reset(getValues());
+    }
+
+    previousSavingState.current = effectiveIsSaving;
+  }, [effectiveIsSaving, isSaving, clearErrors, reset, getValues]);
+
   if (!isOpen) return null;
 
   const handleFormSubmit = async (data: ClientFormData) => {
@@ -86,7 +111,19 @@ export default function ClientModal({
     }
 
     const formatted = prepareFormData(data);
-    await onSubmit(formatted);
+    setLocalError(null);
+    try {
+      await onSubmit(formatted);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : 'Failed to save client changes.';
+      setLocalError(message);
+      throw error;
+    }
   };
 
   return (
@@ -105,6 +142,11 @@ export default function ClientModal({
         </div>
 
         <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+          {displayedError && (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300">
+              {displayedError}
+            </div>
+          )}
           <input
             type="checkbox"
             {...register('documents_consent')}
@@ -641,11 +683,11 @@ export default function ClientModal({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || (!isValid && isSubmitted)}
+              disabled={effectiveIsSaving || (!isValid && isSubmitted)}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label={client ? "Update Client" : "Create Client"}
             >
-              {isSubmitting ? 'Saving...' : client ? 'Save Changes' : 'Create Client'}
+              {effectiveIsSaving ? 'Saving...' : client ? 'Save Changes' : 'Create Client'}
             </button>
           </div>
         </form>

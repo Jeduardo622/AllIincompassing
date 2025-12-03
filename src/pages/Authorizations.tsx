@@ -14,6 +14,7 @@ import type { Authorization, AuthorizationService } from '../types';
 import AuthorizationModal from '../components/AuthorizationModal';
 import { showSuccess, showError } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
+import { fetchClients } from '../lib/clients/fetchers';
 
 export default function Authorizations() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,16 +46,8 @@ export default function Authorizations() {
   });
 
   const { data: clients = [] } = useQuery({
-    queryKey: ['clients'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('clients')
-        .select('*')
-        .order('full_name');
-      
-      if (error) throw error;
-      return data;
-    },
+    queryKey: ['clients', 'authorizations'],
+    queryFn: () => fetchClients({ allowAll: true }),
   });
 
   const { data: providers = [] } = useQuery({

@@ -149,7 +149,7 @@ export const clientFormSchema = z
     middle_name: optionalStringSchema,
     last_name: requiredStringSchema('Last name'),
     full_name: optionalStringSchema,
-    email: emailSchema,
+    email: optionalEmailSchema,
     phone: phoneSchema,
     date_of_birth: requiredStringSchema('Date of birth'),
     gender: genderSchema,

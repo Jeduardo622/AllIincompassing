@@ -33,7 +33,6 @@ describe('ClientModal validation', () => {
       expect(screen.getByText('First name is required')).toBeInTheDocument();
       expect(screen.getByText('Last name is required')).toBeInTheDocument();
       expect(screen.getByText('Date of birth is required')).toBeInTheDocument();
-      expect(screen.getByText('Email is required')).toBeInTheDocument();
     });
 
     const submitButton = screen.getByRole('button', { name: /create client/i });
@@ -69,6 +68,31 @@ describe('ClientModal validation', () => {
     });
 
     expect(handleSubmit).not.toHaveBeenCalled();
+  });
+
+  it('saves clients that do not provide an email', async () => {
+    const handleSubmit = vi.fn().mockResolvedValue(undefined);
+
+    renderWithProviders(
+      <ClientModal
+        isOpen
+        onClose={() => {}}
+        onSubmit={handleSubmit}
+      />
+    );
+
+    fireEvent.change(getInputByName('first_name'), { target: { value: 'Jamie' } });
+    fireEvent.change(getInputByName('last_name'), { target: { value: 'Rivera' } });
+    fireEvent.change(getInputByName('date_of_birth'), { target: { value: '2012-05-01' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /create client/i }));
+
+    await waitFor(() => {
+      expect(handleSubmit).toHaveBeenCalled();
+    });
+
+    const submitted = handleSubmit.mock.calls[0][0];
+    expect(submitted.email).toBeNull();
   });
 
   it('prevents submission when unit inputs contain negative values', async () => {

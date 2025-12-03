@@ -5,6 +5,7 @@ import { BarChart, TrendingUp, ArrowRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { useDashboardLiveRefresh } from '../../lib/dashboardLiveRefresh';
+import { fetchClients } from '../../lib/clients/fetchers';
 
 export default function ReportsSummary() {
   // Get current month date range
@@ -57,15 +58,8 @@ export default function ReportsSummary() {
 
   // Fetch clients
   const { data: clients = [] } = useQuery({
-    queryKey: ['clients'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('clients')
-        .select('*');
-      
-      if (error) throw error;
-      return data || [];
-    },
+    queryKey: ['clients', 'dashboard-summary'],
+    queryFn: () => fetchClients({ allowAll: true }),
     ...(liveQueryOptions ?? {}),
   });
 

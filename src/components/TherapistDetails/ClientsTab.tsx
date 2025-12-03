@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '../../lib/supabase';
+import { CLIENT_SELECT } from '../../lib/clients/select';
 import { showSuccess, showError } from '../../lib/toast';
 import { useAuth } from '../../lib/authContext';
 import type { Client } from '../../types';
@@ -38,7 +39,7 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
     queryFn: async () => {
       const { data: directAssignments, error: directError } = await supabase
         .from('clients')
-        .select('*')
+        .select(CLIENT_SELECT)
         .eq('therapist_id', therapist.id)
         .order('full_name', { ascending: true });
 
@@ -73,7 +74,7 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
       if (missingClientIds.length > 0) {
         const { data: sessionClients, error: historyError } = await supabase
           .from('clients')
-          .select('*')
+          .select(CLIENT_SELECT)
           .in('id', missingClientIds);
 
         if (historyError) throw historyError;

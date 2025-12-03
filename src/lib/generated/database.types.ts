@@ -115,11 +115,15 @@ export type Database = {
           cache_hit: boolean | null
           conversation_id: string | null
           cost_usd: number | null
+          created_at: string | null
           error_occurred: boolean | null
           function_called: string | null
+          function_name: string | null
           id: string
+          parameters: Json | null
           response_time_ms: number
           timestamp: string | null
+          token_count: number | null
           token_usage: Json | null
           user_id: string | null
         }
@@ -127,11 +131,15 @@ export type Database = {
           cache_hit?: boolean | null
           conversation_id?: string | null
           cost_usd?: number | null
+          created_at?: string | null
           error_occurred?: boolean | null
           function_called?: string | null
+          function_name?: string | null
           id?: string
+          parameters?: Json | null
           response_time_ms: number
           timestamp?: string | null
+          token_count?: number | null
           token_usage?: Json | null
           user_id?: string | null
         }
@@ -139,11 +147,15 @@ export type Database = {
           cache_hit?: boolean | null
           conversation_id?: string | null
           cost_usd?: number | null
+          created_at?: string | null
           error_occurred?: boolean | null
           function_called?: string | null
+          function_name?: string | null
           id?: string
+          parameters?: Json | null
           response_time_ms?: number
           timestamp?: string | null
+          token_count?: number | null
           token_usage?: Json | null
           user_id?: string | null
         }
@@ -729,6 +741,141 @@ export type Database = {
           },
         ]
       }
+      client_notes: {
+        Row: {
+          client_id: string
+          content: string | null
+          created_at: string | null
+          created_by: string | null
+          deleted_at: string | null
+          id: string
+          is_visible_to_parent: boolean | null
+          organization_id: string | null
+          status: string | null
+        }
+        Insert: {
+          client_id: string
+          content?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          is_visible_to_parent?: boolean | null
+          organization_id?: string | null
+          status?: string | null
+        }
+        Update: {
+          client_id?: string
+          content?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          is_visible_to_parent?: boolean | null
+          organization_id?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
+      client_session_notes: {
+        Row: {
+          authorization_id: string
+          client_id: string
+          created_at: string
+          created_by: string
+          end_time: string
+          goals_addressed: string[]
+          id: string
+          is_locked: boolean
+          narrative: string
+          organization_id: string
+          service_code: string
+          session_date: string
+          session_duration: number
+          session_id: string | null
+          signed_at: string | null
+          start_time: string
+          therapist_id: string
+          updated_at: string
+        }
+        Insert: {
+          authorization_id: string
+          client_id: string
+          created_at?: string
+          created_by: string
+          end_time: string
+          goals_addressed?: string[]
+          id?: string
+          is_locked?: boolean
+          narrative: string
+          organization_id: string
+          service_code: string
+          session_date: string
+          session_duration: number
+          session_id?: string | null
+          signed_at?: string | null
+          start_time: string
+          therapist_id: string
+          updated_at?: string
+        }
+        Update: {
+          authorization_id?: string
+          client_id?: string
+          created_at?: string
+          created_by?: string
+          end_time?: string
+          goals_addressed?: string[]
+          id?: string
+          is_locked?: boolean
+          narrative?: string
+          organization_id?: string
+          service_code?: string
+          session_date?: string
+          session_duration?: number
+          session_id?: string | null
+          signed_at?: string | null
+          start_time?: string
+          therapist_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_session_notes_authorization_id_fkey"
+            columns: ["authorization_id"]
+            isOneToOne: false
+            referencedRelation: "authorizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_session_notes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_session_notes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_session_notes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_session_notes_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           address_line1: string | null
@@ -1079,8 +1226,11 @@ export type Database = {
       db_performance_metrics: {
         Row: {
           cache_hit: boolean | null
+          created_at: string | null
           execution_time_ms: number
           id: string
+          query_name: string | null
+          query_text: string | null
           query_type: string
           rows_affected: number | null
           slow_query: boolean | null
@@ -1089,8 +1239,11 @@ export type Database = {
         }
         Insert: {
           cache_hit?: boolean | null
+          created_at?: string | null
           execution_time_ms: number
           id?: string
+          query_name?: string | null
+          query_text?: string | null
           query_type: string
           rows_affected?: number | null
           slow_query?: boolean | null
@@ -1099,8 +1252,11 @@ export type Database = {
         }
         Update: {
           cache_hit?: boolean | null
+          created_at?: string | null
           execution_time_ms?: number
           id?: string
+          query_name?: string | null
+          query_text?: string | null
           query_type?: string
           rows_affected?: number | null
           slow_query?: boolean | null
@@ -1460,6 +1616,7 @@ export type Database = {
           is_active: boolean | null
           name: string
           operating_hours: Json | null
+          organization_id: string | null
           phone: string | null
           state: string | null
           type: string
@@ -1477,6 +1634,7 @@ export type Database = {
           is_active?: boolean | null
           name: string
           operating_hours?: Json | null
+          organization_id?: string | null
           phone?: string | null
           state?: string | null
           type: string
@@ -1494,6 +1652,7 @@ export type Database = {
           is_active?: boolean | null
           name?: string
           operating_hours?: Json | null
+          organization_id?: string | null
           phone?: string | null
           state?: string | null
           type?: string
@@ -1745,6 +1904,7 @@ export type Database = {
           preferences: Json | null
           role: Database["public"]["Enums"]["role_type"]
           time_zone: string | null
+          title: string | null
           updated_at: string | null
         }
         Insert: {
@@ -1761,6 +1921,7 @@ export type Database = {
           preferences?: Json | null
           role?: Database["public"]["Enums"]["role_type"]
           time_zone?: string | null
+          title?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -1777,6 +1938,7 @@ export type Database = {
           preferences?: Json | null
           role?: Database["public"]["Enums"]["role_type"]
           time_zone?: string | null
+          title?: string | null
           updated_at?: string | null
         }
         Relationships: []
@@ -2337,6 +2499,7 @@ export type Database = {
         Row: {
           client_id: string
           created_at: string | null
+          created_by: string | null
           duration_minutes: number | null
           end_time: string
           has_transcription_consent: boolean
@@ -2345,15 +2508,18 @@ export type Database = {
           notes: string | null
           organization_id: string
           rate_per_hour: number | null
+          session_date: string | null
           session_type: string | null
           start_time: string
           status: string
           therapist_id: string
           total_cost: number | null
+          updated_by: string | null
         }
         Insert: {
           client_id: string
           created_at?: string | null
+          created_by?: string | null
           duration_minutes?: number | null
           end_time: string
           has_transcription_consent?: boolean
@@ -2362,15 +2528,18 @@ export type Database = {
           notes?: string | null
           organization_id: string
           rate_per_hour?: number | null
+          session_date?: string | null
           session_type?: string | null
           start_time: string
           status?: string
           therapist_id: string
           total_cost?: number | null
+          updated_by?: string | null
         }
         Update: {
           client_id?: string
           created_at?: string | null
+          created_by?: string | null
           duration_minutes?: number | null
           end_time?: string
           has_transcription_consent?: boolean
@@ -2379,11 +2548,13 @@ export type Database = {
           notes?: string | null
           organization_id?: string
           rate_per_hour?: number | null
+          session_date?: string | null
           session_type?: string | null
           start_time?: string
           status?: string
           therapist_id?: string
           total_cost?: number | null
+          updated_by?: string | null
         }
         Relationships: [
           {
@@ -2857,14 +3028,14 @@ export type Database = {
         Returns: Json
       }
       analyze_therapist_workload: {
-        Args: { p_analysis_period?: number; p_therapist_id?: string }
+        Args: { p_analysis_period: number; p_therapist_id: string }
         Returns: {
+          actual_hours: number
           efficiency_score: number
+          full_name: string
           recommendations: Json
           target_hours: number
           therapist_id: string
-          therapist_name: string
-          total_hours: number
           utilization_rate: number
           workload_distribution: Json
         }[]
@@ -2874,11 +3045,8 @@ export type Database = {
         Returns: undefined
       }
       assign_therapist_role:
-        | { Args: { user_id: string }; Returns: undefined }
-        | {
-            Args: { therapist_id: string; user_email: string }
-            Returns: undefined
-          }
+        | { Args: { p_therapist_id: string }; Returns: undefined }
+        | { Args: { p_email: string; p_user_id: string }; Returns: undefined }
       assign_user_role: {
         Args: {
           expires_at_param?: string
@@ -2892,7 +3060,7 @@ export type Database = {
         Args: {
           p_cache_key: string
           p_expires_at?: string
-          p_metadata?: Json
+          p_metadata: Json
           p_query_text: string
           p_response_text: string
         }
@@ -2905,12 +3073,12 @@ export type Database = {
       calculate_time_slot_score: {
         Args: {
           p_client_id: string
-          p_client_prefs: Json
+          p_client_preferences: Json
           p_day_of_week: number
           p_hour_of_day: number
           p_slot_time: string
           p_therapist_id: string
-          p_therapist_prefs: Json
+          p_therapist_preferences: Json
         }
         Returns: number
       }
@@ -2928,30 +3096,97 @@ export type Database = {
       }
       check_performance_thresholds: {
         Args: { p_current_value: number; p_metric_name: string }
-        Returns: {
-          current_value: number
-          metric: string
-          severity: string
-          status: string
-          threshold: number
-        }[]
+        Returns: undefined
       }
       cleanup_ai_cache: { Args: never; Returns: number }
       cleanup_expired_ai_cache: { Args: never; Returns: number }
       cleanup_performance_data: { Args: never; Returns: number }
+      client_email_exists: { Args: { p_email: string }; Returns: boolean }
       confirm_session_hold: {
-        Args: { p_actor_id?: string; p_hold_key: string; p_session: Json }
-        Returns: Json
+        Args: {
+          p_actor_id: string
+          p_session_data: Json
+          p_session_hold_id: string
+        }
+        Returns: string
       }
       create_admin_invite: {
         Args: {
           p_email: string
-          p_role?: Database["public"]["Enums"]["role_type"]
+          p_role: Database["public"]["Enums"]["role_type"]
         }
+        Returns: string
+      }
+      create_client: {
+        Args: { p_client_data: Json }
         Returns: {
-          expires_at: string
-          token: string
-        }[]
+          address_line1: string | null
+          address_line2: string | null
+          authorized_hours_per_month: number | null
+          availability_hours: Json | null
+          avoid_rush_hour: boolean | null
+          cin_number: string | null
+          city: string | null
+          client_id: string | null
+          created_at: string | null
+          created_by: string | null
+          date_of_birth: string | null
+          daycare_after_school: boolean | null
+          deleted_at: string | null
+          deleted_by: string | null
+          diagnosis: string[] | null
+          documents: Json | null
+          email: string | null
+          first_name: string | null
+          full_name: string
+          gender: string | null
+          hours_provided_per_month: number | null
+          id: string
+          in_clinic: boolean | null
+          in_home: boolean | null
+          in_school: boolean | null
+          insurance_info: Json | null
+          last_name: string | null
+          latitude: number | null
+          longitude: number | null
+          max_travel_minutes: number | null
+          middle_name: string | null
+          notes: string | null
+          one_to_one_units: number | null
+          organization_id: string
+          parent_consult_units: number | null
+          parent1_email: string | null
+          parent1_first_name: string | null
+          parent1_last_name: string | null
+          parent1_phone: string | null
+          parent1_relationship: string | null
+          parent2_email: string | null
+          parent2_first_name: string | null
+          parent2_last_name: string | null
+          parent2_phone: string | null
+          parent2_relationship: string | null
+          phone: string | null
+          preferred_language: string | null
+          preferred_radius_km: number | null
+          preferred_session_time: string[] | null
+          referral_source: string | null
+          service_preference: string[] | null
+          state: string | null
+          status: string
+          supervision_units: number | null
+          therapist_assigned_at: string | null
+          therapist_id: string | null
+          unscheduled_hours: number | null
+          updated_at: string
+          updated_by: string | null
+          zip_code: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "clients"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       create_super_admin: { Args: { user_email: string }; Returns: undefined }
       current_user_is_super_admin: { Args: never; Returns: boolean }
@@ -2999,18 +3234,17 @@ export type Database = {
         Returns: Json
       }
       get_admin_users:
-        | {
-            Args: { organization_id?: string }
-            Returns: Database["public"]["CompositeTypes"]["admin_user_row"][]
-            SetofOptions: {
-              from: "*"
-              to: "admin_user_row"
-              isOneToOne: false
-              isSetofReturn: true
-            }
-          }
+        | { Args: { p_org_id: string }; Returns: Json }
         | { Args: never; Returns: Json }
-      get_ai_cache_metrics: { Args: never; Returns: Json }
+      get_ai_cache_metrics: {
+        Args: never
+        Returns: {
+          cache_size_mb: number
+          expired_entries: number
+          hit_rate: number
+          total_entries: number
+        }[]
+      }
       get_alternative_therapists: {
         Args: { p_client_id: string; p_end_time: string; p_start_time: string }
         Returns: Json
@@ -3018,7 +3252,7 @@ export type Database = {
       get_alternative_times: {
         Args: {
           p_client_id: string
-          p_original_time: string
+          p_reference_time: string
           p_therapist_id: string
         }
         Returns: Json
@@ -3136,15 +3370,15 @@ export type Database = {
       get_optimal_time_slots: {
         Args: {
           p_client_preferences: Json
-          p_date_range?: Json
-          p_duration?: number
+          p_date_range: Json
+          p_duration: number
           p_therapist_preferences: Json
         }
         Returns: {
           availability_data: Json
-          optimality_score: number
-          reasoning: Json
-          suggested_time: string
+          reasoning: string
+          score: number
+          slot_time: string
         }[]
       }
       get_organization_id_from_metadata: {
@@ -3199,21 +3433,29 @@ export type Database = {
       get_session_metrics:
         | {
             Args: {
-              p_client_id?: string
+              p_client_id: string
               p_end_date: string
               p_start_date: string
-              p_therapist_id?: string
+              p_therapist_id: string
             }
-            Returns: Json
+            Returns: {
+              by_status: Json
+              top_sessions: Json
+              total_sessions: number
+            }[]
           }
         | {
             Args: {
-              p_client_id?: string
+              p_client_id: string
               p_end_date: string
               p_start_date: string
-              p_therapist_id?: string
+              p_therapist_id: string
             }
-            Returns: Json
+            Returns: {
+              by_status: Json
+              top_sessions: Json
+              total_sessions: number
+            }[]
           }
       get_session_notes_with_compliance: {
         Args: { p_client_id: string; p_limit?: number }
@@ -3242,50 +3484,43 @@ export type Database = {
       get_sessions_report:
         | {
             Args: {
-              p_client_id?: string
+              p_client_id: string
               p_end_date: string
               p_start_date: string
-              p_status?: string
-              p_therapist_id?: string
+              p_status: string
+              p_therapist_id: string
             }
             Returns: {
-              client_id: string
               client_name: string
-              end_time: string
-              id: string
-              notes: string
-              start_time: string
+              session_day: string
+              session_id: string
+              session_type: string
               status: string
-              therapist_id: string
+              therapist_name: string
+            }[]
+          }
+        | {
+            Args: { p_end_date: string; p_start_date: string }
+            Returns: {
+              client_name: string
+              session_day: string
+              session_id: string
+              session_type: string
+              status: string
               therapist_name: string
             }[]
           }
         | {
             Args: {
-              p_client_id?: string
+              p_client_id: string
               p_end_date: string
               p_start_date: string
-              p_status?: string
-              p_therapist_id?: string
+              p_status: string
+              p_therapist_id: string
             }
             Returns: {
-              client_id: string
               client_name: string
-              created_at: string
-              end_time: string
-              id: string
-              notes: string
-              start_time: string
-              status: string
-              therapist_id: string
-              therapist_name: string
-            }[]
-          }
-        | {
-            Args: { end_date?: string; start_date?: string }
-            Returns: {
-              client_name: string
-              session_date: string
+              session_day: string
               session_id: string
               session_type: string
               status: string
@@ -3305,16 +3540,20 @@ export type Database = {
           threshold_value: number
         }[]
       }
+      get_therapist_availability: {
+        Args: { p_end: string; p_start: string; p_therapist_id: string }
+        Returns: Json
+      }
       get_therapist_metrics:
         | {
             Args: { p_end_date: string; p_start_date: string }
             Returns: {
               active_therapists: number
-              avg_sessions_per_therapist: number
-              therapists_by_service_type: Json
-              therapists_by_specialty: Json
+              inactive_therapists: number
+              service_types: Json
+              sessions_per_therapist: Json
+              specialties: Json
               total_therapists: number
-              utilization_rate: number
             }[]
           }
         | {
@@ -3328,6 +3567,10 @@ export type Database = {
               total_therapists: number
             }[]
           }
+      get_therapist_workload_factor: {
+        Args: { p_slot_time: string; p_therapist_id: string }
+        Returns: number
+      }
       get_user_role_from_junction: {
         Args: { p_user_id: string }
         Returns: Database["public"]["Enums"]["role_type"]
@@ -3341,6 +3584,7 @@ export type Database = {
           metadata: Json
         }[]
       }
+      has_role: { Args: { target_role: string }; Returns: boolean }
       insert_session_with_billing: {
         Args: {
           p_cpt_code: string

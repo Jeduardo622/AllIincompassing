@@ -1,24 +1,36 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Calendar, Clock, FileText, CheckCircle } from 'lucide-react';
-import type { SessionNote, Therapist } from '../types';
+import type { Therapist } from '../types';
 import { showError } from '../lib/toast';
 
 interface AddSessionNoteModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (note: Omit<SessionNote, 'id'>) => void;
-  clientId: string;
+  onSubmit: (note: SessionNoteFormValues) => void;
   therapists: Therapist[];
   selectedAuth?: string;
+  isSaving?: boolean;
+}
+
+export interface SessionNoteFormValues {
+  date: string;
+  start_time: string;
+  end_time: string;
+  service_code: string;
+  therapist_id: string;
+  therapist_name: string;
+  goals_addressed: string[];
+  narrative: string;
+  is_locked: boolean;
 }
 
 export default function AddSessionNoteModal({
   isOpen,
   onClose,
   onSubmit,
-  clientId,
   therapists,
-  selectedAuth: _selectedAuth
+  selectedAuth,
+  isSaving = false
 }: AddSessionNoteModalProps) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [startTime, setStartTime] = useState('09:00');
@@ -28,8 +40,6 @@ export default function AddSessionNoteModal({
   const [goalsAddressed, setGoalsAddressed] = useState<string[]>(['']);
   const [narrative, setNarrative] = useState('');
   const [isLocked, setIsLocked] = useState(false);
-
-  if (!isOpen) return null;
 
   const handleAddGoal = () => {
     setGoalsAddressed([...goalsAddressed, '']);
@@ -47,7 +57,31 @@ export default function AddSessionNoteModal({
     setGoalsAddressed(updatedGoals);
   };
 
+  const resetForm = () => {
+    setDate(new Date().toISOString().split('T')[0]);
+    setStartTime('09:00');
+    setEndTime('10:00');
+    setServiceCode('97153');
+    setTherapistId('');
+    setGoalsAddressed(['']);
+    setNarrative('');
+    setIsLocked(false);
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      resetForm();
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
   const handleSubmit = () => {
+    if (!selectedAuth) {
+      showError('Select an authorization before adding a session note');
+      return;
+    }
+
     // Filter out empty goals
     const filteredGoals = goalsAddressed.filter(goal => goal.trim() !== '');
     
@@ -88,7 +122,6 @@ export default function AddSessionNoteModal({
     }
     
     const selectedTherapist = therapists.find(t => t.id === therapistId);
-    
     onSubmit({
       date,
       start_time: startTime,
@@ -98,19 +131,8 @@ export default function AddSessionNoteModal({
       therapist_name: selectedTherapist?.full_name || 'Unknown Therapist',
       goals_addressed: filteredGoals,
       narrative,
-      is_locked: isLocked,
-      client_id: clientId
+      is_locked: isLocked
     });
-    
-    // Reset form
-    setDate(new Date().toISOString().split('T')[0]);
-    setStartTime('09:00');
-    setEndTime('10:00');
-    setServiceCode('97153');
-    setTherapistId('');
-    setGoalsAddressed(['']);
-    setNarrative('');
-    setIsLocked(false);
   };
 
   return (
@@ -291,9 +313,10 @@ export default function AddSessionNoteModal({
           <button
             type="button"
             onClick={handleSubmit}
+            disabled={isSaving}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
-            Save Note
+            {isSaving ? 'Saving…' : 'Save Note'}
           </button>
         </div>
       </div>

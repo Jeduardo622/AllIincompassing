@@ -248,7 +248,13 @@ export interface SessionNote {
   goals_addressed: string[];
   narrative: string;
   is_locked: boolean;
-  client_id?: string;
+  client_id: string;
+  authorization_id?: string;
+  organization_id?: string;
+  session_duration?: number;
+  signed_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Issue {

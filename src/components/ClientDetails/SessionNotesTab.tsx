@@ -1,19 +1,31 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { 
   Calendar, Plus, Download, Inbox,
   Clock, CheckCircle, AlertTriangle, User, Search
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import type { SessionNote, Therapist } from '../../types';
-import AddSessionNoteModal from '../AddSessionNoteModal';
+import type { Therapist } from '../../types';
+import AddSessionNoteModal, { type SessionNoteFormValues } from '../AddSessionNoteModal';
+import { useAuth } from '../../lib/authContext';
+import { useActiveOrganizationId } from '../../lib/organization';
+import { showError, showSuccess } from '../../lib/toast';
+import {
+  calculateSessionDurationMinutes,
+  createClientSessionNote,
+  fetchClientSessionNotes,
+  isSupabaseError,
+} from '../../lib/session-notes';
 
 interface SessionNotesTabProps {
   client: { id: string };
 }
 
 export default function SessionNotesTab({ client }: SessionNotesTabProps) {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const organizationId = useActiveOrganizationId();
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
   const [selectedAuth, setSelectedAuth] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -52,47 +64,83 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
     },
   });
   
-  // Mock session notes data
-  const [sessionNotes, setSessionNotes] = useState<SessionNote[]>([
-    {
-      id: '1',
-      date: '2025-05-15',
-      start_time: '14:00',
-      end_time: '15:00',
-      service_code: '97153',
-      therapist_name: 'Jane Smith, BCBA',
-      goals_addressed: ['Communication', 'Social skills'],
-      narrative: 'Client demonstrated progress in turn-taking activities. Worked on requesting preferred items using full sentences. Responded well to visual supports.',
-      is_locked: true
-    },
-    {
-      id: '2',
-      date: '2025-05-10',
-      start_time: '10:00',
-      end_time: '11:00',
-      service_code: '97153',
-      therapist_name: 'John Doe, RBT',
-      goals_addressed: ['Self-help skills', 'Following instructions'],
-      narrative: 'Focused on hand-washing routine and following 2-step instructions. Client needed moderate prompting for hand-washing steps but showed improvement from previous session.',
-      is_locked: false
-    }
-  ]);
-
-  // Filter session notes based on search and status
-  const filteredNotes = sessionNotes.filter(note => {
-    const matchesSearch = 
-      note.narrative.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      note.therapist_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      note.service_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      note.goals_addressed.some(goal => goal.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    const matchesStatus = 
-      statusFilter === 'all' || 
-      (statusFilter === 'locked' && note.is_locked) ||
-      (statusFilter === 'unlocked' && !note.is_locked);
-      
-    return matchesSearch && matchesStatus;
+  const {
+    data: sessionNotes = [],
+    isLoading: isLoadingNotes,
+    isRefetching: isRefetchingNotes,
+  } = useQuery({
+    queryKey: ['client-session-notes', client.id],
+    queryFn: () => fetchClientSessionNotes(client.id),
   });
+
+  const createNoteMutation = useMutation({
+    mutationFn: async (note: SessionNoteFormValues) => {
+      if (!user?.id) {
+        throw new Error('You must be signed in to create a session note.');
+      }
+
+      if (!selectedAuth) {
+        throw new Error('Select an authorization before adding a session note.');
+      }
+
+      if (!organizationId) {
+        throw new Error('Organization context is required to save session notes.');
+      }
+
+      const durationMinutes = calculateSessionDurationMinutes(note.start_time, note.end_time);
+      if (durationMinutes <= 0) {
+        throw new Error('End time must be later than start time.');
+      }
+
+      return createClientSessionNote({
+        authorizationId: selectedAuth,
+        clientId: client.id,
+        createdBy: user.id,
+        organizationId,
+        therapistId: note.therapist_id,
+        serviceCode: note.service_code,
+        sessionDate: note.date,
+        startTime: note.start_time,
+        endTime: note.end_time,
+        sessionDuration: durationMinutes,
+        goalsAddressed: note.goals_addressed,
+        narrative: note.narrative,
+        isLocked: note.is_locked,
+      });
+    },
+    onSuccess: () => {
+      showSuccess('Session note saved.');
+      setIsAddNoteModalOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['client-session-notes', client.id] }).catch(() => {});
+    },
+    onError: (error) => {
+      if (isSupabaseError(error)) {
+        showError(error.message);
+        return;
+      }
+
+      showError(error instanceof Error ? error.message : 'Failed to save session note.');
+    },
+  });
+
+  const filteredNotes = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim();
+    return sessionNotes.filter(note => {
+      const matchesSearch =
+        query.length === 0 ||
+        note.narrative.toLowerCase().includes(query) ||
+        note.therapist_name.toLowerCase().includes(query) ||
+        note.service_code.toLowerCase().includes(query) ||
+        note.goals_addressed.some(goal => goal.toLowerCase().includes(query));
+
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'locked' && Boolean(note.is_locked)) ||
+        (statusFilter === 'unlocked' && !note.is_locked);
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [sessionNotes, searchQuery, statusFilter]);
   
   const handleSelectAllNotes = () => {
     if (selectedNotes.length === filteredNotes.length) {
@@ -115,15 +163,12 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
     alert(`Generating PDF for notes: ${selectedNotes.join(', ')}`);
   };
 
-  const handleAddSessionNote = (newNote: Omit<SessionNote, 'id'>) => {
-    const note: SessionNote = {
-      ...newNote,
-      id: Date.now().toString(),
-    };
-    
-    setSessionNotes([note, ...sessionNotes]);
-    setIsAddNoteModalOpen(false);
+  const handleAddSessionNote = (values: SessionNoteFormValues) => {
+    createNoteMutation.mutate(values);
   };
+
+  const isCreateDisabled = !selectedAuth || !organizationId || !user?.id;
+  const isNotesLoading = isLoadingNotes || isRefetchingNotes;
   
   return (
     <div className="space-y-8">
@@ -196,7 +241,7 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
               <button
                 onClick={() => setIsAddNoteModalOpen(true)}
                 className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
-                disabled={!selectedAuth}
+                disabled={isCreateDisabled}
                 type="button"
               >
                 <Plus className="w-4 h-4 mr-1" />
@@ -256,7 +301,12 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
           </div>
           
           <div className="space-y-4">
-            {sessionNotes.length === 0 ? (
+            {isNotesLoading ? (
+              <div className="text-center py-12 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                <Inbox className="mx-auto h-12 w-12 text-gray-400 animate-pulse" />
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading session notes…</p>
+              </div>
+            ) : sessionNotes.length === 0 ? (
               <div className="text-center py-12 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
                 <Inbox className="mx-auto h-12 w-12 text-gray-400" />
                 <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No session notes</h3>
@@ -369,9 +419,9 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
         isOpen={isAddNoteModalOpen}
         onClose={() => setIsAddNoteModalOpen(false)}
         onSubmit={handleAddSessionNote}
-        clientId={client.id}
         therapists={therapists}
         selectedAuth={selectedAuth || undefined}
+        isSaving={createNoteMutation.isLoading}
       />
     </div>
   );

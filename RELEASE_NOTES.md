@@ -15,19 +15,3 @@
 **Rollback Plan**
 - Revert the latest migrations, redeploy the prior edge function bundle, and restore the pre-handoff RLS helpers if needed.
 - Disable or remove the `tenant-safety` CI job and associated alerts if the rollout has to be paused.
-
----
-
-### Client Save UX Stabilization
-
-**Highlights**
-- `ClientModal` now accepts parent-provided `isSaving`/`saveError` signals so the Save button mirrors the real mutation status instead of getting stuck on *Saving…*.
-- Client list/profile screens feed their mutation state into the modal and surface mutation errors inline, removing the need to refresh to confirm edits.
-- Added targeted Vitest coverage (`npm run test -- ClientModal`) to guard both the external loading state and the inline error banner.
-
-**Deployment Checklist**
-1. No schema or backend deploy steps required—ship the frontend bundle as usual.
-2. Optional: capture a quick manual smoke video (Clients → Edit client → Save) showing the button reverting from *Saving…* within the same session for regression tracking.
-
-**Rollback Plan**
-- Revert `src/components/ClientModal.tsx`, `src/pages/Clients.tsx`, `src/components/ClientDetails/ProfileTab.tsx`, and `src/components/__tests__/ClientModal.test.tsx` to their previous revisions if regressions surface. The previous state relied solely on `react-hook-form`’s internal `isSubmitting`.

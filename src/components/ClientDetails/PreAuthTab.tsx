@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { 
   ClipboardCheck, Calendar, AlertCircle, 
@@ -6,6 +6,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { showError } from '../../lib/toast';
 
 interface PreAuthTabProps {
   client: { id: string };
@@ -27,6 +28,15 @@ interface Authorization {
   }[];
 }
 
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+const ACCEPTED_FILE_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg',
+  'image/png'
+] as const;
+
 export default function PreAuthTab({ client }: PreAuthTabProps) {
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
@@ -36,6 +46,8 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
     units: {} as Record<string, number>,
     documents: [] as File[],
   });
+  const [isDragActive, setIsDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Fetch authorizations
   const { data: authorizations = [], isLoading } = useQuery({
@@ -114,6 +126,50 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
       documents: [],
     });
     setIsWizardOpen(true);
+  };
+
+  const handleFilesAdded = (fileList: FileList | null) => {
+    if (!fileList?.length) {
+      return;
+    }
+
+    const acceptedFiles: File[] = [];
+    Array.from(fileList).forEach((file) => {
+      const isAcceptedType = ACCEPTED_FILE_TYPES.includes(file.type as typeof ACCEPTED_FILE_TYPES[number]);
+      if (!isAcceptedType) {
+        showError(`Unsupported file type: ${file.name}`);
+        return;
+      }
+
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        showError(`"${file.name}" exceeds the 10MB size limit.`);
+        return;
+      }
+
+      acceptedFiles.push(file);
+    });
+
+    if (!acceptedFiles.length) {
+      return;
+    }
+
+    setWizardData((prev) => ({
+      ...prev,
+      documents: [...prev.documents, ...acceptedFiles],
+    }));
+  };
+
+  const handleDocumentRemove = (index: number) => {
+    setWizardData((prev) => ({
+      ...prev,
+      documents: prev.documents.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragActive(false);
+    handleFilesAdded(event.dataTransfer.files);
   };
   
   return (
@@ -340,6 +396,15 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                           ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200 border-2 border-blue-600'
                           : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
                     }`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => fileInputRef.current?.click()}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        fileInputRef.current?.click();
+                      }
+                    }}
                   >
                     {step < currentStep ? (
                       <CheckCircle className="w-5 h-5" />
@@ -534,7 +599,31 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                   <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
                     Upload Supporting Documents
                   </h3>
-                  <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
+                  <div
+                    className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                      isDragActive
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/10'
+                        : 'border-gray-300 dark:border-gray-600'
+                    }`}
+                    role="button"
+                    tabIndex={0}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDragActive(true);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      setIsDragActive(false);
+                    }}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        fileInputRef.current?.click();
+                      }
+                    }}
+                  >
                     <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                     <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
                       Drag and drop files here, or click to select files
@@ -544,12 +633,56 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                     </p>
                     <button
                       type="button"
+                      onClick={() => fileInputRef.current?.click()}
                       className="px-4 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/20 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                     >
                       Select Files
                     </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                      className="hidden"
+                      onChange={(event) => {
+                        handleFilesAdded(event.target.files);
+                        if (event.target.value) {
+                          event.target.value = '';
+                        }
+                      }}
+                    />
                   </div>
                   
+                  {wizardData.documents.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Uploaded Files
+                      </h4>
+                      <ul className="space-y-2">
+                        {wizardData.documents.map((file, index) => (
+                          <li
+                            key={`${file.name}-${index}`}
+                            className="flex items-center justify-between rounded-md border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
+                          >
+                            <div>
+                              <p className="font-medium">{file.name}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {(file.size / (1024 * 1024)).toFixed(2)} MB
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDocumentRemove(index)}
+                              className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 text-xs font-medium"
+                            >
+                              Remove
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   <div className="mt-4">
                     <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Required Documents

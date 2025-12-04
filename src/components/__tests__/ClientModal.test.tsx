@@ -112,11 +112,13 @@ describe('ClientModal validation', () => {
     fireEvent.change(getInputByName('email'), { target: { value: 'jamie@example.com' } });
 
     fireEvent.change(getInputByName('one_to_one_units'), { target: { value: -5 } });
+    fireEvent.change(getInputByName('assessment_units'), { target: { value: -2 } });
 
     fireEvent.click(screen.getByRole('button', { name: /create client/i }));
 
     await waitFor(() => {
       expect(screen.getByText('1:1 units must be 0 or greater')).toBeInTheDocument();
+      expect(screen.getByText('Assessment units must be 0 or greater')).toBeInTheDocument();
     });
 
     expect(handleSubmit).not.toHaveBeenCalled();

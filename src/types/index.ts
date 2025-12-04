@@ -94,6 +94,7 @@ export interface Client {
   one_to_one_units: number;
   supervision_units: number;
   parent_consult_units: number;
+  assessment_units: number;
   availability_hours: {
     [key: string]: {
       start: string | null;

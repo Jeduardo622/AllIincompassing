@@ -913,6 +913,8 @@ export type Database = {
           one_to_one_units: number | null
           organization_id: string
           parent_consult_units: number | null
+          assessment_units: number | null
+          assessment_units: number | null
           parent1_email: string | null
           parent1_first_name: string | null
           parent1_last_name: string | null
@@ -975,6 +977,7 @@ export type Database = {
           one_to_one_units?: number | null
           organization_id: string
           parent_consult_units?: number | null
+          assessment_units?: number | null
           parent1_email?: string | null
           parent1_first_name?: string | null
           parent1_last_name?: string | null
@@ -1037,6 +1040,7 @@ export type Database = {
           one_to_one_units?: number | null
           organization_id?: string
           parent_consult_units?: number | null
+          assessment_units?: number | null
           parent1_email?: string | null
           parent1_first_name?: string | null
           parent1_last_name?: string | null

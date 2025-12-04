@@ -36,7 +36,7 @@ const select = buildClientSelect({
 ## Example cURL validation
 
 ```bash
-curl 'https://<project>.supabase.co/rest/v1/clients?select=id,full_name,one_to_one_units,supervision_units,parent_consult_units' \
+curl 'https://<project>.supabase.co/rest/v1/clients?select=id,full_name,one_to_one_units,supervision_units,parent_consult_units,assessment_units' \
   -H 'apikey: ****' \
   -H 'Authorization: Bearer ****'
 ```

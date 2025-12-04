@@ -71,6 +71,7 @@ const mockClients = [
     one_to_one_units: 20,
     supervision_units: 5,
     parent_consult_units: 2,
+    assessment_units: 1,
     created_at: '2024-01-01T00:00:00Z',
   },
   {
@@ -92,6 +93,7 @@ const mockClients = [
     one_to_one_units: 15,
     supervision_units: 3,
     parent_consult_units: 1,
+    assessment_units: 0,
     created_at: '2024-01-01T00:00:00Z',
   },
 ];

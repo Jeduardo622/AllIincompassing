@@ -39,6 +39,7 @@ const createClient = (overrides: Partial<Client> = {}): Client => ({
   one_to_one_units: 0,
   supervision_units: 0,
   parent_consult_units: 0,
+  assessment_units: 0,
   availability_hours: {
     monday: { start: '08:00', end: '17:00' },
     tuesday: { start: '08:00', end: '17:00' },

@@ -51,6 +51,7 @@ export default function ClientModal({
       one_to_one_units: client?.one_to_one_units || 0,
       supervision_units: client?.supervision_units || 0,
       parent_consult_units: client?.parent_consult_units || 0,
+      assessment_units: client?.assessment_units || 0,
       availability_hours: client?.availability_hours || {
         monday: { start: "06:00", end: "21:00" },
         tuesday: { start: "06:00", end: "21:00" },
@@ -536,7 +537,7 @@ export default function ClientModal({
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <div>
                   <label htmlFor="units-1to1" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     1:1 Units
@@ -588,6 +589,24 @@ export default function ClientModal({
                   />
                   {errors.parent_consult_units && (
                     <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.parent_consult_units.message}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="units-assessment" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Assessment Units
+                  </label>
+                  <input
+                    id="units-assessment"
+                    type="number"
+                    min={0}
+                    {...register('assessment_units', {
+                      valueAsNumber: true,
+                    })}
+                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                  />
+                  {errors.assessment_units && (
+                    <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.assessment_units.message}</p>
                   )}
                 </div>
               </div>

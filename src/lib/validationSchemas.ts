@@ -170,6 +170,7 @@ export const clientFormSchema = z
     one_to_one_units: nonNegativeNumber('1:1 units').default(0),
     supervision_units: nonNegativeNumber('Supervision units').default(0),
     parent_consult_units: nonNegativeNumber('Parent consult units').default(0),
+    assessment_units: nonNegativeNumber('Assessment units').default(0),
 
     // Service preferences
     service_preference: servicePreferenceSchema,
@@ -265,6 +266,7 @@ export const clientPayloadSchema: z.ZodType<ClientInsert> = z
     updated_at: z.string().nullable().optional(),
     updated_by: z.string().nullable().optional(),
     parent_consult_units: z.number().nullable().optional(),
+    assessment_units: z.number().nullable().optional(),
     parent1_email: z.string().nullable().optional(),
     parent1_first_name: z.string().nullable().optional(),
     parent1_last_name: z.string().nullable().optional(),

@@ -38,6 +38,7 @@ export default function ClientModalEnhanced({
     one_to_one_units: client?.one_to_one_units || 0,
     supervision_units: client?.supervision_units || 0,
     parent_consult_units: client?.parent_consult_units || 0,
+    assessment_units: client?.assessment_units || 0,
     availability_hours: client?.availability_hours || {
       monday: { start: "09:00", end: "17:00" },
       tuesday: { start: "09:00", end: "17:00" },
@@ -431,7 +432,7 @@ export default function ClientModalEnhanced({
           <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg">
             <h3 className="text-lg font-medium text-yellow-900 dark:text-yellow-100 mb-4">Service Units</h3>
             
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Controller
                 name="one_to_one_units"
                 control={form.control}
@@ -474,6 +475,22 @@ export default function ClientModalEnhanced({
                     type="number"
                     min="0"
                     label="Parent Consult Units"
+                    error={fieldState.error?.message}
+                    onChange={(e) => field.onChange(Number(e.target.value))}
+                  />
+                )}
+              />
+
+              <Controller
+                name="assessment_units"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <ValidatedInput
+                    {...field}
+                    id="assessment_units"
+                    type="number"
+                    min="0"
+                    label="Assessment Units"
                     error={fieldState.error?.message}
                     onChange={(e) => field.onChange(Number(e.target.value))}
                   />

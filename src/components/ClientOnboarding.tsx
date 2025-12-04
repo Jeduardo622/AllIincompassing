@@ -73,6 +73,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       one_to_one_units: 0,
       supervision_units: 0,
       parent_consult_units: 0,
+      assessment_units: 0,
       availability_hours: DEFAULT_AVAILABILITY,
       documents_consent: false,
     }
@@ -105,7 +106,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       'parent2_relationship',
     ],
     3: ['address_line1', 'address_line2', 'city', 'state', 'zip_code'],
-    4: ['service_preference', 'one_to_one_units', 'supervision_units', 'parent_consult_units', 'insurance_info'],
+    4: ['service_preference', 'one_to_one_units', 'supervision_units', 'parent_consult_units', 'assessment_units', 'insurance_info'],
   };
 
   // Check if email already exists in database
@@ -330,7 +331,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
           <div className="space-y-6">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Basic Information</h2>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
               <div>
                 <label
                   htmlFor="onboarding-first-name"
@@ -869,6 +870,22 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                   type="number"
                   min="0"
                   {...register('parent_consult_units', { valueAsNumber: true })}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="onboarding-assessment-units"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Assessment Units
+                </label>
+                <input
+                  id="onboarding-assessment-units"
+                  type="number"
+                  min="0"
+                  {...register('assessment_units', { valueAsNumber: true })}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
               </div>

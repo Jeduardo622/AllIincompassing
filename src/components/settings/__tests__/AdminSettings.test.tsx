@@ -84,7 +84,7 @@ describe('AdminSettings logging', () => {
     confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
-      if (functionName === 'get_admin_users') {
+      if (functionName === 'get_admin_users_paged') {
         expect(params).toMatchObject({ organization_id: '11111111-1111-1111-1111-111111111111' });
         return { data: [mockAdminUser], error: null };
       }
@@ -143,7 +143,7 @@ describe('AdminSettings logging', () => {
       .mockResolvedValue({ data: null, error: null });
 
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
-      if (functionName === 'get_admin_users') {
+      if (functionName === 'get_admin_users_paged') {
         return { data: [mockAdminUser], error: null };
       }
       if (functionName === 'manage_admin_users') {
@@ -198,7 +198,7 @@ describe('AdminSettings logging', () => {
       .mockResolvedValue({ data: null, error: null });
 
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
-      if (functionName === 'get_admin_users') {
+      if (functionName === 'get_admin_users_paged') {
         return { data: [mockAdminUser], error: null };
       }
 
@@ -292,7 +292,7 @@ describe('Guardian approvals', () => {
     vi.mocked(useAuth).mockReturnValue(authStub);
 
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
-      if (functionName === 'get_admin_users') {
+      if (functionName === 'get_admin_users_paged') {
         return { data: [], error: null };
       }
 
@@ -357,7 +357,7 @@ describe('Guardian approvals', () => {
 
   it('shows an empty state when no guardian requests are returned for the organization', async () => {
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
-      if (functionName === 'get_admin_users') {
+      if (functionName === 'get_admin_users_paged') {
         return { data: [], error: null };
       }
 
@@ -388,7 +388,7 @@ describe('Guardian approvals', () => {
     const approvalSpy = vi.fn().mockResolvedValue({ data: null, error: null });
 
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
-      if (functionName === 'get_admin_users') {
+      if (functionName === 'get_admin_users_paged') {
         return { data: [], error: null };
       }
 
@@ -463,7 +463,7 @@ describe('AdminSettings super admin access', () => {
     vi.mocked(useAuth).mockReturnValue(authStub);
     rpcMock.mockClear();
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
-      if (functionName === 'get_admin_users') {
+      if (functionName === 'get_admin_users_paged') {
         return { data: [mockAdminUser], error: null };
       }
 
@@ -517,7 +517,7 @@ describe('AdminSettings super admin access', () => {
     const filterSelect = await screen.findByDisplayValue('All organizations');
     expect(filterSelect).toBeInTheDocument();
 
-    const initialAdminCalls = rpcMock.mock.calls.filter(([fnName]) => fnName === 'get_admin_users');
+    const initialAdminCalls = rpcMock.mock.calls.filter(([fnName]) => fnName === 'get_admin_users_paged');
     expect(initialAdminCalls[0]?.[1]).toMatchObject({ organization_id: null });
 
     await screen.findByText('Ada Admin');
@@ -526,7 +526,7 @@ describe('AdminSettings super admin access', () => {
     await userEvent.selectOptions(filterSelect, 'org-1');
 
     await waitFor(() => {
-      const adminCalls = rpcMock.mock.calls.filter(([fnName]) => fnName === 'get_admin_users');
+      const adminCalls = rpcMock.mock.calls.filter(([fnName]) => fnName === 'get_admin_users_paged');
       expect(adminCalls.some(([, params]) => params && (params as Record<string, unknown>).organization_id === 'org-1')).toBe(true);
     });
   });
@@ -557,7 +557,7 @@ describe('AdminSettings accessibility', () => {
 
     vi.mocked(useAuth).mockReturnValue(authStub);
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
-      if (functionName === 'get_admin_users') {
+      if (functionName === 'get_admin_users_paged') {
         return { data: [], error: null };
       }
 

@@ -166,53 +166,84 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     ]) as Promise<T>;
   };
 
+  const performInitialization = useCallback(async () => {
+    const {
+      data: { session: initialSession },
+      error,
+    } = await withTimeout(supabase.auth.getSession(), 'supabase.auth.getSession()', 15000);
+
+    if (error) {
+      throw error;
+    }
+
+    if (initialSession?.user) {
+      setUser(initialSession.user);
+      setSession(initialSession);
+      const profileData = await withTimeout(fetchProfile(initialSession.user.id), 'fetchProfile');
+      setProfile(profileData);
+      return;
+    }
+
+    const stubAuthState = readStubAuthState();
+    if (stubAuthState) {
+      setUser(stubAuthState.user);
+      setSession(stubAuthState.session);
+      setProfile(stubAuthState.profile);
+      return;
+    }
+
+    setUser(null);
+    setSession(null);
+    setProfile(null);
+  }, [fetchProfile]);
+
   const initializeAuth = useCallback(async () => {
+    setLoading(true);
+    const maxAttempts = 2;
+    let attempt = 0;
+    let initialized = false;
+
     try {
-      setLoading(true);
-      
-      // Get initial session
-      const { data: { session: initialSession }, error } = await withTimeout(
-        supabase.auth.getSession(),
-        'supabase.auth.getSession()'
-      );
-      
-      if (error) {
-        logger.error('Failed to fetch initial auth session', {
-          error: toError(error, 'Auth session fetch failed'),
-          metadata: {
-            scope: 'authContext.initializeAuth',
-          },
-        });
-        return;
-      }
+      while (attempt < maxAttempts && !initialized) {
+        try {
+          await performInitialization();
+          initialized = true;
+        } catch (error) {
+          logger.error('Failed to initialize auth context', {
+            error: toError(error, 'Auth initialization failed'),
+            metadata: {
+              scope: 'authContext.initializeAuth',
+              attempt: attempt + 1,
+            },
+          });
+          attempt += 1;
 
-      if (initialSession?.user) {
-        setUser(initialSession.user);
-        setSession(initialSession);
+          if (attempt >= maxAttempts) {
+            break;
+          }
 
-        // Fetch profile
-        const profileData = await withTimeout(fetchProfile(initialSession.user.id), 'fetchProfile');
-        setProfile(profileData);
-        return;
+          try {
+            await supabase.auth.signOut();
+          } catch (signOutError) {
+            logger.warn('Unable to reset Supabase session after auth init failure', {
+              error: toError(signOutError, 'Auth session reset failed'),
+              metadata: {
+                scope: 'authContext.initializeAuth',
+                attempt,
+              },
+            });
+          }
+        }
       }
-
-      const stubAuthState = readStubAuthState();
-      if (stubAuthState) {
-        setUser(stubAuthState.user);
-        setSession(stubAuthState.session);
-        setProfile(stubAuthState.profile);
-      }
-    } catch (error) {
-      logger.error('Failed to initialize auth context', {
-        error: toError(error, 'Auth initialization failed'),
-        metadata: {
-          scope: 'authContext.initializeAuth',
-        },
-      });
     } finally {
+      if (!initialized) {
+        setUser(null);
+        setSession(null);
+        setProfile(null);
+      }
       setLoading(false);
     }
-  }, [fetchProfile]);
+  }, [performInitialization]);
 
   useEffect(() => {
     initializeAuth();

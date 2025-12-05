@@ -20,8 +20,20 @@ vi.mock('../../lib/optimizedQueries', async () => {
   };
 });
 
+vi.mock('../../components/Dashboard/ReportsSummary', () => ({
+  default: () => <div data-testid="reports-summary" />,
+}));
+
 vi.mock('../../lib/supabase', () => ({
-  supabase: { from: vi.fn() },
+  supabase: {
+    from: vi.fn(() => ({
+      select: vi.fn().mockReturnThis(),
+      gte: vi.fn().mockReturnThis(),
+      lte: vi.fn().mockReturnThis(),
+      data: [],
+      error: null,
+    })),
+  },
 }));
 
 import Dashboard from '../Dashboard';

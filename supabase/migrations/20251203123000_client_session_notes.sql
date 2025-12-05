@@ -40,6 +40,7 @@ CREATE INDEX IF NOT EXISTS client_session_notes_therapist_id_idx ON public.clien
 CREATE INDEX IF NOT EXISTS client_session_notes_organization_id_idx ON public.client_session_notes (organization_id);
 CREATE INDEX IF NOT EXISTS client_session_notes_session_date_idx ON public.client_session_notes (session_date DESC);
 
+DROP TRIGGER IF EXISTS client_session_notes_set_updated_at ON public.client_session_notes;
 CREATE TRIGGER client_session_notes_set_updated_at
   BEFORE UPDATE ON public.client_session_notes
   FOR EACH ROW

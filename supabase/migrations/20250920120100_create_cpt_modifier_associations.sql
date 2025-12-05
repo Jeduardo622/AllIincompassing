@@ -1,25 +1,10 @@
+set search_path = public;
+
 /*
-  # Introduce CPT modifier catalog and associations
-
-  1. New Tables
-    - `billing_modifiers`
-      - Stores modifier metadata
-    - `cpt_modifier_mappings`
-      - Bridges CPT codes to their valid modifiers
-
-  2. Security
-    - Enable RLS across both tables
-    - Allow authenticated users to read modifier metadata
-    - Delegate write access to the service role for administrative tooling
-
-  3. Performance
-    - Adds indexes to accelerate lookups by code and associations
-
-  4. Seed Data
-    - Inserts common ABA billing modifiers and associates them with CPT codes
+  Introduce CPT modifier catalog and associations (idempotent)
 */
 
-CREATE TABLE public.billing_modifiers (
+CREATE TABLE IF NOT EXISTS public.billing_modifiers (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   code text NOT NULL,
   description text NOT NULL,
@@ -30,29 +15,40 @@ CREATE TABLE public.billing_modifiers (
   CONSTRAINT billing_modifiers_code_unique UNIQUE (code)
 );
 
-ALTER TABLE public.billing_modifiers
-  ADD CONSTRAINT billing_modifiers_code_format
-  CHECK (code ~ '^[A-Z0-9]{2,4}$');
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'billing_modifiers_code_format'
+      AND conrelid = 'public.billing_modifiers'::regclass
+  ) THEN
+    ALTER TABLE public.billing_modifiers
+      ADD CONSTRAINT billing_modifiers_code_format
+      CHECK (code ~ '^[A-Z0-9]{2,4}$');
+  END IF;
+END$$;
 
-CREATE INDEX billing_modifiers_code_idx ON public.billing_modifiers (code);
-CREATE INDEX billing_modifiers_active_idx ON public.billing_modifiers (is_active) WHERE is_active;
+CREATE INDEX IF NOT EXISTS billing_modifiers_code_idx ON public.billing_modifiers (code);
+CREATE INDEX IF NOT EXISTS billing_modifiers_active_idx ON public.billing_modifiers (is_active) WHERE is_active;
 
 ALTER TABLE public.billing_modifiers ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Authenticated users can read billing modifiers"
+DROP POLICY IF EXISTS \"Authenticated users can read billing modifiers\" ON public.billing_modifiers;
+CREATE POLICY \"Authenticated users can read billing modifiers\"
   ON public.billing_modifiers
   FOR SELECT
   TO authenticated
   USING (true);
 
-CREATE POLICY "Service role can manage billing modifiers"
+DROP POLICY IF EXISTS \"Service role can manage billing modifiers\" ON public.billing_modifiers;
+CREATE POLICY \"Service role can manage billing modifiers\"
   ON public.billing_modifiers
   FOR ALL
   TO service_role
   USING (true)
   WITH CHECK (true);
 
-CREATE TABLE public.cpt_modifier_mappings (
+CREATE TABLE IF NOT EXISTS public.cpt_modifier_mappings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   cpt_code_id uuid NOT NULL REFERENCES public.cpt_codes(id) ON DELETE CASCADE,
   modifier_id uuid NOT NULL REFERENCES public.billing_modifiers(id) ON DELETE CASCADE,
@@ -71,15 +67,21 @@ CREATE UNIQUE INDEX cpt_modifier_default_unique
   ON public.cpt_modifier_mappings (cpt_code_id)
   WHERE is_default;
 
+CREATE INDEX IF NOT EXISTS cpt_modifier_mappings_cpt_code_id_idx ON public.cpt_modifier_mappings (cpt_code_id);
+CREATE INDEX IF NOT EXISTS cpt_modifier_mappings_modifier_id_idx ON public.cpt_modifier_mappings (modifier_id);
+CREATE UNIQUE INDEX IF NOT EXISTS cpt_modifier_default_unique ON public.cpt_modifier_mappings (cpt_code_id) WHERE is_default;
+
 ALTER TABLE public.cpt_modifier_mappings ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Authenticated users can read CPT modifier mappings"
+DROP POLICY IF EXISTS \"Authenticated users can read CPT modifier mappings\" ON public.cpt_modifier_mappings;
+CREATE POLICY \"Authenticated users can read CPT modifier mappings\"
   ON public.cpt_modifier_mappings
   FOR SELECT
   TO authenticated
   USING (true);
 
-CREATE POLICY "Service role can manage CPT modifier mappings"
+DROP POLICY IF EXISTS \"Service role can manage CPT modifier mappings\" ON public.cpt_modifier_mappings;
+CREATE POLICY \"Service role can manage CPT modifier mappings\"
   ON public.cpt_modifier_mappings
   FOR ALL
   TO service_role

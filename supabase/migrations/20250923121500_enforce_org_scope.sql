@@ -1,14 +1,7 @@
-/*
-  # Enforce organization-aware RLS for therapy domain tables
+set search_path = public;
 
-  1. Schema changes
-    - Add organization_id columns to therapists, clients, sessions, billing_records, and session_cpt_entries
-  2. Data backfill
-    - Populate organization context from auth metadata and related records
-  3. Security
-    - Provide helper functions for organization-aware role checks
-    - Tighten row level security policies to require matching organization or service role access
-    - Update related views to expose organization metadata for downstream filtering
+/*
+  Enforce organization-aware RLS for therapy domain tables
 */
 
 -- 1. Schema changes
@@ -918,7 +911,7 @@ SELECT
   s.organization_id AS session_organization_id,
   c.code AS cpt_code,
   c.short_description,
-  ARRAY_AGG(DISTINCT bm.code ORDER BY scm.position) FILTER (WHERE bm.code IS NOT NULL) AS modifier_codes
+  ARRAY_AGG(bm.code ORDER BY scm.position) FILTER (WHERE bm.code IS NOT NULL) AS modifier_codes
 FROM public.session_cpt_entries sce
 JOIN public.sessions s ON s.id = sce.session_id
 JOIN public.cpt_codes c ON c.id = sce.cpt_code_id

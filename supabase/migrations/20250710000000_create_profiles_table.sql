@@ -58,15 +58,17 @@ CREATE TABLE IF NOT EXISTS profiles (
 
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
--- Users can view their own profile
+DROP POLICY IF EXISTS "profiles_select_own" ON profiles;
 CREATE POLICY "profiles_select_own" ON profiles FOR SELECT
 TO authenticated USING (id = auth.uid());
 
 -- Users can update their own profile
+DROP POLICY IF EXISTS "profiles_update_own" ON profiles;
 CREATE POLICY "profiles_update_own" ON profiles FOR UPDATE
 TO authenticated USING (id = auth.uid());
 
 -- Admins can view all profiles
+DROP POLICY IF EXISTS "profiles_select_admin" ON profiles;
 CREATE POLICY "profiles_select_admin" ON profiles FOR SELECT
 TO authenticated USING (
   EXISTS (
@@ -77,6 +79,7 @@ TO authenticated USING (
 );
 
 -- Admins can update all profiles
+DROP POLICY IF EXISTS "profiles_update_admin" ON profiles;
 CREATE POLICY "profiles_update_admin" ON profiles FOR UPDATE
 TO authenticated USING (
   EXISTS (
@@ -86,24 +89,9 @@ TO authenticated USING (
   )
 );
 
--- Allow inserts during user creation
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_policy p
-    JOIN pg_class c ON c.oid = p.polrelid
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE p.polname = 'profiles_insert'
-      AND c.relname = 'profiles'
-      AND n.nspname = 'public'
-  ) THEN
-    EXECUTE $$
-      CREATE POLICY "profiles_insert" ON public.profiles FOR INSERT
-      TO authenticated WITH CHECK (true)
-    $$;
-  END IF;
-END $$;
+DROP POLICY IF EXISTS "profiles_insert" ON profiles;
+CREATE POLICY "profiles_insert" ON public.profiles FOR INSERT
+TO authenticated WITH CHECK (true);
 
 -- ============================================================================
 -- STEP 4: CREATE FUNCTION TO GET ROLE FROM USER_ROLES

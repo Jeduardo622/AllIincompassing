@@ -7,7 +7,7 @@
   - Limits EXECUTE to app-admin executor roles (not generic authenticated)
 */
 
-BEGIN;
+set search_path = public;
 
 -- Drop legacy overloads if present
 DROP FUNCTION IF EXISTS public.manage_admin_users(text, uuid);
@@ -146,7 +146,7 @@ $$;
 -- Lock down grants
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'manage_admin_users') THEN
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'manage_admin_users' AND oidvectortypes(proargtypes) = 'text, text, uuid') THEN
     REVOKE EXECUTE ON FUNCTION public.manage_admin_users(text, text, uuid) FROM public;
     REVOKE EXECUTE ON FUNCTION public.manage_admin_users(text, text, uuid) FROM authenticated;
   END IF;
@@ -161,8 +161,20 @@ BEGIN
 END $$;
 
 GRANT EXECUTE ON FUNCTION public.manage_admin_users(text, text, uuid) TO app_admin_executor;
-GRANT app_admin_executor TO service_role;
 
-COMMIT;
-
-
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_auth_members m
+    JOIN pg_roles r ON r.oid = m.roleid
+    JOIN pg_roles gr ON gr.oid = m.member
+    WHERE r.rolname = 'app_admin_executor'
+      AND gr.rolname = 'service_role'
+  ) THEN
+    GRANT app_admin_executor TO service_role;
+  END IF;
+EXCEPTION
+  WHEN insufficient_privilege THEN
+    RAISE WARNING 'Grant app_admin_executor -> service_role requires admin option';
+END $$;

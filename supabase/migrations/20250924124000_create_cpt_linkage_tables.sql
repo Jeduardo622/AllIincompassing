@@ -78,7 +78,7 @@ do $$ begin
       for select
       to authenticated
       using (
-        app.is_admin() OR EXISTS (
+        app.user_has_role('admin') OR app.user_has_role('super_admin') OR EXISTS (
           select 1 from public.sessions s
           where s.id = public.session_cpt_entries.session_id
             and s.therapist_id = auth.uid()
@@ -95,7 +95,7 @@ do $$ begin
       for insert
       to authenticated
       with check (
-        app.is_admin() OR EXISTS (
+        app.user_has_role('admin') OR app.user_has_role('super_admin') OR EXISTS (
           select 1 from public.sessions s
           where s.id = public.session_cpt_entries.session_id
             and s.therapist_id = auth.uid()
@@ -112,14 +112,14 @@ do $$ begin
       for update
       to authenticated
       using (
-        app.is_admin() OR EXISTS (
+        app.user_has_role('admin') OR app.user_has_role('super_admin') OR EXISTS (
           select 1 from public.sessions s
           where s.id = public.session_cpt_entries.session_id
             and s.therapist_id = auth.uid()
         )
       )
       with check (
-        app.is_admin() OR EXISTS (
+        app.user_has_role('admin') OR app.user_has_role('super_admin') OR EXISTS (
           select 1 from public.sessions s
           where s.id = public.session_cpt_entries.session_id
             and s.therapist_id = auth.uid()
@@ -136,7 +136,7 @@ do $$ begin
       for delete
       to authenticated
       using (
-        app.is_admin() OR EXISTS (
+        app.user_has_role('admin') OR app.user_has_role('super_admin') OR EXISTS (
           select 1 from public.sessions s
           where s.id = public.session_cpt_entries.session_id
             and s.therapist_id = auth.uid()
@@ -183,7 +183,7 @@ do $$ begin
       for all
       to authenticated
       using (
-        app.is_admin() OR EXISTS (
+        app.user_has_role('admin') OR app.user_has_role('super_admin') OR EXISTS (
           select 1
           from public.session_cpt_entries e
           join public.sessions s on s.id = e.session_id
@@ -192,7 +192,7 @@ do $$ begin
         )
       )
       with check (
-        app.is_admin() OR EXISTS (
+        app.user_has_role('admin') OR app.user_has_role('super_admin') OR EXISTS (
           select 1
           from public.session_cpt_entries e
           join public.sessions s on s.id = e.session_id

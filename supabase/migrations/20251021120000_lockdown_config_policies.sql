@@ -12,7 +12,7 @@
     - referring_providers
 */
 
-BEGIN;
+set search_path = public;
 
 -- file_cabinet_settings
 ALTER TABLE public.file_cabinet_settings ENABLE ROW LEVEL SECURITY;
@@ -25,8 +25,8 @@ CREATE POLICY "file_cabinet_settings_admin_write"
   ON public.file_cabinet_settings
   FOR ALL
   TO public
-  USING (app.is_admin())
-  WITH CHECK (app.is_admin());
+  USING (app.user_has_role('admin') OR app.user_has_role('super_admin'))
+  WITH CHECK (app.user_has_role('admin') OR app.user_has_role('super_admin'));
 
 COMMENT ON POLICY "file_cabinet_settings_admin_write" ON public.file_cabinet_settings IS 'Only admins may write; read policies for authenticated remain unchanged.';
 
@@ -40,8 +40,8 @@ CREATE POLICY "locations_admin_write"
   ON public.locations
   FOR ALL
   TO public
-  USING (app.is_admin())
-  WITH CHECK (app.is_admin());
+  USING (app.user_has_role('admin') OR app.user_has_role('super_admin'))
+  WITH CHECK (app.user_has_role('admin') OR app.user_has_role('super_admin'));
 
 COMMENT ON POLICY "locations_admin_write" ON public.locations IS 'Only admins may write; read policies for authenticated remain unchanged.';
 
@@ -55,8 +55,8 @@ CREATE POLICY "service_lines_admin_write"
   ON public.service_lines
   FOR ALL
   TO public
-  USING (app.is_admin())
-  WITH CHECK (app.is_admin());
+  USING (app.user_has_role('admin') OR app.user_has_role('super_admin'))
+  WITH CHECK (app.user_has_role('admin') OR app.user_has_role('super_admin'));
 
 COMMENT ON POLICY "service_lines_admin_write" ON public.service_lines IS 'Only admins may write; read policies for authenticated remain unchanged.';
 
@@ -70,11 +70,8 @@ CREATE POLICY "referring_providers_admin_write"
   ON public.referring_providers
   FOR ALL
   TO public
-  USING (app.is_admin())
-  WITH CHECK (app.is_admin());
+  USING (app.user_has_role('admin') OR app.user_has_role('super_admin'))
+  WITH CHECK (app.user_has_role('admin') OR app.user_has_role('super_admin'));
 
 COMMENT ON POLICY "referring_providers_admin_write" ON public.referring_providers IS 'Only admins may write; read policies for authenticated remain unchanged.';
-
-COMMIT;
-
 

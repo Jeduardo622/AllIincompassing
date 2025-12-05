@@ -1,24 +1,10 @@
+set search_path = public;
+
 /*
-  # Introduce CPT master data
-
-  1. New Tables
-    - `cpt_codes`
-      - Stores CPT code metadata leveraged by scheduling and billing flows
-      - Enforces uniqueness on CPT code values
-
-  2. Security
-    - Enable row level security
-    - Allow authenticated users to read CPT metadata
-    - Allow the service role to manage CPT metadata for administrative tooling
-
-  3. Performance
-    - Adds an index for efficient lookups by CPT code
-
-  4. Seed Data
-    - Inserts common ABA therapy CPT codes with descriptions and duration hints
+  Introduce CPT master data with idempotent guards so reruns are safe
 */
 
-CREATE TABLE public.cpt_codes (
+CREATE TABLE IF NOT EXISTS public.cpt_codes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   code text NOT NULL,
   short_description text NOT NULL,
@@ -31,24 +17,49 @@ CREATE TABLE public.cpt_codes (
   CONSTRAINT cpt_codes_code_unique UNIQUE (code)
 );
 
-ALTER TABLE public.cpt_codes
-  ADD CONSTRAINT cpt_codes_typical_duration_positive
-  CHECK (
-    typical_duration_minutes IS NULL
-    OR typical_duration_minutes > 0
-  );
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'cpt_codes_code_unique'
+      AND conrelid = 'public.cpt_codes'::regclass
+  ) THEN
+    ALTER TABLE public.cpt_codes
+      ADD CONSTRAINT cpt_codes_code_unique UNIQUE (code);
+  END IF;
+END$$;
 
-CREATE INDEX cpt_codes_code_idx ON public.cpt_codes (code);
-CREATE INDEX cpt_codes_active_idx ON public.cpt_codes (is_active) WHERE is_active;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'cpt_codes_typical_duration_positive'
+      AND conrelid = 'public.cpt_codes'::regclass
+  ) THEN
+    ALTER TABLE public.cpt_codes
+      ADD CONSTRAINT cpt_codes_typical_duration_positive
+      CHECK (
+        typical_duration_minutes IS NULL
+        OR typical_duration_minutes > 0
+      );
+  END IF;
+END$$;
+
+CREATE INDEX IF NOT EXISTS cpt_codes_code_idx ON public.cpt_codes (code);
+CREATE INDEX IF NOT EXISTS cpt_codes_active_idx ON public.cpt_codes (is_active) WHERE is_active;
 
 ALTER TABLE public.cpt_codes ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Authenticated users can read CPT codes" ON public.cpt_codes;
 CREATE POLICY "Authenticated users can read CPT codes"
   ON public.cpt_codes
   FOR SELECT
   TO authenticated
   USING (true);
 
+DROP POLICY IF EXISTS "Service role can manage CPT codes" ON public.cpt_codes;
 CREATE POLICY "Service role can manage CPT codes"
   ON public.cpt_codes
   FOR ALL

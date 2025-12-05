@@ -169,6 +169,9 @@ CREATE TABLE IF NOT EXISTS public.impersonation_revocation_queue (
 
 ALTER TABLE public.impersonation_revocation_queue ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS impersonation_revocation_queue_service_role ON public.impersonation_revocation_queue;
+DROP POLICY IF EXISTS impersonation_revocation_queue_super_admin_insert ON public.impersonation_revocation_queue;
+
 -- service role manages everything
 CREATE POLICY impersonation_revocation_queue_service_role
   ON public.impersonation_revocation_queue

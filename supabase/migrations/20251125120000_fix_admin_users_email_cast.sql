@@ -1,6 +1,6 @@
 begin;
 
--- Ensure get_admin_users returns rows without type mismatches when emitting emails.
+drop function if exists public.get_admin_users(uuid);
 create or replace function public.get_admin_users(organization_id uuid default null)
 returns setof public.admin_user_row
 language plpgsql

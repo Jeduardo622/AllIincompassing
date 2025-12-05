@@ -9,7 +9,7 @@
     - Function remains SECURITY DEFINER but restricts access based on auth roles and relationships.
 */
 
-CREATE OR REPLACE FUNCTION public.can_access_client_documents(p_client_id uuid)
+CREATE OR REPLACE FUNCTION public.can_access_client_documents(client_id uuid)
 RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -28,11 +28,11 @@ BEGIN
     OR auth.user_has_role('admin')
     OR (
       -- Therapists can access clients tied to their sessions
-      auth.user_has_role('therapist')
+    auth.user_has_role('therapist')
       AND EXISTS (
         SELECT 1
         FROM sessions s
-        WHERE s.client_id = p_client_id
+        WHERE s.client_id = client_id
           AND s.therapist_id = v_requestor
       )
     )
@@ -41,7 +41,7 @@ BEGIN
       EXISTS (
         SELECT 1
         FROM client_guardians cg
-        WHERE cg.client_id = p_client_id
+        WHERE cg.client_id = client_id
           AND cg.guardian_id = v_requestor
           AND cg.deleted_at IS NULL
       )

@@ -191,7 +191,7 @@ CREATE POLICY admin_actions_admin_read
   FOR SELECT
   TO authenticated
   USING (
-    auth.user_has_role('admin') OR auth.user_has_role('super_admin')
+    app.user_has_role('admin') OR app.user_has_role('super_admin')
   );
 
 CREATE POLICY admin_actions_admin_insert
@@ -200,7 +200,7 @@ CREATE POLICY admin_actions_admin_insert
   TO authenticated
   WITH CHECK (
     auth.uid() = admin_user_id
-    AND (auth.user_has_role('admin') OR auth.user_has_role('super_admin'))
+    AND (app.user_has_role('admin') OR app.user_has_role('super_admin'))
   );
 
 -- conversations policies
@@ -228,7 +228,7 @@ CREATE POLICY conversations_admin_access
   ON public.conversations
   FOR SELECT
   TO authenticated
-  USING (auth.user_has_role('admin') OR auth.user_has_role('super_admin'));
+  USING (app.user_has_role('admin') OR app.user_has_role('super_admin'));
 
 -- user_sessions policies
 ALTER TABLE public.user_sessions ENABLE ROW LEVEL SECURITY;
@@ -254,7 +254,7 @@ CREATE POLICY user_sessions_admin_read
   ON public.user_sessions
   FOR SELECT
   TO authenticated
-  USING (auth.user_has_role('admin') OR auth.user_has_role('super_admin'));
+  USING (app.user_has_role('admin') OR app.user_has_role('super_admin'));
 
 -- ai_cache policies
 ALTER TABLE public.ai_cache ENABLE ROW LEVEL SECURITY;
@@ -273,7 +273,7 @@ CREATE POLICY ai_cache_admin_read
   ON public.ai_cache
   FOR SELECT
   TO authenticated
-  USING (auth.user_has_role('admin') OR auth.user_has_role('super_admin'));
+  USING (app.user_has_role('admin') OR app.user_has_role('super_admin'));
 
 -- ai_session_notes policies
 ALTER TABLE public.ai_session_notes ENABLE ROW LEVEL SECURITY;
@@ -293,7 +293,7 @@ CREATE POLICY ai_session_notes_admin_access
   ON public.ai_session_notes
   FOR SELECT
   TO authenticated
-  USING (auth.user_has_role('admin') OR auth.user_has_role('super_admin'));
+  USING (app.user_has_role('admin') OR app.user_has_role('super_admin'));
 
 CREATE POLICY ai_session_notes_therapist_access
   ON public.ai_session_notes

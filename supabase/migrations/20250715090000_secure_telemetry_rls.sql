@@ -21,7 +21,7 @@ DECLARE
   ];
   target_table text;
   policy_condition text :=
-    'auth.user_has_role(''admin'') OR auth.user_has_role(''super_admin'') OR auth.user_has_role(''monitoring'')';
+    'app.user_has_role(''admin'') OR app.user_has_role(''super_admin'') OR app.user_has_role(''monitoring'')';
 BEGIN
   FOREACH target_table IN ARRAY telemetry_tables LOOP
     IF EXISTS (

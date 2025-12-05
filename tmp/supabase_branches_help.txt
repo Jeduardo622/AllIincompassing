@@ -1,0 +1,32 @@
+Manage Supabase preview branches
+
+Usage:
+  supabase branches [command]
+
+Available Commands:
+  create      Create a preview branch
+  delete      Delete a preview branch
+  get         Retrieve details of a preview branch
+  list        List all preview branches
+  pause       Pause a preview branch
+  unpause     Unpause a preview branch
+  update      Update a preview branch
+
+Flags:
+  -h, --help                 help for branches
+      --project-ref string   Project ref of the Supabase project.
+
+Global Flags:
+      --create-ticket                                  create a support ticket for any CLI error
+      --debug                                          output debug logs to stderr
+      --dns-resolver [ native | https ]                lookup domain names using the specified resolver (default native)
+      --experimental                                   enable experimental features
+      --network-id string                              use the specified docker network instead of a generated one
+  -o, --output [ env | pretty | json | toml | yaml ]   output format of status variables (default pretty)
+      --profile string                                 use a specific profile for connecting to Supabase API (default "supabase")
+      --workdir string                                 path to a Supabase project directory
+      --yes                                            answer yes to all prompts
+
+Use "supabase branches [command] --help" for more information about a command.
+A new version of Supabase CLI is available: v2.65.5 (currently installed v2.58.5)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

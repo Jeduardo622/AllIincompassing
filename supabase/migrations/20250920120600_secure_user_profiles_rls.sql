@@ -1,13 +1,7 @@
+set search_path = public;
+
 /*
-  # Tighten user_profiles RLS policies
-
-  1. Changes
-     - Ensures row level security is enabled on user_profiles
-     - Recreates policies to require authenticated access and align WITH CHECK logic with profiles
-
-  2. Security
-     - Blocks anonymous access to user profile data
-     - Enforces that only profile owners or admins may modify user_profiles rows
+  Tighten user_profiles RLS policies (authenticated + admin via app.user_has_role)
 */
 
 DO $$
@@ -47,14 +41,8 @@ BEGIN
     FOR SELECT
     TO authenticated
     USING (
-      EXISTS (
-        SELECT 1
-        FROM user_roles ur
-        JOIN roles r ON ur.role_id = r.id
-        WHERE ur.user_id = auth.uid()
-          AND ur.is_active = true
-          AND r.permissions @> '["*"]'::jsonb
-      )
+      app.user_has_role('admin')
+      OR app.user_has_role('super_admin')
     );
 
     CREATE POLICY "admins_can_update_all_profiles"
@@ -62,24 +50,12 @@ BEGIN
     FOR UPDATE
     TO authenticated
     USING (
-      EXISTS (
-        SELECT 1
-        FROM user_roles ur
-        JOIN roles r ON ur.role_id = r.id
-        WHERE ur.user_id = auth.uid()
-          AND ur.is_active = true
-          AND r.permissions @> '["*"]'::jsonb
-      )
+      app.user_has_role('admin')
+      OR app.user_has_role('super_admin')
     )
     WITH CHECK (
-      EXISTS (
-        SELECT 1
-        FROM user_roles ur
-        JOIN roles r ON ur.role_id = r.id
-        WHERE ur.user_id = auth.uid()
-          AND ur.is_active = true
-          AND r.permissions @> '["*"]'::jsonb
-      )
+      app.user_has_role('admin')
+      OR app.user_has_role('super_admin')
     );
 
     CREATE POLICY "admins_can_insert_profiles"
@@ -87,14 +63,8 @@ BEGIN
     FOR INSERT
     TO authenticated
     WITH CHECK (
-      EXISTS (
-        SELECT 1
-        FROM user_roles ur
-        JOIN roles r ON ur.role_id = r.id
-        WHERE ur.user_id = auth.uid()
-          AND ur.is_active = true
-          AND r.permissions @> '["*"]'::jsonb
-      )
+      app.user_has_role('admin')
+      OR app.user_has_role('super_admin')
     );
 
     CREATE POLICY "admins_can_delete_profiles"
@@ -102,14 +72,8 @@ BEGIN
     FOR DELETE
     TO authenticated
     USING (
-      EXISTS (
-        SELECT 1
-        FROM user_roles ur
-        JOIN roles r ON ur.role_id = r.id
-        WHERE ur.user_id = auth.uid()
-          AND ur.is_active = true
-          AND r.permissions @> '["*"]'::jsonb
-      )
+      app.user_has_role('admin')
+      OR app.user_has_role('super_admin')
     );
 
     RAISE NOTICE 'user_profiles policies updated to authenticated access';

@@ -1,7 +1,10 @@
 BEGIN;
 
-ALTER POLICY "Clients scoped access"
+DROP POLICY IF EXISTS "Clients scoped access" ON public.clients;
+CREATE POLICY "Clients scoped access"
   ON public.clients
+  FOR ALL
+  TO authenticated
   USING (
     CASE
       WHEN app.user_has_role_for_org('admin', organization_id, NULL, id) THEN true
@@ -37,8 +40,11 @@ ALTER POLICY "Clients scoped access"
     END
   );
 
-ALTER POLICY "Sessions scoped access"
+DROP POLICY IF EXISTS "Sessions scoped access" ON public.sessions;
+CREATE POLICY "Sessions scoped access"
   ON public.sessions
+  FOR ALL
+  TO authenticated
   USING (
     CASE
       WHEN app.user_has_role_for_org('admin', organization_id, therapist_id, NULL, id) THEN true
@@ -58,8 +64,11 @@ ALTER POLICY "Sessions scoped access"
     END
   );
 
-ALTER POLICY "Billing records scoped access"
+DROP POLICY IF EXISTS "Billing records scoped access" ON public.billing_records;
+CREATE POLICY "Billing records scoped access"
   ON public.billing_records
+  FOR ALL
+  TO authenticated
   USING (
     CASE
       WHEN app.user_has_role_for_org('admin', organization_id, NULL, NULL, session_id) THEN true

@@ -6,7 +6,7 @@
   - Assumes set_*_organization triggers exist and remain in place
 */
 
-BEGIN;
+set search_path = public;
 
 -- Backfill helpers (no-op if already set)
 UPDATE public.therapists t
@@ -49,7 +49,4 @@ ALTER TABLE public.sessions
 
 ALTER TABLE public.billing_records
   ALTER COLUMN organization_id SET NOT NULL;
-
-COMMIT;
-
 

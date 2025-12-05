@@ -4,13 +4,21 @@
 -- - Add PK to public.session_cpt_modifiers
 -- - Add covering indexes for common foreign keys
 
-BEGIN;
+set search_path = public;
 
 -- Ensure a dedicated schema for extensions
 CREATE SCHEMA IF NOT EXISTS extensions;
 
 -- Move extension from public → extensions per security guidance
-ALTER EXTENSION btree_gist SET SCHEMA extensions;
+DO $$
+BEGIN
+  BEGIN
+    EXECUTE 'ALTER EXTENSION btree_gist SET SCHEMA extensions';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      RAISE NOTICE 'insufficient privileges to alter extension schema';
+  END;
+END $$;
 
 -- Harden function search_path to avoid role-dependent resolution
 ALTER FUNCTION public.block_role_change_non_admin() SET search_path = pg_catalog, public;
@@ -49,8 +57,6 @@ CREATE INDEX IF NOT EXISTS idx_organizations_updated_by ON public.organizations 
 CREATE INDEX IF NOT EXISTS idx_session_cpt_entries_cpt_code_id ON public.session_cpt_entries (cpt_code_id);
 CREATE INDEX IF NOT EXISTS idx_session_holds_session_id ON public.session_holds (session_id);
 CREATE INDEX IF NOT EXISTS idx_therapists_deleted_by ON public.therapists (deleted_by);
-
-COMMIT;
 
 -- NOTE:
 -- RLS policy optimizations (wrapping auth.* calls with SELECT to avoid initplan per-row

@@ -21,12 +21,12 @@ CREATE POLICY ai_response_cache_admin_manage
   FOR ALL
   TO authenticated
   USING (
-    auth.user_has_role('admin')
-    OR auth.user_has_role('super_admin')
+    app.user_has_role('admin')
+    OR app.user_has_role('super_admin')
   )
   WITH CHECK (
-    auth.user_has_role('admin')
-    OR auth.user_has_role('super_admin')
+    app.user_has_role('admin')
+    OR app.user_has_role('super_admin')
   );
 
 CREATE POLICY ai_response_cache_service_role_manage
@@ -50,12 +50,12 @@ CREATE POLICY function_performance_logs_admin_manage
   FOR ALL
   TO authenticated
   USING (
-    auth.user_has_role('admin')
-    OR auth.user_has_role('super_admin')
+    app.user_has_role('admin')
+    OR app.user_has_role('super_admin')
   )
   WITH CHECK (
-    auth.user_has_role('admin')
-    OR auth.user_has_role('super_admin')
+    app.user_has_role('admin')
+    OR app.user_has_role('super_admin')
   );
 
 CREATE POLICY function_performance_logs_service_role_manage

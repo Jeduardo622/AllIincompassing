@@ -1,0 +1,8 @@
+
+  
+   HOST                                | PORT | USER     | PASSWORD                         | JWT SECRET                                                                               | POSTGRES VERSION             | STATUS         
+  -------------------------------------|------|----------|----------------------------------|------------------------------------------------------------------------------------------|------------------------------|----------------
+   db.ioeaxbymdmwbppkujhan.supabase.co | 5432 | postgres | lhmAoYWLJkKfWAmnCDxubmvVzXCDHqjw | h8lYMBnnFPcogmeNKBDBZeNwSDbDgelAkfCAbTIjpGSXigc8Qhs4QMVQuAWNSpGnDesJLa2dv7hPswF5UD6Mew== | supabase-postgres-17.6.1.054 | ACTIVE_HEALTHY 
+
+A new version of Supabase CLI is available: v2.65.5 (currently installed v2.58.5)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

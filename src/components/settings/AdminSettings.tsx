@@ -8,6 +8,8 @@ import { useAuth } from '../../lib/authContext';
 import { Modal } from '../common/Modal';
 import type { PostgrestError } from '@supabase/supabase-js';
 
+const ADMIN_USER_FETCH_LIMIT = 200;
+
 interface AdminUser {
   id: string;
   user_id: string;
@@ -124,8 +126,10 @@ export default function AdminSettings() {
       }
 
       const targetOrgId = isSuperAdmin ? activeOrganizationId : organizationId;
-      const { data, error } = await supabase.rpc('get_admin_users', {
+      const { data, error } = await supabase.rpc('get_admin_users_paged', {
         organization_id: targetOrgId ?? null,
+        p_limit: ADMIN_USER_FETCH_LIMIT,
+        p_offset: 0,
       });
 
       if (error) {

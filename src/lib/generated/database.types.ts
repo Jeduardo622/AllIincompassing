@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
-  }
   public: {
     Tables: {
       admin_actions: {
@@ -42,7 +37,36 @@ export type Database = {
           organization_id?: string | null
           target_user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "admin_actions_admin_user_id_fkey"
+            columns: ["admin_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_actions_admin_user_id_fkey"
+            columns: ["admin_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "admin_actions_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_actions_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       admin_invite_tokens: {
         Row: {
@@ -75,7 +99,22 @@ export type Database = {
           role?: Database["public"]["Enums"]["role_type"]
           token_hash?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "admin_invite_tokens_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_invite_tokens_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       ai_cache: {
         Row: {
@@ -522,7 +561,22 @@ export type Database = {
           regex_pattern?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "behavioral_patterns_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "behavioral_patterns_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       billing_modifiers: {
         Row: {
@@ -632,7 +686,22 @@ export type Database = {
           updated_at?: string | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "chat_history_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_history_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       client_availability: {
         Row: {
@@ -733,7 +802,137 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "client_guardians_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_guardians_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "client_guardians_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_guardians_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "client_guardians_guardian_id_fkey"
+            columns: ["guardian_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_guardians_guardian_id_fkey"
+            columns: ["guardian_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "client_guardians_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_guardians_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_guardians_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      client_issues: {
+        Row: {
+          category: string | null
+          client_id: string
+          created_at: string
+          created_by: string | null
+          date_opened: string
+          description: string | null
+          id: string
+          last_action: string
+          organization_id: string
+          priority: string | null
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          date_opened?: string
+          description?: string | null
+          id?: string
+          last_action?: string
+          organization_id: string
+          priority?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          date_opened?: string
+          description?: string | null
+          id?: string
+          last_action?: string
+          organization_id?: string
+          priority?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_issues_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_issues_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_issues_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "client_issues_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -854,6 +1053,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "client_session_notes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_session_notes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "client_session_notes_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -880,6 +1093,7 @@ export type Database = {
         Row: {
           address_line1: string | null
           address_line2: string | null
+          assessment_units: number | null
           authorized_hours_per_month: number | null
           availability_hours: Json | null
           avoid_rush_hour: boolean | null
@@ -913,8 +1127,6 @@ export type Database = {
           one_to_one_units: number | null
           organization_id: string
           parent_consult_units: number | null
-          assessment_units: number | null
-          assessment_units: number | null
           parent1_email: string | null
           parent1_first_name: string | null
           parent1_last_name: string | null
@@ -944,6 +1156,7 @@ export type Database = {
         Insert: {
           address_line1?: string | null
           address_line2?: string | null
+          assessment_units?: number | null
           authorized_hours_per_month?: number | null
           availability_hours?: Json | null
           avoid_rush_hour?: boolean | null
@@ -977,7 +1190,6 @@ export type Database = {
           one_to_one_units?: number | null
           organization_id: string
           parent_consult_units?: number | null
-          assessment_units?: number | null
           parent1_email?: string | null
           parent1_first_name?: string | null
           parent1_last_name?: string | null
@@ -1007,6 +1219,7 @@ export type Database = {
         Update: {
           address_line1?: string | null
           address_line2?: string | null
+          assessment_units?: number | null
           authorized_hours_per_month?: number | null
           availability_hours?: Json | null
           avoid_rush_hour?: boolean | null
@@ -1040,7 +1253,6 @@ export type Database = {
           one_to_one_units?: number | null
           organization_id?: string
           parent_consult_units?: number | null
-          assessment_units?: number | null
           parent1_email?: string | null
           parent1_first_name?: string | null
           parent1_last_name?: string | null
@@ -1069,11 +1281,53 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "clients_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "clients_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "clients_therapist_id_fkey"
             columns: ["therapist_id"]
             isOneToOne: false
             referencedRelation: "therapists"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1189,7 +1443,22 @@ export type Database = {
           updated_at?: string | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "conversations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       cpt_codes: {
         Row: {
@@ -1226,6 +1495,51 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      cpt_modifier_mappings: {
+        Row: {
+          cpt_code_id: string
+          created_at: string
+          id: string
+          is_default: boolean
+          is_required: boolean
+          modifier_id: string
+          updated_at: string
+        }
+        Insert: {
+          cpt_code_id: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          is_required?: boolean
+          modifier_id: string
+          updated_at?: string
+        }
+        Update: {
+          cpt_code_id?: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          is_required?: boolean
+          modifier_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cpt_modifier_mappings_cpt_code_id_fkey"
+            columns: ["cpt_code_id"]
+            isOneToOne: false
+            referencedRelation: "cpt_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cpt_modifier_mappings_modifier_id_fkey"
+            columns: ["modifier_id"]
+            isOneToOne: false
+            referencedRelation: "billing_modifiers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       db_performance_metrics: {
         Row: {
@@ -1324,7 +1638,36 @@ export type Database = {
           user_agent?: string | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "error_logs_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_logs_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "error_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       feature_flag_audit_logs: {
         Row: {
@@ -1362,6 +1705,20 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "feature_flag_audit_logs_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feature_flag_audit_logs_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "feature_flag_audit_logs_feature_flag_id_fkey"
             columns: ["feature_flag_id"]
             isOneToOne: false
@@ -1377,6 +1734,81 @@ export type Database = {
           },
           {
             foreignKeyName: "feature_flag_audit_logs_plan_code_fkey"
+            columns: ["plan_code"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      feature_flag_plan_history: {
+        Row: {
+          action: string
+          actor_id: string | null
+          change_context: string
+          feature_flag_id: string | null
+          id: string
+          new_state: Json | null
+          occurred_at: string
+          organization_id: string | null
+          plan_code: string | null
+          previous_state: Json | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          change_context: string
+          feature_flag_id?: string | null
+          id?: string
+          new_state?: Json | null
+          occurred_at?: string
+          organization_id?: string | null
+          plan_code?: string | null
+          previous_state?: Json | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          change_context?: string
+          feature_flag_id?: string | null
+          id?: string
+          new_state?: Json | null
+          occurred_at?: string
+          organization_id?: string | null
+          plan_code?: string | null
+          previous_state?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feature_flag_plan_history_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feature_flag_plan_history_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "feature_flag_plan_history_feature_flag_id_fkey"
+            columns: ["feature_flag_id"]
+            isOneToOne: false
+            referencedRelation: "feature_flags"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feature_flag_plan_history_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feature_flag_plan_history_plan_code_fkey"
             columns: ["plan_code"]
             isOneToOne: false
             referencedRelation: "plans"
@@ -1418,7 +1850,36 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "feature_flags_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feature_flags_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "feature_flags_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feature_flags_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       file_cabinet_settings: {
         Row: {
@@ -1459,6 +1920,36 @@ export type Database = {
         }
         Relationships: []
       }
+      function_idempotency_keys: {
+        Row: {
+          created_at: string
+          endpoint: string
+          id: string
+          idempotency_key: string
+          response_body: Json
+          response_hash: string
+          status_code: number
+        }
+        Insert: {
+          created_at?: string
+          endpoint: string
+          id?: string
+          idempotency_key: string
+          response_body: Json
+          response_hash: string
+          status_code?: number
+        }
+        Update: {
+          created_at?: string
+          endpoint?: string
+          id?: string
+          idempotency_key?: string
+          response_body?: Json
+          response_hash?: string
+          status_code?: number
+        }
+        Relationships: []
+      }
       function_performance_logs: {
         Row: {
           executed_at: string | null
@@ -1487,11 +1978,130 @@ export type Database = {
           parameters?: Json | null
           result_size?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "function_performance_logs_executed_by_fkey"
+            columns: ["executed_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "function_performance_logs_executed_by_fkey"
+            columns: ["executed_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      guardian_link_queue: {
+        Row: {
+          approved_client_ids: string[]
+          created_at: string
+          created_by: string | null
+          guardian_email: string
+          guardian_id: string
+          id: string
+          invite_token: string | null
+          metadata: Json
+          organization_id: string | null
+          processed_at: string | null
+          processed_by: string | null
+          requested_client_ids: string[]
+          resolution_notes: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          approved_client_ids?: string[]
+          created_at?: string
+          created_by?: string | null
+          guardian_email: string
+          guardian_id: string
+          id?: string
+          invite_token?: string | null
+          metadata?: Json
+          organization_id?: string | null
+          processed_at?: string | null
+          processed_by?: string | null
+          requested_client_ids?: string[]
+          resolution_notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          approved_client_ids?: string[]
+          created_at?: string
+          created_by?: string | null
+          guardian_email?: string
+          guardian_id?: string
+          id?: string
+          invite_token?: string | null
+          metadata?: Json
+          organization_id?: string | null
+          processed_at?: string | null
+          processed_by?: string | null
+          requested_client_ids?: string[]
+          resolution_notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guardian_link_queue_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guardian_link_queue_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "guardian_link_queue_guardian_id_fkey"
+            columns: ["guardian_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guardian_link_queue_guardian_id_fkey"
+            columns: ["guardian_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "guardian_link_queue_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guardian_link_queue_processed_by_fkey"
+            columns: ["processed_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guardian_link_queue_processed_by_fkey"
+            columns: ["processed_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       impersonation_audit: {
         Row: {
-          actor_ip: unknown
+          actor_ip: unknown | null
           actor_organization_id: string
           actor_user_agent: string | null
           actor_user_id: string
@@ -1507,7 +2117,7 @@ export type Database = {
           token_jti: string
         }
         Insert: {
-          actor_ip?: unknown
+          actor_ip?: unknown | null
           actor_organization_id: string
           actor_user_agent?: string | null
           actor_user_id: string
@@ -1523,7 +2133,7 @@ export type Database = {
           token_jti: string
         }
         Update: {
-          actor_ip?: unknown
+          actor_ip?: unknown | null
           actor_organization_id?: string
           actor_user_agent?: string | null
           actor_user_id?: string
@@ -1538,7 +2148,50 @@ export type Database = {
           target_user_id?: string
           token_jti?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "impersonation_audit_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "impersonation_audit_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "impersonation_audit_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "impersonation_audit_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "impersonation_audit_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "impersonation_audit_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       impersonation_revocation_queue: {
         Row: {
@@ -1698,6 +2351,20 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "organization_feature_flags_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_feature_flags_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "organization_feature_flags_feature_flag_id_fkey"
             columns: ["feature_flag_id"]
             isOneToOne: false
@@ -1710,6 +2377,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_feature_flags_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_feature_flags_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1736,6 +2417,20 @@ export type Database = {
           plan_code?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "organization_plans_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_plans_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
           {
             foreignKeyName: "organization_plans_organization_id_fkey"
             columns: ["organization_id"]
@@ -1783,7 +2478,36 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "organizations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organizations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "organizations_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organizations_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       performance_alerts: {
         Row: {
@@ -1945,7 +2669,22 @@ export type Database = {
           title?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       referring_providers: {
         Row: {
@@ -2306,6 +3045,13 @@ export type Database = {
             foreignKeyName: "session_cpt_modifiers_session_cpt_entry_id_fkey"
             columns: ["session_cpt_entry_id"]
             isOneToOne: false
+            referencedRelation: "session_cpt_details_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_cpt_modifiers_session_cpt_entry_id_fkey"
+            columns: ["session_cpt_entry_id"]
+            isOneToOne: false
             referencedRelation: "session_cpt_entries"
             referencedColumns: ["id"]
           },
@@ -2319,6 +3065,7 @@ export type Database = {
           expires_at: string
           hold_key: string
           id: string
+          organization_id: string
           session_id: string | null
           start_time: string
           therapist_id: string
@@ -2330,6 +3077,7 @@ export type Database = {
           expires_at?: string
           hold_key: string
           id?: string
+          organization_id: string
           session_id?: string | null
           start_time: string
           therapist_id: string
@@ -2341,6 +3089,7 @@ export type Database = {
           expires_at?: string
           hold_key?: string
           id?: string
+          organization_id?: string
           session_id?: string | null
           start_time?: string
           therapist_id?: string
@@ -2351,6 +3100,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_holds_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
           {
@@ -2409,7 +3165,22 @@ export type Database = {
           template_type?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "session_note_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_note_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       session_transcript_segments: {
         Row: {
@@ -2518,6 +3289,7 @@ export type Database = {
           status: string
           therapist_id: string
           total_cost: number | null
+          updated_at: string
           updated_by: string | null
         }
         Insert: {
@@ -2538,6 +3310,7 @@ export type Database = {
           status?: string
           therapist_id: string
           total_cost?: number | null
+          updated_at?: string
           updated_by?: string | null
         }
         Update: {
@@ -2558,6 +3331,7 @@ export type Database = {
           status?: string
           therapist_id?: string
           total_cost?: number | null
+          updated_at?: string
           updated_by?: string | null
         }
         Relationships: [
@@ -2611,6 +3385,7 @@ export type Database = {
           end_time: string
           id: string
           is_recurring: boolean | null
+          organization_id: string
           service_types: string[] | null
           start_time: string
           therapist_id: string
@@ -2622,6 +3397,7 @@ export type Database = {
           end_time: string
           id?: string
           is_recurring?: boolean | null
+          organization_id: string
           service_types?: string[] | null
           start_time: string
           therapist_id: string
@@ -2633,6 +3409,7 @@ export type Database = {
           end_time?: string
           id?: string
           is_recurring?: boolean | null
+          organization_id?: string
           service_types?: string[] | null
           start_time?: string
           therapist_id?: string
@@ -2660,6 +3437,7 @@ export type Database = {
           issue_date: string
           name: string
           notes: string | null
+          organization_id: string
           status: string
           therapist_id: string
           type: string
@@ -2676,6 +3454,7 @@ export type Database = {
           issue_date: string
           name: string
           notes?: string | null
+          organization_id?: string
           status?: string
           therapist_id: string
           type: string
@@ -2692,6 +3471,7 @@ export type Database = {
           issue_date?: string
           name?: string
           notes?: string | null
+          organization_id?: string
           status?: string
           therapist_id?: string
           type?: string
@@ -2834,7 +3614,22 @@ export type Database = {
           weekly_hours_min?: number | null
           zip_code?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "therapists_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "therapists_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       user_profiles: {
         Row: {
@@ -2882,7 +3677,22 @@ export type Database = {
           time_zone?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_profiles_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_profiles_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -2914,11 +3724,39 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "user_roles_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_roles_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "user_roles_role_id_fkey"
             columns: ["role_id"]
             isOneToOne: false
             referencedRelation: "roles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_roles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_roles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -2927,7 +3765,7 @@ export type Database = {
           created_at: string | null
           expires_at: string
           id: string
-          ip_address: unknown
+          ip_address: unknown | null
           is_active: boolean | null
           last_activity: string | null
           session_token: string
@@ -2938,7 +3776,7 @@ export type Database = {
           created_at?: string | null
           expires_at: string
           id?: string
-          ip_address?: unknown
+          ip_address?: unknown | null
           is_active?: boolean | null
           last_activity?: string | null
           session_token: string
@@ -2949,14 +3787,29 @@ export type Database = {
           created_at?: string | null
           expires_at?: string
           id?: string
-          ip_address?: unknown
+          ip_address?: unknown | null
           is_active?: boolean | null
           last_activity?: string | null
           session_token?: string
           user_agent?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       user_therapist_links: {
         Row: {
@@ -2985,10 +3838,35 @@ export type Database = {
             referencedRelation: "therapists"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "user_therapist_links_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_therapist_links_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
     }
     Views: {
+      admin_users: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          id: string | null
+          raw_user_meta_data: Json | null
+          user_id: string | null
+          user_role_id: string | null
+        }
+        Relationships: []
+      }
       app_users_safe: {
         Row: {
           created_at: string | null
@@ -3005,114 +3883,265 @@ export type Database = {
           email?: string | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      session_cpt_details_vw: {
+        Row: {
+          billed_minutes: number | null
+          client_id: string | null
+          cpt_code: string | null
+          cpt_code_id: string | null
+          created_at: string | null
+          end_time: string | null
+          id: string | null
+          is_primary: boolean | null
+          line_number: number | null
+          modifier_codes: string[] | null
+          notes: string | null
+          rate: number | null
+          session_id: string | null
+          short_description: string | null
+          start_time: string | null
+          therapist_id: string | null
+          units: number | null
+          updated_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_cpt_entries_cpt_code_id_fkey"
+            columns: ["cpt_code_id"]
+            isOneToOne: false
+            referencedRelation: "cpt_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_cpt_entries_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Functions: {
-      _is_admin: { Args: { uid: string }; Returns: boolean }
-      _is_therapist: { Args: { uid: string }; Returns: boolean }
-      acquire_session_hold: {
+      _is_admin: {
         Args: {
-          p_actor_id?: string
-          p_client_id: string
-          p_end_time: string
-          p_hold_seconds?: number
-          p_session_id?: string
-          p_start_time: string
-          p_therapist_id: string
+          uid: string
         }
-        Returns: Json
+        Returns: boolean
       }
+      _is_therapist: {
+        Args: {
+          uid: string
+        }
+        Returns: boolean
+      }
+      acquire_session_hold:
+        | {
+            Args: {
+              p_therapist_id: string
+              p_client_id: string
+              p_start_time: string
+              p_end_time: string
+              p_session_id?: string
+              p_hold_seconds?: number
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_therapist_id: string
+              p_client_id: string
+              p_start_time: string
+              p_end_time: string
+              p_session_id?: string
+              p_hold_seconds?: number
+              p_actor_id?: string
+            }
+            Returns: Json
+          }
       admin_reset_user_password: {
         Args: {
-          create_if_not_exists?: boolean
-          new_password: string
           user_email: string
+          new_password: string
+          create_if_not_exists?: boolean
         }
         Returns: Json
       }
       analyze_therapist_workload: {
-        Args: { p_analysis_period: number; p_therapist_id: string }
+        Args: {
+          p_therapist_id?: string
+          p_analysis_period?: number
+        }
         Returns: {
-          actual_hours: number
-          efficiency_score: number
-          full_name: string
-          recommendations: Json
-          target_hours: number
           therapist_id: string
+          therapist_name: string
           utilization_rate: number
+          total_hours: number
+          target_hours: number
+          efficiency_score: number
+          recommendations: Json
           workload_distribution: Json
         }[]
       }
       assign_admin_role: {
-        Args: { organization_id: string; reason?: string; user_email: string }
+        Args: {
+          user_email: string
+          organization_id: string
+          reason?: string
+        }
         Returns: undefined
       }
       assign_therapist_role:
-        | { Args: { p_therapist_id: string }; Returns: undefined }
-        | { Args: { p_email: string; p_user_id: string }; Returns: undefined }
+        | {
+            Args: {
+              p_email: string
+              p_user_id: string
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_therapist_id: string
+            }
+            Returns: undefined
+          }
       assign_user_role: {
         Args: {
-          expires_at_param?: string
-          granted_by_uuid?: string
-          role_name: string
           user_uuid: string
+          role_name: string
+          granted_by_uuid?: string
+          expires_at_param?: string
         }
         Returns: boolean
       }
       cache_ai_response: {
         Args: {
           p_cache_key: string
-          p_expires_at?: string
-          p_metadata: Json
           p_query_text: string
           p_response_text: string
+          p_metadata: Json
+          p_expires_at?: string
         }
         Returns: undefined
       }
+      calculate_efficiency_score: {
+        Args: {
+          p_therapist_id: string
+          p_actual_hours: number
+          p_session_count: number
+        }
+        Returns: number
+      }
       calculate_therapist_client_compatibility: {
-        Args: { p_client_id: string; p_therapist_id: string }
+        Args: {
+          p_therapist_id: string
+          p_client_id: string
+        }
         Returns: number
       }
       calculate_time_slot_score: {
         Args: {
-          p_client_id: string
-          p_client_preferences: Json
+          p_slot_time: string
           p_day_of_week: number
           p_hour_of_day: number
-          p_slot_time: string
+          p_therapist_prefs: Json
+          p_client_prefs: Json
           p_therapist_id: string
-          p_therapist_preferences: Json
+          p_client_id: string
         }
         Returns: number
       }
       can_access_client_documents: {
-        Args: { client_id: string }
+        Args: {
+          client_id: string
+        }
         Returns: boolean
       }
       check_migration_status: {
-        Args: never
+        Args: Record<PropertyKey, never>
         Returns: {
-          applied_at: string
-          is_applied: boolean
           migration_name: string
+          is_applied: boolean
+          applied_at: string
         }[]
       }
       check_performance_thresholds: {
-        Args: { p_current_value: number; p_metric_name: string }
+        Args: {
+          p_metric_name: string
+          p_current_value: number
+        }
         Returns: undefined
       }
-      cleanup_ai_cache: { Args: never; Returns: number }
-      cleanup_expired_ai_cache: { Args: never; Returns: number }
-      cleanup_performance_data: { Args: never; Returns: number }
-      client_email_exists: { Args: { p_email: string }; Returns: boolean }
-      confirm_session_hold: {
+      cleanup_ai_cache: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      cleanup_expired_ai_cache: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      cleanup_performance_data: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      client_email_exists: {
         Args: {
-          p_actor_id: string
-          p_session_data: Json
-          p_session_hold_id: string
+          p_email: string
         }
-        Returns: string
+        Returns: boolean
+      }
+      confirm_session_hold:
+        | {
+            Args: {
+              p_hold_key: string
+              p_session: Json
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_session_hold_id: string
+              p_session_data: Json
+              p_actor_id: string
+            }
+            Returns: string
+          }
+      count_admin_users: {
+        Args: {
+          organization_id?: string
+        }
+        Returns: number
       }
       create_admin_invite: {
         Args: {
@@ -3122,10 +4151,13 @@ export type Database = {
         Returns: string
       }
       create_client: {
-        Args: { p_client_data: Json }
+        Args: {
+          p_client_data: Json
+        }
         Returns: {
           address_line1: string | null
           address_line2: string | null
+          assessment_units: number | null
           authorized_hours_per_month: number | null
           availability_hours: Json | null
           avoid_rush_hour: boolean | null
@@ -3185,301 +4217,449 @@ export type Database = {
           updated_by: string | null
           zip_code: string | null
         }
-        SetofOptions: {
-          from: "*"
-          to: "clients"
-          isOneToOne: true
-          isSetofReturn: false
-        }
       }
-      create_super_admin: { Args: { user_email: string }; Returns: undefined }
-      current_user_is_super_admin: { Args: never; Returns: boolean }
+      create_super_admin: {
+        Args: {
+          user_email: string
+        }
+        Returns: undefined
+      }
+      current_user_is_super_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       detect_scheduling_conflicts: {
         Args: {
+          p_start_date: string
           p_end_date: string
           p_include_suggestions?: boolean
-          p_start_date: string
         }
         Returns: {
-          affected_sessions: Json
           conflict_id: string
           conflict_type: string
           severity: number
+          affected_sessions: Json
           suggested_resolutions: Json
         }[]
       }
       enqueue_impersonation_revocation:
         | {
-            Args: { p_audit_id: string; p_token_jti: string }
+            Args: {
+              p_audit_id: string
+              p_token_jti: string
+            }
             Returns: undefined
           }
         | {
-            Args: { p_audit_id: string; p_token_jti: string }
+            Args: {
+              p_audit_id: string
+              p_token_jti: string
+            }
             Returns: undefined
           }
       ensure_admin_role:
-        | { Args: { user_email: string }; Returns: undefined }
-        | { Args: never; Returns: undefined }
-      ensure_all_users_admin: { Args: never; Returns: undefined }
+        | {
+            Args: Record<PropertyKey, never>
+            Returns: undefined
+          }
+        | {
+            Args: {
+              user_email: string
+            }
+            Returns: undefined
+          }
+      ensure_all_users_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       ensure_user_has_admin_role:
-        | { Args: { p_user_id: string }; Returns: undefined }
-        | { Args: never; Returns: undefined }
+        | {
+            Args: Record<PropertyKey, never>
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_user_id: string
+            }
+            Returns: undefined
+          }
       generate_semantic_cache_key: {
-        Args: { p_context_hash?: string; p_query_text: string }
+        Args: {
+          p_query_text: string
+          p_context_hash?: string
+        }
         Returns: string
+      }
+      generate_slot_reasoning: {
+        Args: {
+          p_slot_time: string
+          p_therapist_prefs: Json
+          p_client_prefs: Json
+          p_therapist_id: string
+          p_client_id: string
+        }
+        Returns: Json
       }
       generate_workload_recommendations: {
         Args: {
-          p_actual_hours: number
-          p_session_count: number
-          p_target_hours: number
           p_therapist_id: string
+          p_actual_hours: number
+          p_target_hours: number
+          p_session_count: number
         }
         Returns: Json
       }
       get_admin_users:
-        | { Args: { p_org_id: string }; Returns: Json }
-        | { Args: never; Returns: Json }
-      get_ai_cache_metrics: {
-        Args: never
+        | {
+            Args: Record<PropertyKey, never>
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_org_id: string
+            }
+            Returns: Json
+          }
+      get_admin_users_paged: {
+        Args: {
+          organization_id?: string
+          p_limit?: number
+          p_offset?: number
+        }
         Returns: {
-          cache_size_mb: number
-          expired_entries: number
+          created_at: string | null
+          email: string | null
+          id: string | null
+          raw_user_meta_data: Json | null
+          user_id: string | null
+          user_role_id: string | null
+        }[]
+      }
+      get_ai_cache_metrics: {
+        Args: Record<PropertyKey, never>
+        Returns: {
           hit_rate: number
+          cache_size_mb: number
           total_entries: number
+          expired_entries: number
         }[]
       }
       get_alternative_therapists: {
-        Args: { p_client_id: string; p_end_time: string; p_start_time: string }
+        Args: {
+          p_client_id: string
+          p_start_time: string
+          p_end_time: string
+        }
         Returns: Json
       }
       get_alternative_times: {
         Args: {
-          p_client_id: string
-          p_reference_time: string
           p_therapist_id: string
+          p_client_id: string
+          p_original_time: string
         }
         Returns: Json
       }
       get_authorization_metrics:
         | {
-            Args: { p_end_date: string; p_start_date: string }
+            Args: {
+              p_start_date: string
+              p_end_date: string
+            }
             Returns: {
-              approval_rate: number
-              approval_ratio: number
+              total_authorizations: number
               approved_authorizations: number
+              pending_authorizations: number
               denied_authorizations: number
               expired_authorizations: number
-              pending_authorizations: number
-              total_approved_units: number
-              total_authorizations: number
+              approval_rate: number
               total_requested_units: number
+              total_approved_units: number
+              approval_ratio: number
             }[]
           }
         | {
-            Args: { p_end_date: string; p_start_date: string }
+            Args: {
+              p_start_date: string
+              p_end_date: string
+            }
             Returns: {
+              total_authorizations: number
               approved_authorizations: number
+              pending_authorizations: number
               denied_authorizations: number
               expired_authorizations: number
-              pending_authorizations: number
-              total_approved_units: number
-              total_authorizations: number
               total_requested_units: number
+              total_approved_units: number
               units_by_service_code: Json
             }[]
           }
       get_billing_metrics:
         | {
-            Args: { p_end_date: string; p_start_date: string }
+            Args: {
+              p_start_date: string
+              p_end_date: string
+            }
             Returns: {
-              amount_by_client: Json
-              collection_rate: number
+              total_billed: number
               paid_amount: number
               pending_amount: number
-              records_by_status: Json
               rejected_amount: number
-              total_billed: number
+              amount_by_status: Json
+              amount_by_client: Json
             }[]
           }
         | {
-            Args: { p_end_date: string; p_start_date: string }
+            Args: {
+              p_start_date: string
+              p_end_date: string
+            }
             Returns: {
-              amount_by_client: Json
-              amount_by_status: Json
+              total_billed: number
               paid_amount: number
               pending_amount: number
               rejected_amount: number
-              total_billed: number
+              collection_rate: number
+              records_by_status: Json
+              amount_by_client: Json
             }[]
           }
       get_cached_ai_response: {
-        Args: { p_cache_key: string }
+        Args: {
+          p_cache_key: string
+        }
         Returns: {
-          metadata: Json
           response_text: string
+          metadata: Json
         }[]
       }
-      get_client_documents: { Args: { p_client_id: string }; Returns: Json }
+      get_client_documents: {
+        Args: {
+          p_client_id: string
+        }
+        Returns: Json
+      }
       get_client_metrics:
         | {
-            Args: { p_end_date: string; p_start_date: string }
+            Args: Record<PropertyKey, never>
             Returns: {
-              active_clients: number
-              activity_rate: number
-              clients_by_age: Json
-              clients_by_gender: Json
-              clients_by_service_preference: Json
-              inactive_clients: number
               total_clients: number
+              active_clients: number
+              new_clients_this_month: number
             }[]
           }
         | {
-            Args: { p_end_date: string; p_start_date: string }
+            Args: {
+              p_start_date: string
+              p_end_date: string
+            }
             Returns: {
+              total_clients: number
+              active_clients: number
+              inactive_clients: number
+              activity_rate: number
+              clients_by_service_preference: Json
+              clients_by_gender: Json
+              clients_by_age: Json
+            }[]
+          }
+        | {
+            Args: {
+              p_start_date: string
+              p_end_date: string
+            }
+            Returns: {
+              total_clients: number
               active_clients: number
               inactive_clients: number
               new_clients: number
               service_preferences: Json
               sessions_per_client: Json
-              total_clients: number
             }[]
           }
-        | {
-            Args: never
-            Returns: {
-              active_clients: number
-              new_clients_this_month: number
-              total_clients: number
-            }[]
-          }
-      get_dashboard_data: { Args: never; Returns: Json }
-      get_db_version: { Args: never; Returns: string }
-      get_dropdown_data: { Args: never; Returns: Json }
+      get_client_preference_factor: {
+        Args: {
+          p_client_id: string
+          p_slot_time: string
+        }
+        Returns: number
+      }
+      get_dashboard_data: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      get_db_version: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      get_dropdown_data: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       get_guardian_client_portal: {
-        Args: { p_client_id?: string }
+        Args: {
+          p_client_id?: string
+        }
         Returns: {
+          client_id: string
+          client_full_name: string
           client_date_of_birth: string
           client_email: string
-          client_full_name: string
-          client_id: string
           client_phone: string
           client_status: string
-          guardian_is_primary: boolean
-          guardian_notes: Json
           guardian_relationship: string
+          guardian_is_primary: boolean
           upcoming_sessions: Json
+          guardian_notes: Json
         }[]
+      }
+      get_historical_success_rate: {
+        Args: {
+          p_therapist_id: string
+          p_client_id: string
+        }
+        Returns: number
       }
       get_optimal_time_slots: {
         Args: {
-          p_client_preferences: Json
-          p_date_range: Json
-          p_duration: number
           p_therapist_preferences: Json
+          p_client_preferences: Json
+          p_duration?: number
+          p_date_range?: Json
         }
         Returns: {
+          suggested_time: string
+          optimality_score: number
+          reasoning: Json
           availability_data: Json
-          reasoning: string
-          score: number
-          slot_time: string
         }[]
       }
       get_organization_id_from_metadata: {
-        Args: { p_metadata: Json }
+        Args: {
+          p_metadata: Json
+        }
         Returns: string
       }
       get_performance_metrics: {
-        Args: { p_time_range?: string }
+        Args: {
+          p_time_range?: string
+        }
         Returns: Json
       }
       get_performance_recommendations: {
-        Args: never
+        Args: Record<PropertyKey, never>
         Returns: {
           category: string
+          recommendation: string
+          impact: string
           difficulty: string
           estimated_improvement: string
-          impact: string
-          recommendation: string
         }[]
       }
       get_recent_chat_history:
         | {
-            Args: { p_conversation_id: string; p_limit?: number }
+            Args: {
+              p_conversation_id: string
+              p_limit?: number
+            }
             Returns: {
-              action_data: Json
-              action_type: string
+              id: string
+              conversation_id: string
+              role: string
               content: string
               context: Json
-              conversation_id: string
+              action_type: string
+              action_data: Json
               created_at: string
-              id: string
-              role: string
             }[]
           }
         | {
-            Args: { p_conversation_id: string; p_limit?: number }
+            Args: {
+              p_conversation_id: string
+              p_limit?: number
+            }
             Returns: {
-              action_data: Json
-              action_type: string
+              id: string
+              conversation_id: string
+              role: string
               content: string
               context: Json
-              conversation_id: string
+              action_type: string
+              action_data: Json
               created_at: string
-              id: string
-              role: string
             }[]
           }
       get_schedule_data_batch: {
-        Args: { p_end_date: string; p_start_date: string }
+        Args: {
+          p_start_date: string
+          p_end_date: string
+        }
         Returns: Json
+      }
+      get_scheduling_efficiency_factor: {
+        Args: {
+          p_therapist_id: string
+          p_slot_time: string
+        }
+        Returns: number
       }
       get_session_metrics:
         | {
             Args: {
-              p_client_id: string
-              p_end_date: string
               p_start_date: string
-              p_therapist_id: string
+              p_end_date: string
+              p_therapist_id?: string
+              p_client_id?: string
             }
             Returns: {
-              by_status: Json
-              top_sessions: Json
               total_sessions: number
+              completed_sessions: number
+              cancelled_sessions: number
+              no_show_sessions: number
+              sessions_by_therapist: Json
+              sessions_by_client: Json
+              sessions_by_day: Json
             }[]
           }
         | {
             Args: {
-              p_client_id: string
-              p_end_date: string
               p_start_date: string
-              p_therapist_id: string
+              p_end_date: string
+              p_therapist_id?: string
+              p_client_id?: string
             }
             Returns: {
-              by_status: Json
-              top_sessions: Json
               total_sessions: number
+              completed_sessions: number
+              cancelled_sessions: number
+              no_show_sessions: number
+              sessions_by_therapist: Json
+              sessions_by_client: Json
+              sessions_by_day: Json
             }[]
           }
       get_session_notes_with_compliance: {
-        Args: { p_client_id: string; p_limit?: number }
+        Args: {
+          p_client_id: string
+          p_limit?: number
+        }
         Returns: {
-          ai_confidence_score: number
-          california_compliant: boolean
-          created_at: string
-          insurance_ready: boolean
           note_id: string
           session_date: string
-          signed_at: string
           therapist_name: string
+          ai_confidence_score: number
+          california_compliant: boolean
+          insurance_ready: boolean
+          signed_at: string
+          created_at: string
         }[]
       }
       get_sessions_optimized: {
         Args: {
-          p_client_id?: string
-          p_end_date: string
           p_start_date: string
+          p_end_date: string
           p_therapist_id?: string
+          p_client_id?: string
         }
         Returns: {
           session_data: Json
@@ -3488,133 +4668,180 @@ export type Database = {
       get_sessions_report:
         | {
             Args: {
-              p_client_id: string
-              p_end_date: string
               p_start_date: string
-              p_status: string
-              p_therapist_id: string
+              p_end_date: string
             }
             Returns: {
-              client_name: string
-              session_day: string
               session_id: string
+              client_name: string
+              therapist_name: string
+              session_day: string
               session_type: string
               status: string
-              therapist_name: string
-            }[]
-          }
-        | {
-            Args: { p_end_date: string; p_start_date: string }
-            Returns: {
-              client_name: string
-              session_day: string
-              session_id: string
-              session_type: string
-              status: string
-              therapist_name: string
             }[]
           }
         | {
             Args: {
-              p_client_id: string
-              p_end_date: string
               p_start_date: string
-              p_status: string
+              p_end_date: string
               p_therapist_id: string
+              p_client_id: string
+              p_status: string
             }
             Returns: {
-              client_name: string
-              session_day: string
               session_id: string
+              client_name: string
+              therapist_name: string
+              session_day: string
               session_type: string
               status: string
-              therapist_name: string
             }[]
           }
+        | {
+            Args: {
+              p_start_date: string
+              p_end_date: string
+              p_therapist_id: string
+              p_client_id: string
+              p_status: string
+            }
+            Returns: {
+              session_id: string
+              client_name: string
+              therapist_name: string
+              session_day: string
+              session_type: string
+              status: string
+            }[]
+          }
+      get_slot_availability_context: {
+        Args: {
+          p_slot_time: string
+          p_therapist_id: string
+          p_client_id: string
+        }
+        Returns: Json
+      }
       get_system_alerts: {
-        Args: { p_limit?: number }
+        Args: {
+          p_limit?: number
+        }
         Returns: {
-          alert_type: string
-          created_at: string
-          current_value: number
           id: string
-          message: string
+          alert_type: string
           metric_name: string
-          resolved: boolean
+          current_value: number
           threshold_value: number
+          message: string
+          created_at: string
+          resolved: boolean
         }[]
       }
       get_therapist_availability: {
-        Args: { p_end: string; p_start: string; p_therapist_id: string }
+        Args: {
+          p_therapist_id: string
+          p_start: string
+          p_end: string
+        }
         Returns: Json
       }
       get_therapist_metrics:
         | {
-            Args: { p_end_date: string; p_start_date: string }
+            Args: {
+              p_start_date: string
+              p_end_date: string
+            }
             Returns: {
+              total_therapists: number
               active_therapists: number
               inactive_therapists: number
+              specialties: Json
               service_types: Json
               sessions_per_therapist: Json
-              specialties: Json
-              total_therapists: number
             }[]
           }
         | {
-            Args: { p_end_date: string; p_start_date: string }
+            Args: {
+              p_start_date: string
+              p_end_date: string
+            }
             Returns: {
+              total_therapists: number
               active_therapists: number
               inactive_therapists: number
+              specialties: Json
               service_types: Json
               sessions_per_therapist: Json
-              specialties: Json
-              total_therapists: number
             }[]
           }
       get_therapist_workload_factor: {
-        Args: { p_slot_time: string; p_therapist_id: string }
+        Args: {
+          p_therapist_id: string
+          p_slot_time: string
+        }
         Returns: number
       }
       get_user_role_from_junction: {
-        Args: { p_user_id: string }
+        Args: {
+          p_user_id: string
+        }
         Returns: Database["public"]["Enums"]["role_type"]
       }
-      get_user_roles: { Args: { p_user_id?: string }; Returns: Json }
-      get_user_therapist_id: { Args: never; Returns: string }
+      get_user_roles: {
+        Args: {
+          p_user_id?: string
+        }
+        Returns: Json
+      }
+      get_user_therapist_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       guardian_contact_metadata: {
-        Args: { p_guardian_id?: string }
+        Args: {
+          p_guardian_id?: string
+        }
         Returns: {
           client_id: string
           metadata: Json
         }[]
       }
-      has_role: { Args: { target_role: string }; Returns: boolean }
+      has_role: {
+        Args: {
+          target_role: string
+        }
+        Returns: boolean
+      }
       insert_session_with_billing: {
         Args: {
+          p_session: Json
           p_cpt_code: string
           p_modifiers?: string[]
-          p_session: Json
           p_session_id?: string
         }
         Returns: Json
       }
-      is_admin: { Args: never; Returns: boolean }
-      is_super_admin: { Args: never; Returns: boolean }
-      is_valid_email: { Args: { email: string }; Returns: boolean }
-      is_valid_url: { Args: { url: string }; Returns: boolean }
+      is_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      is_super_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      is_valid_email: {
+        Args: {
+          email: string
+        }
+        Returns: boolean
+      }
+      is_valid_url: {
+        Args: {
+          url: string
+        }
+        Returns: boolean
+      }
       log_ai_performance:
-        | {
-            Args: {
-              p_cache_hit?: boolean
-              p_conversation_id?: string
-              p_error_occurred?: boolean
-              p_function_called?: string
-              p_response_time_ms: number
-              p_token_usage?: Json
-              p_user_id?: string
-            }
-            Returns: undefined
-          }
         | {
             Args: {
               function_name: string
@@ -3626,121 +4853,215 @@ export type Database = {
           }
         | {
             Args: {
-              p_cache_hit?: boolean
-              p_conversation_id?: string
-              p_error_occurred?: boolean
-              p_function_called?: string
               p_response_time_ms: number
+              p_cache_hit?: boolean
               p_token_usage?: Json
+              p_function_called?: string
+              p_error_occurred?: boolean
               p_user_id?: string
+              p_conversation_id?: string
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_response_time_ms: number
+              p_cache_hit?: boolean
+              p_token_usage?: Json
+              p_function_called?: string
+              p_error_occurred?: boolean
+              p_user_id?: string
+              p_conversation_id?: string
             }
             Returns: undefined
           }
       log_db_performance:
         | {
             Args: {
-              p_cache_hit?: boolean
-              p_execution_time_ms: number
               p_query_type: string
+              p_execution_time_ms: number
               p_rows_affected?: number
+              p_cache_hit?: boolean
               p_table_name?: string
             }
             Returns: undefined
           }
         | {
             Args: {
-              execution_time: unknown
               query_name: string
+              execution_time: unknown
               query_text: string
             }
             Returns: undefined
           }
-      log_error_event: { Args: { payload: Json }; Returns: undefined }
+      log_error_event:
+        | {
+            Args: {
+              p_error_type: string
+              p_message: string
+              p_stack_trace?: string
+              p_context?: Json
+              p_details?: Json
+              p_severity?: string
+              p_url?: string
+              p_user_agent?: string
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              payload: Json
+            }
+            Returns: undefined
+          }
       log_function_performance:
         | {
             Args: {
-              p_execution_time_ms: number
               p_function_name: string
+              p_duration_ms: number
+              p_result_size_kb?: number
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_function_name: string
+              p_execution_time_ms: number
               p_parameters?: Json
               p_result_size?: number
             }
             Returns: undefined
           }
+      manage_admin_users:
         | {
             Args: {
-              p_duration_ms: number
-              p_function_name: string
-              p_result_size_kb?: number
+              operation: string
+              target_user_id: string
             }
             Returns: undefined
           }
-      manage_admin_users: {
-        Args: {
-          caller_organization_id: string
-          operation: string
-          target_user_id: string
-        }
-        Returns: undefined
-      }
+        | {
+            Args: {
+              operation: string
+              target_user_id: string
+              caller_organization_id: string
+            }
+            Returns: undefined
+          }
       process_client_document: {
         Args: {
           p_client_id: string
           p_document_type: string
-          p_file_name: string
           p_file_path: string
+          p_file_name: string
           p_file_size: number
           p_file_type: string
         }
         Returns: Json
       }
       prune_admin_actions: {
-        Args: { retention_days?: number }
+        Args: {
+          retention_days?: number
+        }
+        Returns: number
+      }
+      prune_admin_invite_tokens: {
+        Args: Record<PropertyKey, never>
         Returns: number
       }
       prune_session_transcripts: {
-        Args: { retention_days?: number }
+        Args: {
+          retention_days?: number
+        }
         Returns: {
-          deleted_segments: number
           deleted_transcripts: number
+          deleted_segments: number
         }[]
       }
       record_session_audit: {
         Args: {
+          p_session_id: string
+          p_event_type: string
           p_actor_id?: string
           p_event_payload?: Json
-          p_event_type: string
-          p_session_id: string
         }
         Returns: undefined
       }
       remove_user_role: {
-        Args: { removed_by_uuid?: string; role_name: string; user_uuid: string }
+        Args: {
+          user_uuid: string
+          role_name: string
+          removed_by_uuid?: string
+        }
         Returns: boolean
       }
       resolve_performance_alert: {
-        Args: { p_alert_id: string; p_resolution_note?: string }
+        Args: {
+          p_alert_id: string
+          p_resolution_note?: string
+        }
         Returns: boolean
       }
-      temp_validate_time: { Args: never; Returns: undefined }
+      temp_validate_time: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       update_client_documents: {
-        Args: { p_client_id: string; p_documents: Json }
+        Args: {
+          p_client_id: string
+          p_documents: Json
+        }
         Returns: undefined
       }
       user_has_any_role: {
-        Args: { role_names: string[]; user_uuid?: string }
+        Args: {
+          role_names: string[]
+          user_uuid?: string
+        }
         Returns: boolean
       }
       user_has_role:
-        | { Args: { role_name: string; user_uuid?: string }; Returns: boolean }
-        | { Args: { role_name: string }; Returns: boolean }
-      validate_feature_flag_metadata: { Args: { obj: Json }; Returns: boolean }
-      validate_organization_metadata: { Args: { obj: Json }; Returns: boolean }
-      validate_performance_improvements: { Args: never; Returns: Json }
-      validate_session_note_compliance: {
-        Args: { p_note_id: string }
+        | {
+            Args: {
+              role_name: string
+            }
+            Returns: boolean
+          }
+        | {
+            Args: {
+              role_name: string
+              user_uuid?: string
+            }
+            Returns: boolean
+          }
+      validate_feature_flag_metadata: {
+        Args: {
+          obj: Json
+        }
+        Returns: boolean
+      }
+      validate_organization_metadata: {
+        Args: {
+          obj: Json
+        }
+        Returns: boolean
+      }
+      validate_performance_improvements: {
+        Args: Record<PropertyKey, never>
         Returns: Json
       }
-      validate_time_interval_new: { Args: { t: string }; Returns: boolean }
+      validate_session_note_compliance: {
+        Args: {
+          p_note_id: string
+        }
+        Returns: Json
+      }
+      validate_time_interval_new: {
+        Args: {
+          t: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
       role_type:
@@ -3763,33 +5084,27 @@ export type Database = {
   }
 }
 
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
-
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+type PublicSchema = Database[Extract<keyof Database, "public">]
 
 export type Tables<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+  PublicTableNameOrOptions extends
+    | keyof (PublicSchema["Tables"] & PublicSchema["Views"])
+    | { schema: keyof Database },
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
+        Database[PublicTableNameOrOptions["schema"]]["Views"])
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
+      Database[PublicTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+  : PublicTableNameOrOptions extends keyof (PublicSchema["Tables"] &
+        PublicSchema["Views"])
+    ? (PublicSchema["Tables"] &
+        PublicSchema["Views"])[PublicTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -3797,24 +5112,20 @@ export type Tables<
     : never
 
 export type TablesInsert<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+  PublicTableNameOrOptions extends
+    | keyof PublicSchema["Tables"]
+    | { schema: keyof Database },
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
+    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
         Insert: infer I
       }
       ? I
@@ -3822,24 +5133,20 @@ export type TablesInsert<
     : never
 
 export type TablesUpdate<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+  PublicTableNameOrOptions extends
+    | keyof PublicSchema["Tables"]
+    | { schema: keyof Database },
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
+    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
         Update: infer U
       }
       ? U
@@ -3847,50 +5154,30 @@ export type TablesUpdate<
     : never
 
 export type Enums<
-  DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+  PublicEnumNameOrOptions extends
+    | keyof PublicSchema["Enums"]
+    | { schema: keyof Database },
+  EnumName extends PublicEnumNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
-> = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+> = PublicEnumNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : PublicEnumNameOrOptions extends keyof PublicSchema["Enums"]
+    ? PublicSchema["Enums"][PublicEnumNameOrOptions]
     : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof DatabaseWithoutInternals },
+    | keyof PublicSchema["CompositeTypes"]
+    | { schema: keyof Database },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof Database
   }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    ? keyof Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never = never,
-> = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+> = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof PublicSchema["CompositeTypes"]
+    ? PublicSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
-export const Constants = {
-  public: {
-    Enums: {
-      role_type: [
-        "client",
-        "therapist",
-        "staff",
-        "supervisor",
-        "admin",
-        "super_admin",
-      ],
-    },
-  },
-} as const

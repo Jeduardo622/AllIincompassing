@@ -10,12 +10,17 @@
     - Returns empty payloads when the caller has no organization context.
 */
 
+DROP FUNCTION IF EXISTS get_dropdown_data();
+DROP FUNCTION IF EXISTS get_sessions_optimized(timestamptz, timestamptz, uuid, uuid);
+DROP FUNCTION IF EXISTS get_schedule_data_batch(timestamptz, timestamptz);
+DROP FUNCTION IF EXISTS get_session_metrics(date, date, uuid, uuid);
+
 -- Scope get_dropdown_data to the caller organization
 CREATE OR REPLACE FUNCTION get_dropdown_data()
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, auth
 AS $$
 DECLARE
   v_org uuid := app.current_user_organization_id();
@@ -60,38 +65,20 @@ BEGIN
     ORDER BY full_name
   ) c;
 
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'locations'
-      AND column_name = 'organization_id'
-  ) THEN
-    EXECUTE $$
-      SELECT jsonb_agg(jsonb_build_object('id', id, 'name', name))
-      FROM (
-        SELECT DISTINCT id, name
-        FROM locations
-        WHERE is_active = true
-          AND organization_id = $1
-        ORDER BY name
-      ) l
-    $$ INTO v_locations USING v_org;
-  ELSE
-    SELECT jsonb_agg(
-      jsonb_build_object(
-        'id', l.id,
-        'name', l.name
-      )
+  SELECT jsonb_agg(
+    jsonb_build_object(
+      'id', l.id,
+      'name', l.name
     )
-    INTO v_locations
-    FROM (
-      SELECT DISTINCT id, name
-      FROM locations
-      WHERE is_active = true
-      ORDER BY name
-    ) l;
-  END IF;
+  )
+  INTO v_locations
+  FROM (
+    SELECT DISTINCT id, name
+    FROM locations
+    WHERE is_active = true
+      AND organization_id = v_org
+    ORDER BY name
+  ) l;
 
   RETURN jsonb_build_object(
     'therapists', COALESCE(v_therapists, '[]'::jsonb),
@@ -113,7 +100,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, auth
 AS $$
 DECLARE
   v_org uuid := app.current_user_organization_id();
@@ -173,7 +160,7 @@ CREATE OR REPLACE FUNCTION get_schedule_data_batch(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, auth
 AS $$
 DECLARE
   v_org uuid := app.current_user_organization_id();
@@ -271,7 +258,7 @@ CREATE OR REPLACE FUNCTION get_session_metrics(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, auth
 AS $$
 DECLARE
   v_org uuid := app.current_user_organization_id();

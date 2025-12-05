@@ -1,0 +1,9 @@
+Created preview branch:
+
+  
+   ID                   | NAME               | DEFAULT | GIT BRANCH | WITH DATA | STATUS           | CREATED AT (UTC)    | UPDATED AT (UTC)    
+  ----------------------|--------------------|---------|------------|-----------|------------------|---------------------|---------------------
+   ioeaxbymdmwbppkujhan | drift-fix-20251204 | false   |            | false     | CREATING_PROJECT | 2025-12-04 17:32:48 | 2025-12-04 17:32:48 
+
+A new version of Supabase CLI is available: v2.65.5 (currently installed v2.58.5)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

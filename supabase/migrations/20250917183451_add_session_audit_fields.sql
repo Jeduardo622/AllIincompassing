@@ -79,6 +79,8 @@ before insert or update on sessions
 for each row
 execute function set_sessions_audit_fields();
 
+drop function if exists confirm_session_hold(uuid, jsonb, uuid);
+
 create or replace function confirm_session_hold(
   p_hold_key uuid,
   p_session jsonb,
@@ -270,6 +272,8 @@ begin
 end;
 $$;
 
+drop function if exists get_sessions_optimized(timestamptz, timestamptz, uuid, uuid);
+
 create or replace function get_sessions_optimized(
   p_start_date timestamptz,
   p_end_date timestamptz,
@@ -324,6 +328,8 @@ begin
   order by s.start_time;
 end;
 $$;
+
+drop function if exists get_schedule_data_batch(timestamptz, timestamptz);
 
 create or replace function get_schedule_data_batch(
   p_start_date timestamptz,

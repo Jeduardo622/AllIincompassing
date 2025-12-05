@@ -21,12 +21,14 @@ CREATE TABLE IF NOT EXISTS public.feature_flag_plan_history (
 
 ALTER TABLE public.feature_flag_plan_history ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Super admins can read feature flag history" ON public.feature_flag_plan_history;
 CREATE POLICY "Super admins can read feature flag history"
 ON public.feature_flag_plan_history
 FOR SELECT
 TO authenticated
 USING (app.current_user_is_super_admin());
 
+DROP POLICY IF EXISTS "Super admins can insert feature flag history" ON public.feature_flag_plan_history;
 CREATE POLICY "Super admins can insert feature flag history"
 ON public.feature_flag_plan_history
 FOR INSERT
@@ -42,11 +44,13 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS feature_flag_plan_history_prevent_update ON public.feature_flag_plan_history;
 CREATE TRIGGER feature_flag_plan_history_prevent_update
 BEFORE UPDATE ON public.feature_flag_plan_history
 FOR EACH ROW
 EXECUTE FUNCTION public.prevent_feature_flag_plan_history_mutations();
 
+DROP TRIGGER IF EXISTS feature_flag_plan_history_prevent_delete ON public.feature_flag_plan_history;
 CREATE TRIGGER feature_flag_plan_history_prevent_delete
 BEFORE DELETE ON public.feature_flag_plan_history
 FOR EACH ROW
@@ -113,6 +117,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS organization_feature_flags_history_aiud ON public.organization_feature_flags;
 CREATE TRIGGER organization_feature_flags_history_aiud
 AFTER INSERT OR UPDATE OR DELETE ON public.organization_feature_flags
 FOR EACH ROW
@@ -182,6 +187,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS organization_plans_history_aiud ON public.organization_plans;
 CREATE TRIGGER organization_plans_history_aiud
 AFTER INSERT OR UPDATE OR DELETE ON public.organization_plans
 FOR EACH ROW

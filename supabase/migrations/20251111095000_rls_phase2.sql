@@ -31,6 +31,10 @@ drop policy if exists therapists_select on public.therapists;
 drop policy if exists therapists_update_self on public.therapists;
 drop policy if exists consolidated_select_700633 on public.therapists;
 drop policy if exists org_write_therapists on public.therapists;
+drop policy if exists therapists_insert_scope on public.therapists;
+drop policy if exists therapists_select_scope on public.therapists;
+drop policy if exists therapists_update_scope on public.therapists;
+drop policy if exists therapists_delete_scope on public.therapists;
 
 create policy therapists_insert_scope on public.therapists
   for insert
@@ -63,8 +67,8 @@ create policy therapists_select_scope on public.therapists
       )
         and ur.is_active = true
         and (
-          r.permissions @> '[\"*\"]'::jsonb
-          or r.permissions @> '[\"view_clients\"]'::jsonb
+          r.permissions @> '["*"]'::jsonb
+          or r.permissions @> '["view_clients"]'::jsonb
         )
     )
     or (

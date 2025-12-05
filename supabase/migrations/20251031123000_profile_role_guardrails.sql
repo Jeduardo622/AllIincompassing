@@ -11,6 +11,8 @@
 
 BEGIN;
 
+SELECT set_config('app.bypass_profile_role_guard', 'on', true);
+
 -- Normalise all admin/super_admin profiles to match the auth metadata role.
 WITH metadata_roles AS (
   SELECT
@@ -112,5 +114,7 @@ END;
 $$;
 
 COMMIT;
+
+SELECT set_config('app.bypass_profile_role_guard', 'off', true);
 
 

@@ -1,3 +1,5 @@
+set search_path = public;
+
 -- RLS hardening and function search_path fixes
 
 -- 1) Tighten ai_cache
@@ -5,7 +7,8 @@ ALTER TABLE IF EXISTS public.ai_cache ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS ai_cache_insert_policy ON public.ai_cache;
 DROP POLICY IF EXISTS ai_cache_update_policy ON public.ai_cache;
 DROP POLICY IF EXISTS ai_cache_select_policy ON public.ai_cache;
-CREATE POLICY ai_cache_admin_manage ON public.ai_cache FOR ALL TO authenticated USING (app.is_admin()) WITH CHECK (app.is_admin());
+DROP POLICY IF EXISTS ai_cache_admin_manage ON public.ai_cache;
+CREATE POLICY ai_cache_admin_manage ON public.ai_cache FOR ALL TO authenticated USING (app.user_has_role('admin') OR app.user_has_role('super_admin')) WITH CHECK (app.user_has_role('admin') OR app.user_has_role('super_admin'));
 
 -- 2) Restrict company_settings writes to admins
 DROP POLICY IF EXISTS "Allow authenticated users to insert company settings" ON public.company_settings;
@@ -14,7 +17,7 @@ DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='company_settings' AND policyname='company_settings_admin'
   ) THEN
-    CREATE POLICY company_settings_admin ON public.company_settings FOR ALL TO authenticated USING (app.is_admin()) WITH CHECK (app.is_admin());
+    CREATE POLICY company_settings_admin ON public.company_settings FOR ALL TO authenticated USING (app.user_has_role('admin') OR app.user_has_role('super_admin')) WITH CHECK (app.user_has_role('admin') OR app.user_has_role('super_admin'));
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='company_settings' AND policyname='company_settings_read'
@@ -34,7 +37,7 @@ DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='roles' AND policyname='roles_admin_write'
   ) THEN
-    CREATE POLICY roles_admin_write ON public.roles FOR ALL TO public USING (app.is_admin()) WITH CHECK (app.is_admin());
+    CREATE POLICY roles_admin_write ON public.roles FOR ALL TO public USING (app.user_has_role('admin') OR app.user_has_role('super_admin')) WITH CHECK (app.user_has_role('admin') OR app.user_has_role('super_admin'));
   END IF;
 END $$;
 

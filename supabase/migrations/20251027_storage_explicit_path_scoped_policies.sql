@@ -1,11 +1,19 @@
+set search_path = public;
+
 -- Replace legacy storage policies with explicit, path-scoped policies
 -- This migration drops broad/generic policies and re-creates minimal, named rules
 -- for therapist and client document buckets.
 
-begin;
-
--- Ensure RLS is enabled on storage.objects
-alter table storage.objects enable row level security;
+-- Ensure RLS is enabled on storage.objects (skip if lacking ownership)
+DO $$
+BEGIN
+  BEGIN
+    EXECUTE 'alter table storage.objects enable row level security';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      RAISE NOTICE 'insufficient privileges to alter storage.objects';
+  END;
+END $$;
 
 -- Drop a set of legacy policies (names observed across previous migrations)
 drop policy if exists "Allow authenticated users to upload client documents" on storage.objects;
@@ -36,6 +44,7 @@ drop policy if exists therapist_documents_delete_access on storage.objects;
 -- Re-create explicit path-scoped policies
 
 -- Therapist documents: only within therapists/{auth.uid()}/...
+drop policy if exists storage_therapist_docs_select_self on storage.objects;
 create policy storage_therapist_docs_select_self
   on storage.objects
   for select
@@ -46,6 +55,7 @@ create policy storage_therapist_docs_select_self
     and split_part(name,'/',2) = auth.uid()::text
   );
 
+drop policy if exists storage_therapist_docs_insert_self on storage.objects;
 create policy storage_therapist_docs_insert_self
   on storage.objects
   for insert
@@ -56,6 +66,7 @@ create policy storage_therapist_docs_insert_self
     and split_part(name,'/',2) = auth.uid()::text
   );
 
+drop policy if exists storage_therapist_docs_update_self on storage.objects;
 create policy storage_therapist_docs_update_self
   on storage.objects
   for update
@@ -66,6 +77,7 @@ create policy storage_therapist_docs_update_self
     and split_part(name,'/',2) = auth.uid()::text
   );
 
+drop policy if exists storage_therapist_docs_delete_self on storage.objects;
 create policy storage_therapist_docs_delete_self
   on storage.objects
   for delete
@@ -77,6 +89,7 @@ create policy storage_therapist_docs_delete_self
   );
 
 -- Client documents: admins and super_admins only for now (path must start with clients/)
+drop policy if exists storage_client_docs_select_admin_super on storage.objects;
 create policy storage_client_docs_select_admin_super
   on storage.objects
   for select
@@ -84,9 +97,10 @@ create policy storage_client_docs_select_admin_super
   using (
     bucket_id = 'client-documents'
     and split_part(name,'/',1) = 'clients'
-    and (public.is_admin() or public.is_super_admin())
+    and (app.user_has_role('admin') or app.user_has_role('super_admin'))
   );
 
+drop policy if exists storage_client_docs_insert_admin_super on storage.objects;
 create policy storage_client_docs_insert_admin_super
   on storage.objects
   for insert
@@ -95,10 +109,10 @@ create policy storage_client_docs_insert_admin_super
     bucket_id = 'client-documents'
     and split_part(name,'/',1) = 'clients'
     and (
-      public.is_super_admin()
-      or public.is_admin()
+      app.user_has_role('super_admin')
+      or app.user_has_role('admin')
       or (
-        public.has_role('therapist')
+        app.user_has_role('therapist')
         and exists (
           select 1
           from public.sessions s
@@ -109,6 +123,7 @@ create policy storage_client_docs_insert_admin_super
     )
   );
 
+drop policy if exists storage_client_docs_update_admin_super on storage.objects;
 create policy storage_client_docs_update_admin_super
   on storage.objects
   for update
@@ -117,10 +132,10 @@ create policy storage_client_docs_update_admin_super
     bucket_id = 'client-documents'
     and split_part(name,'/',1) = 'clients'
     and (
-      public.is_super_admin()
-      or public.is_admin()
+      app.user_has_role('super_admin')
+      or app.user_has_role('admin')
       or (
-        public.has_role('therapist')
+        app.user_has_role('therapist')
         and exists (
           select 1
           from public.sessions s
@@ -131,6 +146,7 @@ create policy storage_client_docs_update_admin_super
     )
   );
 
+drop policy if exists storage_client_docs_delete_admin_super on storage.objects;
 create policy storage_client_docs_delete_admin_super
   on storage.objects
   for delete
@@ -139,10 +155,10 @@ create policy storage_client_docs_delete_admin_super
     bucket_id = 'client-documents'
     and split_part(name,'/',1) = 'clients'
     and (
-      public.is_super_admin()
-      or public.is_admin()
+      app.user_has_role('super_admin')
+      or app.user_has_role('admin')
       or (
-        public.has_role('therapist')
+        app.user_has_role('therapist')
         and exists (
           select 1
           from public.sessions s
@@ -152,7 +168,4 @@ create policy storage_client_docs_delete_admin_super
       )
     )
   );
-
-commit;
-
 

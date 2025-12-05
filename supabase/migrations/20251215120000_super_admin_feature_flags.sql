@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS public.organizations (
   updated_by uuid REFERENCES auth.users(id) ON DELETE SET NULL
 );
 
+DROP TRIGGER IF EXISTS organizations_set_updated_at ON public.organizations;
 CREATE TRIGGER organizations_set_updated_at
 BEFORE UPDATE ON public.organizations
 FOR EACH ROW
@@ -88,6 +89,7 @@ CREATE TABLE IF NOT EXISTS public.feature_flags (
 CREATE UNIQUE INDEX IF NOT EXISTS feature_flags_flag_key_key
 ON public.feature_flags (flag_key);
 
+DROP TRIGGER IF EXISTS feature_flags_set_updated_at ON public.feature_flags;
 CREATE TRIGGER feature_flags_set_updated_at
 BEFORE UPDATE ON public.feature_flags
 FOR EACH ROW
@@ -103,6 +105,7 @@ CREATE TABLE IF NOT EXISTS public.plans (
   updated_at timestamptz NOT NULL DEFAULT timezone('utc', now())
 );
 
+DROP TRIGGER IF EXISTS plans_set_updated_at ON public.plans;
 CREATE TRIGGER plans_set_updated_at
 BEFORE UPDATE ON public.plans
 FOR EACH ROW
@@ -143,6 +146,7 @@ ON public.organization_feature_flags (organization_id);
 CREATE INDEX IF NOT EXISTS organization_feature_flags_flag_idx
 ON public.organization_feature_flags (feature_flag_id);
 
+DROP TRIGGER IF EXISTS organization_feature_flags_set_updated_at ON public.organization_feature_flags;
 CREATE TRIGGER organization_feature_flags_set_updated_at
 BEFORE UPDATE ON public.organization_feature_flags
 FOR EACH ROW
@@ -179,6 +183,7 @@ ALTER TABLE public.organization_feature_flags ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.feature_flag_audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- RLS policies for super admin visibility
+DROP POLICY IF EXISTS "Super admins can manage organizations" ON public.organizations;
 CREATE POLICY "Super admins can manage organizations"
 ON public.organizations
 FOR ALL
@@ -186,6 +191,7 @@ TO authenticated
 USING (app.current_user_is_super_admin())
 WITH CHECK (app.current_user_is_super_admin());
 
+DROP POLICY IF EXISTS "Super admins can manage feature flags" ON public.feature_flags;
 CREATE POLICY "Super admins can manage feature flags"
 ON public.feature_flags
 FOR ALL
@@ -193,12 +199,14 @@ TO authenticated
 USING (app.current_user_is_super_admin())
 WITH CHECK (app.current_user_is_super_admin());
 
+DROP POLICY IF EXISTS "Super admins can read plans" ON public.plans;
 CREATE POLICY "Super admins can read plans"
 ON public.plans
 FOR SELECT
 TO authenticated
 USING (app.current_user_is_super_admin());
 
+DROP POLICY IF EXISTS "Super admins can manage plans" ON public.plans;
 CREATE POLICY "Super admins can manage plans"
 ON public.plans
 FOR ALL
@@ -206,6 +214,7 @@ TO authenticated
 USING (app.current_user_is_super_admin())
 WITH CHECK (app.current_user_is_super_admin());
 
+DROP POLICY IF EXISTS "Super admins can manage organization plans" ON public.organization_plans;
 CREATE POLICY "Super admins can manage organization plans"
 ON public.organization_plans
 FOR ALL
@@ -213,6 +222,7 @@ TO authenticated
 USING (app.current_user_is_super_admin())
 WITH CHECK (app.current_user_is_super_admin());
 
+DROP POLICY IF EXISTS "Super admins can manage organization feature flags" ON public.organization_feature_flags;
 CREATE POLICY "Super admins can manage organization feature flags"
 ON public.organization_feature_flags
 FOR ALL
@@ -220,12 +230,14 @@ TO authenticated
 USING (app.current_user_is_super_admin())
 WITH CHECK (app.current_user_is_super_admin());
 
+DROP POLICY IF EXISTS "Super admins can read feature flag audit logs" ON public.feature_flag_audit_logs;
 CREATE POLICY "Super admins can read feature flag audit logs"
 ON public.feature_flag_audit_logs
 FOR SELECT
 TO authenticated
 USING (app.current_user_is_super_admin());
 
+DROP POLICY IF EXISTS "Super admins can write feature flag audit logs" ON public.feature_flag_audit_logs;
 CREATE POLICY "Super admins can write feature flag audit logs"
 ON public.feature_flag_audit_logs
 FOR INSERT

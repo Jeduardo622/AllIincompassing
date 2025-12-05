@@ -1,0 +1,8 @@
+Connecting to remote database...
+Finished supabase link.
+WARNING: Local database version differs from the linked project.
+Update your supabase\config.toml to fix it:
+[db]
+major_version = 17
+A new version of Supabase CLI is available: v2.65.5 (currently installed v2.58.5)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

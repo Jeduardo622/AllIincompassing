@@ -1,3 +1,5 @@
+set search_path = public;
+
 -- Covering indexes for advisor-flagged foreign keys in public schema
 CREATE INDEX IF NOT EXISTS feature_flag_audit_logs_actor_id_idx ON public.feature_flag_audit_logs (actor_id);
 CREATE INDEX IF NOT EXISTS feature_flag_audit_logs_plan_code_idx ON public.feature_flag_audit_logs (plan_code);

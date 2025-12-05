@@ -11,6 +11,7 @@
 
 -- Drop the existing function before recreating dependencies
 DROP FUNCTION IF EXISTS get_admin_users();
+DROP FUNCTION IF EXISTS get_admin_users(uuid);
 
 -- Recreate the admin_users view with security barrier and organization scoping
 CREATE OR REPLACE VIEW admin_users

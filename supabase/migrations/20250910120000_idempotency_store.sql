@@ -14,7 +14,8 @@ create table if not exists function_idempotency_keys (
 
 alter table function_idempotency_keys enable row level security;
 
-create policy if not exists "function_idempotency_keys_disallow_all"
+drop policy if exists "function_idempotency_keys_disallow_all" on function_idempotency_keys;
+create policy "function_idempotency_keys_disallow_all"
   on function_idempotency_keys
   for all
   using (false)

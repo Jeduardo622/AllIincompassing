@@ -102,7 +102,6 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION assign_admin_role(TEXT, UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION manage_admin_users(TEXT, TEXT) TO authenticated;
 
 CREATE OR REPLACE FUNCTION manage_admin_users(
   operation TEXT,
@@ -283,3 +282,5 @@ BEGIN
   END CASE;
 END;
 $$;
+
+GRANT EXECUTE ON FUNCTION manage_admin_users(TEXT, TEXT) TO authenticated;

@@ -63,14 +63,19 @@ CREATE INDEX IF NOT EXISTS impersonation_audit_active_idx
 -- Enable row level security and policies
 ALTER TABLE public.impersonation_audit ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS impersonation_audit_read ON public.impersonation_audit;
+DROP POLICY IF EXISTS impersonation_audit_insert ON public.impersonation_audit;
+DROP POLICY IF EXISTS impersonation_audit_update ON public.impersonation_audit;
+DROP POLICY IF EXISTS impersonation_audit_delete ON public.impersonation_audit;
+
 -- Read access for oversight roles
 CREATE POLICY impersonation_audit_read
   ON public.impersonation_audit
   FOR SELECT
   TO authenticated
   USING (
-    auth.user_has_role('super_admin')
-    OR auth.user_has_role('security_reviewer')
+    app.user_has_role('super_admin')
+    OR app.user_has_role('security_reviewer')
   );
 
 -- Insert limited to the acting super admin so long as org scope matches
@@ -80,7 +85,7 @@ CREATE POLICY impersonation_audit_insert
   TO authenticated
   WITH CHECK (
     auth.uid() = actor_user_id
-    AND auth.user_has_role('super_admin')
+    AND app.user_has_role('super_admin')
     AND actor_organization_id = target_organization_id
   );
 
@@ -91,11 +96,11 @@ CREATE POLICY impersonation_audit_update
   TO authenticated
   USING (
     auth.uid() = actor_user_id
-    AND auth.user_has_role('super_admin')
+    AND app.user_has_role('super_admin')
   )
   WITH CHECK (
     auth.uid() = actor_user_id
-    AND auth.user_has_role('super_admin')
+    AND app.user_has_role('super_admin')
     AND auth.uid() = COALESCE(revoked_by, auth.uid())
   );
 

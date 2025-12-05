@@ -22,11 +22,17 @@ create index if not exists session_holds_expires_at_idx
   on session_holds (expires_at);
 
 alter table session_holds
+  drop constraint if exists session_holds_therapist_time_excl;
+
+alter table session_holds
   add constraint session_holds_therapist_time_excl
     exclude using gist (
       therapist_id with =,
       tstzrange(start_time, end_time, '[)') with &&
     );
+
+alter table session_holds
+  drop constraint if exists session_holds_client_time_excl;
 
 alter table session_holds
   add constraint session_holds_client_time_excl
@@ -37,23 +43,27 @@ alter table session_holds
 
 alter table session_holds enable row level security;
 
-create policy if not exists "session_holds_disallow_select"
+drop policy if exists "session_holds_disallow_select" on session_holds;
+create policy "session_holds_disallow_select"
   on session_holds
   for select
   using (false);
 
-create policy if not exists "session_holds_disallow_insert"
+drop policy if exists "session_holds_disallow_insert" on session_holds;
+create policy "session_holds_disallow_insert"
   on session_holds
   for insert
   with check (false);
 
-create policy if not exists "session_holds_disallow_update"
+drop policy if exists "session_holds_disallow_update" on session_holds;
+create policy "session_holds_disallow_update"
   on session_holds
   for update
   using (false)
   with check (false);
 
-create policy if not exists "session_holds_disallow_delete"
+drop policy if exists "session_holds_disallow_delete" on session_holds;
+create policy "session_holds_disallow_delete"
   on session_holds
   for delete
   using (false);

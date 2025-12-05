@@ -96,8 +96,11 @@ CREATE TRIGGER therapists_enforce_soft_delete_admin
   FOR EACH ROW
   EXECUTE FUNCTION app.enforce_soft_delete_admin();
 
-ALTER POLICY "Therapists scoped access"
+DROP POLICY IF EXISTS "Therapists scoped access" ON public.therapists;
+CREATE POLICY "Therapists scoped access"
   ON public.therapists
+  FOR ALL
+  TO authenticated
   USING (
     CASE
       WHEN app.user_has_role_for_org('admin', organization_id, id) THEN true
@@ -115,8 +118,11 @@ ALTER POLICY "Therapists scoped access"
     END
   );
 
-ALTER POLICY "Clients scoped access"
+DROP POLICY IF EXISTS "Clients scoped access" ON public.clients;
+CREATE POLICY "Clients scoped access"
   ON public.clients
+  FOR ALL
+  TO authenticated
   USING (
     CASE
       WHEN app.user_has_role_for_org('admin', organization_id, NULL, id) THEN true

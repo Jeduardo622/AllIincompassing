@@ -13,6 +13,11 @@ DROP POLICY IF EXISTS "Therapists can upload their own documents" ON storage.obj
 DROP POLICY IF EXISTS "Therapists can update their own documents" ON storage.objects;
 DROP POLICY IF EXISTS "Therapists can delete their own documents" ON storage.objects;
 
+DROP POLICY IF EXISTS therapist_documents_read_access ON storage.objects;
+DROP POLICY IF EXISTS therapist_documents_insert_access ON storage.objects;
+DROP POLICY IF EXISTS therapist_documents_update_access ON storage.objects;
+DROP POLICY IF EXISTS therapist_documents_delete_access ON storage.objects;
+
 -- Allow reads when caller shares organization or owns the folder
 CREATE POLICY therapist_documents_read_access
   ON storage.objects

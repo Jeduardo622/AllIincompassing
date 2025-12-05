@@ -14,6 +14,19 @@
 
 BEGIN;
 
+DO $$
+BEGIN
+  BEGIN
+    EXECUTE 'ALTER TABLE profiles DISABLE TRIGGER block_role_change_non_admin';
+  EXCEPTION
+    WHEN undefined_object THEN
+      RAISE NOTICE 'Trigger block_role_change_non_admin not found on profiles';
+  END;
+END;
+$$;
+
+SELECT set_config('app.bypass_profile_role_guard', 'on', true);
+
 -- Ensure role catalog contains the high-privilege roles we need to sync.
 INSERT INTO roles (name, description)
 VALUES
@@ -114,6 +127,19 @@ CREATE TRIGGER trg_sync_admin_roles_from_metadata
 AFTER INSERT OR UPDATE OF raw_user_meta_data ON auth.users
 FOR EACH ROW
 EXECUTE FUNCTION sync_admin_roles_from_auth_metadata();
+
+DO $$
+BEGIN
+  BEGIN
+    EXECUTE 'ALTER TABLE profiles ENABLE TRIGGER block_role_change_non_admin';
+  EXCEPTION
+    WHEN undefined_object THEN
+      RAISE NOTICE 'Trigger block_role_change_non_admin not found on profiles';
+  END;
+END;
+$$;
+
+SELECT set_config('app.bypass_profile_role_guard', 'off', true);
 
 COMMIT;
 

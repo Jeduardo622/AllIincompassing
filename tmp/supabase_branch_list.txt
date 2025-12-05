@@ -1,0 +1,21 @@
+
+  
+   ID                   | NAME                                             | DEFAULT | GIT BRANCH                                       | WITH DATA | STATUS             | CREATED AT (UTC)    | UPDATED AT (UTC)    
+  ----------------------|--------------------------------------------------|---------|--------------------------------------------------|-----------|--------------------|---------------------|---------------------
+   ppllonpqntlkosrjwmbr | pr-17-1751853744456                              | false   |                                                  | false     | FUNCTIONS_DEPLOYED | 2025-07-07 02:02:29 | 2025-07-07 02:05:08 
+   rozihkbaqalvbvgmkobr | pr-17-1751845831694                              | false   |                                                  | false     | FUNCTIONS_DEPLOYED | 2025-07-06 23:50:36 | 2025-07-06 23:53:40 
+   aeeclyywaewlaarqvjcw | pr-17-1751845634918                              | false   |                                                  | false     | FUNCTIONS_DEPLOYED | 2025-07-06 23:47:20 | 2025-07-06 23:49:56 
+   duuxwekrrpgzqafpebik | pr-17-1751846756383                              | false   |                                                  | false     | FUNCTIONS_DEPLOYED | 2025-07-07 00:06:01 | 2025-07-07 00:08:36 
+   qesvesfoafijzypovowp | pr-17-1751847847210                              | false   |                                                  | false     | FUNCTIONS_DEPLOYED | 2025-07-07 00:24:12 | 2025-07-07 00:27:10 
+   ioeaxbymdmwbppkujhan | drift-fix-20251204                               | false   |                                                  | false     | MIGRATIONS_FAILED  | 2025-12-04 17:32:48 | 2025-12-04 17:32:48 
+   xrcqvyxgovwbtrutuths | pr-17-1751854689425                              | false   |                                                  | false     | FUNCTIONS_DEPLOYED | 2025-07-07 02:18:13 | 2025-07-07 02:20:58 
+   qoexdxqnjwvffizggorb | codex/extend-clients-and-therapists-tables       | false   | codex/extend-clients-and-therapists-tables       | false     | CREATING_PROJECT   | 2025-09-30 13:35:34 | 2025-09-30 13:39:47 
+   njzgewmgfipeglbvabal | pr-17-1751851951454                              | false   |                                                  | false     | FUNCTIONS_DEPLOYED | 2025-07-07 01:32:35 | 2025-07-07 01:35:21 
+   spapikerlwuunvgeqxoi | pr-17-1751859839445                              | false   |                                                  | false     | FUNCTIONS_DEPLOYED | 2025-07-07 03:44:04 | 2025-07-07 03:46:49 
+   fiozdeggzrsrkngmemyf | pr-17                                            | false   |                                                  | false     | FUNCTIONS_DEPLOYED | 2025-07-07 03:48:07 | 2025-07-07 03:50:41 
+   opikfhkcidihyhgmfxjl | codex/create-rls-migration-and-update-assertions | false   | codex/create-rls-migration-and-update-assertions | false     | MIGRATIONS_FAILED  | 2025-09-19 14:02:00 | 2025-09-19 14:05:17 
+   ndpgephovzpdylldndqh | codex/store-session-times-in-utc                 | false   | codex/store-session-times-in-utc                 | false     | MIGRATIONS_FAILED  | 2025-09-17 05:15:32 | 2025-09-17 05:19:41 
+   wnnjeqheqxxyrgsjmygy | main                                             | true    | main                                             | false     | MIGRATIONS_FAILED  | 2025-06-20 01:33:51 | 2025-10-06 17:53:45 
+
+A new version of Supabase CLI is available: v2.65.5 (currently installed v2.58.5)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

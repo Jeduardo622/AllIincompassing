@@ -34,13 +34,14 @@ drop policy if exists org_write_billing_records on public.billing_records;
 drop policy if exists billing_records_select_scope on public.billing_records;
 drop policy if exists billing_records_mutate_scope on public.billing_records;
 
--- Sessions
+drop policy if exists sessions_admin_read on public.sessions;
 create policy sessions_admin_read
   on public.sessions
   for select
   to authenticated
   using (app.is_admin());
 
+drop policy if exists sessions_admin_write on public.sessions;
 create policy sessions_admin_write
   on public.sessions
   for all
@@ -48,12 +49,14 @@ create policy sessions_admin_write
   using (app.is_admin())
   with check (app.is_admin());
 
+drop policy if exists sessions_owner_read on public.sessions;
 create policy sessions_owner_read
   on public.sessions
   for select
   to authenticated
   using (app.can_access_session(id));
 
+drop policy if exists sessions_owner_update on public.sessions;
 create policy sessions_owner_update
   on public.sessions
   for update
@@ -61,13 +64,14 @@ create policy sessions_owner_update
   using (app.can_access_session(id) and therapist_id = app.current_therapist_id())
   with check (app.can_access_session(id) and therapist_id = app.current_therapist_id());
 
--- Clients
+drop policy if exists clients_admin_read on public.clients;
 create policy clients_admin_read
   on public.clients
   for select
   to authenticated
   using (app.is_admin());
 
+drop policy if exists clients_admin_write on public.clients;
 create policy clients_admin_write
   on public.clients
   for all
@@ -75,12 +79,14 @@ create policy clients_admin_write
   using (app.is_admin())
   with check (app.is_admin());
 
+drop policy if exists clients_accessible_read on public.clients;
 create policy clients_accessible_read
   on public.clients
   for select
   to authenticated
   using (app.can_access_client(id));
 
+drop policy if exists clients_self_update on public.clients;
 create policy clients_self_update
   on public.clients
   for update
@@ -88,13 +94,14 @@ create policy clients_self_update
   using (auth.uid() = id)
   with check (auth.uid() = id);
 
--- Therapists
+drop policy if exists therapists_admin_read on public.therapists;
 create policy therapists_admin_read
   on public.therapists
   for select
   to authenticated
   using (app.is_admin());
 
+drop policy if exists therapists_admin_write on public.therapists;
 create policy therapists_admin_write
   on public.therapists
   for all
@@ -102,12 +109,14 @@ create policy therapists_admin_write
   using (app.is_admin())
   with check (app.is_admin());
 
+drop policy if exists therapists_self_read on public.therapists;
 create policy therapists_self_read
   on public.therapists
   for select
   to authenticated
   using (id = app.current_therapist_id());
 
+drop policy if exists therapists_self_update on public.therapists;
 create policy therapists_self_update
   on public.therapists
   for update
@@ -115,13 +124,14 @@ create policy therapists_self_update
   using (id = app.current_therapist_id())
   with check (id = app.current_therapist_id());
 
--- Billing records
+drop policy if exists billing_admin_read on public.billing_records;
 create policy billing_admin_read
   on public.billing_records
   for select
   to authenticated
   using (app.is_admin());
 
+drop policy if exists billing_admin_write on public.billing_records;
 create policy billing_admin_write
   on public.billing_records
   for all
@@ -129,6 +139,7 @@ create policy billing_admin_write
   using (app.is_admin())
   with check (app.is_admin());
 
+drop policy if exists billing_therapist_read on public.billing_records;
 create policy billing_therapist_read
   on public.billing_records
   for select

@@ -7,8 +7,11 @@ drop policy if exists roles_admin_write on public.roles;
 
 -- 2. public.therapists
 drop policy if exists therapists_access_optimized on public.therapists;
-
-alter policy therapists_select on public.therapists
+drop policy if exists therapists_select on public.therapists;
+create policy therapists_select
+  on public.therapists
+  for select
+  to authenticated
   using (
     app.is_admin()
     or (id = app.current_therapist_id())
@@ -17,13 +20,11 @@ alter policy therapists_select on public.therapists
       from user_profiles up
         join user_roles ur on up.id = ur.user_id
         join roles r on ur.role_id = r.id
-      where up.id = (
-        select auth.uid()
-      )
-        and ur.is_active = true
+      where up.id = auth.uid()
+        and coalesce(ur.is_active, true)
         and (
-          r.permissions @> '[\"*\"]'::jsonb
-          or r.permissions @> '[\"view_clients\"]'::jsonb
+          r.permissions @> '["*"]'::jsonb
+          or r.permissions @> '["view_clients"]'::jsonb
         )
     )
   );
@@ -40,7 +41,10 @@ create policy ai_session_notes_delete_scope on public.ai_session_notes
   for delete
   using (app.is_admin() or app.can_access_session(session_id));
 
-alter policy consolidated_select_4c9184 on public.ai_session_notes
+drop policy if exists consolidated_select_4c9184 on public.ai_session_notes;
+create policy consolidated_select_4c9184 on public.ai_session_notes
+  for select
+  to authenticated
   using (
     app.is_admin()
     or app.can_access_session(session_id)
@@ -51,6 +55,8 @@ alter policy consolidated_select_4c9184 on public.ai_session_notes
 
 -- 4. public.ai_performance_metrics
 drop policy if exists admin_all_ai_perf on public.ai_performance_metrics;
+drop policy if exists ai_performance_metrics_update_admin on public.ai_performance_metrics;
+drop policy if exists ai_performance_metrics_delete_admin on public.ai_performance_metrics;
 
 create policy ai_performance_metrics_update_admin on public.ai_performance_metrics
   for update
@@ -63,6 +69,8 @@ create policy ai_performance_metrics_delete_admin on public.ai_performance_metri
 
 -- 5. public.chat_history
 drop policy if exists chat_history_owner on public.chat_history;
+drop policy if exists chat_history_update_owner on public.chat_history;
+drop policy if exists chat_history_delete_owner on public.chat_history;
 
 create policy chat_history_update_owner on public.chat_history
   for update
@@ -124,7 +132,10 @@ create policy session_transcript_segments_delete_scope on public.session_transcr
     )
   );
 
-alter policy consolidated_select_4c9184 on public.session_transcript_segments
+drop policy if exists consolidated_select_4c9184 on public.session_transcript_segments;
+create policy consolidated_select_4c9184 on public.session_transcript_segments
+  for select
+  to authenticated
   using (
     app.is_admin()
     or app.can_access_session(session_id)
@@ -171,7 +182,10 @@ create policy session_transcripts_delete_scope on public.session_transcripts
     )
   );
 
-alter policy consolidated_select_4c9184 on public.session_transcripts
+drop policy if exists consolidated_select_4c9184 on public.session_transcripts;
+create policy consolidated_select_4c9184 on public.session_transcripts
+  for select
+  to authenticated
   using (
     app.is_admin()
     or app.can_access_session(session_id)

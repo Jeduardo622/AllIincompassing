@@ -949,6 +949,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           is_visible_to_parent: boolean | null
+          is_visible_to_therapist: boolean
           organization_id: string | null
           status: string | null
         }
@@ -960,6 +961,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           is_visible_to_parent?: boolean | null
+          is_visible_to_therapist?: boolean
           organization_id?: string | null
           status?: string | null
         }
@@ -971,6 +973,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           is_visible_to_parent?: boolean | null
+          is_visible_to_therapist?: boolean
           organization_id?: string | null
           status?: string | null
         }

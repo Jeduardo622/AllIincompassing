@@ -1,3 +1,8 @@
+-- Replay placeholder for migration 20251120174500_single_org_admin_support
+-- This migration was executed directly against the hosted database to unblock
+-- single-organization admin flows during drift remediation. Its logic already
+-- lives in earlier checked-in migrations, so we leave this file intentionally
+-- blank to mirror the production schema_migrations history.
 begin;
 
 set search_path = public, auth;

@@ -14,18 +14,40 @@ type SessionSummary = {
   client?: { id: string; full_name: string | null } | null;
   __redacted?: boolean;
 };
-type BillingAlertSummary = { id: string; amount: number | string | null; status: string | null; created_at: string | null; __redacted?: boolean };
+type BillingAlertSummary = {
+  id: string;
+  amount: number | string | null;
+  status: string | null;
+  created_at: string | null;
+  __redacted?: boolean;
+};
 type ClientMetricsSummary = { total: number; active: number; totalUnits: number; redacted?: boolean };
 
-const Dashboard = () => {
-  // Use optimized dashboard data hook backed by /api/dashboard only
-  const { data: dashboardData, isLoading: isLoadingDashboard, error: dashboardError, refetch } = useDashboardData() as unknown as {
-    data: unknown;
-    isLoading: boolean;
-    error: unknown;
-    refetch: () => void;
-  };
-  const { isLiveRole, intervalMs } = useDashboardLiveRefresh();
+type DashboardDataShape = {
+  todaySessions?: SessionSummary[];
+  incompleteSessions?: SessionSummary[];
+  billingAlerts?: BillingAlertSummary[];
+  clientMetrics?: ClientMetricsSummary;
+  therapistMetrics?: { total: number; active: number; totalHours: number };
+};
+
+export interface DashboardViewProps {
+  dashboardData?: DashboardDataShape | null;
+  isLoading: boolean;
+  error: unknown;
+  refetch: () => void;
+  isLiveRole: boolean;
+  intervalMs: number;
+}
+
+export const DashboardView: React.FC<DashboardViewProps> = ({
+  dashboardData,
+  isLoading,
+  error,
+  refetch,
+  isLiveRole,
+  intervalMs,
+}) => {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
@@ -54,7 +76,7 @@ const Dashboard = () => {
   }, [dashboardData]);
 
   const remainingSessions = displayData.todaySessions.filter(
-    (session) => !session.__redacted && new Date(session.start_time) > new Date()
+    (session) => !session.__redacted && new Date(session.start_time) > new Date(),
   );
 
   const isTodaySessionsRedacted = false;
@@ -62,29 +84,19 @@ const Dashboard = () => {
   const isBillingAlertsRedacted = false;
   const isClientMetricsRedacted = false;
 
-  const activeClientsValue = isClientMetricsRedacted
-    ? '--'
-    : displayData.clientMetrics.active.toString();
+  const activeClientsValue = isClientMetricsRedacted ? '--' : displayData.clientMetrics.active.toString();
   const activeClientsTrend = isClientMetricsRedacted
     ? 'Restricted'
     : `${displayData.clientMetrics.active} of ${displayData.clientMetrics.total} clients`;
-  const todaySessionsValue = isTodaySessionsRedacted
-    ? '--'
-    : displayData.todaySessions.length.toString();
-  const todaySessionsTrend = isTodaySessionsRedacted
-    ? 'Restricted'
-    : `${remainingSessions.length} remaining`;
+  const todaySessionsValue = isTodaySessionsRedacted ? '--' : displayData.todaySessions.length.toString();
+  const todaySessionsTrend = isTodaySessionsRedacted ? 'Restricted' : `${remainingSessions.length} remaining`;
   const todaySessionsTrendUp = !isTodaySessionsRedacted && remainingSessions.length > 0;
-  const incompleteSessionsValue = isIncompleteSessionsRedacted
-    ? '--'
-    : displayData.incompleteSessions.length.toString();
+  const incompleteSessionsValue = isIncompleteSessionsRedacted ? '--' : displayData.incompleteSessions.length.toString();
   const incompleteSessionsTrend = isIncompleteSessionsRedacted ? 'Restricted' : 'Need notes';
-  const billingAlertsValue = isBillingAlertsRedacted
-    ? '--'
-    : displayData.billingAlerts.length.toString();
+  const billingAlertsValue = isBillingAlertsRedacted ? '--' : displayData.billingAlerts.length.toString();
   const billingAlertsTrend = isBillingAlertsRedacted ? 'Restricted' : 'Needs attention';
 
-  if (isLoadingDashboard && !displayData.todaySessions.length) {
+  if (isLoading && !displayData.todaySessions.length) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -92,7 +104,7 @@ const Dashboard = () => {
     );
   }
 
-  const hasError = Boolean(dashboardError);
+  const hasError = Boolean(error);
 
   return (
     <div>
@@ -324,6 +336,27 @@ const Dashboard = () => {
         </div>
       </div>
     </div>
+  );
+};
+
+const Dashboard = () => {
+  const { data: dashboardData, isLoading: isLoadingDashboard, error: dashboardError, refetch } = useDashboardData() as unknown as {
+    data: DashboardDataShape | null;
+    isLoading: boolean;
+    error: unknown;
+    refetch: () => void;
+  };
+  const { isLiveRole, intervalMs } = useDashboardLiveRefresh();
+
+  return (
+    <DashboardView
+      dashboardData={dashboardData}
+      isLoading={isLoadingDashboard}
+      error={dashboardError}
+      refetch={refetch}
+      isLiveRole={isLiveRole}
+      intervalMs={intervalMs}
+    />
   );
 };
 

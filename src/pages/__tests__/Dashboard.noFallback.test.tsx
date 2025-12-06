@@ -20,6 +20,26 @@ vi.mock('../../lib/runtimeConfig', () => ({
   buildSupabaseEdgeUrl: (path: string) => `${runtimeConfigStub.supabaseUrl}/functions/v1/${path}`,
 }));
 
+vi.mock('../../lib/supabaseClient', () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn().mockResolvedValue({
+        data: { session: null },
+        error: null,
+      }),
+    },
+    from: vi.fn(() => ({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      gte: vi.fn().mockReturnThis(),
+      lte: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: null, error: null }),
+      insert: vi.fn().mockReturnThis(),
+    })),
+    rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
+  },
+}));
+
 vi.mock('../../lib/optimizedQueries', () => ({
   useDashboardData: () => ({
     data: {
@@ -59,15 +79,21 @@ vi.mock('../../lib/supabase', () => ({
   },
 }));
 
-import Dashboard from '../Dashboard';
+type DashboardModule = typeof import('../Dashboard');
+let DashboardComponent: DashboardModule['default'];
 
 describe('Dashboard without client fallbacks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
+  beforeAll(async () => {
+    const module = await import('../Dashboard');
+    DashboardComponent = module.default;
+  });
+
   it('renders metrics from useDashboardData and does not hit supabase.from', () => {
-    render(<Dashboard />);
+    render(<DashboardComponent />);
 
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
     expect(screen.getByText('Active Clients')).toBeInTheDocument();

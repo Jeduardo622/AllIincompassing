@@ -67,6 +67,8 @@ type PendingScheduleDetail = {
   start_time?: string;
 };
 
+const SESSION_HOLD_SECONDS = 5 * 60; // 5 minutes
+
 const toPendingScheduleDetail = (value: unknown): PendingScheduleDetail | null => {
   if (!value || typeof value !== "object") {
     return null;
@@ -355,6 +357,7 @@ function buildBookingPayload(
     startTimeOffsetMinutes: metadata.startOffsetMinutes,
     endTimeOffsetMinutes: metadata.endOffsetMinutes,
     timeZone: metadata.timeZone,
+    holdSeconds: SESSION_HOLD_SECONDS,
     ...(recurrence ? { recurrence } : {}),
   };
 }

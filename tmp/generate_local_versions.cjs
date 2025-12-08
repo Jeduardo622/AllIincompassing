@@ -5,7 +5,7 @@ const migrationsDir = path.join(process.cwd(), 'supabase', 'migrations');
 const versions = fs
   .readdirSync(migrationsDir)
   .filter((file) => file.endsWith('.sql'))
-  .map((file) => file.replace('.sql', '').split('_')[0])
+  .map((file) => file.replace('.sql', ''))
   .filter((value, index, self) => self.indexOf(value) === index)
   .sort();
 

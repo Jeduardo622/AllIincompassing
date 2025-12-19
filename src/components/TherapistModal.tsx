@@ -5,6 +5,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { X } from 'lucide-react';
 import type { Therapist } from '../types';
 import AvailabilityEditor from './AvailabilityEditor';
+import {
+  THERAPIST_SERVICE_TYPE_OPTIONS,
+  THERAPIST_SPECIALTY_OPTIONS,
+} from '../lib/constants/therapists';
 
 interface TherapistModalProps {
   isOpen: boolean;
@@ -487,25 +491,42 @@ export function TherapistModal({
               <Controller
                 name="service_type"
                 control={control}
-                render={({ field }) => (
-                  <select
-                    id="therapist-service-types"
-                    multiple
-                    value={field.value}
-                    onChange={(e) => {
-                      const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
-                      field.onChange(selectedOptions);
-                    }}
-                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                  >
-                    <option value="In clinic">In clinic</option>
-                    <option value="In home">In home</option>
-                    <option value="Telehealth">Telehealth</option>
-                  </select>
-                )}
+                render={({ field }) => {
+                  const value = Array.isArray(field.value) ? field.value : [];
+                  const toggleOption = (option: string, checked: boolean) => {
+                    if (checked) {
+                      field.onChange(Array.from(new Set([...value, option])));
+                    } else {
+                      field.onChange(value.filter(item => item !== option));
+                    }
+                  };
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3" id="therapist-service-types">
+                      {THERAPIST_SERVICE_TYPE_OPTIONS.map(option => {
+                        const optionId = `therapist-service-${option.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+                        return (
+                          <label key={option} htmlFor={optionId} className="flex items-center">
+                            <input
+                              type="checkbox"
+                              id={optionId}
+                              value={option}
+                              checked={value.includes(option)}
+                              onChange={(e) => toggleOption(option, e.target.checked)}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
+                            <span className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
+                              {option}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  );
+                }}
               />
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Hold Ctrl/Cmd to select multiple options
+                Click to select one or more service types.
               </p>
             </div>
 
@@ -516,25 +537,42 @@ export function TherapistModal({
               <Controller
                 name="specialties"
                 control={control}
-                render={({ field }) => (
-                  <select
-                    id="therapist-specialties"
-                    multiple
-                    value={field.value}
-                    onChange={(e) => {
-                      const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
-                      field.onChange(selectedOptions);
-                    }}
-                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                  >
-                    <option value="ABA Therapy">ABA Therapy</option>
-                    <option value="Speech Therapy">Speech Therapy</option>
-                    <option value="Occupational Therapy">Occupational Therapy</option>
-                  </select>
-                )}
+                render={({ field }) => {
+                  const value = Array.isArray(field.value) ? field.value : [];
+                  const toggleOption = (option: string, checked: boolean) => {
+                    if (checked) {
+                      field.onChange(Array.from(new Set([...value, option])));
+                    } else {
+                      field.onChange(value.filter(item => item !== option));
+                    }
+                  };
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3" id="therapist-specialties">
+                      {THERAPIST_SPECIALTY_OPTIONS.map(option => {
+                        const optionId = `therapist-specialty-${option.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+                        return (
+                          <label key={option} htmlFor={optionId} className="flex items-center">
+                            <input
+                              type="checkbox"
+                              id={optionId}
+                              value={option}
+                              checked={value.includes(option)}
+                              onChange={(e) => toggleOption(option, e.target.checked)}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
+                            <span className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
+                              {option}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  );
+                }}
               />
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Hold Ctrl/Cmd to select multiple options
+                Click to select one or more specialties.
               </p>
             </div>
 

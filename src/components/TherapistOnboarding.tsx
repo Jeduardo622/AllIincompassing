@@ -22,6 +22,10 @@ import { prepareFormData } from '../lib/validation';
 import { useActiveOrganizationId } from '../lib/organization';
 import { toError } from '../lib/logger/normalizeError';
 import { describePostgrestError } from '../lib/supabase/isMissingRpcFunctionError';
+import {
+  THERAPIST_SERVICE_TYPE_OPTIONS,
+  THERAPIST_SPECIALTY_OPTIONS,
+} from '../lib/constants/therapists';
 
 interface TherapistOnboardingProps {
   onComplete?: () => void;
@@ -705,100 +709,86 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
                 <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Service Types
                 </p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="in_clinic"
-                      value="In clinic"
-                      {...register('service_type')}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="in_clinic" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                      In Clinic
-                    </label>
-                  </div>
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="in_home"
-                      value="In home"
-                      {...register('service_type')}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="in_home" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                      In Home
-                    </label>
-                  </div>
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="telehealth"
-                      value="Telehealth"
-                      {...register('service_type')}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="telehealth" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                      Telehealth
-                    </label>
-                  </div>
-                </div>
+                <Controller
+                  name="service_type"
+                  control={control}
+                  render={({ field }) => {
+                    const value = Array.isArray(field.value) ? field.value : [];
+                    const toggleOption = (option: string, checked: boolean) => {
+                      if (checked) {
+                        field.onChange(Array.from(new Set([...value, option])));
+                      } else {
+                        field.onChange(value.filter(item => item !== option));
+                      }
+                    };
+
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {THERAPIST_SERVICE_TYPE_OPTIONS.map(option => {
+                          const optionId = `service-type-${option.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+                          return (
+                            <label key={option} htmlFor={optionId} className="flex items-center">
+                              <input
+                                type="checkbox"
+                                id={optionId}
+                                value={option}
+                                checked={value.includes(option)}
+                                onChange={(e) => toggleOption(option, e.target.checked)}
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              />
+                              <span className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
+                                {option}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    );
+                  }}
+                />
               </div>
               
               <div>
                 <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Specialties
                 </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="aba_therapy"
-                      value="ABA Therapy"
-                      {...register('specialties')}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="aba_therapy" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                      ABA Therapy
-                    </label>
-                  </div>
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="speech_therapy"
-                      value="Speech Therapy"
-                      {...register('specialties')}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="speech_therapy" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                      Speech Therapy
-                    </label>
-                  </div>
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="occupational_therapy"
-                      value="Occupational Therapy"
-                      {...register('specialties')}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="occupational_therapy" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                      Occupational Therapy
-                    </label>
-                  </div>
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="physical_therapy"
-                      value="Physical Therapy"
-                      {...register('specialties')}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="physical_therapy" className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                      Physical Therapy
-                    </label>
-                  </div>
-                </div>
+                <Controller
+                  name="specialties"
+                  control={control}
+                  render={({ field }) => {
+                    const value = Array.isArray(field.value) ? field.value : [];
+                    const toggleOption = (option: string, checked: boolean) => {
+                      if (checked) {
+                        field.onChange(Array.from(new Set([...value, option])));
+                      } else {
+                        field.onChange(value.filter(item => item !== option));
+                      }
+                    };
+
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {THERAPIST_SPECIALTY_OPTIONS.map(option => {
+                          const optionId = `specialty-${option.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+                          return (
+                            <label key={option} htmlFor={optionId} className="flex items-center">
+                              <input
+                                type="checkbox"
+                                id={optionId}
+                                value={option}
+                                checked={value.includes(option)}
+                                onChange={(e) => toggleOption(option, e.target.checked)}
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              />
+                              <span className="ml-2 block text-sm text-gray-900 dark:text-gray-100">
+                                {option}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    );
+                  }}
+                />
               </div>
             </div>
             

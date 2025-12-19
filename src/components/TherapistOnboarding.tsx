@@ -175,12 +175,17 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
 
   const createTherapistMutation = useMutation({
     mutationFn: async (data: Partial<Therapist>) => {
+      if (!activeOrganizationId) {
+        throw new Error('Organization context is required to create a therapist.');
+      }
+
       // Format data for submission
       const formattedData = prepareFormData(data);
       
       // Prepare therapist data with proper formatting
       const formattedTherapist = {
         ...formattedData,
+        organization_id: activeOrganizationId,
         service_type: formattedData.service_type,
         specialties: formattedData.specialties,
         preferred_areas: formattedData.preferred_areas,

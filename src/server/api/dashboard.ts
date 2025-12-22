@@ -54,7 +54,6 @@ export async function dashboardHandler(request: Request): Promise<Response> {
 
   const supabaseUrl = getRequiredServerEnv("SUPABASE_URL");
   const anonKey = getRequiredServerEnv("SUPABASE_ANON_KEY");
-  const serviceRoleKey = getRequiredServerEnv("SUPABASE_SERVICE_ROLE_KEY");
 
   // Resolve organization context from the user's JWT
   try {
@@ -90,9 +89,9 @@ export async function dashboardHandler(request: Request): Promise<Response> {
       logger.warn("Dashboard request falling back to default organization", { fallbackOrgId });
     }
 
-    // Optional: basic role check using helper RPC when available
+    // Role checks: allow org admins or super admins to access dashboard data
     const roleUrl = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/rpc/user_has_role_for_org`;
-    const rolePayload = { role_name: "org_member", target_organization_id: resolvedOrganizationId } as Record<string, unknown>;
+    const rolePayload = { role_name: "org_admin", target_organization_id: resolvedOrganizationId } as Record<string, unknown>;
     const roleResult = await fetchJson<boolean>(roleUrl, {
       method: "POST",
       headers: {
@@ -103,19 +102,32 @@ export async function dashboardHandler(request: Request): Promise<Response> {
       body: JSON.stringify(rolePayload),
     });
 
-    if (!roleResult.ok || roleResult.data !== true) {
+    const superAdminUrl = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/rpc/current_user_is_super_admin`;
+    const superAdminResult = await fetchJson<boolean>(superAdminUrl, {
+      method: "POST",
+      headers: {
+        ...JSON_HEADERS,
+        apikey: anonKey,
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: "{}",
+    });
+
+    const isOrgAdmin = roleResult.ok && roleResult.data === true;
+    const isSuperAdmin = superAdminResult.ok && superAdminResult.data === true;
+
+    if (!isOrgAdmin && !isSuperAdmin) {
       return json({ error: "Forbidden" }, 403);
     }
 
-    // Call the hardened dashboard RPC. This function is restricted at the DB level.
-    // We call as service_role after validating the requester and org context.
+    // Call the hardened dashboard RPC with the caller's JWT to enforce RLS/org scoping.
     const dashboardUrl = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/rpc/get_dashboard_data`;
     const rpcResult = await fetchJson<unknown>(dashboardUrl, {
       method: "POST",
       headers: {
         ...JSON_HEADERS,
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
+        apikey: anonKey,
+        Authorization: `Bearer ${accessToken}`,
       },
       body: "{}",
     });

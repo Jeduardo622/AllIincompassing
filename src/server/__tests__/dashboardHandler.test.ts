@@ -7,7 +7,6 @@ describe("dashboardHandler", () => {
   beforeEach(async () => {
     process.env.SUPABASE_URL = "https://example.supabase.co";
     process.env.SUPABASE_ANON_KEY = "anon";
-    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
     process.env.DEFAULT_ORGANIZATION_ID = "org-default";
     vi.resetModules();
   });
@@ -32,9 +31,10 @@ describe("dashboardHandler", () => {
   it("falls back to the default organization when org resolution fails", async () => {
     const body = { sessions: [] };
     const fetchSpy = mockFetch();
-    fetchSpy.mockResolvedValueOnce(new Response("null", { status: 200, headers: { "content-type": "application/json" } }));
-    fetchSpy.mockResolvedValueOnce(new Response("true", { status: 200, headers: { "content-type": "application/json" } }));
-    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }));
+    fetchSpy.mockResolvedValueOnce(new Response("null", { status: 200, headers: { "content-type": "application/json" } })); // org
+    fetchSpy.mockResolvedValueOnce(new Response("true", { status: 200, headers: { "content-type": "application/json" } })); // org_admin
+    fetchSpy.mockResolvedValueOnce(new Response("false", { status: 200, headers: { "content-type": "application/json" } })); // super_admin
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })); // rpc
 
     vi.doMock("../runtimeConfig", async () => {
       const actual = await vi.importActual<typeof import("../runtimeConfig")>("../runtimeConfig");
@@ -47,7 +47,7 @@ describe("dashboardHandler", () => {
     try {
       const { dashboardHandler } = await import("../api/dashboard");
       const response = await dashboardHandler(createRequest("GET", "token"));
-      expect(fetchSpy).toHaveBeenCalledTimes(3);
+      expect(fetchSpy).toHaveBeenCalledTimes(4);
       const roleRequest = fetchSpy.mock.calls[1]?.[1] as RequestInit | undefined;
       expect(typeof roleRequest?.body).toBe("string");
       if (typeof roleRequest?.body === "string") {
@@ -86,18 +86,41 @@ describe("dashboardHandler", () => {
     const fetchSpy = mockFetch();
     // org id
     fetchSpy.mockResolvedValueOnce(new Response("\"org-1\"", { status: 200, headers: { "content-type": "application/json" } }));
-    // role check
+    // role check (org_admin)
     fetchSpy.mockResolvedValueOnce(new Response("true", { status: 200, headers: { "content-type": "application/json" } }));
+    // super admin check
+    fetchSpy.mockResolvedValueOnce(new Response("false", { status: 200, headers: { "content-type": "application/json" } }));
     // get_dashboard_data
     const body = { todaySessions: [], incompleteSessions: [] };
     fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }));
 
     const { dashboardHandler } = await import("../api/dashboard");
     const response = await dashboardHandler(createRequest("GET", "token"));
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
     expect(response.status).toBe(200);
     const json = await response.json();
     expect(json).toMatchObject(body);
+  });
+
+  it("calls get_dashboard_data using caller JWT (anon apikey + bearer token)", async () => {
+    const fetchSpy = mockFetch();
+    fetchSpy.mockResolvedValueOnce(new Response("\"org-1\"", { status: 200, headers: { "content-type": "application/json" } }));
+    fetchSpy.mockResolvedValueOnce(new Response("true", { status: 200, headers: { "content-type": "application/json" } }));
+    fetchSpy.mockResolvedValueOnce(new Response("false", { status: 200, headers: { "content-type": "application/json" } }));
+    const body = { todaySessions: [], incompleteSessions: [] };
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }));
+
+    const { dashboardHandler } = await import("../api/dashboard");
+    const response = await dashboardHandler(createRequest("GET", "caller-token"));
+    expect(response.status).toBe(200);
+
+    const rpcCall = fetchSpy.mock.calls[3];
+    expect(rpcCall?.[0]).toMatch("/rest/v1/rpc/get_dashboard_data");
+    const rpcInit = rpcCall?.[1] as RequestInit | undefined;
+    expect(rpcInit?.headers).toMatchObject({
+      apikey: "anon",
+      Authorization: "Bearer caller-token",
+    });
   });
 
   it("maps downstream failures to 403 when applicable", async () => {
@@ -105,6 +128,8 @@ describe("dashboardHandler", () => {
     // org id
     fetchSpy.mockResolvedValueOnce(new Response("\"org-1\"", { status: 200, headers: { "content-type": "application/json" } }));
     // role check -> false
+    fetchSpy.mockResolvedValueOnce(new Response("false", { status: 200, headers: { "content-type": "application/json" } }));
+    // super admin check -> false
     fetchSpy.mockResolvedValueOnce(new Response("false", { status: 200, headers: { "content-type": "application/json" } }));
 
     const { dashboardHandler } = await import("../api/dashboard");

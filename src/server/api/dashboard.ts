@@ -1,4 +1,3 @@
-import "../bootstrapSupabase";
 import { getRequiredServerEnv } from "../env";
 import { getDefaultOrganizationId } from "../runtimeConfig";
 import { logger } from "../../lib/logger/logger";

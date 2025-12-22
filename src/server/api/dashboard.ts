@@ -1,5 +1,5 @@
-import { getRequiredServerEnv } from "../env";
-import { getDefaultOrganizationId } from "../../lib/runtimeConfig";
+import { getOptionalServerEnv, getRequiredServerEnv } from "../env";
+import { getDefaultOrganizationId } from "../runtimeConfig";
 import { serverLogger as logger } from "../../lib/logger/server";
 import { toError } from "../../lib/logger/normalizeError";
 
@@ -51,8 +51,14 @@ export async function dashboardHandler(request: Request): Promise<Response> {
     return json({ error: "Missing authorization token" }, 401, { "WWW-Authenticate": "Bearer" });
   }
 
-  const supabaseUrl = getRequiredServerEnv("SUPABASE_URL");
-  const anonKey = getRequiredServerEnv("SUPABASE_ANON_KEY");
+  const supabaseUrl =
+    getOptionalServerEnv("SUPABASE_URL") ||
+    getOptionalServerEnv("SUPABASE_DATABASE_URL") ||
+    getRequiredServerEnv("VITE_SUPABASE_URL");
+
+  const anonKey =
+    getOptionalServerEnv("SUPABASE_ANON_KEY") ||
+    getRequiredServerEnv("VITE_SUPABASE_ANON_KEY");
 
   // Resolve organization context from the user's JWT
   try {

@@ -49,3 +49,5 @@ export const getRuntimeSupabaseConfig = (): RuntimeSupabaseConfig => {
   };
 };
 
+export const getDefaultOrganizationId = (): string => resolveDefaultOrganizationId();
+

@@ -1,6 +1,6 @@
 import { getRequiredServerEnv } from "../env";
 import { getDefaultOrganizationId } from "../runtimeConfig";
-import { logger } from "../../lib/logger/logger";
+import { serverLogger as logger } from "../../lib/logger/server";
 import { toError } from "../../lib/logger/normalizeError";
 
 const JSON_HEADERS: Record<string, string> = {

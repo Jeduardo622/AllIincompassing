@@ -1,5 +1,5 @@
 import { getRequiredServerEnv } from "../env";
-import { getDefaultOrganizationId } from "../runtimeConfig";
+import { getDefaultOrganizationId } from "../../lib/runtimeConfig";
 import { serverLogger as logger } from "../../lib/logger/server";
 import { toError } from "../../lib/logger/normalizeError";
 

@@ -33,7 +33,7 @@ export const handler: Handler = async (event) => {
 
     const response = await dashboardHandler(request);
     return toNetlifyResponse(response);
-  } catch (error) {
+  } catch (_error) {
     return {
       statusCode: 500,
       headers: { 'content-type': 'application/json' },

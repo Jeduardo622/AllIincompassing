@@ -121,6 +121,14 @@ export async function dashboardHandler(request: Request): Promise<Response> {
     const isOrgAdmin = roleResult.ok && roleResult.data === true;
     const isSuperAdmin = superAdminResult.ok && superAdminResult.data === true;
 
+    logger.info("Dashboard auth check", {
+      resolvedOrganizationId,
+      isOrgAdmin,
+      isSuperAdmin,
+      roleStatus: roleResult.status,
+      superAdminStatus: superAdminResult.status,
+    });
+
     if (!isOrgAdmin && !isSuperAdmin) {
       return json({ error: "Forbidden" }, 403);
     }

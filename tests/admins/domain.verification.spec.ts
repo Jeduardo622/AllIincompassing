@@ -1,22 +1,9 @@
-// ENV REQUIREMENTS: set SUPABASE_URL, SUPABASE_ANON_KEY, TEST_JWT_ORG_A, and TEST_JWT_SUPER_ADMIN before enabling RUN_ADMIN_DOMAIN_TESTS.
-import { expect, it } from 'vitest';
-import { selectSuite } from '../utils/testControls';
+import { describe, expect, it } from 'vitest';
 
-const runAdminsSuite =
-  process.env.RUN_ADMIN_DOMAIN_TESTS === 'true' &&
-  Boolean(process.env.TEST_JWT_ORG_A) &&
-  Boolean(process.env.TEST_JWT_SUPER_ADMIN);
-
-const suite = selectSuite({
-  run: runAdminsSuite,
-  reason:
-    'Set RUN_ADMIN_DOMAIN_TESTS=true and supply TEST_JWT_ORG_A plus TEST_JWT_SUPER_ADMIN credentials.',
-});
-
-suite('Admin edge contract expectations', () => {
+describe('Admin edge contract expectations', () => {
   it('describes admin users fetch query parameters', () => {
     const query = new URLSearchParams({
-      organization_id: 'uuid',
+      organization_id: '00000000-0000-0000-0000-000000000000',
       page: '1',
       limit: '50',
       search: 'smith',

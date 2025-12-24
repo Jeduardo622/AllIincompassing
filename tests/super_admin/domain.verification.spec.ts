@@ -1,16 +1,6 @@
-// ENV REQUIREMENTS: set SUPABASE_URL, SUPABASE_ANON_KEY, and TEST_JWT_SUPER_ADMIN before enabling RUN_SUPER_ADMIN_DOMAIN_TESTS.
-import { expect, it } from 'vitest';
-import { selectSuite } from '../utils/testControls';
+import { describe, expect, it } from 'vitest';
 
-const runSuperAdminSuite =
-  process.env.RUN_SUPER_ADMIN_DOMAIN_TESTS === 'true' && Boolean(process.env.TEST_JWT_SUPER_ADMIN);
-
-const suite = selectSuite({
-  run: runSuperAdminSuite,
-  reason: 'Set RUN_SUPER_ADMIN_DOMAIN_TESTS=true and provide TEST_JWT_SUPER_ADMIN credentials.',
-});
-
-suite('Super admin automation contract expectations', () => {
+describe('Super admin automation contract expectations', () => {
   it('captures impersonation header and payload requirements', () => {
     const headers = {
       Authorization: 'Bearer <super-admin-jwt>',

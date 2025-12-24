@@ -1,20 +1,10 @@
-// ENV REQUIREMENTS: set SUPABASE_URL, SUPABASE_ANON_KEY, and TEST_JWT_ORG_A (therapist-scoped JWT) before enabling RUN_THERAPIST_DOMAIN_TESTS.
-import { expect, it } from 'vitest';
-import { selectSuite } from '../utils/testControls';
+import { describe, expect, it } from 'vitest';
 
-const runTherapistSuite =
-  process.env.RUN_THERAPIST_DOMAIN_TESTS === 'true' && Boolean(process.env.TEST_JWT_ORG_A);
-
-const suite = selectSuite({
-  run: runTherapistSuite,
-  reason: 'Set RUN_THERAPIST_DOMAIN_TESTS=true and configure TEST_JWT_ORG_A credentials.',
-});
-
-suite('Therapist schedule and mutation expectations', () => {
+describe('Therapist schedule and mutation expectations', () => {
   it('documents required headers for session confirmation', () => {
     const headers = {
       Authorization: 'Bearer <supabase-jwt>',
-      'Idempotency-Key': 'uuid-v4',
+      'Idempotency-Key': '11111111-2222-3333-4444-555555555555',
       'Content-Type': 'application/json',
     } as const;
 

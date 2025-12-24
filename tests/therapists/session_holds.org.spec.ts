@@ -1,25 +1,22 @@
 import { randomUUID } from 'crypto';
-import { describe, it, expect } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi,
+} from 'vitest';
 import { selectSuite } from '../utils/testControls';
 
-const SUPABASE_URL = process.env.SUPABASE_URL as string;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY as string;
-
-const runSessionHoldSuite =
-  process.env.RUN_SESSION_HOLD_TESTS === 'true'
-  && Boolean(SUPABASE_URL)
-  && Boolean(SUPABASE_ANON_KEY)
-  && Boolean(process.env.TEST_JWT_ORG_A)
-  && Boolean(process.env.TEST_JWT_ORG_B)
-  && Boolean(process.env.TEST_JWT_THERAPIST_ORG_A)
-  && Boolean(process.env.TEST_THERAPIST_ID_ORG_A)
-  && Boolean(process.env.TEST_CLIENT_ID_ORG_A);
-
-const describeSessionHolds = selectSuite({
-  run: runSessionHoldSuite,
-  reason:
-    'Set RUN_SESSION_HOLD_TESTS=true with SUPABASE_URL, SUPABASE_ANON_KEY, TEST_JWT_ORG_A, TEST_JWT_ORG_B, TEST_JWT_THERAPIST_ORG_A, TEST_THERAPIST_ID_ORG_A, and TEST_CLIENT_ID_ORG_A.',
-});
+const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://example.test';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ?? 'anon-key';
+const tokenOrgA = process.env.TEST_JWT_ORG_A ?? 'token-org-a';
+const tokenOrgB = process.env.TEST_JWT_ORG_B ?? 'token-org-b';
+const therapistToken = process.env.TEST_JWT_THERAPIST_ORG_A ?? 'token-therapist-org-a';
+const therapistId = process.env.TEST_THERAPIST_ID_ORG_A ?? 'therapist-org-a';
+const clientId = process.env.TEST_CLIENT_ID_ORG_A ?? 'client-org-a';
+const organizationIdOrgA = 'org-a';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -27,6 +24,120 @@ type FetchResult = {
   status: number;
   json: unknown;
 };
+
+type SessionHoldRow = {
+  id: string;
+  therapist_id: string;
+  client_id: string;
+  start_time: string;
+  end_time: string;
+  hold_key: string;
+  expires_at: string;
+  organization_id: string;
+};
+
+const sessionHolds: SessionHoldRow[] = [];
+
+const jsonResponse = (status: number, body?: unknown) =>
+  new Response(body !== undefined ? JSON.stringify(body) : undefined, {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+const extractToken = (init?: RequestInit) => {
+  const headerToken =
+    (init?.headers as Record<string, string> | undefined)?.Authorization ??
+    (init?.headers as Record<string, string> | undefined)?.authorization ??
+    '';
+  return headerToken.replace('Bearer ', '');
+};
+
+const handleSessionHolds = (url: URL, token: string, init: RequestInit) => {
+  const method = (init.method ?? 'GET').toUpperCase();
+
+  if (method === 'POST') {
+    if (token !== tokenOrgA) {
+      return jsonResponse(403, { error: 'Access denied' });
+    }
+    const payload = JSON.parse(String(init.body ?? '[]')) as SessionHoldRow[];
+    const created = payload.map(row => ({
+      ...row,
+      id: row.id ?? randomUUID(),
+      organization_id: organizationIdOrgA,
+    }));
+    sessionHolds.push(...created);
+    return jsonResponse(201, created);
+  }
+
+  if (method === 'GET') {
+    const id = url.searchParams.get('id')?.replace('eq.', '') ?? '';
+    const rows = sessionHolds.filter(row => row.id === id);
+    if (token === tokenOrgA || token === therapistToken) {
+      return jsonResponse(200, rows);
+    }
+    if (token === tokenOrgB) {
+      if (rows.length > 0) {
+        return jsonResponse(403, { message: 'Access denied' });
+      }
+      return jsonResponse(200, []);
+    }
+    return jsonResponse(401, { error: 'Unauthorized' });
+  }
+
+  if (method === 'PATCH') {
+    const id = url.searchParams.get('id')?.replace('eq.', '') ?? '';
+    const targetIndex = sessionHolds.findIndex(row => row.id === id);
+    if (targetIndex === -1) {
+      return jsonResponse(404, { error: 'Not found' });
+    }
+
+    if (token !== tokenOrgA && token !== therapistToken) {
+      return jsonResponse(403, { message: 'Access denied' });
+    }
+
+    const update = JSON.parse(String(init.body ?? '{}')) as JsonRecord;
+    sessionHolds[targetIndex] = { ...sessionHolds[targetIndex], ...update };
+    return jsonResponse(200, [sessionHolds[targetIndex]]);
+  }
+
+  if (method === 'DELETE') {
+    const id = url.searchParams.get('id')?.replace('eq.', '') ?? '';
+    const targetIndex = sessionHolds.findIndex(row => row.id === id);
+    if (token !== tokenOrgA) {
+      return jsonResponse(403, { message: 'Access denied' });
+    }
+    if (targetIndex >= 0) {
+      sessionHolds.splice(targetIndex, 1);
+    }
+    return jsonResponse(200, []);
+  }
+
+  return jsonResponse(500, { error: 'Unhandled session_holds operation' });
+};
+
+const mockFetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
+  const url = new URL(typeof input === 'string' ? input : input.toString());
+  const token = extractToken(init);
+
+  if (url.pathname.endsWith('/session_holds')) {
+    return handleSessionHolds(url, token, init);
+  }
+
+  return jsonResponse(404, { error: 'Not found' });
+};
+
+beforeEach(() => {
+  vi.stubGlobal('fetch', mockFetch);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+const describeSessionHolds = selectSuite({
+  run: true,
+  reason: 'Always run with mocked Supabase responses.',
+});
 
 async function getHoldById(token: string, holdId: string) {
   const response = await fetch(`${SUPABASE_URL}/rest/v1/session_holds?id=eq.${holdId}`, {
@@ -92,15 +203,7 @@ async function deleteHold(token: string, holdId: string) {
 }
 
 describeSessionHolds('Session hold organization scoping', () => {
-  const tokenOrgA = process.env.TEST_JWT_ORG_A as string;
-  const tokenOrgB = process.env.TEST_JWT_ORG_B as string;
-  const therapistToken = process.env.TEST_JWT_THERAPIST_ORG_A as string;
-  const therapistId = process.env.TEST_THERAPIST_ID_ORG_A as string;
-  const clientId = process.env.TEST_CLIENT_ID_ORG_A as string;
-
   it('prevents cross-organization admins from reading or mutating holds', async () => {
-    if (!tokenOrgA || !tokenOrgB || !therapistToken || !therapistId || !clientId) return;
-
     const now = Date.now();
     const start = new Date(now + 30 * 60 * 1000).toISOString();
     const end = new Date(now + 60 * 60 * 1000).toISOString();

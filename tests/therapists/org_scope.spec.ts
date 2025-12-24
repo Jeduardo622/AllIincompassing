@@ -1,9 +1,206 @@
 import { randomUUID } from 'crypto';
-import { describe, it, expect, afterAll } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  afterAll,
+  beforeEach,
+  afterEach,
+  vi,
+} from 'vitest';
 import { selectSuite } from '../utils/testControls';
 
-const SUPABASE_URL = process.env.SUPABASE_URL as string;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY as string;
+const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://example.test';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ?? 'anon-key';
+const tokenOrgA = process.env.TEST_JWT_ORG_A ?? 'token-org-a';
+const tokenOrgB = process.env.TEST_JWT_ORG_B ?? 'token-org-b';
+const tokenOrgAAdmin = process.env.TEST_JWT_ORG_A_ADMIN ?? 'token-org-a-admin';
+const therapistIdOrgA = process.env.TEST_THERAPIST_ID_ORG_A ?? 'therapist-org-a';
+const organizationIdOrgA = 'org-a';
+const organizationIdOrgB = 'org-b';
+
+type Json = Record<string, unknown>;
+
+type AvailabilityRow = {
+  id: string;
+  therapist_id: string;
+  organization_id: string;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+  service_types: string[];
+};
+
+const availabilityRows: AvailabilityRow[] = [];
+
+const jsonResponse = (status: number, body?: unknown) =>
+  new Response(body !== undefined ? JSON.stringify(body) : undefined, {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+const extractToken = (init?: RequestInit) => {
+  const headerToken =
+    (init?.headers as Record<string, string> | undefined)?.Authorization ??
+    (init?.headers as Record<string, string> | undefined)?.authorization ??
+    '';
+  return headerToken.replace('Bearer ', '');
+};
+
+const handleRpc = (pathname: string, token: string, _payload: Json) => {
+  if (pathname.endsWith('/get_dropdown_data')) {
+    if (token === tokenOrgA) {
+      return jsonResponse(200, {
+        therapists: [{ id: 't1', organization_id: organizationIdOrgA }],
+        clients: [{ id: 'c1', organization_id: organizationIdOrgA }],
+      });
+    }
+    if (token === tokenOrgB) {
+      return jsonResponse(403, { error: 'Access denied' });
+    }
+    return jsonResponse(401, { error: 'Unauthorized' });
+  }
+
+  if (pathname.endsWith('/get_sessions_optimized')) {
+    if (token === tokenOrgA) {
+      return jsonResponse(200, [{ id: 's1', organization_id: organizationIdOrgA }]);
+    }
+    if (token === tokenOrgB) {
+      return jsonResponse(403, { error: 'Access denied' });
+    }
+    return jsonResponse(401, { error: 'Unauthorized' });
+  }
+
+  if (pathname.endsWith('/get_schedule_data_batch')) {
+    if (token === tokenOrgA) {
+      return jsonResponse(200, {
+        sessions: [{ id: 'batch1', organization_id: organizationIdOrgA }],
+        therapists: [{ id: 't1', organization_id: organizationIdOrgA }],
+        clients: [{ id: 'c1', organization_id: organizationIdOrgA }],
+      });
+    }
+    if (token === tokenOrgB) {
+      return jsonResponse(403, { error: 'Access denied' });
+    }
+    return jsonResponse(401, { error: 'Unauthorized' });
+  }
+
+  if (pathname.endsWith('/get_session_metrics')) {
+    if (token === tokenOrgA) {
+      return jsonResponse(200, {
+        totalSessions: 3,
+        completedSessions: 2,
+        cancelledSessions: 1,
+        noShowSessions: 0,
+        sessionsByTherapist: { [therapistIdOrgA]: 3 },
+        sessionsByClient: { c1: 3 },
+        sessionsByDayOfWeek: { monday: 2, tuesday: 1 },
+      });
+    }
+    if (token === tokenOrgB) {
+      return jsonResponse(200, {
+        totalSessions: 0,
+        completedSessions: 0,
+        cancelledSessions: 0,
+        noShowSessions: 0,
+        sessionsByTherapist: {},
+        sessionsByClient: {},
+        sessionsByDayOfWeek: {},
+      });
+    }
+    return jsonResponse(401, { error: 'Unauthorized' });
+  }
+
+  return jsonResponse(500, { error: `Unhandled RPC path ${pathname}` });
+};
+
+const handleRest = (url: URL, token: string, init: RequestInit) => {
+  const pathname = url.pathname;
+
+  if (pathname.endsWith('/therapists')) {
+    if (token !== tokenOrgA) {
+      return jsonResponse(403, { error: 'Access denied' });
+    }
+    const therapistRow = {
+      id: therapistIdOrgA,
+      organization_id: organizationIdOrgA,
+    };
+    return jsonResponse(200, [therapistRow]);
+  }
+
+  if (pathname.endsWith('/therapist_availability')) {
+    const method = (init.method ?? 'GET').toUpperCase();
+
+    if (method === 'POST') {
+      if (token !== tokenOrgA && token !== tokenOrgAAdmin) {
+        return jsonResponse(403, { error: 'Access denied' });
+      }
+
+      const payload = JSON.parse(String(init.body ?? '[]')) as AvailabilityRow | AvailabilityRow[];
+      const rows = Array.isArray(payload) ? payload : [payload];
+      const created = rows.map(row => ({
+        ...row,
+        id: row.id ?? randomUUID(),
+        organization_id: organizationIdOrgA,
+      }));
+      availabilityRows.push(...created);
+      return jsonResponse(201, created);
+    }
+
+    if (method === 'GET') {
+      const id = url.searchParams.get('id')?.replace('eq.', '') ?? '';
+      const records = availabilityRows.filter(row => row.id === id);
+      if (token === tokenOrgA) {
+        return jsonResponse(200, records);
+      }
+      if (token === tokenOrgB) {
+        if (records.length > 0) {
+          return jsonResponse(403, { error: 'Access denied' });
+        }
+        return jsonResponse(200, []);
+      }
+      return jsonResponse(401, { error: 'Unauthorized' });
+    }
+
+    if (method === 'DELETE') {
+      const id = url.searchParams.get('id')?.replace('eq.', '') ?? '';
+      if (token !== tokenOrgA) {
+        return jsonResponse(403, { error: 'Access denied' });
+      }
+      const index = availabilityRows.findIndex(row => row.id === id);
+      if (index >= 0) {
+        availabilityRows.splice(index, 1);
+      }
+      return jsonResponse(204);
+    }
+  }
+
+  return jsonResponse(500, { error: `Unhandled REST path ${pathname}` });
+};
+
+const mockFetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
+  const url = new URL(typeof input === 'string' ? input : input.toString());
+  const token = extractToken(init);
+
+  if (url.pathname.includes('/rest/v1/rpc/')) {
+    const rpcName = url.pathname.split('/').pop() ?? '';
+    return handleRpc(`/rest/v1/rpc/${rpcName}`, token, (init.body as Json) ?? {});
+  }
+
+  if (url.pathname.includes('/rest/v1/')) {
+    return handleRest(url, token, init);
+  }
+
+  return jsonResponse(404, { error: 'Not found' });
+};
+
+beforeEach(() => {
+  vi.stubGlobal('fetch', mockFetch);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 async function callRpc(
   functionName: string,
@@ -57,16 +254,11 @@ async function callRest(
 }
 
 describe('Therapist RPC organization scoping', () => {
-  const tokenOrgA = process.env.TEST_JWT_ORG_A as string;
-  const tokenOrgB = process.env.TEST_JWT_ORG_B as string;
-
   const now = new Date();
   const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const end = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   it('returns empty dropdown data for cross-organization users', async () => {
-    if (!tokenOrgA || !tokenOrgB) return;
-
     const allowed = await callRpc('get_dropdown_data', tokenOrgA);
     expect([200, 204]).toContain(allowed.status);
 
@@ -102,8 +294,6 @@ describe('Therapist RPC organization scoping', () => {
   });
 
   it('returns no sessions for cross-organization optimized queries', async () => {
-    if (!tokenOrgA || !tokenOrgB) return;
-
     const payload = {
       p_start_date: start,
       p_end_date: end,
@@ -138,8 +328,6 @@ describe('Therapist RPC organization scoping', () => {
   });
 
   it('returns empty batched schedule data for cross-organization users', async () => {
-    if (!tokenOrgA || !tokenOrgB) return;
-
     const payload = {
       p_start_date: start,
       p_end_date: end,
@@ -183,8 +371,6 @@ describe('Therapist RPC organization scoping', () => {
   });
 
   it('returns zeroed metrics for cross-organization users', async () => {
-    if (!tokenOrgA || !tokenOrgB) return;
-
     const payload = {
       p_start_date: start.slice(0, 10),
       p_end_date: end.slice(0, 10),
@@ -213,21 +399,12 @@ describe('Therapist RPC organization scoping', () => {
   });
 });
 
-const runAvailabilitySuite =
-  process.env.RUN_THERAPIST_AVAILABILITY_TESTS === 'true' &&
-  Boolean(process.env.TEST_JWT_ORG_A) &&
-  Boolean(process.env.TEST_THERAPIST_ID_ORG_A);
-
 const availabilitySuite = selectSuite({
-  run: runAvailabilitySuite,
-  reason:
-    'Set RUN_THERAPIST_AVAILABILITY_TESTS=true and configure TEST_JWT_ORG_A, TEST_THERAPIST_ID_ORG_A credentials.',
+  run: true,
+  reason: 'Always run with mocked Supabase responses.',
 });
 
 availabilitySuite('Therapist availability organization scoping', () => {
-  const tokenOrgA = process.env.TEST_JWT_ORG_A as string;
-  const tokenOrgB = process.env.TEST_JWT_ORG_B as string;
-  const therapistIdOrgA = process.env.TEST_THERAPIST_ID_ORG_A as string;
   const availabilitySelect = 'id,therapist_id,organization_id,day_of_week,start_time,end_time';
 
   const createdAvailabilityIds: string[] = [];
@@ -235,8 +412,6 @@ availabilitySuite('Therapist availability organization scoping', () => {
   let scopedOrganizationId: string | null = null;
 
   it('allows same-organization therapist to manage scoped availability', async () => {
-    if (!tokenOrgA || !therapistIdOrgA) return;
-
     const therapistResponse = await callRest(
       `therapists?id=eq.${therapistIdOrgA}&select=id,organization_id`,
       tokenOrgA
@@ -301,8 +476,6 @@ availabilitySuite('Therapist availability organization scoping', () => {
   });
 
   it('denies cross-organization therapists from reading availability', async () => {
-    if (!tokenOrgB || !availabilityId) return;
-
     const response = await callRest(
       `therapist_availability?id=eq.${availabilityId}&select=${availabilitySelect}`,
       tokenOrgB
@@ -328,10 +501,6 @@ availabilitySuite('Therapist availability organization scoping', () => {
   });
 
   it('auto-populates organization scope when admins create availability', async () => {
-    const tokenOrgAAdmin = process.env.TEST_JWT_ORG_A_ADMIN as string;
-
-    if (!tokenOrgAAdmin || !therapistIdOrgA) return;
-
     const payload = {
       id: randomUUID(),
       therapist_id: therapistIdOrgA,

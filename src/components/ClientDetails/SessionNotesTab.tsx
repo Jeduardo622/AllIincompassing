@@ -34,8 +34,12 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
   
   // Fetch authorizations
   const { data: authorizations = [], isLoading: isLoadingAuths } = useQuery({
-    queryKey: ['authorizations', client.id],
+    queryKey: ['authorizations', client.id, organizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
+      if (!organizationId) {
+        throw new Error('Organization context is required to load authorizations.');
+      }
+
       const { data, error } = await supabase
         .from('authorizations')
         .select(`
@@ -43,11 +47,13 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
           services:authorization_services(*)
         `)
         .eq('client_id', client.id)
+        .eq('organization_id', organizationId)
         .eq('status', 'approved');
         
       if (error) throw error;
       return data as Array<{ id: string; authorization_number: string; start_date: string; end_date: string; services: Array<{ id: string; service_code: string; approved_units: number; requested_units: number; unit_type: string }>; }>;
     },
+    enabled: Boolean(client.id && organizationId),
   });
 
   // Fetch therapists for the session note modal

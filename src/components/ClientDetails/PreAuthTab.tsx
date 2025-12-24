@@ -1,12 +1,14 @@
 import React, { useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
   ClipboardCheck, Calendar, AlertCircle, 
   FileText, Plus, ArrowRight,
   CheckCircle
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { showError } from '../../lib/toast';
+import { showError, showSuccess } from '../../lib/toast';
+import { useActiveOrganizationId } from '../../lib/organization';
+import { useAuth } from '../../lib/auth';
 
 interface PreAuthTabProps {
   client: { id: string };
@@ -38,6 +40,9 @@ const ACCEPTED_FILE_TYPES = [
 ] as const;
 
 export default function PreAuthTab({ client }: PreAuthTabProps) {
+  const { user } = useAuth();
+  const organizationId = useActiveOrganizationId();
+  const queryClient = useQueryClient();
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [wizardData, setWizardData] = useState({
@@ -47,7 +52,16 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
     documents: [] as File[],
   });
   const [isDragActive, setIsDragActive] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const serviceCatalog: Record<string, string> = {
+    '97151': 'Behavior identification assessment',
+    '97153': 'Adaptive behavior treatment by protocol',
+    '97155': 'Adaptive behavior treatment with protocol modification',
+    '97156': 'Family adaptive behavior treatment guidance',
+    '97157': 'Multiple-family group adaptive behavior treatment guidance',
+    '97158': 'Group adaptive behavior treatment with protocol modification',
+  };
   
   // Fetch authorizations
   const { data: authorizations = [], isLoading } = useQuery({
@@ -108,11 +122,122 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
     setCurrentStep(prev => Math.max(prev - 1, 1));
   };
   
-  const handleWizardSubmit = () => {
-    // This would submit the authorization request
-    alert('Authorization request submitted!');
-    setIsWizardOpen(false);
-    setCurrentStep(1);
+  const handleWizardSubmit = async () => {
+    if (!organizationId || !user?.id) {
+      showError('You must be signed in with an organization selected to submit.');
+      return;
+    }
+
+    if (!wizardData.insurance || wizardData.services.length === 0) {
+      showError('Select an insurance and at least one service.');
+      return;
+    }
+
+    if (wizardData.services.some((code) => !wizardData.units[code] || wizardData.units[code] <= 0)) {
+      showError('Enter units for all selected services.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setDate(startDate.getDate() + 180);
+
+      const { data: authorization, error: insertAuthError } = await supabase
+        .from('authorizations')
+        .insert({
+          authorization_number: `AUTH-${Date.now()}`,
+          client_id: client.id,
+          provider_id: user.id,
+          insurance_provider_id: null,
+          diagnosis_code: 'TBD',
+          diagnosis_description: wizardData.insurance || null,
+          start_date: startDate.toISOString().slice(0, 10),
+          end_date: endDate.toISOString().slice(0, 10),
+          status: 'approved',
+          organization_id: organizationId,
+          created_by: user.id,
+        })
+        .select('id')
+        .single();
+
+      if (insertAuthError || !authorization) {
+        throw insertAuthError || new Error('Unable to create authorization');
+      }
+
+      const servicesPayload = wizardData.services.map((serviceCode) => ({
+        authorization_id: authorization.id,
+        service_code: serviceCode,
+        service_description: serviceCatalog[serviceCode] ?? '',
+        from_date: startDate.toISOString().slice(0, 10),
+        to_date: endDate.toISOString().slice(0, 10),
+        requested_units: wizardData.units[serviceCode],
+        approved_units: wizardData.units[serviceCode],
+        unit_type: 'unit',
+        decision_status: 'approved',
+        organization_id: organizationId,
+        created_by: user.id,
+      }));
+
+      const { error: servicesError } = await supabase
+        .from('authorization_services')
+        .insert(servicesPayload);
+
+      if (servicesError) {
+        throw servicesError;
+      }
+
+      // Upload documents and attach metadata
+      const uploadedDocuments: Array<{ name: string; path: string; size: number; type: string }> = [];
+      for (const file of wizardData.documents) {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+        const storagePath = `clients/${client.id}/authorizations/${authorization.id}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('client-documents')
+          .upload(storagePath, file, { upsert: false });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        uploadedDocuments.push({
+          name: file.name,
+          path: storagePath,
+          size: file.size,
+          type: file.type,
+        });
+      }
+
+      if (uploadedDocuments.length > 0) {
+        const { error: docUpdateError } = await supabase
+          .from('authorizations')
+          .update({ documents: uploadedDocuments })
+          .eq('id', authorization.id);
+
+        if (docUpdateError) {
+          throw docUpdateError;
+        }
+      }
+
+      showSuccess('Pre-authorization submitted and approved.');
+      await queryClient.invalidateQueries({ queryKey: ['authorizations', client.id] });
+      setIsWizardOpen(false);
+      setCurrentStep(1);
+      setWizardData({
+        insurance: '',
+        services: [],
+        units: {},
+        documents: [],
+      });
+    } catch (error) {
+      showError(error instanceof Error ? error.message : 'Failed to submit pre-authorization.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
   
   const handleRenewAuthorization = (auth: Authorization) => {
@@ -775,10 +900,11 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
               <button
                 type="button"
                 onClick={currentStep === 5 ? handleWizardSubmit : handleNextStep}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+                disabled={isSubmitting}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center disabled:opacity-50"
               >
                 {currentStep === 5 ? (
-                  <>Submit Request</>
+                  <>{isSubmitting ? 'Submitting…' : 'Submit Request'}</>
                 ) : (
                   <>Next <ArrowRight className="ml-1 w-4 h-4" /></>
                 )}

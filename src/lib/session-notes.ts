@@ -98,6 +98,49 @@ export interface CreateClientSessionNoteInput {
 export const createClientSessionNote = async (
   payload: CreateClientSessionNoteInput
 ): Promise<SessionNote> => {
+  const { data: authorization, error: authError } = await supabase
+    .from('authorizations')
+    .select(
+      `
+        id,
+        organization_id,
+        status,
+        start_date,
+        end_date,
+        services:authorization_services (
+          service_code,
+          approved_units
+        )
+      `
+    )
+    .eq('id', payload.authorizationId)
+    .single();
+
+  if (authError || !authorization) {
+    throw (authError ?? new Error('Authorization not found.'));
+  }
+
+  if (authorization.organization_id !== payload.organizationId) {
+    throw new Error('Authorization does not belong to the active organization.');
+  }
+
+  if (authorization.status !== 'approved') {
+    throw new Error('Authorization must be approved before creating session notes.');
+  }
+
+  const sessionDate = new Date(payload.sessionDate);
+  if (sessionDate < new Date(authorization.start_date) || sessionDate > new Date(authorization.end_date)) {
+    throw new Error('Session date must be within the authorization date range.');
+  }
+
+  const matchedService = (authorization.services ?? []).find(
+    (service) => service.service_code === payload.serviceCode
+  );
+
+  if (!matchedService) {
+    throw new Error('Selected service code is not part of this authorization.');
+  }
+
   const insertPayload: ClientSessionNoteInsert = {
     authorization_id: payload.authorizationId,
     client_id: payload.clientId,

@@ -411,9 +411,11 @@ export type Database = {
           approved_units: number | null
           authorization_id: string
           created_at: string | null
+          created_by: string
           decision_status: string
           from_date: string
           id: string
+          organization_id: string
           requested_units: number
           service_code: string
           service_description: string
@@ -425,9 +427,11 @@ export type Database = {
           approved_units?: number | null
           authorization_id: string
           created_at?: string | null
+          created_by: string
           decision_status?: string
           from_date: string
           id?: string
+          organization_id: string
           requested_units: number
           service_code: string
           service_description: string
@@ -439,9 +443,11 @@ export type Database = {
           approved_units?: number | null
           authorization_id?: string
           created_at?: string | null
+          created_by?: string
           decision_status?: string
           from_date?: string
           id?: string
+          organization_id?: string
           requested_units?: number
           service_code?: string
           service_description?: string
@@ -457,6 +463,13 @@ export type Database = {
             referencedRelation: "authorizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "authorization_services_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
         ]
       }
       authorizations: {
@@ -466,6 +479,9 @@ export type Database = {
           created_at: string | null
           diagnosis_code: string
           diagnosis_description: string | null
+          organization_id: string
+          created_by: string
+          documents: Json | null
           end_date: string
           id: string
           insurance_provider_id: string | null
@@ -480,6 +496,9 @@ export type Database = {
           created_at?: string | null
           diagnosis_code: string
           diagnosis_description?: string | null
+          organization_id: string
+          created_by: string
+          documents?: Json | null
           end_date: string
           id?: string
           insurance_provider_id?: string | null
@@ -494,6 +513,9 @@ export type Database = {
           created_at?: string | null
           diagnosis_code?: string
           diagnosis_description?: string | null
+          organization_id?: string
+          created_by?: string
+          documents?: Json | null
           end_date?: string
           id?: string
           insurance_provider_id?: string | null
@@ -522,6 +544,13 @@ export type Database = {
             columns: ["provider_id"]
             isOneToOne: false
             referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "authorizations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]

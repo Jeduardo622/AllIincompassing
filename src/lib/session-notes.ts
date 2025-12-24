@@ -42,10 +42,15 @@ export interface FetchClientSessionNotesOptions {
 
 export const fetchClientSessionNotes = async (
   clientId: string,
+  organizationId: string | null,
   options: FetchClientSessionNotesOptions = {}
 ): Promise<SessionNote[]> => {
   if (!clientId) {
     return [];
+  }
+
+  if (!organizationId) {
+    throw new Error('Organization context is required to load session notes.');
   }
 
   const limit = options.limit ?? 100;
@@ -62,6 +67,7 @@ export const fetchClientSessionNotes = async (
       `
     )
     .eq('client_id', clientId)
+    .eq('organization_id', organizationId)
     .order('session_date', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(limit);

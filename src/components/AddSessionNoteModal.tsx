@@ -37,7 +37,7 @@ export default function AddSessionNoteModal({
   const [endTime, setEndTime] = useState('10:00');
   const [serviceCode, setServiceCode] = useState('97153');
   const [therapistId, setTherapistId] = useState('');
-  const [goalsAddressed, setGoalsAddressed] = useState<string[]>(['']);
+  const [goalsAddressed, setGoalsAddressed] = useState<string[]>([]);
   const [narrative, setNarrative] = useState('');
   const [isLocked, setIsLocked] = useState(false);
 

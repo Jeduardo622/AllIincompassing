@@ -24,6 +24,8 @@ import {
   createClient as createClientRecord,
 } from '../lib/clients/mutations';
 import { SERVICE_PREFERENCE_OPTIONS } from '../lib/constants/servicePreferences';
+import { useActiveOrganizationId } from '../lib/organization';
+import { useAuth } from '../lib/authContext';
 
 interface ClientOnboardingProps {
   onComplete?: () => void;
@@ -47,6 +49,8 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const organizationId = useActiveOrganizationId();
+  const { user } = useAuth();
   
   // Parse query parameters
   const queryParams = new URLSearchParams(location.search);
@@ -162,7 +166,10 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
         ...formattedData,
         service_preference: formattedData.service_preference || [],
         insurance_info: formattedData.insurance_info || {},
-        full_name: `${formattedData.first_name} ${formattedData.middle_name || ''} ${formattedData.last_name}`.trim()
+        full_name: `${formattedData.first_name} ${formattedData.middle_name || ''} ${formattedData.last_name}`.trim(),
+        organization_id: organizationId,
+        status: formattedData.status || 'pending',
+        created_by: user?.id ?? formattedData.created_by,
       };
 
       logger.debug('Submitting client onboarding payload', {
@@ -177,6 +184,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       });
 
       // Handle file uploads if any
+      const uploadedDocuments: Array<{ name: string; path: string; size: number; type: string }> = [];
       for (const [key, file] of Object.entries(uploadedFiles)) {
         const filePath = `clients/${client.id}/${key}/${file.name}`;
         const { error: uploadError } = await supabase.storage
@@ -189,7 +197,28 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
             metadata: { fileKey: key },
             context: { component: 'ClientOnboarding', operation: 'uploadDocument' }
           });
-          // Continue with other uploads even if one fails
+          continue;
+        }
+
+        uploadedDocuments.push({
+          name: file.name,
+          path: filePath,
+          size: file.size,
+          type: file.type,
+        });
+      }
+
+      if (uploadedDocuments.length > 0) {
+        const { error: docsUpdateError } = await supabase
+          .from('clients')
+          .update({ documents: uploadedDocuments })
+          .eq('id', client.id);
+
+        if (docsUpdateError) {
+          logger.error('Failed to save client document metadata', {
+            error: docsUpdateError,
+            context: { component: 'ClientOnboarding', operation: 'persistDocumentMetadata' },
+          });
         }
       }
 
@@ -240,6 +269,11 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       }
     });
     
+    if (!organizationId) {
+      showError('Organization context is required to complete onboarding.');
+      return;
+    }
+
     // Only check email validation error if an email was provided
     if (emailValidationError) {
       showError('Please resolve the email validation error before submitting');

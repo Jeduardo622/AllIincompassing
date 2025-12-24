@@ -20,6 +20,10 @@ interface Authorization {
   start_date: string;
   end_date: string;
   status: string;
+  plan_type?: string | null;
+  member_id?: string | null;
+  insurance_provider_id?: string | null;
+  insurance_provider?: { id: string; name: string } | null;
   services: {
     id: string;
     service_code: string;
@@ -47,9 +51,12 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [wizardData, setWizardData] = useState({
     insurance: '',
+    insuranceProviderId: '' as string,
     services: [] as string[],
     units: {} as Record<string, number>,
     documents: [] as File[],
+    planType: '',
+    memberId: '',
   });
   const [isDragActive, setIsDragActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -62,22 +69,41 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
     '97157': 'Multiple-family group adaptive behavior treatment guidance',
     '97158': 'Group adaptive behavior treatment with protocol modification',
   };
+
+  const { data: insuranceProviders = [] } = useQuery({
+    queryKey: ['insurance-providers'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('insurance_providers')
+        .select('id,name')
+        .order('name');
+      if (error) throw error;
+      return data as Array<{ id: string; name: string }>;
+    },
+  });
   
   // Fetch authorizations
   const { data: authorizations = [], isLoading } = useQuery({
-    queryKey: ['authorizations', client.id],
+    queryKey: ['authorizations', client.id, organizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
+      if (!organizationId) {
+        throw new Error('Organization context is required to load authorizations.');
+      }
+
       const { data, error } = await supabase
         .from('authorizations')
         .select(`
           *,
-          services:authorization_services(*)
+          services:authorization_services(*),
+          insurance_provider:insurance_providers(id,name)
         `)
-        .eq('client_id', client.id);
+        .eq('client_id', client.id)
+        .eq('organization_id', organizationId);
         
       if (error) throw error;
       return data as Authorization[];
     },
+    enabled: Boolean(client.id && organizationId),
   });
   
   const getStatusClass = (status: string) => {
@@ -128,8 +154,13 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
       return;
     }
 
-    if (!wizardData.insurance || wizardData.services.length === 0) {
-      showError('Select an insurance and at least one service.');
+    if (!wizardData.insuranceProviderId || wizardData.services.length === 0) {
+      showError('Select an insurance provider and at least one service.');
+      return;
+    }
+
+    if (!wizardData.planType) {
+      showError('Select a plan type.');
       return;
     }
 
@@ -151,7 +182,9 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
           authorization_number: `AUTH-${Date.now()}`,
           client_id: client.id,
           provider_id: user.id,
-          insurance_provider_id: null,
+          insurance_provider_id: wizardData.insuranceProviderId || null,
+          plan_type: wizardData.planType || null,
+          member_id: wizardData.memberId || null,
           diagnosis_code: 'TBD',
           diagnosis_description: wizardData.insurance || null,
           start_date: startDate.toISOString().slice(0, 10),
@@ -229,9 +262,12 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
       setCurrentStep(1);
       setWizardData({
         insurance: '',
+        insuranceProviderId: '',
         services: [],
         units: {},
         documents: [],
+        planType: '',
+        memberId: '',
       });
     } catch (error) {
       showError(error instanceof Error ? error.message : 'Failed to submit pre-authorization.');
@@ -242,7 +278,10 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
   
   const handleRenewAuthorization = (auth: Authorization) => {
     setWizardData({
-      insurance: 'CalOptima Health', // This would be the actual insurance from the auth
+      insurance: auth.insurance_provider?.name ?? '',
+      insuranceProviderId: auth.insurance_provider_id ?? '',
+      planType: auth.plan_type ?? '',
+      memberId: auth.member_id ?? '',
       services: auth.services.map(s => s.service_code),
       units: auth.services.reduce((acc, s) => {
         acc[s.service_code] = s.requested_units;
@@ -562,14 +601,24 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                       </label>
                       <select
                         id="preauth-insurance"
-                        value={wizardData.insurance}
-                        onChange={(e) => setWizardData({...wizardData, insurance: e.target.value})}
+                        value={wizardData.insuranceProviderId}
+                        onChange={(e) => {
+                          const providerId = e.target.value;
+                          const provider = insuranceProviders.find((p) => p.id === providerId);
+                          setWizardData({
+                            ...wizardData,
+                            insuranceProviderId: providerId,
+                            insurance: provider?.name ?? '',
+                          });
+                        }}
                         className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                       >
                         <option value="">Select insurance</option>
-                        <option value="CalOptima Health">CalOptima Health</option>
-                        <option value="Anthem Blue Cross">Anthem Blue Cross</option>
-                        <option value="Kaiser Permanente">Kaiser Permanente</option>
+                        {insuranceProviders.map((provider) => (
+                          <option key={provider.id} value={provider.id}>
+                            {provider.name}
+                          </option>
+                        ))}
                       </select>
                     </div>
                     
@@ -579,6 +628,8 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                       </label>
                       <select
                         id="preauth-plan-type"
+                        value={wizardData.planType}
+                        onChange={(e) => setWizardData({ ...wizardData, planType: e.target.value })}
                         className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                       >
                         <option value="">Select plan type</option>
@@ -596,8 +647,9 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                       <input
                         id="preauth-member-id"
                         type="text"
+                        value={wizardData.memberId}
+                        onChange={(e) => setWizardData({ ...wizardData, memberId: e.target.value })}
                         className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                        defaultValue={client.id || ''}
                       />
                     </div>
                   </div>

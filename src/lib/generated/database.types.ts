@@ -479,6 +479,8 @@ export type Database = {
           created_at: string | null
           diagnosis_code: string
           diagnosis_description: string | null
+          plan_type: string | null
+          member_id: string | null
           organization_id: string
           created_by: string
           documents: Json | null
@@ -496,6 +498,8 @@ export type Database = {
           created_at?: string | null
           diagnosis_code: string
           diagnosis_description?: string | null
+          plan_type?: string | null
+          member_id?: string | null
           organization_id: string
           created_by: string
           documents?: Json | null
@@ -513,6 +517,8 @@ export type Database = {
           created_at?: string | null
           diagnosis_code?: string
           diagnosis_description?: string | null
+          plan_type?: string | null
+          member_id?: string | null
           organization_id?: string
           created_by?: string
           documents?: Json | null

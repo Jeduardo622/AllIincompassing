@@ -111,6 +111,20 @@ export default function ClientModal({
       data.service_preference = [];
     }
 
+    if (typeof data.insurance_info === 'string') {
+      const trimmed = data.insurance_info.trim();
+      if (trimmed.length === 0) {
+        data.insurance_info = null as unknown as typeof data.insurance_info;
+      } else {
+        try {
+          data.insurance_info = JSON.parse(trimmed) as typeof data.insurance_info;
+        } catch (error) {
+          setLocalError('Insurance info must be valid JSON or left blank.');
+          throw error;
+        }
+      }
+    }
+
     const formatted = prepareFormData(data);
     setLocalError(null);
     try {

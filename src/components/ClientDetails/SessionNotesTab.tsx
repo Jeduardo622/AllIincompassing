@@ -75,8 +75,9 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
     isLoading: isLoadingNotes,
     isRefetching: isRefetchingNotes,
   } = useQuery({
-    queryKey: ['client-session-notes', client.id],
-    queryFn: () => fetchClientSessionNotes(client.id),
+    queryKey: ['client-session-notes', client.id, organizationId ?? 'MISSING_ORG'],
+    queryFn: () => fetchClientSessionNotes(client.id, organizationId),
+    enabled: Boolean(client.id && organizationId),
   });
 
   const createNoteMutation = useMutation({

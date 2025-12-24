@@ -15,7 +15,21 @@ import { useClientIssues, useClientNotes } from '../../lib/clients/hooks';
 import { useAuth } from '../../lib/authContext';
 
 interface ProfileTabProps {
-  client: { id: string; full_name: string; client_id?: string; date_of_birth?: string; email?: string; phone?: string; street_address?: string; city?: string; state?: string; zip_code?: string; gender?: string; cin_number?: string };
+  client: {
+    id: string;
+    full_name: string;
+    client_id?: string;
+    date_of_birth?: string;
+    email?: string;
+    phone?: string;
+    address_line1?: string | null;
+    address_line2?: string | null;
+    city?: string;
+    state?: string;
+    zip_code?: string;
+    gender?: string;
+    cin_number?: string;
+  };
   viewerRole?: 'client' | 'therapist' | 'admin' | 'super_admin';
 }
 
@@ -250,9 +264,11 @@ export default function ProfileTab({ client, viewerRole }: ProfileTabProps) {
             <div>
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Address</p>
               <p className="text-sm text-gray-900 dark:text-white">
-                {client.street_address ? (
+                {client.address_line1 ? (
                   <>
-                    {client.street_address}<br />
+                    {client.address_line1}
+                    {client.address_line2 ? <><br />{client.address_line2}</> : null}
+                    <br />
                     {client.city}, {client.state} {client.zip_code}
                   </>
                 ) : (

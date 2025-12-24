@@ -148,6 +148,26 @@ export const prepareFormData = <T extends Record<string, any>>(data: T): T => {
       result[field] = null;
     }
   });
+
+  // Normalize insurance_info when supplied as JSON string from form inputs
+  if ('insurance_info' in result) {
+    const value = result.insurance_info;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed.length === 0) {
+        result.insurance_info = null;
+      } else {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            result.insurance_info = parsed;
+          }
+        } catch {
+          // Leave as-is; schema validation will surface a useful error
+        }
+      }
+    }
+  }
   
   // Special handling for specific fields
   if ('email' in result && result.email) {

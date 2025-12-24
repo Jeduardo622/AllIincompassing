@@ -1,3 +1,13 @@
+import { describe, expect, it } from 'vitest';
+import { fetchClientSessionNotes } from '../session-notes';
+
+describe('fetchClientSessionNotes', () => {
+  it('throws when organizationId is missing', async () => {
+    await expect(fetchClientSessionNotes('client-1', null)).rejects.toThrow(
+      /Organization context is required/
+    );
+  });
+});
 import { describe, expect, it, vi } from 'vitest';
 import { createClientSessionNote } from '../session-notes';
 

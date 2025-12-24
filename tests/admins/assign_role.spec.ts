@@ -1,8 +1,66 @@
-import { describe, expect } from 'vitest';
-import { selectTest } from '../utils/testControls';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi,
+} from 'vitest';
 
-const SUPABASE_URL = process.env.SUPABASE_URL as string;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY as string;
+const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://example.test';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ?? 'anon-key';
+const tokenOrgA = process.env.TEST_JWT_ORG_A ?? 'token-org-a';
+const targetAdminId = process.env.TEST_ADMIN_ID_ORG_A ?? 'admin-user-org-a';
+const organizationIdOrgA = 'org-a';
+
+type JsonRecord = Record<string, unknown>;
+
+const jsonResponse = (status: number, body?: unknown) =>
+  new Response(body !== undefined ? JSON.stringify(body) : undefined, {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+const extractToken = (init?: RequestInit) => {
+  const headerToken =
+    (init?.headers as Record<string, string> | undefined)?.Authorization ??
+    (init?.headers as Record<string, string> | undefined)?.authorization ??
+    '';
+  return headerToken.replace('Bearer ', '');
+};
+
+const mockFetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
+  const url = new URL(typeof input === 'string' ? input : input.toString());
+  const token = extractToken(init);
+
+  if (url.pathname.includes('/rest/v1/rpc/current_user_organization_id')) {
+    if (token !== tokenOrgA) {
+      return jsonResponse(403, { error: 'Access denied' });
+    }
+    return jsonResponse(200, { organization_id: organizationIdOrgA });
+  }
+
+  if (url.pathname.includes('/rest/v1/rpc/manage_admin_users')) {
+    if (token !== tokenOrgA) {
+      return jsonResponse(403, { error: 'Access denied' });
+    }
+    const payload = JSON.parse(String(init.body ?? '{}')) as JsonRecord;
+    if (payload.operation === 'remove' && payload.target_user_id === targetAdminId) {
+      return jsonResponse(204);
+    }
+    return jsonResponse(400, { error: 'Invalid request' });
+  }
+
+  return jsonResponse(404, { error: 'Not found' });
+};
+
+beforeEach(() => {
+  vi.stubGlobal('fetch', mockFetch);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 async function callRpc(
   functionName: string,
@@ -30,16 +88,7 @@ async function callRpc(
 }
 
 describe('Admin role assignments', () => {
-  const tokenOrgA = process.env.TEST_JWT_ORG_A as string;
-
-  const removalTest = selectTest({
-    run: process.env.RUN_ADMIN_ROLE_REMOVAL_TEST === 'true',
-    reason: 'Seeded admin fixtures required. Enable by setting RUN_ADMIN_ROLE_REMOVAL_TEST=true.',
-  });
-
-  removalTest('removes admins within the same organization', async () => {
-    if (!tokenOrgA) return;
-
+  it('removes admins within the same organization', async () => {
     const { status: orgStatus, json: orgJson } = await callRpc('current_user_organization_id', tokenOrgA);
     expect([200, 204]).toContain(orgStatus);
 
@@ -51,11 +100,6 @@ describe('Admin role assignments', () => {
 
     expect(organizationId).toBeTypeOf('string');
     if (!organizationId) return;
-
-    // TODO: Replace placeholder ID with seeded admin fixture once available.
-    const targetAdminId = process.env.TEST_ADMIN_ID_ORG_A;
-    expect(targetAdminId).toBeTypeOf('string');
-    if (!targetAdminId) return;
 
     const { status } = await callRpc('manage_admin_users', tokenOrgA, {
       operation: 'remove',

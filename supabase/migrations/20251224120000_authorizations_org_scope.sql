@@ -18,7 +18,7 @@ alter table public.authorizations
 update public.authorizations a
 set
   organization_id = c.organization_id,
-  created_by = coalesce(created_by, a.provider_id)
+  created_by = coalesce(a.created_by, a.provider_id)
 from public.clients c
 where a.client_id = c.id
   and (a.organization_id is null or a.created_by is null);
@@ -40,7 +40,7 @@ alter table public.authorization_services
 update public.authorization_services s
 set
   organization_id = a.organization_id,
-  created_by = coalesce(created_by, a.created_by)
+  created_by = coalesce(s.created_by, a.created_by)
 from public.authorizations a
 where s.authorization_id = a.id
   and (s.organization_id is null or s.created_by is null);

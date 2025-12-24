@@ -8,7 +8,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { showError, showSuccess } from '../../lib/toast';
 import { useActiveOrganizationId } from '../../lib/organization';
-import { useAuth } from '../../lib/auth';
+import { useAuth } from '../../lib/authContext';
 
 interface PreAuthTabProps {
   client: { id: string };
@@ -597,7 +597,7 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                         id="preauth-member-id"
                         type="text"
                         className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                        defaultValue={client.client_id || ''}
+                        defaultValue={client.id || ''}
                       />
                     </div>
                   </div>

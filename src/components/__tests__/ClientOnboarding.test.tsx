@@ -7,6 +7,19 @@ import { MemoryRouter } from 'react-router-dom';
 
 import ClientOnboarding from '../ClientOnboarding';
 
+vi.mock('../../lib/authContext', () => ({
+  useAuth: () => ({
+    user: { id: 'user-1' },
+    profile: { id: 'user-1', role: 'admin' },
+    isAdmin: () => true,
+    isSuperAdmin: () => false,
+  }),
+}));
+
+vi.mock('../../lib/organization', () => ({
+  useActiveOrganizationId: () => 'org-1',
+}));
+
 vi.mock('../../lib/supabase', () => {
   const uploadMock = vi.fn().mockResolvedValue({ error: null });
   return {

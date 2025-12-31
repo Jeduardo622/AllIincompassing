@@ -22,6 +22,7 @@ import { prepareFormData } from '../lib/validation';
 import { useActiveOrganizationId } from '../lib/organization';
 import { toError } from '../lib/logger/normalizeError';
 import { describePostgrestError } from '../lib/supabase/isMissingRpcFunctionError';
+import { uploadTherapistDocumentAndRecordManifest } from '../lib/therapist-documents';
 import {
   THERAPIST_SERVICE_TYPE_OPTIONS,
   THERAPIST_SPECIALTY_OPTIONS,
@@ -207,21 +208,28 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
 
       // Handle file uploads if any
       for (const [key, file] of Object.entries(uploadedFiles)) {
-        const filePath = `therapists/${therapist.id}/${key}/${file.name}`;
-        const { error: uploadError } = await supabase.storage
-          .from('therapist-documents')
-          .upload(filePath, file);
-
-        if (uploadError) {
-          logger.error('Therapist onboarding document upload failed', {
+        try {
+          await uploadTherapistDocumentAndRecordManifest({
+            supabase,
+            therapistId: therapist.id,
+            organizationId: activeOrganizationId,
+            documentKey: key,
+            file,
+          });
+        } catch (uploadError) {
+          logger.error('Therapist onboarding document upload/manifest failed', {
             error: uploadError,
             context: { component: 'TherapistOnboarding', operation: 'uploadDocument' },
             metadata: {
               documentKey: key,
-              hasFile: Boolean(file)
-            }
+              hasFile: Boolean(file),
+            },
           });
-          // Continue with other uploads even if one fails
+
+          // License upload is required; fail fast so we never silently create incomplete onboarding records.
+          if (key === 'license') {
+            throw uploadError;
+          }
         }
       }
 

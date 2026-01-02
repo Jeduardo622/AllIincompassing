@@ -123,6 +123,7 @@ const createdTherapistClientIds: string[] = [];
 const createdTherapistCertificationIds: string[] = [];
 const createdGuardianUserIds: string[] = [];
 const createdClientGuardianIds: string[] = [];
+const createdExtraClientIds: string[] = [];
 
 let sessionCptEntryIdsByOrg: OrgRecordIds | null = null;
 let sessionCptModifierIdsByOrg: OrgRecordIds | null = null;
@@ -1463,6 +1464,10 @@ afterAll(async () => {
     await serviceClient.from('client_guardians').delete().in('id', createdClientGuardianIds);
   }
 
+  if (createdExtraClientIds.length > 0) {
+    await serviceClient.from('clients').delete().in('id', createdExtraClientIds);
+  }
+
   if (createdGuardianUserIds.length > 0) {
     await serviceClient.from('user_roles').delete().in('user_id', createdGuardianUserIds);
     for (const guardianId of createdGuardianUserIds) {
@@ -1667,6 +1672,41 @@ describe('row level security for multi-tenant tables', () => {
         .update({ preferred_language: originalPreferred })
         .eq('id', orgAContext.clientId);
 
+      await client.auth.signOut();
+    }
+  });
+
+  it('prevents clients from reading other clients in the same organization', async () => {
+    if (!runTests || !orgAContext || !serviceClient) {
+      console.log('??  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const otherClientId = randomUUID();
+    const insertResult = await serviceClient.from('clients').insert({
+      id: otherClientId,
+      email: `other.client.${Date.now()}@example.com`,
+      full_name: 'Other OrgA Client',
+      date_of_birth: '2014-01-01',
+      organization_id: orgAContext.organizationId,
+    });
+
+    if (insertResult.error) {
+      throw insertResult.error;
+    }
+    createdExtraClientIds.push(otherClientId);
+
+    const client = await signInClient(orgAContext);
+    try {
+      const result = await client
+        .from('clients')
+        .select('id')
+        .eq('id', otherClientId);
+
+      expect(result.error).toBeNull();
+      expect(Array.isArray(result.data)).toBe(true);
+      expect(result.data).toHaveLength(0);
+    } finally {
       await client.auth.signOut();
     }
   });

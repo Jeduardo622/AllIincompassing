@@ -1,0 +1,10 @@
+{
+  "executedAt": "2025-12-31T15:39:04.355Z",
+  "baseUrl": "https://app.allincompassing.ai",
+  "therapistEmail": "j_eduardo622@yahoo.com",
+  "foreignClientId": "b4df0a21-e927-4464-82c1-260cea4a4243",
+  "foreignTherapistId": "bcfba991-4c9b-48bd-8ede-086ac4c3954d",
+  "ok": false,
+  "error": "page.waitForURL: Timeout 20000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation until \"load\"\n  navigated to \"https://app.allincompassing.ai/\"\n  navigated to \"https://app.allincompassing.ai/\"\n============================================================",
+  "failurePath": "C:\\Users\\test\\Desktop\\AllIincompassing\\artifacts\\latest\\playwright-therapist-authorization-failure-1767195544355.png"
+}

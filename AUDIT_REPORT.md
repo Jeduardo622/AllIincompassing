@@ -23,6 +23,8 @@ Date: 2026-01-02
 ## Changes Implemented in This Audit
 - Added migration `supabase/migrations/20260102123000_rls_policy_cleanup.sql` to remove permissive legacy policies and align client/notes/session-note access with org-aware role helpers.
 - Added RLS test to verify clients cannot read other client records within the same organization.
+- Enabled JWT verification for feature flag edge functions (`supabase/functions/feature-flags/function.toml`, `supabase/functions/feature-flags-v2/function.toml`).
+- Added a test to assert feature flag edge functions keep `verify_jwt = true`.
 
 ## Findings (Prioritized)
 
@@ -134,16 +136,20 @@ Date: 2026-01-02
 **Recommendation**
 - Keep `verify_jwt` enabled for all non-public functions and continue calling `getUserOrThrow` in handlers.
 
+**Fix (Implemented)**
+- `feature-flags` and `feature-flags-v2` now require JWT verification at the edge layer.
+
 **Supabase references**
 - https://supabase.com/docs/guides/functions/auth - "Edge Function auth and verify_jwt"
 
 ## Verification Notes
-- **Tests added**: `src/tests/security/rls.spec.ts` includes a new client isolation test for same-org data access.
+- **Tests added**: `src/tests/security/rls.spec.ts` includes a new client isolation test for same-org data access. `src/tests/security/edgeFunctionConfig.test.ts` asserts JWT verification is enforced for feature flag edge functions.
 - **Tests run**: Not run in this environment. Recommended: `npm run lint`, `npm run typecheck`, `npm test`, and `RUN_DB_IT=1 npm test` for RLS integration.
 
 ## Files Changed
 - `supabase/migrations/20260102123000_rls_policy_cleanup.sql`
 - `src/tests/security/rls.spec.ts`
+- `src/tests/security/edgeFunctionConfig.test.ts`
 - `FORM_TABLE_MAP.md`
 - `SECURITY_CHECKLIST.md`
 
@@ -155,3 +161,90 @@ Date: 2026-01-02
 - Review and approve the RLS policy cleanup migration.
 - Confirm intended write permissions for therapists vs admins on client records.
 - Add explicit server-side validation for critical data writes.
+
+## Spot Audit Plan (Platform)
+Date established: 2026-01-02
+
+### Goals
+- Detect tenant isolation regressions early (RLS + RPC + edge functions).
+- Validate that sensitive data paths stay locked to intended roles.
+- Ensure critical UI routes and onboarding flows remain functional and secure.
+- Catch drift between docs, policies, and runtime behavior before releases.
+
+### Cadence & Triggers
+- **Weekly**: Lightweight spot checks across top-risk areas (see checklist).
+- **Per release**: Run full spot audit before `main` release or hotfix.
+- **Trigger-based**: Run immediately after RLS policy changes, auth/role changes, or edge function auth changes.
+
+### Scope (Rotating Focus Areas)
+1. **Tenant isolation** (RLS + RPCs)
+   - Tables: `clients`, `authorizations`, `sessions`, `client_session_notes`, `client_notes`, `billing_records`.
+   - RPCs: any guardian, dashboard, or admin RPCs that bypass table access.
+2. **Role boundaries**
+   - Roles: `client`, `guardian`, `therapist`, `admin`, `super_admin`, `dashboard_consumer`.
+   - Verify client/guardian cannot read org-wide data.
+3. **Edge functions**
+   - Ensure `verify_jwt = true` for non-public functions.
+   - Confirm function handlers call auth guard (e.g., `getUserOrThrow`).
+4. **Storage**
+   - Buckets: `client-documents`, `therapist-documents`.
+   - Confirm private access, signed URLs only, and correct RLS policies.
+5. **UI routes**
+   - Critical flows: login, clients, sessions, authorizations, onboarding, settings.
+   - Verify access control and no data leakage in list/detail views.
+
+### Spot Audit Checklist (Minimum)
+- **RLS**: Validate RLS enabled for all user-facing tables; inspect for permissive org-wide policies.
+- **Cross-tenant access**: For each role, attempt to read/write out-of-scope rows; expect denial.
+- **RPC audit**: Confirm org-scoped access in RPCs and no “admin bypass” for non-admins.
+- **Edge function auth**: Confirm JWT verification and handler-level auth checks.
+- **Storage**: Verify buckets remain private and access is signed or policy-scoped.
+- **Docs alignment**: Confirm `docs/EXEC_OVERVIEW.md` and `docs/onboarding-status.md` reflect current status.
+
+### Evidence & Artifacts
+- Test evidence: `src/tests/security/rls.spec.ts` results and any new test cases.
+- Playwright smoke artifacts in `artifacts/latest/` for onboarding and critical routes.
+- Supabase policy review notes (policy names + rationale).
+- Any deviations recorded in this report under Findings.
+
+### Ownership & Reporting
+- **Primary owner**: Platform/security lead (TBD by team).
+- **Reviewer**: QA + backend peer.
+- **Output**: Update this audit report with findings and add a timestamped status note.
+
+## Platform Status Appendix (as of 2025-12-01)
+- Therapist onboarding: runtime-config contract tests pass; Playwright smoke is active in CI; manual onboarding verified with test account. Outstanding work includes alerting for smoke failures and automated storage verification. See `docs/onboarding-status.md`.
+- Environment flow: PR previews have Supabase preview DBs; staging uses shared hosted project; production auto-runs migrations via Supabase GitHub integration. See `docs/EXEC_OVERVIEW.md`.
+- Current risks: tenant isolation regressions, secret sprawl, AI transcription reliability, preview DB limits, and MCP routing conflicts. See `docs/EXEC_OVERVIEW.md`.
+
+## Spot Audit Findings (2026-01-02)
+
+### 1) Database policy audit (RLS + RPCs) — **Blocked**
+**Status**
+- Unable to query live policies via MCP: Supabase MCP server requires `SUPABASE_ACCESS_TOKEN`.
+
+**Impact**
+- Live policy validation and runtime verification could not be completed.
+
+**Next action**
+- Provide a valid access token to the Supabase MCP server, then rerun the policy audit queries.
+
+---
+
+### 2) Edge function auth config — **Pass (Repo-level)**
+**Evidence**
+- `supabase/functions/feature-flags/function.toml` sets `verify_jwt = true`.
+- `supabase/functions/feature-flags-v2/function.toml` sets `verify_jwt = true`.
+
+**Note**
+- No other `function.toml` files were found in `supabase/functions/`, so remaining functions rely on default deployment settings. Confirm defaults in deployment pipeline when available.
+
+---
+
+### 3) Storage privacy + policy presence — **Pass (Repo-level)**
+**Evidence**
+- Storage buckets are created with `public = false` for both `client-documents` and `therapist-documents` (`supabase/migrations/20250630220728_tender_shrine.sql`).
+- Policies exist to scope read/write access by role and path (same migration plus later hardening migrations).
+
+**Note**
+- Live bucket configuration and policy attachment in the hosted project were not verified due to the missing access token.

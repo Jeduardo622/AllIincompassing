@@ -1,6 +1,20 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import process from 'node:process';
+import dotenv from 'dotenv';
+
+const loadDotenvIfPresent = (path, override = false) => {
+  if (!existsSync(path)) {
+    return;
+  }
+  dotenv.config({ path, override });
+};
+
+// Vitest does not automatically load .env files; Vite does.
+// Load local env files for parity with app/runtime expectations.
+loadDotenvIfPresent('.env');
+loadDotenvIfPresent('.env.local', true);
 
 const rawArgs = process.argv.slice(2);
 const filteredArgs = [];

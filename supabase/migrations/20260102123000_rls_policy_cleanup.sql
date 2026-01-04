@@ -3,6 +3,14 @@ set search_path = public;
 /*
   RLS policy cleanup to remove legacy permissive policies and align
   access rules with current org-aware helpers.
+
+  NOTE (2026-01-04):
+  - The hosted Supabase project has already applied this cleanup under migration version
+    `20260102183410` with name `rls_policy_cleanup_20260102123000`.
+  - This file is kept to document the intended policy set and for new/ephemeral databases.
+  - Re-applying this exact migration to a database that already has these policies may fail
+    (e.g., duplicate policy names) unless made idempotent. Prefer applying the recorded
+    migration version or a follow-up idempotent migration if policy drift needs correction.
 */
 
 -- Drop legacy client policies introduced by client_flow_rls (20251224093500).

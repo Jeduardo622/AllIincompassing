@@ -219,15 +219,29 @@ Date established: 2026-01-02
 
 ## Spot Audit Findings (2026-01-02)
 
-### 1) Database policy audit (RLS + RPCs) — **Blocked**
+### 1) Database policy audit (RLS + RPCs) — **Action required (Live DB verified)**
 **Status**
-- Unable to query live policies via MCP: Supabase MCP server requires `SUPABASE_ACCESS_TOKEN`.
+- Live policy queries completed (2026-01-04).
+- Follow-up hardening migration applied in hosted DB (2026-01-04): `20260104172512_drop_consolidated_authorizations_policies`.
+
+**Findings**
+- `authorizations` and `authorization_services` both have an additional **PERMISSIVE** RLS policy named `consolidated_all_4c9184` with:
+  - `roles = {public}`
+  - `cmd = ALL`
+  - `USING` predicate based on `app.is_admin()` **or** a `user_roles/roles.permissions` check (includes `'*'` or `view_clients`).
+- Because Postgres combines permissive policies with **OR** semantics, this `public` policy can bypass the org-scoped policies (`authorizations_org_*`, `authorization_services_org_*`) if the permission predicate is satisfied.
+- The `authorization_services_org_*` policies also contain a tautology in the join predicate (`a.organization_id = a.organization_id`), which should be reviewed for correctness (likely intended to compare to `authorization_services.organization_id`).
 
 **Impact**
-- Live policy validation and runtime verification could not be completed.
+- Potential for **cross-tenant** read/write access on authorization data if any non-admin role is granted `view_clients` (or `'*'`) in `roles.permissions`, because the consolidated policy does **not** enforce `organization_id` or provider scope.
 
 **Next action**
-- Provide a valid access token to the Supabase MCP server, then rerun the policy audit queries.
+- ✅ Dropped `consolidated_all_4c9184` from `public.authorizations` and `public.authorization_services` in migration `20260104172512_drop_consolidated_authorizations_policies`.
+- ✅ Recreated `authorization_services_org_read` / `authorization_services_org_write` to remove the `a.organization_id = a.organization_id` tautology and enforce same-org linkage.
+- If a consolidated policy is required, rewrite it to enforce:
+  - `organization_id = app.current_user_organization_id()` and
+  - provider-aware constraints (e.g., `provider_id = app.current_user_id()` for therapists) and
+  - role-specific access (admins vs therapists vs clients).
 
 ---
 

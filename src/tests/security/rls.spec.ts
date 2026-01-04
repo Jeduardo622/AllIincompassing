@@ -124,6 +124,11 @@ const createdTherapistCertificationIds: string[] = [];
 const createdGuardianUserIds: string[] = [];
 const createdClientGuardianIds: string[] = [];
 const createdExtraClientIds: string[] = [];
+const createdAuthorizationIds: string[] = [];
+const createdAuthorizationServiceIds: string[] = [];
+const createdClientSessionNoteIds: string[] = [];
+const createdClientNoteIds: string[] = [];
+const createdExtraTherapistIds: string[] = [];
 
 let sessionCptEntryIdsByOrg: OrgRecordIds | null = null;
 let sessionCptModifierIdsByOrg: OrgRecordIds | null = null;
@@ -1428,6 +1433,33 @@ afterAll(async () => {
     return;
   }
 
+  if (createdClientSessionNoteIds.length > 0) {
+    await serviceClient.from('client_session_notes').delete().in('id', createdClientSessionNoteIds);
+  }
+
+  if (createdAuthorizationServiceIds.length > 0) {
+    await serviceClient
+      .from('authorization_services')
+      .delete()
+      .in('id', createdAuthorizationServiceIds);
+  }
+
+  if (createdAuthorizationIds.length > 0) {
+    await serviceClient.from('authorizations').delete().in('id', createdAuthorizationIds);
+  }
+
+  if (createdClientNoteIds.length > 0) {
+    await serviceClient.from('client_notes').delete().in('id', createdClientNoteIds);
+  }
+
+  if (createdExtraTherapistIds.length > 0) {
+    await serviceClient.from('user_therapist_links').delete().in('user_id', createdExtraTherapistIds);
+    await serviceClient.from('therapists').delete().in('id', createdExtraTherapistIds);
+    for (const therapistUserId of createdExtraTherapistIds) {
+      await serviceClient.auth.admin.deleteUser(therapistUserId);
+    }
+  }
+
   const contexts = [orgAContext, orgBContext].filter(Boolean) as TenantContext[];
   for (const context of contexts) {
     const userSessionId = userSessionIdsByUser.get(context.userId);
@@ -1708,6 +1740,285 @@ describe('row level security for multi-tenant tables', () => {
       expect(result.data).toHaveLength(0);
     } finally {
       await client.auth.signOut();
+    }
+  });
+
+  it('prevents clients from reading other clients authorizations/services in the same organization', async () => {
+    if (!runTests || !orgAContext || !serviceClient) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const otherClientId = randomUUID();
+    const otherClientInsert = await serviceClient.from('clients').insert({
+      id: otherClientId,
+      email: `other.auth.client.${Date.now()}@example.com`,
+      full_name: 'Other OrgA Client (Auth)',
+      date_of_birth: '2014-02-02',
+      organization_id: orgAContext.organizationId,
+    });
+
+    if (otherClientInsert.error) {
+      throw otherClientInsert.error;
+    }
+    createdExtraClientIds.push(otherClientId);
+
+    const { data: authorizationRow, error: authorizationError } = await serviceClient
+      .from('authorizations')
+      .insert({
+        authorization_number: `AUTH-${Date.now()}-${randomSuffix()}`,
+        client_id: otherClientId,
+        provider_id: orgAContext.therapistId,
+        diagnosis_code: 'F84.0',
+        start_date: '2026-01-01',
+        end_date: '2026-12-31',
+        organization_id: orgAContext.organizationId,
+        created_by: orgAContext.userId,
+      })
+      .select('id')
+      .single();
+
+    if (authorizationError || !authorizationRow) {
+      throw authorizationError ?? new Error('Failed to insert authorization fixture');
+    }
+    createdAuthorizationIds.push(authorizationRow.id);
+
+    const { data: serviceRow, error: serviceError } = await serviceClient
+      .from('authorization_services')
+      .insert({
+        authorization_id: authorizationRow.id,
+        service_code: 'ABA',
+        service_description: 'ABA Service',
+        from_date: '2026-01-01',
+        to_date: '2026-12-31',
+        requested_units: 10,
+        unit_type: 'hours',
+        organization_id: orgAContext.organizationId,
+        created_by: orgAContext.userId,
+      })
+      .select('id')
+      .single();
+
+    if (serviceError || !serviceRow) {
+      throw serviceError ?? new Error('Failed to insert authorization service fixture');
+    }
+    createdAuthorizationServiceIds.push(serviceRow.id);
+
+    const client = await signInClient(orgAContext);
+    try {
+      const authRead = await client.from('authorizations').select('id').eq('id', authorizationRow.id);
+      expect(authRead.error).toBeNull();
+      expect(Array.isArray(authRead.data)).toBe(true);
+      expect(authRead.data).toHaveLength(0);
+
+      const serviceRead = await client
+        .from('authorization_services')
+        .select('id')
+        .eq('id', serviceRow.id);
+      expect(serviceRead.error).toBeNull();
+      expect(Array.isArray(serviceRead.data)).toBe(true);
+      expect(serviceRead.data).toHaveLength(0);
+    } finally {
+      await client.auth.signOut();
+    }
+  });
+
+  it('prevents clients from reading other clients internal notes in the same organization', async () => {
+    if (!runTests || !orgAContext || !serviceClient) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const otherClientId = randomUUID();
+    const otherClientInsert = await serviceClient.from('clients').insert({
+      id: otherClientId,
+      email: `other.note.client.${Date.now()}@example.com`,
+      full_name: 'Other OrgA Client (Notes)',
+      date_of_birth: '2014-03-03',
+      organization_id: orgAContext.organizationId,
+    });
+
+    if (otherClientInsert.error) {
+      throw otherClientInsert.error;
+    }
+    createdExtraClientIds.push(otherClientId);
+
+    const { data: authorizationRow, error: authorizationError } = await serviceClient
+      .from('authorizations')
+      .insert({
+        authorization_number: `AUTH-NOTES-${Date.now()}-${randomSuffix()}`,
+        client_id: otherClientId,
+        provider_id: orgAContext.therapistId,
+        diagnosis_code: 'F84.0',
+        start_date: '2026-01-01',
+        end_date: '2026-12-31',
+        organization_id: orgAContext.organizationId,
+        created_by: orgAContext.userId,
+      })
+      .select('id')
+      .single();
+
+    if (authorizationError || !authorizationRow) {
+      throw authorizationError ?? new Error('Failed to insert authorization fixture');
+    }
+    createdAuthorizationIds.push(authorizationRow.id);
+
+    const { data: clientNoteRow, error: clientNoteError } = await serviceClient
+      .from('client_notes')
+      .insert({
+        client_id: otherClientId,
+        content: `Internal note ${randomSuffix()}`,
+        status: 'open',
+        created_by: orgAContext.userId,
+        organization_id: orgAContext.organizationId,
+        is_visible_to_parent: false,
+      })
+      .select('id')
+      .single();
+
+    if (clientNoteError || !clientNoteRow) {
+      throw clientNoteError ?? new Error('Failed to insert client note fixture');
+    }
+    createdClientNoteIds.push(clientNoteRow.id);
+
+    const { data: sessionNoteRow, error: sessionNoteError } = await serviceClient
+      .from('client_session_notes')
+      .insert({
+        client_id: otherClientId,
+        authorization_id: authorizationRow.id,
+        therapist_id: orgAContext.therapistId,
+        created_by: orgAContext.userId,
+        organization_id: orgAContext.organizationId,
+        session_id: null,
+        service_code: 'ABA',
+        session_date: '2026-01-05',
+        start_time: '10:00:00',
+        end_time: '10:30:00',
+        session_duration: 30,
+        narrative: `Clinical narrative ${randomSuffix()}`,
+      })
+      .select('id')
+      .single();
+
+    if (sessionNoteError || !sessionNoteRow) {
+      throw sessionNoteError ?? new Error('Failed to insert client session note fixture');
+    }
+    createdClientSessionNoteIds.push(sessionNoteRow.id);
+
+    const client = await signInClient(orgAContext);
+    try {
+      const clientNotesRead = await client.from('client_notes').select('id').eq('id', clientNoteRow.id);
+      expect(clientNotesRead.error).toBeNull();
+      expect(Array.isArray(clientNotesRead.data)).toBe(true);
+      expect(clientNotesRead.data).toHaveLength(0);
+
+      const sessionNotesRead = await client
+        .from('client_session_notes')
+        .select('id')
+        .eq('id', sessionNoteRow.id);
+      expect(sessionNotesRead.error).toBeNull();
+      expect(Array.isArray(sessionNotesRead.data)).toBe(true);
+      expect(sessionNotesRead.data).toHaveLength(0);
+    } finally {
+      await client.auth.signOut();
+    }
+  });
+
+  it('prevents therapists from modifying authorizations for other providers in the same organization', async () => {
+    if (!runTests || !orgAContext || !serviceClient) {
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
+      return;
+    }
+
+    const otherTherapistEmail = `other.therapist.${Date.now()}@example.com`;
+    const otherTherapistPassword = `P@ssw0rd-${Math.random().toString(36).slice(2, 10)}`;
+    const { data: otherUser, error: otherUserError } = await serviceClient.auth.admin.createUser({
+      email: otherTherapistEmail,
+      password: otherTherapistPassword,
+      email_confirm: true,
+      user_metadata: { organization_id: orgAContext.organizationId },
+    });
+
+    if (otherUserError || !otherUser?.user) {
+      throw otherUserError ?? new Error('Other therapist user creation failed');
+    }
+
+    const otherTherapistId = otherUser.user.id;
+    createdExtraTherapistIds.push(otherTherapistId);
+
+    const { error: therapistInsertError } = await serviceClient.from('therapists').insert({
+      id: otherTherapistId,
+      email: otherTherapistEmail,
+      full_name: `Other Therapist ${randomSuffix()}`,
+      specialties: ['aba'],
+      max_clients: 5,
+      organization_id: orgAContext.organizationId,
+    });
+
+    if (therapistInsertError) {
+      throw therapistInsertError;
+    }
+
+    const assignRoleResult = await serviceClient.rpc('assign_therapist_role', {
+      user_email: otherTherapistEmail,
+      therapist_id: otherTherapistId,
+    });
+
+    if (assignRoleResult.error) {
+      throw assignRoleResult.error;
+    }
+
+    await serviceClient.from('profiles').update({ role: 'therapist' }).eq('id', otherTherapistId);
+
+    const { data: authorizationRow, error: authorizationError } = await serviceClient
+      .from('authorizations')
+      .insert({
+        authorization_number: `AUTH-PROV-${Date.now()}-${randomSuffix()}`,
+        client_id: orgAContext.clientId,
+        provider_id: otherTherapistId,
+        diagnosis_code: 'F84.0',
+        start_date: '2026-01-01',
+        end_date: '2026-12-31',
+        organization_id: orgAContext.organizationId,
+        created_by: otherTherapistId,
+      })
+      .select('id')
+      .single();
+
+    if (authorizationError || !authorizationRow) {
+      throw authorizationError ?? new Error('Failed to insert cross-provider authorization fixture');
+    }
+    createdAuthorizationIds.push(authorizationRow.id);
+
+    const therapistClient = await signInTherapist(orgAContext);
+    try {
+      const updateAttempt = await therapistClient
+        .from('authorizations')
+        .update({ diagnosis_description: 'unauthorized update' })
+        .eq('id', authorizationRow.id)
+        .select('id');
+
+      const affected = Array.isArray(updateAttempt.data) ? updateAttempt.data.length : 0;
+      expectRlsViolation(updateAttempt.error, affected);
+
+      const insertAttempt = await therapistClient
+        .from('authorizations')
+        .insert({
+          authorization_number: `AUTH-PROV-INSERT-${Date.now()}-${randomSuffix()}`,
+          client_id: orgAContext.clientId,
+          provider_id: otherTherapistId,
+          diagnosis_code: 'F84.0',
+          start_date: '2026-01-01',
+          end_date: '2026-12-31',
+          organization_id: orgAContext.organizationId,
+          created_by: orgAContext.userId,
+        })
+        .select('id');
+
+      const inserted = Array.isArray(insertAttempt.data) ? insertAttempt.data.length : 0;
+      expectRlsViolation(insertAttempt.error, inserted);
+    } finally {
+      await therapistClient.auth.signOut();
     }
   });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../generated/database.types';
-import { checkClientEmailExists, createClient } from '../mutations';
+import { checkClientEmailExists, createClient, updateClientDocuments } from '../mutations';
 
 const buildSupabaseMock = () => {
   const selectMock = vi.fn();
@@ -98,5 +98,37 @@ describe('createClient', () => {
       'create_client RPC returned no data',
     );
     expect(insertMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('updateClientDocuments', () => {
+  it('calls the RPC with allowlisted arguments', async () => {
+    const { supabase, rpcMock } = buildSupabaseMock();
+    rpcMock.mockResolvedValue({ data: null, error: null });
+
+    await updateClientDocuments(supabase, {
+      clientId: 'client-id',
+      documents: [
+        {
+          name: 'doc.pdf',
+          path: 'clients/client-id/insurance_card_front/doc.pdf',
+          size: 123,
+          type: 'application/pdf',
+        },
+      ],
+    });
+
+    expect(rpcMock).toHaveBeenCalledTimes(1);
+    expect(rpcMock).toHaveBeenCalledWith('update_client_documents', {
+      p_client_id: 'client-id',
+      p_documents: [
+        {
+          name: 'doc.pdf',
+          path: 'clients/client-id/insurance_card_front/doc.pdf',
+          size: 123,
+          type: 'application/pdf',
+        },
+      ],
+    });
   });
 });

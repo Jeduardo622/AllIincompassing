@@ -1,5 +1,6 @@
 /*
   # Policy consolidation round 3 (simplified helper signatures)
+  (Hosted DB migration version: 20251223173550)
 
   Scope: sessions, client_session_notes, ai_session_notes (via sessions),
   session_note_templates, therapist_certifications (via therapists),

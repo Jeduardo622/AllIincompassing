@@ -143,3 +143,24 @@ export const createClient = async (
     throw fallbackError;
   }
 };
+
+export interface ClientDocumentInput {
+  name: string;
+  path: string;
+  size: number;
+  type: string;
+}
+
+export const updateClientDocuments = async (
+  supabase: ClientSupabase,
+  input: { clientId: string; documents: ClientDocumentInput[] },
+): Promise<void> => {
+  const { error } = await supabase.rpc('update_client_documents', {
+    p_client_id: input.clientId,
+    p_documents: input.documents,
+  });
+
+  if (error) {
+    throw error;
+  }
+};

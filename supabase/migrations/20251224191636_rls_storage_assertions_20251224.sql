@@ -1,3 +1,7 @@
+/*
+  Storage sanity checks (Hosted DB migration version: 20251224191636)
+*/
+
 -- Additional sanity checks for storage and policy coverage.
 
 -- Ensure storage.objects RLS is enabled (idempotent check).

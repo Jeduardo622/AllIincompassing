@@ -1,5 +1,6 @@
 /*
   # Authorization org scoping and RLS refresh
+  (Hosted DB migration version: 20251224161628)
 
   1) Add organization and creator metadata to authorizations/authorization_services.
   2) Backfill from existing client + authorization data.

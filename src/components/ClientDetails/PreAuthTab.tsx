@@ -9,6 +9,7 @@ import { supabase } from '../../lib/supabase';
 import { showError, showSuccess } from '../../lib/toast';
 import { useActiveOrganizationId } from '../../lib/organization';
 import { useAuth } from '../../lib/authContext';
+import { createAuthorizationWithServices, updateAuthorizationDocuments } from '../../lib/authorizations/mutations';
 
 interface PreAuthTabProps {
   client: { id: string };
@@ -176,58 +177,36 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
       const endDate = new Date();
       endDate.setDate(startDate.getDate() + 180);
 
-      const { data: authorization, error: insertAuthError } = await supabase
-        .from('authorizations')
-        .insert({
-          authorization_number: `AUTH-${Date.now()}`,
-          client_id: client.id,
-          provider_id: user.id,
-          insurance_provider_id: wizardData.insuranceProviderId || null,
-          plan_type: wizardData.planType || null,
-          member_id: wizardData.memberId || null,
-          diagnosis_code: 'TBD',
-          diagnosis_description: wizardData.insurance || null,
-          start_date: startDate.toISOString().slice(0, 10),
-          end_date: endDate.toISOString().slice(0, 10),
-          status: 'approved',
-          organization_id: organizationId,
-          created_by: user.id,
-        })
-        .select('id')
-        .single();
-
-      if (insertAuthError || !authorization) {
-        throw insertAuthError || new Error('Unable to create authorization');
-      }
-
-      const servicesPayload = wizardData.services.map((serviceCode) => ({
-        authorization_id: authorization.id,
-        service_code: serviceCode,
-        service_description: serviceCatalog[serviceCode] ?? '',
-        from_date: startDate.toISOString().slice(0, 10),
-        to_date: endDate.toISOString().slice(0, 10),
-        requested_units: wizardData.units[serviceCode],
-        approved_units: wizardData.units[serviceCode],
-        unit_type: 'unit',
-        decision_status: 'approved',
-        organization_id: organizationId,
-        created_by: user.id,
-      }));
-
-      const { error: servicesError } = await supabase
-        .from('authorization_services')
-        .insert(servicesPayload);
-
-      if (servicesError) {
-        throw servicesError;
-      }
+      const { id: authorizationId } = await createAuthorizationWithServices({
+        authorization_number: `AUTH-${Date.now()}`,
+        client_id: client.id,
+        provider_id: user.id,
+        insurance_provider_id: wizardData.insuranceProviderId || null,
+        plan_type: wizardData.planType || null,
+        member_id: wizardData.memberId || null,
+        diagnosis_code: 'TBD',
+        diagnosis_description: wizardData.insurance || null,
+        start_date: startDate.toISOString().slice(0, 10),
+        end_date: endDate.toISOString().slice(0, 10),
+        status: 'approved',
+        services: wizardData.services.map((serviceCode) => ({
+          service_code: serviceCode,
+          service_description: serviceCatalog[serviceCode] ?? '',
+          from_date: startDate.toISOString().slice(0, 10),
+          to_date: endDate.toISOString().slice(0, 10),
+          requested_units: wizardData.units[serviceCode],
+          approved_units: wizardData.units[serviceCode],
+          unit_type: 'unit',
+          decision_status: 'approved',
+        })),
+      });
 
       // Upload documents and attach metadata
       const uploadedDocuments: Array<{ name: string; path: string; size: number; type: string }> = [];
       for (const file of wizardData.documents) {
         const fileExt = file.name.split('.').pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-        const storagePath = `clients/${client.id}/authorizations/${authorization.id}/${fileName}`;
+        const storagePath = `clients/${client.id}/authorizations/${authorizationId}/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
           .from('client-documents')
@@ -246,14 +225,10 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
       }
 
       if (uploadedDocuments.length > 0) {
-        const { error: docUpdateError } = await supabase
-          .from('authorizations')
-          .update({ documents: uploadedDocuments })
-          .eq('id', authorization.id);
-
-        if (docUpdateError) {
-          throw docUpdateError;
-        }
+        await updateAuthorizationDocuments({
+          authorization_id: authorizationId,
+          documents: uploadedDocuments,
+        });
       }
 
       showSuccess('Pre-authorization submitted and approved.');

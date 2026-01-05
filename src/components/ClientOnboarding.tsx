@@ -22,6 +22,7 @@ import { clientSchema, type ClientFormData } from '../lib/validationSchemas';
 import {
   checkClientEmailExists,
   createClient as createClientRecord,
+  updateClientDocuments,
 } from '../lib/clients/mutations';
 import { SERVICE_PREFERENCE_OPTIONS } from '../lib/constants/servicePreferences';
 import { useActiveOrganizationId } from '../lib/organization';
@@ -209,12 +210,12 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       }
 
       if (uploadedDocuments.length > 0) {
-        const { error: docsUpdateError } = await supabase
-          .from('clients')
-          .update({ documents: uploadedDocuments })
-          .eq('id', client.id);
-
-        if (docsUpdateError) {
+        try {
+          await updateClientDocuments(supabase, {
+            clientId: client.id,
+            documents: uploadedDocuments,
+          });
+        } catch (docsUpdateError) {
           logger.error('Failed to save client document metadata', {
             error: docsUpdateError,
             context: { component: 'ClientOnboarding', operation: 'persistDocumentMetadata' },

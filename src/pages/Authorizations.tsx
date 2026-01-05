@@ -15,6 +15,7 @@ import AuthorizationModal from '../components/AuthorizationModal';
 import { showSuccess, showError } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
 import { fetchClients } from '../lib/clients/fetchers';
+import { createAuthorizationWithServices, updateAuthorizationWithServices } from '../lib/authorizations/mutations';
 
 export default function Authorizations() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,66 +71,27 @@ export default function Authorizations() {
       });
       
       try {
-        // First create the authorization
-        const { data: auth, error: authError } = await supabase
-          .from('authorizations')
-          .insert([{
-            authorization_number: data.authorization_number,
-            client_id: data.client_id,
-            provider_id: data.provider_id,
-            diagnosis_code: data.diagnosis_code,
-            diagnosis_description: data.diagnosis_description,
-            start_date: data.start_date,
-            end_date: data.end_date,
-            status: 'pending'
-          }])
-          .select()
-          .single();
-
-        if (authError) {
-          logger.error('Failed to create authorization record', {
-            error: authError,
-            context: { component: 'Authorizations', operation: 'createAuthorization' }
-          });
-          throw authError;
-        }
-
-        logger.info('Authorization record created', {
-          metadata: { serviceCount: data.services?.length ?? 0 }
+        const { id } = await createAuthorizationWithServices({
+          client_id: data.client_id ?? '',
+          provider_id: data.provider_id ?? '',
+          authorization_number: data.authorization_number ?? '',
+          diagnosis_code: data.diagnosis_code ?? '',
+          diagnosis_description: data.diagnosis_description ?? null,
+          start_date: data.start_date ?? '',
+          end_date: data.end_date ?? '',
+          status: 'pending',
+          services: (data.services ?? []).map((service) => ({
+            service_code: service.service_code ?? '',
+            service_description: service.service_description ?? null,
+            from_date: service.from_date ?? '',
+            to_date: service.to_date ?? '',
+            requested_units: service.requested_units ?? 0,
+            unit_type: service.unit_type ?? 'Units',
+            decision_status: 'pending',
+          })),
         });
 
-        // Then create all services
-        if (data.services && data.services.length > 0) {
-          const servicesToInsert = data.services.map(service => ({
-            authorization_id: auth.id,
-            service_code: service.service_code,
-            service_description: service.service_description,
-            from_date: service.from_date,
-            to_date: service.to_date,
-            requested_units: service.requested_units,
-            unit_type: service.unit_type || 'Units',
-            decision_status: 'pending'
-          }));
-
-          logger.debug('Creating authorization services', {
-            metadata: { count: servicesToInsert.length }
-          });
-
-          const { error: servicesError } = await supabase
-            .from('authorization_services')
-            .insert(servicesToInsert);
-
-          if (servicesError) {
-            logger.error('Failed to create authorization services', {
-              error: servicesError,
-              context: { component: 'Authorizations', operation: 'createServices' },
-              metadata: { count: servicesToInsert.length }
-            });
-            throw servicesError;
-          }
-        }
-
-        return auth;
+        return { id } as Authorization;
       } catch (error) {
         logger.error('Authorization creation mutation failed', {
           error,
@@ -155,7 +117,20 @@ export default function Authorizations() {
   });
 
   const updateAuthorizationMutation = useMutation({
-    mutationFn: async (data: Partial<Authorization> & { services: Partial<AuthorizationService>[] }) => {
+    mutationFn: async (data: {
+      client_id?: string | null;
+      provider_id?: string | null;
+      authorization_number?: string | null;
+      diagnosis_code?: string | null;
+      diagnosis_description?: string | null;
+      start_date?: string | null;
+      end_date?: string | null;
+      status?: string | null;
+      insurance_provider_id?: string | null;
+      plan_type?: string | null;
+      member_id?: string | null;
+      services: Partial<AuthorizationService>[];
+    }) => {
       logger.debug('Updating authorization', {
         metadata: {
           serviceCount: data.services?.length ?? 0,
@@ -164,77 +139,33 @@ export default function Authorizations() {
       });
       
       try {
-        // Update the authorization
-        const { error: authError } = await supabase
-          .from('authorizations')
-          .update({
-            authorization_number: data.authorization_number,
-            client_id: data.client_id,
-            provider_id: data.provider_id,
-            diagnosis_code: data.diagnosis_code,
-            diagnosis_description: data.diagnosis_description,
-            start_date: data.start_date,
-            end_date: data.end_date
-          })
-          .eq('id', selectedAuthorization?.id);
-
-        if (authError) {
-          logger.error('Failed to update authorization record', {
-            error: authError,
-            context: { component: 'Authorizations', operation: 'updateAuthorization' }
-          });
-          throw authError;
+        if (!selectedAuthorization?.id) {
+          throw new Error('Authorization selection is required');
         }
 
-        // Update all services
-        if (data.services && data.services.length > 0) {
-          for (const service of data.services) {
-            if (service.id) {
-              // Update existing service
-              const { error: updateError } = await supabase
-                .from('authorization_services')
-                .update({
-                  service_code: service.service_code,
-                  service_description: service.service_description,
-                  from_date: service.from_date,
-                  to_date: service.to_date,
-                  requested_units: service.requested_units,
-                  unit_type: service.unit_type
-                })
-                .eq('id', service.id);
-
-              if (updateError) {
-                logger.error('Failed to update authorization service', {
-                  error: updateError,
-                  context: { component: 'Authorizations', operation: 'updateService' }
-                });
-                throw updateError;
-              }
-            } else {
-              // Create new service
-              const { error: createError } = await supabase
-                .from('authorization_services')
-                .insert([{
-                  authorization_id: selectedAuthorization?.id,
-                  service_code: service.service_code,
-                  service_description: service.service_description,
-                  from_date: service.from_date,
-                  to_date: service.to_date,
-                  requested_units: service.requested_units,
-                  unit_type: service.unit_type || 'Units',
-                  decision_status: 'pending'
-                }]);
-
-              if (createError) {
-                logger.error('Failed to create authorization service', {
-                  error: createError,
-                  context: { component: 'Authorizations', operation: 'createService' }
-                });
-                throw createError;
-              }
-            }
-          }
-        }
+        await updateAuthorizationWithServices({
+          authorization_id: selectedAuthorization.id,
+          client_id: data.client_id ?? '',
+          provider_id: data.provider_id ?? '',
+          authorization_number: data.authorization_number ?? '',
+          diagnosis_code: data.diagnosis_code ?? '',
+          diagnosis_description: data.diagnosis_description ?? null,
+          start_date: data.start_date ?? '',
+          end_date: data.end_date ?? '',
+          status: data.status ?? null,
+          insurance_provider_id: data.insurance_provider_id ?? null,
+          plan_type: data.plan_type ?? null,
+          member_id: data.member_id ?? null,
+          services: (data.services ?? []).map((service) => ({
+            service_code: service.service_code ?? '',
+            service_description: service.service_description ?? null,
+            from_date: service.from_date ?? '',
+            to_date: service.to_date ?? '',
+            requested_units: service.requested_units ?? 0,
+            unit_type: service.unit_type ?? 'Units',
+            decision_status: service.decision_status ?? 'pending',
+          })),
+        });
       } catch (error) {
         logger.error('Authorization update mutation failed', {
           error,

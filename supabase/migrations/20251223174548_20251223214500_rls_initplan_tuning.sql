@@ -1,5 +1,7 @@
 /*
   # RLS initplan tuning
+  (Hosted DB migration version: 20251223174548)
+
   - Wrap auth/app helper calls with SELECT to avoid per-row initplan warnings
   - Tables: session_holds, guardian_link_queue, profiles, impersonation_audit
 */

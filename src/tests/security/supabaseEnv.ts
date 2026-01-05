@@ -2,6 +2,24 @@ const importMetaEnv = (import.meta as unknown as {
   env?: Record<string, string | undefined>;
 }).env ?? {};
 
+// Vitest does not automatically load .env files (Vite does).
+// Keep this scoped to the security test harness so we don't alter app/runtime behavior.
+import { existsSync } from 'node:fs';
+import dotenv from 'dotenv';
+
+const loadDotenvIfPresent = (path: string): void => {
+  if (!existsSync(path)) {
+    return;
+  }
+  // Never override explicitly provided env (CI, shells, etc).
+  dotenv.config({ path, override: false });
+};
+
+// Load local env once to allow RUN_DB_IT security tests to run without manual exports.
+// This is a no-op if variables are already present.
+loadDotenvIfPresent('.env');
+loadDotenvIfPresent('.env.local');
+
 const readEnvValue = (
   key: string,
   overrides?: Record<string, string | undefined>,

@@ -5,7 +5,9 @@ import {
   RouteOptions,
   UserContext,
 } from "../_shared/auth-middleware.ts";
+import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { getLogger } from "../_shared/logging.ts";
+import { requireOrg } from "../_shared/org.ts";
 
 type TemplateKey = "ER" | "FBA" | "PR";
 
@@ -20,7 +22,12 @@ type FillDocsResponse = {
   template: TemplateKey;
   filename: string;
   contentType: string;
-  base64: string;
+  // Prefer signed URL download (keeps responses small and avoids base64 inflation).
+  downloadUrl?: string;
+  bucketId?: string;
+  objectPath?: string;
+  // Legacy fallback (keep for compatibility / debugging).
+  base64?: string;
 };
 
 const CONTENT_TYPE =
@@ -116,6 +123,30 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+async function resolveTherapistIdForUser(
+  db: ReturnType<typeof createRequestClient>,
+  userId: string,
+): Promise<string> {
+  // Common case: therapist row id == auth uid
+  const direct = await db.from("therapists").select("id").eq("id", userId).maybeSingle();
+  if (direct.data?.id && !direct.error) {
+    return direct.data.id as string;
+  }
+
+  // Fallback: mapping table if present
+  const linked = await db
+    .from("user_therapist_links")
+    .select("therapist_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const therapistId = (linked.data as Record<string, unknown> | null)?.therapist_id;
+  if (typeof therapistId === "string" && therapistId.length > 0) {
+    return therapistId;
+  }
+
+  return userId;
+}
+
 async function fillDocxTemplate(
   templateBytes: Uint8Array,
   fields: Record<string, string>,
@@ -153,6 +184,10 @@ export default createProtectedRoute(async (req: Request, userContext: UserContex
   }
 
   try {
+    const requestClient = createRequestClient(req);
+    const orgId = await requireOrg(requestClient);
+    const therapistId = await resolveTherapistIdForUser(requestClient, userContext.user.id);
+
     const parsed = parseRequest(await req.json());
     if (!parsed.ok) {
       logApiAccess("POST", "/fill-docs", userContext, 400);
@@ -164,7 +199,7 @@ export default createProtectedRoute(async (req: Request, userContext: UserContex
     const templateMeta = TEMPLATES[template];
     const templateBytes = await Deno.readFile(templateMeta.fileUrl);
 
-    logger.info("fill.start", { template, fieldsCount: Object.keys(fields).length });
+    logger.info("fill.start", { template, fieldsCount: Object.keys(fields).length, orgId, therapistId });
 
     const filledBytes = await fillDocxTemplate(templateBytes, fields);
 
@@ -172,16 +207,54 @@ export default createProtectedRoute(async (req: Request, userContext: UserContex
       outputFileName ?? `${templateMeta.fileName.replace(".docx", "")} (filled).docx`,
     );
 
+    // Persist to Storage so the client can download via signed URL (no huge JSON payloads).
+    const bucketId = "therapist-documents";
+    const documentKey = "fill-docs";
+    const safeName = filename.replaceAll(/[^a-zA-Z0-9._() -]/g, "_");
+    const objectPath = `therapists/${therapistId}/${documentKey}/${crypto.randomUUID()}-${safeName}`;
+
+    const uploadResult = await supabaseAdmin.storage.from(bucketId).upload(
+      objectPath,
+      filledBytes,
+      {
+        contentType: CONTENT_TYPE,
+        upsert: false,
+      },
+    );
+    if (uploadResult.error) {
+      throw new Error(`Storage upload failed: ${uploadResult.error.message}`);
+    }
+
+    // Record in therapist_documents manifest for auditability and reuse of existing conventions.
+    const manifestInsert = await supabaseAdmin.from("therapist_documents").insert({
+      therapist_id: therapistId,
+      organization_id: orgId,
+      document_key: documentKey,
+      bucket_id: bucketId,
+      object_path: objectPath,
+    });
+    if (manifestInsert.error) {
+      logger.warn("manifest.insert_failed", { error: manifestInsert.error.message, bucketId, objectPath });
+      // Non-fatal: file is already uploaded.
+    }
+
+    const signed = await supabaseAdmin.storage.from(bucketId).createSignedUrl(objectPath, 60 * 10);
+    if (signed.error || !signed.data?.signedUrl) {
+      throw new Error(`Signed URL generation failed: ${signed.error?.message ?? "unknown"}`);
+    }
+
     const response: FillDocsResponse = {
       success: true,
       template,
       filename,
       contentType: CONTENT_TYPE,
-      base64: toBase64(filledBytes),
+      downloadUrl: signed.data.signedUrl,
+      bucketId,
+      objectPath,
     };
 
     logApiAccess("POST", "/fill-docs", userContext, 200);
-    logger.info("fill.complete", { template, filename });
+    logger.info("fill.complete", { template, filename, bucketId, objectPath });
     return new Response(JSON.stringify(response), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -190,6 +263,8 @@ export default createProtectedRoute(async (req: Request, userContext: UserContex
     const message = error instanceof Error ? error.message : "Internal server error";
     logApiAccess("POST", "/fill-docs", userContext, 500);
     logger.error("fill.failed", { error: message });
+
+    // As a last-resort fallback for debugging (only if we still have the template + payload in scope).
     return jsonResponse({ error: "Failed to fill document template" }, 500);
   }
 }, RouteOptions.therapist);

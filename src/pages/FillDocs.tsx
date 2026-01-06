@@ -2,19 +2,12 @@ import React, { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 
 import { edgeInvoke } from '../lib/edgeInvoke';
+import { getFillDocsDownloadPlan, type FillDocsResponse } from '../lib/fillDocs/result';
 import { logger } from '../lib/logger/logger';
 
 type TemplateKey = 'ER' | 'FBA' | 'PR';
 
 type FieldRow = { key: string; value: string };
-
-type FillDocsResponse = {
-  success: true;
-  template: TemplateKey;
-  filename: string;
-  contentType: string;
-  base64: string;
-};
 
 const TEMPLATE_LABELS: Record<TemplateKey, string> = {
   ER: 'ER (Updated ER - IEHP)',
@@ -95,11 +88,16 @@ export default function FillDocs() {
         return;
       }
 
-      downloadBase64File({
-        base64: data.base64,
-        filename: data.filename,
-        contentType: data.contentType,
-      });
+      const plan = getFillDocsDownloadPlan(data);
+      if (plan.kind === 'signed-url') {
+        window.location.assign(plan.url);
+      } else {
+        downloadBase64File({
+          base64: plan.base64,
+          filename: plan.filename,
+          contentType: plan.contentType,
+        });
+      }
       toast.success('Document generated');
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));

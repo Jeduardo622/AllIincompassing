@@ -121,6 +121,12 @@ export default function Sidebar() {
       roles: [] // accessible to all authenticated users
     },
     {
+      icon: FileText,
+      label: 'Fill Docs',
+      path: '/fill-docs',
+      roles: ['therapist', 'admin', 'super_admin'],
+    },
+    {
       icon: CreditCard,
       label: 'Billing',
       path: '/billing',

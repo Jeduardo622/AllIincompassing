@@ -1,6 +1,7 @@
 # Supabase + UI Security Audit Report
 
 Date: 2026-01-02
+Last updated: 2026-01-05
 
 ## Scope
 - Client-facing UI data forms and routes
@@ -16,15 +17,23 @@ Date: 2026-01-02
 - Sessions are booked through a hold -> confirm pipeline using Supabase edge functions.
 - Session holds, confirmations, and cancellations are logged for auditability.
 - Guardian portal access is provided via dedicated RPCs and should not rely on broad table reads.
-- Client-facing forms (clients, authorizations, schedule, onboarding) submit data directly to Supabase tables or RPCs.
+- Client-facing forms (clients, authorizations, schedule, onboarding) should use RPC/edge allowlists for sensitive writes to reduce over-posting risk.
 - Storage is used for client and therapist documents and must be private + policy guarded.
 - Edge functions should attach JWTs and enforce auth on protected routes.
 
 ## Changes Implemented in This Audit
-- Added migration `supabase/migrations/20260102123000_rls_policy_cleanup.sql` to remove permissive legacy policies and align client/notes/session-note access with org-aware role helpers.
-- Added RLS test to verify clients cannot read other client records within the same organization.
-- Enabled JWT verification for feature flag edge functions (`supabase/functions/feature-flags/function.toml`, `supabase/functions/feature-flags-v2/function.toml`).
-- Added a test to assert feature flag edge functions keep `verify_jwt = true`.
+- Migration drift resolved so local migration filenames reflect hosted DB history (see `supabase/migrations/*`).
+- RLS hardening migration (hosted DB version): `supabase/migrations/20260102183410_rls_policy_cleanup_20260102123000.sql`.
+- Follow-up RLS hardening migration applied in hosted DB (2026-01-04): `supabase/migrations/20260104172512_drop_consolidated_authorizations_policies.sql`.
+- Added/expanded RLS integration tests in `src/tests/security/rls.spec.ts` to cover same-org overread and cross-provider write paths.
+- Standardized Edge Function auth config: added `function.toml` files and a repo test (`src/tests/security/edgeFunctionConfig.test.ts`) asserting `verify_jwt = true` for non-public functions.
+- Reduced over-posting risk for authorizations by moving critical writes behind allowlisted RPCs:
+  - `supabase/migrations/20260105120500_create_authorization_rpc_allowlist.sql` (`create_authorization_with_services`)
+  - `supabase/migrations/20260105121500_authorization_update_rpc_allowlist.sql` (`update_authorization_with_services`, `update_authorization_documents`)
+  - UI now uses `src/lib/authorizations/mutations.ts` wrappers instead of direct table writes.
+- Hardened client document metadata updates behind a validated RPC:
+  - `supabase/migrations/20260105124500_harden_update_client_documents_path_allowlist.sql` (`update_client_documents`)
+  - `src/components/ClientOnboarding.tsx` now uses the RPC wrapper instead of direct `clients.documents` updates.
 
 ## Findings (Prioritized)
 
@@ -104,8 +113,12 @@ Date: 2026-01-02
 **Impact**
 - Increased risk of over-posting and inconsistent data constraints if RLS or column defaults are loosened in the future.
 
-**Recommendation**
-- Move critical writes (client onboarding, authorizations, session notes) into RPCs or edge functions with schema validation and explicit allowlists.
+**Fix (Implemented)**
+- Authorizations are created/updated via allowlisted RPCs with strict field mapping and service replacement semantics:
+  - `create_authorization_with_services`
+  - `update_authorization_with_services`
+  - `update_authorization_documents` (path allowlist)
+- Client onboarding document metadata is updated via `update_client_documents` with a client-scoped path allowlist.
 
 **Supabase references**
 - https://supabase.com/docs/guides/database/postgres/row-level-security - "Row Level Security"
@@ -143,13 +156,21 @@ Date: 2026-01-02
 - https://supabase.com/docs/guides/functions/auth - "Edge Function auth and verify_jwt"
 
 ## Verification Notes
-- **Tests added**: `src/tests/security/rls.spec.ts` includes a new client isolation test for same-org data access. `src/tests/security/edgeFunctionConfig.test.ts` asserts JWT verification is enforced for feature flag edge functions.
-- **Tests run**: Not run in this environment. Recommended: `npm run lint`, `npm run typecheck`, `npm test`, and `RUN_DB_IT=1 npm test` for RLS integration.
+- **Tests added**: `src/tests/security/rls.spec.ts` expanded to cover authorization/services + note-table isolation. `src/tests/security/edgeFunctionConfig.test.ts` enforces edge JWT configuration. Unit tests added for new RPC mutation wrappers.
+- **Tests run (local)**: `npm run lint`, `npm test`.
+- **Recommended (DB-backed)**: `RUN_DB_IT=1 npm test` to validate hosted RLS/RPC behavior end-to-end.
 
 ## Files Changed
-- `supabase/migrations/20260102123000_rls_policy_cleanup.sql`
+- `supabase/migrations/20260102183410_rls_policy_cleanup_20260102123000.sql`
+- `supabase/migrations/20260104172512_drop_consolidated_authorizations_policies.sql`
+- `supabase/migrations/20260105120500_create_authorization_rpc_allowlist.sql`
+- `supabase/migrations/20260105121500_authorization_update_rpc_allowlist.sql`
+- `supabase/migrations/20260105124500_harden_update_client_documents_path_allowlist.sql`
 - `src/tests/security/rls.spec.ts`
 - `src/tests/security/edgeFunctionConfig.test.ts`
+- `src/lib/authorizations/*`
+- `src/lib/clients/mutations.ts`
+- `src/components/ClientOnboarding.tsx`
 - `FORM_TABLE_MAP.md`
 - `SECURITY_CHECKLIST.md`
 
@@ -160,7 +181,7 @@ Date: 2026-01-02
 ## Next Steps
 - Review and approve the RLS policy cleanup migration.
 - Confirm intended write permissions for therapists vs admins on client records.
-- Add explicit server-side validation for critical data writes.
+- Continue moving remaining sensitive writes behind server-side allowlists (client profile updates, internal notes, billing adjustments).
 
 ## Spot Audit Plan (Platform)
 Date established: 2026-01-02
@@ -247,11 +268,12 @@ Date established: 2026-01-02
 
 ### 2) Edge function auth config — **Pass (Repo-level)**
 **Evidence**
-- `supabase/functions/feature-flags/function.toml` sets `verify_jwt = true`.
-- `supabase/functions/feature-flags-v2/function.toml` sets `verify_jwt = true`.
+- `supabase/functions/*/function.toml` explicitly sets `verify_jwt` for each function.
+- Non-public functions require `verify_jwt = true`; public endpoints are explicitly allowlisted (e.g., `auth-login`, `auth-signup`, `mcp`).
+- Repo test: `src/tests/security/edgeFunctionConfig.test.ts` enforces expected `verify_jwt` coverage.
 
 **Note**
-- No other `function.toml` files were found in `supabase/functions/`, so remaining functions rely on default deployment settings. Confirm defaults in deployment pipeline when available.
+- This is a repo-level guarantee; confirm Supabase deploy pipeline does not override `verify_jwt` settings.
 
 ---
 

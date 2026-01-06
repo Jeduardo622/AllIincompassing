@@ -23,6 +23,7 @@ const TherapistOnboardingPage = React.lazy(() => import('./pages/TherapistOnboar
 const TherapistDetails = React.lazy(() => import('./pages/TherapistDetails'));
 const MonitoringDashboard = React.lazy(() => import('./pages/MonitoringDashboard'));
 const Documentation = React.lazy(() => import('./pages/Documentation'));
+const FillDocs = React.lazy(() => import('./pages/FillDocs'));
 const Billing = React.lazy(() => import('./pages/Billing'));
 const Settings = React.lazy(() => import('./pages/Settings'));
 const Unauthorized = React.lazy(() => import('./pages/Unauthorized'));
@@ -153,6 +154,16 @@ function App() {
 
                     {/* Documentation - accessible to all authenticated users */}
                     <Route path="documentation" element={<Documentation />} />
+
+                    {/* Fill Docs - accessible to therapists and above */}
+                    <Route
+                      path="fill-docs"
+                      element={(
+                        <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                          <FillDocs />
+                        </RoleGuard>
+                      )}
+                    />
 
                     {/* Authorizations - accessible to therapists and above */}
                     <Route path="authorizations" element={

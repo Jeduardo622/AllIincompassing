@@ -1,0 +1,3 @@
+[functions.fill-docs]
+verify_jwt = true
+

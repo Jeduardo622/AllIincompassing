@@ -13,8 +13,8 @@ const loggerMock = vi.hoisted(() => ({
   debug: vi.fn(),
 }));
 
-vi.mock('../../lib/logger/logger', () => ({
-  logger: loggerMock,
+vi.mock('../../lib/logger/server', () => ({
+  serverLogger: loggerMock,
 }));
 
 const originalEnv = { ...process.env };

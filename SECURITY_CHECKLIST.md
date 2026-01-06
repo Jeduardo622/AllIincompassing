@@ -17,6 +17,7 @@ Use this checklist before shipping changes that touch client-facing forms, Supab
 ## Functions & RPCs
 - [ ] Database functions that should not be public have privileges revoked from `PUBLIC` and granted to intended roles only.
 - [ ] RPCs used by UI/forms validate inputs server-side (types, ranges, allowlists).
+- [ ] Document metadata updates validate storage paths server-side (e.g., `update_client_documents`, `update_authorization_documents`).
 - [ ] Service-role usage is limited to trusted server/edge contexts.
 
 ## Storage

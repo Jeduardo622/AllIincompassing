@@ -316,6 +316,10 @@ SELECT auth.verify_role_system();
 - CORS configuration
 - Security headers
 
+### Preventing over-posting
+- Prefer allowlisted RPCs (or edge functions) for sensitive multi-field or multi-row writes (e.g., authorizations + services, document metadata updates).
+- For storage-backed metadata, validate server-side that document paths are scoped to the target entity (e.g., `clients/<client_id>/...`).
+
 ### Monitoring
 - Access logging for all API endpoints
 - Failed authentication tracking

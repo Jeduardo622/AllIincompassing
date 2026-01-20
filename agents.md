@@ -1,3 +1,8 @@
+---
+description: 
+alwaysApply: true
+---
+
 # Agent Operations Guide
 
 This guide gives Codex agents and future automation a single place to reference project guardrails, tool access, and expected workflows.
@@ -240,4 +245,3 @@ PR body rules sourced from Codex docs on AGENTS.md PR‑guidance ([baoyu.io](ht
 ## 📜 Changelog
 
 - **v1.0 (2025‑06‑23)** – Initial agent guidelines drafted from OpenAI Codex best‑practices and Supabase CLI docs ([agentsmd.net](https://agentsmd.net/?utm_source=chatgpt.com), [supabase.com](https://supabase.com/docs/guides/functions/deploy?utm_source=chatgpt.com), [baoyu.io](https://baoyu.io/blog/codex-system-prompt?utm_source=chatgpt.com), [github.com](https://github.com/orgs/supabase/discussions/12639?utm_source=chatgpt.com)).
-

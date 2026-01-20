@@ -1,0 +1,34 @@
+---
+alwaysApply: true
+---
+
+---
+description: Core boundaries, quality gates, stop conditions, secrets hygiene
+alwaysApply: true
+---
+
+# Core Operating Boundaries (allincompassing)
+
+## Writable paths
+- `src/**`
+- `supabase/migrations/**`
+- `supabase/functions/**`
+- `docs/**`, `README.md`, `AGENTS.md`
+
+## Read-only / propose-only
+- `.github/**`, `infra/**`, `Dockerfile`, `.env`, `.supabase/config.toml`
+
+## Secrets hygiene
+- Never commit secrets or raw keys; mask as `****` in logs/docs.
+- Use injected env vars (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`).
+- Do not add or modify `.env` files in git.
+
+## Quality gates
+- `tsc --noEmit` passes.
+- `npm run lint` passes (0 errors).
+- `npm test` passes; maintain ≥ 90% coverage (`npm run ci:verify-coverage`).
+- For DB changes: migrations applied; RLS enabled; policies verified; types regenerated.
+
+## Stop conditions
+- Do not stop until quality gates pass, or state exactly why a gate could not be run.
+- If changes touch Supabase, use hosted project only; avoid Docker-dependent CLI.

@@ -1,0 +1,25 @@
+---
+alwaysApply: true
+---
+
+---
+description: Product intent, UX constraints, acceptance criteria conventions
+alwaysApply: true
+---
+
+# Product Rules (Optional)
+
+## Feature intent
+- Always restate the user goal in product terms before editing.
+- Preserve the smallest viable scope; avoid feature creep.
+- Align changes to the ABA platform workflows and role-based access.
+
+## UX constraints
+- Prefer clarity over novelty; consistent copy and layout.
+- Maintain accessibility: keyboard navigation, labels, and roles.
+- Avoid regressions in critical paths (sign-in, onboarding, scheduling).
+
+## Acceptance criteria conventions
+- Use bullet-style ACs: `Given / When / Then` or `If / Then`.
+- Each AC should be testable and map to a UI or API behavior.
+- Include error states and empty states where applicable.

@@ -1,0 +1,1375 @@
+{
+  "ER": {
+    "labels": [
+      {
+        "label": "Birth Date",
+        "placeholder_key": "ER_BIRTH_DATE",
+        "source": "clients.date_of_birth",
+        "notes": "Format MM/DD/YYYY."
+      },
+      {
+        "label": "First Name",
+        "placeholder_key": "ER_FIRST_NAME",
+        "source": "clients.first_name",
+        "notes": "Fallback: split clients.full_name if first_name is null."
+      },
+      {
+        "label": "GENERAL INFORMATION",
+        "placeholder_key": "ER_GENERAL_INFORMATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "IEHP Member ID#",
+        "placeholder_key": "ER_IEHP_MEMBER_ID",
+        "source": "authorizations.member_id || clients.cin_number || clients.client_id",
+        "notes": "Prefer active authorization.member_id for the payer; fallback to clients.cin_number."
+      },
+      {
+        "label": "Language",
+        "placeholder_key": "ER_LANGUAGE",
+        "source": "clients.preferred_language",
+        "notes": ""
+      },
+      {
+        "label": "Last Name",
+        "placeholder_key": "ER_LAST_NAME",
+        "source": "clients.last_name",
+        "notes": "Fallback: split clients.full_name if last_name is null."
+      },
+      {
+        "label": "Letter Date",
+        "placeholder_key": "ER_LETTER_DATE",
+        "source": "today (server)",
+        "notes": "Generated at time of letter."
+      },
+      {
+        "label": "Letter completed by",
+        "placeholder_key": "ER_LETTER_COMPLETED_BY",
+        "source": "therapists.full_name + credentials",
+        "notes": ""
+      },
+      {
+        "label": "Name Date",
+        "placeholder_key": "ER_NAME_DATE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Parent/Guardian",
+        "placeholder_key": "ER_PARENT_GUARDIAN",
+        "source": "clients.parent1_first_name/last_name (+ relationship) (fallback parent2_*)",
+        "notes": "Template often expects primary guardian; include relationship if present."
+      },
+      {
+        "label": "Phone",
+        "placeholder_key": "ER_PHONE",
+        "source": "clients.phone || clients.parent1_phone",
+        "notes": "If template expects guardian phone, prefer parent1_phone."
+      },
+      {
+        "label": "Present Address",
+        "placeholder_key": "ER_PRESENT_ADDRESS",
+        "source": "clients.address_line1/2 + clients.city/state/zip_code",
+        "notes": "Concatenate; omit null parts."
+      },
+      {
+        "label": "Provider name/Certification",
+        "placeholder_key": "ER_PROVIDER_NAME_CERTIFICATION",
+        "source": "therapists.full_name + therapists.title + (bcba_number/rbt_number/license_number)",
+        "notes": "Choose credential string per payer."
+      },
+      {
+        "label": "Referral Date",
+        "placeholder_key": "ER_REFERRAL_DATE",
+        "source": "NEW: clients.insurance_info.referral_date",
+        "notes": "Not currently a dedicated column."
+      }
+    ],
+    "existing_placeholders": [
+      "[15]"
+    ]
+  },
+  "FBA": {
+    "labels": [
+      {
+        "label": "1st Member Observation",
+        "placeholder_key": "FBA_1ST_MEMBER_OBSERVATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "2nd Member Observation",
+        "placeholder_key": "FBA_2ND_MEMBER_OBSERVATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "ASSESSMENT MEAURES",
+        "placeholder_key": "FBA_ASSESSMENT_MEAURES",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Additional Activities",
+        "placeholder_key": "FBA_ADDITIONAL_ACTIVITIES",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Additional Criteria (as applicable)",
+        "placeholder_key": "FBA_ADDITIONAL_CRITERIA_AS_APPLICABLE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Additional Information",
+        "placeholder_key": "FBA_ADDITIONAL_INFORMATION",
+        "source": "NEW: clients.insurance_info.additional_background_info",
+        "notes": ""
+      },
+      {
+        "label": "Additional documents",
+        "placeholder_key": "FBA_ADDITIONAL_DOCUMENTS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Agency Name",
+        "placeholder_key": "FBA_AGENCY_NAME",
+        "source": "company_settings.company_name",
+        "notes": ""
+      },
+      {
+        "label": "All Services",
+        "placeholder_key": "FBA_ALL_SERVICES",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Anticipated Discharge Date",
+        "placeholder_key": "FBA_ANTICIPATED_DISCHARGE_DATE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Assessment Measures Administered",
+        "placeholder_key": "FBA_ASSESSMENT_MEASURES_ADMINISTERED",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Assessment Summary",
+        "placeholder_key": "FBA_ASSESSMENT_SUMMARY",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Assessor/Certification",
+        "placeholder_key": "FBA_ASSESSOR_CERTIFICATION",
+        "source": "therapists.full_name + therapists.title + (bcba_number/license_number)",
+        "notes": ""
+      },
+      {
+        "label": "Assessor\u2019s phone number",
+        "placeholder_key": "FBA_ASSESSOR_S_PHONE_NUMBER",
+        "source": "therapists.phone",
+        "notes": "Or clinic phone if assessor phone missing."
+      },
+      {
+        "label": "Availability and access to reinforcers",
+        "placeholder_key": "FBA_AVAILABILITY_AND_ACCESS_TO_REINFORCERS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Availability of developmental toys/materials",
+        "placeholder_key": "FBA_AVAILABILITY_OF_DEVELOPMENTAL_TOYS_MATERIALS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Availability of visual schedules/timers",
+        "placeholder_key": "FBA_AVAILABILITY_OF_VISUAL_SCHEDULES_TIMERS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "BACKGROUND INFORMATION",
+        "placeholder_key": "FBA_BACKGROUND_INFORMATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "BEHAVIORS",
+        "placeholder_key": "FBA_BEHAVIORS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Baseline",
+        "placeholder_key": "FBA_BASELINE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Baseline and Date of Baseline",
+        "placeholder_key": "FBA_BASELINE_AND_DATE_OF_BASELINE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Behavior",
+        "placeholder_key": "FBA_BEHAVIOR",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Behavior Reduction Goal",
+        "placeholder_key": "FBA_BEHAVIOR_REDUCTION_GOAL",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Birth Date",
+        "placeholder_key": "FBA_BIRTH_DATE",
+        "source": "clients.date_of_birth",
+        "notes": "Format MM/DD/YYYY."
+      },
+      {
+        "label": "Brief Functional Analysis",
+        "placeholder_key": "FBA_BRIEF_FUNCTIONAL_ANALYSIS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Caregiver and School Involvement",
+        "placeholder_key": "FBA_CAREGIVER_AND_SCHOOL_INVOLVEMENT",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Clinical Interview",
+        "placeholder_key": "FBA_CLINICAL_INTERVIEW",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Communication",
+        "placeholder_key": "FBA_COMMUNICATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Coordination of Care",
+        "placeholder_key": "FBA_COORDINATION_OF_CARE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "DESCRIPTION OF ASSESSMENT PROCEDURES",
+        "placeholder_key": "FBA_DESCRIPTION_OF_ASSESSMENT_PROCEDURES",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Date Referred",
+        "placeholder_key": "FBA_DATE_REFERRED",
+        "source": "NEW: clients.insurance_info.referral_date",
+        "notes": "Not currently a dedicated column."
+      },
+      {
+        "label": "Date and Location",
+        "placeholder_key": "FBA_DATE_AND_LOCATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Date collected",
+        "placeholder_key": "FBA_DATE_COLLECTED",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Date of Last IEP",
+        "placeholder_key": "FBA_DATE_OF_LAST_IEP",
+        "source": "NEW: clients.insurance_info.school.last_iep_date",
+        "notes": "Format MM/DD/YYYY."
+      },
+      {
+        "label": "Date(s) Administered",
+        "placeholder_key": "FBA_DATE_S_ADMINISTERED",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Days and Times of Activities",
+        "placeholder_key": "FBA_DAYS_AND_TIMES_OF_ACTIVITIES",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Days and Times of Services",
+        "placeholder_key": "FBA_DAYS_AND_TIMES_OF_SERVICES",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Definition of Behavior",
+        "placeholder_key": "FBA_DEFINITION_OF_BEHAVIOR",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Discharge, Transition and Exit Plans",
+        "placeholder_key": "FBA_DISCHARGE_TRANSITION_AND_EXIT_PLANS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Documentation",
+        "placeholder_key": "FBA_DOCUMENTATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Exit Plan Components",
+        "placeholder_key": "FBA_EXIT_PLAN_COMPONENTS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "First Name",
+        "placeholder_key": "FBA_FIRST_NAME",
+        "source": "clients.first_name",
+        "notes": "Fallback: split clients.full_name if first_name is null."
+      },
+      {
+        "label": "Function of Behavior",
+        "placeholder_key": "FBA_FUNCTION_OF_BEHAVIOR",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "GENERAL INFORMATION",
+        "placeholder_key": "FBA_GENERAL_INFORMATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Grade",
+        "placeholder_key": "FBA_GRADE",
+        "source": "NEW: clients.insurance_info.school.grade",
+        "notes": ""
+      },
+      {
+        "label": "Graduation Criteria",
+        "placeholder_key": "FBA_GRADUATION_CRITERIA",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Guardian(s)",
+        "placeholder_key": "FBA_GUARDIAN_S",
+        "source": "clients.parent1_* + clients.parent2_* (and/or client_guardians links)",
+        "notes": "If using guardian portal links, expand from public.client_guardians."
+      },
+      {
+        "label": "IEHP Member ID#",
+        "placeholder_key": "FBA_IEHP_MEMBER_ID",
+        "source": "authorizations.member_id || clients.cin_number || clients.client_id",
+        "notes": "Prefer active authorization.member_id for the payer; fallback to clients.cin_number."
+      },
+      {
+        "label": "If school-based services are recommended, the following must be included in the Functional Behavioral Assessment (FBA)",
+        "placeholder_key": "FBA_IF_SCHOOL_BASED_SERVICES_ARE_RECOMMENDED_THE_FOLLOWING_MUST_BE_INCLUDED_IN_THE_FUNCTIONAL_BEHAVIORAL_ASSESSMENT_FBA",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "In accordance with APL 23-010, BHT services provided under Medi-Cal for Members under the age of 21 must meet the following criteria",
+        "placeholder_key": "FBA_IN_ACCORDANCE_WITH_APL_23_010_BHT_SERVICES_PROVIDED_UNDER_MEDI_CAL_FOR_MEMBERS_UNDER_THE_AGE_OF_21_MUST_MEET_THE_FOLLOWING_CRITERIA",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Include the following details",
+        "placeholder_key": "FBA_INCLUDE_THE_FOLLOWING_DETAILS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Include the following information",
+        "placeholder_key": "FBA_INCLUDE_THE_FOLLOWING_INFORMATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Indicate which hours will be conducted in the school setting",
+        "placeholder_key": "FBA_INDICATE_WHICH_HOURS_WILL_BE_CONDUCTED_IN_THE_SCHOOL_SETTING",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Indirect Functional Analysis Tools Used",
+        "placeholder_key": "FBA_INDIRECT_FUNCTIONAL_ANALYSIS_TOOLS_USED",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Intermediate",
+        "placeholder_key": "FBA_INTERMEDIATE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Language",
+        "placeholder_key": "FBA_LANGUAGE",
+        "source": "clients.preferred_language",
+        "notes": ""
+      },
+      {
+        "label": "Last Name",
+        "placeholder_key": "FBA_LAST_NAME",
+        "source": "clients.last_name",
+        "notes": "Fallback: split clients.full_name if last_name is null."
+      },
+      {
+        "label": "Level of noise/environmental distractions",
+        "placeholder_key": "FBA_LEVEL_OF_NOISE_ENVIRONMENTAL_DISTRACTIONS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Location",
+        "placeholder_key": "FBA_LOCATION",
+        "source": "NEW: report.context.location",
+        "notes": "Template-specific (e.g., assessment location)."
+      },
+      {
+        "label": "Location of Service",
+        "placeholder_key": "FBA_LOCATION_OF_SERVICE",
+        "source": "clients.in_home/in_clinic/in_school + per-session location",
+        "notes": "If multiple, list mix."
+      },
+      {
+        "label": "MEMBER\u2019S ENVIRONMENTAL ANALYSIS",
+        "placeholder_key": "FBA_MEMBER_S_ENVIRONMENTAL_ANALYSIS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Member\u2019s last visit to the Primary Care Provider (PCP)",
+        "placeholder_key": "FBA_MEMBER_S_LAST_VISIT_TO_THE_PRIMARY_CARE_PROVIDER_PCP",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Name and Credentials : Date",
+        "placeholder_key": "FBA_NAME_AND_CREDENTIALS_DATE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Name of Referring Provider, Credentials (if applicable)",
+        "placeholder_key": "FBA_NAME_OF_REFERRING_PROVIDER_CREDENTIALS_IF_APPLICABLE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Opportunities for activities throughout the day",
+        "placeholder_key": "FBA_OPPORTUNITIES_FOR_ACTIVITIES_THROUGHOUT_THE_DAY",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Opportunities for social interaction",
+        "placeholder_key": "FBA_OPPORTUNITIES_FOR_SOCIAL_INTERACTION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Other Programs and Institutions (as applicable)",
+        "placeholder_key": "FBA_OTHER_PROGRAMS_AND_INSTITUTIONS_AS_APPLICABLE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Parent Education",
+        "placeholder_key": "FBA_PARENT_EDUCATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Parent/Guardian",
+        "placeholder_key": "FBA_PARENT_GUARDIAN",
+        "source": "clients.parent1_first_name/last_name (+ relationship) (fallback parent2_*)",
+        "notes": "Template often expects primary guardian; include relationship if present."
+      },
+      {
+        "label": "Person Involved (Indicate Credentials)",
+        "placeholder_key": "FBA_PERSON_INVOLVED_INDICATE_CREDENTIALS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Persons in Household and Relationship to IEHP Member",
+        "placeholder_key": "FBA_PERSONS_IN_HOUSEHOLD_AND_RELATIONSHIP_TO_IEHP_MEMBER",
+        "source": "NEW: clients.insurance_info.household_members[]",
+        "notes": "Long-term: normalize into a client_household_members table."
+      },
+      {
+        "label": "Phone",
+        "placeholder_key": "FBA_PHONE",
+        "source": "clients.phone || clients.parent1_phone",
+        "notes": "If template expects guardian phone, prefer parent1_phone."
+      },
+      {
+        "label": "Please describe the safety procedures in place to protect the Member and others during the following situations",
+        "placeholder_key": "FBA_PLEASE_DESCRIBE_THE_SAFETY_PROCEDURES_IN_PLACE_TO_PROTECT_THE_MEMBER_AND_OTHERS_DURING_THE_FOLLOWING_SITUATIONS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Potential Reinforcers",
+        "placeholder_key": "FBA_POTENTIAL_REINFORCERS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Preference Areas",
+        "placeholder_key": "FBA_PREFERENCE_AREAS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Present Address",
+        "placeholder_key": "FBA_PRESENT_ADDRESS",
+        "source": "clients.address_line1/2 + clients.city/state/zip_code",
+        "notes": "Concatenate; omit null parts."
+      },
+      {
+        "label": "Proactive Strategies",
+        "placeholder_key": "FBA_PROACTIVE_STRATEGIES",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Procedures",
+        "placeholder_key": "FBA_PROCEDURES",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "REASON FOR REFERRAL AND PRESENTING CONCERNS",
+        "placeholder_key": "FBA_REASON_FOR_REFERRAL_AND_PRESENTING_CONCERNS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Reactive Strategies",
+        "placeholder_key": "FBA_REACTIVE_STRATEGIES",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Reason for Referral",
+        "placeholder_key": "FBA_REASON_FOR_REFERRAL",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Recommendations: Within this section provide a summary of the clinical recommendations for the Member. This should include the rationale for MEDICALLY NECESSARY BHT. The rate of supervision provided by the QAS Professional and/or QAS Provider to the QAS Paraprofessionals will be based on a ratio of 2 hours of supervision service per every 10 hours of direct service authorized, unless the case calls for increased supervision as agreed by QAS Provider and IEHP Health Plan. Providers requesting additional supervision beyond standard ratios and guidelines will need to include clinical justification on the need for enhanced supervision. Providers must only include the hours to be utilized by the Member in the request. Include the requested units and visits below",
+        "placeholder_key": "FBA_RECOMMENDATIONS_WITHIN_THIS_SECTION_PROVIDE_A_SUMMARY_OF_THE_CLINICAL_RECOMMENDATIONS_FOR_THE_MEMBER_THIS_SHOULD_INCLUDE_THE_RATIONALE_FOR_MEDICALLY_NECESSARY_BHT_THE_RATE_OF_SUPERVISION_PROVIDED_BY_THE_QAS_PROFESSIONAL_AND_OR_QAS_PROVIDER_TO_THE_QAS_PARAPROFESSIONALS_WILL_BE_BASED_ON_A_RATIO_OF_2_HOURS_OF_SUPERVISION_SERVICE_PER_EVERY_10_HOURS_OF_DIRECT_SERVICE_AUTHORIZED_UNLESS_THE_CASE_CALLS_FOR_INCREASED_SUPERVISION_AS_AGREED_BY_QAS_PROVIDER_AND_IEHP_HEALTH_PLAN_PROVIDERS_REQUESTING_ADDITIONAL_SUPERVISION_BEYOND_STANDARD_RATIOS_AND_GUIDELINES_WILL_NEED_TO_INCLUDE_CLINICAL_JUSTIFICATION_ON_THE_NEED_FOR_ENHANCED_SUPERVISION_PROVIDERS_MUST_ONLY_INCLUDE_THE_HOURS_TO_BE_UTILIZED_BY_THE_MEMBER_IN_THE_REQUEST_INCLUDE_THE_REQUESTED_UNITS_AND_VISITS_BELOW",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Records Reviewed",
+        "placeholder_key": "FBA_RECORDS_REVIEWED",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Records reviewed included: Within this section of the report, include any records reviewed (e.g., Individual Program Plan (IPP), Psycho-Diagnostic Evaluation (PDE), Early Start Report, Functional Behavior Assessment, Intensive Intervention Progress Report, Individual Education Plan (IEP), etc.). Report title, report date and report author information is required for each document reviewed. Select from the following records and include additional, as applicable",
+        "placeholder_key": "FBA_RECORDS_REVIEWED_INCLUDED_WITHIN_THIS_SECTION_OF_THE_REPORT_INCLUDE_ANY_RECORDS_REVIEWED_E_G_INDIVIDUAL_PROGRAM_PLAN_IPP_PSYCHO_DIAGNOSTIC_EVALUATION_PDE_EARLY_START_REPORT_FUNCTIONAL_BEHAVIOR_ASSESSMENT_INTENSIVE_INTERVENTION_PROGRESS_REPORT_INDIVIDUAL_EDUCATION_PLAN_IEP_ETC_REPORT_TITLE_REPORT_DATE_AND_REPORT_AUTHOR_INFORMATION_IS_REQUIRED_FOR_EACH_DOCUMENT_REVIEWED_SELECT_FROM_THE_FOLLOWING_RECORDS_AND_INCLUDE_ADDITIONAL_AS_APPLICABLE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Referral Date",
+        "placeholder_key": "FBA_REFERRAL_DATE",
+        "source": "NEW: clients.insurance_info.referral_date",
+        "notes": "Not currently a dedicated column."
+      },
+      {
+        "label": "Replacement Behavior(s)",
+        "placeholder_key": "FBA_REPLACEMENT_BEHAVIOR_S",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Report Date",
+        "placeholder_key": "FBA_REPORT_DATE",
+        "source": "today (server)",
+        "notes": "Generated at time of report."
+      },
+      {
+        "label": "Report Written By",
+        "placeholder_key": "FBA_REPORT_WRITTEN_BY",
+        "source": "therapists.full_name + credentials",
+        "notes": ""
+      },
+      {
+        "label": "School District",
+        "placeholder_key": "FBA_SCHOOL_DISTRICT",
+        "source": "NEW: clients.insurance_info.school.district",
+        "notes": ""
+      },
+      {
+        "label": "School Goals (As applicable)",
+        "placeholder_key": "FBA_SCHOOL_GOALS_AS_APPLICABLE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "School Name",
+        "placeholder_key": "FBA_SCHOOL_NAME",
+        "source": "NEW: clients.insurance_info.school.name",
+        "notes": ""
+      },
+      {
+        "label": "School Personnel",
+        "placeholder_key": "FBA_SCHOOL_PERSONNEL",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "School Placement",
+        "placeholder_key": "FBA_SCHOOL_PLACEMENT",
+        "source": "NEW: clients.insurance_info.school.placement",
+        "notes": ""
+      },
+      {
+        "label": "School Services",
+        "placeholder_key": "FBA_SCHOOL_SERVICES",
+        "source": "NEW: clients.insurance_info.school.services",
+        "notes": "e.g., OT/ST/PT/counseling/ABA; array or text."
+      },
+      {
+        "label": "School Start and End Time",
+        "placeholder_key": "FBA_SCHOOL_START_AND_END_TIME",
+        "source": "NEW: clients.insurance_info.school.start_end_time",
+        "notes": ""
+      },
+      {
+        "label": "Self-Help",
+        "placeholder_key": "FBA_SELF_HELP",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Session Time (e.g. 10am-12pm)",
+        "placeholder_key": "FBA_SESSION_TIME_E_G_10AM_12PM",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Short term",
+        "placeholder_key": "FBA_SHORT_TERM",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Social Skills",
+        "placeholder_key": "FBA_SOCIAL_SKILLS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "State Disability Programs",
+        "placeholder_key": "FBA_STATE_DISABILITY_PROGRAMS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Stimulus Preference Assessments",
+        "placeholder_key": "FBA_STIMULUS_PREFERENCE_ASSESSMENTS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Target Behavior Name",
+        "placeholder_key": "FBA_TARGET_BEHAVIOR_NAME",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Teachers Name",
+        "placeholder_key": "FBA_TEACHERS_NAME",
+        "source": "NEW: clients.insurance_info.school.teacher_name",
+        "notes": ""
+      },
+      {
+        "label": "The behaviors and functional skills to be addressed are",
+        "placeholder_key": "FBA_THE_BEHAVIORS_AND_FUNCTIONAL_SKILLS_TO_BE_ADDRESSED_ARE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "This section is a required component of the client\u2019s service plan and is essential for ensuring integrated, person-centered care. Care coordination includes ongoing collaboration with all relevant parties involved in the client\u2019s care. Coordination includes, but is not limited to",
+        "placeholder_key": "FBA_THIS_SECTION_IS_A_REQUIRED_COMPONENT_OF_THE_CLIENT_S_SERVICE_PLAN_AND_IS_ESSENTIAL_FOR_ENSURING_INTEGRATED_PERSON_CENTERED_CARE_CARE_COORDINATION_INCLUDES_ONGOING_COLLABORATION_WITH_ALL_RELEVANT_PARTIES_INVOLVED_IN_THE_CLIENT_S_CARE_COORDINATION_INCLUDES_BUT_IS_NOT_LIMITED_TO",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Title",
+        "placeholder_key": "FBA_TITLE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Transition Planning",
+        "placeholder_key": "FBA_TRANSITION_PLANNING",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "When recommending clinic-based services, providers must include a clear clinical rationale. The following criteria must be met",
+        "placeholder_key": "FBA_WHEN_RECOMMENDING_CLINIC_BASED_SERVICES_PROVIDERS_MUST_INCLUDE_A_CLEAR_CLINICAL_RATIONALE_THE_FOLLOWING_CRITERIA_MUST_BE_MET",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Within this section list discuss the Member\u2019s intervention history. This includes services received during 0-3 (infant program), ABA services received through Regional Center or private insurance, social recreation/community integration adaptive skills training speech therapy, occupational therapy, and physical therapy. (List the weekly frequency and duration, the length of time the Member received the therapy and the provider/agency that provided the services.) Fill out box below",
+        "placeholder_key": "FBA_WITHIN_THIS_SECTION_LIST_DISCUSS_THE_MEMBER_S_INTERVENTION_HISTORY_THIS_INCLUDES_SERVICES_RECEIVED_DURING_0_3_INFANT_PROGRAM_ABA_SERVICES_RECEIVED_THROUGH_REGIONAL_CENTER_OR_PRIVATE_INSURANCE_SOCIAL_RECREATION_COMMUNITY_INTEGRATION_ADAPTIVE_SKILLS_TRAINING_SPEECH_THERAPY_OCCUPATIONAL_THERAPY_AND_PHYSICAL_THERAPY_LIST_THE_WEEKLY_FREQUENCY_AND_DURATION_THE_LENGTH_OF_TIME_THE_MEMBER_RECEIVED_THE_THERAPY_AND_THE_PROVIDER_AGENCY_THAT_PROVIDED_THE_SERVICES_FILL_OUT_BOX_BELOW",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Within this section list the Member\u2019s and Parents/Guardians availability to participate in the BHT services. Fill out box below",
+        "placeholder_key": "FBA_WITHIN_THIS_SECTION_LIST_THE_MEMBER_S_AND_PARENTS_GUARDIANS_AVAILABILITY_TO_PARTICIPATE_IN_THE_BHT_SERVICES_FILL_OUT_BOX_BELOW",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Within this section list the weekly frequency and duration of all services funded by insurance (e.g., OT, ST, PT, Social Skills) and Inland Regional Center (e.g., Infant Stimulation, Respite, Adaptive Skills, Day Program). Additionally, include any weekly activities the Member participates in (e.g., Boy/Girl Scouts, baseball, basketball, soccer, dance, gymnastics, art therapy, etc.). Fill out box below",
+        "placeholder_key": "FBA_WITHIN_THIS_SECTION_LIST_THE_WEEKLY_FREQUENCY_AND_DURATION_OF_ALL_SERVICES_FUNDED_BY_INSURANCE_E_G_OT_ST_PT_SOCIAL_SKILLS_AND_INLAND_REGIONAL_CENTER_E_G_INFANT_STIMULATION_RESPITE_ADAPTIVE_SKILLS_DAY_PROGRAM_ADDITIONALLY_INCLUDE_ANY_WEEKLY_ACTIVITIES_THE_MEMBER_PARTICIPATES_IN_E_G_BOY_GIRL_SCOUTS_BASEBALL_BASKETBALL_SOCCER_DANCE_GYMNASTICS_ART_THERAPY_ETC_FILL_OUT_BOX_BELOW",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Write a brief narrative about the results and include the following in a paragraph",
+        "placeholder_key": "FBA_WRITE_A_BRIEF_NARRATIVE_ABOUT_THE_RESULTS_AND_INCLUDE_THE_FOLLOWING_IN_A_PARAGRAPH",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      }
+    ],
+    "existing_placeholders": [
+      "[15]",
+      "[Insert projected date based on progress and treatment trajectory]",
+      "[insert %]"
+    ]
+  },
+  "PR": {
+    "labels": [
+      {
+        "label": "# of Sessions Canceled by Member",
+        "placeholder_key": "PR_OF_SESSIONS_CANCELED_BY_MEMBER",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "# of Sessions Canceled by Provider",
+        "placeholder_key": "PR_OF_SESSIONS_CANCELED_BY_PROVIDER",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "# of Supervision Hours",
+        "placeholder_key": "PR_OF_SUPERVISION_HOURS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "# of Treatment Hours",
+        "placeholder_key": "PR_OF_TREATMENT_HOURS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "# of Treatment Sessions",
+        "placeholder_key": "PR_OF_TREATMENT_SESSIONS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "ASSESSMENT MEAURES",
+        "placeholder_key": "PR_ASSESSMENT_MEAURES",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Actions Taken to Address Barriers",
+        "placeholder_key": "PR_ACTIONS_TAKEN_TO_ADDRESS_BARRIERS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Addendum Statement",
+        "placeholder_key": "PR_ADDENDUM_STATEMENT",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Additional Activities",
+        "placeholder_key": "PR_ADDITIONAL_ACTIVITIES",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Additional Criteria (as applicable)",
+        "placeholder_key": "PR_ADDITIONAL_CRITERIA_AS_APPLICABLE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Additional Information",
+        "placeholder_key": "PR_ADDITIONAL_INFORMATION",
+        "source": "NEW: clients.insurance_info.additional_background_info",
+        "notes": ""
+      },
+      {
+        "label": "Agency Name",
+        "placeholder_key": "PR_AGENCY_NAME",
+        "source": "company_settings.company_name",
+        "notes": ""
+      },
+      {
+        "label": "All Services",
+        "placeholder_key": "PR_ALL_SERVICES",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Anticipated Discharge Date",
+        "placeholder_key": "PR_ANTICIPATED_DISCHARGE_DATE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Assessment Summary",
+        "placeholder_key": "PR_ASSESSMENT_SUMMARY",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "BARRIERS TO PROGRESS",
+        "placeholder_key": "PR_BARRIERS_TO_PROGRESS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Baseline",
+        "placeholder_key": "PR_BASELINE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Baseline and Date of Baseline",
+        "placeholder_key": "PR_BASELINE_AND_DATE_OF_BASELINE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Behavior",
+        "placeholder_key": "PR_BEHAVIOR",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Behavior Reduction Goal",
+        "placeholder_key": "PR_BEHAVIOR_REDUCTION_GOAL",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Behavior Technician (s)",
+        "placeholder_key": "PR_BEHAVIOR_TECHNICIAN_S",
+        "source": "derived from sessions in reporting window (distinct therapists) OR NEW: report.staffing.behavior_techs",
+        "notes": "If your BTs are separate roles, model as a join table."
+      },
+      {
+        "label": "Birth Date",
+        "placeholder_key": "PR_BIRTH_DATE",
+        "source": "clients.date_of_birth",
+        "notes": "Format MM/DD/YYYY."
+      },
+      {
+        "label": "Caregiver and School Involvement",
+        "placeholder_key": "PR_CAREGIVER_AND_SCHOOL_INVOLVEMENT",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Communication",
+        "placeholder_key": "PR_COMMUNICATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Coordination of Care",
+        "placeholder_key": "PR_COORDINATION_OF_CARE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Date",
+        "placeholder_key": "PR_DATE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Date collected",
+        "placeholder_key": "PR_DATE_COLLECTED",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Date of Last IEP",
+        "placeholder_key": "PR_DATE_OF_LAST_IEP",
+        "source": "NEW: clients.insurance_info.school.last_iep_date",
+        "notes": "Format MM/DD/YYYY."
+      },
+      {
+        "label": "Days and Times of Activities",
+        "placeholder_key": "PR_DAYS_AND_TIMES_OF_ACTIVITIES",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Days and Times of Services",
+        "placeholder_key": "PR_DAYS_AND_TIMES_OF_SERVICES",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Definition of Behavior",
+        "placeholder_key": "PR_DEFINITION_OF_BEHAVIOR",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Discharge, Transition and Exit Plans",
+        "placeholder_key": "PR_DISCHARGE_TRANSITION_AND_EXIT_PLANS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Documentation",
+        "placeholder_key": "PR_DOCUMENTATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "During the current reporting period, the following barriers have impacted the Member\u2019s ability to make consistent progress toward treatment goals",
+        "placeholder_key": "PR_DURING_THE_CURRENT_REPORTING_PERIOD_THE_FOLLOWING_BARRIERS_HAVE_IMPACTED_THE_MEMBER_S_ABILITY_TO_MAKE_CONSISTENT_PROGRESS_TOWARD_TREATMENT_GOALS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Exit Plan Components",
+        "placeholder_key": "PR_EXIT_PLAN_COMPONENTS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "First Name",
+        "placeholder_key": "PR_FIRST_NAME",
+        "source": "clients.first_name",
+        "notes": "Fallback: split clients.full_name if first_name is null."
+      },
+      {
+        "label": "Function of Behavior",
+        "placeholder_key": "PR_FUNCTION_OF_BEHAVIOR",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "GENERAL INFORMATION",
+        "placeholder_key": "PR_GENERAL_INFORMATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Grade",
+        "placeholder_key": "PR_GRADE",
+        "source": "NEW: clients.insurance_info.school.grade",
+        "notes": ""
+      },
+      {
+        "label": "Graduation Criteria",
+        "placeholder_key": "PR_GRADUATION_CRITERIA",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Guardian(s)",
+        "placeholder_key": "PR_GUARDIAN_S",
+        "source": "clients.parent1_* + clients.parent2_* (and/or client_guardians links)",
+        "notes": "If using guardian portal links, expand from public.client_guardians."
+      },
+      {
+        "label": "IEHP Member ID#",
+        "placeholder_key": "PR_IEHP_MEMBER_ID",
+        "source": "authorizations.member_id || clients.cin_number || clients.client_id",
+        "notes": "Prefer active authorization.member_id for the payer; fallback to clients.cin_number."
+      },
+      {
+        "label": "Identified Barriers",
+        "placeholder_key": "PR_IDENTIFIED_BARRIERS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "If school-based services are recommended, the following must be included in the Functional Behavioral Assessment (FBA)",
+        "placeholder_key": "PR_IF_SCHOOL_BASED_SERVICES_ARE_RECOMMENDED_THE_FOLLOWING_MUST_BE_INCLUDED_IN_THE_FUNCTIONAL_BEHAVIORAL_ASSESSMENT_FBA",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "If services are terminated and the Member has not met graduation criteria, the provider must document the reason for discharge and include a detailed explanation of the criteria used. Discharge may occur under the following conditions",
+        "placeholder_key": "PR_IF_SERVICES_ARE_TERMINATED_AND_THE_MEMBER_HAS_NOT_MET_GRADUATION_CRITERIA_THE_PROVIDER_MUST_DOCUMENT_THE_REASON_FOR_DISCHARGE_AND_INCLUDE_A_DETAILED_EXPLANATION_OF_THE_CRITERIA_USED_DISCHARGE_MAY_OCCUR_UNDER_THE_FOLLOWING_CONDITIONS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "In accordance with APL 23-010, BHT services provided under Medi-Cal for Members under the age of 21 must meet the following criteria",
+        "placeholder_key": "PR_IN_ACCORDANCE_WITH_APL_23_010_BHT_SERVICES_PROVIDED_UNDER_MEDI_CAL_FOR_MEMBERS_UNDER_THE_AGE_OF_21_MUST_MEET_THE_FOLLOWING_CRITERIA",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Include the following details",
+        "placeholder_key": "PR_INCLUDE_THE_FOLLOWING_DETAILS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Include the following information",
+        "placeholder_key": "PR_INCLUDE_THE_FOLLOWING_INFORMATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Indicate which hours will be conducted in the school setting",
+        "placeholder_key": "PR_INDICATE_WHICH_HOURS_WILL_BE_CONDUCTED_IN_THE_SCHOOL_SETTING",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Intermediate",
+        "placeholder_key": "PR_INTERMEDIATE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Language",
+        "placeholder_key": "PR_LANGUAGE",
+        "source": "clients.preferred_language",
+        "notes": ""
+      },
+      {
+        "label": "Last Name",
+        "placeholder_key": "PR_LAST_NAME",
+        "source": "clients.last_name",
+        "notes": "Fallback: split clients.full_name if last_name is null."
+      },
+      {
+        "label": "Location",
+        "placeholder_key": "PR_LOCATION",
+        "source": "NEW: report.context.location",
+        "notes": "Template-specific (e.g., assessment location)."
+      },
+      {
+        "label": "Name & credentials",
+        "placeholder_key": "PR_NAME_CREDENTIALS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Other Programs and Institutions (as applicable)",
+        "placeholder_key": "PR_OTHER_PROGRAMS_AND_INSTITUTIONS_AS_APPLICABLE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Outcome of Interventions",
+        "placeholder_key": "PR_OUTCOME_OF_INTERVENTIONS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Parent Education",
+        "placeholder_key": "PR_PARENT_EDUCATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Parent/Guardian",
+        "placeholder_key": "PR_PARENT_GUARDIAN",
+        "source": "clients.parent1_first_name/last_name (+ relationship) (fallback parent2_*)",
+        "notes": "Template often expects primary guardian; include relationship if present."
+      },
+      {
+        "label": "Persons in Household and Relationship to IEHP Member",
+        "placeholder_key": "PR_PERSONS_IN_HOUSEHOLD_AND_RELATIONSHIP_TO_IEHP_MEMBER",
+        "source": "NEW: clients.insurance_info.household_members[]",
+        "notes": "Long-term: normalize into a client_household_members table."
+      },
+      {
+        "label": "Phone",
+        "placeholder_key": "PR_PHONE",
+        "source": "clients.phone || clients.parent1_phone",
+        "notes": "If template expects guardian phone, prefer parent1_phone."
+      },
+      {
+        "label": "Please describe the safety procedures in place to protect the Member and others during the following situations",
+        "placeholder_key": "PR_PLEASE_DESCRIBE_THE_SAFETY_PROCEDURES_IN_PLACE_TO_PROTECT_THE_MEMBER_AND_OTHERS_DURING_THE_FOLLOWING_SITUATIONS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Present Address",
+        "placeholder_key": "PR_PRESENT_ADDRESS",
+        "source": "clients.address_line1/2 + clients.city/state/zip_code",
+        "notes": "Concatenate; omit null parts."
+      },
+      {
+        "label": "Proactive Strategies",
+        "placeholder_key": "PR_PROACTIVE_STRATEGIES",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Program Supervisor",
+        "placeholder_key": "PR_PROGRAM_SUPERVISOR",
+        "source": "therapists.supervisor (text)",
+        "notes": "If supervisor is another user, model as relation later."
+      },
+      {
+        "label": "Reactive Strategies",
+        "placeholder_key": "PR_REACTIVE_STRATEGIES",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Replacement Behavior(s)",
+        "placeholder_key": "PR_REPLACEMENT_BEHAVIOR_S",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Report Date",
+        "placeholder_key": "PR_REPORT_DATE",
+        "source": "today (server)",
+        "notes": "Generated at time of report."
+      },
+      {
+        "label": "Report completed by",
+        "placeholder_key": "PR_REPORT_COMPLETED_BY",
+        "source": "therapists.full_name + credentials",
+        "notes": ""
+      },
+      {
+        "label": "Reporting Period",
+        "placeholder_key": "PR_REPORTING_PERIOD",
+        "source": "selected reporting window",
+        "notes": "Derived from authorization or therapist-selected dates."
+      },
+      {
+        "label": "SESSION INFORMATION",
+        "placeholder_key": "PR_SESSION_INFORMATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "SUMMARY OF PROGRESS",
+        "placeholder_key": "PR_SUMMARY_OF_PROGRESS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "School District",
+        "placeholder_key": "PR_SCHOOL_DISTRICT",
+        "source": "NEW: clients.insurance_info.school.district",
+        "notes": ""
+      },
+      {
+        "label": "School Goals (As applicable)",
+        "placeholder_key": "PR_SCHOOL_GOALS_AS_APPLICABLE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "School Name",
+        "placeholder_key": "PR_SCHOOL_NAME",
+        "source": "NEW: clients.insurance_info.school.name",
+        "notes": ""
+      },
+      {
+        "label": "School Personnel",
+        "placeholder_key": "PR_SCHOOL_PERSONNEL",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "School Placement",
+        "placeholder_key": "PR_SCHOOL_PLACEMENT",
+        "source": "NEW: clients.insurance_info.school.placement",
+        "notes": ""
+      },
+      {
+        "label": "School Services",
+        "placeholder_key": "PR_SCHOOL_SERVICES",
+        "source": "NEW: clients.insurance_info.school.services",
+        "notes": "e.g., OT/ST/PT/counseling/ABA; array or text."
+      },
+      {
+        "label": "School Start and End Time",
+        "placeholder_key": "PR_SCHOOL_START_AND_END_TIME",
+        "source": "NEW: clients.insurance_info.school.start_end_time",
+        "notes": ""
+      },
+      {
+        "label": "Self-Help",
+        "placeholder_key": "PR_SELF_HELP",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Session Time (e.g., 10am-12pm)",
+        "placeholder_key": "PR_SESSION_TIME_E_G_10AM_12PM",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Short term",
+        "placeholder_key": "PR_SHORT_TERM",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Social Skills",
+        "placeholder_key": "PR_SOCIAL_SKILLS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "State Disability Programs",
+        "placeholder_key": "PR_STATE_DISABILITY_PROGRAMS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Supervising BCBA",
+        "placeholder_key": "PR_SUPERVISING_BCBA",
+        "source": "therapists.bcba_number / supervisor name (NEW if separate)",
+        "notes": "Likely needs explicit supervisor table."
+      },
+      {
+        "label": "Supervising Clinicians Phone Number",
+        "placeholder_key": "PR_SUPERVISING_CLINICIANS_PHONE_NUMBER",
+        "source": "NEW: supervisor phone",
+        "notes": "Not currently modeled."
+      },
+      {
+        "label": "Target Behavior Name",
+        "placeholder_key": "PR_TARGET_BEHAVIOR_NAME",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Teachers Name",
+        "placeholder_key": "PR_TEACHERS_NAME",
+        "source": "NEW: clients.insurance_info.school.teacher_name",
+        "notes": ""
+      },
+      {
+        "label": "The provider is responsible for coordinating with alternative funding sources such as",
+        "placeholder_key": "PR_THE_PROVIDER_IS_RESPONSIBLE_FOR_COORDINATING_WITH_ALTERNATIVE_FUNDING_SOURCES_SUCH_AS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "This section is a required component of the client\u2019s service plan and is essential for ensuring integrated, person-centered care. Care coordination includes ongoing collaboration with all relevant parties involved in the client\u2019s care. Coordination includes, but is not limited to",
+        "placeholder_key": "PR_THIS_SECTION_IS_A_REQUIRED_COMPONENT_OF_THE_CLIENT_S_SERVICE_PLAN_AND_IS_ESSENTIAL_FOR_ENSURING_INTEGRATED_PERSON_CENTERED_CARE_CARE_COORDINATION_INCLUDES_ONGOING_COLLABORATION_WITH_ALL_RELEVANT_PARTIES_INVOLVED_IN_THE_CLIENT_S_CARE_COORDINATION_INCLUDES_BUT_IS_NOT_LIMITED_TO",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Title",
+        "placeholder_key": "PR_TITLE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "To ensure continuity of care",
+        "placeholder_key": "PR_TO_ENSURE_CONTINUITY_OF_CARE",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Transition Planning",
+        "placeholder_key": "PR_TRANSITION_PLANNING",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Treatment Hours Utilization",
+        "placeholder_key": "PR_TREATMENT_HOURS_UTILIZATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "When recommending clinic-based services, providers must include a clear clinical rationale. The following criteria must be met",
+        "placeholder_key": "PR_WHEN_RECOMMENDING_CLINIC_BASED_SERVICES_PROVIDERS_MUST_INCLUDE_A_CLEAR_CLINICAL_RATIONALE_THE_FOLLOWING_CRITERIA_MUST_BE_MET",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Within the program goals section of the progress report, the provider will report on the progress from the treatment goals outlined by the FBA. Graphs need to be included for each treatment goal. Line percentage graphs should not have more than 3 data paths on a single graph. Providers are encouraged to use cumulative graphs for acquisition treatment goals that have many program targets. Graphs should include the following elements",
+        "placeholder_key": "PR_WITHIN_THE_PROGRAM_GOALS_SECTION_OF_THE_PROGRESS_REPORT_THE_PROVIDER_WILL_REPORT_ON_THE_PROGRESS_FROM_THE_TREATMENT_GOALS_OUTLINED_BY_THE_FBA_GRAPHS_NEED_TO_BE_INCLUDED_FOR_EACH_TREATMENT_GOAL_LINE_PERCENTAGE_GRAPHS_SHOULD_NOT_HAVE_MORE_THAN_3_DATA_PATHS_ON_A_SINGLE_GRAPH_PROVIDERS_ARE_ENCOURAGED_TO_USE_CUMULATIVE_GRAPHS_FOR_ACQUISITION_TREATMENT_GOALS_THAT_HAVE_MANY_PROGRAM_TARGETS_GRAPHS_SHOULD_INCLUDE_THE_FOLLOWING_ELEMENTS",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Within the summary of progress section, the provider will need to provide a narrative on the Member\u2019s overall treatment progress during the current reporting period. Summary of progress will need to include the following information",
+        "placeholder_key": "PR_WITHIN_THE_SUMMARY_OF_PROGRESS_SECTION_THE_PROVIDER_WILL_NEED_TO_PROVIDE_A_NARRATIVE_ON_THE_MEMBER_S_OVERALL_TREATMENT_PROGRESS_DURING_THE_CURRENT_REPORTING_PERIOD_SUMMARY_OF_PROGRESS_WILL_NEED_TO_INCLUDE_THE_FOLLOWING_INFORMATION",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Within this section list the Member\u2019s and Parents/Guardians availability to participate in the BHT services. Fill out box below",
+        "placeholder_key": "PR_WITHIN_THIS_SECTION_LIST_THE_MEMBER_S_AND_PARENTS_GUARDIANS_AVAILABILITY_TO_PARTICIPATE_IN_THE_BHT_SERVICES_FILL_OUT_BOX_BELOW",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      },
+      {
+        "label": "Write a brief narrative about the results and include the following in a paragraph",
+        "placeholder_key": "PR_WRITE_A_BRIEF_NARRATIVE_ABOUT_THE_RESULTS_AND_INCLUDE_THE_FOLLOWING_IN_A_PARAGRAPH",
+        "source": "TBD (not yet mapped)",
+        "notes": "Likely clinician-entered or requires new data capture."
+      }
+    ],
+    "existing_placeholders": [
+      "[14]",
+      "[Insert projected date based on progress and treatment trajectory]",
+      "[MM/DD/YYYY]",
+      "[XX]",
+      "[briefly describe any improvements or ongoing challenges]",
+      "[insert %]",
+      "[state reason for addendum, e.g., update treatment goals, document progress toward discharge, reflect change in service setting, etc.]"
+    ]
+  }
+}

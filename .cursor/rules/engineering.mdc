@@ -1,0 +1,30 @@
+---
+alwaysApply: true
+---
+
+---
+description: Detailed engineering rules (code/db/edge)
+alwaysApply: true
+---
+
+# Engineering Rules (Detailed)
+
+## Code standards
+- Use idiomatic TypeScript/React; follow existing project conventions.
+- Prefer semantic queries in tests (`getByRole`, `getByLabelText`).
+- Centralize date mocking in global test setup; avoid hard-coded date strings.
+- MSW/fetch mocks must return real `Response` objects (or `clone()` polyfill).
+- Supabase client tests: chainable mock `.from().select().eq().order().limit()` with realistic shapes.
+- Remove unused imports/vars; avoid `any` (use concrete types or `unknown` + narrowing).
+
+## DB rules
+- Migrations are idempotent and named; use `IF NOT EXISTS` / `CONCURRENTLY` where allowed.
+- Add covering indexes for active FKs; drop only truly unused indexes (after usage check).
+- For mutable `search_path`: `ALTER FUNCTION ... SET search_path = public;`
+- Prefer a single, role-scoped permissive policy per table; avoid overlapping permissives.
+- In policies, prefer stable subselects for auth context (e.g., `user_id = (select auth.uid())`).
+
+## Edge functions
+- Validate all inputs (zod).
+- Uniform error envelope: `{requestId, code, message}`.
+- No stack traces in responses; add/confirm rate limits on sensitive endpoints.

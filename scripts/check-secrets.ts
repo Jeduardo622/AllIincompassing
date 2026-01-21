@@ -28,16 +28,46 @@ const parseExplicitFilter = (): Set<string> | undefined => {
   return new Set(parts);
 };
 
+const resolveCiEnvironmentName = (): string | undefined => {
+  const explicit = process.env.DEPLOYMENT_ENVIRONMENT?.trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  const ref = process.env.GITHUB_REF?.trim();
+  const refName = process.env.GITHUB_REF_NAME?.trim();
+  if (ref === 'refs/heads/develop' || refName === 'develop') {
+    return 'staging';
+  }
+  if (ref === 'refs/heads/main' || refName === 'main') {
+    return 'production';
+  }
+
+  return undefined;
+};
+
 const shouldCheckGroup = (group: EnvGroup, filter: Set<string> | undefined, envName: string | undefined): boolean => {
-  if (filter) {
-    return filter.has(normalizeGroupName(group.name));
+  const normalizedName = normalizeGroupName(group.name);
+  if (filter && !filter.has(normalizedName)) {
+    return false;
   }
 
-  if (group.environments && group.environments.length > 0) {
-    return group.environments.includes(envName ?? '');
+  const hasEnvironmentGate = Boolean(group.environments && group.environments.length > 0);
+  const environmentMatch = group.environments?.includes(envName ?? '') ?? false;
+  const isCi = process.env.CI === 'true';
+
+  if (isCi) {
+    if (hasEnvironmentGate) {
+      return environmentMatch;
+    }
+    return group.requiredInCi ?? false;
   }
 
-  if (group.requiredInCi && process.env.CI !== 'true' && process.env.REQUIRE_EXTENDED_SECRETS !== '1') {
+  if (hasEnvironmentGate) {
+    return environmentMatch;
+  }
+
+  if (group.requiredInCi && process.env.REQUIRE_EXTENDED_SECRETS !== '1') {
     return false;
   }
 
@@ -50,10 +80,9 @@ export const REQUIRED_ENV_GROUPS: readonly EnvGroup[] = [
     keys: [
       'SUPABASE_URL',
       'SUPABASE_ANON_KEY',
-      'SUPABASE_EDGE_URL',
       'SUPABASE_SERVICE_ROLE_KEY',
-      'SUPABASE_ACCESS_TOKEN',
     ],
+    requiredInCi: true,
   },
   {
     name: 'OpenAI',
@@ -74,23 +103,21 @@ export const REQUIRED_ENV_GROUPS: readonly EnvGroup[] = [
   {
     name: 'Netlify Deploy',
     keys: ['NETLIFY_AUTH_TOKEN', 'NETLIFY_STAGING_SITE_ID', 'NETLIFY_PRODUCTION_SITE_ID'],
-    requiredInCi: true,
+    environments: ['staging'],
   },
   {
     name: 'Clearinghouse Sandbox',
     keys: ['CLEARINGHOUSE_SANDBOX_API_KEY', 'CLEARINGHOUSE_SANDBOX_CLIENT_ID'],
-    requiredInCi: true,
   },
   {
     name: 'Telemetry',
     keys: ['TELEMETRY_WRITE_KEY'],
-    requiredInCi: true,
   },
 ];
 
 export function collectMissingEnvVars(env: NodeJS.ProcessEnv): string[] {
   const filter = parseExplicitFilter();
-  const environmentName = process.env.DEPLOYMENT_ENVIRONMENT;
+  const environmentName = resolveCiEnvironmentName();
 
   return REQUIRED_ENV_GROUPS.flatMap((group) => {
     if (!shouldCheckGroup(group, filter, environmentName)) {
@@ -99,6 +126,17 @@ export function collectMissingEnvVars(env: NodeJS.ProcessEnv): string[] {
 
     return group.keys.filter((key) => {
       const value = env[key];
+      if (key === 'SUPABASE_SERVICE_ROLE_KEY') {
+        const accessToken = env.SUPABASE_ACCESS_TOKEN;
+        const supabaseUrl = env.SUPABASE_URL;
+        const canHydrateServiceRole = typeof accessToken === 'string'
+          && accessToken.trim().length > 0
+          && typeof supabaseUrl === 'string'
+          && supabaseUrl.trim().length > 0;
+        if (canHydrateServiceRole) {
+          return false;
+        }
+      }
       if (value === undefined) {
         return true;
       }

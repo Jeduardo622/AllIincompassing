@@ -1,8 +1,4 @@
 ---
-alwaysApply: true
----
-
----
 description: Product intent, UX constraints, acceptance criteria conventions
 alwaysApply: true
 ---

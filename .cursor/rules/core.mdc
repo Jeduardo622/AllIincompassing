@@ -1,8 +1,4 @@
 ---
-alwaysApply: true
----
-
----
 description: Core boundaries, quality gates, stop conditions, secrets hygiene
 alwaysApply: true
 ---

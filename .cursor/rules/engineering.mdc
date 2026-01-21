@@ -1,8 +1,4 @@
 ---
-alwaysApply: true
----
-
----
 description: Detailed engineering rules (code/db/edge)
 alwaysApply: true
 ---

@@ -2,7 +2,7 @@
 name: staging-deployment-operation
 description: Deploy and validate staging environment workflows. Use when the user mentions staging deploys, staging validation, or environment checks.
 ---
-# Staging Deployment Operations
+# Staging Deployment Operation
 
 ## Quick Start
 
@@ -12,7 +12,7 @@ description: Deploy and validate staging environment workflows. Use when the use
 
 ## Steps
 
-- Follow `docs/STAGING_OPERATIONS.md`.
+- Follow `docs/STAGING_OPERATIONs.md`.
 - Reference CI deploy job in `.github/workflows/ci.yml` for expected steps.
 
 ## Output

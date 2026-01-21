@@ -1,17 +1,24 @@
-import { createProtectedRoute, corsHeaders, RouteOptions } from "../_shared/auth-middleware.ts";
+import { createProtectedRoute, corsHeaders, RouteOptions, type UserContext } from "../_shared/auth-middleware.ts";
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
 import { createRequestClient } from "../_shared/database.ts";
+import { MissingOrgContextError, orgScopedQuery, requireOrg } from "../_shared/org.ts";
 
-function extractOrganizationId(metadata: Record<string, unknown> | null | undefined): string | null {
-  if (!metadata) return null;
-  const candidate = (metadata as Record<string, unknown>).organization_id ?? (metadata as Record<string, unknown>).organizationId;
-  return typeof candidate === "string" && candidate.length > 0 ? candidate : null;
+interface HandlerOptions {
+  req: Request;
+  userContext: UserContext;
+  db?: SupabaseClient;
 }
 
-async function handler(req: Request) {
+export async function handleGetAuthorizationDetails({
+  req,
+  userContext,
+  db: providedDb,
+}: HandlerOptions) {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
   try {
-    const db = createRequestClient(req);
+    const db = providedDb ?? createRequestClient(req);
+    const orgId = await requireOrg(db);
 
     const body = await req.json().catch(() => ({} as Record<string, unknown>));
     const authorizationId = typeof body.authorizationId === "string" ? body.authorizationId : null;
@@ -19,15 +26,7 @@ async function handler(req: Request) {
       return new Response(JSON.stringify({ error: "Authorization ID is required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Derive caller organization from user metadata for cross-org guard
-    const { data: authResult, error: authError } = await db.auth.getUser();
-    if (authError || !authResult?.user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-    const callerOrgId = extractOrganizationId(authResult.user.user_metadata as Record<string, unknown> | undefined);
-
-    const { data, error } = await db
-      .from("authorizations")
+    const { data, error } = await orgScopedQuery(db, "authorizations", orgId)
       .select(
         `*, client:clients(id, full_name, email, organization_id), provider:therapists(id, full_name, email, organization_id), services:authorization_services(*)`
       )
@@ -38,21 +37,17 @@ async function handler(req: Request) {
       return new Response(JSON.stringify({ error: "Error fetching authorization" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Enforce org ownership unless super_admin (handled by route gating below)
-    if (callerOrgId && data) {
-      const clientOrg = (data as any)?.client?.organization_id ?? null;
-      const providerOrg = (data as any)?.provider?.organization_id ?? null;
-      const sameOrg = clientOrg === callerOrgId || providerOrg === callerOrgId;
-      if (!sameOrg) {
-        return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-    }
-
     return new Response(JSON.stringify({ authorization: data }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
+    if (error instanceof MissingOrgContextError) {
+      return new Response(JSON.stringify({ error: error.message, role: userContext.profile.role }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     console.error("Error fetching authorization details:", error);
     return new Response(JSON.stringify({ error: "Internal server error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 }
 
-export default createProtectedRoute(handler, RouteOptions.admin);
+export default createProtectedRoute(
+  (req: Request, userContext: UserContext) => handleGetAuthorizationDetails({ req, userContext }),
+  RouteOptions.admin,
+);

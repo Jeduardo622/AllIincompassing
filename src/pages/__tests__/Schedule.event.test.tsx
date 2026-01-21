@@ -33,6 +33,7 @@ describe("Schedule page event listener", () => {
   });
 
   it("opens modal based on pendingSchedule in localStorage", async () => {
+    vi.useFakeTimers();
     const detail = {
       therapist_id: "t1",
       client_id: "c1",
@@ -41,26 +42,14 @@ describe("Schedule page event listener", () => {
     };
     localStorage.setItem("pendingSchedule", JSON.stringify(detail));
 
-    const realSetTimeout = window.setTimeout;
-    const timeoutSpy = vi
-      .spyOn(window, "setTimeout")
-      .mockImplementation((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
-        if (typeof timeout === "number" && timeout === 300) {
-          if (typeof handler === "function") {
-            handler(...(args as []));
-          }
-          return 0 as unknown as ReturnType<typeof setTimeout>;
-        }
-        return realSetTimeout(handler, timeout as number, ...(args as []));
-      });
-
     try {
       renderWithProviders(<Schedule />);
       await screen.findByRole("heading", { name: /Schedule/i });
+      await vi.runAllTimersAsync();
       expect(await screen.findByText(/New Session/i)).toBeInTheDocument();
       expect(localStorage.getItem("pendingSchedule")).toBeNull();
     } finally {
-      timeoutSpy.mockRestore();
+      vi.useRealTimers();
     }
   });
 });

@@ -36,9 +36,33 @@ jobs:
 
       - name: Run lint
         run: npm run lint
+      - name: Alert on lint failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_ALERTS_CHANNEL: ${{ vars.SLACK_ALERTS_CHANNEL || '#deployments' }}
+        run: |
+          npm run alert:slack -- \
+            --title "❌ CI Build Failure: Lint" \
+            --text "Lint failed in ${{ github.workflow }} on ${{ github.ref_name }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --severity high \
+            --source "ci:lint" \
+            --runbook docs/INCIDENT_RESPONSE.md
 
       - name: Run typecheck
         run: npm run typecheck
+      - name: Alert on typecheck failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_ALERTS_CHANNEL: ${{ vars.SLACK_ALERTS_CHANNEL || '#deployments' }}
+        run: |
+          npm run alert:slack -- \
+            --title "❌ CI Build Failure: Typecheck" \
+            --text "Typecheck failed in ${{ github.workflow }} on ${{ github.ref_name }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --severity high \
+            --source "ci:typecheck" \
+            --runbook docs/INCIDENT_RESPONSE.md
 
       - name: Fail if skipped or focused tests are committed
         run: |
@@ -56,9 +80,33 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           RUN_DB_IT: '1'
+      - name: Alert on unit test failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_ALERTS_CHANNEL: ${{ vars.SLACK_ALERTS_CHANNEL || '#deployments' }}
+        run: |
+          npm run alert:slack -- \
+            --title "❌ CI Build Failure: Unit Tests" \
+            --text "Unit tests failed in ${{ github.workflow }} on ${{ github.ref_name }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --severity high \
+            --source "ci:tests" \
+            --runbook docs/INCIDENT_RESPONSE.md
 
       - name: Verify coverage threshold
         run: npm run ci:verify-coverage
+      - name: Alert on coverage failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_ALERTS_CHANNEL: ${{ vars.SLACK_ALERTS_CHANNEL || '#deployments' }}
+        run: |
+          npm run alert:slack -- \
+            --title "❌ CI Build Failure: Coverage Threshold" \
+            --text "Coverage failed in ${{ github.workflow }} on ${{ github.ref_name }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --severity high \
+            --source "ci:coverage" \
+            --runbook docs/INCIDENT_RESPONSE.md
 
       - name: Upload coverage summary
         if: ${{ always() }}
@@ -78,6 +126,18 @@ jobs:
 
       - name: Build canary
         run: npm run build:canary
+      - name: Alert on build canary failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_ALERTS_CHANNEL: ${{ vars.SLACK_ALERTS_CHANNEL || '#deployments' }}
+        run: |
+          npm run alert:slack -- \
+            --title "❌ CI Build Failure: Canary Build" \
+            --text "Canary build failed in ${{ github.workflow }} on ${{ github.ref_name }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --severity high \
+            --source "ci:build" \
+            --runbook docs/INCIDENT_RESPONSE.md
 
       - name: Preview smoke (deploy preview)
         env:
@@ -92,6 +152,18 @@ jobs:
           fi
           echo "Running preview smoke against $url"
           PREVIEW_URL="$url" npm run preview:smoke:remote
+      - name: Alert on preview smoke failure (build job)
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_ALERTS_CHANNEL: ${{ vars.SLACK_ALERTS_CHANNEL || '#deployments' }}
+        run: |
+          npm run alert:slack -- \
+            --title "❌ CI Smoke Failure: Preview (Build Job)" \
+            --text "Preview smoke failed in ${{ github.workflow }} on ${{ github.ref_name }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --severity high \
+            --source "ci:preview-smoke" \
+            --runbook docs/PREVIEW_SMOKE.md
 
       - name: Skipped typegen (repo var missing)
         if: ${{ vars.SUPABASE_PROJECT_ID == '' }}
@@ -117,11 +189,35 @@ jobs:
         run: npm ci
       - name: Build preview artifacts
         run: npm run preview:build
+      - name: Alert on preview build failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_ALERTS_CHANNEL: ${{ vars.SLACK_ALERTS_CHANNEL || '#deployments' }}
+        run: |
+          npm run alert:slack -- \
+            --title "❌ CI Preview Failure: Build" \
+            --text "Preview build failed in ${{ github.workflow }} on ${{ github.ref_name }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --severity high \
+            --source "ci:preview-build" \
+            --runbook docs/PREVIEW_SMOKE.md
       - name: Run preview smoke
         id: run-preview-smoke
         run: |
           set -o pipefail
           npm run preview:smoke | tee preview-smoke.log
+      - name: Alert on preview smoke failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_ALERTS_CHANNEL: ${{ vars.SLACK_ALERTS_CHANNEL || '#deployments' }}
+        run: |
+          npm run alert:slack -- \
+            --title "❌ CI Smoke Failure: Preview" \
+            --text "Preview smoke failed in ${{ github.workflow }} on ${{ github.ref_name }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --severity high \
+            --source "ci:preview-smoke" \
+            --runbook docs/PREVIEW_SMOKE.md
       - name: Upload preview smoke log
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -140,17 +236,10 @@ jobs:
           name: preview-smoke-junit-log
           path: preview-smoke-junit.log
           if-no-files-found: warn
-          set +e
-          npm run preview:smoke
-          status=$?
-          if [ $status -ne 0 ]; then
-            echo "::error::❌ Preview build or smoke test failed — downstream tasks halted."
-            exit $status
-          fi
-      - name: Run preview smoke (JUnit)
+      - name: Run preview smoke (gate)
         run: |
           set +e
-          npm run preview:smoke -- --reporter=junit
+          npm run preview:smoke
           status=$?
           if [ $status -ne 0 ]; then
             echo "::error::❌ Preview build or smoke test failed — downstream tasks halted."
@@ -183,6 +272,18 @@ jobs:
 
       - name: Build application
         run: npm run build
+      - name: Alert on staging build failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_ALERTS_CHANNEL: ${{ vars.SLACK_ALERTS_CHANNEL || '#deployments' }}
+        run: |
+          npm run alert:slack -- \
+            --title "🚨 Staging Deploy Failure: Build" \
+            --text "Staging build failed in ${{ github.workflow }} on ${{ github.ref_name }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --severity medium \
+            --source "ci:staging-build" \
+            --runbook docs/STAGING_OPERATIONS.md
 
       - name: Deploy to Netlify staging
         id: deploy
@@ -212,6 +313,18 @@ jobs:
             exit 1
           fi
           npm run preview:smoke:remote
+      - name: Alert on staging smoke failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_ALERTS_CHANNEL: ${{ vars.SLACK_ALERTS_CHANNEL || '#deployments' }}
+        run: |
+          npm run alert:slack -- \
+            --title "🚨 Staging Deploy Failure: Smoke Tests" \
+            --text "Staging smoke failed in ${{ github.workflow }} on ${{ github.ref_name }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --severity medium \
+            --source "ci:staging-smoke" \
+            --runbook docs/STAGING_OPERATIONS.md
 
   audit:
     needs: [build, preview]
@@ -246,16 +359,3 @@ jobs:
             cypress/videos/**/*.mp4
             cypress/screenshots/**/*.png
           if-no-files-found: warn
-name: CI
-on: [push]
-jobs:
-  lighthouseci:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 18
-      - run: npm install && npm install -g @lhci/cli@0.15.x
-      - run: npm run build
-      - run: lhci autorun

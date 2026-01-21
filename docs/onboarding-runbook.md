@@ -40,7 +40,31 @@
 
 5. **Observability & Alerting**
    - `npm run contract:runtime-config` already runs in CI; treat any missing key as a stop-ship.
-   - Use the Slack webhook notifier (`npm run alert:slack`) to route Playwright smoke failures into `#deployments`.
+   - **Automatic alerting** (recommended for CI):
+     Add to CI workflow after Playwright smoke tests:
+     ```yaml
+     - name: Alert on onboarding smoke failure
+       if: failure()
+       env:
+         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+       run: |
+         npm run alert:slack -- \
+           --title "Therapist onboarding smoke test failed" \
+           --text "Playwright therapist onboarding smoke test failed. Check artifacts: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+           --severity medium \
+           --source "ci:playwright:therapist-onboarding" \
+           --runbook docs/onboarding-runbook.md
+     ```
+   - **Manual alerting**:
+     ```bash
+     npm run alert:slack -- \
+       --title "Therapist onboarding failure" \
+       --text "<description of failure>" \
+       --severity medium \
+       --source "therapist-onboarding" \
+       --runbook docs/onboarding-runbook.md
+     ```
+   - See `docs/OBSERVABILITY_RUNBOOK.md` for severity mapping (onboarding failures typically map to SEV2/`medium`).
 
 ## Communication Aids
 - Use `docs/tone.md` for stakeholder messaging templates.
@@ -48,6 +72,8 @@
 
 ## Outstanding Actions
 - Keep the runtime-config contract wired into CI and add PagerDuty notifications if needed.
+  - **PagerDuty integration**: If configured, route SEV1 alerts (production onboarding failures) to PagerDuty. For SEV2/SEV3, Slack alerts are sufficient.
 - Extend Supabase storage verification (list objects under `therapist-documents/<therapist-id>/`) in CI after Playwright runs.
+- **Alerting gaps addressed**: Slack alerting is now documented. PagerDuty integration remains optional and should be configured separately if needed for on-call escalation.
 
 

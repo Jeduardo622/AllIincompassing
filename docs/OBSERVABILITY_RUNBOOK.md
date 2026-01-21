@@ -31,8 +31,50 @@ This runbook defines production monitoring signals, initial SLO thresholds, and 
 - Verification:
   - `npm run alert:slack:test`
 
-## CI and smoke alerts (manual wiring)
+## Severity mapping
+Map alert severity to incident severity tiers (see `docs/INCIDENT_RESPONSE.md`):
+- **`high`** → SEV1 (production outage, data integrity issues) - immediate response
+- **`medium`** → SEV2 (major degradation, auth failures) - respond within 30 minutes
+- **`low`** → SEV3 (localized degradation) - respond within 4 hours
+
+## CI and smoke alerts
+
+### Automatic alerting (recommended)
+Add Slack alert steps to CI workflows using `if: failure()` conditions. Example:
+
+```yaml
+- name: Alert on smoke failure
+  if: failure() && github.ref == 'refs/heads/main'
+  env:
+    SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+  run: |
+    npm run alert:slack -- \
+      --title "Production smoke test failed" \
+      --text "Preview smoke test failed on ${{ github.ref }}. Check workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+      --severity high \
+      --source "ci:preview:smoke" \
+      --runbook docs/INCIDENT_RESPONSE.md
+```
+
+### Manual alerting
 When CI or smoke failures occur, use the Slack notifier to route alerts to `#deployments`. This is designed to be called from CI workflows or manual triage sessions.
+
+### Alert frequency and throttling
+- **Production failures** (main branch): Always alert immediately
+- **Staging failures** (develop branch): Alert on first failure; suppress duplicates within 1 hour
+- **Preview/PR failures**: Alert only if blocking merge or affecting multiple PRs
+- Use `--dry-run` flag to test alert formatting without sending: `npm run alert:slack -- --dry-run --title "Test" --text "Test message"`
+
+## Escalation procedures
+1. **Initial alert**: Sent to `#deployments` with severity level
+2. **No acknowledgment within SLA**: Escalate by:
+   - Tagging Platform/DevOps team members in Slack
+   - Creating a GitHub issue with `incident` label
+   - For SEV1: Consider paging on-call engineer (if PagerDuty configured)
+3. **Escalation criteria**:
+   - SEV1: No response within 15 minutes
+   - SEV2: No response within 30 minutes
+   - SEV3: No response within 2 hours
 
 ## Runbook links
 - Incident response: `docs/INCIDENT_RESPONSE.md`

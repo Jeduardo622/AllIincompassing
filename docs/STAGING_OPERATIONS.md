@@ -42,10 +42,47 @@ If secrets are missing, the job fails early with an actionable error. Update Net
 
 - Smoke tests must validate authentication flows, dashboard rendering, and at least one Supabase read/write operation.
 - Capture failures in GitHub Action artifacts and alert the team in the `#deployments` Slack channel.
-- For manual alerts, use `npm run alert:slack` (see `docs/OBSERVABILITY_RUNBOOK.md`).
+
+### Alerting on staging failures
+
+**Automatic alerting** (recommended for CI):
+Add to `.github/workflows/ci.yml` in the `deploy-staging` job:
+
+```yaml
+- name: Alert on staging smoke failure
+  if: failure() && github.ref == 'refs/heads/develop'
+  env:
+    SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+  run: |
+    npm run alert:slack -- \
+      --title "Staging smoke test failed" \
+      --text "Staging deployment smoke test failed. Deploy URL: ${{ steps.deploy.outputs.staging_url }}. Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+      --severity medium \
+      --source "ci:staging:smoke" \
+      --runbook docs/STAGING_OPERATIONS.md
+```
+
+**Manual alerting**:
+```bash
+npm run alert:slack -- \
+  --title "Staging deploy failure" \
+  --text "<description of failure>" \
+  --severity medium \
+  --source "staging-operations" \
+  --runbook docs/STAGING_OPERATIONS.md
+```
+
+See `docs/OBSERVABILITY_RUNBOOK.md` for severity mapping and escalation procedures.
 
 ## Incident response
 
-- If the staging deploy fails, redeploy the last successful build from Netlify’s deploy history or re-run the GitHub Action once secrets are fixed.
-- For Supabase regressions, use the project backups (Dashboard → **Database** → **Backups** / PITR) to restore the hosted project, then re-apply migrations once the fix is ready.
-- Follow the incident response checklist in `docs/INCIDENT_RESPONSE.md`.
+- **If staging deploy fails**:
+  1. Alert team via Slack (see alerting section above).
+  2. Redeploy the last successful build from Netlify’s deploy history or re-run the GitHub Action once secrets are fixed.
+  3. Document root cause in `#deployments`.
+- **For Supabase regressions**:
+  1. Alert team with severity `medium` (SEV2)
+  2. Use project backups (Dashboard → **Database** → **Backups** / PITR) to restore the hosted project
+  3. Re-apply migrations once the fix is ready
+  4. Verify with smoke tests before marking resolved
+- **Follow the incident response checklist** in `docs/INCIDENT_RESPONSE.md` for severity classification and escalation procedures.

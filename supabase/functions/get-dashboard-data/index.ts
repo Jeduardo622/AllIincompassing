@@ -1,7 +1,9 @@
 import { z } from 'zod'
 import { errorEnvelope, getRequestId, rateLimit, IsoDateSchema } from '../lib/http/error.ts'
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
 import { createRequestClient } from "../_shared/database.ts";
-import { createProtectedRoute, RouteOptions, corsHeaders } from "../_shared/auth-middleware.ts";
+import { createProtectedRoute, RouteOptions } from "../_shared/auth-middleware.ts";
+import { MissingOrgContextError, orgScopedQuery, requireOrg } from "../_shared/org.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,7 +41,12 @@ const aggregateTodaysSessions = (
   }
 }
 
-async function handler(req: Request) {
+interface HandlerOptions {
+  req: Request;
+  db?: SupabaseClient;
+}
+
+export async function handleGetDashboardData({ req, db: providedDb }: HandlerOptions) {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -47,7 +54,8 @@ async function handler(req: Request) {
   try {
     const requestId = getRequestId(req)
 
-    const db = createRequestClient(req);
+    const db = providedDb ?? createRequestClient(req);
+    const orgId = await requireOrg(db);
 
     const ip = req.headers.get('x-forwarded-for') || 'unknown'
     const rl = rateLimit(`dashboard:${ip}`, 60, 60_000)
@@ -75,62 +83,49 @@ async function handler(req: Request) {
     monthStart.setDate(1);
     const monthStartStr = monthStart.toISOString().split('T')[0];
 
-    // derive caller organization from auth metadata
-    const { data: authUser } = await db.auth.getUser();
-    const meta = (authUser?.user?.user_metadata ?? {}) as Record<string, unknown>;
-    const callerOrgId = (meta.organization_id as string) ?? (meta.organizationId as string) ?? null;
-
-    const { data: todaySessions, error: todayError, count: todaySessionsCount } = await db
-      .from('sessions')
+    const { data: todaySessions, error: todayError, count: todaySessionsCount } = await orgScopedQuery(db, 'sessions', orgId)
       .select('id, status, start_time, end_time', { count: 'exact' })
       .gte('start_time', `${today}T00:00:00`)
       .lte('start_time', `${today}T23:59:59`)
       .returns<TodaySession[]>()
     if (todayError) throw todayError;
 
-    const { data: weekSessions, error: weekError } = await db
-      .from('sessions')
+    const { data: weekSessions, error: weekError } = await orgScopedQuery(db, 'sessions', orgId)
       .select('id, status, client_id, therapist_id')
       .gte('start_time', `${weekStartStr}T00:00:00`).lte('start_time', `${(endDate ?? today)}T23:59:59`)
       .then(res => res);
     if (weekError) throw weekError;
 
-    const { count: activeClientsCount, error: clientError } = await db
-      .from('clients')
+    const { count: activeClientsCount, error: clientError } = await orgScopedQuery(db, 'clients', orgId)
       .select('id', { count: 'exact', head: true })
       .is('deleted_at', null)
-      .eq('status', 'active')
-      .eq('organization_id', callerOrgId ?? undefined);
+      .eq('status', 'active');
     if (clientError) throw clientError;
 
-    const { count: activeTherapistsCount, error: therapistError } = await db
-      .from('therapists')
+    const { count: activeTherapistsCount, error: therapistError } = await orgScopedQuery(db, 'therapists', orgId)
       .select('id', { count: 'exact', head: true })
       .is('deleted_at', null)
-      .eq('status', 'active')
-      .eq('organization_id', callerOrgId ?? undefined);
+      .eq('status', 'active');
     if (therapistError) throw therapistError;
 
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
-    const { count: expiringAuthsCount, error: authError } = await db
-      .from('authorizations').select('id', { count: 'exact', head: true })
-      .eq('status', 'approved').lte('end_date', thirtyDaysFromNow.toISOString().split('T')[0]);
+    const { count: expiringAuthsCount, error: authError } = await orgScopedQuery(db, 'authorizations', orgId)
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'approved')
+      .lte('end_date', thirtyDaysFromNow.toISOString().split('T')[0]);
     if (authError) throw authError;
 
-    const { data: recentSessions, error: recentError } = await db
-      .from('sessions')
+    const { data: recentSessions, error: recentError } = await orgScopedQuery(db, 'sessions', orgId)
       .select(
         'id, status, start_time, created_at, created_by, updated_at, updated_by, client:clients(full_name), therapist:therapists(full_name)'
       )
       .order('created_at', { ascending: false }).limit(10);
     if (recentError) throw recentError;
 
-    const { data: monthlyBilling, error: billingError } = await db
-      .from('billing_records')
+    const { data: monthlyBilling, error: billingError } = await orgScopedQuery(db, 'billing_records', orgId)
       .select('amount_paid')
-      .eq('organization_id', callerOrgId ?? undefined)
       .gte('created_at', `${monthStartStr}T00:00:00`);
     if (billingError) throw billingError;
 
@@ -169,6 +164,10 @@ async function handler(req: Request) {
 
     return new Response(JSON.stringify({ success: true, data: dashboardData, parameters: { start_date: startDate ?? weekStartStr, end_date: endDate ?? today }, lastUpdated: new Date().toISOString(), requestId }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (error) {
+    if (error instanceof MissingOrgContextError) {
+      const requestId = getRequestId(new Request('http://local'))
+      return errorEnvelope({ requestId, code: 'missing_org', message: error.message, status: 403 })
+    }
     const requestId = getRequestId(new Request('http://local'))
     console.error('Dashboard data error:', error)
     return errorEnvelope({ requestId, code: 'internal_error', message: 'Unexpected error', status: 500 })
@@ -179,4 +178,4 @@ export const __TESTING__ = {
   aggregateTodaysSessions,
 }
 
-export default createProtectedRoute(handler, RouteOptions.admin)
+export default createProtectedRoute((req: Request) => handleGetDashboardData({ req }), RouteOptions.admin)

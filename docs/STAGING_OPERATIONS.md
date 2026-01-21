@@ -42,8 +42,10 @@ If secrets are missing, the job fails early with an actionable error. Update Net
 
 - Smoke tests must validate authentication flows, dashboard rendering, and at least one Supabase read/write operation.
 - Capture failures in GitHub Action artifacts and alert the team in the `#deployments` Slack channel.
+- For manual alerts, use `npm run alert:slack` (see `docs/OBSERVABILITY_RUNBOOK.md`).
 
 ## Incident response
 
 - If the staging deploy fails, redeploy the last successful build from Netlify’s deploy history or re-run the GitHub Action once secrets are fixed.
 - For Supabase regressions, use the project backups (Dashboard → **Database** → **Backups** / PITR) to restore the hosted project, then re-apply migrations once the fix is ready.
+- Follow the incident response checklist in `docs/INCIDENT_RESPONSE.md`.

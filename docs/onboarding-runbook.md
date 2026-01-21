@@ -40,15 +40,14 @@
 
 5. **Observability & Alerting**
    - `npm run contract:runtime-config` already runs in CI; treat any missing key as a stop-ship.
-   - Next steps: push Playwright smoke failures into Slack/PagerDuty via the existing CI notifications.
+   - Use the Slack webhook notifier (`npm run alert:slack`) to route Playwright smoke failures into `#deployments`.
 
 ## Communication Aids
 - Use `docs/tone.md` for stakeholder messaging templates.
 - UI copy / style updates should follow `docs/style.md`.
 
 ## Outstanding Actions
-- Keep the runtime-config contract wired into CI and add PagerDuty notifications for failures.
+- Keep the runtime-config contract wired into CI and add PagerDuty notifications if needed.
 - Extend Supabase storage verification (list objects under `therapist-documents/<therapist-id>/`) in CI after Playwright runs.
-- Hook Playwright smoke failures into Slack/PagerDuty so regressions surface automatically.
 
 

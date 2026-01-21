@@ -173,6 +173,9 @@ describe('AdminSettings logging', () => {
       );
 
       const submitButton = within(modal).getByRole('button', { name: 'Add Admin' });
+      await waitFor(() => {
+        expect(submitButton).toBeEnabled();
+      });
       await userEvent.click(submitButton);
 
       await waitFor(() => {

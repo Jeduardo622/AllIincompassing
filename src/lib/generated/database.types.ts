@@ -464,6 +464,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "authorization_services_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "authorization_services_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "authorization_services_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -477,16 +491,16 @@ export type Database = {
           authorization_number: string
           client_id: string
           created_at: string | null
+          created_by: string
           diagnosis_code: string
           diagnosis_description: string | null
-          plan_type: string | null
-          member_id: string | null
-          organization_id: string
-          created_by: string
           documents: Json | null
           end_date: string
           id: string
           insurance_provider_id: string | null
+          member_id: string | null
+          organization_id: string
+          plan_type: string | null
           provider_id: string
           start_date: string
           status: string
@@ -496,16 +510,16 @@ export type Database = {
           authorization_number: string
           client_id: string
           created_at?: string | null
+          created_by: string
           diagnosis_code: string
           diagnosis_description?: string | null
-          plan_type?: string | null
-          member_id?: string | null
-          organization_id: string
-          created_by: string
           documents?: Json | null
           end_date: string
           id?: string
           insurance_provider_id?: string | null
+          member_id?: string | null
+          organization_id: string
+          plan_type?: string | null
           provider_id: string
           start_date: string
           status?: string
@@ -515,16 +529,16 @@ export type Database = {
           authorization_number?: string
           client_id?: string
           created_at?: string | null
+          created_by?: string
           diagnosis_code?: string
           diagnosis_description?: string | null
-          plan_type?: string | null
-          member_id?: string | null
-          organization_id?: string
-          created_by?: string
           documents?: Json | null
           end_date?: string
           id?: string
           insurance_provider_id?: string | null
+          member_id?: string | null
+          organization_id?: string
+          plan_type?: string | null
           provider_id?: string
           start_date?: string
           status?: string
@@ -539,6 +553,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "authorizations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "authorizations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "authorizations_insurance_provider_id_fkey"
             columns: ["insurance_provider_id"]
             isOneToOne: false
@@ -546,17 +574,17 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "authorizations_provider_id_fkey"
-            columns: ["provider_id"]
-            isOneToOne: false
-            referencedRelation: "therapists"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "authorizations_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "authorizations_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
             referencedColumns: ["id"]
           },
         ]
@@ -3530,6 +3558,44 @@ export type Database = {
           },
         ]
       }
+      therapist_documents: {
+        Row: {
+          bucket_id: string
+          created_at: string
+          document_key: string
+          id: string
+          object_path: string
+          organization_id: string
+          therapist_id: string
+        }
+        Insert: {
+          bucket_id?: string
+          created_at?: string
+          document_key: string
+          id?: string
+          object_path: string
+          organization_id: string
+          therapist_id: string
+        }
+        Update: {
+          bucket_id?: string
+          created_at?: string
+          document_key?: string
+          id?: string
+          object_path?: string
+          organization_id?: string
+          therapist_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "therapist_documents_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       therapists: {
         Row: {
           availability_hours: Json | null
@@ -3542,10 +3608,10 @@ export type Database = {
           email: string
           employee_type: string | null
           facility: string | null
-          first_name: string | null
+          first_name: string
           full_name: string
           id: string
-          last_name: string | null
+          last_name: string
           latitude: number | null
           license_number: string | null
           longitude: number | null
@@ -3585,10 +3651,10 @@ export type Database = {
           email: string
           employee_type?: string | null
           facility?: string | null
-          first_name?: string | null
+          first_name: string
           full_name: string
           id?: string
-          last_name?: string | null
+          last_name: string
           latitude?: number | null
           license_number?: string | null
           longitude?: number | null
@@ -3628,10 +3694,10 @@ export type Database = {
           email?: string
           employee_type?: string | null
           facility?: string | null
-          first_name?: string | null
+          first_name?: string
           full_name?: string
           id?: string
-          last_name?: string | null
+          last_name?: string
           latitude?: number | null
           license_number?: string | null
           longitude?: number | null
@@ -4135,6 +4201,47 @@ export type Database = {
         }
         Returns: string
       }
+      create_authorization_with_services: {
+        Args: {
+          p_authorization_number: string
+          p_client_id: string
+          p_diagnosis_code: string
+          p_diagnosis_description: string
+          p_end_date: string
+          p_insurance_provider_id?: string
+          p_member_id?: string
+          p_plan_type?: string
+          p_provider_id: string
+          p_services?: Json
+          p_start_date: string
+          p_status?: string
+        }
+        Returns: {
+          authorization_number: string
+          client_id: string
+          created_at: string | null
+          created_by: string
+          diagnosis_code: string
+          diagnosis_description: string | null
+          documents: Json | null
+          end_date: string
+          id: string
+          insurance_provider_id: string | null
+          member_id: string | null
+          organization_id: string
+          plan_type: string | null
+          provider_id: string
+          start_date: string
+          status: string
+          updated_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "authorizations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_client: {
         Args: { p_client_data: Json }
         Returns: {
@@ -4208,6 +4315,7 @@ export type Database = {
         }
       }
       create_super_admin: { Args: { user_email: string }; Returns: undefined }
+      current_org_id: { Args: never; Returns: string }
       current_user_is_super_admin: { Args: never; Returns: boolean }
       detect_scheduling_conflicts: {
         Args: {
@@ -4658,6 +4766,7 @@ export type Database = {
           metadata: Json
         }[]
       }
+      has_care_role: { Args: never; Returns: boolean }
       has_role: { Args: { target_role: string }; Returns: boolean }
       insert_session_with_billing: {
         Args: {
@@ -4812,6 +4921,76 @@ export type Database = {
         Returns: boolean
       }
       temp_validate_time: { Args: never; Returns: undefined }
+      update_authorization_documents: {
+        Args: { p_authorization_id: string; p_documents: Json }
+        Returns: {
+          authorization_number: string
+          client_id: string
+          created_at: string | null
+          created_by: string
+          diagnosis_code: string
+          diagnosis_description: string | null
+          documents: Json | null
+          end_date: string
+          id: string
+          insurance_provider_id: string | null
+          member_id: string | null
+          organization_id: string
+          plan_type: string | null
+          provider_id: string
+          start_date: string
+          status: string
+          updated_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "authorizations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_authorization_with_services: {
+        Args: {
+          p_authorization_id: string
+          p_authorization_number: string
+          p_client_id: string
+          p_diagnosis_code: string
+          p_diagnosis_description: string
+          p_end_date: string
+          p_insurance_provider_id: string
+          p_member_id: string
+          p_plan_type: string
+          p_provider_id: string
+          p_services?: Json
+          p_start_date: string
+          p_status: string
+        }
+        Returns: {
+          authorization_number: string
+          client_id: string
+          created_at: string | null
+          created_by: string
+          diagnosis_code: string
+          diagnosis_description: string | null
+          documents: Json | null
+          end_date: string
+          id: string
+          insurance_provider_id: string | null
+          member_id: string | null
+          organization_id: string
+          plan_type: string | null
+          provider_id: string
+          start_date: string
+          status: string
+          updated_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "authorizations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       update_client_documents: {
         Args: { p_client_id: string; p_documents: Json }
         Returns: undefined
@@ -4984,3 +5163,4 @@ export const Constants = {
     },
   },
 } as const
+

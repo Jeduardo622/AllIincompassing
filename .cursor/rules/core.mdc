@@ -1,8 +1,6 @@
 ---
-description: Core boundaries, quality gates, stop conditions, secrets hygiene
-alwaysApply: true
+alwaysApply: false
 ---
-
 # Core Operating Boundaries (allincompassing)
 
 ## Writable paths
@@ -10,8 +8,6 @@ alwaysApply: true
 - `supabase/migrations/**`
 - `supabase/functions/**`
 - `docs/**`, `README.md`, `AGENTS.md`
-
-## Read-only / propose-only
 - `.github/**`, `infra/**`, `Dockerfile`, `.env`, `.supabase/config.toml`
 
 ## Secrets hygiene

@@ -293,7 +293,7 @@ export default function AdminSettings() {
     mutationFn: async (data: AdminFormData) => {
       const targetOrganizationId = isSuperAdmin
         ? data.organization_id ?? activeOrganizationId
-        : organizationId;
+        : organizationId ?? data.organization_id ?? activeOrganizationId;
 
       if (!targetOrganizationId) {
         const error = new Error('Organization context is required to create an admin user.');

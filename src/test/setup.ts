@@ -397,7 +397,7 @@ const createClientStub = (token: string | null) => {
   return client;
 };
 
-vi.mock('npm:@supabase/supabase-js@2.50.0', () => {
+vi.doMock('npm:@supabase/supabase-js@2.50.0', () => {
   const createClient = vi.fn((_: string, __: string, options?: { global?: { headers?: Record<string, string> } }) => {
     const authHeader = options?.global?.headers?.Authorization ?? '';
     const token = authHeader.startsWith('Bearer ')
@@ -430,7 +430,7 @@ vi.useFakeTimers({ toFake: ['Date'] });
 vi.setSystemTime(new Date('2025-06-30T12:00:00Z'));
 
 // Mock Supabase with more realistic implementations
-vi.mock('../lib/supabase', () => {
+vi.doMock('../lib/supabase', () => {
   const chain: any = {
     select: vi.fn(() => chain),
     insert: vi.fn(() => chain),

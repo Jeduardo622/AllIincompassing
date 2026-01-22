@@ -3,6 +3,11 @@ description:
 alwaysApply: true
 ---
 
+---
+description: 
+alwaysApply: true
+---
+
 # Agent Operations Guide
 
 This guide gives Codex agents and future automation a single place to reference project guardrails, tool access, and expected workflows.
@@ -12,7 +17,6 @@ This guide gives Codex agents and future automation a single place to reference 
 - **Writable directories**
   - `src/**`, `supabase/migrations/**`, `supabase/functions/**`
   - `docs/**`, `AGENTS.md`, runbooks, and other markdown documentation
-- **Read-only / propose-only**
   - `.github/**`, `infra/**`, `Dockerfile`, `.supabase/config.toml`, `.env`
   - Any credentials stored outside version control (1Password, Supabase dashboard)
 - **Coding standards**

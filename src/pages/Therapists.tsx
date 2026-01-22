@@ -353,6 +353,7 @@ const Therapists = () => {
               <input
                 type="text"
                 placeholder="Search by name..."
+                aria-label="Search staff members"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-dark dark:text-gray-200"
@@ -362,6 +363,7 @@ const Therapists = () => {
             <select
               value={filterLocation}
               onChange={(e) => setFilterLocation(e.target.value)}
+              aria-label="Filter staff by location"
               className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
             >
               <option value="all">All Locations</option>
@@ -373,6 +375,7 @@ const Therapists = () => {
             <select
               value={filterServiceLine}
               onChange={(e) => setFilterServiceLine(e.target.value)}
+              aria-label="Filter staff by service line"
               className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
             >
               <option value="all">All Service Lines</option>
@@ -384,6 +387,7 @@ const Therapists = () => {
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
+              aria-label="Filter staff by status"
               className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
             >
               <option value="all">All Statuses</option>
@@ -394,6 +398,7 @@ const Therapists = () => {
             <select
               value={archivedFilter}
               onChange={(e) => setArchivedFilter(e.target.value as 'all' | 'active' | 'archived')}
+              aria-label="Filter staff by archive status"
               className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
             >
               <option value="active">Active</option>
@@ -404,25 +409,29 @@ const Therapists = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <table
+            className="min-w-full divide-y divide-gray-200 dark:divide-gray-700"
+            aria-label="Staff members"
+            aria-busy={isLoading}
+          >
             <thead className="bg-gray-50 dark:bg-gray-800">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Staff Member
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Title
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Facility
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Service Lines
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -430,13 +439,13 @@ const Therapists = () => {
             <tbody className="bg-white dark:bg-dark-lighter divide-y divide-gray-200 dark:divide-gray-700">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400" role="status" aria-live="polite">
                     Loading staff members...
                   </td>
                 </tr>
               ) : filteredTherapists.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400" role="status" aria-live="polite">
                     No staff members found
                   </td>
                 </tr>

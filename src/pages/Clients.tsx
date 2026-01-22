@@ -402,6 +402,7 @@ const Clients = () => {
               <input
                 type="text"
                 placeholder="Search by name, email, or client ID..."
+                aria-label="Search clients"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-dark dark:text-gray-200"
@@ -414,6 +415,7 @@ const Clients = () => {
                 <select
                   value={filterEmail}
                   onChange={(e) => setFilterEmail(e.target.value)}
+                  aria-label="Filter clients by email domain"
                   className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
                 >
                   <option value="all">All Emails</option>
@@ -428,6 +430,7 @@ const Clients = () => {
                 <select
                   value={filterService}
                   onChange={(e) => setFilterService(e.target.value)}
+                  aria-label="Filter clients by service"
                   className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
                 >
                   <option value="all">All Services</option>
@@ -442,6 +445,7 @@ const Clients = () => {
                 <select
                   value={filterUnits}
                   onChange={(e) => setFilterUnits(e.target.value)}
+                  aria-label="Filter clients by units"
                   className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
                 >
                   <option value="all">All Units</option>
@@ -456,6 +460,7 @@ const Clients = () => {
                 <select
                   value={archivedFilter}
                   onChange={(e) => setArchivedFilter(e.target.value as 'all' | 'active' | 'archived')}
+                  aria-label="Filter clients by archive status"
                   className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
                 >
                   <option value="active">Active</option>
@@ -468,31 +473,45 @@ const Clients = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <table
+            className="min-w-full divide-y divide-gray-200 dark:divide-gray-700"
+            aria-label="Clients"
+            aria-busy={isLoading}
+          >
             <thead className="bg-gray-50 dark:bg-gray-800">
               <tr className="select-none">
-                <th 
+                <th
+                  scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                   onClick={() => handleSortChange('full_name')}
                 >
                   Client {getSortIcon('full_name')}
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                   onClick={() => handleSortChange('contact')}
                 >
                   Contact {getSortIcon('contact')}
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                   onClick={() => handleSortChange('service_preference')}
                 >
                   Services {getSortIcon('service_preference')}
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                   onClick={() => handleSortChange('units')}
                 >
                   Units {getSortIcon('units')}
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                >
                   Actions
                 </th>
               </tr>
@@ -500,19 +519,19 @@ const Clients = () => {
             <tbody className="bg-white dark:bg-dark-lighter divide-y divide-gray-200 dark:divide-gray-700">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={5} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400" role="status" aria-live="polite">
                     Loading clients...
                   </td>
                 </tr>
               ) : filteredClients.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={5} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400" role="status" aria-live="polite">
                     No clients found
                   </td>
                 </tr>
               ) : sortedClients.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={5} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400" role="status" aria-live="polite">
                     No clients match your search criteria
                   </td>
                 </tr>

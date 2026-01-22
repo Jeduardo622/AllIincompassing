@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { renderWithProviders, screen } from "../../test/utils";
+import { act } from "@testing-library/react";
 import Schedule from "../Schedule";
 
 // Integration test for event-based scheduling
@@ -45,7 +46,9 @@ describe("Schedule page event listener", () => {
     try {
       renderWithProviders(<Schedule />);
       await screen.findByRole("heading", { name: /Schedule/i });
-      await vi.runAllTimersAsync();
+      await act(async () => {
+        await vi.runAllTimersAsync();
+      });
       expect(await screen.findByText(/New Session/i)).toBeInTheDocument();
       expect(localStorage.getItem("pendingSchedule")).toBeNull();
     } finally {

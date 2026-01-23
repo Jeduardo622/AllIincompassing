@@ -53,7 +53,7 @@ export default function SchedulingMatrix({
       const entry = { therapists: new Set<string>(), clients: new Set<string>() };
       
       therapists.forEach(therapist => {
-        const avail = therapist.availability_hours[dayName];
+        const avail = therapist.availability_hours?.[dayName];
         if (avail?.start && avail?.end) {
           const [startHour, startMinute] = avail.start.split(':').map(Number);
           const [endHour, endMinute] = avail.end.split(':').map(Number);
@@ -69,7 +69,7 @@ export default function SchedulingMatrix({
       });
       
       clients.forEach(client => {
-        const avail = client.availability_hours[dayName];
+        const avail = client.availability_hours?.[dayName];
         if (avail?.start && avail?.end) {
           const [startHour, startMinute] = avail.start.split(':').map(Number);
           const [endHour, endMinute] = avail.end.split(':').map(Number);

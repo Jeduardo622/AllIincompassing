@@ -9,6 +9,9 @@ Track remediation work from the executive audit report to close production-readi
 | Security / Tenant Safety | Org-scoped validation missing in critical edge endpoints | Backend | In progress |
 | Data Integrity | Soft-delete audit triggers for client/therapist archives | Backend / DB | In progress |
 | Reliability | Documented test failures | QA / Eng | In progress |
+| Reliability | Schedule data batch RPC 400s (aggregation ORDER BY) | Backend / DB | Applied migration (verify in prod) |
+| Admin Governance | Admin users + guardian queue RPC access broken | Backend / DB | Applied migrations (verify in prod) |
+| Reliability | Dashboard 403 for therapist role | Backend | Code fix pending deploy |
 
 ## Strongly recommended
 | Area | Gap | Owner | Status |

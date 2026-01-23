@@ -1,18 +1,20 @@
 import { createClient } from '@supabase/supabase-js';
+import { pathToFileURL } from 'node:url';
 
 type Role = 'client' | 'therapist' | 'admin' | 'super_admin';
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const getClient = () => {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
-  console.error('[check-role-drift] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables.');
-  process.exit(1);
-}
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables.');
+  }
 
-const client = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-  auth: { persistSession: false },
-});
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  });
+};
 
 const toRole = (value: unknown): Role | null => {
   if (typeof value !== 'string') return null;
@@ -35,10 +37,10 @@ const toRole = (value: unknown): Role | null => {
   }
 };
 
-type AdminListResponse = Awaited<ReturnType<typeof client.auth.admin.listUsers>>;
+type AdminListResponse = Awaited<ReturnType<ReturnType<typeof createClient>['auth']['admin']['listUsers']>>;
 type AdminUser = AdminListResponse['data']['users'][number];
 
-const listAdminUsers = async (): Promise<AdminUser[]> => {
+const listAdminUsers = async (client: ReturnType<typeof createClient>): Promise<AdminUser[]> => {
   const perPage = 1000;
   let page = 1;
   let hasMore = true;
@@ -62,12 +64,8 @@ const listAdminUsers = async (): Promise<AdminUser[]> => {
   return users;
 };
 
-const main = async () => {
-  console.log('[check-role-drift] Inspecting admin role alignment…');
-
-  const allUsers = await listAdminUsers();
-
-  const adminCandidates = allUsers
+export const buildAdminCandidates = (users: AdminUser[]) =>
+  users
     .map((user) => {
       const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
       const metaRole = toRole(metadata.role ?? metadata.signup_role ?? metadata.signupRole ?? metadata.default_role ?? metadata.defaultRole);
@@ -79,6 +77,14 @@ const main = async () => {
       };
     })
     .filter((user) => user.metaRole === 'admin' || user.metaRole === 'super_admin');
+
+const main = async () => {
+  console.log('[check-role-drift] Inspecting admin role alignment…');
+
+  const client = getClient();
+  const allUsers = await listAdminUsers(client);
+
+  const adminCandidates = buildAdminCandidates(allUsers);
 
   const profileIds = adminCandidates.map((user) => user.id);
 
@@ -156,9 +162,14 @@ const main = async () => {
   process.exitCode = 1;
 };
 
-void main().catch((error) => {
-  console.error('[check-role-drift] Failed to evaluate role drift:', error);
-  process.exit(1);
-});
+const isDirectRun =
+  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href && process.env.VITEST !== 'true';
+
+if (isDirectRun) {
+  void main().catch((error) => {
+    console.error('[check-role-drift] Failed to evaluate role drift:', error);
+    process.exit(1);
+  });
+}
 
 

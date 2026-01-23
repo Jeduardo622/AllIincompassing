@@ -1,4 +1,5 @@
-import { createClient, type User } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
+import { pathToFileURL } from 'node:url';
 
 type SeedRole = 'admin' | 'super_admin';
 
@@ -9,16 +10,7 @@ interface SeedAccount {
   organizationId?: string | null;
 }
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const DEFAULT_PASSWORD = process.env.SEED_ACCOUNT_PASSWORD ?? 'Password123!';
-
-if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
-  console.error('[seed-admin-users] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables.');
-  process.exit(1);
-}
-
-const client = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
 const ACCOUNTS: SeedAccount[] = [
   {
@@ -50,7 +42,10 @@ const normalizeRole = (value: unknown): SeedRole | null => {
   return null;
 };
 
-const buildSeedMetadata = (account: SeedAccount, existing: Record<string, unknown> | undefined): Record<string, unknown> => {
+export const buildSeedMetadata = (
+  account: SeedAccount,
+  existing: Record<string, unknown> | undefined,
+): Record<string, unknown> => {
   const metadata = { ...(existing ?? {}) } as Record<string, unknown>;
   metadata.role = account.role;
   metadata.signup_role = account.role;
@@ -72,20 +67,65 @@ const buildSeedMetadata = (account: SeedAccount, existing: Record<string, unknow
   return metadata;
 };
 
-const ensureAccount = async (account: SeedAccount) => {
+const getClient = (): SupabaseClient => {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables.');
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey);
+};
+
+type UserLookup = Pick<User, 'id' | 'user_metadata'> & { email?: string | null };
+
+export const findUserByEmail = async (client: SupabaseClient, email: string): Promise<UserLookup | null> => {
+  const admin = client.auth.admin;
+
+  if ('getUserByEmail' in admin && typeof admin.getUserByEmail === 'function') {
+    const { data: existingResponse, error: lookupError } = await admin.getUserByEmail(email);
+
+    if (lookupError && lookupError.status !== 400) {
+      throw lookupError;
+    }
+
+    return existingResponse?.user ?? null;
+  }
+
+  const perPage = 200;
+  const maxPages = 10;
+  const normalizedEmail = email.toLowerCase();
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    const { data, error } = await admin.listUsers({ page, perPage });
+
+    if (error) {
+      throw error;
+    }
+
+    const found = data.users.find((user) => user.email?.toLowerCase() === normalizedEmail);
+
+    if (found) {
+      return found;
+    }
+
+    if (data.users.length < perPage) {
+      break;
+    }
+  }
+
+  return null;
+};
+
+const ensureAccount = async (client: SupabaseClient, account: SeedAccount) => {
   const summary: { email: string; created: boolean; updated: boolean } = {
     email: account.email,
     created: false,
     updated: false,
   };
 
-  const { data: existingResponse, error: lookupError } = await client.auth.admin.getUserByEmail(account.email);
-
-  if (lookupError && lookupError.status !== 400) {
-    throw lookupError;
-  }
-
-  const existingUser = existingResponse?.user ?? null;
+  const existingUser = await findUserByEmail(client, account.email);
   const metadata = buildSeedMetadata(account, existingUser?.user_metadata as Record<string, unknown> | undefined);
 
   if (!existingUser) {
@@ -101,7 +141,7 @@ const ensureAccount = async (account: SeedAccount) => {
     }
 
     summary.created = true;
-    await ensureRoleMapping(data.user, account.role);
+    await ensureRoleMapping(client, data.user, account.role);
     return summary;
   }
 
@@ -122,11 +162,11 @@ const ensureAccount = async (account: SeedAccount) => {
     summary.updated = true;
   }
 
-  await ensureRoleMapping(existingUser, account.role);
+  await ensureRoleMapping(client, existingUser, account.role);
   return summary;
 };
 
-const ensureRoleMapping = async (user: User, role: SeedRole) => {
+const ensureRoleMapping = async (client: SupabaseClient, user: Pick<User, 'id'>, role: SeedRole) => {
   const { data: roles, error: roleError } = await client
     .from('roles')
     .select('id')
@@ -143,13 +183,15 @@ const ensureRoleMapping = async (user: User, role: SeedRole) => {
     throw new Error(`Role ${role} is not provisioned in the roles table.`);
   }
 
-  const { error } = await client
-    .from('user_roles')
-    .insert({ user_id: user.id, role_id: roleId })
-    .onConflict('user_id,role_id')
-    .ignore();
+  const { error } = await client.from('user_roles').upsert(
+    { user_id: user.id, role_id: roleId },
+    {
+      onConflict: 'user_id,role_id',
+      ignoreDuplicates: true,
+    },
+  );
 
-  if (error && error.code !== '23505') {
+  if (error) {
     throw error;
   }
 };
@@ -163,9 +205,11 @@ const main = async () => {
 
   const results: Array<{ email: string; created: boolean; updated: boolean }> = [];
 
+  const client = getClient();
+
   for (const account of ACCOUNTS) {
     try {
-      const summary = await ensureAccount(account);
+      const summary = await ensureAccount(client, account);
       results.push(summary);
     } catch (error) {
       console.error(`[seed-admin-users] Failed to seed ${account.email}:`, error);
@@ -176,5 +220,10 @@ const main = async () => {
   console.table(results);
 };
 
-void main();
+const isDirectRun =
+  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href && process.env.VITEST !== 'true';
+
+if (isDirectRun) {
+  void main();
+}
 

@@ -107,6 +107,20 @@ export async function dashboardHandler(request: Request): Promise<Response> {
       body: JSON.stringify(rolePayload),
     });
 
+    const therapistRolePayload = {
+      role_name: "therapist",
+      target_organization_id: resolvedOrganizationId,
+    } as Record<string, unknown>;
+    const therapistRoleResult = await fetchJson<boolean>(roleUrl, {
+      method: "POST",
+      headers: {
+        ...JSON_HEADERS,
+        apikey: anonKey,
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(therapistRolePayload),
+    });
+
     const superAdminUrl = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/rpc/current_user_is_super_admin`;
     const superAdminResult = await fetchJson<boolean>(superAdminUrl, {
       method: "POST",
@@ -119,17 +133,20 @@ export async function dashboardHandler(request: Request): Promise<Response> {
     });
 
     const isOrgAdmin = roleResult.ok && roleResult.data === true;
+    const isTherapist = therapistRoleResult.ok && therapistRoleResult.data === true;
     const isSuperAdmin = superAdminResult.ok && superAdminResult.data === true;
 
     logger.info("Dashboard auth check", {
       resolvedOrganizationId,
       isOrgAdmin,
+      isTherapist,
       isSuperAdmin,
       roleStatus: roleResult.status,
+      therapistRoleStatus: therapistRoleResult.status,
       superAdminStatus: superAdminResult.status,
     });
 
-    if (!isOrgAdmin && !isSuperAdmin) {
+    if (!isOrgAdmin && !isTherapist && !isSuperAdmin) {
       return json({ error: "Forbidden" }, 403);
     }
 

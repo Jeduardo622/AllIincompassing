@@ -11,6 +11,9 @@ interface SeedAccount {
 }
 
 const DEFAULT_PASSWORD = process.env.SEED_ACCOUNT_PASSWORD ?? 'Password123!';
+const SHOULD_RESET_PASSWORD = process.env.SEED_ACCOUNT_PASSWORD_RESET === 'true';
+
+const DEFAULT_ORGANIZATION_ID = process.env.DEFAULT_ORGANIZATION_ID ?? null;
 
 const ACCOUNTS: SeedAccount[] = [
   {
@@ -20,7 +23,7 @@ const ACCOUNTS: SeedAccount[] = [
       first_name: 'Admin',
       last_name: 'Tester',
     },
-    organizationId: null,
+    organizationId: DEFAULT_ORGANIZATION_ID,
   },
   {
     email: 'superadmin@test.com',
@@ -150,10 +153,15 @@ const ensureAccount = async (client: SupabaseClient, account: SeedAccount) => {
   const needsOrgUpdate = account.organizationId !== undefined && (existingUser.user_metadata as Record<string, unknown> | undefined)?.organization_id !== account.organizationId;
 
   if (needsRoleUpdate || needsOrgUpdate) {
-    const { error } = await client.auth.admin.updateUserById(existingUser.id, {
-      password: DEFAULT_PASSWORD,
+    const updatePayload: { password?: string; user_metadata: Record<string, unknown> } = {
       user_metadata: metadata,
-    });
+    };
+
+    if (SHOULD_RESET_PASSWORD && process.env.SEED_ACCOUNT_PASSWORD) {
+      updatePayload.password = DEFAULT_PASSWORD;
+    }
+
+    const { error } = await client.auth.admin.updateUserById(existingUser.id, updatePayload);
 
     if (error) {
       throw error;

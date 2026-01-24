@@ -8,6 +8,7 @@ This guide explains how to (re)seed the diagnostic admin accounts that our UI an
 - Service role key (store in your shell as `SUPABASE_SERVICE_ROLE_KEY`)
 - Project URL (`SUPABASE_URL=https://wnnjeqheqxxyrgsjmygy.supabase.co`)
 - Optional: override the seed password via `SEED_ACCOUNT_PASSWORD` (defaults to `Password123!`)
+- By default, existing accounts do not get their password reset. Set `SEED_ACCOUNT_PASSWORD_RESET=true` to force a reset (requires a strong, non-pwned password).
 
 All commands below are executed from the repository root.
 
@@ -29,7 +30,7 @@ The script performs the following:
 
 - Creates or refreshes `admin@test.com` (role: `admin`, no `organization_id`)
 - Creates or refreshes `superadmin@test.com` (role: `super_admin`, no `organization_id`)
-- Resets passwords (handy for CI/Playwright smoke runs)
+- Resets passwords when `SEED_ACCOUNT_PASSWORD_RESET=true` (handy for CI/Playwright smoke runs)
 - Ensures `user_roles` and `profiles.role` are aligned with the metadata
 
 Super admin routes to verify after login:

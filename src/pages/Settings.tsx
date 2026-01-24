@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import OrganizationSettings from '../components/settings/OrganizationSettings';
-import { Building, Users, FileText, Briefcase, Settings as SettingsIcon, Shield, User } from 'lucide-react';
+import { Building, Users, FileText, Briefcase, Settings as SettingsIcon, Shield, User, Flag, UserCog } from 'lucide-react';
 import CompanySettings from '../components/settings/CompanySettings';
 import LocationSettings from '../components/settings/LocationSettings';
 import ServiceLineSettings from '../components/settings/ServiceLineSettings';
@@ -9,6 +9,9 @@ import ReferringProviderSettings from '../components/settings/ReferringProviderS
 import FileCabinetSettings from '../components/settings/FileCabinetSettings';
 import AdminSettings from '../components/settings/AdminSettings';
 import UserSettings from '../components/settings/UserSettings';
+import { SuperAdminFeatureFlags } from './SuperAdminFeatureFlags';
+import { SuperAdminImpersonation } from './SuperAdminImpersonation';
+import { useAuth } from '../lib/authContext';
 
 type Tab =
   | 'user'
@@ -18,11 +21,15 @@ type Tab =
   | 'referring-providers'
   | 'file-cabinet'
   | 'admins'
-  | 'organizations';
+  | 'organizations'
+  | 'feature-flags'
+  | 'impersonation';
 
 export default function Settings() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isSuperAdmin } = useAuth();
+  const showSuperAdminTabs = isSuperAdmin();
 
   const initialTab = useMemo<Tab>(() => {
     const path = location.pathname.toLowerCase();
@@ -38,6 +45,8 @@ export default function Settings() {
         'file-cabinet',
         'admins',
         'organizations',
+        'feature-flags',
+        'impersonation',
       ];
       if (allowed.includes(candidate)) return candidate;
     }
@@ -59,6 +68,12 @@ export default function Settings() {
     { id: 'file-cabinet' as Tab, name: 'File Cabinet Settings', icon: FileText },
     { id: 'admins' as Tab, name: 'Admin Users', icon: Shield },
     { id: 'organizations' as Tab, name: 'Organizations', icon: Building },
+    ...(showSuperAdminTabs
+      ? [
+          { id: 'feature-flags' as Tab, name: 'Feature Flags', icon: Flag },
+          { id: 'impersonation' as Tab, name: 'Impersonation', icon: UserCog },
+        ]
+      : []),
   ];
 
   return (
@@ -112,6 +127,8 @@ export default function Settings() {
           {activeTab === 'file-cabinet' && <FileCabinetSettings />}
           {activeTab === 'admins' && <AdminSettings />}
           {activeTab === 'organizations' && <OrganizationSettings />}
+          {activeTab === 'feature-flags' && <SuperAdminFeatureFlags />}
+          {activeTab === 'impersonation' && <SuperAdminImpersonation />}
         </div>
       </div>
     </div>

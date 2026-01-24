@@ -32,6 +32,11 @@ The script performs the following:
 - Resets passwords (handy for CI/Playwright smoke runs)
 - Ensures `user_roles` and `profiles.role` are aligned with the metadata
 
+Super admin routes to verify after login:
+
+- `/super-admin/feature-flags` (super admin only)
+- `/super-admin/impersonation` (super admin only)
+
 The output table highlights whether each account was created or updated. Non-zero exit codes indicate at least one failure; re-run after fixing inputs.
 
 ## 3. Verify role alignment

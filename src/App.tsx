@@ -26,6 +26,12 @@ const Documentation = React.lazy(() => import('./pages/Documentation'));
 const FillDocs = React.lazy(() => import('./pages/FillDocs'));
 const Billing = React.lazy(() => import('./pages/Billing'));
 const Settings = React.lazy(() => import('./pages/Settings'));
+const SuperAdminFeatureFlags = React.lazy(() =>
+  import('./pages/SuperAdminFeatureFlags').then(module => ({ default: module.SuperAdminFeatureFlags })),
+);
+const SuperAdminImpersonation = React.lazy(() =>
+  import('./pages/SuperAdminImpersonation').then(module => ({ default: module.SuperAdminImpersonation })),
+);
 const Unauthorized = React.lazy(() => import('./pages/Unauthorized'));
 const Authorizations = React.lazy(() => import('./pages/Authorizations'));
 const Reports = React.lazy(() => import('./pages/Reports'));
@@ -218,6 +224,24 @@ function App() {
                         <Settings />
                       </RoleGuard>
                     } />
+
+                    {/* Super Admin tools */}
+                    <Route
+                      path="super-admin/feature-flags"
+                      element={
+                        <RoleGuard roles={['super_admin']}>
+                          <SuperAdminFeatureFlags />
+                        </RoleGuard>
+                      }
+                    />
+                    <Route
+                      path="super-admin/impersonation"
+                      element={
+                        <RoleGuard roles={['super_admin']}>
+                          <SuperAdminImpersonation />
+                        </RoleGuard>
+                      }
+                    />
 
                     {/* Catch all - redirect to dashboard */}
                     <Route path="*" element={<Navigate to="/" replace />} />

@@ -22,7 +22,9 @@ const Therapists = React.lazy(() => import('./pages/Therapists'));
 const TherapistOnboardingPage = React.lazy(() => import('./pages/TherapistOnboardingPage'));
 const TherapistDetails = React.lazy(() => import('./pages/TherapistDetails'));
 const MonitoringDashboard = React.lazy(() => import('./pages/MonitoringDashboard'));
-const Documentation = React.lazy(() => import('./pages/Documentation'));
+const Documentation = React.lazy(() =>
+  import('./pages/Documentation').then(module => ({ default: module.Documentation })),
+);
 const FillDocs = React.lazy(() => import('./pages/FillDocs'));
 const Billing = React.lazy(() => import('./pages/Billing'));
 const Settings = React.lazy(() => import('./pages/Settings'));

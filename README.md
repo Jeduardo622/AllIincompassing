@@ -7,6 +7,7 @@ AllIncompassing delivers therapist scheduling, billing, and operational telemetr
 - **Therapy-specific booking flows** – Session holds coordinate with confirmation and cancellation paths, rounding durations to compliant 15-minute blocks while preventing double booking across therapists and clients.
 - **Billing-ready data** – CPT code derivation, modifier enrichment, and hold lifecycles persist structured billing rows that mirror the database schema and analytics jobs.
 - **Role-aware access** – Row Level Security (RLS) and the RBAC roles in Supabase ensure clients, therapists, admins, and super admins can only reach the data they are permitted to view or mutate.
+- **User documentation hub** – Centralized Documentation page with search, categorized sections (AI session notes, therapist uploads, client documents, authorization files), and download capabilities for all authenticated users.
 - **Operational diagnostics** – Health reports, route audits, and automated security checks keep migrations, RPCs, and edge functions aligned with production expectations.
 
 ## Architecture overview

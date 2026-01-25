@@ -13,6 +13,7 @@ This document gives leaders and future contributors a concise snapshot of what w
   - Tenant isolation hardening (RLS helpers, `app.user_has_role_for_org`, audit logging).
   - Therapist onboarding remediation (runtime-config contract tests, Playwright smoke).
   - Over-posting reduction: critical writes moved behind allowlisted RPCs (authorizations + document metadata).
+  - User documentation hub: centralized, searchable sections for AI notes and uploads.
   - AI transcription testing plan (Whisper integration, behavioral markers, compliance scoring).
 
 ## Architecture Snapshot

@@ -2,58 +2,91 @@ import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { loadPlaywrightEnv } from './lib/load-playwright-env';
+
 async function run() {
+  loadPlaywrightEnv();
   const headless = process.env.HEADLESS !== 'false';
   const browser = await chromium.launch({ headless });
   const context = await browser.newContext();
   const page = await context.newPage();
 
-  const base = 'https://app.allincompassing.ai';
-  const email = process.env.PW_EMAIL ?? 'jorge@winningedgeai.com';
-  const password = process.env.PW_PASSWORD ?? 'Nina.6225';
+  const base = process.env.PW_BASE_URL ?? 'https://app.allincompassing.ai';
+  const email =
+    process.env.PW_EMAIL ??
+    process.env.PW_SUPERADMIN_EMAIL ??
+    process.env.PW_ADMIN_EMAIL ??
+    process.env.PLAYWRIGHT_ADMIN_EMAIL ??
+    process.env.ADMIN_EMAIL ??
+    process.env.ONBOARD_ADMIN_EMAIL;
+  const password =
+    process.env.PW_PASSWORD ??
+    process.env.PW_SUPERADMIN_PASSWORD ??
+    process.env.PW_ADMIN_PASSWORD ??
+    process.env.PLAYWRIGHT_ADMIN_PASSWORD ??
+    process.env.ADMIN_PASSWORD ??
+    process.env.ONBOARD_ADMIN_PASSWORD;
+
+  if (!email || !password) {
+    throw new Error('Missing admin credentials. Set PW_EMAIL/PW_PASSWORD or PW_ADMIN_EMAIL/PW_ADMIN_PASSWORD.');
+  }
 
   // Login
   await page.goto(`${base}/login`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(500); // settle
   await page.waitForSelector('text=Sign in to AllIncompassing', { timeout: 5000 }).catch(() => undefined);
 
-  // Robust selectors for email
-  // Locate email field with explicit fallbacks
-  const emailCandidates = [
-    page.getByLabel(/email address/i),
-    page.getByLabel(/^email$/i),
-    page.locator('form input[type="email"]'),
-    page.locator('form input[name*="email" i]'),
-    page.locator('form input[placeholder*="email" i]'),
-    page.locator('form input:not([type="password"])'),
-    page.locator('input:not([type="password"])'),
-  ];
-  let filledEmail = false;
-  for (const cand of emailCandidates) {
-    try {
-      const count = await cand.count();
-      if (count > 0) {
+  const fillWithFallbacks = async (
+    candidates: Array<ReturnType<typeof page.locator>>,
+    value: string,
+    label: string,
+  ): Promise<void> => {
+    for (const cand of candidates) {
+      try {
+        const count = await cand.count();
+        if (count === 0) {
+          continue;
+        }
         const target = cand.first();
+        await target.waitFor({ state: 'visible', timeout: 5000 }).catch(() => undefined);
         await target.scrollIntoViewIfNeeded();
         await target.fill('');
-        await target.type(email, { delay: 20 });
-        filledEmail = true;
-        break;
-      }
-    } catch {}
-  }
-  if (!filledEmail) {
-    throw new Error('Could not locate email field on login page');
-  }
+        await target.type(value, { delay: 20 });
+        const current = await target.inputValue().catch(() => '');
+        if (current === value || current.length > 0) {
+          return;
+        }
+      } catch {}
+    }
+    throw new Error(`Could not locate or fill ${label} field on login page`);
+  };
+
+  // Robust selectors for email
+  await fillWithFallbacks(
+    [
+      page.getByLabel(/email address/i),
+      page.getByLabel(/^email$/i),
+      page.locator('form input[type="email"]'),
+      page.locator('form input[name*="email" i]'),
+      page.locator('form input[placeholder*="email" i]'),
+      page.locator('form input:not([type="password"])'),
+      page.locator('input:not([type="password"])'),
+    ],
+    email,
+    'email',
+  );
 
   // Robust selectors for password
-  const passwordField = page.getByLabel(/password/i)
-    .or(page.locator('input[type="password"]'))
-    .or(page.locator('input[name~="password" i]'))
-    .or(page.locator('input[placeholder*="password" i]'))
-    .first();
-  await passwordField.fill('');
-  await passwordField.type(password, { delay: 20 });
+  await fillWithFallbacks(
+    [
+      page.getByLabel(/password/i),
+      page.locator('input[type="password"]'),
+      page.locator('input[name~="password" i]'),
+      page.locator('input[placeholder*="password" i]'),
+    ],
+    password,
+    'password',
+  );
 
   // Find a submit button
   const submitCandidates = [

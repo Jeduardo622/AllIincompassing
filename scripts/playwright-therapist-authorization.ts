@@ -2,6 +2,8 @@ import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { loadPlaywrightEnv } from './lib/load-playwright-env';
+
 const artifactRoot = path.resolve(process.cwd(), 'artifacts');
 const latestDir = path.join(artifactRoot, 'latest');
 
@@ -12,6 +14,7 @@ const ensureDir = (dir: string) => {
 };
 
 async function run(): Promise<void> {
+  loadPlaywrightEnv();
   ensureDir(artifactRoot);
   ensureDir(latestDir);
 

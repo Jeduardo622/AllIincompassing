@@ -2,6 +2,8 @@ import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { loadPlaywrightEnv } from './lib/load-playwright-env';
+
 const artifactRoot = path.resolve(process.cwd(), 'artifacts');
 const latestDir = path.join(artifactRoot, 'latest');
 
@@ -23,6 +25,7 @@ const ensurePlaceholder = (relativePath: string, contents: string) => {
 const waitFor = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function run(): Promise<void> {
+  loadPlaywrightEnv();
   ensureDir(artifactRoot);
   ensureDir(latestDir);
 
@@ -30,11 +33,15 @@ async function run(): Promise<void> {
   const baseUrl = process.env.PW_BASE_URL ?? 'https://app.allincompassing.ai';
   const adminEmail =
     process.env.PW_EMAIL ??
+    process.env.PW_SUPERADMIN_EMAIL ??
+    process.env.PW_ADMIN_EMAIL ??
     process.env.PLAYWRIGHT_ADMIN_EMAIL ??
     process.env.ADMIN_EMAIL ??
     process.env.ONBOARD_ADMIN_EMAIL;
   const adminPassword =
     process.env.PW_PASSWORD ??
+    process.env.PW_SUPERADMIN_PASSWORD ??
+    process.env.PW_ADMIN_PASSWORD ??
     process.env.PLAYWRIGHT_ADMIN_PASSWORD ??
     process.env.ADMIN_PASSWORD ??
     process.env.ONBOARD_ADMIN_PASSWORD;

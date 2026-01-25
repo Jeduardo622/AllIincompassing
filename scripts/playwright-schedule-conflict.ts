@@ -2,6 +2,8 @@ import { chromium, type Page } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { loadPlaywrightEnv } from './lib/load-playwright-env';
+
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const getEnv = (key: string, fallback?: string): string => {
@@ -39,10 +41,25 @@ async function openSessionModal(page: Page) {
 }
 
 async function run() {
+  loadPlaywrightEnv();
   const headless = process.env.HEADLESS !== 'false';
   const base = getEnv('PW_BASE_URL', 'https://app.allincompassing.ai');
-  const email = getEnv('PW_EMAIL', 'jorge@winningedgeai.com');
-  const password = getEnv('PW_PASSWORD', 'Nina.6225');
+  const email =
+    process.env.PW_EMAIL ??
+    process.env.PW_SUPERADMIN_EMAIL ??
+    process.env.PW_ADMIN_EMAIL ??
+    process.env.PLAYWRIGHT_ADMIN_EMAIL ??
+    process.env.ADMIN_EMAIL ??
+    process.env.ONBOARD_ADMIN_EMAIL;
+  const password =
+    process.env.PW_PASSWORD ??
+    process.env.PW_SUPERADMIN_PASSWORD ??
+    process.env.PW_ADMIN_PASSWORD ??
+    process.env.PLAYWRIGHT_ADMIN_PASSWORD ??
+    process.env.ADMIN_PASSWORD ??
+    process.env.ONBOARD_ADMIN_PASSWORD;
+  const resolvedEmail = getEnv('PW_EMAIL', email);
+  const resolvedPassword = getEnv('PW_PASSWORD', password);
 
   const browser = await chromium.launch({ headless });
   const context = await browser.newContext();
@@ -50,10 +67,12 @@ async function run() {
 
   try {
     await page.goto(`${base}/login`, { waitUntil: 'domcontentloaded' });
-    await page.getByLabel(/email/i).fill('');
-    await page.getByLabel(/email/i).type(email, { delay: 15 });
-    await page.getByLabel(/password/i).fill('');
-    await page.getByLabel(/password/i).type(password, { delay: 15 });
+    const emailField = page.getByLabel(/email/i).or(page.locator('input[type="email"]')).first();
+    const passwordField = page.locator('input[type="password"]').first();
+    await emailField.fill('');
+    await emailField.type(resolvedEmail, { delay: 15 });
+    await passwordField.fill('');
+    await passwordField.type(resolvedPassword, { delay: 15 });
     await page.getByRole('button', { name: /sign in|log in|continue|submit/i }).click();
 
     const authTimeout = Date.now() + 20000;

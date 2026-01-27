@@ -1,0 +1,4907 @@
+[
+  {
+    "client_code": "ABGA",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "saturday": {
+        "start": "09:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ABOR",
+    "availability": {
+      "monday": {
+        "start": "14:35",
+        "end": "16:35"
+      },
+      "tuesday": {
+        "start": "14:35",
+        "end": "16:35"
+      },
+      "thursday": {
+        "start": "14:35",
+        "end": "16:35"
+      },
+      "friday": {
+        "start": "14:35",
+        "end": "16:35"
+      }
+    }
+  },
+  {
+    "client_code": "ABPEAR",
+    "availability": {
+      "monday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ADAL",
+    "availability": {
+      "monday": {
+        "start": "08:00",
+        "end": "13:00"
+      },
+      "tuesday": {
+        "start": "08:00",
+        "end": "13:00"
+      },
+      "wednesday": {
+        "start": "08:00",
+        "end": "13:00"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "13:00"
+      },
+      "friday": {
+        "start": "08:00",
+        "end": "13:00"
+      }
+    }
+  },
+  {
+    "client_code": "ADCA",
+    "availability": {
+      "monday": {
+        "start": "14:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "14:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "14:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "14:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "14:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ADRA",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ADVO",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ADYA",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "saturday": {
+        "start": "10:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "AIDU",
+    "availability": {
+      "monday": {
+        "start": "10:00",
+        "end": "13:00"
+      },
+      "tuesday": {
+        "start": "10:00",
+        "end": "13:00"
+      },
+      "thursday": {
+        "start": "10:00",
+        "end": "13:00"
+      },
+      "friday": {
+        "start": "10:00",
+        "end": "13:00"
+      }
+    }
+  },
+  {
+    "client_code": "AIHE",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "18:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "18:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "18:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "18:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "18:00"
+      }
+    }
+  },
+  {
+    "client_code": "AION",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "17:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "17:00"
+      },
+      "wednesday": {
+        "start": "14:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "AIRO",
+    "availability": {
+      "monday": {
+        "start": "10:00",
+        "end": "13:00"
+      },
+      "tuesday": {
+        "start": "09:00",
+        "end": "12:00"
+      },
+      "wednesday": {
+        "start": "10:00",
+        "end": "13:00"
+      },
+      "thursday": {
+        "start": "10:00",
+        "end": "13:00"
+      },
+      "friday": {
+        "start": "10:00",
+        "end": "13:00"
+      }
+    }
+  },
+  {
+    "client_code": "ALAV",
+    "availability": {}
+  },
+  {
+    "client_code": "ALGA",
+    "availability": {
+      "tuesday": {
+        "start": "15:30",
+        "end": "18:30"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "18:30"
+      },
+      "saturday": {
+        "start": "09:00",
+        "end": "13:00"
+      }
+    }
+  },
+  {
+    "client_code": "ALKH",
+    "availability": {}
+  },
+  {
+    "client_code": "ALLE",
+    "availability": {
+      "monday": {
+        "start": "08:00",
+        "end": "17:30"
+      },
+      "tuesday": {
+        "start": "08:00",
+        "end": "17:30"
+      },
+      "wednesday": {
+        "start": "08:00",
+        "end": "17:30"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "17:30"
+      },
+      "friday": {
+        "start": "08:00",
+        "end": "17:30"
+      }
+    }
+  },
+  {
+    "client_code": "ALMA",
+    "availability": {
+      "monday": {
+        "start": "10:00",
+        "end": "16:00"
+      },
+      "tuesday": {
+        "start": "10:00",
+        "end": "16:00"
+      },
+      "wednesday": {
+        "start": "10:00",
+        "end": "16:00"
+      },
+      "thursday": {
+        "start": "10:00",
+        "end": "16:00"
+      },
+      "friday": {
+        "start": "10:00",
+        "end": "16:00"
+      }
+    }
+  },
+  {
+    "client_code": "ALMO",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ALQU",
+    "availability": {
+      "monday": {
+        "start": "18:00",
+        "end": "20:00"
+      },
+      "tuesday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "wednesday": {
+        "start": "18:00",
+        "end": "20:00"
+      },
+      "thursday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "18:00",
+        "end": "20:00"
+      },
+      "saturday": {
+        "start": "09:00",
+        "end": "14:00"
+      }
+    }
+  },
+  {
+    "client_code": "ALSAGA",
+    "availability": {
+      "monday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "tuesday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "wednesday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "thursday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "16:30",
+        "end": "18:30"
+      }
+    }
+  },
+  {
+    "client_code": "ALVA",
+    "availability": {}
+  },
+  {
+    "client_code": "AMBU",
+    "availability": {
+      "monday": {
+        "start": "10:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "10:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "10:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "08:00",
+        "end": "12:00"
+      }
+    }
+  },
+  {
+    "client_code": "AMJO",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "AMMA",
+    "availability": {
+      "monday": {
+        "start": "14:30",
+        "end": "17:30"
+      },
+      "tuesday": {
+        "start": "14:30",
+        "end": "17:30"
+      },
+      "wednesday": {
+        "start": "14:30",
+        "end": "17:30"
+      },
+      "thursday": {
+        "start": "14:30",
+        "end": "17:30"
+      },
+      "friday": {
+        "start": "14:30",
+        "end": "17:30"
+      }
+    }
+  },
+  {
+    "client_code": "AMRO",
+    "availability": {}
+  },
+  {
+    "client_code": "AMTO",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ANLI",
+    "availability": {
+      "monday": {
+        "start": "09:00",
+        "end": "12:00"
+      },
+      "wednesday": {
+        "start": "09:00",
+        "end": "12:00"
+      },
+      "friday": {
+        "start": "09:00",
+        "end": "12:00"
+      }
+    }
+  },
+  {
+    "client_code": "ANLO",
+    "availability": {
+      "monday": {
+        "start": "17:00",
+        "end": "20:00"
+      },
+      "wednesday": {
+        "start": "17:00",
+        "end": "20:00"
+      }
+    }
+  },
+  {
+    "client_code": "ANMO",
+    "availability": {
+      "monday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "tuesday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "wednesday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "thursday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "16:30",
+        "end": "18:30"
+      }
+    }
+  },
+  {
+    "client_code": "ANNG",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ANTH",
+    "availability": {
+      "monday": {
+        "start": "17:00",
+        "end": "19:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "wednesday": {
+        "start": "17:00",
+        "end": "19:00"
+      },
+      "thursday": {
+        "start": "17:00",
+        "end": "19:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "19:00"
+      }
+    }
+  },
+  {
+    "client_code": "ARCU",
+    "availability": {}
+  },
+  {
+    "client_code": "ASRA",
+    "availability": {
+      "monday": {
+        "start": "09:00",
+        "end": "16:00"
+      },
+      "tuesday": {
+        "start": "09:00",
+        "end": "16:00"
+      },
+      "wednesday": {
+        "start": "09:00",
+        "end": "16:00"
+      },
+      "thursday": {
+        "start": "09:00",
+        "end": "16:00"
+      },
+      "friday": {
+        "start": "09:00",
+        "end": "16:00"
+      }
+    }
+  },
+  {
+    "client_code": "ATRE",
+    "availability": {
+      "monday": {
+        "start": "13:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "13:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "13:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "13:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "13:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ATVA",
+    "availability": {}
+  },
+  {
+    "client_code": "AVNG",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "09:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "AVOR",
+    "availability": {
+      "tuesday": {
+        "start": "13:00",
+        "end": "15:00"
+      },
+      "wednesday": {
+        "start": "13:00",
+        "end": "15:00"
+      },
+      "friday": {
+        "start": "13:00",
+        "end": "15:00"
+      }
+    }
+  },
+  {
+    "client_code": "AVPE",
+    "availability": {}
+  },
+  {
+    "client_code": "AYMA",
+    "availability": {
+      "monday": {
+        "start": "14:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "14:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "14:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "14:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "14:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "BEGO",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "saturday": {
+        "start": "09:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "BEMU",
+    "availability": {
+      "monday": {
+        "start": "06:00",
+        "end": "13:30"
+      },
+      "tuesday": {
+        "start": "06:00",
+        "end": "13:30"
+      },
+      "wednesday": {
+        "start": "06:00",
+        "end": "13:30"
+      },
+      "thursday": {
+        "start": "06:00",
+        "end": "13:30"
+      },
+      "friday": {
+        "start": "06:00",
+        "end": "13:30"
+      }
+    }
+  },
+  {
+    "client_code": "BENG",
+    "availability": {
+      "monday": {
+        "start": "15:15",
+        "end": "18:30"
+      },
+      "tuesday": {
+        "start": "15:15",
+        "end": "18:30"
+      },
+      "wednesday": {
+        "start": "15:15",
+        "end": "18:30"
+      },
+      "thursday": {
+        "start": "15:15",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "15:15",
+        "end": "18:30"
+      },
+      "saturday": {
+        "start": "09:00",
+        "end": "17:00"
+      }
+    }
+  },
+  {
+    "client_code": "BEVE",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "BRSORI",
+    "availability": {
+      "monday": {
+        "start": "14:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "14:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "14:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "14:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "14:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "BRTH",
+    "availability": {}
+  },
+  {
+    "client_code": "BRWI",
+    "availability": {
+      "saturday": {
+        "start": "08:00",
+        "end": "12:00"
+      }
+    }
+  },
+  {
+    "client_code": "CAAR",
+    "availability": {
+      "tuesday": {
+        "start": "15:30",
+        "end": "18:30"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "18:30"
+      }
+    }
+  },
+  {
+    "client_code": "CACA",
+    "availability": {}
+  },
+  {
+    "client_code": "CAGA",
+    "availability": {
+      "tuesday": {
+        "start": "15:30",
+        "end": "18:30"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "18:30"
+      },
+      "saturday": {
+        "start": "09:00",
+        "end": "13:00"
+      }
+    }
+  },
+  {
+    "client_code": "CAKIJO",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "19:00"
+      },
+      "tuesday": {
+        "start": "15:30",
+        "end": "19:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "19:00"
+      },
+      "thursday": {
+        "start": "15:30",
+        "end": "19:00"
+      }
+    }
+  },
+  {
+    "client_code": "CATR",
+    "availability": {
+      "wednesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "08:00",
+        "end": "14:30"
+      }
+    }
+  },
+  {
+    "client_code": "CEPE",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "CHCO",
+    "availability": {
+      "monday": {
+        "start": "12:00",
+        "end": "15:00"
+      },
+      "friday": {
+        "start": "12:00",
+        "end": "15:00"
+      }
+    }
+  },
+  {
+    "client_code": "CHHO",
+    "availability": {
+      "monday": {
+        "start": "14:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "16:40",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "16:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "16:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "16:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "CHJU",
+    "availability": {
+      "monday": {
+        "start": "10:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "10:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "10:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "10:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "CHRLO",
+    "availability": {
+      "monday": {
+        "start": "17:00",
+        "end": "20:00"
+      },
+      "wednesday": {
+        "start": "17:00",
+        "end": "20:00"
+      },
+      "saturday": {
+        "start": "12:00",
+        "end": "17:00"
+      }
+    }
+  },
+  {
+    "client_code": "CHLO",
+    "availability": {
+      "monday": {
+        "start": "19:30",
+        "end": "23:59"
+      },
+      "tuesday": {
+        "start": "19:30",
+        "end": "23:59"
+      },
+      "wednesday": {
+        "start": "19:30",
+        "end": "23:59"
+      },
+      "thursday": {
+        "start": "19:30",
+        "end": "23:59"
+      },
+      "friday": {
+        "start": "19:30",
+        "end": "23:59"
+      }
+    }
+  },
+  {
+    "client_code": "CHTA",
+    "availability": {}
+  },
+  {
+    "client_code": "CHVA",
+    "availability": {
+      "monday": {
+        "start": "12:00",
+        "end": "14:00"
+      },
+      "tuesday": {
+        "start": "12:00",
+        "end": "14:00"
+      },
+      "wednesday": {
+        "start": "12:00",
+        "end": "14:00"
+      },
+      "thursday": {
+        "start": "12:00",
+        "end": "14:00"
+      },
+      "friday": {
+        "start": "12:00",
+        "end": "14:00"
+      }
+    }
+  },
+  {
+    "client_code": "COHE",
+    "availability": {
+      "monday": {
+        "start": "14:30",
+        "end": "18:30"
+      },
+      "tuesday": {
+        "start": "14:30",
+        "end": "18:30"
+      },
+      "wednesday": {
+        "start": "14:30",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "14:30",
+        "end": "18:30"
+      },
+      "saturday": {
+        "start": "08:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "COMI",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "thursday": {
+        "start": "17:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "19:00"
+      }
+    }
+  },
+  {
+    "client_code": "DAAN",
+    "availability": {
+      "wednesday": {
+        "start": "08:00",
+        "end": "16:00"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "16:00"
+      }
+    }
+  },
+  {
+    "client_code": "DAFE",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "DALO",
+    "availability": {
+      "monday": {
+        "start": "08:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "08:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "08:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "08:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "DAMA",
+    "availability": {
+      "monday": {
+        "start": "08:00",
+        "end": "12:15"
+      },
+      "tuesday": {
+        "start": "08:00",
+        "end": "12:15"
+      },
+      "wednesday": {
+        "start": "08:00",
+        "end": "12:15"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "12:15"
+      },
+      "friday": {
+        "start": "08:00",
+        "end": "12:15"
+      }
+    }
+  },
+  {
+    "client_code": "DAMAAR",
+    "availability": {
+      "monday": {
+        "start": "19:30",
+        "end": "23:59"
+      },
+      "tuesday": {
+        "start": "19:30",
+        "end": "23:59"
+      },
+      "wednesday": {
+        "start": "19:30",
+        "end": "23:59"
+      },
+      "thursday": {
+        "start": "19:30",
+        "end": "23:59"
+      },
+      "friday": {
+        "start": "19:30",
+        "end": "23:59"
+      },
+      "saturday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "DAZA",
+    "availability": {}
+  },
+  {
+    "client_code": "DEAL",
+    "availability": {
+      "monday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "DEROME",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "10:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "DICE",
+    "availability": {}
+  },
+  {
+    "client_code": "DUAV",
+    "availability": {
+      "wednesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "06:00",
+        "end": "12:00"
+      }
+    }
+  },
+  {
+    "client_code": "DVLE",
+    "availability": {
+      "tuesday": {
+        "start": "13:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "13:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "13:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "13:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "DYRO",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "15:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "EDGO",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "saturday": {
+        "start": "10:00",
+        "end": "12:00"
+      }
+    }
+  },
+  {
+    "client_code": "EDMAGO",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "19:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "19:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "19:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "19:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "19:00"
+      }
+    }
+  },
+  {
+    "client_code": "EDRA",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "20:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "20:00"
+      }
+    }
+  },
+  {
+    "client_code": "ELAG",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "12:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ELER",
+    "availability": {}
+  },
+  {
+    "client_code": "ELER",
+    "availability": {}
+  },
+  {
+    "client_code": "ELGO",
+    "availability": {
+      "monday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "14:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ELLO",
+    "availability": {}
+  },
+  {
+    "client_code": "ELQU",
+    "availability": {}
+  },
+  {
+    "client_code": "ELRO",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "09:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ELSH",
+    "availability": {
+      "monday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "14:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ELWI",
+    "availability": {
+      "monday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "tuesday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "wednesday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "thursday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "16:30",
+        "end": "18:30"
+      }
+    }
+  },
+  {
+    "client_code": "EMES",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "EMMA",
+    "availability": {
+      "monday": {
+        "start": "14:30",
+        "end": "17:30"
+      },
+      "tuesday": {
+        "start": "14:30",
+        "end": "17:30"
+      },
+      "wednesday": {
+        "start": "14:30",
+        "end": "17:30"
+      },
+      "thursday": {
+        "start": "14:30",
+        "end": "17:30"
+      },
+      "friday": {
+        "start": "14:30",
+        "end": "17:30"
+      }
+    }
+  },
+  {
+    "client_code": "EMPA",
+    "availability": {
+      "monday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "14:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "EMVO",
+    "availability": {
+      "monday": {
+        "start": "09:30",
+        "end": "13:30"
+      },
+      "tuesday": {
+        "start": "09:30",
+        "end": "13:30"
+      },
+      "wednesday": {
+        "start": "09:30",
+        "end": "13:30"
+      },
+      "friday": {
+        "start": "09:30",
+        "end": "13:30"
+      }
+    }
+  },
+  {
+    "client_code": "ENDEMA",
+    "availability": {}
+  },
+  {
+    "client_code": "ENGATA",
+    "availability": {
+      "tuesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ENRA",
+    "availability": {}
+  },
+  {
+    "client_code": "ERCAME",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "17:30"
+      }
+    }
+  },
+  {
+    "client_code": "ETHE",
+    "availability": {
+      "monday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "tuesday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "wednesday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "thursday": {
+        "start": "16:30",
+        "end": "20:15"
+      }
+    }
+  },
+  {
+    "client_code": "ERCE",
+    "availability": {}
+  },
+  {
+    "client_code": "EUCE",
+    "availability": {}
+  },
+  {
+    "client_code": "EVEL",
+    "availability": {}
+  },
+  {
+    "client_code": "EVMI",
+    "availability": {
+      "wednesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "EVSA",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "17:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "17:00"
+      },
+      "wednesday": {
+        "start": "14:00",
+        "end": "17:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "17:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "17:00"
+      }
+    }
+  },
+  {
+    "client_code": "FAZA",
+    "availability": {}
+  },
+  {
+    "client_code": "GAIS",
+    "availability": {
+      "monday": {
+        "start": "14:30",
+        "end": "18:30"
+      },
+      "tuesday": {
+        "start": "14:30",
+        "end": "18:30"
+      },
+      "wednesday": {
+        "start": "14:30",
+        "end": "18:30"
+      },
+      "thursday": {
+        "start": "14:30",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "14:30",
+        "end": "18:30"
+      }
+    }
+  },
+  {
+    "client_code": "GEJUGA",
+    "availability": {}
+  },
+  {
+    "client_code": "GIAR",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "17:30"
+      },
+      "tuesday": {
+        "start": "15:30",
+        "end": "17:30"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "17:30"
+      }
+    }
+  },
+  {
+    "client_code": "GUGO",
+    "availability": {
+      "thursday": {
+        "start": "16:00",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "18:30"
+      }
+    }
+  },
+  {
+    "client_code": "HALO",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "19:30"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "19:00"
+      }
+    }
+  },
+  {
+    "client_code": "HAME",
+    "availability": {
+      "monday": {
+        "start": "14:00",
+        "end": "15:30"
+      },
+      "tuesday": {
+        "start": "13:00",
+        "end": "14:45"
+      },
+      "wednesday": {
+        "start": "13:30",
+        "end": "15:00"
+      },
+      "thursday": {
+        "start": "13:00",
+        "end": "16:00"
+      }
+    }
+  },
+  {
+    "client_code": "HEME",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "17:30"
+      },
+      "tuesday": {
+        "start": "13:30",
+        "end": "16:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "18:00"
+      }
+    }
+  },
+  {
+    "client_code": "IARO",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "18:30"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "18:30"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "18:30"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "18:30"
+      }
+    }
+  },
+  {
+    "client_code": "ILAG",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "19:00"
+      }
+    }
+  },
+  {
+    "client_code": "ISAN",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "18:00"
+      }
+    }
+  },
+  {
+    "client_code": "ISGA",
+    "availability": {}
+  },
+  {
+    "client_code": "ISKI",
+    "availability": {
+      "monday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:30",
+        "end": "19:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "19:00"
+      },
+      "thursday": {
+        "start": "15:30",
+        "end": "19:00"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "19:00"
+      },
+      "saturday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ISLA",
+    "availability": {
+      "monday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ISLU",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "06:00",
+        "end": "13:00"
+      }
+    }
+  },
+  {
+    "client_code": "ISQU",
+    "availability": {
+      "monday": {
+        "start": "09:00",
+        "end": "14:00"
+      },
+      "tuesday": {
+        "start": "09:00",
+        "end": "14:00"
+      },
+      "wednesday": {
+        "start": "09:00",
+        "end": "14:00"
+      },
+      "thursday": {
+        "start": "09:00",
+        "end": "14:00"
+      },
+      "friday": {
+        "start": "09:00",
+        "end": "14:00"
+      }
+    }
+  },
+  {
+    "client_code": "ISYARE",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ISZA",
+    "availability": {
+      "monday": {
+        "start": "17:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "17:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "17:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "17:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "17:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "IVCA",
+    "availability": {}
+  },
+  {
+    "client_code": "IVMU",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "20:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "20:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "20:00"
+      },
+      "thursday": {
+        "start": "16:30",
+        "end": "20:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "20:00"
+      },
+      "saturday": {
+        "start": "08:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "JACA",
+    "availability": {
+      "monday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "JACMO",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "JAEV",
+    "availability": {
+      "monday": {
+        "start": "09:00",
+        "end": "12:00"
+      },
+      "tuesday": {
+        "start": "09:00",
+        "end": "12:00"
+      },
+      "wednesday": {
+        "start": "09:00",
+        "end": "12:00"
+      },
+      "thursday": {
+        "start": "09:00",
+        "end": "12:00"
+      },
+      "friday": {
+        "start": "09:00",
+        "end": "12:00"
+      }
+    }
+  },
+  {
+    "client_code": "JALO",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "18:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "19:00"
+      }
+    }
+  },
+  {
+    "client_code": "JAMA",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "JAMO",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "17:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "17:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "17:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "17:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "17:00"
+      }
+    }
+  },
+  {
+    "client_code": "JANO",
+    "availability": {
+      "monday": {
+        "start": "08:00",
+        "end": "17:00"
+      },
+      "tuesday": {
+        "start": "08:00",
+        "end": "17:00"
+      },
+      "wednesday": {
+        "start": "08:00",
+        "end": "17:00"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "17:00"
+      },
+      "friday": {
+        "start": "08:00",
+        "end": "17:00"
+      }
+    }
+  },
+  {
+    "client_code": "JARO",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "18:30"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "18:30"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "18:30"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "18:30"
+      }
+    }
+  },
+  {
+    "client_code": "JATOR",
+    "availability": {
+      "monday": {
+        "start": "16:30",
+        "end": "18:00"
+      },
+      "tuesday": {
+        "start": "16:30",
+        "end": "18:00"
+      },
+      "wednesday": {
+        "start": "16:30",
+        "end": "18:00"
+      },
+      "thursday": {
+        "start": "16:30",
+        "end": "18:00"
+      },
+      "friday": {
+        "start": "16:30",
+        "end": "18:00"
+      }
+    }
+  },
+  {
+    "client_code": "JATOZ",
+    "availability": {}
+  },
+  {
+    "client_code": "JECA",
+    "availability": {}
+  },
+  {
+    "client_code": "JEKI",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "17:30"
+      }
+    }
+  },
+  {
+    "client_code": "JEMKI",
+    "availability": {
+      "monday": {
+        "start": "06:00",
+        "end": "12:00"
+      },
+      "tuesday": {
+        "start": "06:00",
+        "end": "12:00"
+      },
+      "wednesday": {
+        "start": "06:00",
+        "end": "12:00"
+      },
+      "thursday": {
+        "start": "06:00",
+        "end": "12:00"
+      },
+      "friday": {
+        "start": "06:00",
+        "end": "12:00"
+      },
+      "saturday": {
+        "start": "06:00",
+        "end": "12:00"
+      }
+    }
+  },
+  {
+    "client_code": "JESCA",
+    "availability": {}
+  },
+  {
+    "client_code": "JESCAB",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "JOAS",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "18:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "18:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "18:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "18:00"
+      }
+    }
+  },
+  {
+    "client_code": "JOCADU",
+    "availability": {
+      "monday": {
+        "start": "08:00",
+        "end": "15:00"
+      },
+      "tuesday": {
+        "start": "08:00",
+        "end": "15:00"
+      },
+      "wednesday": {
+        "start": "08:00",
+        "end": "15:00"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "15:00"
+      },
+      "friday": {
+        "start": "08:00",
+        "end": "15:00"
+      }
+    }
+  },
+  {
+    "client_code": "JODU",
+    "availability": {}
+  },
+  {
+    "client_code": "JOERAGU",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "20:00"
+      }
+    }
+  },
+  {
+    "client_code": "JOHE",
+    "availability": {
+      "wednesday": {
+        "start": "10:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "10:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "10:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "JOLERAGU",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "20:00"
+      }
+    }
+  },
+  {
+    "client_code": "JOLOOR",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "18:30"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "18:30"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "18:30"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "18:30"
+      }
+    }
+  },
+  {
+    "client_code": "JOTH",
+    "availability": {}
+  },
+  {
+    "client_code": "JOVA",
+    "availability": {
+      "monday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "14:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "JUAVL",
+    "availability": {
+      "monday": {
+        "start": "10:30",
+        "end": "13:30"
+      },
+      "tuesday": {
+        "start": "10:30",
+        "end": "13:30"
+      },
+      "wednesday": {
+        "start": "10:30",
+        "end": "13:30"
+      },
+      "thursday": {
+        "start": "10:30",
+        "end": "13:30"
+      }
+    }
+  },
+  {
+    "client_code": "JUHE",
+    "availability": {
+      "monday": {
+        "start": "08:00",
+        "end": "12:00"
+      },
+      "tuesday": {
+        "start": "08:00",
+        "end": "12:00"
+      },
+      "wednesday": {
+        "start": "08:00",
+        "end": "12:00"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "12:00"
+      },
+      "friday": {
+        "start": "08:00",
+        "end": "12:00"
+      }
+    }
+  },
+  {
+    "client_code": "KADO",
+    "availability": {}
+  },
+  {
+    "client_code": "KAGR",
+    "availability": {}
+  },
+  {
+    "client_code": "KAROME",
+    "availability": {}
+  },
+  {
+    "client_code": "KAYA",
+    "availability": {
+      "monday": {
+        "start": "16:30",
+        "end": "20:00"
+      },
+      "tuesday": {
+        "start": "16:30",
+        "end": "20:00"
+      },
+      "wednesday": {
+        "start": "16:30",
+        "end": "20:00"
+      },
+      "thursday": {
+        "start": "16:30",
+        "end": "20:00"
+      },
+      "friday": {
+        "start": "16:30",
+        "end": "20:00"
+      }
+    }
+  },
+  {
+    "client_code": "KEAM",
+    "availability": {
+      "monday": {
+        "start": "14:05",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "14:05",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "13:15",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "14:05",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "14:05",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "KECA",
+    "availability": {}
+  },
+  {
+    "client_code": "KELO",
+    "availability": {}
+  },
+  {
+    "client_code": "KENG",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "17:30"
+      },
+      "tuesday": {
+        "start": "15:30",
+        "end": "17:30"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "17:30"
+      },
+      "thursday": {
+        "start": "15:30",
+        "end": "17:30"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "17:30"
+      },
+      "saturday": {
+        "start": "12:00",
+        "end": "15:00"
+      }
+    }
+  },
+  {
+    "client_code": "KESAROSA",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "18:00"
+      }
+    }
+  },
+  {
+    "client_code": "KIAL",
+    "availability": {
+      "monday": {
+        "start": "08:00",
+        "end": "20:00"
+      },
+      "tuesday": {
+        "start": "08:00",
+        "end": "20:00"
+      },
+      "wednesday": {
+        "start": "08:00",
+        "end": "20:00"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "20:00"
+      },
+      "friday": {
+        "start": "08:00",
+        "end": "12:00"
+      }
+    }
+  },
+  {
+    "client_code": "KIDU",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "06:00",
+        "end": "12:00"
+      }
+    }
+  },
+  {
+    "client_code": "KILE",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "KRMA",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "17:00"
+      },
+      "tuesday": {
+        "start": "15:30",
+        "end": "17:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "17:00"
+      },
+      "thursday": {
+        "start": "15:30",
+        "end": "17:00"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "17:00"
+      }
+    }
+  },
+  {
+    "client_code": "KYPH",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "18:30"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "18:00"
+      }
+    }
+  },
+  {
+    "client_code": "LARO",
+    "availability": {
+      "monday": {
+        "start": "16:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "10:30",
+        "end": "15:00"
+      }
+    }
+  },
+  {
+    "client_code": "LEBA",
+    "availability": {
+      "monday": {
+        "start": "17:00",
+        "end": "19:00"
+      },
+      "tuesday": {
+        "start": "17:00",
+        "end": "19:00"
+      },
+      "thursday": {
+        "start": "17:00",
+        "end": "19:00"
+      },
+      "friday": {
+        "start": "17:00",
+        "end": "19:00"
+      }
+    }
+  },
+  {
+    "client_code": "LEKN",
+    "availability": {
+      "monday": {
+        "start": "11:00",
+        "end": "15:00"
+      },
+      "tuesday": {
+        "start": "11:00",
+        "end": "15:00"
+      },
+      "wednesday": {
+        "start": "11:00",
+        "end": "15:00"
+      },
+      "thursday": {
+        "start": "11:00",
+        "end": "15:00"
+      },
+      "friday": {
+        "start": "11:00",
+        "end": "15:00"
+      }
+    }
+  },
+  {
+    "client_code": "LELE",
+    "availability": {
+      "tuesday": {
+        "start": "15:30",
+        "end": "17:30"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "17:30"
+      },
+      "thursday": {
+        "start": "15:30",
+        "end": "17:30"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "17:30"
+      }
+    }
+  },
+  {
+    "client_code": "LERARA",
+    "availability": {
+      "monday": {
+        "start": "22:00",
+        "end": "23:59"
+      },
+      "wednesday": {
+        "start": "10:00",
+        "end": "14:00"
+      }
+    }
+  },
+  {
+    "client_code": "LERI",
+    "availability": {
+      "monday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "LETE",
+    "availability": {
+      "monday": {
+        "start": "15:45",
+        "end": "17:30"
+      },
+      "tuesday": {
+        "start": "15:45",
+        "end": "17:30"
+      },
+      "wednesday": {
+        "start": "14:45",
+        "end": "17:00"
+      },
+      "thursday": {
+        "start": "15:45",
+        "end": "17:30"
+      }
+    }
+  },
+  {
+    "client_code": "LIES",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "20:00"
+      }
+    }
+  },
+  {
+    "client_code": "LIGI",
+    "availability": {}
+  },
+  {
+    "client_code": "LIMA",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "LIMI",
+    "availability": {
+      "monday": {
+        "start": "13:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "13:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "13:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "13:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "13:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "13:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "LIRA",
+    "availability": {
+      "monday": {
+        "start": "12:00",
+        "end": "16:00"
+      },
+      "tuesday": {
+        "start": "12:00",
+        "end": "16:00"
+      },
+      "wednesday": {
+        "start": "12:00",
+        "end": "16:00"
+      },
+      "thursday": {
+        "start": "12:00",
+        "end": "16:00"
+      },
+      "friday": {
+        "start": "12:00",
+        "end": "16:00"
+      }
+    }
+  },
+  {
+    "client_code": "LIVI",
+    "availability": {
+      "monday": {
+        "start": "09:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "09:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "09:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "09:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "09:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "09:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "LUKU",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "14:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "MAAL",
+    "availability": {
+      "monday": {
+        "start": "13:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "13:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "13:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "13:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "13:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "MABE",
+    "availability": {
+      "monday": {
+        "start": "08:30",
+        "end": "12:00"
+      },
+      "tuesday": {
+        "start": "08:30",
+        "end": "12:00"
+      },
+      "wednesday": {
+        "start": "08:30",
+        "end": "12:00"
+      },
+      "thursday": {
+        "start": "08:30",
+        "end": "12:00"
+      },
+      "friday": {
+        "start": "08:30",
+        "end": "12:00"
+      },
+      "saturday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "MACAAR",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "saturday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "MACAN",
+    "availability": {}
+  },
+  {
+    "client_code": "MAFE",
+    "availability": {
+      "tuesday": {
+        "start": "08:00",
+        "end": "13:15"
+      },
+      "wednesday": {
+        "start": "08:00",
+        "end": "13:15"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "13:15"
+      },
+      "friday": {
+        "start": "08:00",
+        "end": "13:15"
+      }
+    }
+  },
+  {
+    "client_code": "MALO",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "19:30"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "19:00"
+      }
+    }
+  },
+  {
+    "client_code": "MAMO",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "08:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "MARAL",
+    "availability": {
+      "monday": {
+        "start": "13:45",
+        "end": "16:00"
+      },
+      "tuesday": {
+        "start": "13:45",
+        "end": "16:00"
+      },
+      "wednesday": {
+        "start": "13:45",
+        "end": "16:00"
+      },
+      "thursday": {
+        "start": "13:45",
+        "end": "16:00"
+      },
+      "friday": {
+        "start": "13:45",
+        "end": "16:00"
+      }
+    }
+  },
+  {
+    "client_code": "MARCA",
+    "availability": {
+      "monday": {
+        "start": "10:00",
+        "end": "14:00"
+      },
+      "tuesday": {
+        "start": "10:00",
+        "end": "14:00"
+      },
+      "wednesday": {
+        "start": "10:00",
+        "end": "14:00"
+      },
+      "thursday": {
+        "start": "10:00",
+        "end": "14:00"
+      },
+      "friday": {
+        "start": "10:00",
+        "end": "13:30"
+      }
+    }
+  },
+  {
+    "client_code": "MARO",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "06:00",
+        "end": "15:00"
+      }
+    }
+  },
+  {
+    "client_code": "MASE",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "saturday": {
+        "start": "08:00",
+        "end": "12:00"
+      }
+    }
+  },
+  {
+    "client_code": "MATCA",
+    "availability": {}
+  },
+  {
+    "client_code": "MATFI",
+    "availability": {
+      "monday": {
+        "start": "08:00",
+        "end": "15:20"
+      },
+      "tuesday": {
+        "start": "08:00",
+        "end": "15:20"
+      },
+      "wednesday": {
+        "start": "08:00",
+        "end": "15:20"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "15:20"
+      },
+      "friday": {
+        "start": "08:00",
+        "end": "15:20"
+      }
+    }
+  },
+  {
+    "client_code": "MAXFI",
+    "availability": {
+      "monday": {
+        "start": "08:00",
+        "end": "15:20"
+      },
+      "tuesday": {
+        "start": "08:00",
+        "end": "15:20"
+      },
+      "wednesday": {
+        "start": "08:00",
+        "end": "15:20"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "15:20"
+      },
+      "friday": {
+        "start": "08:00",
+        "end": "15:20"
+      }
+    }
+  },
+  {
+    "client_code": "MAYO",
+    "availability": {
+      "monday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "MAZA",
+    "availability": {}
+  },
+  {
+    "client_code": "MEBA",
+    "availability": {
+      "monday": {
+        "start": "09:00",
+        "end": "19:00"
+      },
+      "tuesday": {
+        "start": "09:00",
+        "end": "19:00"
+      },
+      "wednesday": {
+        "start": "09:00",
+        "end": "19:00"
+      },
+      "thursday": {
+        "start": "09:00",
+        "end": "19:00"
+      },
+      "friday": {
+        "start": "09:00",
+        "end": "11:00"
+      }
+    }
+  },
+  {
+    "client_code": "MENE",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "18:30"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "18:30"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "18:30"
+      }
+    }
+  },
+  {
+    "client_code": "MIZAPA",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "20:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "20:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "20:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "20:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "20:00"
+      }
+    }
+  },
+  {
+    "client_code": "MOLA",
+    "availability": {
+      "monday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "11:00",
+        "end": "13:00"
+      }
+    }
+  },
+  {
+    "client_code": "MOVA",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "NACA",
+    "availability": {
+      "monday": {
+        "start": "17:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "17:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "17:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "17:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "17:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "NAGU",
+    "availability": {
+      "monday": {
+        "start": "17:00",
+        "end": "20:00"
+      },
+      "tuesday": {
+        "start": "17:00",
+        "end": "20:00"
+      },
+      "wednesday": {
+        "start": "17:00",
+        "end": "20:00"
+      },
+      "thursday": {
+        "start": "17:00",
+        "end": "20:00"
+      },
+      "friday": {
+        "start": "17:00",
+        "end": "20:00"
+      },
+      "saturday": {
+        "start": "11:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "NARE",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "NEHU",
+    "availability": {}
+  },
+  {
+    "client_code": "NIFL",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "18:30"
+      },
+      "tuesday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "thursday": {
+        "start": "18:00",
+        "end": "19:30"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "18:30"
+      }
+    }
+  },
+  {
+    "client_code": "NITHMA",
+    "availability": {
+      "monday": {
+        "start": "10:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "10:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "10:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "10:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "10:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "NOJI",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "NOPAPI",
+    "availability": {}
+  },
+  {
+    "client_code": "NOSA",
+    "availability": {}
+  },
+  {
+    "client_code": "NOWR",
+    "availability": {
+      "monday": {
+        "start": "08:40",
+        "end": "14:55"
+      },
+      "tuesday": {
+        "start": "08:40",
+        "end": "14:55"
+      },
+      "wednesday": {
+        "start": "08:40",
+        "end": "14:55"
+      },
+      "thursday": {
+        "start": "08:40",
+        "end": "14:55"
+      },
+      "friday": {
+        "start": "08:40",
+        "end": "14:55"
+      }
+    }
+  },
+  {
+    "client_code": "OSMA",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "17:00"
+      },
+      "tuesday": {
+        "start": "15:30",
+        "end": "17:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "17:00"
+      },
+      "thursday": {
+        "start": "15:30",
+        "end": "17:00"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "17:00"
+      }
+    }
+  },
+  {
+    "client_code": "PANG",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "saturday": {
+        "start": "08:00",
+        "end": "12:00"
+      }
+    }
+  },
+  {
+    "client_code": "RHKASI",
+    "availability": {
+      "monday": {
+        "start": "18:50",
+        "end": "23:59"
+      },
+      "tuesday": {
+        "start": "18:50",
+        "end": "23:59"
+      },
+      "wednesday": {
+        "start": "18:50",
+        "end": "23:59"
+      },
+      "thursday": {
+        "start": "18:50",
+        "end": "23:59"
+      },
+      "friday": {
+        "start": "18:50",
+        "end": "23:59"
+      }
+    }
+  },
+  {
+    "client_code": "RICA",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "wednesday": {
+        "start": "13:30",
+        "end": "16:30"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "17:30"
+      },
+      "saturday": {
+        "start": "10:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "RIHEGO",
+    "availability": {}
+  },
+  {
+    "client_code": "RISE",
+    "availability": {
+      "monday": {
+        "start": "08:00",
+        "end": "16:00"
+      },
+      "tuesday": {
+        "start": "08:00",
+        "end": "16:00"
+      },
+      "wednesday": {
+        "start": "08:00",
+        "end": "16:00"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "16:00"
+      },
+      "friday": {
+        "start": "08:00",
+        "end": "16:00"
+      }
+    }
+  },
+  {
+    "client_code": "RIVA",
+    "availability": {
+      "monday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "06:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "RIVO",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ROVA",
+    "availability": {
+      "monday": {
+        "start": "08:00",
+        "end": "17:00"
+      },
+      "tuesday": {
+        "start": "08:00",
+        "end": "17:00"
+      },
+      "wednesday": {
+        "start": "08:00",
+        "end": "17:00"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "17:00"
+      },
+      "friday": {
+        "start": "08:00",
+        "end": "17:00"
+      }
+    }
+  },
+  {
+    "client_code": "RUAR",
+    "availability": {}
+  },
+  {
+    "client_code": "RYPI",
+    "availability": {
+      "monday": {
+        "start": "08:00",
+        "end": "10:30"
+      },
+      "tuesday": {
+        "start": "08:00",
+        "end": "10:30"
+      },
+      "wednesday": {
+        "start": "08:00",
+        "end": "10:30"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "10:30"
+      },
+      "friday": {
+        "start": "08:00",
+        "end": "10:30"
+      }
+    }
+  },
+  {
+    "client_code": "RYGI",
+    "availability": {
+      "monday": {
+        "start": "11:00",
+        "end": "19:00"
+      },
+      "tuesday": {
+        "start": "11:00",
+        "end": "19:00"
+      },
+      "wednesday": {
+        "start": "11:00",
+        "end": "19:00"
+      },
+      "thursday": {
+        "start": "11:00",
+        "end": "19:00"
+      },
+      "friday": {
+        "start": "11:00",
+        "end": "19:00"
+      }
+    }
+  },
+  {
+    "client_code": "SALO",
+    "availability": {
+      "tuesday": {
+        "start": "16:00",
+        "end": "19:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "18:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "19:00"
+      }
+    }
+  },
+  {
+    "client_code": "SARATR",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "18:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "18:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "18:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "18:00"
+      }
+    }
+  },
+  {
+    "client_code": "SAOC",
+    "availability": {
+      "monday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "tuesday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "thursday": {
+        "start": "16:30",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "16:30",
+        "end": "18:30"
+      }
+    }
+  },
+  {
+    "client_code": "SAVA",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "tuesday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "friday": {
+        "start": "16:00",
+        "end": "20:00"
+      },
+      "saturday": {
+        "start": "06:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "SEAP",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "14:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "SECA",
+    "availability": {}
+  },
+  {
+    "client_code": "SELE",
+    "availability": {
+      "monday": {
+        "start": "17:30",
+        "end": "19:30"
+      },
+      "wednesday": {
+        "start": "17:30",
+        "end": "19:30"
+      },
+      "thursday": {
+        "start": "17:30",
+        "end": "19:30"
+      },
+      "friday": {
+        "start": "17:30",
+        "end": "19:30"
+      }
+    }
+  },
+  {
+    "client_code": "SELO",
+    "availability": {
+      "monday": {
+        "start": "17:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "SEME",
+    "availability": {
+      "monday": {
+        "start": "14:30",
+        "end": "19:00"
+      },
+      "tuesday": {
+        "start": "14:30",
+        "end": "19:00"
+      },
+      "wednesday": {
+        "start": "14:30",
+        "end": "19:00"
+      },
+      "thursday": {
+        "start": "14:30",
+        "end": "19:00"
+      }
+    }
+  },
+  {
+    "client_code": "SERI",
+    "availability": {
+      "monday": {
+        "start": "08:30",
+        "end": "11:20"
+      },
+      "tuesday": {
+        "start": "08:30",
+        "end": "11:20"
+      },
+      "wednesday": {
+        "start": "11:40",
+        "end": "18:00"
+      },
+      "thursday": {
+        "start": "08:30",
+        "end": "11:20"
+      },
+      "friday": {
+        "start": "08:30",
+        "end": "11:20"
+      }
+    }
+  },
+  {
+    "client_code": "SEZUCA",
+    "availability": {}
+  },
+  {
+    "client_code": "SKSH",
+    "availability": {
+      "monday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "14:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "14:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "SOAV",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "SOMC",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "14:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "TARO",
+    "availability": {
+      "monday": {
+        "start": "18:00",
+        "end": "20:00"
+      },
+      "tuesday": {
+        "start": "18:00",
+        "end": "20:00"
+      },
+      "wednesday": {
+        "start": "18:00",
+        "end": "20:00"
+      },
+      "thursday": {
+        "start": "18:00",
+        "end": "20:00"
+      },
+      "friday": {
+        "start": "18:00",
+        "end": "20:00"
+      }
+    }
+  },
+  {
+    "client_code": "TIAL",
+    "availability": {}
+  },
+  {
+    "client_code": "TYLA",
+    "availability": {
+      "monday": {
+        "start": "08:00",
+        "end": "14:45"
+      },
+      "tuesday": {
+        "start": "08:00",
+        "end": "14:45"
+      },
+      "wednesday": {
+        "start": "08:00",
+        "end": "14:45"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "14:45"
+      },
+      "friday": {
+        "start": "08:00",
+        "end": "14:45"
+      }
+    }
+  },
+  {
+    "client_code": "TYWA",
+    "availability": {
+      "monday": {
+        "start": "17:00",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "17:00",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "17:00",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "17:00",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "17:00",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "VADA",
+    "availability": {
+      "monday": {
+        "start": "14:00",
+        "end": "18:00"
+      },
+      "tuesday": {
+        "start": "14:00",
+        "end": "18:00"
+      },
+      "wednesday": {
+        "start": "14:00",
+        "end": "18:00"
+      },
+      "thursday": {
+        "start": "14:00",
+        "end": "18:00"
+      },
+      "friday": {
+        "start": "14:00",
+        "end": "18:00"
+      }
+    }
+  },
+  {
+    "client_code": "VAES",
+    "availability": {}
+  },
+  {
+    "client_code": "VIVO",
+    "availability": {
+      "monday": {
+        "start": "08:00",
+        "end": "14:00"
+      },
+      "tuesday": {
+        "start": "08:00",
+        "end": "14:00"
+      },
+      "wednesday": {
+        "start": "08:00",
+        "end": "14:00"
+      },
+      "thursday": {
+        "start": "08:00",
+        "end": "14:00"
+      },
+      "friday": {
+        "start": "08:00",
+        "end": "14:00"
+      }
+    }
+  },
+  {
+    "client_code": "XAAL",
+    "availability": {}
+  },
+  {
+    "client_code": "XAAV",
+    "availability": {}
+  },
+  {
+    "client_code": "XAVE",
+    "availability": {
+      "monday": {
+        "start": "15:00",
+        "end": "20:00"
+      },
+      "tuesday": {
+        "start": "15:00",
+        "end": "20:00"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "20:00"
+      },
+      "thursday": {
+        "start": "15:00",
+        "end": "20:00"
+      },
+      "friday": {
+        "start": "15:00",
+        "end": "20:00"
+      }
+    }
+  },
+  {
+    "client_code": "YAAR",
+    "availability": {
+      "monday": {
+        "start": "17:30",
+        "end": "20:00"
+      },
+      "tuesday": {
+        "start": "17:30",
+        "end": "20:00"
+      },
+      "wednesday": {
+        "start": "17:30",
+        "end": "20:00"
+      },
+      "thursday": {
+        "start": "17:30",
+        "end": "20:00"
+      },
+      "friday": {
+        "start": "17:30",
+        "end": "20:00"
+      }
+    }
+  },
+  {
+    "client_code": "YVSO",
+    "availability": {
+      "monday": {
+        "start": "16:00",
+        "end": "18:00"
+      },
+      "wednesday": {
+        "start": "16:00",
+        "end": "18:00"
+      },
+      "thursday": {
+        "start": "16:00",
+        "end": "18:00"
+      }
+    }
+  },
+  {
+    "client_code": "ZABA",
+    "availability": {
+      "monday": {
+        "start": "15:30",
+        "end": "19:00"
+      },
+      "tuesday": {
+        "start": "15:30",
+        "end": "19:00"
+      },
+      "wednesday": {
+        "start": "15:30",
+        "end": "19:00"
+      },
+      "thursday": {
+        "start": "15:30",
+        "end": "19:00"
+      }
+    }
+  },
+  {
+    "client_code": "ZADA",
+    "availability": {
+      "monday": {
+        "start": "14:00",
+        "end": "18:00"
+      },
+      "tuesday": {
+        "start": "14:00",
+        "end": "18:00"
+      },
+      "wednesday": {
+        "start": "14:00",
+        "end": "18:00"
+      },
+      "thursday": {
+        "start": "14:00",
+        "end": "18:00"
+      },
+      "friday": {
+        "start": "14:00",
+        "end": "18:00"
+      }
+    }
+  },
+  {
+    "client_code": "ZARO",
+    "availability": {
+      "monday": {
+        "start": "16:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "16:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "16:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "16:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "16:30",
+        "end": "21:00"
+      }
+    }
+  },
+  {
+    "client_code": "ZAZU",
+    "availability": {}
+  },
+  {
+    "client_code": "ZESI",
+    "availability": {
+      "monday": {
+        "start": "15:15",
+        "end": "18:30"
+      },
+      "wednesday": {
+        "start": "15:00",
+        "end": "19:00"
+      },
+      "thursday": {
+        "start": "15:15",
+        "end": "18:30"
+      },
+      "friday": {
+        "start": "16:30",
+        "end": "18:30"
+      }
+    }
+  },
+  {
+    "client_code": "ZOAR",
+    "availability": {}
+  },
+  {
+    "client_code": "ZOOK",
+    "availability": {
+      "monday": {
+        "start": "16:30",
+        "end": "21:00"
+      },
+      "tuesday": {
+        "start": "16:30",
+        "end": "21:00"
+      },
+      "wednesday": {
+        "start": "16:30",
+        "end": "21:00"
+      },
+      "thursday": {
+        "start": "16:30",
+        "end": "21:00"
+      },
+      "friday": {
+        "start": "16:30",
+        "end": "21:00"
+      }
+    }
+  }
+]

@@ -23,6 +23,7 @@ All commands below are executed from the repository root.
 SUPABASE_URL="https://wnnjeqheqxxyrgsjmygy.supabase.co" \
 SUPABASE_SERVICE_ROLE_KEY="<service-role-key>" \
 SEED_ACCOUNT_PASSWORD="<strong-password>" \
+SEED_ACCOUNT_PASSWORD_RESET=true \
 npx tsx scripts/seed-admin-users.ts
 ```
 
@@ -32,6 +33,12 @@ The script performs the following:
 - Creates or refreshes `superadmin@test.com` (role: `super_admin`, no `organization_id`)
 - Resets passwords when `SEED_ACCOUNT_PASSWORD_RESET=true` (handy for CI/Playwright smoke runs)
 - Ensures `user_roles` and `profiles.role` are aligned with the metadata
+
+### Live testing account
+
+For live smoke testing, use the same seeded `admin@test.com` account and set a
+temporary strong password via `SEED_ACCOUNT_PASSWORD`. Store the credentials in
+1Password (or your approved secrets manager) and do not commit them to the repo.
 
 Super admin routes to verify after login:
 

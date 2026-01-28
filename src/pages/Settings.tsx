@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import OrganizationSettings from '../components/settings/OrganizationSettings';
 import { Building, Users, FileText, Briefcase, Settings as SettingsIcon, Shield, User, Flag, UserCog } from 'lucide-react';
 import CompanySettings from '../components/settings/CompanySettings';
@@ -29,6 +30,7 @@ export default function Settings() {
   const location = useLocation();
   const navigate = useNavigate();
   const { isSuperAdmin } = useAuth();
+  const queryClient = useQueryClient();
   const showSuperAdminTabs = isSuperAdmin();
 
   const initialTab = useMemo<Tab>(() => {
@@ -58,6 +60,10 @@ export default function Settings() {
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
+
+  useEffect(() => {
+    queryClient.invalidateQueries({ refetchType: 'active' });
+  }, [activeTab, queryClient]);
 
   const tabs = [
     { id: 'user' as Tab, name: 'Personal Settings', icon: User },

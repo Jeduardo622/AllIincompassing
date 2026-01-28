@@ -32,7 +32,7 @@ describe("dashboardHandler", () => {
     const body = { sessions: [] };
     const fetchSpy = mockFetch();
     fetchSpy.mockResolvedValueOnce(new Response("null", { status: 200, headers: { "content-type": "application/json" } })); // org
-    fetchSpy.mockResolvedValueOnce(new Response("true", { status: 200, headers: { "content-type": "application/json" } })); // org_admin
+    fetchSpy.mockResolvedValueOnce(new Response("true", { status: 200, headers: { "content-type": "application/json" } })); // admin
     fetchSpy.mockResolvedValueOnce(new Response("false", { status: 200, headers: { "content-type": "application/json" } })); // therapist
     fetchSpy.mockResolvedValueOnce(new Response("false", { status: 200, headers: { "content-type": "application/json" } })); // super_admin
     fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })); // rpc
@@ -87,7 +87,7 @@ describe("dashboardHandler", () => {
     const fetchSpy = mockFetch();
     // org id
     fetchSpy.mockResolvedValueOnce(new Response("\"org-1\"", { status: 200, headers: { "content-type": "application/json" } }));
-    // role check (org_admin)
+    // role check (admin)
     fetchSpy.mockResolvedValueOnce(new Response("true", { status: 200, headers: { "content-type": "application/json" } }));
     // therapist check
     fetchSpy.mockResolvedValueOnce(new Response("false", { status: 200, headers: { "content-type": "application/json" } }));

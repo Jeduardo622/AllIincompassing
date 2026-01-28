@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Contact as FileContract, FileText, Plus, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { useActiveOrganizationId } from '../../lib/organization';
 
 interface ServiceContractsTabProps {
   client: { id: string };
@@ -26,46 +29,72 @@ interface Contract {
   }[];
 }
 
-export default function ServiceContractsTab({ client: _client }: ServiceContractsTabProps) {
+export default function ServiceContractsTab({ client }: ServiceContractsTabProps) {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [expandedContract, setExpandedContract] = useState<string | null>(null);
-  
-  // Mock contracts data
-  const [contracts, _setContracts] = useState<Contract[]>([
-    {
-      id: '1',
-      payer_name: 'CalOptima Health',
-      effective_date: '2025-01-01',
-      termination_date: '2025-12-31',
-      covered_cpt_codes: [
-        { code: '97151', description: 'Behavior identification assessment', rate: 120.00 },
-        { code: '97153', description: 'Adaptive behavior treatment by protocol', rate: 60.00, modifiers: ['HO'] },
-        { code: '97155', description: 'Adaptive behavior treatment with protocol modification', rate: 75.00 },
-      ],
-      reimbursement_method: 'ACH',
-      file_url: '#',
-      confidence_score: 0.92,
-      versions: [
-        { id: '1-1', uploaded_at: '2024-12-15T10:30:00Z', uploaded_by: 'Jane Smith' }
-      ]
+  const organizationId = useActiveOrganizationId();
+
+  const {
+    data: cptCodes = [],
+    isLoading: isLoadingCptCodes,
+    error: cptCodesError,
+  } = useQuery({
+    queryKey: ['cpt-codes'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('cpt_codes')
+        .select('code, short_description')
+        .eq('is_active', true)
+        .order('code');
+      if (error) throw error;
+      return data as Array<{ code: string; short_description: string }>;
     },
-    {
-      id: '2',
-      payer_name: 'Anthem Blue Cross',
-      effective_date: '2025-01-01',
-      termination_date: '2025-12-31',
-      covered_cpt_codes: [
-        { code: '97151', description: 'Behavior identification assessment', rate: 130.00 },
-        { code: '97153', description: 'Adaptive behavior treatment by protocol', rate: 65.00 },
-      ],
-      reimbursement_method: 'Check',
-      file_url: '#',
-      confidence_score: 0.88,
-      versions: [
-        { id: '2-1', uploaded_at: '2024-12-10T14:45:00Z', uploaded_by: 'John Doe' }
-      ]
-    }
-  ]);
+  });
+  
+  const {
+    data: serviceContracts = [],
+    isLoading: isLoadingContracts,
+    error: contractsError,
+  } = useQuery({
+    queryKey: ['service-contracts', client.id, organizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!organizationId) {
+        throw new Error('Organization context is required to load service contracts.');
+      }
+
+      const { data, error } = await supabase
+        .from('service_contracts')
+        .select(`
+          id,
+          payer_name,
+          effective_date,
+          termination_date,
+          reimbursement_method,
+          file_url,
+          confidence_score,
+          versions:service_contract_versions(
+            id,
+            uploaded_at,
+            uploaded_by
+          ),
+          rates:service_contract_rates(
+            rate,
+            modifiers,
+            cpt_code:cpt_codes(
+              code,
+              short_description
+            )
+          )
+        `)
+        .eq('client_id', client.id)
+        .eq('organization_id', organizationId)
+        .order('effective_date', { ascending: false });
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: Boolean(client.id && organizationId),
+  });
   
   const toggleContract = (contractId: string) => {
     if (expandedContract === contractId) {
@@ -79,6 +108,63 @@ export default function ServiceContractsTab({ client: _client }: ServiceContract
     // This would generate a PDF summary of the contract
     alert(`Generating summary for contract ${contractId}`);
   };
+
+  const cptCodeOptions = useMemo(() => {
+    return cptCodes.map((code) => ({
+      value: code.code,
+      label: `${code.code} - ${code.short_description}`,
+    }));
+  }, [cptCodes]);
+
+  const cptCodeDescriptions = useMemo(() => {
+    return cptCodes.reduce<Record<string, string>>((acc, code) => {
+      acc[code.code] = code.short_description;
+      return acc;
+    }, {});
+  }, [cptCodes]);
+
+  const cptCodesErrorMessage =
+    cptCodesError instanceof Error ? cptCodesError.message : 'Unable to load CPT codes.';
+
+  const contractsErrorMessage =
+    contractsError instanceof Error ? contractsError.message : 'Unable to load service contracts.';
+
+  const contracts = useMemo<Contract[]>(() => {
+    return (serviceContracts ?? []).map((contract: {
+      id: string;
+      payer_name: string;
+      effective_date: string;
+      termination_date: string;
+      reimbursement_method: string;
+      file_url: string | null;
+      confidence_score: number | null;
+      versions?: Array<{ id: string; uploaded_at: string; uploaded_by: string | null }> | null;
+      rates?: Array<{
+        rate: number | null;
+        modifiers: string[] | null;
+        cpt_code?: { code: string; short_description: string } | null;
+      }> | null;
+    }) => ({
+      id: contract.id,
+      payer_name: contract.payer_name,
+      effective_date: contract.effective_date,
+      termination_date: contract.termination_date,
+      covered_cpt_codes: (contract.rates ?? []).map((rate) => ({
+        code: rate.cpt_code?.code ?? 'Unknown',
+        description: rate.cpt_code?.short_description ?? '',
+        rate: rate.rate ?? 0,
+        modifiers: rate.modifiers ?? undefined,
+      })),
+      reimbursement_method: contract.reimbursement_method === 'Check' ? 'Check' : 'ACH',
+      file_url: contract.file_url ?? '#',
+      confidence_score: contract.confidence_score ?? 0,
+      versions: (contract.versions ?? []).map((version) => ({
+        id: version.id,
+        uploaded_at: version.uploaded_at,
+        uploaded_by: version.uploaded_by ?? 'Unknown',
+      })),
+    }));
+  }, [serviceContracts]);
   
   return (
     <div className="space-y-8">
@@ -97,7 +183,17 @@ export default function ServiceContractsTab({ client: _client }: ServiceContract
           </button>
         </div>
         
-        {contracts.length === 0 ? (
+        {contractsError && (
+          <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+            {contractsErrorMessage}
+          </div>
+        )}
+
+        {isLoadingContracts ? (
+          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+            Loading contracts...
+          </div>
+        ) : contracts.length === 0 ? (
           <div className="text-center py-8 text-gray-500 dark:text-gray-400">
             No contracts found
           </div>
@@ -168,13 +264,15 @@ export default function ServiceContractsTab({ client: _client }: ServiceContract
                           </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-dark-lighter divide-y divide-gray-200 dark:divide-gray-700">
-                          {contract.covered_cpt_codes.map(cpt => (
+                          {contract.covered_cpt_codes.map(cpt => {
+                            const catalogDescription = cptCodeDescriptions[cpt.code];
+                            return (
                             <tr key={cpt.code}>
                               <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                                 {cpt.code}
                               </td>
                               <td className="px-4 py-2 text-sm text-gray-900 dark:text-white">
-                                {cpt.description}
+                                {catalogDescription ?? cpt.description}
                               </td>
                               <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                                 ${cpt.rate.toFixed(2)}
@@ -183,7 +281,8 @@ export default function ServiceContractsTab({ client: _client }: ServiceContract
                                 {cpt.modifiers?.join(', ') || 'None'}
                               </td>
                             </tr>
-                          ))}
+                          );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -253,19 +352,21 @@ export default function ServiceContractsTab({ client: _client }: ServiceContract
               id="helper-cpt-code"
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
               defaultValue=""
+              disabled={isLoadingCptCodes}
             >
-              <option value="">Select CPT code</option>
-              <option value="97151">97151 - Behavior identification assessment</option>
-              <option value="97152">97152 - Behavior identification supporting assessment</option>
-              <option value="97153">97153 - Adaptive behavior treatment by protocol</option>
-              <option value="97154">97154 - Group adaptive behavior treatment by protocol</option>
-              <option value="97155">97155 - Adaptive behavior treatment with protocol modification</option>
-              <option value="97156">97156 - Family adaptive behavior treatment guidance</option>
-              <option value="97157">97157 - Multiple-family group adaptive behavior treatment guidance</option>
-              <option value="97158">97158 - Group adaptive behavior treatment with protocol modification</option>
+              <option value="">
+                {isLoadingCptCodes ? 'Loading CPT codes...' : 'Select CPT code'}
+              </option>
+              {cptCodeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              All codes are based on 2024 ABA CPT codes
+              {cptCodesError
+                ? cptCodesErrorMessage
+                : 'Codes and descriptions sourced from the CPT catalog.'}
             </p>
           </div>
           

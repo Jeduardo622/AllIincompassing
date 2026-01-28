@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
   ClipboardCheck, Calendar, AlertCircle, 
@@ -62,14 +62,39 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
   const [isDragActive, setIsDragActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const serviceCatalog: Record<string, string> = {
-    '97151': 'Behavior identification assessment',
-    '97153': 'Adaptive behavior treatment by protocol',
-    '97155': 'Adaptive behavior treatment with protocol modification',
-    '97156': 'Family adaptive behavior treatment guidance',
-    '97157': 'Multiple-family group adaptive behavior treatment guidance',
-    '97158': 'Group adaptive behavior treatment with protocol modification',
-  };
+  const {
+    data: cptCodes = [],
+    isLoading: isLoadingCptCodes,
+    error: cptCodesError,
+  } = useQuery({
+    queryKey: ['cpt-codes'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('cpt_codes')
+        .select('code, short_description')
+        .eq('is_active', true)
+        .order('code');
+      if (error) throw error;
+      return data as Array<{ code: string; short_description: string }>;
+    },
+  });
+
+  const serviceCatalog = useMemo(() => {
+    return cptCodes.reduce<Record<string, string>>((acc, code) => {
+      acc[code.code] = code.short_description;
+      return acc;
+    }, {});
+  }, [cptCodes]);
+
+  const cptCodeOptions = useMemo(() => {
+    return cptCodes.map((code) => ({
+      code: code.code,
+      description: code.short_description,
+    }));
+  }, [cptCodes]);
+
+  const cptCodesErrorMessage =
+    cptCodesError instanceof Error ? cptCodesError.message : 'Unable to load CPT codes.';
 
   const { data: insuranceProviders = [] } = useQuery({
     queryKey: ['insurance-providers'],
@@ -636,15 +661,13 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                   <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
                     Requested Services
                   </h3>
+                  {cptCodesError && (
+                    <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+                      {cptCodesErrorMessage}
+                    </div>
+                  )}
                   <div className="space-y-3">
-                    {[
-                      { code: '97151', description: 'Behavior identification assessment' },
-                      { code: '97153', description: 'Adaptive behavior treatment by protocol' },
-                      { code: '97155', description: 'Adaptive behavior treatment with protocol modification' },
-                      { code: '97156', description: 'Family adaptive behavior treatment guidance' },
-                      { code: '97157', description: 'Multiple-family group adaptive behavior treatment guidance' },
-                      { code: '97158', description: 'Group adaptive behavior treatment with protocol modification' }
-                    ].map(service => (
+                    {(isLoadingCptCodes ? [] : cptCodeOptions).map(service => (
                       <div key={service.code} className="flex items-center">
                         <input
                           type="checkbox"
@@ -670,6 +693,11 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                         </label>
                       </div>
                     ))}
+                    {isLoadingCptCodes && (
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        Loading CPT codes...
+                      </div>
+                    )}
                   </div>
                   
                   {wizardData.services.includes('97153') && (

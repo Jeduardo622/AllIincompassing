@@ -57,9 +57,9 @@ const queryClient = new QueryClient({
         }
         return failureCount < 2;
       },
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true,
       refetchOnReconnect: 'always',
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      staleTime: 1 * 60 * 1000, // 1 minute
       gcTime: 30 * 60 * 1000, // 30 minutes (renamed from cacheTime)
       networkMode: 'online',
     },

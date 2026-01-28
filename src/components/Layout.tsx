@@ -2,9 +2,11 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import { useAuth } from '../lib/authContext';
+import { useRouteQueryRefetch } from '../lib/useRouteQueryRefetch';
 
 export default function Layout() {
   const { user, profile } = useAuth();
+  useRouteQueryRefetch();
 
   return (
     <div className="flex min-h-screen bg-gray-50 dark:bg-dark">

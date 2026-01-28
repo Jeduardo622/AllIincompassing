@@ -174,8 +174,8 @@ export const useDashboardData = () => {
     staleTime: CACHE_STRATEGIES.DASHBOARD.summary,
     gcTime: CACHE_STRATEGIES.DASHBOARD.summary * 2,
     keepPreviousData: true,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
     refetchInterval: intervalMs,
     refetchIntervalInBackground: isLiveRole,
   });

@@ -96,7 +96,7 @@ export async function dashboardHandler(request: Request): Promise<Response> {
 
     // Role checks: allow org admins or super admins to access dashboard data
     const roleUrl = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/rpc/user_has_role_for_org`;
-    const rolePayload = { role_name: "org_admin", target_organization_id: resolvedOrganizationId } as Record<string, unknown>;
+    const rolePayload = { role_name: "admin", target_organization_id: resolvedOrganizationId } as Record<string, unknown>;
     const roleResult = await fetchJson<boolean>(roleUrl, {
       method: "POST",
       headers: {

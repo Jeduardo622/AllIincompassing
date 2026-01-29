@@ -196,7 +196,16 @@ Deno.serve(async (req) => {
     if (!parsed.success) {
       return errorEnvelope({ requestId, code: "invalid_body", message: "Invalid request body", status: 400, headers: corsHeaders });
     }
-    const { prompt, model = "gpt-4", max_tokens = 2000, temperature = 0.3 } = parsed.data;
+    const {
+      prompt,
+      model = "gpt-4",
+      max_tokens = 2000,
+      temperature = 0.3,
+      session_data,
+    } = parsed.data;
+    const organizationId = typeof session_data?.organization_id === "string"
+      ? session_data.organization_id
+      : null;
 
     // Enhance prompt with California compliance requirements
     const enhancedPrompt = `${CALIFORNIA_COMPLIANCE_PROMPT}\n\nSESSION DATA:\n${prompt}`;
@@ -253,6 +262,7 @@ Deno.serve(async (req) => {
     try {
       await db.from('ai_performance_metrics').insert({
         user_id: user.id,
+        organization_id: organizationId,
         function_called: 'ai-session-note-generator',
         response_time_ms: processingTime,
         token_usage: {

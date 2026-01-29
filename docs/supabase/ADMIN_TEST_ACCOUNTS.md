@@ -100,3 +100,8 @@ mcp_supabase_execute_sql query="select email, raw_user_meta_data->>'role' as met
 - After seeding, sign in via the hosted app to confirm the UI reflects the new organization guardrails.
 - Keep `scripts/seed-admin-users.ts`, `scripts/check-role-drift.ts`, and
   `scripts/sync-profile-only-admins.ts` under version control so future agents can reuse them.
+
+## Recent updates
+
+- 2026-01-28: Refreshed the diagnostic admin accounts (`admin@test.com`,
+  `superadmin@test.com`) for live testing. Credentials are stored out-of-band.

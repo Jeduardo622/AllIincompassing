@@ -21,6 +21,7 @@ beforeEach(async () => {
 describe('checkSchedulingConflicts', () => {
   const mockTherapist = {
     id: 'therapist-1',
+    organization_id: 'org-a',
     full_name: 'Test Therapist',
     availability_hours: {
       monday: { start: '09:00', end: '17:00' },
@@ -31,7 +32,8 @@ describe('checkSchedulingConflicts', () => {
       saturday: { start: null, end: null }
     },
     service_type: ['In clinic'],
-    email: 'test@example.com'
+    email: 'test@example.com',
+    status: 'active'
   };
 
   const mockClient = {
@@ -520,6 +522,7 @@ describe('suggestAlternativeTimes', () => {
 
   const mockTherapist = {
     id: 'therapist-1',
+    organization_id: 'org-a',
     full_name: 'Test Therapist',
     availability_hours: {
       monday: { start: '09:00', end: '17:00' },
@@ -530,7 +533,8 @@ describe('suggestAlternativeTimes', () => {
       saturday: { start: null, end: null }
     },
     service_type: ['In clinic'],
-    email: 'test@example.com'
+    email: 'test@example.com',
+    status: 'active'
   };
 
   const mockClient = {

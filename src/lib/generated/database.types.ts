@@ -164,6 +164,7 @@ export type Database = {
           function_called: string | null
           function_name: string | null
           id: string
+          organization_id: string | null
           parameters: Json | null
           response_time_ms: number
           timestamp: string | null
@@ -180,6 +181,7 @@ export type Database = {
           function_called?: string | null
           function_name?: string | null
           id?: string
+          organization_id?: string | null
           parameters?: Json | null
           response_time_ms: number
           timestamp?: string | null
@@ -196,6 +198,7 @@ export type Database = {
           function_called?: string | null
           function_name?: string | null
           id?: string
+          organization_id?: string | null
           parameters?: Json | null
           response_time_ms?: number
           timestamp?: string | null
@@ -489,11 +492,16 @@ export type Database = {
       authorizations: {
         Row: {
           authorization_number: string
+          approved_at: string | null
+          approved_by: string | null
+          approval_notes: string | null
           client_id: string
           created_at: string | null
           created_by: string
           diagnosis_code: string
           diagnosis_description: string | null
+          denied_at: string | null
+          denial_reason: string | null
           documents: Json | null
           end_date: string
           id: string
@@ -508,11 +516,16 @@ export type Database = {
         }
         Insert: {
           authorization_number: string
+          approved_at?: string | null
+          approved_by?: string | null
+          approval_notes?: string | null
           client_id: string
           created_at?: string | null
           created_by: string
           diagnosis_code: string
           diagnosis_description?: string | null
+          denied_at?: string | null
+          denial_reason?: string | null
           documents?: Json | null
           end_date: string
           id?: string
@@ -527,11 +540,16 @@ export type Database = {
         }
         Update: {
           authorization_number?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          approval_notes?: string | null
           client_id?: string
           created_at?: string | null
           created_by?: string
           diagnosis_code?: string
           diagnosis_description?: string | null
+          denied_at?: string | null
+          denial_reason?: string | null
           documents?: Json | null
           end_date?: string
           id?: string

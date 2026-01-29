@@ -7,8 +7,10 @@ describe('SessionModal', () => {
   const mockTherapists = [
     {
       id: 'test-therapist-1',
+      organization_id: 'org-a',
       email: 'therapist1@example.com',
       full_name: 'Test Therapist 1',
+      status: 'active',
       specialties: ['ABA Therapy'],
       service_type: ['In clinic'],
       availability_hours: {

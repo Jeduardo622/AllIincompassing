@@ -1,3 +1,29 @@
+### AI Performance Metrics Org Scope
+
+**Highlights**
+- AI performance dashboards now filter metrics by active organization.
+- Metrics ingestion logs now capture `organization_id` for org-wide analytics.
+- Added org-scoped column, default, and index for `ai_performance_metrics`.
+
+**Risks & Assumptions**
+- Legacy rows without `organization_id` will not appear in org-scoped views.
+- Org scoping relies on `app.current_user_organization_id()` resolving from user metadata; missing metadata yields org-null metrics.
+- Org-wide read access is granted via updated RLS policies; ensure admins/non-admins remain constrained to their org.
+
+### UI Data Refresh
+
+**Highlights**
+- Route and settings tab switches now invalidate active queries for fresher data without manual reloads.
+- Dashboard data refetches on mount and window focus to reduce stale metrics.
+- Global query defaults now refresh on window focus with a shorter stale window for routine navigation.
+
+### Service Contracts & CPT Catalog Updates
+
+**Highlights**
+- Added service contract persistence tables with org-scoped RLS (`service_contracts`, `service_contract_rates`, `service_contract_versions`).
+- Expanded CPT catalog to include California ABA payer codes and HCPCS variants, including distinct H0032 levels (`H0032-HN`, `H0032-HO`, `H0032-HP`).
+- Client service contracts and pre-auth flows now load CPT codes from the catalog instead of hardcoded lists.
+
 ### Tenant Isolation Hardening
 
 **Highlights**

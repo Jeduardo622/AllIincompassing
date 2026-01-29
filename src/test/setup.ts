@@ -488,8 +488,10 @@ vi.doMock('../lib/supabase', () => {
               therapists: [
                 {
                   id: 'therapist-1',
+                  organization_id: ORG_A_PLACEHOLDER_ID,
                   full_name: 'Test Therapist',
                   email: 'therapist@example.com',
+                  status: 'active',
                   specialties: ['ABA'],
                   availability_hours: {
                     monday: { start: '09:00', end: '17:00' },
@@ -545,8 +547,10 @@ vi.doMock('../lib/supabase', () => {
               therapists: [
                 {
                   id: 'therapist-1',
+                  organization_id: ORG_A_PLACEHOLDER_ID,
                   full_name: 'Test Therapist',
                   email: 'therapist@example.com',
+                  status: 'active',
                   availability_hours: {
                     monday: { start: '09:00', end: '17:00' },
                     tuesday: { start: '09:00', end: '17:00' },
@@ -822,8 +826,10 @@ export const server = setupServer(
         therapists: [
           {
             id: 'therapist-1',
+            organization_id: ORG_A_PLACEHOLDER_ID,
             full_name: 'Test Therapist',
             email: 'therapist@example.com',
+            status: 'active',
             specialties: ['ABA'],
             availability_hours: {
               monday: { start: '09:00', end: '17:00' },
@@ -893,8 +899,10 @@ export const server = setupServer(
         therapists: [
           {
             id: 'therapist-1',
+            organization_id: ORG_A_PLACEHOLDER_ID,
             full_name: 'Test Therapist',
             email: 'therapist@example.com',
+            status: 'active',
             availability_hours: {
               monday: { start: '09:00', end: '17:00' },
               tuesday: { start: '09:00', end: '17:00' },
@@ -1086,6 +1094,7 @@ export const server = setupServer(
       deleted_at: archiveState.therapist.deletedAt,
       full_name: 'Test Therapist',
       email: 'therapist@example.com',
+      status: 'active',
       availability_hours: {
         monday: { start: '09:00', end: '17:00' },
         tuesday: { start: '09:00', end: '17:00' },

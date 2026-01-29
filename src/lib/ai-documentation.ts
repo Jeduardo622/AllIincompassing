@@ -514,7 +514,10 @@ export class AIDocumentationService {
           prompt,
           model: 'gpt-4',
           max_tokens: 2000,
-          temperature: 0.3
+          temperature: 0.3,
+          session_data: {
+            organization_id: sessionData?.organization_id ?? null,
+          },
         })
       });
 

@@ -45,7 +45,9 @@ This document explains the comprehensive test suite for scheduling clients with 
 const mockTherapists = [
   {
     id: 'therapist-1',
+    organization_id: 'org-a',
     full_name: 'Dr. John Smith',
+    status: 'active',
     specialties: ['ABA', 'Behavioral Therapy'],
     availability_hours: {
       monday: { start: '09:00', end: '17:00' },

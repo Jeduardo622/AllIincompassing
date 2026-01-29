@@ -11,8 +11,10 @@ import { supabase } from '../../lib/supabase';
 const mockTherapists = [
   {
     id: 'therapist-1',
+    organization_id: 'org-a',
     full_name: 'Dr. John Smith',
     email: 'john@example.com',
+    status: 'active',
     specialties: ['ABA', 'Behavioral Therapy'],
     availability_hours: {
       monday: { start: '09:00', end: '17:00' },
@@ -31,8 +33,10 @@ const mockTherapists = [
   },
   {
     id: 'therapist-2',
+    organization_id: 'org-a',
     full_name: 'Dr. Sarah Johnson',
     email: 'sarah@example.com',
+    status: 'active',
     specialties: ['Speech Therapy', 'Occupational Therapy'],
     availability_hours: {
       monday: { start: '08:00', end: '16:00' },

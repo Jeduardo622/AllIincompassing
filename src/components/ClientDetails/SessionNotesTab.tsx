@@ -5,7 +5,7 @@ import {
   Calendar, Plus, Download, Inbox,
   Clock, CheckCircle, AlertTriangle, User, Search
 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { callEdge, supabase } from '../../lib/supabase';
 import type { Therapist } from '../../types';
 import AddSessionNoteModal, { type SessionNoteFormValues } from '../AddSessionNoteModal';
 import { useAuth } from '../../lib/authContext';
@@ -165,9 +165,47 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
     }
   };
   
-  const handleGeneratePDF = () => {
-    // This would call a function to generate and download a PDF of the selected notes
-    alert(`Generating PDF for notes: ${selectedNotes.join(', ')}`);
+  const handleGeneratePDF = async () => {
+    if (!organizationId) {
+      showError('Organization context is required to export session notes.');
+      return;
+    }
+
+    if (selectedNotes.length === 0) {
+      showError('Select at least one session note to export.');
+      return;
+    }
+
+    try {
+      const response = await callEdge('generate-session-notes-pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          noteIds: selectedNotes,
+          clientId: client.id,
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        const message = payload?.error ?? `Failed to generate PDF (${response.status})`;
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `session-notes-${client.id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      showError(error instanceof Error ? error.message : 'Failed to generate PDF.');
+    }
   };
 
   const handleAddSessionNote = (values: SessionNoteFormValues) => {

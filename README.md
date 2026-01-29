@@ -130,6 +130,12 @@ If the smoke test fails, re-run it locally with the preview URL shown in the wor
 - Validate that `ensureRuntimeSupabaseConfig` is called before attempting to construct clients (e.g., `src/lib/supabaseClient.ts`, `src/lib/ai.ts`). Accessing Supabase helpers before the promise resolves will throw `Supabase runtime configuration has not been initialised`.
 - If the client cached an outdated config, run `npm run dev:clean` and restart the dev server to clear local storage and cached runtime settings.
 
+### Data refresh & caching
+
+- React Query refreshes on window focus, so switching tabs or returning to the browser should refetch active queries.
+- Route changes and Settings tab switches invalidate active queries; if a view still looks stale, confirm it uses TanStack Query instead of local-only state.
+- Use `npm run dev:clean` if you suspect cached responses or runtime settings are masking fresh data.
+
 ### Telemetry & logging
 
 - Use the PHI-safe logger utilities in `src/lib/logger` for any console or telemetry emission. Direct `console.*` calls bypass redaction and will fail under the Vitest console guard.

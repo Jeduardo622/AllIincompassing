@@ -21,6 +21,11 @@ interface Authorization {
   start_date: string;
   end_date: string;
   status: string;
+  approved_at?: string | null;
+  approved_by?: string | null;
+  approval_notes?: string | null;
+  denied_at?: string | null;
+  denial_reason?: string | null;
   plan_type?: string | null;
   member_id?: string | null;
   insurance_provider_id?: string | null;
@@ -107,6 +112,29 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
       return data as Array<{ id: string; name: string }>;
     },
   });
+
+  const { data: sessionNoteUsage = [] } = useQuery({
+    queryKey: ['client-session-note-usage', client.id, organizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!organizationId) {
+        throw new Error('Organization context is required to load session note usage.');
+      }
+
+      const { data, error } = await supabase
+        .from('client_session_notes')
+        .select('authorization_id, service_code, session_duration')
+        .eq('client_id', client.id)
+        .eq('organization_id', organizationId);
+
+      if (error) throw error;
+      return data as Array<{
+        authorization_id: string;
+        service_code: string;
+        session_duration: number | null;
+      }>;
+    },
+    enabled: Boolean(client.id && organizationId),
+  });
   
   // Fetch authorizations
   const { data: authorizations = [], isLoading } = useQuery({
@@ -159,12 +187,118 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
   const getUnitsUsedPercentage = (auth: Authorization) => {
     const totalApproved = auth.services.reduce((sum, service) => sum + (service.approved_units || 0), 0);
     const totalUsed = auth.services.reduce((sum, service) => {
-      // This is a mock calculation - in a real app, you'd track actual usage
-      return sum + Math.floor((service.approved_units || 0) * 0.7);
+      return sum + getServiceUsedUnits(auth.id, service.service_code, service.unit_type);
     }, 0);
     
     return totalApproved > 0 ? (totalUsed / totalApproved) * 100 : 0;
   };
+
+  const formatUnits = (value: number) => {
+    if (Number.isNaN(value)) {
+      return '0';
+    }
+    return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  };
+
+  const usageByAuthorization = useMemo(() => {
+    const map = new Map<string, Map<string, number>>();
+    sessionNoteUsage.forEach((row) => {
+      if (!row.authorization_id || !row.service_code) {
+        return;
+      }
+      const authMap = map.get(row.authorization_id) ?? new Map<string, number>();
+      const duration = row.session_duration ?? 0;
+      authMap.set(row.service_code, (authMap.get(row.service_code) ?? 0) + duration);
+      map.set(row.authorization_id, authMap);
+    });
+    return map;
+  }, [sessionNoteUsage]);
+
+  const getServiceUsedUnits = (authorizationId: string, serviceCode: string, unitType: string) => {
+    const authUsage = usageByAuthorization.get(authorizationId);
+    if (!authUsage) {
+      return 0;
+    }
+
+    const minutes = authUsage.get(serviceCode) ?? 0;
+    if (!minutes) {
+      return 0;
+    }
+
+    const normalizedUnitType = unitType?.toLowerCase() ?? 'unit';
+    if (normalizedUnitType.includes('hour')) {
+      return Number((minutes / 60).toFixed(2));
+    }
+    if (normalizedUnitType.includes('minute')) {
+      return Number(minutes.toFixed(2));
+    }
+    return Math.ceil(minutes / 15);
+  };
+
+  const authorizationMetrics = useMemo(() => {
+    if (!authorizations.length) {
+      return {
+        medianApprovalDays: null,
+        approvalRate: null,
+        averageUnitsApprovedPercent: null,
+      };
+    }
+
+    const totalAuthorizations = authorizations.length;
+    const approvedAuthorizations = authorizations.filter(
+      (auth) => auth.status?.toLowerCase() === 'approved'
+    );
+
+    const approvalDurations = approvedAuthorizations
+      .map((auth) => {
+        const approvedAt = (auth as { approved_at?: string | null }).approved_at ?? auth.updated_at;
+        if (!auth.created_at || !approvedAt) {
+          return null;
+        }
+        const created = new Date(auth.created_at).getTime();
+        const updated = new Date(approvedAt).getTime();
+        if (!Number.isFinite(created) || !Number.isFinite(updated)) {
+          return null;
+        }
+        if (updated < created) {
+          return null;
+        }
+        const diffMs = updated - created;
+        return diffMs / (1000 * 60 * 60 * 24);
+      })
+      .filter((value): value is number => value !== null);
+
+    const sortedDurations = [...approvalDurations].sort((a, b) => a - b);
+    const medianApprovalDays =
+      sortedDurations.length > 0
+        ? sortedDurations[Math.floor(sortedDurations.length / 2)]
+        : null;
+
+    const approvalRate =
+      totalAuthorizations > 0
+        ? (approvedAuthorizations.length / totalAuthorizations) * 100
+        : null;
+
+    const { approvedUnits, requestedUnits } = authorizations.reduce(
+      (acc, auth) => {
+        auth.services.forEach((service) => {
+          acc.approvedUnits += service.approved_units || 0;
+          acc.requestedUnits += service.requested_units || 0;
+        });
+        return acc;
+      },
+      { approvedUnits: 0, requestedUnits: 0 }
+    );
+
+    const averageUnitsApprovedPercent =
+      requestedUnits > 0 ? (approvedUnits / requestedUnits) * 100 : null;
+
+    return {
+      medianApprovalDays,
+      approvalRate,
+      averageUnitsApprovedPercent,
+    };
+  }, [authorizations]);
   
   const handleNextStep = () => {
     setCurrentStep(prev => Math.min(prev + 1, 5));
@@ -405,7 +539,7 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                               #{auth.authorization_number}
                             </div>
                             <div className="text-xs text-gray-500 dark:text-gray-400">
-                              CalOptima Health
+                              {auth.insurance_provider?.name ?? 'Unknown provider'}
                             </div>
                           </div>
                         </div>
@@ -428,10 +562,18 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                         <div className="flex flex-col space-y-2">
                           {auth.services.map(service => (
                             <div key={service.id} className="text-xs">
+                              {(() => {
+                                const usedUnits = getServiceUsedUnits(auth.id, service.service_code, service.unit_type);
+                                const approvedUnits = service.approved_units || 0;
+                                const usagePercent = approvedUnits > 0
+                                  ? Math.min((usedUnits / approvedUnits) * 100, 100)
+                                  : 0;
+                                const usedLabel = formatUnits(usedUnits);
+                                return (
+                                  <>
                               <div className="flex justify-between mb-1">
                                 <span className="font-medium text-gray-900 dark:text-white">
-                                  {/* This would show actual used units in a real app */}
-                                  {Math.floor((service.approved_units || 0) * 0.7)} / {service.approved_units || 0}
+                                  {usedLabel} / {approvedUnits}
                                 </span>
                                 <span className="text-gray-500 dark:text-gray-400">
                                   {service.unit_type}
@@ -440,13 +582,16 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
                                 <div 
                                   className={`h-1.5 rounded-full ${
-                                    (service.approved_units || 0) * 0.7 >= service.approved_units * 0.8
+                                    usagePercent >= 80
                                       ? 'bg-red-600'
                                       : 'bg-blue-600'
                                   }`}
-                                  style={{ width: `${Math.min(((service.approved_units || 0) * 0.7 / service.approved_units) * 100, 100)}%` }}
+                                  style={{ width: `${usagePercent}%` }}
                                 />
                               </div>
+                                  </>
+                                );
+                              })()}
                             </div>
                           ))}
                         </div>
@@ -469,6 +614,26 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusClass(displayStatus)}`}>
                           {displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1)}
                         </span>
+                        {(displayStatus === 'approved' && auth.approved_at) && (
+                          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Approved {new Date(auth.approved_at).toLocaleDateString()}
+                          </div>
+                        )}
+                        {(displayStatus === 'denied' && auth.denied_at) && (
+                          <div className="mt-1 text-xs text-red-600 dark:text-red-400">
+                            Denied {new Date(auth.denied_at).toLocaleDateString()}
+                          </div>
+                        )}
+                        {(displayStatus === 'denied' && auth.denial_reason) && (
+                          <div className="mt-1 text-xs text-red-500 dark:text-red-400">
+                            Reason: {auth.denial_reason}
+                          </div>
+                        )}
+                        {(displayStatus === 'approved' && auth.approval_notes) && (
+                          <div className="mt-1 text-xs text-green-600 dark:text-green-400">
+                            Notes: {auth.approval_notes}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">
@@ -506,7 +671,9 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
               Median Approval Time
             </div>
             <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">
-              7 days
+              {authorizationMetrics.medianApprovalDays === null
+                ? '—'
+                : `${Math.round(authorizationMetrics.medianApprovalDays)} days`}
             </div>
             <div className="text-xs text-blue-700 dark:text-blue-300 mt-1">
               Industry average: 14 days
@@ -518,7 +685,9 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
               Approval Rate
             </div>
             <div className="text-2xl font-bold text-green-900 dark:text-green-100">
-              92%
+              {authorizationMetrics.approvalRate === null
+                ? '—'
+                : `${Math.round(authorizationMetrics.approvalRate)}%`}
             </div>
             <div className="text-xs text-green-700 dark:text-green-300 mt-1">
               Industry average: 85%
@@ -530,7 +699,9 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
               Average Units Approved
             </div>
             <div className="text-2xl font-bold text-purple-900 dark:text-purple-100">
-              95%
+              {authorizationMetrics.averageUnitsApprovedPercent === null
+                ? '—'
+                : `${Math.round(authorizationMetrics.averageUnitsApprovedPercent)}%`}
             </div>
             <div className="text-xs text-purple-700 dark:text-purple-300 mt-1">
               Of requested units

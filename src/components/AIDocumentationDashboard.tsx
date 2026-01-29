@@ -32,6 +32,8 @@ import {
   Timer,
   Template
 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { useActiveOrganizationId } from '@/lib/organization';
 import {
   aiDocumentation,
   SessionNote,
@@ -45,11 +47,11 @@ import { logger } from '@/lib/logger/logger';
 interface SessionNoteTemplate {
   id: string;
   template_name: string;
-  description: string;
+  description: string | null;
   template_type: string;
   template_structure: Record<string, unknown>;
-  compliance_requirements: Record<string, unknown>;
-  is_california_compliant: boolean;
+  compliance_requirements: Record<string, unknown> | null;
+  is_california_compliant: boolean | null;
 }
 
 interface AIDocumentationDashboardProps {
@@ -81,7 +83,7 @@ export function AIDocumentationDashboard({
   // Add template state
   const [templates, setTemplates] = useState<SessionNoteTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
-  const [_isLoadingTemplates, _setIsLoadingTemplates] = useState(false);
+  const [_isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   
   // Add performance metrics state
   const [performanceMetrics, setPerformanceMetrics] = useState({
@@ -95,13 +97,14 @@ export function AIDocumentationDashboard({
   const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
   
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const organizationId = useActiveOrganizationId();
 
   // Load existing session notes, templates, and performance metrics
   useEffect(() => {
     loadSessionNotes();
     loadTemplates();
     loadPerformanceMetrics();
-  }, [clientId]);
+  }, [clientId, organizationId]);
 
   useEffect(() => {
     let isActive = true;
@@ -167,51 +170,31 @@ export function AIDocumentationDashboard({
   const loadTemplates = async () => {
     setIsLoadingTemplates(true);
     try {
-      // Mock template loading - in real implementation, this would fetch from Supabase
-      const mockTemplates: SessionNoteTemplate[] = [
-        {
-          id: '1',
-          template_name: 'Discrete Trial Training (DTT)',
-          description: 'Template for structured DTT sessions with trial-by-trial data collection',
-          template_type: 'DTT',
-          template_structure: {},
-          compliance_requirements: {},
-          is_california_compliant: true
-        },
-        {
-          id: '2', 
-          template_name: 'Natural Environment Training (NET)',
-          description: 'Template for naturalistic teaching sessions in various environments',
-          template_type: 'NET',
-          template_structure: {},
-          compliance_requirements: {},
-          is_california_compliant: true
-        },
-        {
-          id: '3',
-          template_name: 'Social Skills Training',
-          description: 'Template for group and individual social skills development sessions',
-          template_type: 'Social Skills',
-          template_structure: {},
-          compliance_requirements: {},
-          is_california_compliant: true
-        },
-        {
-          id: '4',
-          template_name: 'Functional Communication Training',
-          description: 'Template for communication intervention and language development',
-          template_type: 'FCT',
-          template_structure: {},
-          compliance_requirements: {},
-          is_california_compliant: true
-        }
-      ];
-      setTemplates(mockTemplates);
-      
+      let query = supabase
+        .from('session_note_templates')
+        .select('*')
+        .order('template_name');
+
+      if (organizationId) {
+        query = query.eq('organization_id', organizationId);
+      } else {
+        query = query.is('organization_id', null);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        throw error;
+      }
+
+      const resolvedTemplates = (data ?? []) as SessionNoteTemplate[];
+      setTemplates(resolvedTemplates);
+
       // Auto-select first California compliant template
-      const defaultTemplate = mockTemplates.find(t => t.is_california_compliant);
+      const defaultTemplate = resolvedTemplates.find(t => t.is_california_compliant);
       if (defaultTemplate) {
         setSelectedTemplate(defaultTemplate.id);
+      } else {
+        setSelectedTemplate('');
       }
     } catch (error) {
       logger.error('Failed to load session note templates', {
@@ -227,23 +210,80 @@ export function AIDocumentationDashboard({
   const loadPerformanceMetrics = async () => {
     setIsLoadingMetrics(true);
     try {
-      // Fetch real-time performance data from ai_performance_metrics table
-      // In a real implementation, this would query Supabase
-      const mockMetrics = {
-        documentationEfficiency: Math.floor(Math.random() * 20 + 75), // 75-95%
-        complianceRate: Math.floor(Math.random() * 15 + 85), // 85-100%
-        averageConfidence: Math.floor(Math.random() * 20 + 80), // 80-100%
-        totalSessions: sessionNotes.length,
-        averageProcessingTime: Math.floor(Math.random() * 10000 + 15000), // 15-25 seconds
-        recentInsights: [
-          'Documentation quality improved 23% this month',
-          'Behavioral observations are 15% more specific',
-          'Compliance scores increased with template usage',
-          'Processing time reduced by 8% with recent optimizations'
-        ]
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      let query = supabase
+        .from('ai_performance_metrics')
+        .select('response_time_ms, cache_hit, error_occurred, timestamp')
+        .gte('timestamp', thirtyDaysAgo.toISOString())
+        .order('timestamp', { ascending: false })
+        .limit(200);
+
+      if (organizationId) {
+        query = query.eq('organization_id', organizationId);
+      } else {
+        query = query.is('organization_id', null);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        throw error;
+      }
+
+      type PerformanceMetricRow = {
+        response_time_ms: number;
+        cache_hit: boolean | null;
+        error_occurred: boolean | null;
+        timestamp: string | null;
       };
-      
-      setPerformanceMetrics(mockMetrics);
+
+      const metrics = (data ?? []) as PerformanceMetricRow[];
+      const totalRequests = metrics.length;
+      const cacheHits = metrics.filter(metric => metric.cache_hit).length;
+      const errors = metrics.filter(metric => metric.error_occurred).length;
+      const averageResponseTime = totalRequests > 0
+        ? metrics.reduce((sum, metric) => sum + (metric.response_time_ms || 0), 0) / totalRequests
+        : 0;
+
+      const cacheHitRate = totalRequests > 0 ? (cacheHits / totalRequests) * 100 : 0;
+      const errorRate = totalRequests > 0 ? (errors / totalRequests) * 100 : 0;
+
+      const buildInsights = () => {
+        if (totalRequests === 0) {
+          return ['No performance data recorded yet.'];
+        }
+
+        const insights: string[] = [];
+
+        if (cacheHitRate >= 50) {
+          insights.push(`Cache hit rate is ${Math.round(cacheHitRate)}%, keeping response times low.`);
+        } else {
+          insights.push(`Cache hit rate is ${Math.round(cacheHitRate)}%, leaving room for faster responses.`);
+        }
+
+        if (averageResponseTime > 0) {
+          const seconds = Math.round(averageResponseTime / 1000);
+          insights.push(`Average processing time is ${seconds}s over the last 30 days.`);
+        }
+
+        if (errorRate > 10) {
+          insights.push(`Error rate is ${Math.round(errorRate)}%, review recent failures.`);
+        } else {
+          insights.push(`Error rate is ${Math.round(errorRate)}%, within expected thresholds.`);
+        }
+
+        return insights;
+      };
+
+      setPerformanceMetrics({
+        documentationEfficiency: Math.round(cacheHitRate),
+        complianceRate: Math.max(0, Math.round(100 - errorRate)),
+        averageConfidence: Math.max(0, Math.round(100 - errorRate)),
+        totalSessions: sessionNotes.length,
+        averageProcessingTime: Math.round(averageResponseTime),
+        recentInsights: buildInsights(),
+      });
     } catch (error) {
       logger.error('Failed to load performance metrics', {
         error,

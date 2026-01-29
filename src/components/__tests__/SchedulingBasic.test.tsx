@@ -26,8 +26,10 @@ const mockScheduleData = {
   therapists: [
     {
       id: 'therapist-1',
+      organization_id: 'org-a',
       full_name: 'Dr. Smith',
       email: 'dr.smith@example.com',
+      status: 'active',
       specialties: ['ABA'],
       availability_hours: {
         monday: { start: '09:00', end: '17:00' },

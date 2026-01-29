@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { User, FileText, ClipboardCheck, Contact as FileContract, ArrowLeft, Calendar, AlertCircle, Clock } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { fetchClientById } from '../lib/clients/fetchers';
 import ProfileTab from '../components/ClientDetails/ProfileTab';
 import SessionNotesTab from '../components/ClientDetails/SessionNotesTab';
@@ -26,6 +27,56 @@ export default function ClientDetails() {
       if (!activeOrganizationId) throw new Error('Organization context is required to view client details');
 
       return fetchClientById(clientId, activeOrganizationId);
+    },
+    enabled: Boolean(clientId && activeOrganizationId),
+  });
+
+  const { data: nextSession } = useQuery({
+    queryKey: ['client-next-session', clientId, activeOrganizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!clientId || !activeOrganizationId) {
+        return null;
+      }
+
+      const { data, error } = await supabase
+        .from('sessions')
+        .select('start_time, end_time, status')
+        .eq('client_id', clientId)
+        .eq('organization_id', activeOrganizationId)
+        .gte('start_time', new Date().toISOString())
+        .neq('status', 'cancelled')
+        .order('start_time', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      return data ?? null;
+    },
+    enabled: Boolean(clientId && activeOrganizationId),
+  });
+
+  const { data: openIssuesCount = 0 } = useQuery({
+    queryKey: ['client-open-issues', clientId, activeOrganizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!clientId || !activeOrganizationId) {
+        return 0;
+      }
+
+      const { count, error } = await supabase
+        .from('client_issues')
+        .select('id', { count: 'exact', head: true })
+        .eq('client_id', clientId)
+        .eq('organization_id', activeOrganizationId)
+        .neq('status', 'resolved');
+
+      if (error) {
+        throw error;
+      }
+
+      return count ?? 0;
     },
     enabled: Boolean(clientId && activeOrganizationId),
   });
@@ -206,8 +257,9 @@ export default function ClientDetails() {
                 Next Session
               </div>
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                {/* This would be populated from actual data */}
-                Tomorrow at 3:00 PM
+                {nextSession?.start_time
+                  ? new Date(nextSession.start_time).toLocaleString()
+                  : 'No upcoming sessions'}
               </div>
             </div>
           </div>
@@ -231,8 +283,9 @@ export default function ClientDetails() {
                 Open Issues
               </div>
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                {/* This would be populated from actual data */}
-                2 issues need attention
+                {openIssuesCount === 0
+                  ? 'No open issues'
+                  : `${openIssuesCount} issue${openIssuesCount === 1 ? '' : 's'} need attention`}
               </div>
             </div>
           </div>

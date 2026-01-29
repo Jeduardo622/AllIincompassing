@@ -1,6 +1,7 @@
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
+import { useActiveOrganizationId } from '../../lib/organization';
 import { Clock, Zap, Server, BarChart3 } from 'lucide-react';
 import MetricCard from './MetricCard';
 import TimeSeriesChart from './TimeSeriesChart';
@@ -8,16 +9,25 @@ import AlertsList from './AlertsList';
 
 export default function AIPerformance() {
   const queryClient = useQueryClient();
+  const organizationId = useActiveOrganizationId();
 
   // Fetch AI performance metrics
   const { data: metrics, isLoading: isLoadingMetrics } = useQuery({
-    queryKey: ['ai-performance-metrics'],
+    queryKey: ['ai-performance-metrics', organizationId ?? 'no-org'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('ai_performance_metrics')
         .select('*')
         .order('timestamp', { ascending: false })
         .limit(100);
+
+      if (organizationId) {
+        query = query.eq('organization_id', organizationId);
+      } else {
+        query = query.is('organization_id', null);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       return data || [];

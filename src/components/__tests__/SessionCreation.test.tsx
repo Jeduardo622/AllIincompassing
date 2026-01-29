@@ -7,8 +7,10 @@ import SessionModal from '../SessionModal';
 // Mock data for testing session creation
 const mockTherapist = {
   id: 'therapist-1',
+  organization_id: 'org-a',
   full_name: 'Dr. Jane Smith',
   email: 'jane@example.com',
+  status: 'active',
   specialties: ['ABA', 'Behavioral Therapy'],
   availability_hours: {
     monday: { start: '09:00', end: '17:00' },

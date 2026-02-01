@@ -7,6 +7,9 @@ const normalize = (value?: string | null): string | undefined => {
 const DEFAULT_ORG_FALLBACK = '5238e88b-6198-4862-80a2-dbe15bbeabdd';
 
 export const handler = async () => {
+  const environment = process.env.NETLIFY_CONTEXT || process.env.APP_ENV || process.env.NODE_ENV || 'development';
+  const allowFallbacks = environment !== 'production';
+
   // Support multiple possible env var names from Netlify + Supabase integration
   const supabaseUrl =
     process.env.SUPABASE_URL ||
@@ -26,9 +29,9 @@ export const handler = async () => {
     normalize(process.env.SUPABASE_DEFAULT_ORGANIZATION_ID) ||
     normalize(process.env.VITE_DEFAULT_ORGANIZATION_ID) ||
     normalize(process.env.DEFAULT_ORG_ID) ||
-    DEFAULT_ORG_FALLBACK;
+    (allowFallbacks ? DEFAULT_ORG_FALLBACK : undefined);
 
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (!supabaseUrl || !supabaseAnonKey || !defaultOrganizationId) {
     return {
       statusCode: 500,
       headers: {
@@ -36,7 +39,7 @@ export const handler = async () => {
         'Cache-Control': 'no-store',
       },
       body: JSON.stringify({
-        error: 'Missing required environment variables: SUPABASE_URL and/or SUPABASE_ANON_KEY',
+        error: 'Missing required environment variables: SUPABASE_URL, SUPABASE_ANON_KEY, and/or DEFAULT_ORGANIZATION_ID',
       }),
     };
   }

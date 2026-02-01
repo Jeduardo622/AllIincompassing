@@ -11,6 +11,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
+const isProductionEnvironment = (): boolean => {
+  const environment =
+    Deno.env.get("APP_ENV") ||
+    Deno.env.get("SUPABASE_ENV") ||
+    Deno.env.get("NODE_ENV") ||
+    Deno.env.get("ENVIRONMENT") ||
+    "development";
+  return environment === "production";
+};
+
 interface BasicAIResponse {
   response: string;
   action?: {
@@ -120,6 +130,13 @@ Deno.serve(async (req: Request) => {
       status: 200,
       headers: corsHeaders,
     });
+  }
+
+  if (isProductionEnvironment()) {
+    return new Response(
+      JSON.stringify({ error: "Not Found" }),
+      { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } },
+    );
   }
 
   try {

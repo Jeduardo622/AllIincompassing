@@ -13,6 +13,16 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET, OPTIONS",
 };
 
+const isProductionEnvironment = (): boolean => {
+  const environment =
+    getOptionalServerEnv("APP_ENV") ||
+    getOptionalServerEnv("NODE_ENV") ||
+    getOptionalServerEnv("ENVIRONMENT") ||
+    getOptionalServerEnv("NETLIFY_CONTEXT") ||
+    "development";
+  return environment === "production";
+};
+
 function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -74,6 +84,9 @@ export async function dashboardHandler(request: Request): Promise<Response> {
     });
 
     const fallbackOrgId = (() => {
+      if (isProductionEnvironment()) {
+        return null;
+      }
       try {
         return getDefaultOrganizationId();
       } catch {

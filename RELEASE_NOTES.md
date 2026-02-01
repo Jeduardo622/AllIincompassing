@@ -1,3 +1,13 @@
+### Therapist Status Enforcement
+
+**Highlights**
+- Therapist records now default `status` to `active` and enforce `active`/`inactive` values at the database level.
+- Legacy therapist rows with missing or unexpected statuses were normalized to `inactive` before the constraint was applied.
+
+**Risks & Assumptions**
+- Any downstream system that relied on custom status values will now see them coerced to `inactive`.
+- Inserts/updates that pass `NULL` or non-whitelisted values for `status` will now fail with constraint errors.
+
 ### AI Performance Metrics Org Scope
 
 **Highlights**

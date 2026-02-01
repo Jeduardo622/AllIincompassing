@@ -4,6 +4,18 @@ import { getOptionalServerEnv, getRequiredServerEnv } from './env';
 
 export const RUNTIME_CONFIG_FALLBACK_ORGANIZATION_ID = '5238e88b-6198-4862-80a2-dbe15bbeabdd';
 
+const getRuntimeEnvironment = (): string => {
+  return (
+    getOptionalServerEnv('APP_ENV') ||
+    getOptionalServerEnv('NODE_ENV') ||
+    getOptionalServerEnv('ENVIRONMENT') ||
+    getOptionalServerEnv('NETLIFY_CONTEXT') ||
+    'development'
+  );
+};
+
+const shouldAllowFallbacks = (): boolean => getRuntimeEnvironment() !== 'production';
+
 const resolveDefaultOrganizationId = (): string => {
   const explicit = getOptionalServerEnv('DEFAULT_ORGANIZATION_ID');
   if (explicit) {
@@ -24,6 +36,10 @@ const resolveDefaultOrganizationId = (): string => {
       });
       return candidate;
     }
+  }
+
+  if (!shouldAllowFallbacks()) {
+    throw new Error('DEFAULT_ORGANIZATION_ID missing in production environment');
   }
 
   logger.warn(

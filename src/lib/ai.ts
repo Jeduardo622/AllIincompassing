@@ -51,6 +51,8 @@ interface AIResponse {
   error?: string;
 }
 
+const allowFallbacks = import.meta.env.DEV;
+
 export async function processMessage(
   message: string,
   context: AssistantRequestContext,
@@ -88,6 +90,9 @@ export async function processMessage(
 
     if (!response.ok) {
       console.warn(`Optimized AI agent failed with status: ${response.status}, falling back to process-message`);
+      if (!allowFallbacks) {
+        throw new Error(`AI fallback disabled in production (status ${response.status})`);
+      }
       // Fall back to the original process-message function
       const fallbackUrl = buildSupabaseEdgeUrl('process-message');
       const fallbackResponse = await fetch(

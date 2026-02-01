@@ -5,6 +5,15 @@ import '@testing-library/jest-dom';
 import { installConsoleGuard } from './utils/consoleGuard';
 import { setRuntimeSupabaseConfig } from '../lib/runtimeConfig';
 
+const isTestRuntime =
+  process.env.VITEST === 'true' ||
+  process.env.VITEST === '1' ||
+  Boolean(process.env.VITEST_POOL_ID);
+
+if (!isTestRuntime) {
+  throw new Error('Test setup loaded outside the test runtime.');
+}
+
 if (typeof globalThis.PromiseRejectionEvent !== 'function') {
   class PromiseRejectionEventPolyfill extends Event {
     readonly promise: Promise<unknown>;

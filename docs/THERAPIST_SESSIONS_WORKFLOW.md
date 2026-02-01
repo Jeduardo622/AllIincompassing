@@ -243,6 +243,7 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
 - Ensure `sessions` maintains an exclusion constraint on `(therapist_id, tstzrange(start_time, end_time))` to prevent double-booking, alongside indexed `organization_id` as recommended by the ABA reference.
 - RLS policies need to align with route guard expectations: therapists read/write only their own sessions/notes; admins act on org-wide data; clients, if exposed, get a read-only subset.
 - Add audit triggers for session note updates and secure storage (encrypt at rest or application-level encryption for PHI) to satisfy HIPAA/CMIA obligations.
+- Enforce therapist `status` to `active`/`inactive` at the database layer and ensure schedule queries only surface active providers.
 
 ## Implementation Backlog
 - [x] Validate Supabase migrations include the exclusion constraint and composite indexes outlined above.

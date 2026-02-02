@@ -1,6 +1,7 @@
 import { OpenAI } from "npm:openai@5.5.1";
 import { z } from "npm:zod@3.23.8";
 import { errorEnvelope, getRequestId, rateLimit } from "./lib/http/error.ts";
+import { withRetry } from "../_shared/retry.ts";
 import { createRequestClient } from "../_shared/database.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 
@@ -16,8 +17,8 @@ const corsHeaders = {
 };
 
 const NoteSchema = z.object({
-  prompt: z.string().min(1),
-  model: z.string().optional(),
+  prompt: z.string().min(1).max(6000),
+  model: z.enum(["gpt-4", "gpt-4o"]).optional(),
   max_tokens: z.number().int().positive().max(4000).optional(),
   temperature: z.number().min(0).max(1).optional(),
   session_data: z.record(z.unknown()).optional(),
@@ -177,14 +178,26 @@ Deno.serve(async (req) => {
   try {
     const requestId = getRequestId(req);
     if (req.method !== "POST") {
-      return errorEnvelope({ requestId, code: "method_not_allowed", message: `Method ${req.method} not allowed`, status: 405, headers: corsHeaders });
+      return errorEnvelope({
+        requestId,
+        code: "validation_error",
+        message: `Method ${req.method} not allowed`,
+        status: 405,
+        headers: corsHeaders,
+      });
     }
 
     // Token-bucket rate limit 30 req/min per IP
     const ip = req.headers.get("x-forwarded-for") || "unknown";
     const rl = rateLimit(`ai-session-note-generator:${ip}`, 30, 60_000);
     if (!rl.allowed) {
-      return errorEnvelope({ requestId, code: "rate_limited", message: "Too many requests", status: 429, headers: { ...corsHeaders, "Retry-After": String(rl.retryAfter ?? 60) } });
+      return errorEnvelope({
+        requestId,
+        code: "rate_limited",
+        message: "Too many requests",
+        status: 429,
+        headers: { ...corsHeaders, "Retry-After": String(rl.retryAfter ?? 60) },
+      });
     }
 
     const db = createRequestClient(req);
@@ -194,7 +207,13 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const parsed = NoteSchema.safeParse(body);
     if (!parsed.success) {
-      return errorEnvelope({ requestId, code: "invalid_body", message: "Invalid request body", status: 400, headers: corsHeaders });
+      return errorEnvelope({
+        requestId,
+        code: "validation_error",
+        message: "Invalid request body",
+        status: 400,
+        headers: corsHeaders,
+      });
     }
     const {
       prompt,
@@ -206,26 +225,53 @@ Deno.serve(async (req) => {
     const organizationId = typeof session_data?.organization_id === "string"
       ? session_data.organization_id
       : null;
+    if (organizationId && !z.string().uuid().safeParse(organizationId).success) {
+      return errorEnvelope({
+        requestId,
+        code: "validation_error",
+        message: "Invalid organization_id",
+        status: 400,
+        headers: corsHeaders,
+      });
+    }
 
     // Enhance prompt with California compliance requirements
-    const enhancedPrompt = `${CALIFORNIA_COMPLIANCE_PROMPT}\n\nSESSION DATA:\n${prompt}`;
+    const sanitizedPrompt = prompt.replace(/[\p{C}]/gu, ' ').slice(0, 6000);
+    const enhancedPrompt = `${CALIFORNIA_COMPLIANCE_PROMPT}\n\nSESSION DATA:\n${sanitizedPrompt}`;
 
     // Call OpenAI GPT-4 API
-    const completion = await openai.chat.completions.create({
-      model: model,
-      messages: [
-        {
-          role: "system",
-          content: "You are an expert ABA therapist creating California-compliant clinical documentation. Always respond with valid JSON only."
+    const completion = await withRetry(
+      () =>
+        openai.chat.completions.create({
+          model: model,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are an expert ABA therapist creating California-compliant clinical documentation. Always respond with valid JSON only.",
+            },
+            {
+              role: "user",
+              content: enhancedPrompt,
+            },
+          ],
+          max_tokens: max_tokens,
+          temperature: temperature,
+        }),
+      {
+        maxAttempts: 3,
+        baseDelayMs: 400,
+        maxDelayMs: 2000,
+        retryOn: (error) => {
+          const status = (error as any)?.status ?? (error as any)?.response?.status;
+          if (status && [429, 500, 502, 503, 504].includes(Number(status))) {
+            return true;
+          }
+          const message = String((error as any)?.message ?? '');
+          return /rate limit|timeout|temporarily|ECONNRESET|ETIMEDOUT|EAI_AGAIN/i.test(message);
         },
-        {
-          role: "user",
-          content: enhancedPrompt
-        }
-      ],
-      max_tokens: max_tokens,
-      temperature: temperature
-    });
+      },
+    );
 
     const responseText = completion.choices[0]?.message?.content;
     if (!responseText) {
@@ -237,6 +283,18 @@ Deno.serve(async (req) => {
       parsedContent = JSON.parse(responseText);
     } catch (parseError) {
       throw new Error(`Invalid JSON response: ${parseError.message}`);
+    }
+
+    const ParsedSchema = z.object({
+      observations: z.array(z.unknown()).optional(),
+      data_summary: z.array(z.unknown()).optional(),
+      interventions: z.array(z.unknown()).optional(),
+      progress: z.array(z.unknown()).optional(),
+      confidence: z.number().optional(),
+    }).passthrough();
+    const parsedValidation = ParsedSchema.safeParse(parsedContent);
+    if (!parsedValidation.success) {
+      throw new Error("Invalid JSON response schema");
     }
 
     // Validate California compliance
@@ -276,10 +334,25 @@ Deno.serve(async (req) => {
       console.warn('Failed to record AI metrics:', metricsErr);
     }
 
-    return new Response(JSON.stringify(response), { headers: { "Content-Type": "application/json", ...corsHeaders } });
+    return new Response(JSON.stringify(response), {
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
   } catch (error) {
     const requestId = getRequestId(req);
     console.error('Session note generation error:', error);
-    return errorEnvelope({ requestId, code: 'internal_error', message: 'Unexpected error', status: 500, headers: corsHeaders });
+    const status = (error as any)?.status ?? (error as any)?.response?.status;
+    const code =
+      status === 429 ? 'rate_limited' :
+      status === 503 ? 'upstream_unavailable' :
+      status === 504 ? 'upstream_timeout' :
+      status === 502 ? 'upstream_error' :
+      'internal_error';
+    return errorEnvelope({
+      requestId,
+      code,
+      message: 'Unexpected error',
+      status: 500,
+      headers: corsHeaders,
+    });
   }
 }); 

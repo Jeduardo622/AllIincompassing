@@ -61,14 +61,16 @@ describe('AI edge function authentication', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [optimizedUrl, optimizedInit] = fetchMock.mock.calls[0];
     expect(optimizedUrl).toBe(`${edgeBase}ai-agent-optimized`);
-    expect(optimizedInit).toEqual(
+    const optimizedHeaders = (optimizedInit as RequestInit).headers as Record<string, string>;
+    expect(optimizedHeaders).toEqual(
       expect.objectContaining({
-        headers: expect.objectContaining({
-          apikey: anonKey,
-          Authorization: `Bearer ${accessToken}`,
-        }),
+        apikey: anonKey,
+        Authorization: `Bearer ${accessToken}`,
+        'x-request-id': expect.any(String),
+        'x-correlation-id': expect.any(String),
       })
     );
+    expect(optimizedHeaders['x-request-id']).toBe(optimizedHeaders['x-correlation-id']);
 
     const requestBody = JSON.parse((optimizedInit as RequestInit).body as string);
     expect(requestBody.message).toBe('Hello?');
@@ -103,6 +105,10 @@ describe('AI edge function authentication', () => {
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    const firstHeaders = (fetchMock.mock.calls[0][1] as RequestInit)
+      .headers as Record<string, string>;
+    const secondHeaders = (fetchMock.mock.calls[1][1] as RequestInit)
+      .headers as Record<string, string>;
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       `${edgeBase}process-message`,
@@ -113,6 +119,8 @@ describe('AI edge function authentication', () => {
         }),
       })
     );
+    expect(secondHeaders['x-request-id']).toBe(firstHeaders['x-request-id']);
+    expect(secondHeaders['x-correlation-id']).toBe(firstHeaders['x-correlation-id']);
     expect(result.response).toBe('Fallback success');
   });
 

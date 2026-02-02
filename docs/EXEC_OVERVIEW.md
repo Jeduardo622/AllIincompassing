@@ -50,6 +50,7 @@ This document gives leaders and future contributors a concise snapshot of what w
 - **Session holds**: Idempotent hold/confirm/cancel pipeline, conflict codes, audit logging (`session_audit_logs`).
 - **Dashboard access**: `dashboard_consumer` role provides read-only RPC access (`get_dashboard_data`).
 - **Secrets**: Rotation steps defined in `docs/SECRET_ROTATION_RUNBOOK.md`; Supabase/OpenAI/AWS/SMTP/Test JWTs each have owners and procedures.
+- **Prompt/tool version registry**: `agent_prompt_tool_versions` stores active prompt + tool versions; manual rollback flips `is_current` and records `rollback_reason`.
 
 ## Testing & Tooling Overview
 
@@ -60,6 +61,12 @@ This document gives leaders and future contributors a concise snapshot of what w
   - `npm run contract:runtime-config`, `npm run validate:tenant`, `npm run db:check:security|performance`
 - **AI transcription plan**: detailed in `docs/TRANSCRIPTION_TESTING_PLAN.md` (unit, integration, compliance, performance, E2E).
 - **MCP tooling**: supabase-database, Lighthouse, Playwright; `scripts/mcp-routing-fix.js` handles server conflicts.
+
+### Agent governance verification
+- Active version check:
+  - `select * from agent_prompt_tool_versions where is_current = true;`
+- Manual rollback (admin-only):
+  - Set current row `is_current=false`, insert a new row with updated versions and `is_current=true`, and capture `rollback_reason`.
 
 ## Current Risks & Watch Items
 

@@ -30,3 +30,19 @@ VITEST_HANG_TIMEOUT_MS=90000 node scripts/run-vitest.mjs src/pages/__tests__/foo
 This keeps the entire suite responsive while still allowing individual specs to be diagnosed with
 focused commands.
 
+## Agent eval smoke (edge functions)
+
+Run the edge smoke harness against staging/preview using an authenticated user JWT:
+
+```bash
+EDGE_SMOKE_ACCESS_TOKEN=<user-jwt> \
+SUPABASE_URL=https://wnnjeqheqxxyrgsjmygy.supabase.co \
+SUPABASE_ANON_KEY=<anon-key> \
+npx tsx scripts/agent-eval-smoke.ts
+```
+
+Dry-run (no network) to validate payload construction:
+
+```bash
+npx tsx scripts/agent-eval-smoke.ts --dry-run
+```

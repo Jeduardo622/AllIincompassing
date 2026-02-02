@@ -13,6 +13,7 @@ This playbook captures the operational steps required to stand up and maintain t
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `SUPABASE_ACCESS_TOKEN`
    - `DEFAULT_ORGANIZATION_ID`
+   - `AGENT_ACTIONS_DISABLED` (optional kill-switch for agent actions)
    - Any additional runtime secrets (OpenAI, S3, etc.) required for end-to-end flows.
 5. Store raw values in 1Password (`Platform / Supabase`). Only redacted snippets (`****`) belong in PRs or chat logs.
 6. Stage-specific Netlify secrets live in GitHub Actions as well:
@@ -25,6 +26,11 @@ This playbook captures the operational steps required to stand up and maintain t
 - All environments currently share the hosted Supabase project `wnnjeqheqxxyrgsjmygy`. There is no separate “staging” database.
 - Keep `DEFAULT_ORGANIZATION_ID` consistent across Netlify contexts, GitHub secrets, and `.env.local`.
 - When testing schema changes, use Supabase **branches** (`npm run db:branch:create`) rather than provisioning a new project; follow the [Supabase Branching Runbook](./supabase_branching.md) for promotion.
+
+## Agent action kill switch
+- **Runtime config**: `public.agent_runtime_config` (`config_key = 'global'`) controls `actions_disabled`.
+- **Emergency disable**: set `AGENT_ACTIONS_DISABLED=true` in Netlify to override the runtime config.
+- **Verification**: check `agent_execution_traces` for `execution.gate.denied` steps with `killSwitchEnabled=true`.
 
 ## GitHub Actions staging deployment job
 

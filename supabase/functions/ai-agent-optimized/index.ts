@@ -1,6 +1,10 @@
 import { OpenAI } from "npm:openai@5.5.1";
+import { z } from "npm:zod@3.23.8";
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
+import { resolveOrgId } from "../_shared/org.ts";
+import { getLogger } from "../_shared/logging.ts";
+import { errorEnvelope, getRequestId, IsoDateSchema } from "../lib/http/error.ts";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -33,6 +37,103 @@ interface OptimizedAIResponse {
     confidence: number;
   }>;
 }
+
+type AgentRole = "client" | "therapist" | "admin" | "super_admin";
+
+type ExecutionGate = {
+  role: AgentRole;
+  allowedTools: string[];
+  deniedTools: string[];
+  killSwitchEnabled: boolean;
+  killSwitchReason?: string;
+  killSwitchSource?: "env" | "db";
+};
+
+type PromptToolVersion = {
+  id: string;
+  promptVersion: string;
+  toolVersion: string;
+  status: string;
+  isCurrent: boolean;
+  metadata?: Record<string, unknown> | null;
+  rollbackReason?: string | null;
+  createdAt?: string | null;
+};
+
+type TraceContext = {
+  requestId: string;
+  correlationId: string;
+  conversationId?: string;
+  userId?: string | null;
+  orgId?: string | null;
+};
+
+type TraceStep = {
+  stepName: string;
+  status: "ok" | "blocked" | "error";
+  payload?: Record<string, unknown>;
+  replayPayload?: Record<string, unknown>;
+};
+
+const UuidSchema = z.string().uuid();
+const AgentRequestSchema = z.object({
+  message: z.string().min(1).max(4000),
+  context: z
+    .object({
+      url: z.string().url().max(2048).optional(),
+      userAgent: z.string().max(512).optional(),
+      conversationId: UuidSchema.optional(),
+      actor: z
+        .object({
+          id: UuidSchema.optional(),
+          role: z.string().optional(),
+        })
+        .optional(),
+      guardrails: z
+        .object({
+          allowedTools: z.array(z.string()).optional(),
+          audit: z.unknown().optional(),
+        })
+        .optional(),
+    })
+    .passthrough()
+    .optional(),
+});
+
+const ROLE_ALLOWED_TOOLS: Record<AgentRole, string[]> = {
+  client: [],
+  therapist: [
+    "schedule_session",
+    "cancel_sessions",
+    "predict_conflicts",
+    "suggest_optimal_times",
+    "get_monthly_session_count",
+  ],
+  admin: [
+    "bulk_schedule",
+    "schedule_session",
+    "cancel_sessions",
+    "smart_schedule_optimization",
+    "predict_conflicts",
+    "suggest_optimal_times",
+    "analyze_workload",
+    "quick_actions",
+    "get_monthly_session_count",
+  ],
+  super_admin: [
+    "bulk_schedule",
+    "schedule_session",
+    "cancel_sessions",
+    "smart_schedule_optimization",
+    "predict_conflicts",
+    "suggest_optimal_times",
+    "analyze_workload",
+    "quick_actions",
+    "get_monthly_session_count",
+  ],
+};
+
+const CONTROL_CHARS = /[\p{C}]/gu;
 
 // ============================================================================
 // OPTIMIZED AI CONFIGURATION (Phase 4)
@@ -229,6 +330,153 @@ const compressedFunctionSchemas = [
     }
   }
 ];
+
+const TOOL_SCHEMA_MAP = new Map(
+  compressedFunctionSchemas.map((schema: any) => [schema.function.name as string, schema])
+);
+const KNOWN_TOOL_NAMES = new Set<string>(Array.from(TOOL_SCHEMA_MAP.keys()));
+
+const parseBoolean = (value: string | null | undefined): boolean => {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "yes";
+};
+
+const parseRoleList = (data: unknown): string[] => {
+  if (!Array.isArray(data)) {
+    return [];
+  }
+  return data.flatMap((entry) => {
+    if (!entry) return [] as string[];
+    const roleValue = (entry as { roles?: unknown }).roles;
+    if (Array.isArray(roleValue)) {
+      return roleValue.filter((role): role is string => typeof role === "string");
+    }
+    if (typeof roleValue === "string" && roleValue.length > 0) {
+      try {
+        const parsed = JSON.parse(roleValue) as unknown;
+        if (Array.isArray(parsed)) {
+          return parsed.filter((role): role is string => typeof role === "string");
+        }
+      } catch {
+        // fall through to comma separated
+      }
+      return roleValue.split(",").map((role) => role.trim()).filter(Boolean);
+    }
+    return [] as string[];
+  });
+};
+
+const resolveActorRole = async (db: ReturnType<typeof createRequestClient>): Promise<AgentRole> => {
+  const { data, error } = await db.rpc("get_user_roles");
+  if (error) {
+    console.warn("Failed to resolve user roles for agent request", error);
+    return "client";
+  }
+  const roles = parseRoleList(data);
+  if (roles.includes("super_admin")) return "super_admin";
+  if (roles.includes("admin")) return "admin";
+  if (roles.includes("therapist")) return "therapist";
+  return "client";
+};
+
+const resolveExecutionGate = (role: AgentRole, requestedTools: string[] = []): Omit<ExecutionGate, "killSwitchEnabled" | "killSwitchReason" | "killSwitchSource"> => {
+  const roleTools = (ROLE_ALLOWED_TOOLS[role] ?? []).filter((tool) => KNOWN_TOOL_NAMES.has(tool));
+  const requested = requestedTools.filter((tool) => KNOWN_TOOL_NAMES.has(tool));
+  if (requested.length === 0) {
+    return { role, allowedTools: roleTools, deniedTools: [] };
+  }
+  const allowedTools = requested.filter((tool) => roleTools.includes(tool));
+  const deniedTools = requested.filter((tool) => !roleTools.includes(tool));
+  return { role, allowedTools, deniedTools };
+};
+
+const selectToolSchemas = (allowedTools: string[]): Array<Record<string, unknown>> =>
+  allowedTools.map((tool) => TOOL_SCHEMA_MAP.get(tool)).filter(Boolean) as Array<Record<string, unknown>>;
+
+const sanitizeText = (value: string, maxLength: number): string =>
+  value.replace(CONTROL_CHARS, ' ').replace(/\s+/g, ' ').trim().slice(0, maxLength);
+
+const resolveKillSwitch = async (): Promise<Pick<ExecutionGate, "killSwitchEnabled" | "killSwitchReason" | "killSwitchSource">> => {
+  if (parseBoolean(Deno.env.get("AGENT_ACTIONS_DISABLED"))) {
+    return { killSwitchEnabled: true, killSwitchReason: "actions_disabled", killSwitchSource: "env" };
+  }
+  const { data, error } = await supabaseAdmin
+    .from("agent_runtime_config")
+    .select("actions_disabled, reason")
+    .eq("config_key", "global")
+    .maybeSingle();
+  if (error) {
+    console.warn("Failed to load agent runtime config", error);
+    return { killSwitchEnabled: false };
+  }
+  if (data?.actions_disabled) {
+    return {
+      killSwitchEnabled: true,
+      killSwitchReason: data.reason ?? "actions_disabled",
+      killSwitchSource: "db",
+    };
+  }
+  return { killSwitchEnabled: false };
+};
+
+const resolvePromptToolVersion = async (): Promise<{ version: PromptToolVersion | null; error?: string }> => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("agent_prompt_tool_versions")
+      .select("id, prompt_version, tool_version, status, is_current, metadata, rollback_reason, created_at")
+      .eq("is_current", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      return { version: null, error: error.message };
+    }
+    if (!data) {
+      return { version: null };
+    }
+    return {
+      version: {
+        id: data.id,
+        promptVersion: data.prompt_version,
+        toolVersion: data.tool_version,
+        status: data.status,
+        isCurrent: data.is_current,
+        metadata: data.metadata,
+        rollbackReason: data.rollback_reason,
+        createdAt: data.created_at,
+      },
+    };
+  } catch (error) {
+    return { version: null, error: String(error) };
+  }
+};
+
+const insertAgentTrace = async (
+  ctx: TraceContext,
+  step: TraceStep,
+  stepIndex: number
+): Promise<void> => {
+  try {
+    await supabaseAdmin.from("agent_execution_traces").insert({
+      request_id: ctx.requestId,
+      correlation_id: ctx.correlationId,
+      conversation_id: ctx.conversationId ?? null,
+      user_id: ctx.userId ?? null,
+      organization_id: ctx.orgId ?? null,
+      step_name: step.stepName,
+      step_index: stepIndex,
+      status: step.status,
+      payload: step.payload ?? null,
+      replay_payload: step.replayPayload ?? null,
+    });
+  } catch (error) {
+    console.warn("Failed to insert agent trace", error);
+  }
+};
+
+const buildActionBlockedMessage = (reason: string): string =>
+  `Note: Requested action was not executed (${reason}). No changes were made.`;
 
 // ============================================================================
 // INTELLIGENT CACHING SYSTEM
@@ -456,7 +704,10 @@ async function generateProactiveSuggestions(context: { summary?: { userRole?: st
 
 async function processOptimizedMessage(
   message: string,
-  context: Record<string, unknown>
+  context: Record<string, unknown>,
+  executionGate: ExecutionGate,
+  trace: (step: TraceStep) => Promise<void>,
+  traceContext: TraceContext
 ): Promise<OptimizedAIResponse> {
   const startTime = performance.now();
   console.log("Processing message with context:", JSON.stringify({
@@ -470,9 +721,19 @@ async function processOptimizedMessage(
     await getUserOrThrow(db);
 
     const cacheKey = await generateSemanticCacheKey(message, context);
+    await trace({
+      stepName: "cache.key.generated",
+      status: "ok",
+      payload: { cacheKey },
+    });
     const cachedResponse = await checkCachedResponse(cacheKey);
 
     if (cachedResponse) {
+      await trace({
+        stepName: "cache.hit",
+        status: "ok",
+        payload: { cacheKey },
+      });
       return {
         response: cachedResponse,
         cacheHit: true,
@@ -487,6 +748,10 @@ async function processOptimizedMessage(
 
     const contextPrompt = `CONTEXT: ${JSON.stringify((optimizedContext as any).summary)}\nRECENT: ${((optimizedContext as any).recentActions as any).map((a: any) => `${a.role}: ${a.content}`).join('; ')}\nTIME: ${(optimizedContext as any).currentTime}`;
 
+    const allowedToolSchemas = executionGate.killSwitchEnabled
+      ? []
+      : selectToolSchemas(executionGate.allowedTools);
+
     const completion = await openai.chat.completions.create({
       ...OPTIMIZED_AI_CONFIG as any,
       messages: [
@@ -494,28 +759,95 @@ async function processOptimizedMessage(
         { role: 'system', content: contextPrompt },
         { role: 'user', content: message }
       ],
-      tools: compressedFunctionSchemas as any
+      tools: allowedToolSchemas as any
     } as any);
 
     const responseMessage = completion.choices[0].message as any;
     const responseTime = performance.now() - startTime;
+    await trace({
+      stepName: "llm.response.received",
+      status: "ok",
+      payload: {
+        responseTimeMs: responseTime,
+        toolCallCount: responseMessage.tool_calls?.length ?? 0,
+        tokenUsage: (completion as any).usage ?? null,
+      },
+    });
 
     const conversationId = (context as any).conversationId as string ||
                           (await saveChatMessage('user', message, context)).toString();
 
     let action: any;
+    let actionBlockedReason: string | null = null;
     if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
       const toolCall = responseMessage.tool_calls[0];
       const functionName = toolCall.function.name;
-      const functionArgs = JSON.parse(toolCall.function.arguments);
+      let functionArgs: Record<string, unknown> = {};
+      try {
+        const parsedArgs = JSON.parse(toolCall.function.arguments);
+        const toolSchema = TOOL_SCHEMA_MAP.get(functionName);
+        if (toolSchema?.function?.parameters) {
+          const argsSchema = z
+            .object((toolSchema.function.parameters as any)?.properties ?? {})
+            .passthrough();
+          const validatedArgs = argsSchema.safeParse(parsedArgs);
+          if (!validatedArgs.success) {
+            throw new Error('Invalid tool arguments');
+          }
+          functionArgs = validatedArgs.data as Record<string, unknown>;
+        } else {
+          functionArgs = parsedArgs as Record<string, unknown>;
+        }
+      } catch (error) {
+        await trace({
+          stepName: "tool.args.parse_failed",
+          status: "error",
+          payload: { toolName: functionName, error: String(error) },
+        });
+        actionBlockedReason = "invalid_tool_payload";
+      }
 
       if (functionArgs.date === 'today') {
         functionArgs.date = new Date().toISOString().split('T')[0];
       } else if (functionArgs.date === 'tomorrow') {
         functionArgs.date = new Date(Date.now() + 86400000).toISOString().split('T')[0];
       }
+      if (typeof functionArgs.date === 'string') {
+        const dateCheck = IsoDateSchema.safeParse(functionArgs.date);
+        if (!dateCheck.success) {
+          actionBlockedReason = 'invalid_tool_payload';
+        }
+      }
 
-      if (functionName === "get_monthly_session_count") {
+      const toolAllowed = executionGate.allowedTools.includes(functionName);
+      if (executionGate.killSwitchEnabled) {
+        actionBlockedReason = executionGate.killSwitchReason ?? "actions_disabled";
+      } else if (!KNOWN_TOOL_NAMES.has(functionName)) {
+        actionBlockedReason = "tool_not_registered";
+      } else if (!toolAllowed) {
+        actionBlockedReason = "tool_not_permitted";
+      }
+
+      if (actionBlockedReason) {
+        await trace({
+          stepName: "tool.execution.blocked",
+          status: "blocked",
+          payload: {
+            toolName: functionName,
+            reason: actionBlockedReason,
+            role: executionGate.role,
+            allowedTools: executionGate.allowedTools,
+            deniedTools: executionGate.deniedTools,
+          },
+          replayPayload: {
+            requestId: traceContext.requestId,
+            correlationId: traceContext.correlationId,
+            toolName: functionName,
+            toolArguments: functionArgs,
+          },
+        });
+        action = null as any;
+      } else if (functionName === "get_monthly_session_count") {
         try {
           const { start_date, end_date, therapist_id, client_id, status } = functionArgs;
 
@@ -563,11 +895,29 @@ async function processOptimizedMessage(
           type: functionName,
           data: functionArgs
         } as any;
+        await trace({
+          stepName: "tool.execution.allowed",
+          status: "ok",
+          payload: {
+            toolName: functionName,
+            role: executionGate.role,
+          },
+          replayPayload: {
+            requestId: traceContext.requestId,
+            correlationId: traceContext.correlationId,
+            toolName: functionName,
+            toolArguments: functionArgs,
+          },
+        });
       }
     }
 
+    const blockedNotice = actionBlockedReason
+      ? buildActionBlockedMessage(actionBlockedReason)
+      : null;
+    const responseText = responseMessage.content || "I'll help you with that request.";
     const response = {
-      response: responseMessage.content || "I'll help you with that request.",
+      response: blockedNotice ? `${responseText}\n\n${blockedNotice}` : responseText,
       action,
       cacheHit: false,
       responseTime,
@@ -608,6 +958,11 @@ async function processOptimizedMessage(
 
   } catch (error: any) {
     console.error('Optimized AI processing failed:', error);
+    await trace({
+      stepName: "processing.error",
+      status: "error",
+      payload: { error: error?.message ?? String(error) },
+    });
 
     return {
       response: "I apologize, but I'm experiencing technical difficulties. Please try again or use the manual interface.",
@@ -666,51 +1021,219 @@ async function saveChatMessage(
 // ============================================================================
 
 Deno.serve(async (req) => {
+  const requestId = getRequestId(req);
+  const correlationId = req.headers.get("x-correlation-id") ?? requestId;
+  const responseHeaders = {
+    "Content-Type": "application/json",
+    "x-request-id": requestId,
+    "x-correlation-id": correlationId,
+    ...corsHeaders,
+  };
+
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
-      headers: corsHeaders,
+      headers: responseHeaders,
     });
   }
 
   try {
     if (req.method !== "POST") {
-      throw new Error(`Method ${req.method} not allowed`);
+      return errorEnvelope({
+        requestId,
+        code: "validation_error",
+        message: `Method ${req.method} not allowed`,
+        status: 405,
+        headers: responseHeaders,
+      });
     }
 
     (globalThis as any).currentRequest = req;
 
-    const { message, context } = await req.json();
+    const rawPayload = await req.json();
+    const payload = AgentRequestSchema.safeParse(rawPayload);
+    if (!payload.success) {
+      return errorEnvelope({
+        requestId,
+        code: "validation_error",
+        message: "Invalid agent request payload",
+        status: 400,
+        headers: responseHeaders,
+      });
+    }
+    const { message, context } = payload.data;
 
     const db = createRequestClient(req);
-    await getUserOrThrow(db);
+    const user = await getUserOrThrow(db);
+    const orgId = await resolveOrgId(db);
+    const logger = getLogger(req, {
+      functionName: "ai-agent-optimized",
+      userId: user.id,
+      orgId,
+    });
 
-    const response = await processOptimizedMessage(message, (context as any) || {});
+    const actorRole = await resolveActorRole(db);
+    const requestedTools = Array.isArray(context?.guardrails?.allowedTools)
+      ? context?.guardrails?.allowedTools
+      : [];
+    const gateBase = resolveExecutionGate(actorRole, requestedTools);
+    const killSwitch = await resolveKillSwitch();
+    const executionGate: ExecutionGate = {
+      ...gateBase,
+      ...killSwitch,
+    };
+
+    const traceContext: TraceContext = {
+      requestId,
+      correlationId,
+      conversationId: context?.conversationId,
+      userId: user.id,
+      orgId,
+    };
+    let traceIndex = 0;
+    const trace = (step: TraceStep) =>
+      insertAgentTrace(traceContext, step, traceIndex++);
+
+    const promptToolResult = await resolvePromptToolVersion();
+    const promptToolVersion = promptToolResult.version;
+    await trace({
+      stepName: "prompt_tool.version.loaded",
+      status: promptToolResult.error ? "error" : "ok",
+      payload: {
+        found: Boolean(promptToolVersion),
+        promptVersion: promptToolVersion?.promptVersion ?? null,
+        toolVersion: promptToolVersion?.toolVersion ?? null,
+        status: promptToolVersion?.status ?? null,
+        error: promptToolResult.error ?? null,
+      },
+    });
+
+    const sanitizedMessage = sanitizeText(message, 4000);
+    const sanitizedContext = {
+      ...(context as any),
+      url: context?.url ? sanitizeText(context.url, 2048) : undefined,
+      userAgent: context?.userAgent ? sanitizeText(context.userAgent, 512) : undefined,
+    };
+
+    logger.info("request.received", {
+      metadata: {
+        role: actorRole,
+        hasConversation: Boolean(context?.conversationId),
+        promptVersion: promptToolVersion?.promptVersion ?? null,
+        toolVersion: promptToolVersion?.toolVersion ?? null,
+      },
+    });
+    await trace({
+      stepName: "request.received",
+      status: "ok",
+      payload: {
+        role: actorRole,
+        requestedTools,
+        url: context?.url,
+      },
+      replayPayload: {
+        message: sanitizedMessage,
+        context: sanitizedContext,
+      },
+    });
+
+    if (executionGate.deniedTools.length > 0 || executionGate.killSwitchEnabled) {
+      logger.warn("authorization.denied", {
+        metadata: {
+          deniedTools: executionGate.deniedTools,
+          killSwitchEnabled: executionGate.killSwitchEnabled,
+        },
+      });
+      await trace({
+        stepName: "execution.gate.denied",
+        status: "blocked",
+        payload: {
+          deniedTools: executionGate.deniedTools,
+          killSwitchEnabled: executionGate.killSwitchEnabled,
+          killSwitchReason: executionGate.killSwitchReason ?? null,
+          killSwitchSource: executionGate.killSwitchSource ?? null,
+        },
+      });
+    } else {
+      await trace({
+        stepName: "execution.gate.allowed",
+        status: "ok",
+        payload: {
+          allowedTools: executionGate.allowedTools,
+          role: actorRole,
+        },
+      });
+    }
+
+    const enrichedContext = {
+      ...(sanitizedContext as any),
+      promptToolVersion: promptToolVersion
+        ? {
+            promptVersion: promptToolVersion.promptVersion,
+            toolVersion: promptToolVersion.toolVersion,
+            status: promptToolVersion.status,
+          }
+        : null,
+      userRoles: Array.isArray((context as any)?.userRoles)
+        ? (context as any)?.userRoles
+        : [actorRole],
+      actor: { id: user.id, role: actorRole },
+      guardrails: {
+        ...(context as any)?.guardrails,
+        allowedTools: executionGate.allowedTools,
+      },
+    };
+
+    const response = await processOptimizedMessage(
+      sanitizedMessage,
+      enrichedContext,
+      executionGate,
+      trace,
+      traceContext
+    );
+    traceContext.conversationId = response.conversationId ?? traceContext.conversationId;
+
+    logger.info("request.completed", {
+      metadata: {
+        cacheHit: response.cacheHit ?? false,
+        responseTime: response.responseTime ?? null,
+        hasAction: Boolean(response.action),
+      },
+    });
+    await trace({
+      stepName: "response.sent",
+      status: "ok",
+      payload: {
+        cacheHit: response.cacheHit ?? false,
+        responseTime: response.responseTime ?? null,
+        hasAction: Boolean(response.action),
+      },
+    });
 
     return new Response(
       JSON.stringify(response),
       {
         headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders,
+          ...responseHeaders,
         },
       }
     );
   } catch (error: any) {
-    console.error('Handler error:', error);
+    if (error instanceof Response) {
+      const body = await error.text().catch(() => "");
+      return new Response(body, {
+        status: error.status,
+        headers: responseHeaders,
+      });
+    }
 
-    return new Response(
-      JSON.stringify({
-        error: "Internal Server Error",
-        message: error.message
-      }),
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders,
-        },
-      }
-    );
+    console.error("Handler error:", error);
+    return errorEnvelope({
+      requestId,
+      code: "internal_error",
+      message: error?.message ?? "Internal Server Error",
+      status: 500,
+      headers: responseHeaders,
+    });
   }
 });

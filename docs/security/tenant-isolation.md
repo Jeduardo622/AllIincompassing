@@ -12,6 +12,8 @@
 3. Increment metrics for each scoped query and successful cancellation/report generation.  
 4. Throw `ForbiddenError` for any cross-organization attempt and rely on structured logging to capture the denial.  
 5. Avoid direct `supabaseAdmin` usage for tenant data—only the allow-listed modules may import it for narrowly scoped tasks.  
+6. For agent endpoints, enforce tool permissions server-side (role allowlist + execution gate) and trace decisions with correlation IDs.  
+7. Enforce injection resilience: validate inputs (length/format), sanitize prompt/context, and block known prompt-injection patterns.  
 
 #### Verification Checklist
 - `npm run validate:tenant` passes locally.  

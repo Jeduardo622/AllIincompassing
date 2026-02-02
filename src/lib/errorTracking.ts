@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import type { Json } from './generated/database.types';
 import { logger } from './logger/logger';
+import type { ErrorCode } from './errorTaxonomy';
 import { redactPhi } from './logger/redactPhi';
 import { toError } from './logger/normalizeError';
 import { isMissingRpcFunctionError } from './supabase/isMissingRpcFunctionError';
@@ -100,13 +101,7 @@ interface AIErrorDetails {
   responseTime?: number;
   cacheAttempted?: boolean;
   audit?: Record<string, unknown>;
-  errorType:
-    | 'timeout'
-    | 'rate_limit'
-    | 'invalid_response'
-    | 'function_error'
-    | 'network_error'
-    | 'guardrail_violation';
+  errorType: ErrorCode;
 }
 
 interface PerformanceAlert {
@@ -793,13 +788,15 @@ export const usePerformanceMonitoring = () => {
  */
 function determineErrorType(error: Error): AIErrorDetails['errorType'] {
   const message = error.message.toLowerCase();
-  
-  if (message.includes('timeout')) return 'timeout';
-  if (message.includes('rate limit')) return 'rate_limit';
-  if (message.includes('network')) return 'network_error';
-  if (message.includes('function')) return 'function_error';
-  
-  return 'invalid_response';
+
+  if (message.includes('timeout')) return 'upstream_timeout';
+  if (message.includes('rate limit')) return 'rate_limited';
+  if (message.includes('unauthorized') || message.includes('auth')) return 'unauthorized';
+  if (message.includes('forbidden') || message.includes('permission')) return 'forbidden';
+  if (message.includes('network')) return 'upstream_unavailable';
+  if (message.includes('function')) return 'upstream_error';
+
+  return 'internal_error';
 }
 
 // Export singleton instance (browser) or no-op (server)

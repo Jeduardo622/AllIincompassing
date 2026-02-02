@@ -73,7 +73,7 @@ describe('errorTracking server fallback', () => {
 
     await expect(
       errorTracker.trackAIError(new Error('async error'), {
-        errorType: 'network_error'
+      errorType: 'upstream_unavailable'
       })
     ).resolves.toBeUndefined();
 

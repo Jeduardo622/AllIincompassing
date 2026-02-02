@@ -26,6 +26,7 @@ OPENAI_API_KEY=<openai-key>  # In Supabase secrets
 - **Integration Tests**: Cypress E2E with real API calls
 - **Performance Tests**: Load testing with multiple concurrent sessions
 - **Compliance Tests**: Automated validation against California requirements
+- **Edge smoke**: `npx tsx scripts/agent-eval-smoke.ts` (requires `EDGE_SMOKE_ACCESS_TOKEN`)
 
 ### 1.4 Edge Function Invocation Standard
 - ✅ Use the shared `callEdge(path, init, options?)` helper from `src/lib/supabase` for every Supabase Edge request.
@@ -271,6 +272,12 @@ npm run test:unit
 
 # Integration Tests
 npm run test:integration
+
+# Edge smoke (staging/preview)
+EDGE_SMOKE_ACCESS_TOKEN=<user-jwt> \
+SUPABASE_URL=https://wnnjeqheqxxyrgsjmygy.supabase.co \
+SUPABASE_ANON_KEY=<anon-key> \
+npx tsx scripts/agent-eval-smoke.ts
 
 # E2E Tests
 npm run test:e2e

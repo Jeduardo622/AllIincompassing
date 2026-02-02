@@ -97,9 +97,19 @@ const DISALLOWED_PATTERNS: Array<{ pattern: RegExp; reason: GuardrailAudit['reas
     description: 'prompt_injection',
   },
   {
+    pattern: /\b(system|developer)\s*(prompt|message)\b/i,
+    reason: 'prompt_blocked',
+    description: 'system_prompt_exfiltration',
+  },
+  {
     pattern: /export (?:all )?(?:client|patient) data/i,
     reason: 'prompt_blocked',
     description: 'data_exfiltration',
+  },
+  {
+    pattern: /\b(show|print|reveal)\s+(?:all\s+)?(secrets?|api keys?|tokens?)\b/i,
+    reason: 'prompt_blocked',
+    description: 'secret_exfiltration',
   },
   {
     pattern: /\b(?:drop|truncate)\s+(?:table|schema)/i,
@@ -110,6 +120,11 @@ const DISALLOWED_PATTERNS: Array<{ pattern: RegExp; reason: GuardrailAudit['reas
     pattern: /\b(?:disable|bypass)\s+(?:guardrail|safety)/i,
     reason: 'prompt_blocked',
     description: 'guardrail_bypass',
+  },
+  {
+    pattern: /\bcall\s+tool\b|\bforce\s+tool\b/i,
+    reason: 'prompt_blocked',
+    description: 'tool_override',
   },
   {
     pattern: /\bssn\b|social security number/i,

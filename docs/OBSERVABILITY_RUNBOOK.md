@@ -29,6 +29,11 @@ This runbook defines production monitoring signals, initial SLO thresholds, and 
 - **Replay hooks**: traces capture sanitized inputs + tool call payloads in `replay_payload` for controlled replays.
 - **Expected steps**: `request.received`, `execution.gate.allowed|denied`, `llm.response.received`, `tool.execution.allowed|blocked`, `response.sent`.
 
+## Deterministic replay tooling
+- **Replay script**: `npx tsx scripts/agent-replay.ts --correlation-id <id> --seed <int>`
+- **Auth**: requires `EDGE_REPLAY_ACCESS_TOKEN` (admin JWT), plus `SUPABASE_URL` + `SUPABASE_ANON_KEY`.
+- **Seeded runs**: pass `--seed` to re-run with a fixed LLM seed (logged in trace payloads).
+
 ## Error taxonomy + retry policy
 - **Taxonomy table**: `public.error_taxonomy` defines error `code`, `category`, `severity`, `retryable`, and `http_status`.
 - **Edge responses**: `{ requestId, code, message, classification }` where `classification` mirrors taxonomy.

@@ -83,6 +83,7 @@ const AgentRequestSchema = z.object({
       url: z.string().url().max(2048).optional(),
       userAgent: z.string().max(512).optional(),
       conversationId: UuidSchema.optional(),
+      replaySeed: z.number().int().nonnegative().max(1_000_000_000).optional(),
       actor: z
         .object({
           id: UuidSchema.optional(),
@@ -751,9 +752,14 @@ async function processOptimizedMessage(
     const allowedToolSchemas = executionGate.killSwitchEnabled
       ? []
       : selectToolSchemas(executionGate.allowedTools);
+    const replaySeed =
+      typeof (context as any).replaySeed === 'number'
+        ? (context as any).replaySeed
+        : undefined;
 
     const completion = await openai.chat.completions.create({
       ...OPTIMIZED_AI_CONFIG as any,
+      ...(replaySeed !== undefined ? { seed: replaySeed } : {}),
       messages: [
         { role: 'system', content: OPTIMIZED_SYSTEM_PROMPT },
         { role: 'system', content: contextPrompt },
@@ -771,6 +777,7 @@ async function processOptimizedMessage(
         responseTimeMs: responseTime,
         toolCallCount: responseMessage.tool_calls?.length ?? 0,
         tokenUsage: (completion as any).usage ?? null,
+        replaySeed: replaySeed ?? null,
       },
     });
 

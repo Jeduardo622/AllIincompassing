@@ -15,6 +15,28 @@
 6. For agent endpoints, enforce tool permissions server-side (role allowlist + execution gate) and trace decisions with correlation IDs.  
 7. Enforce injection resilience: validate inputs (length/format), sanitize prompt/context, and block known prompt-injection patterns.  
 
+#### Long-Term Memory Governance & Retention
+- **Scope**: `chat_history`, `conversations`, `ai_cache`, `ai_response_cache`, `ai_processing_logs`.
+- **Retention windows**:
+  - Chat history/conversations: 90 days (short-term memory, user-visible).
+  - AI cache/response cache: 7–30 days (performance optimization only).
+  - AI processing logs: 30–90 days (operational telemetry, admin/monitoring only).
+- **Data minimization**: Avoid storing PHI beyond required identifiers; redact sensitive fields in logs; prefer metadata over full payloads.
+- **Ownership**: Platform owns defaults; changes require approval from product + security leads.
+
+#### Manual Cleanup Runbook (Docs-only)
+- **Chat history**:
+  - `delete from chat_history where created_at < now() - interval '90 days';`
+  - `delete from conversations where created_at < now() - interval '90 days';`
+- **AI cache**:
+  - `delete from ai_cache where created_at < now() - interval '30 days';`
+  - `delete from ai_response_cache where expires_at < now();`
+- **AI processing logs**:
+  - `delete from ai_processing_logs where created_at < now() - interval '90 days';`
+- **Audit checks**:
+  - `select count(*) from chat_history where created_at < now() - interval '90 days';`
+  - `select count(*) from ai_cache where created_at < now() - interval '30 days';`
+
 #### Verification Checklist
 - `npm run validate:tenant` passes locally.  
 - `npm run lint`, `npm run typecheck`, and `npm test` (or their CI equivalents) succeed.  

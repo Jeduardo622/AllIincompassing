@@ -79,8 +79,8 @@
 - Strengthen prompt injection and policy enforcement (edge + frontend validation).
  
  ### Medium Priority
- - Long-term memory governance and retention policy.
- - Deterministic replay tooling (seeded runs, trace IDs).
+- Long-term memory governance and retention policy (defined in tenant isolation runbook).
+- Deterministic replay tooling (seeded runs, trace IDs) — initial replay script in observability runbook.
  
  ### Nice-to-have
  - Multi-agent orchestration where workflows require delegation.

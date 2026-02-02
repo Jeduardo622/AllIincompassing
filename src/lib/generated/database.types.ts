@@ -121,6 +121,117 @@ export type Database = {
           },
         ]
       }
+      agent_execution_traces: {
+        Row: {
+          conversation_id: string | null
+          correlation_id: string
+          created_at: string
+          id: string
+          organization_id: string | null
+          payload: Json | null
+          replay_payload: Json | null
+          request_id: string
+          status: string
+          step_index: number
+          step_name: string
+          user_id: string | null
+        }
+        Insert: {
+          conversation_id?: string | null
+          correlation_id: string
+          created_at?: string
+          id?: string
+          organization_id?: string | null
+          payload?: Json | null
+          replay_payload?: Json | null
+          request_id: string
+          status: string
+          step_index?: number
+          step_name: string
+          user_id?: string | null
+        }
+        Update: {
+          conversation_id?: string | null
+          correlation_id?: string
+          created_at?: string
+          id?: string
+          organization_id?: string | null
+          payload?: Json | null
+          replay_payload?: Json | null
+          request_id?: string
+          status?: string
+          step_index?: number
+          step_name?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      agent_prompt_tool_versions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_current: boolean
+          metadata: Json | null
+          prompt_version: string
+          rollback_reason: string | null
+          status: string
+          tool_version: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_current?: boolean
+          metadata?: Json | null
+          prompt_version: string
+          rollback_reason?: string | null
+          status?: string
+          tool_version: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_current?: boolean
+          metadata?: Json | null
+          prompt_version?: string
+          rollback_reason?: string | null
+          status?: string
+          tool_version?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      agent_runtime_config: {
+        Row: {
+          actions_disabled: boolean
+          config_key: string
+          reason: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          actions_disabled?: boolean
+          config_key: string
+          reason?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          actions_disabled?: boolean
+          config_key?: string
+          reason?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       ai_cache: {
         Row: {
           created_at: string | null
@@ -491,17 +602,17 @@ export type Database = {
       }
       authorizations: {
         Row: {
-          authorization_number: string
+          approval_notes: string | null
           approved_at: string | null
           approved_by: string | null
-          approval_notes: string | null
+          authorization_number: string
           client_id: string
           created_at: string | null
           created_by: string
+          denial_reason: string | null
+          denied_at: string | null
           diagnosis_code: string
           diagnosis_description: string | null
-          denied_at: string | null
-          denial_reason: string | null
           documents: Json | null
           end_date: string
           id: string
@@ -515,17 +626,17 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
-          authorization_number: string
+          approval_notes?: string | null
           approved_at?: string | null
           approved_by?: string | null
-          approval_notes?: string | null
+          authorization_number: string
           client_id: string
           created_at?: string | null
           created_by: string
+          denial_reason?: string | null
+          denied_at?: string | null
           diagnosis_code: string
           diagnosis_description?: string | null
-          denied_at?: string | null
-          denial_reason?: string | null
           documents?: Json | null
           end_date: string
           id?: string
@@ -539,17 +650,17 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
-          authorization_number?: string
+          approval_notes?: string | null
           approved_at?: string | null
           approved_by?: string | null
-          approval_notes?: string | null
+          authorization_number?: string
           client_id?: string
           created_at?: string | null
           created_by?: string
+          denial_reason?: string | null
+          denied_at?: string | null
           diagnosis_code?: string
           diagnosis_description?: string | null
-          denied_at?: string | null
-          denial_reason?: string | null
           documents?: Json | null
           end_date?: string
           id?: string
@@ -1758,6 +1869,39 @@ export type Database = {
           },
         ]
       }
+      error_taxonomy: {
+        Row: {
+          category: string
+          code: string
+          description: string
+          http_status: number
+          retryable: boolean
+          severity: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          category: string
+          code: string
+          description: string
+          http_status: number
+          retryable?: boolean
+          severity: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          category?: string
+          code?: string
+          description?: string
+          http_status?: number
+          retryable?: boolean
+          severity?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       feature_flag_audit_logs: {
         Row: {
           action: string
@@ -2943,6 +3087,218 @@ export type Database = {
         }
         Relationships: []
       }
+      service_contract_rates: {
+        Row: {
+          contract_id: string
+          cpt_code_id: string
+          created_at: string
+          id: string
+          modifiers: string[]
+          organization_id: string
+          rate: number
+          updated_at: string
+        }
+        Insert: {
+          contract_id: string
+          cpt_code_id: string
+          created_at?: string
+          id?: string
+          modifiers?: string[]
+          organization_id: string
+          rate: number
+          updated_at?: string
+        }
+        Update: {
+          contract_id?: string
+          cpt_code_id?: string
+          created_at?: string
+          id?: string
+          modifiers?: string[]
+          organization_id?: string
+          rate?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_contract_rates_contract_fk"
+            columns: ["contract_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "service_contracts"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "service_contract_rates_cpt_code_id_fkey"
+            columns: ["cpt_code_id"]
+            isOneToOne: false
+            referencedRelation: "cpt_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_contract_rates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_contract_versions: {
+        Row: {
+          contract_id: string
+          file_url: string | null
+          id: string
+          organization_id: string
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          contract_id: string
+          file_url?: string | null
+          id?: string
+          organization_id: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          contract_id?: string
+          file_url?: string | null
+          id?: string
+          organization_id?: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_contract_versions_contract_fk"
+            columns: ["contract_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "service_contracts"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "service_contract_versions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_contract_versions_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_contract_versions_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      service_contracts: {
+        Row: {
+          client_id: string
+          confidence_score: number | null
+          created_at: string
+          created_by: string | null
+          effective_date: string
+          file_url: string | null
+          id: string
+          insurance_provider_id: string | null
+          organization_id: string
+          payer_name: string
+          reimbursement_method: string
+          termination_date: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          client_id: string
+          confidence_score?: number | null
+          created_at?: string
+          created_by?: string | null
+          effective_date: string
+          file_url?: string | null
+          id?: string
+          insurance_provider_id?: string | null
+          organization_id: string
+          payer_name: string
+          reimbursement_method?: string
+          termination_date?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          client_id?: string
+          confidence_score?: number | null
+          created_at?: string
+          created_by?: string | null
+          effective_date?: string
+          file_url?: string | null
+          id?: string
+          insurance_provider_id?: string | null
+          organization_id?: string
+          payer_name?: string
+          reimbursement_method?: string
+          termination_date?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_contracts_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_contracts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_contracts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "service_contracts_insurance_provider_id_fkey"
+            columns: ["insurance_provider_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_providers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_contracts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_contracts_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_contracts_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       service_lines: {
         Row: {
           available_locations: string[] | null
@@ -3648,7 +4004,7 @@ export type Database = {
           specialties: string[] | null
           staff_id: string | null
           state: string | null
-          status: string | null
+          status: string
           street: string | null
           supervisor: string | null
           taxonomy_code: string | null
@@ -3691,7 +4047,7 @@ export type Database = {
           specialties?: string[] | null
           staff_id?: string | null
           state?: string | null
-          status?: string | null
+          status?: string
           street?: string | null
           supervisor?: string | null
           taxonomy_code?: string | null
@@ -3734,7 +4090,7 @@ export type Database = {
           specialties?: string[] | null
           staff_id?: string | null
           state?: string | null
-          status?: string | null
+          status?: string
           street?: string | null
           supervisor?: string | null
           taxonomy_code?: string | null
@@ -4235,10 +4591,15 @@ export type Database = {
           p_status?: string
         }
         Returns: {
+          approval_notes: string | null
+          approved_at: string | null
+          approved_by: string | null
           authorization_number: string
           client_id: string
           created_at: string | null
           created_by: string
+          denial_reason: string | null
+          denied_at: string | null
           diagnosis_code: string
           diagnosis_description: string | null
           documents: Json | null
@@ -4335,6 +4696,7 @@ export type Database = {
       create_super_admin: { Args: { user_email: string }; Returns: undefined }
       current_org_id: { Args: never; Returns: string }
       current_user_is_super_admin: { Args: never; Returns: boolean }
+      current_user_organization_id: { Args: never; Returns: string }
       detect_scheduling_conflicts: {
         Args: {
           p_end_date: string
@@ -4784,6 +5146,24 @@ export type Database = {
           metadata: Json
         }[]
       }
+      guardian_link_queue_admin_view: {
+        Args: { p_organization_id: string; p_status?: string }
+        Returns: {
+          approved_client_ids: string[]
+          created_at: string
+          guardian_email: string
+          guardian_id: string
+          id: string
+          invite_token: string
+          metadata: Json
+          organization_id: string
+          processed_at: string
+          processed_by: string
+          requested_client_ids: string[]
+          status: string
+          updated_at: string
+        }[]
+      }
       has_care_role: { Args: never; Returns: boolean }
       has_role: { Args: { target_role: string }; Returns: boolean }
       insert_session_with_billing: {
@@ -4942,10 +5322,15 @@ export type Database = {
       update_authorization_documents: {
         Args: { p_authorization_id: string; p_documents: Json }
         Returns: {
+          approval_notes: string | null
+          approved_at: string | null
+          approved_by: string | null
           authorization_number: string
           client_id: string
           created_at: string | null
           created_by: string
+          denial_reason: string | null
+          denied_at: string | null
           diagnosis_code: string
           diagnosis_description: string | null
           documents: Json | null
@@ -4984,10 +5369,15 @@ export type Database = {
           p_status: string
         }
         Returns: {
+          approval_notes: string | null
+          approved_at: string | null
+          approved_by: string | null
           authorization_number: string
           client_id: string
           created_at: string | null
           created_by: string
+          denial_reason: string | null
+          denied_at: string | null
           diagnosis_code: string
           diagnosis_description: string | null
           documents: Json | null
@@ -5020,6 +5410,16 @@ export type Database = {
       user_has_role:
         | { Args: { role_name: string }; Returns: boolean }
         | { Args: { role_name: string; user_uuid?: string }; Returns: boolean }
+      user_has_role_for_org: {
+        Args: {
+          role_name: string
+          target_client_id?: string
+          target_organization_id?: string
+          target_session_id?: string
+          target_therapist_id?: string
+        }
+        Returns: boolean
+      }
       validate_feature_flag_metadata: { Args: { obj: Json }; Returns: boolean }
       validate_organization_metadata: { Args: { obj: Json }; Returns: boolean }
       validate_performance_improvements: { Args: never; Returns: Json }

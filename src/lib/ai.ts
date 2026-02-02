@@ -1,6 +1,7 @@
 // import { supabase } from './supabase';
 import { errorTracker } from './errorTracking';
 import { buildSupabaseEdgeUrl, getSupabaseAnonKey } from './runtimeConfig';
+import { fetchWithRetry } from './retry';
 import {
   evaluateAssistantGuardrails,
   AssistantGuardrailError,
@@ -20,7 +21,16 @@ const ensureAccessToken = (auth: EdgeAuthContext): string => {
   return token;
 };
 
-const buildEdgeRequestInit = (payload: unknown, auth: EdgeAuthContext): RequestInit => {
+type EdgeTraceHeaders = {
+  requestId?: string;
+  correlationId?: string;
+};
+
+const buildEdgeRequestInit = (
+  payload: unknown,
+  auth: EdgeAuthContext,
+  trace?: EdgeTraceHeaders
+): RequestInit => {
   const accessToken = ensureAccessToken(auth);
 
   return {
@@ -29,6 +39,8 @@ const buildEdgeRequestInit = (payload: unknown, auth: EdgeAuthContext): RequestI
       'Content-Type': 'application/json',
       apikey: getSupabaseAnonKey(),
       Authorization: `Bearer ${accessToken}`,
+      ...(trace?.requestId ? { 'x-request-id': trace.requestId } : {}),
+      ...(trace?.correlationId ? { 'x-correlation-id': trace.correlationId } : {}),
     },
     body: JSON.stringify(payload),
   };
@@ -58,6 +70,14 @@ export async function processMessage(
   context: AssistantRequestContext,
   auth: EdgeAuthContext
 ): Promise<AIResponse> {
+  if (message.length > 4000) {
+    throw new Error('Message exceeds maximum length');
+  }
+  const requestId =
+    typeof globalThis.crypto?.randomUUID === 'function'
+      ? globalThis.crypto.randomUUID()
+      : `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const correlationId = context.conversationId ?? requestId;
   const guardrailEvaluation = evaluateAssistantGuardrails({
     message,
     actor: context.actor,
@@ -86,7 +106,17 @@ export async function processMessage(
   try {
     // First try the optimized ai-agent endpoint
     const apiUrl = buildSupabaseEdgeUrl('ai-agent-optimized');
-    const response = await fetch(apiUrl, buildEdgeRequestInit(requestPayload, auth));
+    const response = await fetchWithRetry(
+      apiUrl,
+      buildEdgeRequestInit(requestPayload, auth, { requestId, correlationId }),
+      {
+        maxAttempts: 2,
+        baseDelayMs: 300,
+        maxDelayMs: 1500,
+        retryOnStatus: [429, 503, 504],
+        retryOnNetworkError: true,
+      }
+    );
 
     if (!response.ok) {
       console.warn(`Optimized AI agent failed with status: ${response.status}, falling back to process-message`);
@@ -95,9 +125,16 @@ export async function processMessage(
       }
       // Fall back to the original process-message function
       const fallbackUrl = buildSupabaseEdgeUrl('process-message');
-      const fallbackResponse = await fetch(
+      const fallbackResponse = await fetchWithRetry(
         fallbackUrl,
-        buildEdgeRequestInit(requestPayload, auth)
+        buildEdgeRequestInit(requestPayload, auth, { requestId, correlationId }),
+        {
+          maxAttempts: 2,
+          baseDelayMs: 300,
+          maxDelayMs: 1500,
+          retryOnStatus: [429, 503, 504],
+          retryOnNetworkError: true,
+        }
       );
       
       if (!fallbackResponse.ok) {
@@ -118,7 +155,7 @@ export async function processMessage(
       console.error('Error details:', error.stack);
       errorTracker.trackAIError(error, {
         functionCalled: 'processMessage',
-        errorType: 'network_error',
+        errorType: 'upstream_unavailable',
       });
     }
     return {

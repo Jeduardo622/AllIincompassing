@@ -23,6 +23,22 @@ This runbook defines production monitoring signals, initial SLO thresholds, and 
    - Signal: `npm run db:check:performance` advisory output.
    - Threshold (initial): no critical advisories; slow query warnings tracked weekly.
 
+## Agent trace pipeline
+- **Trace store**: `public.agent_execution_traces` (admin/monitoring read-only via RLS).
+- **Correlation IDs**: edge functions emit `x-request-id` and `x-correlation-id`; use these to join step-level traces across retries or fallbacks.
+- **Replay hooks**: traces capture sanitized inputs + tool call payloads in `replay_payload` for controlled replays.
+- **Expected steps**: `request.received`, `execution.gate.allowed|denied`, `llm.response.received`, `tool.execution.allowed|blocked`, `response.sent`.
+
+## Error taxonomy + retry policy
+- **Taxonomy table**: `public.error_taxonomy` defines error `code`, `category`, `severity`, `retryable`, and `http_status`.
+- **Edge responses**: `{ requestId, code, message, classification }` where `classification` mirrors taxonomy.
+- **Retry policy**:
+  - Retryable: `rate_limited`, `upstream_timeout`, `upstream_unavailable`, `upstream_error`
+  - Non-retryable: `validation_error`, `unauthorized`, `forbidden`, `not_found`, `internal_error`
+  - Backoff: exponential with jitter, capped at 2s for frontend edge calls; 3 attempts for upstream (OpenAI) calls.
+- **Query**:
+  - `select * from error_taxonomy order by severity desc;`
+
 ## Slack alerting (webhook-only)
 - Required env: `SLACK_WEBHOOK_URL`
 - Optional env: `SLACK_ALERTS_CHANNEL` (defaults to `#deployments`)

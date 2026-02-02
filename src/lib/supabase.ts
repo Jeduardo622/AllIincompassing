@@ -3,6 +3,7 @@
 // Re-use the canonical client from supabaseClient.ts.
 import { supabase } from './supabaseClient';
 import { buildSupabaseEdgeUrl } from './runtimeConfig';
+import { fetchWithRetry, type RetryOptions } from './retry';
 // Re-export for modules importing from './supabase'
 export { supabase };
 
@@ -236,6 +237,7 @@ runConnectionDiagnosticsIfEnabled();
 export interface CallEdgeOptions {
   accessToken?: string;
   anonKey?: string;
+  retry?: RetryOptions;
 }
 
 // Edge Function helper - attaches user's JWT automatically
@@ -265,6 +267,9 @@ export async function callEdge(
   }
 
   const url = buildSupabaseEdgeUrl(path);
+  if (options.retry) {
+    return fetchWithRetry(url, { ...init, headers }, options.retry);
+  }
   return fetch(url, { ...init, headers });
 }
 

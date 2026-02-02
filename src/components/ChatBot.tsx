@@ -65,6 +65,10 @@ export default function ChatBot() {
     if (!input.trim() || isLoading) return;
 
     const userMessage = input.trim();
+    if (userMessage.length > 4000) {
+      showError('Message is too long. Please shorten your request.');
+      return;
+    }
     setInput("");
     setError(null);
 
@@ -83,7 +87,7 @@ export default function ChatBot() {
         const authError = new Error('Active session is required to call edge functions');
         errorTracker.trackAIError(authError, {
           functionCalled: "ChatBot_processMessage",
-          errorType: "auth_error",
+          errorType: "unauthorized",
         });
         setMessages((prev) => [
           ...prev,
@@ -102,7 +106,7 @@ export default function ChatBot() {
         const profileError = new Error('Active profile is required to use the assistant');
         errorTracker.trackAIError(profileError, {
           functionCalled: "ChatBot_processMessage",
-          errorType: "auth_error",
+          errorType: "unauthorized",
         });
         setMessages((prev) => [
           ...prev,
@@ -639,7 +643,7 @@ export default function ChatBot() {
           if (actionError instanceof Error) {
             errorTracker.trackAIError(actionError, {
               functionCalled: `ChatBot_${response.action?.type}`,
-              errorType: "function_error",
+              errorType: "upstream_error",
             });
           }
 
@@ -670,7 +674,7 @@ export default function ChatBot() {
 
         errorTracker.trackAIError(error, {
           functionCalled: "ChatBot_processMessage",
-          errorType: "guardrail_violation",
+          errorType: "forbidden",
           audit: error.audit as unknown as Record<string, unknown>,
         });
 
@@ -700,7 +704,7 @@ export default function ChatBot() {
       if (error instanceof Error) {
         errorTracker.trackAIError(error, {
           functionCalled: "ChatBot_processMessage",
-          errorType: "invalid_response",
+          errorType: "internal_error",
         });
       }
 

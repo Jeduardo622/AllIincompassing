@@ -95,7 +95,7 @@ describe('ErrorTracker PHI redaction', () => {
         tokenUsage: 123,
         responseTime: 456,
         cacheAttempted: true,
-        errorType: 'function_error'
+      errorType: 'upstream_error'
       },
       {
         component: 'AIService',

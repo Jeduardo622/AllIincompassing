@@ -1,5 +1,14 @@
 import { z } from 'npm:zod@3.23.8';
 
+export type ErrorSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+export type ErrorClassification = {
+  category: string;
+  severity: ErrorSeverity;
+  retryable: boolean;
+  httpStatus: number;
+};
+
 export interface ErrorEnvelopeArgs {
   requestId: string;
   code: string;
@@ -8,10 +17,28 @@ export interface ErrorEnvelopeArgs {
   headers?: Record<string, string>;
 }
 
-export function errorEnvelope({ requestId, code, message, status = 400, headers = {} }: ErrorEnvelopeArgs): Response {
-  const body = { requestId, code, message };
+const ERROR_TAXONOMY: Record<string, ErrorClassification> = {
+  validation_error: { category: 'validation', severity: 'low', retryable: false, httpStatus: 400 },
+  unauthorized: { category: 'auth', severity: 'medium', retryable: false, httpStatus: 401 },
+  forbidden: { category: 'auth', severity: 'medium', retryable: false, httpStatus: 403 },
+  not_found: { category: 'request', severity: 'low', retryable: false, httpStatus: 404 },
+  rate_limited: { category: 'rate_limit', severity: 'high', retryable: true, httpStatus: 429 },
+  upstream_timeout: { category: 'upstream', severity: 'high', retryable: true, httpStatus: 504 },
+  upstream_unavailable: { category: 'upstream', severity: 'high', retryable: true, httpStatus: 503 },
+  upstream_error: { category: 'upstream', severity: 'medium', retryable: true, httpStatus: 502 },
+  internal_error: { category: 'internal', severity: 'critical', retryable: false, httpStatus: 500 },
+};
+
+export const getErrorClassification = (code: string): ErrorClassification => (
+  ERROR_TAXONOMY[code] ?? ERROR_TAXONOMY.internal_error
+);
+
+export function errorEnvelope({ requestId, code, message, status, headers = {} }: ErrorEnvelopeArgs): Response {
+  const classification = getErrorClassification(code);
+  const resolvedStatus = status ?? classification.httpStatus ?? 400;
+  const body = { requestId, code, message, classification };
   return new Response(JSON.stringify(body), {
-    status,
+    status: resolvedStatus,
     headers: {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',

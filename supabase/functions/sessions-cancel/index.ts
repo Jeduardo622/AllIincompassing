@@ -191,8 +191,10 @@ async function handleHoldRelease(
 ) {
   logger.info("hold.release.requested", { holdKey });
 
-  const { data: hold, error } = await orgScopedQuery(db, "session_holds", orgId)
+  const { data: hold, error } = await supabaseAdmin
+    .from("session_holds")
     .select("id, session_id, therapist_id, client_id, start_time, end_time, expires_at")
+    .eq("organization_id", orgId)
     .eq("hold_key", holdKey)
     .maybeSingle();
   increment("org_scoped_query_total", {
@@ -230,7 +232,7 @@ async function handleHoldRelease(
     throw new ForbiddenError("Forbidden");
   }
 
-  const { data: deleted, error: deleteError } = await db
+  const { data: deleted, error: deleteError } = await supabaseAdmin
     .from("session_holds")
     .delete()
     .eq("id", hold.id)

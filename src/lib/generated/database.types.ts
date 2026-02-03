@@ -3559,7 +3559,7 @@ export type Database = {
           created_at?: string
           end_time: string
           expires_at?: string
-          hold_key: string
+          hold_key?: string
           id?: string
           organization_id: string
           session_id?: string | null

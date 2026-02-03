@@ -11,6 +11,7 @@ import { getUserOrThrow } from "../_shared/auth.ts";
 import { evaluateTherapistAuthorization } from "../_shared/authorization.ts";
 import { recordSessionAuditEvent } from "../_shared/audit.ts";
 import { resolveSchedulingRetryAfter } from "../_shared/retry-after.ts";
+import { orchestrateScheduling } from "../_shared/scheduling-orchestrator.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -254,11 +255,30 @@ Deno.serve(async (req) => {
           }
         }
 
+        const holdContext = holdAuthorizationMap.get(occurrence.hold_key);
+        const orchestration = await orchestrateScheduling({
+          req,
+          workflow: "confirm",
+          actorId: user.id,
+          request: {
+            therapistId: holdContext?.therapist_id ?? null,
+            clientId: holdContext?.client_id ?? null,
+            startTime: holdContext?.start_time ?? null,
+            endTime: holdContext?.end_time ?? null,
+            holdKey: occurrence.hold_key,
+            idempotencyKey: normalizedKey,
+            conflictCode: conflictCode ?? null,
+            retryAfter: retryAfterIso,
+          },
+          authorization: { ok: true },
+        });
+
         return respond({
           success: false,
           error: data?.error_message ?? "Unable to confirm session",
           code: data?.error_code,
           retryAfter: retryAfterIso,
+          orchestration,
         }, status, headers);
       }
 

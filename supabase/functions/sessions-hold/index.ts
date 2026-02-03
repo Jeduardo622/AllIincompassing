@@ -11,6 +11,7 @@ import { getUserOrThrow } from "../_shared/auth.ts";
 import { evaluateTherapistAuthorization } from "../_shared/authorization.ts";
 import { recordSessionAuditEvent } from "../_shared/audit.ts";
 import { resolveSchedulingRetryAfter } from "../_shared/retry-after.ts";
+import { orchestrateScheduling } from "../_shared/scheduling-orchestrator.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -216,11 +217,30 @@ Deno.serve(async (req) => {
           }
         }
 
+        const orchestration = await orchestrateScheduling({
+          req,
+          workflow: "hold",
+          actorId: user.id,
+          request: {
+            therapistId: payload.therapist_id,
+            clientId: payload.client_id,
+            startTime: occurrence.start_time,
+            endTime: occurrence.end_time,
+            timeZone: occurrence.time_zone ?? payload.time_zone ?? null,
+            sessionId: payload.session_id ?? null,
+            idempotencyKey: normalizedKey,
+            conflictCode: conflictCode ?? null,
+            retryAfter: retryAfterIso,
+          },
+          authorization: { ok: authorization.ok },
+        });
+
         return respond({
           success: false,
           error: data?.error_message ?? "Unable to hold session",
           code: data?.error_code,
           retryAfter: retryAfterIso,
+          orchestration,
         }, status, headers);
       }
 

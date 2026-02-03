@@ -44,3 +44,8 @@ Orchestration always returns a `rollbackPlan` with the next safe step:
 ## Error handling
 - Orchestration failures do not block core scheduling actions.
 - Errors are returned as `orchestration.status = error` and logged in audit records.
+
+## Operations
+- Deploy edge functions: `sessions-hold`, `sessions-confirm`, `sessions-cancel`.
+- Apply migration: `20260202120000_scheduling_orchestration_runs.sql`.
+- Regenerate Supabase types after schema updates: `supabase gen types typescript --project-id wnnjeqheqxxyrgsjmygy --schema public > src/lib/generated/database.types.ts`.

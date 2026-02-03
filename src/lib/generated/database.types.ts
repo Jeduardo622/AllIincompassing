@@ -3012,6 +3012,45 @@ export type Database = {
         }
         Relationships: []
       }
+      scheduling_orchestration_runs: {
+        Row: {
+          correlation_id: string
+          created_at: string
+          id: string
+          inputs: Json | null
+          organization_id: string | null
+          outputs: Json | null
+          request_id: string
+          rollback_plan: Json | null
+          status: string
+          workflow: string
+        }
+        Insert: {
+          correlation_id: string
+          created_at?: string
+          id?: string
+          inputs?: Json | null
+          organization_id?: string | null
+          outputs?: Json | null
+          request_id: string
+          rollback_plan?: Json | null
+          status: string
+          workflow: string
+        }
+        Update: {
+          correlation_id?: string
+          created_at?: string
+          id?: string
+          inputs?: Json | null
+          organization_id?: string | null
+          outputs?: Json | null
+          request_id?: string
+          rollback_plan?: Json | null
+          status?: string
+          workflow?: string
+        }
+        Relationships: []
+      }
       scheduling_preferences: {
         Row: {
           avoid_highways: boolean | null

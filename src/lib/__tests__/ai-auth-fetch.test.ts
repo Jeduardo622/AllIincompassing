@@ -91,7 +91,7 @@ describe('AI edge function authentication', () => {
     expect(result.response).toBe('Hello there');
   });
 
-  it('retries with the legacy endpoint preserving headers', async () => {
+  it('retries with the optimized endpoint preserving headers', async () => {
     fetchMock
       .mockResolvedValueOnce(buildFetchResponse({}, false, 503))
       .mockResolvedValueOnce(
@@ -111,7 +111,7 @@ describe('AI edge function authentication', () => {
       .headers as Record<string, string>;
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      `${edgeBase}process-message`,
+      `${edgeBase}ai-agent-optimized`,
       expect.objectContaining({
         headers: expect.objectContaining({
           apikey: anonKey,

@@ -17,6 +17,7 @@
  - Tenant isolation enforced via RLS with organization-scoped access patterns.
  - Observability runbooks and structured logging in place.
  - AI transcription and session note generation documented with testing plan.
+- Scheduling delegation now includes an auditable orchestration layer for holds/conflicts/cancellations (`docs/SCHEDULING_ORCHESTRATION.md`).
  
  ## Architectural Targets
  - Bounded, controllable agent behavior with server-side tool enforcement.
@@ -83,7 +84,7 @@
 - Deterministic replay tooling (seeded runs, trace IDs) — initial replay script in observability runbook.
  
  ### Nice-to-have
- - Multi-agent orchestration where workflows require delegation.
+- Multi-agent orchestration where workflows require delegation (scheduling orchestration shipped; see `docs/SCHEDULING_ORCHESTRATION.md`).
  
  ## Acceptance Criteria (Testable)
  - Given an agent attempts a tool action, when the server denies it, then the action is blocked and audited.

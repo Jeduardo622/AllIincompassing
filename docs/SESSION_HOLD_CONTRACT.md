@@ -7,6 +7,7 @@
 ## Idempotency & retry expectations
 - Hold, confirm, and cancel requests already accept an `Idempotency-Key` header, but retries are still caller-managed. The booking service should propagate a single idempotency key to both the hold and confirm calls so that network retries do not duplicate sessions.【F:src/server/bookSession.ts†L45-L74】【F:src/server/__tests__/bookSession.test.ts†L86-L131】
 - Confirmation failures now trigger a deterministic cancel idempotency key derived from either the booking idempotency token or the hold key (`cancel:${idempotencyKey ?? holdKey}`) so that cleanup retries cannot re-enqueue duplicate releases.【F:src/server/bookSession.ts†L344-L353】【F:src/server/__tests__/bookSession.test.ts†L226-L252】
+- Conflict responses now include `orchestration` hints with AI-suggested alternatives and rollback guidance for deterministic retries (`docs/SCHEDULING_ORCHESTRATION.md`).
 
 ## Proposed hold → confirm contract
 1. **Hold request**: clients send therapist/client IDs, UTC start/end timestamps, optional session ID, and offsets/time-zone context. The edge function returns `{ holdKey, holdId, expiresAt }` and echoes the idempotency key in the response headers for logging.【F:src/lib/sessionHolds.ts†L21-L76】

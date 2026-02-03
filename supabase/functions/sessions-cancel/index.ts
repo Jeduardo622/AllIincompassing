@@ -14,6 +14,7 @@ import {
 import { getLogger, type Logger } from "../_shared/logging.ts";
 import { increment } from "../_shared/metrics.ts";
 import { recordSessionAuditEvent } from "../_shared/audit.ts";
+import { orchestrateScheduling } from "../_shared/scheduling-orchestrator.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
 
 const corsHeaders = {
@@ -180,6 +181,7 @@ async function ensureRoleForCancellation(
 }
 
 async function handleHoldRelease(
+  req: Request,
   db: SupabaseClient,
   orgId: string,
   holdKey: string,
@@ -265,9 +267,25 @@ async function handleHoldRelease(
     mode: "hold-release",
   });
 
+  const orchestration = await orchestrateScheduling({
+    req,
+    workflow: "cancel",
+    actorId: userId,
+    actorRole: role,
+    request: {
+      therapistId: releasedHold.therapist_id,
+      clientId: releasedHold.client_id,
+      startTime: releasedHold.start_time,
+      endTime: releasedHold.end_time,
+      holdKey,
+    },
+    authorization: { ok: true },
+  });
+
   return respondSuccess({
     released: true,
     hold: releasedHold,
+    orchestration,
   });
 }
 
@@ -506,7 +524,15 @@ Deno.serve(async (req) => {
 
     let response: Response;
     if (payload.holdKey) {
-      response = await handleHoldRelease(db, orgId, payload.holdKey, user.id, role, activeLogger);
+      response = await handleHoldRelease(
+        req,
+        db,
+        orgId,
+        payload.holdKey,
+        user.id,
+        role,
+        activeLogger,
+      );
     } else {
       response = await handleSessionCancellation(
         db,

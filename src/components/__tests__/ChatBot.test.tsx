@@ -16,6 +16,8 @@ const defaultScheduleAction = {
     data: {
       therapist_id: "t1",
       client_id: "c1",
+      program_id: "program-1",
+      goal_id: "goal-1",
       start_time: "2025-03-18T10:00:00Z",
       end_time: "2025-03-18T11:00:00Z",
       location_type: "in_clinic",

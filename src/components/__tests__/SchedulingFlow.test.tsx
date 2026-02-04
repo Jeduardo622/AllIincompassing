@@ -107,6 +107,8 @@ const mockExistingSessions = [
     id: 'session-1',
     client_id: 'client-1',
     therapist_id: 'therapist-1',
+    program_id: 'program-1',
+    goal_id: 'goal-1',
     start_time: '2024-03-18T14:00:00Z',
     end_time: '2024-03-18T15:00:00Z',
     status: 'scheduled' as const,
@@ -296,6 +298,12 @@ describe('Scheduling Flow - Client with Therapist', () => {
 
       const clientSelect = screen.getByRole('combobox', { name: /client/i });
       await userEvent.selectOptions(clientSelect, 'client-2');
+
+      const programSelect = screen.getByRole('combobox', { name: /program/i });
+      await userEvent.selectOptions(programSelect, 'program-1');
+
+      const goalSelect = screen.getByRole('combobox', { name: /primary goal/i });
+      await userEvent.selectOptions(goalSelect, 'goal-1');
 
       const notesInput = screen.getByRole('textbox', { name: /notes/i });
       await userEvent.type(notesInput, 'Test session');

@@ -26,6 +26,9 @@ interface OptimizedSessionResponse {
     created_by: string | null;
     updated_at: string | null;
     updated_by: string | null;
+    program_id?: string | null;
+    goal_id?: string | null;
+    started_at?: string | null;
     therapist: { id: string; full_name: string; email: string };
     client: { id: string; full_name: string; email: string };
     authorization?: { id: string; sessions_remaining: number };
@@ -47,7 +50,7 @@ interface OptimizedSessionResponse {
 }
 
 const MAX_LIMIT = 100;
-const SESSION_SELECT = "id, start_time, end_time, status, location_type, notes, created_at, created_by, updated_at, updated_by, therapist_id, client_id, authorization_id, therapist:therapists!inner(id, full_name, email), client:clients!inner(id, full_name, email), authorization:authorizations(id, authorized_sessions, sessions_used)";
+const SESSION_SELECT = "id, start_time, end_time, status, location_type, notes, created_at, created_by, updated_at, updated_by, therapist_id, client_id, program_id, goal_id, started_at, authorization_id, therapist:therapists!inner(id, full_name, email), client:clients!inner(id, full_name, email), authorization:authorizations(id, authorized_sessions, sessions_used)";
 
 const normalizeRoles = (roleRows: unknown) => (
   Array.isArray(roleRows)
@@ -226,6 +229,9 @@ Deno.serve(async (req: Request) => {
       created_by: session.created_by ?? null,
       updated_at: session.updated_at ?? null,
       updated_by: session.updated_by ?? null,
+      program_id: session.program_id ?? null,
+      goal_id: session.goal_id ?? null,
+      started_at: session.started_at ?? null,
       therapist: session.therapist,
       client: session.client,
       authorization: session.authorization

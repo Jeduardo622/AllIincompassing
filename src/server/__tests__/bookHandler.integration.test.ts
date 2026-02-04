@@ -2,12 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as supabaseModule from "../../lib/supabase";
 import * as sessionCptPersistence from "../sessionCptPersistence";
+import * as sessionGoalsPersistence from "../sessionGoalsPersistence";
 
 const originalCallEdge = supabaseModule.callEdge;
 const callEdgeMock = vi.spyOn(supabaseModule, "callEdge");
 const persistSessionCptMetadataMock = vi
   .spyOn(sessionCptPersistence, "persistSessionCptMetadata")
   .mockResolvedValue({ entryId: "entry-id", modifierIds: [] });
+const persistSessionGoalsMock = vi
+  .spyOn(sessionGoalsPersistence, "persistSessionGoals")
+  .mockResolvedValue(undefined);
 
 const importBookHandler = async () => {
   const module = await import("../api/book");
@@ -37,6 +41,8 @@ describe("bookHandler integration", () => {
     session: {
       therapist_id: "therapist-1",
       client_id: "client-1",
+      program_id: "program-1",
+      goal_id: "goal-1",
       start_time: "2025-01-01T10:00:00Z",
       end_time: "2025-01-01T11:00:00Z",
     },
@@ -89,6 +95,8 @@ describe("bookHandler integration", () => {
               id: "session-1",
               therapist_id: payload.session.therapist_id,
               client_id: payload.session.client_id,
+              program_id: payload.session.program_id,
+              goal_id: payload.session.goal_id,
               start_time: payload.session.start_time,
               end_time: payload.session.end_time,
               status: "scheduled",
@@ -104,6 +112,8 @@ describe("bookHandler integration", () => {
                 id: "session-1",
                 therapist_id: payload.session.therapist_id,
                 client_id: payload.session.client_id,
+                program_id: payload.session.program_id,
+                goal_id: payload.session.goal_id,
                 start_time: payload.session.start_time,
                 end_time: payload.session.end_time,
                 status: "scheduled",
@@ -214,6 +224,8 @@ describe("bookHandler integration", () => {
           id: "session-1",
           therapist_id: payload.session.therapist_id,
           client_id: payload.session.client_id,
+          program_id: payload.session.program_id,
+          goal_id: payload.session.goal_id,
           start_time: payload.session.start_time,
           end_time: payload.session.end_time,
           status: "scheduled",
@@ -229,6 +241,8 @@ describe("bookHandler integration", () => {
             id: "session-1",
             therapist_id: payload.session.therapist_id,
             client_id: payload.session.client_id,
+            program_id: payload.session.program_id,
+            goal_id: payload.session.goal_id,
             start_time: payload.session.start_time,
             end_time: payload.session.end_time,
             status: "scheduled",

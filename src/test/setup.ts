@@ -1070,6 +1070,44 @@ export const server = setupServer(
     });
   }),
   // Legacy REST endpoints for backward compatibility
+  http.get('*/rest/v1/programs*', ({ request }) => {
+    const url = new URL(request.url);
+    const clientId = parseEqFilter(url.searchParams.get('client_id')) ?? 'client-1';
+    return HttpResponse.json([
+      {
+        id: 'program-1',
+        organization_id: ORG_A_PLACEHOLDER_ID,
+        client_id: clientId,
+        name: 'Default Program',
+        description: 'Default program for tests',
+        status: 'active',
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ]);
+  }),
+  http.get('*/rest/v1/goals*', ({ request }) => {
+    const url = new URL(request.url);
+    const programId = parseEqFilter(url.searchParams.get('program_id')) ?? 'program-1';
+    const clientId = parseEqFilter(url.searchParams.get('client_id')) ?? 'client-1';
+    return HttpResponse.json([
+      {
+        id: 'goal-1',
+        organization_id: ORG_A_PLACEHOLDER_ID,
+        client_id: clientId,
+        program_id: programId,
+        title: 'Default Goal',
+        description: 'Default goal for tests',
+        original_text: 'Default clinical wording',
+        status: 'active',
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ]);
+  }),
+  http.get('*/rest/v1/session_goals*', () => {
+    return HttpResponse.json([]);
+  }),
   http.get('*/rest/v1/sessions*', () => {
     return HttpResponse.json([
       {

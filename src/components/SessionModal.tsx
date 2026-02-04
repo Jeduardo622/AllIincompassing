@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useForm } from 'react-hook-form';
+import { useQuery } from '@tanstack/react-query';
 import { format, addHours, addMinutes, parseISO } from 'date-fns';
 import {
   toZonedTime as utcToZonedTime,
@@ -9,10 +10,14 @@ import {
   X, AlertCircle, Calendar, Clock, User, 
   FileText, CheckCircle2, AlertTriangle 
 } from 'lucide-react';
-import type { Session, Therapist, Client } from '../types';
+import type { Session, Therapist, Client, Goal, Program } from '../types';
 import { checkSchedulingConflicts, suggestAlternativeTimes, type Conflict, type AlternativeTime } from '../lib/conflicts';
 import { logger } from '../lib/logger/logger';
 import AlternativeTimes from './AlternativeTimes';
+import { supabase } from '../lib/supabase';
+import { useActiveOrganizationId } from '../lib/organization';
+import { callApi } from '../lib/api';
+import { showError, showSuccess } from '../lib/toast';
 
 interface SessionModalProps {
   isOpen: boolean;
@@ -50,6 +55,7 @@ export default function SessionModal({
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [alternativeTimes, setAlternativeTimes] = useState<AlternativeTime[]>([]);
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
+  const activeOrganizationId = useActiveOrganizationId();
 
   const resolvedTimeZone = useMemo(() => {
     if (timeZone && timeZone.length > 0) {
@@ -120,6 +126,9 @@ export default function SessionModal({
     defaultValues: {
       therapist_id: session?.therapist_id || defaultTherapistId || '',
       client_id: session?.client_id || defaultClientId || '',
+      program_id: session?.program_id || '',
+      goal_id: session?.goal_id || '',
+      goal_ids: session?.goal_ids || [],
       start_time: getDefaultStartTime(),
       end_time: session?.end_time
         ? formatLocalInput(session.end_time)
@@ -135,6 +144,88 @@ export default function SessionModal({
   const endTime = watch('end_time');
   const therapistId = watch('therapist_id');
   const clientId = watch('client_id');
+  const programId = watch('program_id');
+  const goalId = watch('goal_id');
+  const goalIds = watch('goal_ids') as string[] | undefined;
+
+  const { data: sessionDetails } = useQuery({
+    queryKey: ['session-details', session?.id, activeOrganizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!session?.id || !activeOrganizationId) {
+        return null;
+      }
+      const { data, error } = await supabase
+        .from('sessions')
+        .select('program_id, goal_id, started_at')
+        .eq('id', session.id)
+        .eq('organization_id', activeOrganizationId)
+        .maybeSingle();
+      if (error) {
+        throw error;
+      }
+      return data ?? null;
+    },
+    enabled: Boolean(session?.id && activeOrganizationId),
+  });
+
+  const { data: sessionGoalRows = [] } = useQuery({
+    queryKey: ['session-goals', session?.id, activeOrganizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!session?.id || !activeOrganizationId) {
+        return [];
+      }
+      const { data, error } = await supabase
+        .from('session_goals')
+        .select('goal_id')
+        .eq('session_id', session.id)
+        .eq('organization_id', activeOrganizationId);
+      if (error) {
+        throw error;
+      }
+      return data ?? [];
+    },
+    enabled: Boolean(session?.id && activeOrganizationId),
+  });
+
+  const { data: programs = [] } = useQuery({
+    queryKey: ['client-programs', clientId, activeOrganizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!clientId || !activeOrganizationId) {
+        return [];
+      }
+      const { data, error } = await supabase
+        .from('programs')
+        .select('id, name, description, status, client_id')
+        .eq('client_id', clientId)
+        .eq('organization_id', activeOrganizationId)
+        .order('created_at', { ascending: false });
+      if (error) {
+        throw error;
+      }
+      return (data ?? []) as Program[];
+    },
+    enabled: Boolean(clientId && activeOrganizationId),
+  });
+
+  const { data: goals = [] } = useQuery({
+    queryKey: ['program-goals', programId, activeOrganizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!programId || !activeOrganizationId) {
+        return [];
+      }
+      const { data, error } = await supabase
+        .from('goals')
+        .select('id, title, status, program_id')
+        .eq('program_id', programId)
+        .eq('organization_id', activeOrganizationId)
+        .order('created_at', { ascending: false });
+      if (error) {
+        throw error;
+      }
+      return (data ?? []) as Goal[];
+    },
+    enabled: Boolean(programId && activeOrganizationId),
+  });
 
   const selectedTherapist = therapists.find(t => t.id === therapistId);
   const selectedClient = clients.find(c => c.id === clientId);
@@ -154,6 +245,92 @@ export default function SessionModal({
       setValue('client_id', defaultClientId);
     }
   }, [session?.client_id, defaultClientId, setValue]);
+
+  useEffect(() => {
+    if (!sessionDetails) {
+      return;
+    }
+    if (sessionDetails.program_id) {
+      setValue('program_id', sessionDetails.program_id);
+    }
+    if (sessionDetails.goal_id) {
+      setValue('goal_id', sessionDetails.goal_id);
+    }
+  }, [sessionDetails, setValue]);
+
+  useEffect(() => {
+    if (!sessionGoalRows || sessionGoalRows.length === 0) {
+      return;
+    }
+    const uniqueGoals = Array.from(
+      new Set(sessionGoalRows.map((row) => row.goal_id).filter((id) => typeof id === 'string'))
+    );
+    if (uniqueGoals.length > 0) {
+      setValue('goal_ids', uniqueGoals);
+    }
+  }, [sessionGoalRows, setValue]);
+
+  useEffect(() => {
+    if (!programs.length || programId) {
+      return;
+    }
+    const nextProgram = programs.find((program) => program.status === 'active') ?? programs[0];
+    if (nextProgram?.id) {
+      setValue('program_id', nextProgram.id);
+    }
+  }, [programs, programId, setValue]);
+
+  useEffect(() => {
+    if (!goals.length) {
+      return;
+    }
+    const goalIdsSet = new Set(goals.map((goal) => goal.id));
+    if (!goalId || !goalIdsSet.has(goalId)) {
+      const nextGoal = goals.find((goal) => goal.status === 'active') ?? goals[0];
+      if (nextGoal?.id) {
+        setValue('goal_id', nextGoal.id);
+      }
+    }
+  }, [goals, goalId, setValue]);
+
+  useEffect(() => {
+    if (!programId) {
+      if (Array.isArray(goalIds) && goalIds.length > 0) {
+        setValue('goal_ids', []);
+      }
+      return;
+    }
+    if (!goals.length || !Array.isArray(goalIds)) {
+      return;
+    }
+    const allowed = new Set(goals.map((goal) => goal.id));
+    const filtered = goalIds.filter((id) => allowed.has(id));
+    if (filtered.length !== goalIds.length) {
+      setValue('goal_ids', filtered);
+    }
+  }, [programId, goals, goalIds, setValue]);
+
+  useEffect(() => {
+    if (!goalId) {
+      return;
+    }
+    const nextGoalIds = Array.isArray(goalIds) ? goalIds : [];
+    if (!nextGoalIds.includes(goalId)) {
+      setValue('goal_ids', [...nextGoalIds, goalId]);
+    }
+  }, [goalId, goalIds, setValue]);
+
+  const toggleGoalSelection = (targetId: string) => {
+    const nextGoalIds = Array.isArray(goalIds) ? [...goalIds] : [];
+    if (nextGoalIds.includes(targetId)) {
+      if (targetId === goalId) {
+        return;
+      }
+      setValue('goal_ids', nextGoalIds.filter((id) => id !== targetId));
+      return;
+    }
+    setValue('goal_ids', [...nextGoalIds, targetId]);
+  };
 
   const previousFormValues = useRef({
     startTime,
@@ -295,8 +472,13 @@ export default function SessionModal({
       }
     }
     try {
+      const normalizedGoalIds = Array.isArray(data.goal_ids) ? data.goal_ids : [];
+      const mergedGoalIds = data.goal_id && !normalizedGoalIds.includes(data.goal_id)
+        ? [...normalizedGoalIds, data.goal_id]
+        : normalizedGoalIds;
       const transformed: Partial<Session> = {
         ...data,
+        goal_ids: mergedGoalIds,
         // If a timezone prop is provided, normalize to UTC for consumers expecting Z times
         start_time: timeZone ? toUtcIsoString(data.start_time) : data.start_time,
         end_time: timeZone ? toUtcIsoString(data.end_time) : data.end_time,
@@ -308,6 +490,39 @@ export default function SessionModal({
         context: { component: 'SessionModal', operation: 'handleFormSubmit' }
       });
       return;
+    }
+  };
+
+  const handleStartSession = async () => {
+    if (!session?.id) {
+      return;
+    }
+    if (!programId || !goalId) {
+      showError("Select a program and primary goal before starting.");
+      return;
+    }
+    try {
+      const response = await callApi("/api/sessions-start", {
+        method: "POST",
+        body: JSON.stringify({
+          session_id: session.id,
+          program_id: programId,
+          goal_id: goalId,
+          goal_ids: goalIds ?? [],
+        }),
+      });
+      if (!response.ok) {
+        showError("Failed to start session");
+        return;
+      }
+      showSuccess("Session started");
+      onClose();
+    } catch (error) {
+      logger.error("Failed to start session", {
+        error,
+        context: { component: "SessionModal", operation: "handleStartSession" },
+      });
+      showError(error instanceof Error ? error.message : "Failed to start session");
     }
   };
 
@@ -345,6 +560,8 @@ export default function SessionModal({
     setValue('start_time', toLocalInput(newStartTime));
     setValue('end_time', toLocalInput(newEndTime));
   };
+
+  const canStartSession = Boolean(session?.id && !session?.started_at && programId && goalId);
 
   if (!isOpen) return null;
 
@@ -483,6 +700,75 @@ export default function SessionModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label
+                  htmlFor="program-select"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Program
+                </label>
+                <select
+                  id="program-select"
+                  {...register('program_id', { required: 'Program is required' })}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                >
+                  <option value="">Select a program</option>
+                  {programs.map((program) => (
+                    <option key={program.id} value={program.id}>
+                      {program.name}
+                    </option>
+                  ))}
+                </select>
+                {errors.program_id && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.program_id.message}</p>
+                )}
+              </div>
+
+              <div>
+                <label
+                  htmlFor="goal-select"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Primary Goal
+                </label>
+                <select
+                  id="goal-select"
+                  {...register('goal_id', { required: 'Primary goal is required' })}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                >
+                  <option value="">Select a goal</option>
+                  {goals.map((goal) => (
+                    <option key={goal.id} value={goal.id}>
+                      {goal.title}
+                    </option>
+                  ))}
+                </select>
+                {errors.goal_id && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.goal_id.message}</p>
+                )}
+              </div>
+            </div>
+
+            {goals.length > 0 && (
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Additional Goals</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {goals.map((goal) => (
+                    <label key={goal.id} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
+                        onChange={() => toggleGoalSelection(goal.id)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span>{goal.title}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label
                   htmlFor="start-time-input"
                   className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
                 >
@@ -585,6 +871,16 @@ export default function SessionModal({
             >
               Cancel
             </button>
+            {session?.id && (
+              <button
+                type="button"
+                onClick={handleStartSession}
+                disabled={!canStartSession}
+                className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-emerald-600 border border-transparent rounded-md shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Start Session
+              </button>
+            )}
             <button
               type="submit"
               form="session-form"

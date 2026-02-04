@@ -34,6 +34,9 @@ const SuperAdminFeatureFlags = React.lazy(() =>
 const SuperAdminImpersonation = React.lazy(() =>
   import('./pages/SuperAdminImpersonation').then(module => ({ default: module.SuperAdminImpersonation })),
 );
+const SuperAdminPrompts = React.lazy(() =>
+  import('./pages/SuperAdminPrompts').then(module => ({ default: module.SuperAdminPrompts })),
+);
 const Unauthorized = React.lazy(() => import('./pages/Unauthorized'));
 const Authorizations = React.lazy(() => import('./pages/Authorizations'));
 const Reports = React.lazy(() => import('./pages/Reports'));
@@ -241,6 +244,14 @@ function App() {
                       element={
                         <RoleGuard roles={['super_admin']}>
                           <SuperAdminImpersonation />
+                        </RoleGuard>
+                      }
+                    />
+                    <Route
+                      path="super-admin/prompts"
+                      element={
+                        <RoleGuard roles={['super_admin']}>
+                          <SuperAdminPrompts />
                         </RoleGuard>
                       }
                     />

@@ -24,7 +24,7 @@ export interface BookingOverrides {
 
 export type RequiredSessionFields = Pick<
   Session,
-  "therapist_id" | "client_id" | "start_time" | "end_time"
+  "therapist_id" | "client_id" | "program_id" | "goal_id" | "start_time" | "end_time"
 >;
 
 export type BookableSession = RequiredSessionFields &
@@ -80,6 +80,8 @@ const sessionSchema = z
   .object({
     therapist_id: nonEmptyString,
     client_id: nonEmptyString,
+    program_id: nonEmptyString,
+    goal_id: nonEmptyString,
     start_time: isoDateTime,
     end_time: isoDateTime,
     id: nonEmptyString.optional(),

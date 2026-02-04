@@ -105,6 +105,12 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
       'public.profiles: role_scoped_update',
     ],
   }),
+  createGuard({
+    path: '/super-admin/prompts',
+    allowedRoles: ['super_admin'],
+    requiredPermissions: [],
+    supabasePolicies: ['public.agent_prompt_tool_versions: admin_read'],
+  }),
 ] as const;
 
 export const routeGuards: readonly RouteGuardDefinition[] = guardDefinitions;

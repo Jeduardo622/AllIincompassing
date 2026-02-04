@@ -11,6 +11,8 @@ const mockScheduleData = {
       id: 'session-1',
       client_id: 'client-1',
       therapist_id: 'therapist-1',
+      program_id: 'program-1',
+      goal_id: 'goal-1',
       start_time: '2024-07-01T10:00:00Z',
       end_time: '2024-07-01T11:00:00Z',
       status: 'scheduled',

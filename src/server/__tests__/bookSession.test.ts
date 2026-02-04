@@ -5,6 +5,7 @@ import {
   requestSessionHold,
 } from "../../lib/sessionHolds";
 import { persistSessionCptMetadata } from "../sessionCptPersistence";
+import { persistSessionGoals } from "../sessionGoalsPersistence";
 import type { BookSessionResult } from "../types";
 import type { Session } from "../../types";
 
@@ -18,10 +19,15 @@ vi.mock("../sessionCptPersistence", () => ({
   persistSessionCptMetadata: vi.fn(),
 }));
 
+vi.mock("../sessionGoalsPersistence", () => ({
+  persistSessionGoals: vi.fn(),
+}));
+
 const mockedRequestSessionHold = vi.mocked(requestSessionHold);
 const mockedConfirmSessionBooking = vi.mocked(confirmSessionBooking);
 const mockedCancelSessionHold = vi.mocked(cancelSessionHold);
 const mockedPersistSessionCptMetadata = vi.mocked(persistSessionCptMetadata);
+const mockedPersistSessionGoals = vi.mocked(persistSessionGoals);
 
 const importBookSession = async () => {
   const module = await import("../bookSession");
@@ -43,6 +49,8 @@ const basePayload = {
   session: {
     therapist_id: "therapist-1",
     client_id: "client-1",
+    program_id: "program-1",
+    goal_id: "goal-1",
     start_time: "2025-01-01T10:00:00Z",
     end_time: "2025-01-01T11:00:00Z",
     status: "scheduled" as const,
@@ -56,6 +64,7 @@ const basePayload = {
 beforeEach(async () => {
   vi.clearAllMocks();
   mockedPersistSessionCptMetadata.mockResolvedValue({ entryId: "entry-id", modifierIds: [] });
+  mockedPersistSessionGoals.mockResolvedValue(undefined);
 
   const runtimeConfig = await import("../../lib/runtimeConfig");
   runtimeConfig.resetRuntimeSupabaseConfigForTests();
@@ -90,6 +99,8 @@ describe("bookSession", () => {
       id: "session-1",
       client_id: basePayload.session.client_id,
       therapist_id: basePayload.session.therapist_id,
+      program_id: basePayload.session.program_id,
+      goal_id: basePayload.session.goal_id,
       start_time: basePayload.session.start_time,
       end_time: basePayload.session.end_time,
       status: "scheduled",
@@ -185,6 +196,8 @@ describe("bookSession", () => {
       id: "session-caloptima",
       client_id: basePayload.session.client_id,
       therapist_id: basePayload.session.therapist_id,
+      program_id: basePayload.session.program_id,
+      goal_id: basePayload.session.goal_id,
       start_time: basePayload.session.start_time,
       end_time: basePayload.session.end_time,
       status: "scheduled",
@@ -291,6 +304,8 @@ describe("bookSession", () => {
       id: "session-1",
       client_id: basePayload.session.client_id,
       therapist_id: basePayload.session.therapist_id,
+      program_id: basePayload.session.program_id,
+      goal_id: basePayload.session.goal_id,
       start_time: basePayload.session.start_time,
       end_time: basePayload.session.end_time,
       status: "scheduled",
@@ -336,6 +351,8 @@ describe("bookSession", () => {
       id: "session-2",
       client_id: basePayload.session.client_id,
       therapist_id: basePayload.session.therapist_id,
+      program_id: basePayload.session.program_id,
+      goal_id: basePayload.session.goal_id,
       start_time: basePayload.session.start_time,
       end_time: basePayload.session.end_time,
       status: "scheduled",
@@ -540,6 +557,8 @@ describe("bookSession", () => {
       id: "session-duplicate",
       client_id: basePayload.session.client_id,
       therapist_id: basePayload.session.therapist_id,
+      program_id: basePayload.session.program_id,
+      goal_id: basePayload.session.goal_id,
       start_time: basePayload.session.start_time,
       end_time: basePayload.session.end_time,
       status: "scheduled",

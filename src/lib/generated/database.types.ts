@@ -420,6 +420,7 @@ export type Database = {
           current_clinical_status: string | null
           data_collection_summary: Json | null
           end_time: string
+          goal_ids: string[] | null
           id: string
           insurance_ready: boolean | null
           interventions_used: Json | null
@@ -449,6 +450,7 @@ export type Database = {
           current_clinical_status?: string | null
           data_collection_summary?: Json | null
           end_time: string
+          goal_ids?: string[] | null
           id?: string
           insurance_ready?: boolean | null
           interventions_used?: Json | null
@@ -478,6 +480,7 @@ export type Database = {
           current_clinical_status?: string | null
           data_collection_summary?: Json | null
           end_time?: string
+          goal_ids?: string[] | null
           id?: string
           insurance_ready?: boolean | null
           interventions_used?: Json | null
@@ -1183,6 +1186,7 @@ export type Database = {
           created_at: string
           created_by: string
           end_time: string
+          goal_ids: string[] | null
           goals_addressed: string[]
           id: string
           is_locked: boolean
@@ -1203,6 +1207,7 @@ export type Database = {
           created_at?: string
           created_by: string
           end_time: string
+          goal_ids?: string[] | null
           goals_addressed?: string[]
           id?: string
           is_locked?: boolean
@@ -1223,6 +1228,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           end_time?: string
+          goal_ids?: string[] | null
           goals_addressed?: string[]
           id?: string
           is_locked?: boolean
@@ -2228,6 +2234,177 @@ export type Database = {
           },
         ]
       }
+      goal_versions: {
+        Row: {
+          baseline_data: string | null
+          change_reason: string | null
+          changed_at: string
+          changed_by: string
+          client_id: string
+          clinical_context: string | null
+          description: string
+          goal_id: string
+          id: string
+          measurement_type: string | null
+          organization_id: string
+          original_text: string
+          program_id: string
+          status: string
+          target_behavior: string | null
+          target_criteria: string | null
+          title: string
+        }
+        Insert: {
+          baseline_data?: string | null
+          change_reason?: string | null
+          changed_at?: string
+          changed_by: string
+          client_id: string
+          clinical_context?: string | null
+          description: string
+          goal_id: string
+          id?: string
+          measurement_type?: string | null
+          organization_id: string
+          original_text: string
+          program_id: string
+          status: string
+          target_behavior?: string | null
+          target_criteria?: string | null
+          title: string
+        }
+        Update: {
+          baseline_data?: string | null
+          change_reason?: string | null
+          changed_at?: string
+          changed_by?: string
+          client_id?: string
+          clinical_context?: string | null
+          description?: string
+          goal_id?: string
+          id?: string
+          measurement_type?: string | null
+          organization_id?: string
+          original_text?: string
+          program_id?: string
+          status?: string
+          target_behavior?: string | null
+          target_criteria?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goal_versions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_versions_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_versions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_versions_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      goals: {
+        Row: {
+          baseline_data: string | null
+          client_id: string
+          clinical_context: string | null
+          created_at: string
+          created_by: string | null
+          description: string
+          id: string
+          measurement_type: string | null
+          organization_id: string
+          original_text: string
+          program_id: string
+          status: string
+          target_behavior: string | null
+          target_criteria: string | null
+          title: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          baseline_data?: string | null
+          client_id: string
+          clinical_context?: string | null
+          created_at?: string
+          created_by?: string | null
+          description: string
+          id?: string
+          measurement_type?: string | null
+          organization_id: string
+          original_text: string
+          program_id: string
+          status?: string
+          target_behavior?: string | null
+          target_criteria?: string | null
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          baseline_data?: string | null
+          client_id?: string
+          clinical_context?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          measurement_type?: string | null
+          organization_id?: string
+          original_text?: string
+          program_id?: string
+          status?: string
+          target_behavior?: string | null
+          target_criteria?: string | null
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goals_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       guardian_link_queue: {
         Row: {
           approved_client_ids: string[]
@@ -2919,6 +3096,114 @@ export type Database = {
           },
         ]
       }
+      program_notes: {
+        Row: {
+          author_id: string | null
+          content: Json
+          created_at: string
+          id: string
+          note_type: string
+          organization_id: string
+          program_id: string
+          updated_at: string
+        }
+        Insert: {
+          author_id?: string | null
+          content?: Json
+          created_at?: string
+          id?: string
+          note_type: string
+          organization_id: string
+          program_id: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string | null
+          content?: Json
+          created_at?: string
+          id?: string
+          note_type?: string
+          organization_id?: string
+          program_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_notes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "program_notes_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      programs: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          end_date: string | null
+          id: string
+          name: string
+          organization_id: string
+          start_date: string | null
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          start_date?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          start_date?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "programs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "programs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       referring_providers: {
         Row: {
           address_line1: string | null
@@ -3541,6 +3826,69 @@ export type Database = {
           },
         ]
       }
+      session_goals: {
+        Row: {
+          client_id: string
+          created_at: string
+          goal_id: string
+          organization_id: string
+          program_id: string
+          session_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          goal_id: string
+          organization_id: string
+          program_id: string
+          session_id: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          goal_id?: string
+          organization_id?: string
+          program_id?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_goals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_goals_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_goals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_goals_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_goals_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       session_holds: {
         Row: {
           client_id: string
@@ -3761,15 +4109,18 @@ export type Database = {
           created_by: string | null
           duration_minutes: number | null
           end_time: string
+          goal_id: string
           has_transcription_consent: boolean
           id: string
           location_type: string | null
           notes: string | null
           organization_id: string
+          program_id: string
           rate_per_hour: number | null
           session_date: string | null
           session_type: string | null
           start_time: string
+          started_at: string | null
           status: string
           therapist_id: string
           total_cost: number | null
@@ -3782,15 +4133,18 @@ export type Database = {
           created_by?: string | null
           duration_minutes?: number | null
           end_time: string
+          goal_id: string
           has_transcription_consent?: boolean
           id?: string
           location_type?: string | null
           notes?: string | null
           organization_id: string
+          program_id: string
           rate_per_hour?: number | null
           session_date?: string | null
           session_type?: string | null
           start_time: string
+          started_at?: string | null
           status?: string
           therapist_id: string
           total_cost?: number | null
@@ -3803,15 +4157,18 @@ export type Database = {
           created_by?: string | null
           duration_minutes?: number | null
           end_time?: string
+          goal_id?: string
           has_transcription_consent?: boolean
           id?: string
           location_type?: string | null
           notes?: string | null
           organization_id?: string
+          program_id?: string
           rate_per_hour?: number | null
           session_date?: string | null
           session_type?: string | null
           start_time?: string
+          started_at?: string | null
           status?: string
           therapist_id?: string
           total_cost?: number | null
@@ -3824,6 +4181,20 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
             referencedColumns: ["id"]
           },
           {

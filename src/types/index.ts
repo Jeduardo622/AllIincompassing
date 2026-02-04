@@ -157,6 +157,8 @@ export interface Session {
   id: string;
   client_id: string;
   therapist_id: string;
+  program_id: string;
+  goal_id: string;
   start_time: string;
   end_time: string;
   status: 'scheduled' | 'completed' | 'cancelled' | 'no-show';
@@ -165,12 +167,80 @@ export interface Session {
   created_by: string | null;
   updated_at: string;
   updated_by: string | null;
+  started_at?: string | null;
+  goal_ids?: string[];
   duration_minutes?: number | null;
   payer_slug?: string | null;
   payer_id?: string | null;
   payer_name?: string | null;
   therapist?: { id: string; full_name: string };
   client?: { id: string; full_name: string };
+}
+
+export interface Program {
+  id: string;
+  organization_id: string;
+  client_id: string;
+  name: string;
+  description?: string | null;
+  status: 'active' | 'inactive' | 'archived';
+  start_date?: string | null;
+  end_date?: string | null;
+  created_by?: string | null;
+  updated_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Goal {
+  id: string;
+  organization_id: string;
+  client_id: string;
+  program_id: string;
+  title: string;
+  description: string;
+  target_behavior?: string | null;
+  measurement_type?: string | null;
+  original_text: string;
+  clinical_context?: string | null;
+  baseline_data?: string | null;
+  target_criteria?: string | null;
+  status: 'active' | 'paused' | 'mastered' | 'archived';
+  created_by?: string | null;
+  updated_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProgramNote {
+  id: string;
+  organization_id: string;
+  program_id: string;
+  author_id?: string | null;
+  note_type: 'plan_update' | 'progress_summary' | 'other';
+  content: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GoalVersion {
+  id: string;
+  goal_id: string;
+  organization_id: string;
+  client_id: string;
+  program_id: string;
+  original_text: string;
+  title: string;
+  description: string;
+  clinical_context?: string | null;
+  target_behavior?: string | null;
+  measurement_type?: string | null;
+  baseline_data?: string | null;
+  target_criteria?: string | null;
+  status: string;
+  changed_by: string;
+  changed_at: string;
+  change_reason?: string | null;
 }
 
 export interface BillingRecord {

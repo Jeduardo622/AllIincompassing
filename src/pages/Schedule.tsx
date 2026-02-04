@@ -904,6 +904,8 @@ const Schedule = React.memo(() => {
       if (
         !newSession.therapist_id ||
         !newSession.client_id ||
+        !newSession.program_id ||
+        !newSession.goal_id ||
         !newSession.start_time ||
         !newSession.end_time
       ) {
@@ -947,6 +949,8 @@ const Schedule = React.memo(() => {
         if (
           !session.therapist_id ||
           !session.client_id ||
+          !session.program_id ||
+          !session.goal_id ||
           !session.start_time ||
           !session.end_time
         ) {

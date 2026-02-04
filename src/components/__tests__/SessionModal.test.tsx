@@ -1,9 +1,63 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { fireEvent } from '@testing-library/react';
 import SessionModal from '../SessionModal';
+import { supabase } from '../../lib/supabase';
 
 describe('SessionModal', () => {
+  const mockPrograms = [
+    {
+      id: 'program-1',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      name: 'Default Program',
+      description: 'Default program for tests',
+      status: 'active',
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    },
+  ];
+
+  const mockGoals = [
+    {
+      id: 'goal-1',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      program_id: 'program-1',
+      title: 'Default Goal',
+      description: 'Default goal for tests',
+      original_text: 'Default clinical wording',
+      status: 'active',
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    },
+  ];
+
+  beforeEach(() => {
+    const buildChain = (rows: unknown[]) => {
+      const chain: any = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    const defaultChain = buildChain([]);
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals);
+      }
+      return defaultChain;
+    });
+  });
+
   const mockTherapists = [
     {
       id: 'test-therapist-1',
@@ -59,6 +113,8 @@ describe('SessionModal', () => {
     await waitFor(() => {
       expect(screen.getByText(/Therapist is required/)).toBeInTheDocument();
       expect(screen.getByText(/Client is required/)).toBeInTheDocument();
+      expect(screen.getByText(/Program is required/)).toBeInTheDocument();
+      expect(screen.getByText(/Primary goal is required/)).toBeInTheDocument();
     });
   });
 
@@ -73,6 +129,16 @@ describe('SessionModal', () => {
     await userEvent.selectOptions(
       screen.getByLabelText(/Client/i),
       'test-client-1'
+    );
+    await screen.findByRole('option', { name: /Default Program/i });
+    await userEvent.selectOptions(
+      screen.getByLabelText(/Program/i),
+      'program-1'
+    );
+    await screen.findByRole('option', { name: /Default Goal/i });
+    await userEvent.selectOptions(
+      screen.getByLabelText(/Primary Goal/i),
+      'goal-1'
     );
 
     // Set start and end times
@@ -90,6 +156,8 @@ describe('SessionModal', () => {
       expect(defaultProps.onSubmit).toHaveBeenCalledWith(expect.objectContaining({
         therapist_id: 'test-therapist-1',
         client_id: 'test-client-1',
+        program_id: 'program-1',
+        goal_id: 'goal-1',
         start_time: '2025-03-18T14:00:00.000Z',
         end_time: '2025-03-18T15:00:00.000Z',
         status: 'scheduled',
@@ -113,6 +181,10 @@ describe('SessionModal', () => {
     // Fill out the form
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    await screen.findByRole('option', { name: /Default Program/i });
+    await userEvent.selectOptions(screen.getByLabelText(/Program/i), 'program-1');
+    await screen.findByRole('option', { name: /Default Goal/i });
+    await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
     // Use change events for datetime-local inputs to ensure value is set reliably
     const startInput = screen.getByLabelText(/Start Time/i);
     const endInput = screen.getByLabelText(/End Time/i);

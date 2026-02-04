@@ -8,10 +8,11 @@ import ProfileTab from '../components/ClientDetails/ProfileTab';
 import SessionNotesTab from '../components/ClientDetails/SessionNotesTab';
 import PreAuthTab from '../components/ClientDetails/PreAuthTab';
 import ServiceContractsTab from '../components/ClientDetails/ServiceContractsTab';
+import ProgramsGoalsTab from '../components/ClientDetails/ProgramsGoalsTab';
 import { useAuth } from '../lib/authContext';
 import { useActiveOrganizationId } from '../lib/organization';
 
-type TabType = 'profile' | 'session-notes' | 'pre-auth' | 'contracts';
+type TabType = 'profile' | 'session-notes' | 'pre-auth' | 'contracts' | 'programs-goals';
 
 export default function ClientDetails() {
   const { clientId } = useParams<{ clientId: string }>();
@@ -84,6 +85,7 @@ export default function ClientDetails() {
   const tabs = [
     { id: 'profile' as TabType, name: 'Profile / Notes & Issues', icon: User },
     { id: 'session-notes' as TabType, name: 'Session Notes / Physical Auth', icon: FileText },
+    { id: 'programs-goals' as TabType, name: 'Programs & Goals', icon: FileText },
     { id: 'pre-auth' as TabType, name: 'Pre-Authorizations', icon: ClipboardCheck },
     { id: 'contracts' as TabType, name: 'Service Contracts', icon: FileContract },
   ];
@@ -241,6 +243,7 @@ export default function ClientDetails() {
         <div className="p-6">
           {activeTab === 'profile' && <ProfileTab client={client} viewerRole={profile?.role} />}
           {activeTab === 'session-notes' && <SessionNotesTab client={client} />}
+          {activeTab === 'programs-goals' && <ProgramsGoalsTab client={client} />}
           {activeTab === 'pre-auth' && <PreAuthTab client={client} />}
           {activeTab === 'contracts' && <ServiceContractsTab client={client} />}
         </div>

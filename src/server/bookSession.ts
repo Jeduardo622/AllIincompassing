@@ -8,6 +8,7 @@ import {
 } from "../lib/sessionHolds";
 import { deriveCptMetadata } from "./deriveCpt";
 import { persistSessionCptMetadata } from "./sessionCptPersistence";
+import { persistSessionGoals } from "./sessionGoalsPersistence";
 import type {
   BookSessionRequest,
   BookSessionResult,
@@ -461,6 +462,12 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
     ? Array.from(uniqueSessionsMap.values())
     : sessionsToPersist;
 
+  const primaryGoalId = typeof payload.session.goal_id === "string" ? payload.session.goal_id : "";
+  const supplementalGoalIds = Array.isArray(payload.session.goal_ids) ? payload.session.goal_ids : [];
+  const mergedGoalIds = Array.from(
+    new Set([primaryGoalId, ...supplementalGoalIds].filter((goalId) => typeof goalId === "string" && goalId.length > 0)),
+  );
+
   try {
     await Promise.all(
       uniqueSessions.map(async (session) => {
@@ -473,6 +480,13 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
           cpt,
           billedMinutes,
         });
+
+        if (mergedGoalIds.length > 0) {
+          await persistSessionGoals({
+            sessionId: session.id,
+            goalIds: mergedGoalIds,
+          });
+        }
       }),
     );
   } catch (error) {

@@ -13,6 +13,8 @@ import {
 } from '../lib/autoSchedule';
 import { getDistance } from 'geolib';
 import { logger } from '../lib/logger/logger';
+import { callApi } from '../lib/api';
+import { showError } from '../lib/toast';
 
 interface AutoScheduleModalProps {
   isOpen: boolean;
@@ -20,6 +22,8 @@ interface AutoScheduleModalProps {
   onSchedule: (sessions: Array<{
     therapist_id: string;
     client_id: string;
+    program_id: string;
+    goal_id: string;
     start_time: string;
     end_time: string;
     status: 'scheduled';
@@ -64,13 +68,47 @@ export default function AutoScheduleModal({
   const handleSchedule = async () => {
     try {
       setLoading(true);
-      const sessions = preview.slots.map(slot => ({
-        therapist_id: slot.therapist.id,
-        client_id: slot.client.id,
-        start_time: slot.startTime,
-        end_time: slot.endTime,
-        status: 'scheduled' as const,
-      }));
+      const uniqueClientIds = Array.from(new Set(preview.slots.map((slot) => slot.client.id)));
+      const programGoalPairs = await Promise.all(
+        uniqueClientIds.map(async (clientId) => {
+          const programsResponse = await callApi(`/api/programs?client_id=${clientId}`);
+          if (!programsResponse.ok) {
+            throw new Error(`Failed to load programs for client ${clientId}`);
+          }
+          const programs = await programsResponse.json() as Array<{ id: string; status: string }>;
+          const program = programs.find((p) => p.status === 'active') ?? programs[0];
+          if (!program) {
+            throw new Error(`No program found for client ${clientId}`);
+          }
+          const goalsResponse = await callApi(`/api/goals?program_id=${program.id}`);
+          if (!goalsResponse.ok) {
+            throw new Error(`Failed to load goals for client ${clientId}`);
+          }
+          const goals = await goalsResponse.json() as Array<{ id: string; status: string }>;
+          const goal = goals.find((g) => g.status === 'active') ?? goals[0];
+          if (!goal) {
+            throw new Error(`No goal found for client ${clientId}`);
+          }
+          return { clientId, programId: program.id, goalId: goal.id };
+        }),
+      );
+      const programGoalMap = new Map(programGoalPairs.map((entry) => [entry.clientId, entry]));
+
+      const sessions = preview.slots.map(slot => {
+        const programGoal = programGoalMap.get(slot.client.id);
+        if (!programGoal) {
+          throw new Error(`Missing program/goal for client ${slot.client.id}`);
+        }
+        return {
+          therapist_id: slot.therapist.id,
+          client_id: slot.client.id,
+          program_id: programGoal.programId,
+          goal_id: programGoal.goalId,
+          start_time: slot.startTime,
+          end_time: slot.endTime,
+          status: 'scheduled' as const,
+        };
+      });
       await onSchedule(sessions);
       onClose();
     } catch (error) {
@@ -78,6 +116,7 @@ export default function AutoScheduleModal({
         error,
         context: { component: 'AutoScheduleModal', operation: 'handleSchedule' }
       });
+      showError(error);
     } finally {
       setLoading(false);
     }

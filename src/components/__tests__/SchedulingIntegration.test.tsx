@@ -101,6 +101,8 @@ describe('Scheduling Integration - End-to-End Flow', () => {
               id: (sessionPayload.id as string) ?? 'new-session-id',
               client_id: (sessionPayload.client_id as string) ?? 'client-1',
               therapist_id: (sessionPayload.therapist_id as string) ?? 'therapist-1',
+              program_id: (sessionPayload.program_id as string) ?? 'program-1',
+              goal_id: (sessionPayload.goal_id as string) ?? 'goal-1',
               start_time: (sessionPayload.start_time as string) ?? '2024-03-19T10:00:00Z',
               end_time: (sessionPayload.end_time as string) ?? '2024-03-19T11:00:00Z',
               status: (sessionPayload.status as string) ?? 'scheduled',
@@ -157,6 +159,12 @@ describe('Scheduling Integration - End-to-End Flow', () => {
 
     const clientSelect = document.getElementById('client-select') as HTMLSelectElement;
     await userEvent.selectOptions(clientSelect, 'client-1');
+
+    const programSelect = document.getElementById('program-select') as HTMLSelectElement;
+    await userEvent.selectOptions(programSelect, 'program-1');
+
+    const goalSelect = document.getElementById('goal-select') as HTMLSelectElement;
+    await userEvent.selectOptions(goalSelect, 'goal-1');
 
     // Add session notes
     const notesInput = screen.getByRole('textbox', { name: /notes/i });

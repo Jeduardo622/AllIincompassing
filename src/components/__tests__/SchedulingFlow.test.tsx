@@ -122,10 +122,56 @@ const mockExistingSessions = [
   },
 ];
 
+const mockPrograms = [
+  {
+    id: 'program-1',
+    organization_id: 'org-a',
+    client_id: 'client-1',
+    name: 'Behavior Plan',
+    description: 'Primary behavior plan',
+    status: 'active',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+];
+
+const mockGoals = [
+  {
+    id: 'goal-1',
+    organization_id: 'org-a',
+    client_id: 'client-1',
+    program_id: 'program-1',
+    title: 'Increase communication',
+    status: 'active',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+];
+
+const baseFrom = supabase.from;
+
+const buildProgramGoalQuery = (data: unknown[]) => {
+  const chain = {
+    select: () => chain,
+    eq: () => chain,
+    order: () => Promise.resolve({ data, error: null }),
+  };
+  return chain;
+};
+
 describe('Scheduling Flow - Client with Therapist', () => {
   beforeEach(() => {
     // Reset all mocks
     vi.clearAllMocks();
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildProgramGoalQuery(mockPrograms) as ReturnType<typeof baseFrom>;
+      }
+      if (table === 'goals') {
+        return buildProgramGoalQuery(mockGoals) as ReturnType<typeof baseFrom>;
+      }
+      return baseFrom(table);
+    });
     
     // Setup default API responses
     server.use(
@@ -137,6 +183,12 @@ describe('Scheduling Flow - Client with Therapist', () => {
       }),
       http.get('*/rest/v1/sessions*', () => {
         return HttpResponse.json(mockExistingSessions);
+      }),
+      http.get('*/rest/v1/programs*', () => {
+        return HttpResponse.json(mockPrograms);
+      }),
+      http.get('*/rest/v1/goals*', () => {
+        return HttpResponse.json(mockGoals);
       }),
       // Ensure RPC endpoints return our local mocks so Schedule sees expected names
       http.post('*/rest/v1/rpc/get_dropdown_data', () => {
@@ -499,6 +551,12 @@ describe('Scheduling Flow - Client with Therapist', () => {
       const notesInput = screen.getByRole('textbox', { name: /notes/i });
       await userEvent.clear(notesInput);
       await userEvent.type(notesInput, 'Updated session notes');
+
+      const programSelect = screen.getByRole('combobox', { name: /program/i });
+      await userEvent.selectOptions(programSelect, 'program-1');
+
+      const goalSelect = screen.getByRole('combobox', { name: /primary goal/i });
+      await userEvent.selectOptions(goalSelect, 'goal-1');
 
       // Submit form
       const submitButton = screen.getByRole('button', { name: /update session/i });

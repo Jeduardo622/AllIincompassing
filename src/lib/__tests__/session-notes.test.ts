@@ -12,6 +12,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createClientSessionNote } from '../session-notes';
 
 const mockFrom = vi.fn();
+let lastInsertPayload: Record<string, unknown> | null = null;
 
 vi.mock('../supabase', () => ({
   supabase: {
@@ -64,9 +65,12 @@ const setupMocks = (authStatus: string) => {
 
     if (table === 'client_session_notes') {
       return {
-        insert: () => ({
+        insert: (payload: Record<string, unknown>) => {
+          lastInsertPayload = payload;
+          return {
           select: () => buildSelectSingle({ ...noteRow }),
-        }),
+          };
+        },
       };
     }
 
@@ -119,6 +123,7 @@ describe('createClientSessionNote', () => {
     });
 
     expect(result.id).toBe(noteRow.id);
+    expect(lastInsertPayload?.goal_ids).toEqual(['goal-1']);
   });
 });
 

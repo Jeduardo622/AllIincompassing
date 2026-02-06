@@ -229,6 +229,8 @@ export default function SessionModal({
 
   const selectedTherapist = therapists.find(t => t.id === therapistId);
   const selectedClient = clients.find(c => c.id === clientId);
+  const activePrograms = programs.filter((program) => program.status === 'active');
+  const activeGoals = goals.filter((goal) => goal.status === 'active');
 
   useEffect(() => {
     if (session?.therapist_id) {
@@ -694,6 +696,14 @@ export default function SessionModal({
                     {selectedClient.service_preference.join(', ')}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {(programs.length === 0 || activePrograms.length === 0 || activeGoals.length === 0) && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">
+                {programs.length === 0 || activePrograms.length === 0
+                  ? 'No active programs found for this client. Create or activate a program before starting a session.'
+                  : 'No active goals found for the selected program. Add or activate a goal before starting a session.'}
               </div>
             )}
 

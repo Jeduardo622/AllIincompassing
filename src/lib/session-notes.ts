@@ -25,6 +25,8 @@ const mapRowToSessionNote = (
   therapist_id: row.therapist_id,
   therapist_name: therapist?.full_name ?? 'Unknown Therapist',
   goals_addressed: row.goals_addressed ?? [],
+  goal_ids: row.goal_ids ?? [],
+  session_id: row.session_id ?? null,
   narrative: row.narrative,
   is_locked: row.is_locked,
   client_id: row.client_id,
@@ -96,6 +98,7 @@ export interface CreateClientSessionNoteInput {
   readonly endTime: string;
   readonly sessionDuration: number;
   readonly goalsAddressed: string[];
+  readonly goalIds?: string[];
   readonly narrative: string;
   readonly isLocked: boolean;
   readonly sessionId?: string | null;
@@ -159,6 +162,7 @@ export const createClientSessionNote = async (
     end_time: payload.endTime,
     session_duration: payload.sessionDuration,
     goals_addressed: payload.goalsAddressed,
+    goal_ids: payload.goalIds ?? null,
     narrative: payload.narrative,
     is_locked: payload.isLocked,
     signed_at: payload.isLocked ? new Date().toISOString() : null,

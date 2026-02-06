@@ -111,6 +111,8 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
         endTime: note.end_time,
         sessionDuration: durationMinutes,
         goalsAddressed: note.goals_addressed,
+        goalIds: note.goal_ids,
+        sessionId: note.session_id ?? null,
         narrative: note.narrative,
         isLocked: note.is_locked,
       });
@@ -465,6 +467,7 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
         onClose={() => setIsAddNoteModalOpen(false)}
         onSubmit={handleAddSessionNote}
         therapists={therapists}
+        clientId={client.id}
         selectedAuth={selectedAuth || undefined}
         isSaving={createNoteMutation.isLoading}
       />

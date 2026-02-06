@@ -40,6 +40,7 @@ const noteRow = {
   end_time: '10:00',
   session_duration: 60,
   goals_addressed: [],
+  goal_ids: [],
   narrative: 'test',
   is_locked: false,
   signed_at: null,
@@ -90,6 +91,7 @@ describe('createClientSessionNote', () => {
         endTime: '10:00',
         sessionDuration: 60,
         goalsAddressed: [],
+        goalIds: ['goal-1'],
         narrative: 'test',
         isLocked: false,
       })
@@ -111,6 +113,7 @@ describe('createClientSessionNote', () => {
       endTime: '10:00',
       sessionDuration: 60,
       goalsAddressed: [],
+      goalIds: ['goal-1'],
       narrative: 'test',
       isLocked: false,
     });

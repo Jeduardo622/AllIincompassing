@@ -1,13 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { X, Calendar, Clock, FileText, CheckCircle } from 'lucide-react';
-import type { Therapist } from '../types';
+import type { Goal, Program, Therapist } from '../types';
+import { useActiveOrganizationId } from '../lib/organization';
 import { showError } from '../lib/toast';
+import { supabase } from '../lib/supabase';
 
 interface AddSessionNoteModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (note: SessionNoteFormValues) => void;
   therapists: Therapist[];
+  clientId: string;
   selectedAuth?: string;
   isSaving?: boolean;
 }
@@ -20,6 +24,8 @@ export interface SessionNoteFormValues {
   therapist_id: string;
   therapist_name: string;
   goals_addressed: string[];
+  goal_ids: string[];
+  session_id?: string | null;
   narrative: string;
   is_locked: boolean;
 }
@@ -29,32 +35,111 @@ export default function AddSessionNoteModal({
   onClose,
   onSubmit,
   therapists,
+  clientId,
   selectedAuth,
   isSaving = false
 }: AddSessionNoteModalProps) {
+  const organizationId = useActiveOrganizationId();
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('10:00');
   const [serviceCode, setServiceCode] = useState('97153');
   const [therapistId, setTherapistId] = useState('');
-  const [goalsAddressed, setGoalsAddressed] = useState<string[]>([]);
+  const [selectedProgramId, setSelectedProgramId] = useState('');
+  const [selectedGoalIds, setSelectedGoalIds] = useState<string[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>('');
   const [narrative, setNarrative] = useState('');
   const [isLocked, setIsLocked] = useState(false);
 
-  const handleAddGoal = () => {
-    setGoalsAddressed([...goalsAddressed, '']);
-  };
+  const { data: programs = [], isLoading: isLoadingPrograms } = useQuery({
+    queryKey: ['client-programs', clientId, organizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!clientId || !organizationId) {
+        return [];
+      }
+      const { data, error } = await supabase
+        .from('programs')
+        .select('id, name, status, client_id')
+        .eq('client_id', clientId)
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: false });
 
-  const handleGoalChange = (index: number, value: string) => {
-    const updatedGoals = [...goalsAddressed];
-    updatedGoals[index] = value;
-    setGoalsAddressed(updatedGoals);
-  };
+      if (error) {
+        throw error;
+      }
+      return (data ?? []) as Program[];
+    },
+    enabled: Boolean(clientId && organizationId),
+  });
 
-  const handleRemoveGoal = (index: number) => {
-    const updatedGoals = [...goalsAddressed];
-    updatedGoals.splice(index, 1);
-    setGoalsAddressed(updatedGoals);
+  const resolvedProgramId = useMemo(() => {
+    if (selectedProgramId) return selectedProgramId;
+    return programs.find((program) => program.status === 'active')?.id ?? programs[0]?.id ?? '';
+  }, [programs, selectedProgramId]);
+
+  useEffect(() => {
+    setSelectedGoalIds([]);
+  }, [resolvedProgramId]);
+
+  const { data: goals = [], isLoading: isLoadingGoals } = useQuery({
+    queryKey: ['program-goals', resolvedProgramId, organizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!resolvedProgramId || !organizationId) {
+        return [];
+      }
+      const { data, error } = await supabase
+        .from('goals')
+        .select('id, title, status, program_id')
+        .eq('program_id', resolvedProgramId)
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+      return (data ?? []) as Goal[];
+    },
+    enabled: Boolean(resolvedProgramId && organizationId),
+  });
+
+  const availableGoals = useMemo(
+    () => goals.filter((goal) => goal.status !== 'archived'),
+    [goals],
+  );
+
+  const { data: sessions = [], isLoading: isLoadingSessions } = useQuery({
+    queryKey: ['client-sessions', clientId, organizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!clientId || !organizationId) {
+        return [];
+      }
+      const { data, error } = await supabase
+        .from('sessions')
+        .select('id, start_time, end_time, therapist:therapist_id(full_name)')
+        .eq('client_id', clientId)
+        .eq('organization_id', organizationId)
+        .order('start_time', { ascending: false })
+        .limit(50);
+
+      if (error) {
+        throw error;
+      }
+      return (data ?? []) as Array<{
+        id: string;
+        start_time: string;
+        end_time: string;
+        therapist: { full_name: string | null } | null;
+      }>;
+    },
+    enabled: Boolean(clientId && organizationId),
+  });
+
+  const hasSessions = sessions.length > 0;
+
+  const toggleGoalSelection = (goalId: string) => {
+    setSelectedGoalIds((prev) =>
+      prev.includes(goalId) ? prev.filter((id) => id !== goalId) : [...prev, goalId],
+    );
   };
 
   const resetForm = () => {
@@ -63,7 +148,9 @@ export default function AddSessionNoteModal({
     setEndTime('10:00');
     setServiceCode('97153');
     setTherapistId('');
-    setGoalsAddressed(['']);
+    setSelectedProgramId('');
+    setSelectedGoalIds([]);
+    setSelectedSessionId('');
     setNarrative('');
     setIsLocked(false);
   };
@@ -82,9 +169,6 @@ export default function AddSessionNoteModal({
       return;
     }
 
-    // Filter out empty goals
-    const filteredGoals = goalsAddressed.filter(goal => goal.trim() !== '');
-    
     // Validate required fields
     if (!date) {
       showError('Session date is required');
@@ -110,18 +194,37 @@ export default function AddSessionNoteModal({
       showError('Therapist is required');
       return;
     }
-    
-    if (filteredGoals.length === 0) {
-      showError('At least one goal must be addressed');
+
+    if (hasSessions && !selectedSessionId) {
+      showError('Select a scheduled session to link this note.');
       return;
     }
-    
+
+    if (!resolvedProgramId) {
+      showError('Select a program before choosing goals.');
+      return;
+    }
+
+    if (availableGoals.length === 0) {
+      showError('Add goals to the selected program before logging this note.');
+      return;
+    }
+
+    if (selectedGoalIds.length === 0) {
+      showError('Select at least one goal from the goals bank.');
+      return;
+    }
+
     if (!narrative.trim()) {
       showError('Session notes are required');
       return;
     }
     
     const selectedTherapist = therapists.find(t => t.id === therapistId);
+    const selectedGoalTitles = availableGoals
+      .filter((goal) => selectedGoalIds.includes(goal.id))
+      .map((goal) => goal.title);
+
     onSubmit({
       date,
       start_time: startTime,
@@ -129,7 +232,9 @@ export default function AddSessionNoteModal({
       service_code: serviceCode,
       therapist_id: therapistId,
       therapist_name: selectedTherapist?.full_name || 'Unknown Therapist',
-      goals_addressed: filteredGoals,
+      goals_addressed: selectedGoalTitles,
+      goal_ids: selectedGoalIds,
+      session_id: selectedSessionId || null,
       narrative,
       is_locked: isLocked
     });
@@ -239,38 +344,89 @@ export default function AddSessionNoteModal({
               ))}
             </select>
           </div>
+
+          <div>
+            <label htmlFor="session-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Link to Session
+            </label>
+            <select
+              id="session-select"
+              value={selectedSessionId}
+              onChange={(e) => setSelectedSessionId(e.target.value)}
+              className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+              disabled={isLoadingSessions || !hasSessions}
+            >
+              <option value="">
+                {isLoadingSessions ? 'Loading sessions...' : hasSessions ? 'Select a session' : 'No sessions available'}
+              </option>
+              {sessions.map((session) => (
+                <option key={session.id} value={session.id}>
+                  {new Date(session.start_time).toLocaleDateString()} {new Date(session.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(session.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {session.therapist?.full_name ?? 'Therapist'}
+                </option>
+              ))}
+            </select>
+            {!hasSessions && !isLoadingSessions && (
+              <p className="mt-2 text-xs text-amber-600 dark:text-amber-300">
+                No scheduled sessions found for this client.
+              </p>
+            )}
+          </div>
           
+          <div>
+            <label htmlFor="program-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Program
+            </label>
+            <select
+              id="program-select"
+              value={resolvedProgramId}
+              onChange={(e) => {
+                setSelectedProgramId(e.target.value);
+                setSelectedGoalIds([]);
+              }}
+              className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+              disabled={isLoadingPrograms || programs.length === 0}
+            >
+              <option value="">
+                {isLoadingPrograms ? 'Loading programs...' : 'Select a program'}
+              </option>
+              {programs.map((program) => (
+                <option key={program.id} value={program.id}>
+                  {program.name}
+                </option>
+              ))}
+            </select>
+            {programs.length === 0 && !isLoadingPrograms && (
+              <p className="mt-2 text-xs text-amber-600 dark:text-amber-300">
+                No programs found for this client. Create one in Programs & Goals before logging.
+              </p>
+            )}
+          </div>
+
           <div>
             <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Goals Addressed
             </p>
-            {goalsAddressed.map((goal, index) => (
-              <div key={index} className="flex items-center mb-2">
-                <input
-                  type="text"
-                  value={goal}
-                  onChange={(e) => handleGoalChange(index, e.target.value)}
-                  className="flex-1 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                  placeholder="Enter goal"
-                />
-                {goalsAddressed.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveGoal(index)}
-                    className="ml-2 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
+            {isLoadingGoals ? (
+              <div className="text-sm text-gray-500 dark:text-gray-400">Loading goals...</div>
+            ) : availableGoals.length === 0 ? (
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                No goals available for the selected program.
               </div>
-            ))}
-            <button
-              type="button"
-              onClick={handleAddGoal}
-              className="mt-1 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-            >
-              + Add another goal
-            </button>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {availableGoals.map((goal) => (
+                  <label key={goal.id} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={selectedGoalIds.includes(goal.id)}
+                      onChange={() => toggleGoalSelection(goal.id)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <span>{goal.title}</span>
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
           
           <div>

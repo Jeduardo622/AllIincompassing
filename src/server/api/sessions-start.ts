@@ -51,8 +51,8 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
     Authorization: `Bearer ${accessToken}`,
   };
 
-  const sessionUrl = `${supabaseUrl}/rest/v1/sessions?select=id,client_id,organization_id,program_id,goal_id&organization_id=eq.${organizationId}&id=eq.${session_id}`;
-  const sessionResult = await fetchJson<Array<{ id: string; client_id: string; organization_id: string }>>(sessionUrl, {
+  const sessionUrl = `${supabaseUrl}/rest/v1/sessions?select=id,client_id,organization_id,program_id,goal_id,started_at&organization_id=eq.${organizationId}&id=eq.${session_id}`;
+  const sessionResult = await fetchJson<Array<{ id: string; client_id: string; organization_id: string; started_at: string | null }>>(sessionUrl, {
     method: "GET",
     headers,
   });
@@ -61,6 +61,9 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
   }
 
   const sessionRow = sessionResult.data[0];
+  if (sessionRow.started_at) {
+    return json({ error: "Session already started" }, 409);
+  }
   const goalUrl = `${supabaseUrl}/rest/v1/goals?select=id,program_id,client_id,organization_id&organization_id=eq.${organizationId}&id=eq.${goal_id}&program_id=eq.${program_id}&client_id=eq.${sessionRow.client_id}`;
   const goalResult = await fetchJson<Array<{ id: string }>>(goalUrl, { method: "GET", headers });
   if (!goalResult.ok || !goalResult.data || goalResult.data.length === 0) {

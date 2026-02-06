@@ -443,6 +443,28 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
                           ))}
                         </div>
                       </div>
+
+                      <div className="mt-3">
+                        <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Goal IDs:
+                        </div>
+                        {note.goal_ids && note.goal_ids.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {note.goal_ids.map((goalId) => (
+                              <span
+                                key={goalId}
+                                className="text-xs bg-gray-50 text-gray-600 dark:bg-gray-800 dark:text-gray-300 px-2 py-0.5 rounded font-mono"
+                              >
+                                {goalId}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            No goal IDs linked.
+                          </p>
+                        )}
+                      </div>
                       
                       <div className="mt-3">
                         <div className="text-sm font-medium text-gray-700 dark:text-gray-300">

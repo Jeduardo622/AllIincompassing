@@ -115,7 +115,7 @@ export default function AddSessionNoteModal({
       }
       const { data, error } = await supabase
         .from('sessions')
-        .select('id, start_time, end_time, therapist:therapist_id(full_name)')
+        .select('id, start_time, end_time, therapist_id, therapist:therapist_id(full_name)')
         .eq('client_id', clientId)
         .eq('organization_id', organizationId)
         .order('start_time', { ascending: false })
@@ -128,6 +128,7 @@ export default function AddSessionNoteModal({
         id: string;
         start_time: string;
         end_time: string;
+        therapist_id: string;
         therapist: { full_name: string | null } | null;
       }>;
     },
@@ -141,6 +142,58 @@ export default function AddSessionNoteModal({
       prev.includes(goalId) ? prev.filter((id) => id !== goalId) : [...prev, goalId],
     );
   };
+
+  useEffect(() => {
+    if (!hasSessions || selectedSessionId) {
+      return;
+    }
+
+    const findBestMatch = () => {
+      const targetDate = date;
+      const targetStart = startTime;
+      const targetEnd = endTime;
+      const targetTherapist = therapistId;
+
+      const formatLocalDate = (value: string) => {
+        const local = new Date(value);
+        const year = local.getFullYear();
+        const month = String(local.getMonth() + 1).padStart(2, '0');
+        const day = String(local.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      const formatLocalTime = (value: string) => {
+        const local = new Date(value);
+        const hours = String(local.getHours()).padStart(2, '0');
+        const minutes = String(local.getMinutes()).padStart(2, '0');
+        return `${hours}:${minutes}`;
+      };
+
+      const exactMatch = sessions.find((session) => {
+        const sessionDate = formatLocalDate(session.start_time);
+        const sessionStart = formatLocalTime(session.start_time);
+        const sessionEnd = formatLocalTime(session.end_time);
+        const matchesTherapist = targetTherapist.length === 0 || session.therapist_id === targetTherapist;
+        return sessionDate === targetDate && sessionStart === targetStart && sessionEnd === targetEnd && matchesTherapist;
+      });
+
+      if (exactMatch) {
+        return exactMatch.id;
+      }
+
+      const sameDay = sessions.find((session) => {
+        const sessionDate = formatLocalDate(session.start_time);
+        return sessionDate === targetDate;
+      });
+
+      return sameDay?.id ?? sessions[0]?.id ?? '';
+    };
+
+    const nextSessionId = findBestMatch();
+    if (nextSessionId) {
+      setSelectedSessionId(nextSessionId);
+    }
+  }, [date, endTime, hasSessions, sessions, selectedSessionId, startTime, therapistId]);
 
   const resetForm = () => {
     setDate(new Date().toISOString().split('T')[0]);

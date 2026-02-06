@@ -52,9 +52,51 @@ const mockClient = {
   created_at: '2024-01-01T00:00:00Z',
 };
 
+const mockProgram = {
+  id: 'program-1',
+  organization_id: 'org-a',
+  client_id: 'client-1',
+  name: 'Behavior Plan',
+  description: 'Primary behavior plan',
+  status: 'active',
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+};
+
+const mockGoal = {
+  id: 'goal-1',
+  organization_id: 'org-a',
+  client_id: 'client-1',
+  program_id: 'program-1',
+  title: 'Increase communication',
+  status: 'active',
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+};
+
+const baseFrom = supabase.from;
+
+const buildProgramGoalQuery = (data: unknown[]) => {
+  const chain = {
+    select: () => chain,
+    eq: () => chain,
+    order: () => Promise.resolve({ data, error: null }),
+  };
+  return chain;
+};
+
 describe('Scheduling Integration - End-to-End Flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildProgramGoalQuery([mockProgram]) as ReturnType<typeof baseFrom>;
+      }
+      if (table === 'goals') {
+        return buildProgramGoalQuery([mockGoal]) as ReturnType<typeof baseFrom>;
+      }
+      return baseFrom(table);
+    });
     // Override supabase.rpc to return our mock therapist/client so we see Dr. Jane Smith in UI
     vi.mocked(supabase.rpc as any).mockImplementation(async (functionName: string) => {
       if (functionName === 'get_schedule_data_batch') {
@@ -89,6 +131,12 @@ describe('Scheduling Integration - End-to-End Flow', () => {
       }),
       http.get('*/rest/v1/sessions*', () => {
         return HttpResponse.json([]);
+      }),
+      http.get('*/rest/v1/programs*', () => {
+        return HttpResponse.json([mockProgram]);
+      }),
+      http.get('*/rest/v1/goals*', () => {
+        return HttpResponse.json([mockGoal]);
       }),
       http.post('*/api/book', async ({ request }) => {
         sessionCreated = true;

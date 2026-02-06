@@ -22,6 +22,7 @@ const expectedPaths = [
   '/monitoring',
   '/reports',
   '/settings',
+  '/super-admin/prompts',
 ] as const;
 
 describe('route guard matrix', () => {

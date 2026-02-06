@@ -172,6 +172,8 @@ Enable therapists to select and track structured goals and program notes across 
 - Given a goals bank entry is archived, when generating notes, then the AI must not assign the archived goal unless therapist explicitly selects it.
 - Given a session note is AI-generated, then it must reference `goal_ids` and include measurable progress notes.
 - Given a program summary is generated, then it must aggregate progress across the program’s sessions.
+- Given a therapist logs a manual session note, when they save, then at least one goal from the goals bank is required and stored in `client_session_notes.goal_ids`.
+- Given a client has no active programs or goals, when a therapist tries to log a session note, then the UI must block saving and explain the missing program/goals requirement.
 
 ## Open Questions
 - How do we map existing free-text goals into structured goals without losing clinical intent?

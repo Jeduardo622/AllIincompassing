@@ -317,6 +317,8 @@ export interface SessionNote {
   therapist_name: string;
   therapist_id?: string;
   goals_addressed: string[];
+  goal_ids?: string[];
+  session_id?: string | null;
   narrative: string;
   is_locked: boolean;
   client_id: string;

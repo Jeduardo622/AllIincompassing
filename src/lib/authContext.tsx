@@ -250,30 +250,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+      try {
+        setSession(session);
+        setUser(session?.user ?? null);
 
-      if (session?.user) {
-        const profileData = await fetchProfile(session.user.id);
-        setProfile(profileData);
-      } else {
-        const stubAuthState = readStubAuthState();
-        if (stubAuthState) {
-          setUser(stubAuthState.user);
-          setSession(stubAuthState.session);
-          setProfile(stubAuthState.profile);
+        if (session?.user) {
+          const profileData = await withTimeout(
+            fetchProfile(session.user.id),
+            'fetchProfile in onAuthStateChange',
+            10000
+          ).catch((error) => {
+            logger.error('Failed to fetch profile in auth state change', {
+              error: toError(error, 'Profile fetch failed in listener'),
+              metadata: {
+                scope: 'authContext.onAuthStateChange',
+                userId: session.user.id,
+                event,
+              },
+            });
+            return null;
+          });
+          setProfile(profileData);
         } else {
-          setProfile(null);
+          const stubAuthState = readStubAuthState();
+          if (stubAuthState) {
+            setUser(stubAuthState.user);
+            setSession(stubAuthState.session);
+            setProfile(stubAuthState.profile);
+          } else {
+            setProfile(null);
+          }
         }
-      }
 
-      if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setProfile(null);
-        setSession(null);
+        if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setProfile(null);
+          setSession(null);
+        }
+      } catch (error) {
+        logger.error('Failed to process auth state change', {
+          error: toError(error, 'Auth state change failed'),
+          metadata: {
+            scope: 'authContext.onAuthStateChange',
+            event,
+          },
+        });
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     });
 
     return () => subscription.unsubscribe();

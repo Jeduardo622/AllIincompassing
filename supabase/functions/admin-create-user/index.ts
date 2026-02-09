@@ -91,7 +91,7 @@ const validatePayload = (payload: Partial<CreateAdminPayload>) => {
   };
 };
 
-export default createProtectedRoute(
+const handler = createProtectedRoute(
   async (req, userContext) => {
     if (req.method !== "POST") {
       return respond(405, { error: "Method not allowed" });
@@ -192,4 +192,8 @@ export default createProtectedRoute(
   },
   RouteOptions.admin,
 );
+
+Deno.serve(handler);
+
+export default handler;
 

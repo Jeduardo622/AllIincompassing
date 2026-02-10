@@ -11,6 +11,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { processMessage, AssistantGuardrailError } from "../lib/ai";
 import { supabase } from "../lib/supabase";
+import { callApi } from "../lib/api";
+import {
+  createAgentOperationContext,
+  withAgentRetry,
+} from "../lib/agentTransactions";
 import { cancelSessions } from "../lib/sessionCancellation";
 import { showSuccess, showError } from "../lib/toast";
 import { errorTracker } from "../lib/errorTracking";
@@ -179,6 +184,7 @@ export default function ChatBot() {
         try {
           switch (response.action.type) {
             case "cancel_sessions": {
+              const operation = createAgentOperationContext("cancel_sessions", 3);
               const { date, reason, therapist_id: therapistId } =
                 response.action.data;
               if (!date) {
@@ -200,11 +206,15 @@ export default function ChatBot() {
               ]);
 
               try {
-                const result = await cancelSessions({
-                  date,
-                  therapistId,
-                  reason: cancellationReason,
-                });
+                const result = await withAgentRetry(operation, async () =>
+                  cancelSessions({
+                    date,
+                    therapistId,
+                    reason: cancellationReason,
+                    idempotencyKey: operation.idempotencyKey,
+                    agentOperationId: operation.operationId,
+                  })
+                );
 
                 await queryClient.invalidateQueries({
                   queryKey: ["sessions"],
@@ -275,7 +285,12 @@ export default function ChatBot() {
             }
 
             case "schedule_session": {
-              const detail = response.action.data;
+              const operation = createAgentOperationContext("schedule_session", 1);
+              const detail = {
+                ...response.action.data,
+                agent_operation_id: operation.operationId,
+                idempotency_key: operation.idempotencyKey,
+              };
               localStorage.setItem("pendingSchedule", JSON.stringify(detail));
               document.dispatchEvent(
                 new CustomEvent("openScheduleModal", {
@@ -283,6 +298,76 @@ export default function ChatBot() {
                 }),
               );
               navigate("/schedule");
+              break;
+            }
+
+            case "start_session": {
+              const operation = createAgentOperationContext("start_session", 3);
+              const {
+                session_id: sessionId,
+                program_id: programId,
+                goal_id: goalId,
+                goal_ids: goalIds = [],
+                started_at: startedAt,
+              } = response.action.data;
+
+              if (!sessionId || !programId || !goalId) {
+                throw new Error("Session start requires session_id, program_id, and goal_id");
+              }
+
+              setMessages((prev) => [
+                ...prev.slice(0, -1),
+                {
+                  role: "assistant",
+                  content: `${response.response}\n\n⏳ Starting session...`,
+                  status: "processing",
+                },
+              ]);
+
+              const startOutcome = await withAgentRetry(operation, async () => {
+                const startResponse = await callApi("/api/sessions-start", {
+                  method: "POST",
+                  headers: {
+                    "Idempotency-Key": operation.idempotencyKey,
+                    "x-agent-operation-id": operation.operationId,
+                  },
+                  body: JSON.stringify({
+                    session_id: sessionId,
+                    program_id: programId,
+                    goal_id: goalId,
+                    goal_ids: Array.isArray(goalIds) ? goalIds : [],
+                    started_at: startedAt,
+                    agent_operation_id: operation.operationId,
+                  }),
+                });
+
+                if (startResponse.status === 409) {
+                  return { alreadyStarted: true };
+                }
+
+                if (!startResponse.ok) {
+                  const error = new Error("Failed to start session") as Error & { status?: number };
+                  error.status = startResponse.status;
+                  throw error;
+                }
+
+                return { alreadyStarted: false };
+              });
+
+              await queryClient.invalidateQueries({ queryKey: ["sessions"] });
+              showSuccess(startOutcome.alreadyStarted ? "Session already started" : "Session started");
+              navigate("/schedule");
+
+              setMessages((prev) => [
+                ...prev.slice(0, -1),
+                {
+                  role: "assistant",
+                  content: startOutcome.alreadyStarted
+                    ? `${response.response}\n\nℹ️ Session was already started.`
+                    : `${response.response}\n\n✅ Session started successfully.`,
+                  status: "action_success",
+                },
+              ]);
               break;
             }
 
@@ -633,6 +718,9 @@ export default function ChatBot() {
               window.open(onboardingUrl, "_blank");
               break;
             }
+
+            default:
+              throw new Error(`Unsupported assistant action: ${actionType}`);
           }
         } catch (actionError) {
           logger.error('Chat bot action execution failed', {
@@ -776,10 +864,10 @@ export default function ChatBot() {
                   <p className="text-sm mt-2">You can ask me about:</p>
                   <ul className="text-sm mt-1 space-y-1">
                     <li>• Scheduling new sessions</li>
-                    <li>• Canceling or modifying sessions</li>
-                    <li>• Managing clients and therapists</li>
-                    <li>• Handling authorizations</li>
-                    <li>• Onboarding new clients</li>
+                    <li>• Canceling sessions</li>
+                    <li>• Starting sessions</li>
+                    <li>• Conflict-aware timing suggestions</li>
+                    <li>• Monthly session count summaries</li>
                   </ul>
                 </div>
               )}

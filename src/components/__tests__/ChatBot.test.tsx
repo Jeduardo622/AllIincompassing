@@ -90,6 +90,8 @@ describe("ChatBot scheduling", () => {
     );
     const event = handler.mock.calls[0][0] as CustomEvent;
     expect(event.detail.therapist_id).toBe("t1");
+    expect(event.detail.idempotency_key).toEqual(expect.any(String));
+    expect(event.detail.agent_operation_id).toEqual(expect.any(String));
 
     document.removeEventListener("openScheduleModal", handler as EventListener);
   });
@@ -108,7 +110,11 @@ describe("ChatBot scheduling", () => {
     await screen.findByText("Sure thing");
 
     const stored = window.localStorage.getItem("pendingSchedule");
-    expect(stored).toEqual(JSON.stringify(defaultScheduleAction.action.data));
+    expect(stored).not.toBeNull();
+    const parsed = JSON.parse(stored as string) as Record<string, unknown>;
+    expect(parsed.therapist_id).toBe("t1");
+    expect(parsed.idempotency_key).toEqual(expect.any(String));
+    expect(parsed.agent_operation_id).toEqual(expect.any(String));
   });
 
   it("cancels sessions when AI requests cancellation", async () => {
@@ -144,6 +150,8 @@ describe("ChatBot scheduling", () => {
       date: "2025-03-18",
       therapistId: undefined,
       reason: "Snow day",
+      idempotencyKey: expect.any(String),
+      agentOperationId: expect.any(String),
     });
     expect(
       screen.getByText(/Reason noted: Snow day/),

@@ -290,4 +290,34 @@ describe("bookHandler", () => {
       }),
     );
   });
+
+  it("returns conflict retry metadata for 409 scheduling errors", async () => {
+    bookSessionMock.mockRejectedValueOnce({
+      message: "conflict",
+      status: 409,
+      code: "THERAPIST_CONFLICT",
+      retryAfter: "2026-02-10T12:05:00.000Z",
+      retryAfterSeconds: 120,
+      orchestration: {
+        rollbackPlan: {
+          guidance: "Retry after the suggested time window.",
+        },
+      },
+    });
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest(validPayload));
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get("Retry-After")).toBe("120");
+    const body = await response.json();
+    expect(body.success).toBe(false);
+    expect(body.code).toBe("THERAPIST_CONFLICT");
+    expect(body.retryAfter).toBe("2026-02-10T12:05:00.000Z");
+    expect(body.retryAfterSeconds).toBe(120);
+    expect(body.hint).toContain("Retry after about 120 seconds");
+    expect(body.orchestration).toEqual({
+      rollbackPlan: { guidance: "Retry after the suggested time window." },
+    });
+  });
 });

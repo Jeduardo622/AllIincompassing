@@ -42,6 +42,18 @@ function normalizePayload(
   };
 }
 
+function deriveRetryAfterSeconds(retryAfter: string | null | undefined): number | null {
+  if (!retryAfter || retryAfter.trim().length === 0) {
+    return null;
+  }
+  const retryAtMs = Date.parse(retryAfter);
+  if (!Number.isFinite(retryAtMs)) {
+    return null;
+  }
+  const seconds = Math.ceil((retryAtMs - Date.now()) / 1000);
+  return Math.max(0, seconds);
+}
+
 export async function bookHandler(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: CORS_HEADERS });
@@ -102,6 +114,17 @@ export async function bookHandler(request: Request): Promise<Response> {
     const status = typeof (error as { status?: number })?.status === "number"
       ? (error as { status: number }).status
       : 500;
+    const conflictCode = typeof (error as { code?: unknown })?.code === "string"
+      ? (error as { code: string }).code
+      : undefined;
+    const retryAfter = typeof (error as { retryAfter?: unknown })?.retryAfter === "string"
+      ? (error as { retryAfter: string }).retryAfter
+      : null;
+    const explicitRetryAfterSeconds = typeof (error as { retryAfterSeconds?: unknown })?.retryAfterSeconds === "number"
+      ? (error as { retryAfterSeconds: number }).retryAfterSeconds
+      : null;
+    const retryAfterSeconds = explicitRetryAfterSeconds ?? deriveRetryAfterSeconds(retryAfter);
+    const orchestration = (error as { orchestration?: unknown })?.orchestration;
     const normalizedError = toError(error, "Booking failed");
     logger.error("Session booking failed", {
       error: normalizedError,
@@ -111,6 +134,28 @@ export async function bookHandler(request: Request): Promise<Response> {
       },
       context: { handler: "bookHandler" },
     });
-    return jsonResponse({ success: false, error: "Booking failed" }, status);
+    if (status === 409) {
+      const hint = retryAfterSeconds !== null
+        ? `The selected slot is unavailable. Retry after about ${retryAfterSeconds} seconds or choose a different time.`
+        : "The selected slot is unavailable. Refresh the schedule or choose a different time.";
+      const headers = retryAfterSeconds !== null ? { "Retry-After": String(retryAfterSeconds) } : {};
+      return jsonResponse(
+        {
+          success: false,
+          error: "Booking failed",
+          code: conflictCode,
+          hint,
+          retryAfter,
+          retryAfterSeconds,
+          orchestration: typeof orchestration === "object" && orchestration !== null
+            ? orchestration as Record<string, unknown>
+            : null,
+        },
+        status,
+        headers,
+      );
+    }
+
+    return jsonResponse({ success: false, error: "Booking failed", code: conflictCode }, status);
   }
 }

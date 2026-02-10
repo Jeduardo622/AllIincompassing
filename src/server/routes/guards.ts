@@ -29,7 +29,7 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
   }),
   createGuard({
     path: '/schedule',
-    allowedRoles: ['client', 'therapist', 'admin', 'super_admin'],
+    allowedRoles: ['therapist', 'admin', 'super_admin'],
     requiredPermissions: [],
     supabasePolicies: ['public.sessions: sessions_scoped_access'],
   }),

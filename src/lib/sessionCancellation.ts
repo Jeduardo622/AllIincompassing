@@ -6,6 +6,7 @@ export interface CancelSessionsPayload {
   therapistId?: string;
   reason?: string | null;
   idempotencyKey?: string;
+  agentOperationId?: string;
 }
 
 export interface CancelSessionsResult {
@@ -62,6 +63,9 @@ export async function cancelSessions(payload: CancelSessionsPayload): Promise<Ca
   }
   if (payload.reason !== undefined) {
     body.reason = payload.reason;
+  }
+  if (payload.agentOperationId) {
+    body.agent_operation_id = payload.agentOperationId;
   }
 
   const response = await callEdge("sessions-cancel", {

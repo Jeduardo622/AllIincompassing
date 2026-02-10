@@ -238,6 +238,7 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
 4. **Finalization & Compliance**
    - Persisted sessions inherit organization scoping, enabling reports and audits. Extend with DST-aware duration handling and audit logs per the ABA guidance.
    - Any cancellations/unholds must log outcomes so support can prove we respected the “no double booking” guarantee and HIPAA audit expectations.
+   - Agent-driven operations now include trace metadata (`requestId`, `correlationId`, `agentOperationId`) in hold/confirm/cancel audit payloads to support deterministic replay and post-incident debugging.
 
 ## Data Model & RLS Checklist
 - Ensure `sessions` maintains an exclusion constraint on `(therapist_id, tstzrange(start_time, end_time))` to prevent double-booking, alongside indexed `organization_id` as recommended by the ABA reference.
@@ -249,4 +250,5 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
 - [x] Validate Supabase migrations include the exclusion constraint and composite indexes outlined above.
 - [x] Extend edge functions to return retry hints on `409` conflicts so the UI can reschedule per hold contract expectations.
 - [x] Instrument audit logging for holds, confirmations, and note updates to satisfy compliance logging.
+- [x] Thread trace identifiers across session hold/confirm/cancel flows and provide replay reporting (`agent-trace-report` + monitoring tab).
 - [ ] Review route-specific UI components (`/schedule`, `/clients/:clientId`) to ensure they filter via the JWT’s `org_id` and therapist ID, mirroring the policy assumptions.

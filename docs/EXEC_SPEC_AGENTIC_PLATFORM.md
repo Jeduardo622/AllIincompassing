@@ -82,6 +82,7 @@
  ### Medium Priority
 - Long-term memory governance and retention policy (defined in tenant isolation runbook).
 - Deterministic replay tooling (seeded runs, trace IDs) — initial replay script in observability runbook.
+- Deterministic replay/debug report shipped for sessions (`agent-trace-report`) with monitoring UI access in `/monitoring`.
  
  ### Nice-to-have
 - Multi-agent orchestration where workflows require delegation (scheduling orchestration shipped; see `docs/SCHEDULING_ORCHESTRATION.md`).

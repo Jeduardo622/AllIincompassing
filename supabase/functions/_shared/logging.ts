@@ -1,5 +1,7 @@
 type LoggerFields = {
   requestId: string;
+  correlationId?: string | null;
+  agentOperationId?: string | null;
   functionName: string;
   userId?: string | null;
   orgId?: string | null;
@@ -21,6 +23,8 @@ function emit(level: LogLevel, fields: LoggerFields, message: string, extra?: Re
     message,
     ...extra,
     requestId: fields.requestId,
+    correlationId: fields.correlationId ?? undefined,
+    agentOperationId: fields.agentOperationId ?? undefined,
     functionName: fields.functionName,
     userId: fields.userId ?? undefined,
     orgId: fields.orgId ?? undefined,
@@ -41,8 +45,12 @@ export function getLogger(
   initial: Partial<LoggerFields> & { functionName: string },
 ): Logger {
   const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
+  const correlationId = req.headers.get("x-correlation-id") ?? requestId;
+  const agentOperationId = req.headers.get("x-agent-operation-id") ?? null;
   const base: LoggerFields = {
     requestId,
+    correlationId,
+    agentOperationId,
     functionName: initial.functionName,
     userId: initial.userId ?? null,
     orgId: initial.orgId ?? null,

@@ -184,7 +184,11 @@ export default function ChatBot() {
         try {
           switch (response.action.type) {
             case "cancel_sessions": {
-              const operation = createAgentOperationContext("cancel_sessions", 3);
+              const operation = createAgentOperationContext(
+                "cancel_sessions",
+                3,
+                response.correlationId ?? null,
+              );
               const { date, reason, therapist_id: therapistId } =
                 response.action.data;
               if (!date) {
@@ -213,6 +217,8 @@ export default function ChatBot() {
                     reason: cancellationReason,
                     idempotencyKey: operation.idempotencyKey,
                     agentOperationId: operation.operationId,
+                    requestId: operation.requestId,
+                    correlationId: operation.correlationId,
                   })
                 );
 
@@ -285,11 +291,17 @@ export default function ChatBot() {
             }
 
             case "schedule_session": {
-              const operation = createAgentOperationContext("schedule_session", 1);
+              const operation = createAgentOperationContext(
+                "schedule_session",
+                1,
+                response.correlationId ?? null,
+              );
               const detail = {
                 ...response.action.data,
                 agent_operation_id: operation.operationId,
                 idempotency_key: operation.idempotencyKey,
+                trace_request_id: operation.requestId,
+                trace_correlation_id: operation.correlationId,
               };
               localStorage.setItem("pendingSchedule", JSON.stringify(detail));
               document.dispatchEvent(
@@ -302,7 +314,11 @@ export default function ChatBot() {
             }
 
             case "start_session": {
-              const operation = createAgentOperationContext("start_session", 3);
+              const operation = createAgentOperationContext(
+                "start_session",
+                3,
+                response.correlationId ?? null,
+              );
               const {
                 session_id: sessionId,
                 program_id: programId,
@@ -330,6 +346,8 @@ export default function ChatBot() {
                   headers: {
                     "Idempotency-Key": operation.idempotencyKey,
                     "x-agent-operation-id": operation.operationId,
+                    "x-request-id": operation.requestId,
+                    "x-correlation-id": operation.correlationId,
                   },
                   body: JSON.stringify({
                     session_id: sessionId,
@@ -338,6 +356,8 @@ export default function ChatBot() {
                     goal_ids: Array.isArray(goalIds) ? goalIds : [],
                     started_at: startedAt,
                     agent_operation_id: operation.operationId,
+                    trace_request_id: operation.requestId,
+                    trace_correlation_id: operation.correlationId,
                   }),
                 });
 

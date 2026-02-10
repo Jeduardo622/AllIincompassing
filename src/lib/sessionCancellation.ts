@@ -7,6 +7,8 @@ export interface CancelSessionsPayload {
   reason?: string | null;
   idempotencyKey?: string;
   agentOperationId?: string;
+  requestId?: string;
+  correlationId?: string;
 }
 
 export interface CancelSessionsResult {
@@ -49,6 +51,15 @@ export async function cancelSessions(payload: CancelSessionsPayload): Promise<Ca
   const headers = new Headers({ "Content-Type": "application/json" });
   if (idempotencyKey.length > 0) {
     headers.set("Idempotency-Key", idempotencyKey);
+  }
+  if (payload.requestId && payload.requestId.trim().length > 0) {
+    headers.set("x-request-id", payload.requestId.trim());
+  }
+  if (payload.correlationId && payload.correlationId.trim().length > 0) {
+    headers.set("x-correlation-id", payload.correlationId.trim());
+  }
+  if (payload.agentOperationId && payload.agentOperationId.trim().length > 0) {
+    headers.set("x-agent-operation-id", payload.agentOperationId.trim());
   }
 
   const body: Record<string, unknown> = {};

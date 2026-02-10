@@ -42,6 +42,11 @@ export interface BookSessionRequest {
   overrides?: BookingOverrides;
   accessToken: string;
   recurrence?: SessionRecurrence | null;
+  trace?: {
+    requestId?: string;
+    correlationId?: string;
+    agentOperationId?: string;
+  };
 }
 
 export interface DerivedCpt {

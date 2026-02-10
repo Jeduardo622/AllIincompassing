@@ -6,7 +6,7 @@ const JSON_HEADERS: Record<string, string> = {
 
 export const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
+  "Access-Control-Allow-Headers": "authorization, content-type, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
 };
 

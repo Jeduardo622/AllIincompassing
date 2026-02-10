@@ -64,6 +64,7 @@ type PromptToolVersion = {
 type TraceContext = {
   requestId: string;
   correlationId: string;
+  agentOperationId?: string | null;
   conversationId?: string;
   userId?: string | null;
   orgId?: string | null;
@@ -256,6 +257,7 @@ const compressedFunctionSchemas = [
         },
         required: ["therapist_id", "client_id"]
       }
+    }
   },
   {
     type: "function",
@@ -1050,6 +1052,7 @@ Deno.serve(async (req) => {
     const traceContext: TraceContext = {
       requestId,
       correlationId,
+      agentOperationId: req.headers.get("x-agent-operation-id"),
       conversationId: context?.conversationId,
       userId: user.id,
       orgId,
@@ -1094,10 +1097,12 @@ Deno.serve(async (req) => {
         role: actorRole,
         requestedTools,
         url: context?.url,
+        agentOperationId: traceContext.agentOperationId ?? null,
       },
       replayPayload: {
         message: sanitizedMessage,
         context: sanitizedContext,
+        agentOperationId: traceContext.agentOperationId ?? null,
       },
     });
 

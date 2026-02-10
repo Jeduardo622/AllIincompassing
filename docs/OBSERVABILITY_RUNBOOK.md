@@ -44,8 +44,16 @@ This runbook defines production monitoring signals, initial SLO thresholds, and 
   - `public.session_audit_logs`
 - **Output**: merged timeline + per-source records + discovered request/correlation/operation IDs.
 - **AuthZ**: requires authenticated user with `admin`, `super_admin`, or `monitoring` role.
+- **Monitoring UI**: `/monitoring` now includes an **Agent Trace Replay** tab for querying and viewing summary + timeline without using curl.
 - **Example query**:
   - `curl -X POST "$SUPABASE_URL/functions/v1/agent-trace-report" -H "Authorization: Bearer <admin_jwt>" -H "apikey: $SUPABASE_ANON_KEY" -H "Content-Type: application/json" -d '{"correlationId":"<id>"}'`
+
+## Session flow trace propagation
+- Agent-driven scheduling now propagates `x-request-id`, `x-correlation-id`, and `x-agent-operation-id` through:
+  - `ai-agent-optimized` trace rows (`agent_execution_traces`)
+  - `sessions-hold` / `sessions-confirm` / `sessions-cancel` orchestration inputs (`scheduling_orchestration_runs`)
+  - session lifecycle audit payloads (`session_audit_logs`)
+- This enables a single selector (`correlationId` or `agentOperationId`) to reconstruct the end-to-end scheduling execution chain.
 
 ## Error taxonomy + retry policy
 - **Taxonomy table**: `public.error_taxonomy` defines error `code`, `category`, `severity`, `retryable`, and `http_status`.

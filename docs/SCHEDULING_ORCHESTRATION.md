@@ -14,6 +14,7 @@ Inputs are collected by edge functions and sent to the scheduling orchestrator:
 - `tenant`: `organizationId`
 - `actor`: `actorId`, `actorRole`
 - `request`: `therapistId`, `clientId`, `startTime`, `endTime`, `holdKey`, `sessionId`, `timeZone`, `idempotencyKey`
+- `request`: `therapistId`, `clientId`, `startTime`, `endTime`, `holdKey`, `sessionId`, `timeZone`, `idempotencyKey`, `agentOperationId`
 - `conflict`: `conflictCode`, `retryAfter`
 - `delegation`: `executionMode` (`suggestion` only), `allowedTools` (AI allowlist)
 
@@ -33,8 +34,12 @@ Outputs (returned to callers via edge functions):
 ## Auditability
 Every orchestration attempt is recorded in `scheduling_orchestration_runs` with:
 - request/correlation IDs
+- agent operation ID (when present)
 - workflow, status, inputs, outputs, rollback plan
 - organization scope
+
+Related audit log propagation:
+- `sessions-hold`, `sessions-confirm`, and `sessions-cancel` write `agentOperationId` plus nested trace IDs in `session_audit_logs.event_payload` for replay correlation.
 
 ## Rollback readiness
 Orchestration always returns a `rollbackPlan` with the next safe step:

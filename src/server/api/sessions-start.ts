@@ -26,39 +26,55 @@ function decodeJwtSubject(accessToken: string): string | null {
 }
 
 export async function sessionsStartHandler(request: Request): Promise<Response> {
+  const traceHeaders: Record<string, string> = {};
+  const requestId = request.headers.get("x-request-id")?.trim();
+  const correlationId = request.headers.get("x-correlation-id")?.trim();
+  const agentOperationId = request.headers.get("x-agent-operation-id")?.trim();
+  if (requestId) {
+    traceHeaders["x-request-id"] = requestId;
+  }
+  if (correlationId) {
+    traceHeaders["x-correlation-id"] = correlationId;
+  }
+  if (agentOperationId) {
+    traceHeaders["x-agent-operation-id"] = agentOperationId;
+  }
+  const respond = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
+    json(body, status, { ...traceHeaders, ...extra });
+
   if (request.method === "OPTIONS") {
-    return new Response("ok", { status: 200, headers: { ...CORS_HEADERS } });
+    return new Response("ok", { status: 200, headers: { ...CORS_HEADERS, ...traceHeaders } });
   }
 
   if (request.method !== "POST") {
-    return json({ error: "Method not allowed" }, 405);
+    return respond({ error: "Method not allowed" }, 405);
   }
 
   const accessToken = getAccessToken(request);
   if (!accessToken) {
-    return json({ error: "Missing authorization token" }, 401, { "WWW-Authenticate": "Bearer" });
+    return respond({ error: "Missing authorization token" }, 401, { "WWW-Authenticate": "Bearer" });
   }
 
   const { organizationId, isTherapist, isAdmin, isSuperAdmin } = await resolveOrgAndRole(accessToken);
   if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
-    return json({ error: "Forbidden" }, 403);
+    return respond({ error: "Forbidden" }, 403);
   }
 
   const currentUserId = decodeJwtSubject(accessToken);
   if (!currentUserId) {
-    return json({ error: "Forbidden" }, 403);
+    return respond({ error: "Forbidden" }, 403);
   }
 
   let payload: unknown;
   try {
     payload = await request.json();
   } catch {
-    return json({ error: "Invalid JSON body" }, 400);
+    return respond({ error: "Invalid JSON body" }, 400);
   }
 
   const parsed = startSessionSchema.safeParse(payload);
   if (!parsed.success) {
-    return json({ error: "Invalid request body" }, 400);
+    return respond({ error: "Invalid request body" }, 400);
   }
 
   const { session_id, program_id, goal_id, goal_ids, started_at } = parsed.data;
@@ -84,28 +100,28 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
     headers,
   });
   if (!sessionResult.ok || !sessionResult.data || sessionResult.data.length === 0) {
-    return json({ error: "Session not found" }, 404);
+    return respond({ error: "Session not found" }, 404);
   }
 
   const sessionRow = sessionResult.data[0];
   if (isTherapist && sessionRow.therapist_id !== currentUserId) {
-    return json({ error: "Forbidden" }, 403);
+    return respond({ error: "Forbidden" }, 403);
   }
 
   if (sessionRow.started_at) {
-    return json({ error: "Session already started" }, 409);
+    return respond({ error: "Session already started" }, 409);
   }
   const goalUrl = `${supabaseUrl}/rest/v1/goals?select=id,program_id,client_id,organization_id&organization_id=eq.${organizationId}&id=eq.${goal_id}&program_id=eq.${program_id}&client_id=eq.${sessionRow.client_id}`;
   const goalResult = await fetchJson<Array<{ id: string }>>(goalUrl, { method: "GET", headers });
   if (!goalResult.ok || !goalResult.data || goalResult.data.length === 0) {
-    return json({ error: "Goal not found for this program" }, 404);
+    return respond({ error: "Goal not found for this program" }, 404);
   }
 
   if (mergedGoalIds.length > 0) {
     const goalsUrl = `${supabaseUrl}/rest/v1/goals?select=id,program_id,client_id,organization_id&organization_id=eq.${organizationId}&program_id=eq.${program_id}&client_id=eq.${sessionRow.client_id}&id=in.(${mergedGoalIds.join(",")})`;
     const goalsResult = await fetchJson<Array<{ id: string }>>(goalsUrl, { method: "GET", headers });
     if (!goalsResult.ok || !goalsResult.data || goalsResult.data.length !== mergedGoalIds.length) {
-      return json({ error: "One or more goals are invalid for this session" }, 400);
+      return respond({ error: "One or more goals are invalid for this session" }, 400);
     }
   }
 
@@ -122,10 +138,10 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
   });
 
   if (!updateResult.ok) {
-    return json({ error: "Failed to start session" }, updateResult.status || 500);
+    return respond({ error: "Failed to start session" }, updateResult.status || 500);
   }
   if (!Array.isArray(updateResult.data) || updateResult.data.length === 0) {
-    return json({ error: "Session already started" }, 409);
+    return respond({ error: "Session already started" }, 409);
   }
 
   if (mergedGoalIds.length > 0) {
@@ -143,9 +159,9 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
       body: JSON.stringify(goalsPayload),
     });
     if (!goalsInsert.ok) {
-      return json({ error: "Failed to attach goals to session" }, goalsInsert.status || 500);
+      return respond({ error: "Failed to attach goals to session" }, goalsInsert.status || 500);
     }
   }
 
-  return json(updateResult.data[0]);
+  return respond(updateResult.data[0]);
 }

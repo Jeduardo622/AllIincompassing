@@ -375,6 +375,7 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
     endTimeOffsetMinutes: primaryOccurrence.endOffsetMinutes,
     timeZone: recurrence?.timeZone ?? payload.timeZone,
     accessToken: payload.accessToken,
+    ...(payload.trace ? { trace: payload.trace } : {}),
     occurrences: occurrences.map((occurrence) => ({
       startTime: occurrence.startTime,
       endTime: occurrence.endTime,
@@ -398,6 +399,7 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
       endTimeOffsetMinutes: primaryOccurrence.endOffsetMinutes,
       timeZone: recurrence?.timeZone ?? payload.timeZone,
       accessToken: payload.accessToken,
+      ...(payload.trace ? { trace: payload.trace } : {}),
       occurrences: hold.holds.map((heldOccurrence, index) => ({
         holdKey: heldOccurrence.holdKey,
         session: {
@@ -427,6 +429,7 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
         holdKey: hold.holdKey,
         idempotencyKey: cancelIdempotencyKey,
         accessToken: payload.accessToken,
+        ...(payload.trace ? { trace: payload.trace } : {}),
       });
     } catch (releaseError) {
       console.warn("Failed to release session hold after confirmation error", releaseError);

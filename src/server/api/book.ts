@@ -11,7 +11,7 @@ import { toError } from "../../lib/logger/normalizeError";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type, idempotency-key",
+  "Access-Control-Allow-Headers": "authorization, content-type, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -34,11 +34,17 @@ function normalizePayload(
   body: BookSessionApiRequestBody,
   idempotencyKey: string | undefined,
   accessToken: string,
+  trace?: {
+    requestId?: string;
+    correlationId?: string;
+    agentOperationId?: string;
+  },
 ): BookSessionRequest {
   return {
     ...body,
     idempotencyKey,
     accessToken,
+    trace,
   };
 }
 
@@ -105,7 +111,12 @@ export async function bookHandler(request: Request): Promise<Response> {
 
   try {
     const idempotencyKey = request.headers.get("Idempotency-Key") ?? undefined;
-    const result = await bookSession(normalizePayload(body, idempotencyKey, accessToken));
+    const trace = {
+      requestId: request.headers.get("x-request-id") ?? undefined,
+      correlationId: request.headers.get("x-correlation-id") ?? undefined,
+      agentOperationId: request.headers.get("x-agent-operation-id") ?? undefined,
+    };
+    const result = await bookSession(normalizePayload(body, idempotencyKey, accessToken, trace));
     const headers = idempotencyKey
       ? { "Idempotency-Key": idempotencyKey }
       : {};

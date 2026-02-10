@@ -1,5 +1,6 @@
 import type { Session } from "../types";
 import { callEdge } from "./supabase";
+import type { CallEdgeOptions } from "./supabase";
 
 export interface HoldRequest {
   therapistId: string;
@@ -14,6 +15,11 @@ export interface HoldRequest {
   timeZone: string;
   accessToken?: string;
   occurrences?: HoldOccurrenceRequest[];
+  trace?: {
+    requestId?: string;
+    correlationId?: string;
+    agentOperationId?: string;
+  };
 }
 
 export interface HoldOccurrenceRequest {
@@ -80,6 +86,30 @@ function toError(message: string | undefined, fallback: string) {
   return new Error(message && message.length > 0 ? message : fallback);
 }
 
+function buildEdgeTraceOptions(payload: {
+  accessToken?: string;
+  trace?: {
+    requestId?: string;
+    correlationId?: string;
+    agentOperationId?: string;
+  };
+}): CallEdgeOptions {
+  const options: CallEdgeOptions = {};
+  if (payload.accessToken) {
+    options.accessToken = payload.accessToken;
+  }
+  if (payload.trace?.requestId) {
+    options.requestId = payload.trace.requestId;
+  }
+  if (payload.trace?.correlationId) {
+    options.correlationId = payload.trace.correlationId;
+  }
+  if (payload.trace?.agentOperationId) {
+    options.agentOperationId = payload.trace.agentOperationId;
+  }
+  return options;
+}
+
 export async function requestSessionHold(payload: HoldRequest): Promise<HoldResponse> {
   const occurrencePayloads: HoldOccurrenceRequest[] = Array.isArray(payload.occurrences) && payload.occurrences.length > 0
     ? payload.occurrences
@@ -116,7 +146,7 @@ export async function requestSessionHold(payload: HoldRequest): Promise<HoldResp
         })),
       }),
     },
-    { accessToken: payload.accessToken },
+    buildEdgeTraceOptions(payload),
   );
 
   let body: HoldEdgeResponse | null = null;
@@ -192,6 +222,11 @@ export interface ConfirmRequest {
   timeZone: string;
   accessToken?: string;
   occurrences?: ConfirmOccurrenceRequest[];
+  trace?: {
+    requestId?: string;
+    correlationId?: string;
+    agentOperationId?: string;
+  };
 }
 
 export async function confirmSessionBooking(payload: ConfirmRequest): Promise<ConfirmSessionResponse> {
@@ -218,7 +253,7 @@ export async function confirmSessionBooking(payload: ConfirmRequest): Promise<Co
         })),
       }),
     },
-    { accessToken: payload.accessToken },
+    buildEdgeTraceOptions(payload),
   );
 
   let body: ConfirmEdgeResponse | null = null;
@@ -300,6 +335,11 @@ export interface CancelHoldRequest {
   holdKey: string;
   idempotencyKey?: string;
   accessToken?: string;
+  trace?: {
+    requestId?: string;
+    correlationId?: string;
+    agentOperationId?: string;
+  };
 }
 
 export interface CancelHoldResponse {
@@ -326,7 +366,7 @@ export async function cancelSessionHold(payload: CancelHoldRequest): Promise<Can
       },
       body: JSON.stringify({ hold_key: payload.holdKey }),
     },
-    { accessToken: payload.accessToken },
+    buildEdgeTraceOptions(payload),
   );
 
   let body: EdgeSuccess<{ released: boolean; hold?: CancelHoldResponse["hold"] }> | EdgeError | null = null;

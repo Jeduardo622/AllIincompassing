@@ -61,6 +61,8 @@ interface AIResponse {
   cacheHit?: boolean;
   responseTime?: number;
   error?: string;
+  requestId?: string;
+  correlationId?: string;
 }
 
 const allowFallbacks = import.meta.env.DEV;
@@ -144,8 +146,12 @@ export async function processMessage(
       return await fallbackResponse.json();
     }
 
-    const data = await response.json();
-    return data;
+    const data = await response.json() as AIResponse;
+    return {
+      ...data,
+      requestId: response.headers.get("x-request-id") ?? undefined,
+      correlationId: response.headers.get("x-correlation-id") ?? undefined,
+    };
   } catch (error) {
     if (error instanceof AssistantGuardrailError) {
       throw error;

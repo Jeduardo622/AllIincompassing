@@ -68,6 +68,8 @@ type PendingScheduleDetail = {
   start_time?: string;
   idempotency_key?: string;
   agent_operation_id?: string;
+  trace_request_id?: string;
+  trace_correlation_id?: string;
 };
 
 const SESSION_HOLD_SECONDS = 5 * 60; // 5 minutes
@@ -81,6 +83,8 @@ const toPendingScheduleDetail = (value: unknown): PendingScheduleDetail | null =
   const startTime = record.start_time;
   const idempotencyKey = record.idempotency_key;
   const agentOperationId = record.agent_operation_id;
+  const traceRequestId = record.trace_request_id;
+  const traceCorrelationId = record.trace_correlation_id;
 
   if (startTime !== undefined && typeof startTime !== "string") {
     return null;
@@ -91,11 +95,19 @@ const toPendingScheduleDetail = (value: unknown): PendingScheduleDetail | null =
   if (agentOperationId !== undefined && typeof agentOperationId !== "string") {
     return null;
   }
+  if (traceRequestId !== undefined && typeof traceRequestId !== "string") {
+    return null;
+  }
+  if (traceCorrelationId !== undefined && typeof traceCorrelationId !== "string") {
+    return null;
+  }
 
   return {
     start_time: typeof startTime === "string" ? startTime : undefined,
     idempotency_key: typeof idempotencyKey === "string" ? idempotencyKey : undefined,
     agent_operation_id: typeof agentOperationId === "string" ? agentOperationId : undefined,
+    trace_request_id: typeof traceRequestId === "string" ? traceRequestId : undefined,
+    trace_correlation_id: typeof traceCorrelationId === "string" ? traceCorrelationId : undefined,
   };
 };
 
@@ -281,7 +293,12 @@ function createIdempotencyKey(): string | undefined {
 
 async function callBookSessionApi(
   payload: BookSessionApiRequestBody,
-  options?: { idempotencyKey?: string },
+  options?: {
+    idempotencyKey?: string;
+    agentOperationId?: string;
+    requestId?: string;
+    correlationId?: string;
+  },
 ): Promise<BookSessionResult> {
   const idempotencyKey = options?.idempotencyKey ?? createIdempotencyKey();
   const headers: Record<string, string> = {
@@ -290,6 +307,15 @@ async function callBookSessionApi(
 
   if (idempotencyKey) {
     headers["Idempotency-Key"] = idempotencyKey;
+  }
+  if (options?.agentOperationId) {
+    headers["x-agent-operation-id"] = options.agentOperationId;
+  }
+  if (options?.requestId) {
+    headers["x-request-id"] = options.requestId;
+  }
+  if (options?.correlationId) {
+    headers["x-correlation-id"] = options.correlationId;
   }
 
   const {
@@ -606,6 +632,9 @@ const Schedule = React.memo(() => {
   const [scopedClientId, setScopedClientId] = useState<string | null>(null);
   const [retryHint, setRetryHint] = useState<string | null>(null);
   const [pendingAgentIdempotencyKey, setPendingAgentIdempotencyKey] = useState<string | null>(null);
+  const [pendingAgentOperationId, setPendingAgentOperationId] = useState<string | null>(null);
+  const [pendingTraceRequestId, setPendingTraceRequestId] = useState<string | null>(null);
+  const [pendingTraceCorrelationId, setPendingTraceCorrelationId] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -743,6 +772,9 @@ const Schedule = React.memo(() => {
 
       if (detail) {
         setPendingAgentIdempotencyKey(detail.idempotency_key ?? null);
+        setPendingAgentOperationId(detail.agent_operation_id ?? null);
+        setPendingTraceRequestId(detail.trace_request_id ?? null);
+        setPendingTraceCorrelationId(detail.trace_correlation_id ?? null);
         // Defer modal open very slightly to avoid conflicting with initial filter queries in tests
         setTimeout(() => {
           try {
@@ -772,6 +804,9 @@ const Schedule = React.memo(() => {
           try {
             const parsed = toPendingScheduleDetail(JSON.parse(next));
             setPendingAgentIdempotencyKey(parsed?.idempotency_key ?? null);
+            setPendingAgentOperationId(parsed?.agent_operation_id ?? null);
+            setPendingTraceRequestId(parsed?.trace_request_id ?? null);
+            setPendingTraceCorrelationId(parsed?.trace_correlation_id ?? null);
             if (parsed?.start_time) {
               const dt = parseISO(parsed.start_time);
               setSelectedDate(dt);
@@ -791,6 +826,9 @@ const Schedule = React.memo(() => {
     const handler = (e: Event) => {
       const detail = toPendingScheduleDetail((e as CustomEvent).detail);
       setPendingAgentIdempotencyKey(detail?.idempotency_key ?? null);
+      setPendingAgentOperationId(detail?.agent_operation_id ?? null);
+      setPendingTraceRequestId(detail?.trace_request_id ?? null);
+      setPendingTraceCorrelationId(detail?.trace_correlation_id ?? null);
       if (detail?.start_time) {
         const date = parseISO(detail.start_time);
         setSelectedDate(date);
@@ -957,7 +995,12 @@ const Schedule = React.memo(() => {
           }, recurrenceFormState),
           overrides: undefined,
         },
-        { idempotencyKey: pendingAgentIdempotencyKey ?? undefined },
+        {
+          idempotencyKey: pendingAgentIdempotencyKey ?? undefined,
+          agentOperationId: pendingAgentOperationId ?? undefined,
+          requestId: pendingTraceRequestId ?? undefined,
+          correlationId: pendingTraceCorrelationId ?? undefined,
+        },
       );
 
       return bookingResult.session;
@@ -970,6 +1013,9 @@ const Schedule = React.memo(() => {
       setSelectedTimeSlot(undefined);
       setRetryHint(null);
       setPendingAgentIdempotencyKey(null);
+      setPendingAgentOperationId(null);
+      setPendingTraceRequestId(null);
+      setPendingTraceCorrelationId(null);
     },
     onError: (error) => {
       handleScheduleMutationError(error);
@@ -1103,6 +1149,9 @@ const Schedule = React.memo(() => {
     (timeSlot: { date: Date; time: string }) => {
       setRetryHint(null);
       setPendingAgentIdempotencyKey(null);
+      setPendingAgentOperationId(null);
+      setPendingTraceRequestId(null);
+      setPendingTraceCorrelationId(null);
       setSelectedTimeSlot(timeSlot);
       setSelectedSession(undefined);
       setIsModalOpen(true);
@@ -1113,6 +1162,9 @@ const Schedule = React.memo(() => {
   const handleEditSession = useCallback((session: Session) => {
     setRetryHint(null);
     setPendingAgentIdempotencyKey(null);
+    setPendingAgentOperationId(null);
+    setPendingTraceRequestId(null);
+    setPendingTraceCorrelationId(null);
     setSelectedSession(session);
     setSelectedTimeSlot(undefined);
     setIsModalOpen(true);

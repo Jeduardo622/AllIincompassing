@@ -2,6 +2,8 @@ export interface AgentOperationContext {
   actionType: string;
   operationId: string;
   idempotencyKey: string;
+  requestId: string;
+  correlationId: string;
   maxAttempts: number;
 }
 
@@ -21,12 +23,18 @@ function createOperationId(): string {
 export function createAgentOperationContext(
   actionType: string,
   maxAttempts = 2,
+  correlationId?: string | null,
 ): AgentOperationContext {
   const operationId = createOperationId();
+  const requestId = createOperationId();
   return {
     actionType,
     operationId,
     idempotencyKey: `${actionType}:${operationId}`,
+    requestId,
+    correlationId: correlationId && correlationId.trim().length > 0
+      ? correlationId
+      : operationId,
     maxAttempts: Math.max(1, Math.trunc(maxAttempts)),
   };
 }

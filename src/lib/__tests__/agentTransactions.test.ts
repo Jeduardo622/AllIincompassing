@@ -11,6 +11,8 @@ describe("agentTransactions", () => {
     expect(context.actionType).toBe("cancel_sessions");
     expect(context.operationId.length).toBeGreaterThan(0);
     expect(context.idempotencyKey).toContain("cancel_sessions:");
+    expect(context.requestId.length).toBeGreaterThan(0);
+    expect(context.correlationId.length).toBeGreaterThan(0);
     expect(context.maxAttempts).toBe(3);
   });
 

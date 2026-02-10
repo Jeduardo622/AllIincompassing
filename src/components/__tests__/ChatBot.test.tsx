@@ -92,6 +92,8 @@ describe("ChatBot scheduling", () => {
     expect(event.detail.therapist_id).toBe("t1");
     expect(event.detail.idempotency_key).toEqual(expect.any(String));
     expect(event.detail.agent_operation_id).toEqual(expect.any(String));
+    expect(event.detail.trace_request_id).toEqual(expect.any(String));
+    expect(event.detail.trace_correlation_id).toEqual(expect.any(String));
 
     document.removeEventListener("openScheduleModal", handler as EventListener);
   });
@@ -115,6 +117,8 @@ describe("ChatBot scheduling", () => {
     expect(parsed.therapist_id).toBe("t1");
     expect(parsed.idempotency_key).toEqual(expect.any(String));
     expect(parsed.agent_operation_id).toEqual(expect.any(String));
+    expect(parsed.trace_request_id).toEqual(expect.any(String));
+    expect(parsed.trace_correlation_id).toEqual(expect.any(String));
   });
 
   it("cancels sessions when AI requests cancellation", async () => {
@@ -152,6 +156,8 @@ describe("ChatBot scheduling", () => {
       reason: "Snow day",
       idempotencyKey: expect.any(String),
       agentOperationId: expect.any(String),
+      requestId: expect.any(String),
+      correlationId: expect.any(String),
     });
     expect(
       screen.getByText(/Reason noted: Snow day/),

@@ -15,7 +15,7 @@ import { orchestrateScheduling } from "../_shared/scheduling-orchestrator.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 

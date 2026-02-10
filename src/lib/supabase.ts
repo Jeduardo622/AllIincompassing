@@ -238,6 +238,9 @@ export interface CallEdgeOptions {
   accessToken?: string;
   anonKey?: string;
   retry?: RetryOptions;
+  requestId?: string;
+  correlationId?: string;
+  agentOperationId?: string;
 }
 
 // Edge Function helper - attaches user's JWT automatically
@@ -264,6 +267,15 @@ export async function callEdge(
   const anonKey = typeof options.anonKey === 'string' ? options.anonKey.trim() : '';
   if (anonKey.length > 0) {
     headers.set('apikey', anonKey);
+  }
+  if (typeof options.requestId === "string" && options.requestId.trim().length > 0) {
+    headers.set("x-request-id", options.requestId.trim());
+  }
+  if (typeof options.correlationId === "string" && options.correlationId.trim().length > 0) {
+    headers.set("x-correlation-id", options.correlationId.trim());
+  }
+  if (typeof options.agentOperationId === "string" && options.agentOperationId.trim().length > 0) {
+    headers.set("x-agent-operation-id", options.agentOperationId.trim());
   }
 
   const url = buildSupabaseEdgeUrl(path);

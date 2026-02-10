@@ -88,6 +88,11 @@ Deno.serve(async (req) => {
     const user = await getUserOrThrow(requestClient);
     const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
     const normalizedKey = idempotencyKey.length > 0 ? idempotencyKey : null;
+    const traceMeta = {
+      requestId: req.headers.get("x-request-id") ?? null,
+      correlationId: req.headers.get("x-correlation-id") ?? null,
+      agentOperationId: req.headers.get("x-agent-operation-id") ?? null,
+    };
     const idempotencyService = createSupabaseIdempotencyService(supabaseAdmin);
 
     if (normalizedKey) {
@@ -229,6 +234,7 @@ Deno.serve(async (req) => {
             timeZone: occurrence.time_zone ?? payload.time_zone ?? null,
             sessionId: payload.session_id ?? null,
             idempotencyKey: normalizedKey,
+            agentOperationId: traceMeta.agentOperationId,
             conflictCode: conflictCode ?? null,
             retryAfter: retryAfterIso,
           },
@@ -283,6 +289,8 @@ Deno.serve(async (req) => {
           expiresAt: hold.expires_at,
           occurrenceIndex: index,
           occurrences: createdHolds.length,
+          agentOperationId: traceMeta.agentOperationId,
+          trace: traceMeta,
         },
       })));
 

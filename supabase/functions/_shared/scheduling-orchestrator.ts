@@ -20,6 +20,7 @@ export type SchedulingOrchestrationRequest = {
     holdKey?: string | null;
     sessionId?: string | null;
     idempotencyKey?: string | null;
+    agentOperationId?: string | null;
     conflictCode?: string | null;
     retryAfter?: string | null;
   };

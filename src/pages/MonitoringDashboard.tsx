@@ -14,7 +14,8 @@ import {
   Clock,
   RefreshCw,
   Trash2,
-  BarChart3
+  BarChart3,
+  Search
 } from 'lucide-react';
 import AIPerformance from '../components/monitoring/AIPerformance';
 import DatabasePerformance from '../components/monitoring/DatabasePerformance';
@@ -28,11 +29,13 @@ import { useQueryPerformanceTracking } from '../lib/queryPerformanceTracker';
 import { useAuth } from '../lib/authContext';
 import { logger } from '../lib/logger/logger';
 import { toError } from '../lib/logger/normalizeError';
+import { fetchAgentTraceReport, type AgentTraceReportData } from '../lib/agentTraceReport';
 
-type TabType = 'ai' | 'database' | 'system' | 'overview' | 'cache' | 'queries';
+type TabType = 'ai' | 'database' | 'system' | 'overview' | 'cache' | 'queries' | 'trace_replay';
+type TraceSelectorMode = 'correlationId' | 'requestId' | 'agentOperationId';
 
 export default function MonitoringDashboard() {
-  const { loading: authLoading, isAdmin } = useAuth();
+  const { loading: authLoading, isAdmin, session } = useAuth();
   const hasAdminAccess = isAdmin();
   const monitoringEnabled = !authLoading && hasAdminAccess;
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -40,6 +43,11 @@ export default function MonitoringDashboard() {
   const [refreshInterval, setRefreshInterval] = useState(30000);
   const [showSettings, setShowSettings] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [traceSelectorMode, setTraceSelectorMode] = useState<TraceSelectorMode>('correlationId');
+  const [traceSelectorValue, setTraceSelectorValue] = useState('');
+  const [traceReport, setTraceReport] = useState<AgentTraceReportData | null>(null);
+  const [traceLoading, setTraceLoading] = useState(false);
+  const [traceError, setTraceError] = useState<string | null>(null);
 
   // Real-time monitoring hooks
   const {
@@ -72,6 +80,39 @@ export default function MonitoringDashboard() {
       analyzePerformance(metrics);
     }
   }, [monitoringEnabled, metrics, analyzePerformance]);
+
+  const loadTraceReport = useCallback(async () => {
+    const selector = traceSelectorValue.trim();
+    if (selector.length === 0) {
+      setTraceError('Enter a selector value before running the report.');
+      return;
+    }
+
+    const payload =
+      traceSelectorMode === 'correlationId'
+        ? { correlationId: selector }
+        : traceSelectorMode === 'requestId'
+          ? { requestId: selector }
+          : { agentOperationId: selector };
+
+    setTraceLoading(true);
+    setTraceError(null);
+    try {
+      const data = await fetchAgentTraceReport(payload, {
+        accessToken: session?.access_token,
+      });
+      setTraceReport(data);
+    } catch (error) {
+      logger.error('Failed to load agent trace report', {
+        error: toError(error, 'Trace report fetch failed'),
+        metadata: { selectorType: traceSelectorMode },
+      });
+      setTraceReport(null);
+      setTraceError(error instanceof Error ? error.message : 'Unable to load trace report');
+    } finally {
+      setTraceLoading(false);
+    }
+  }, [traceSelectorMode, traceSelectorValue, session?.access_token]);
 
   // Analyze performance when metrics change
   useEffect(() => {
@@ -122,6 +163,7 @@ export default function MonitoringDashboard() {
     { id: 'system' as TabType, name: 'System Performance', icon: Cpu },
     { id: 'cache' as TabType, name: 'Cache Management', icon: Trash2 },
     { id: 'queries' as TabType, name: 'Query Performance', icon: BarChart3 },
+    { id: 'trace_replay' as TabType, name: 'Agent Trace Replay', icon: Search },
   ];
 
   const ConnectionStatus = () => (
@@ -625,6 +667,101 @@ export default function MonitoringDashboard() {
     );
   };
 
+  const TraceReplayTab = () => (
+    <div className="space-y-6">
+      <div className="bg-white dark:bg-dark-lighter p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Agent Trace Replay</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          Query by correlation, request, or agent operation ID to reconstruct the full execution chain.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <select
+            value={traceSelectorMode}
+            onChange={(event) => setTraceSelectorMode(event.target.value as TraceSelectorMode)}
+            className="border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+            aria-label="Trace selector mode"
+          >
+            <option value="correlationId">Correlation ID</option>
+            <option value="requestId">Request ID</option>
+            <option value="agentOperationId">Agent Operation ID</option>
+          </select>
+          <input
+            type="text"
+            value={traceSelectorValue}
+            onChange={(event) => setTraceSelectorValue(event.target.value)}
+            placeholder="Enter identifier"
+            className="md:col-span-2 border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+            aria-label="Trace selector value"
+          />
+          <button
+            onClick={loadTraceReport}
+            disabled={traceLoading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            {traceLoading ? 'Loading…' : 'Run Report'}
+          </button>
+        </div>
+        {traceError && (
+          <p className="mt-3 text-sm text-red-600" role="alert">{traceError}</p>
+        )}
+      </div>
+
+      {traceReport && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="bg-white dark:bg-dark-lighter p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Traces</p>
+              <p className="text-xl font-semibold text-gray-900 dark:text-white">{traceReport.summary.traces}</p>
+            </div>
+            <div className="bg-white dark:bg-dark-lighter p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Orchestration</p>
+              <p className="text-xl font-semibold text-gray-900 dark:text-white">{traceReport.summary.orchestrationRuns}</p>
+            </div>
+            <div className="bg-white dark:bg-dark-lighter p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Idempotency</p>
+              <p className="text-xl font-semibold text-gray-900 dark:text-white">{traceReport.summary.idempotencyRows}</p>
+            </div>
+            <div className="bg-white dark:bg-dark-lighter p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Session Audit</p>
+              <p className="text-xl font-semibold text-gray-900 dark:text-white">{traceReport.summary.sessionAuditRows}</p>
+            </div>
+            <div className="bg-white dark:bg-dark-lighter p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Timeline Events</p>
+              <p className="text-xl font-semibold text-gray-900 dark:text-white">{traceReport.summary.timelineEvents}</p>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-dark-lighter p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+            <h4 className="text-md font-medium text-gray-900 dark:text-white mb-3">Timeline</h4>
+            {traceReport.timeline.length === 0 ? (
+              <p className="text-sm text-gray-600 dark:text-gray-400">No timeline events returned for this selector.</p>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-auto">
+                {traceReport.timeline.slice(0, 100).map((event, index) => (
+                  <div key={`${event.source}-${event.occurredAt}-${index}`} className="p-3 rounded bg-gray-50 dark:bg-gray-800">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">{event.source}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {new Date(event.occurredAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                      request: {event.requestId ?? 'n/a'} | correlation: {event.correlationId ?? 'n/a'} | op:{' '}
+                      {event.agentOperationId ?? 'n/a'}
+                    </p>
+                    <pre className="mt-2 text-xs text-gray-700 dark:text-gray-300 overflow-x-auto whitespace-pre-wrap">
+                      {JSON.stringify(event.detail, null, 2)}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div>
       <span data-testid="refresh-token-value" className="hidden" aria-hidden="true">
@@ -777,6 +914,7 @@ export default function MonitoringDashboard() {
           {activeTab === 'system' && <SystemPerformance />}
           {activeTab === 'cache' && <CacheManagementTab refreshToken={refreshToken} />}
           {activeTab === 'queries' && <QueryPerformanceTab refreshToken={refreshToken} />}
+          {activeTab === 'trace_replay' && <TraceReplayTab />}
         </div>
       </div>
 

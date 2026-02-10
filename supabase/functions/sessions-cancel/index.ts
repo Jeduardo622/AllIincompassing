@@ -47,6 +47,12 @@ interface SessionCancellationSummary {
   alreadyCancelledSessionIds: string[];
 }
 
+interface TraceMeta {
+  requestId: string | null;
+  correlationId: string | null;
+  agentOperationId: string | null;
+}
+
 class BadRequestError extends Error {
   status = 400;
   constructor(message: string) {
@@ -188,6 +194,7 @@ async function handleHoldRelease(
   userId: string,
   role: string | null,
   logger: Logger,
+  traceMeta: TraceMeta = { requestId: null, correlationId: null, agentOperationId: null },
 ) {
   logger.info("hold.release.requested", { holdKey });
 
@@ -257,6 +264,8 @@ async function handleHoldRelease(
         startTime: releasedHold.start_time,
         endTime: releasedHold.end_time,
         expiresAt: releasedHold.expires_at,
+        agentOperationId: traceMeta.agentOperationId,
+        trace: traceMeta,
       },
       logger,
     });
@@ -280,6 +289,7 @@ async function handleHoldRelease(
       startTime: releasedHold.start_time,
       endTime: releasedHold.end_time,
       holdKey,
+      agentOperationId: traceMeta.agentOperationId,
     },
     authorization: { ok: true },
   });
@@ -307,6 +317,7 @@ async function handleSessionCancellation(
   userId: string,
   role: string | null,
   logger: Logger,
+  traceMeta: TraceMeta = { requestId: null, correlationId: null, agentOperationId: null },
 ) {
   let query = orgScopedQuery(db, "sessions", orgId)
     .select("id, status, therapist_id, start_time, end_time")
@@ -410,6 +421,8 @@ async function handleSessionCancellation(
           reason: payload.reason,
           startTime: session.start_time,
           endTime: session.end_time,
+          agentOperationId: traceMeta.agentOperationId,
+          trace: traceMeta,
         },
         logger,
       })));
@@ -462,6 +475,11 @@ Deno.serve(async (req) => {
     userLogger.info("request.authenticated");
     const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
     const normalizedKey = idempotencyKey.length > 0 ? idempotencyKey : null;
+    const traceMeta: TraceMeta = {
+      requestId: req.headers.get("x-request-id") ?? null,
+      correlationId: req.headers.get("x-correlation-id") ?? null,
+      agentOperationId: req.headers.get("x-agent-operation-id") ?? null,
+    };
     const idempotencyService = createSupabaseIdempotencyService(supabaseAdmin);
 
     if (normalizedKey) {
@@ -534,6 +552,7 @@ Deno.serve(async (req) => {
         user.id,
         role,
         activeLogger,
+        traceMeta,
       );
     } else {
       response = await handleSessionCancellation(
@@ -548,6 +567,7 @@ Deno.serve(async (req) => {
         user.id,
         role,
         activeLogger,
+        traceMeta,
       );
     }
 

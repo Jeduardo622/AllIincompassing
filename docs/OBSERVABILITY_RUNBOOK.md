@@ -34,6 +34,19 @@ This runbook defines production monitoring signals, initial SLO thresholds, and 
 - **Auth**: requires `EDGE_REPLAY_ACCESS_TOKEN` (admin JWT), plus `SUPABASE_URL` + `SUPABASE_ANON_KEY`.
 - **Seeded runs**: pass `--seed` to re-run with a fixed LLM seed (logged in trace payloads).
 
+## Agent trace report utility (Phase 5)
+- **Edge function**: `agent-trace-report` (developer-facing replay/debug report).
+- **Supported selectors**: `correlationId`, `requestId`, `agentOperationId`.
+- **Aggregated sources**:
+  - `public.agent_execution_traces`
+  - `public.scheduling_orchestration_runs`
+  - `public.function_idempotency_keys`
+  - `public.session_audit_logs`
+- **Output**: merged timeline + per-source records + discovered request/correlation/operation IDs.
+- **AuthZ**: requires authenticated user with `admin`, `super_admin`, or `monitoring` role.
+- **Example query**:
+  - `curl -X POST "$SUPABASE_URL/functions/v1/agent-trace-report" -H "Authorization: Bearer <admin_jwt>" -H "apikey: $SUPABASE_ANON_KEY" -H "Content-Type: application/json" -d '{"correlationId":"<id>"}'`
+
 ## Error taxonomy + retry policy
 - **Taxonomy table**: `public.error_taxonomy` defines error `code`, `category`, `severity`, `retryable`, and `http_status`.
 - **Edge responses**: `{ requestId, code, message, classification }` where `classification` mirrors taxonomy.

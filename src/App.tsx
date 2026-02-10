@@ -118,8 +118,12 @@ function App() {
                     {/* Dashboard - accessible to all authenticated users */}
                     <Route index element={<DashboardLanding />} />
 
-                    {/* Schedule - accessible to all authenticated users */}
-                    <Route path="schedule" element={<Schedule />} />
+                    {/* Schedule - accessible to therapists and above */}
+                    <Route path="schedule" element={
+                      <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                        <Schedule />
+                      </RoleGuard>
+                    } />
 
                     {/* Clients - accessible to therapists and above */}
                     <Route path="clients" element={

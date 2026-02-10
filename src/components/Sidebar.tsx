@@ -94,7 +94,7 @@ export default function Sidebar() {
       icon: Calendar, 
       label: 'Schedule', 
       path: '/schedule',
-      roles: [] // accessible to all authenticated users
+      roles: ['therapist', 'admin', 'super_admin']
     },
     {
       icon: Users,

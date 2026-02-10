@@ -9,6 +9,22 @@ const startSessionSchema = z.object({
   started_at: z.string().optional(),
 });
 
+function decodeJwtSubject(accessToken: string): string | null {
+  const [, payload] = accessToken.split(".");
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const parsed = JSON.parse(atob(padded)) as { sub?: unknown };
+    return typeof parsed.sub === "string" && parsed.sub.length > 0 ? parsed.sub : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function sessionsStartHandler(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: { ...CORS_HEADERS } });
@@ -25,6 +41,11 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
 
   const { organizationId, isTherapist, isAdmin, isSuperAdmin } = await resolveOrgAndRole(accessToken);
   if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
+    return json({ error: "Forbidden" }, 403);
+  }
+
+  const currentUserId = decodeJwtSubject(accessToken);
+  if (!currentUserId) {
     return json({ error: "Forbidden" }, 403);
   }
 
@@ -51,8 +72,14 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
     Authorization: `Bearer ${accessToken}`,
   };
 
-  const sessionUrl = `${supabaseUrl}/rest/v1/sessions?select=id,client_id,organization_id,program_id,goal_id,started_at&organization_id=eq.${organizationId}&id=eq.${session_id}`;
-  const sessionResult = await fetchJson<Array<{ id: string; client_id: string; organization_id: string; started_at: string | null }>>(sessionUrl, {
+  const sessionUrl = `${supabaseUrl}/rest/v1/sessions?select=id,client_id,organization_id,program_id,goal_id,therapist_id,started_at&organization_id=eq.${organizationId}&id=eq.${session_id}`;
+  const sessionResult = await fetchJson<Array<{
+    id: string;
+    client_id: string;
+    organization_id: string;
+    therapist_id: string;
+    started_at: string | null;
+  }>>(sessionUrl, {
     method: "GET",
     headers,
   });
@@ -61,6 +88,10 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
   }
 
   const sessionRow = sessionResult.data[0];
+  if (isTherapist && sessionRow.therapist_id !== currentUserId) {
+    return json({ error: "Forbidden" }, 403);
+  }
+
   if (sessionRow.started_at) {
     return json({ error: "Session already started" }, 409);
   }
@@ -83,8 +114,8 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
     goal_id,
     started_at: started_at ?? new Date().toISOString(),
   };
-  const updateUrl = `${supabaseUrl}/rest/v1/sessions?id=eq.${session_id}&organization_id=eq.${organizationId}`;
-  const updateResult = await fetchJson(updateUrl, {
+  const updateUrl = `${supabaseUrl}/rest/v1/sessions?id=eq.${session_id}&organization_id=eq.${organizationId}&started_at=is.null`;
+  const updateResult = await fetchJson<Array<{ id: string; started_at: string }>>(updateUrl, {
     method: "PATCH",
     headers: { ...headers, Prefer: "return=representation" },
     body: JSON.stringify(updatePayload),
@@ -92,6 +123,9 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
 
   if (!updateResult.ok) {
     return json({ error: "Failed to start session" }, updateResult.status || 500);
+  }
+  if (!Array.isArray(updateResult.data) || updateResult.data.length === 0) {
+    return json({ error: "Session already started" }, 409);
   }
 
   if (mergedGoalIds.length > 0) {
@@ -113,5 +147,5 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
     }
   }
 
-  return json(Array.isArray(updateResult.data) ? updateResult.data[0] : updateResult.data);
+  return json(updateResult.data[0]);
 }

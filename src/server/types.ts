@@ -113,4 +113,8 @@ export interface BookSessionApiResponse {
   data?: BookSessionResult;
   error?: string;
   code?: string;
+  hint?: string;
+  retryAfter?: string | null;
+  retryAfterSeconds?: number | null;
+  orchestration?: Record<string, unknown> | null;
 }

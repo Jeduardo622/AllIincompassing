@@ -3,16 +3,12 @@ import { logger } from './logger/logger';
 export type AssistantRole = 'client' | 'therapist' | 'admin' | 'super_admin';
 
 export type AssistantTool =
-  | 'cancel_sessions'
   | 'schedule_session'
-  | 'modify_session'
-  | 'create_client'
-  | 'update_client'
-  | 'create_therapist'
-  | 'update_therapist'
-  | 'create_authorization'
-  | 'update_authorization'
-  | 'initiate_client_onboarding';
+  | 'cancel_sessions'
+  | 'start_session'
+  | 'predict_conflicts'
+  | 'suggest_optimal_times'
+  | 'get_monthly_session_count';
 
 export interface GuardrailActor {
   id: string;
@@ -63,28 +59,29 @@ const ROLE_ORDER: AssistantRole[] = ['client', 'therapist', 'admin', 'super_admi
 
 const ROLE_BASE_TOOLS: Record<AssistantRole, AssistantTool[]> = {
   client: [],
-  therapist: ['schedule_session', 'modify_session', 'cancel_sessions'],
+  therapist: [
+    'schedule_session',
+    'cancel_sessions',
+    'start_session',
+    'predict_conflicts',
+    'suggest_optimal_times',
+    'get_monthly_session_count',
+  ],
   admin: [
     'schedule_session',
-    'modify_session',
     'cancel_sessions',
-    'create_client',
-    'update_client',
-    'create_authorization',
-    'update_authorization',
-    'initiate_client_onboarding',
+    'start_session',
+    'predict_conflicts',
+    'suggest_optimal_times',
+    'get_monthly_session_count',
   ],
   super_admin: [
     'schedule_session',
-    'modify_session',
     'cancel_sessions',
-    'create_client',
-    'update_client',
-    'create_authorization',
-    'update_authorization',
-    'initiate_client_onboarding',
-    'create_therapist',
-    'update_therapist',
+    'start_session',
+    'predict_conflicts',
+    'suggest_optimal_times',
+    'get_monthly_session_count',
   ],
 };
 

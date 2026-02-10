@@ -46,6 +46,7 @@ interface EdgeError {
   code?: string;
   retryAfter?: string | null;
   retryAfterSeconds?: number | null;
+  orchestration?: Record<string, unknown> | null;
 }
 
 type HoldEdgeResponse = EdgeSuccess<{
@@ -142,6 +143,17 @@ export async function requestSessionHold(payload: HoldRequest): Promise<HoldResp
       }
       if ("retryAfterSeconds" in body && typeof body.retryAfterSeconds === "number") {
         error.retryAfterSeconds = body.retryAfterSeconds;
+      } else {
+        const retryAfterHeader = response.headers.get("Retry-After");
+        if (retryAfterHeader) {
+          const retryAfterSeconds = Number(retryAfterHeader);
+          if (Number.isFinite(retryAfterSeconds)) {
+            error.retryAfterSeconds = retryAfterSeconds;
+          }
+        }
+      }
+      if ("orchestration" in body && typeof body.orchestration === "object") {
+        error.orchestration = body.orchestration ?? null;
       }
     }
     throw error;
@@ -233,6 +245,17 @@ export async function confirmSessionBooking(payload: ConfirmRequest): Promise<Co
       }
       if ("retryAfterSeconds" in body && typeof body.retryAfterSeconds === "number") {
         error.retryAfterSeconds = body.retryAfterSeconds;
+      } else {
+        const retryAfterHeader = response.headers.get("Retry-After");
+        if (retryAfterHeader) {
+          const retryAfterSeconds = Number(retryAfterHeader);
+          if (Number.isFinite(retryAfterSeconds)) {
+            error.retryAfterSeconds = retryAfterSeconds;
+          }
+        }
+      }
+      if ("orchestration" in body && typeof body.orchestration === "object") {
+        error.orchestration = body.orchestration ?? null;
       }
     }
     throw error;

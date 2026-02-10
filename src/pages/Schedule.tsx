@@ -28,6 +28,7 @@ import { supabase } from "../lib/supabase";
 import { showError, showSuccess } from "../lib/toast";
 import { logger } from "../lib/logger/logger";
 import { toError } from "../lib/logger/normalizeError";
+import { buildSchedulingConflictHint } from "../lib/conflictPolicy";
 import { useAuth } from "../lib/authContext";
 import { useActiveOrganizationId } from "../lib/organization";
 import type {
@@ -65,6 +66,8 @@ interface RecurrenceFormState {
 
 type PendingScheduleDetail = {
   start_time?: string;
+  idempotency_key?: string;
+  agent_operation_id?: string;
 };
 
 const SESSION_HOLD_SECONDS = 5 * 60; // 5 minutes
@@ -76,12 +79,24 @@ const toPendingScheduleDetail = (value: unknown): PendingScheduleDetail | null =
 
   const record = value as Record<string, unknown>;
   const startTime = record.start_time;
+  const idempotencyKey = record.idempotency_key;
+  const agentOperationId = record.agent_operation_id;
 
   if (startTime !== undefined && typeof startTime !== "string") {
     return null;
   }
+  if (idempotencyKey !== undefined && typeof idempotencyKey !== "string") {
+    return null;
+  }
+  if (agentOperationId !== undefined && typeof agentOperationId !== "string") {
+    return null;
+  }
 
-  return { start_time: typeof startTime === "string" ? startTime : undefined };
+  return {
+    start_time: typeof startTime === "string" ? startTime : undefined,
+    idempotency_key: typeof idempotencyKey === "string" ? idempotencyKey : undefined,
+    agent_operation_id: typeof agentOperationId === "string" ? agentOperationId : undefined,
+  };
 };
 
 function toTimeZoneAwareIso(value: string | undefined, timeZone: string): string | undefined {
@@ -266,8 +281,9 @@ function createIdempotencyKey(): string | undefined {
 
 async function callBookSessionApi(
   payload: BookSessionApiRequestBody,
+  options?: { idempotencyKey?: string },
 ): Promise<BookSessionResult> {
-  const idempotencyKey = createIdempotencyKey();
+  const idempotencyKey = options?.idempotencyKey ?? createIdempotencyKey();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -318,8 +334,21 @@ async function callBookSessionApi(
 
   if (!response.ok || !body) {
     const message = body?.error ?? "Failed to book session";
-    const enhancedError = new Error(message) as Error & { status?: number; retryHint?: string };
+    const enhancedError = new Error(message) as Error & {
+      status?: number;
+      retryHint?: string;
+      retryAfter?: string | null;
+      retryAfterSeconds?: number | null;
+      orchestration?: Record<string, unknown> | null;
+    };
     enhancedError.status = response.status;
+    enhancedError.retryAfter = typeof body?.retryAfter === "string" ? body.retryAfter : null;
+    enhancedError.retryAfterSeconds = typeof body?.retryAfterSeconds === "number"
+      ? body.retryAfterSeconds
+      : null;
+    enhancedError.orchestration = typeof body?.orchestration === "object"
+      ? body.orchestration as Record<string, unknown>
+      : null;
     if (response.status === 409) {
       enhancedError.retryHint =
         typeof body?.hint === 'string' && body.hint.length > 0
@@ -576,6 +605,7 @@ const Schedule = React.memo(() => {
   const [scopedTherapistId, setScopedTherapistId] = useState<string | null>(null);
   const [scopedClientId, setScopedClientId] = useState<string | null>(null);
   const [retryHint, setRetryHint] = useState<string | null>(null);
+  const [pendingAgentIdempotencyKey, setPendingAgentIdempotencyKey] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -586,10 +616,10 @@ const Schedule = React.memo(() => {
       : undefined;
 
     if (status === 409) {
-      const hintCandidate = (error as { retryHint?: string } | null | undefined)?.retryHint;
-      const hint = typeof hintCandidate === 'string' && hintCandidate.length > 0
-        ? hintCandidate
-        : 'The selected time slot was just booked. Refresh the schedule or choose a different time.';
+      const hint = buildSchedulingConflictHint(
+        error,
+        'The selected time slot was just booked. Refresh the schedule or choose a different time.',
+      );
 
       logger.warn('Schedule mutation conflict', {
         metadata: {
@@ -712,6 +742,7 @@ const Schedule = React.memo(() => {
       }
 
       if (detail) {
+        setPendingAgentIdempotencyKey(detail.idempotency_key ?? null);
         // Defer modal open very slightly to avoid conflicting with initial filter queries in tests
         setTimeout(() => {
           try {
@@ -740,6 +771,7 @@ const Schedule = React.memo(() => {
         setTimeout(() => {
           try {
             const parsed = toPendingScheduleDetail(JSON.parse(next));
+            setPendingAgentIdempotencyKey(parsed?.idempotency_key ?? null);
             if (parsed?.start_time) {
               const dt = parseISO(parsed.start_time);
               setSelectedDate(dt);
@@ -758,6 +790,7 @@ const Schedule = React.memo(() => {
 
     const handler = (e: Event) => {
       const detail = toPendingScheduleDetail((e as CustomEvent).detail);
+      setPendingAgentIdempotencyKey(detail?.idempotency_key ?? null);
       if (detail?.start_time) {
         const date = parseISO(detail.start_time);
         setSelectedDate(date);
@@ -923,7 +956,8 @@ const Schedule = React.memo(() => {
             timeZone,
           }, recurrenceFormState),
           overrides: undefined,
-        }
+        },
+        { idempotencyKey: pendingAgentIdempotencyKey ?? undefined },
       );
 
       return bookingResult.session;
@@ -935,6 +969,7 @@ const Schedule = React.memo(() => {
       setSelectedSession(undefined);
       setSelectedTimeSlot(undefined);
       setRetryHint(null);
+      setPendingAgentIdempotencyKey(null);
     },
     onError: (error) => {
       handleScheduleMutationError(error);
@@ -1067,6 +1102,7 @@ const Schedule = React.memo(() => {
   const handleCreateSession = useCallback(
     (timeSlot: { date: Date; time: string }) => {
       setRetryHint(null);
+      setPendingAgentIdempotencyKey(null);
       setSelectedTimeSlot(timeSlot);
       setSelectedSession(undefined);
       setIsModalOpen(true);
@@ -1076,6 +1112,7 @@ const Schedule = React.memo(() => {
 
   const handleEditSession = useCallback((session: Session) => {
     setRetryHint(null);
+    setPendingAgentIdempotencyKey(null);
     setSelectedSession(session);
     setSelectedTimeSlot(undefined);
     setIsModalOpen(true);

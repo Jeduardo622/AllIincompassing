@@ -68,4 +68,10 @@ describe('route guard access controls', () => {
     expect(hasRoleAccess('/clients', 'super_admin')).toBe(true);
     expect(hasRoleAccess('/clients', 'client')).toBe(false);
   });
+
+  it('restricts schedule access to therapist roles and above', () => {
+    expect(hasRoleAccess('/schedule', 'client')).toBe(false);
+    expect(hasRoleAccess('/schedule', 'therapist')).toBe(true);
+    expect(hasRoleAccess('/schedule', 'admin')).toBe(true);
+  });
 });

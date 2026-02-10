@@ -39,6 +39,7 @@ interface OptimizedAIResponse {
 }
 
 type AgentRole = "client" | "therapist" | "admin" | "super_admin";
+type ToolExecutionMode = "server_execute" | "client_handoff" | "suggestion_only";
 
 type ExecutionGate = {
   role: AgentRole;
@@ -101,37 +102,34 @@ const AgentRequestSchema = z.object({
     .optional(),
 });
 
-const ROLE_ALLOWED_TOOLS: Record<AgentRole, string[]> = {
-  client: [],
-  therapist: [
-    "schedule_session",
-    "cancel_sessions",
-    "predict_conflicts",
-    "suggest_optimal_times",
-    "get_monthly_session_count",
-  ],
-  admin: [
-    "bulk_schedule",
-    "schedule_session",
-    "cancel_sessions",
-    "smart_schedule_optimization",
-    "predict_conflicts",
-    "suggest_optimal_times",
-    "analyze_workload",
-    "quick_actions",
-    "get_monthly_session_count",
-  ],
-  super_admin: [
-    "bulk_schedule",
-    "schedule_session",
-    "cancel_sessions",
-    "smart_schedule_optimization",
-    "predict_conflicts",
-    "suggest_optimal_times",
-    "analyze_workload",
-    "quick_actions",
-    "get_monthly_session_count",
-  ],
+const SESSION_TOOL_REGISTRY: Record<
+  string,
+  { roles: AgentRole[]; executionMode: ToolExecutionMode }
+> = {
+  schedule_session: {
+    roles: ["therapist", "admin", "super_admin"],
+    executionMode: "client_handoff",
+  },
+  cancel_sessions: {
+    roles: ["therapist", "admin", "super_admin"],
+    executionMode: "client_handoff",
+  },
+  start_session: {
+    roles: ["therapist", "admin", "super_admin"],
+    executionMode: "client_handoff",
+  },
+  predict_conflicts: {
+    roles: ["therapist", "admin", "super_admin"],
+    executionMode: "suggestion_only",
+  },
+  suggest_optimal_times: {
+    roles: ["therapist", "admin", "super_admin"],
+    executionMode: "suggestion_only",
+  },
+  get_monthly_session_count: {
+    roles: ["therapist", "admin", "super_admin"],
+    executionMode: "server_execute",
+  },
 };
 
 const CONTROL_CHARS = /[\p{C}]/gu;
@@ -153,18 +151,17 @@ const OPTIMIZED_AI_CONFIG = {
 };
 
 // Compressed system prompt for token efficiency
-const OPTIMIZED_SYSTEM_PROMPT = `You are an AI assistant for therapy practice management. Key capabilities:
+const OPTIMIZED_SYSTEM_PROMPT = `You are an AI assistant focused on session operations for ABA practices.
 
-ACTIONS: Schedule/cancel/modify sessions, manage clients/therapists, handle authorizations
-INTELLIGENCE: Detect conflicts, suggest optimal times, analyze workloads, batch operations
-EFFICIENCY: Use bulk operations when possible, provide proactive suggestions, auto-resolve conflicts
+ACTIONS: schedule sessions, cancel sessions, start sessions, and provide session count summaries.
+INTELLIGENCE: detect conflicts, suggest safer alternatives, and surface retry guidance.
+SAFETY: follow role-scoped tool access and never invent write actions outside the provided tools.
 
 BEHAVIOR:
-- Be decisive and take immediate action
-- Use compressed, professional responses
-- Leverage bulk operations for efficiency
-- Provide conflict resolution suggestions
-- Offer proactive optimization recommendations
+- Be concise and operational.
+- Prefer conflict-safe recommendations over risky changes.
+- If details are missing, ask for the minimum required session data.
+- Use ISO datetime output when proposing schedule actions.
 
 DATETIME: Use ISO format (YYYY-MM-DD). "Today"=${new Date().toISOString().split('T')[0]}, "tomorrow"=${new Date(Date.now() + 86400000).toISOString().split('T')[0]}`;
 
@@ -176,36 +173,8 @@ const compressedFunctionSchemas = [
   {
     type: "function",
     function: {
-      name: "bulk_schedule",
-      description: "Schedule multiple sessions with conflict resolution",
-      parameters: {
-        type: "object",
-        properties: {
-          sessions: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                therapist: { type: "string", description: "Name or ID" },
-                client: { type: "string", description: "Name or ID" },
-                datetime: { type: "string", description: "ISO or natural language" },
-                duration: { type: "integer", default: 60 },
-                location: { type: "string", enum: ["clinic", "home", "telehealth"], default: "clinic" }
-              },
-              required: ["therapist", "client", "datetime"]
-            }
-          },
-          auto_resolve: { type: "boolean", default: true }
-        },
-        required: ["sessions"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
       name: "schedule_session",
-      description: "Schedule single therapy session",
+      description: "Prepare scheduling details for a single therapy session",
       parameters: {
         type: "object",
         properties: {
@@ -238,15 +207,21 @@ const compressedFunctionSchemas = [
   {
     type: "function",
     function: {
-      name: "smart_schedule_optimization",
-      description: "AI-driven schedule optimization",
+      name: "start_session",
+      description: "Start an existing scheduled session",
       parameters: {
         type: "object",
         properties: {
-          type: { type: "string", enum: ["conflict_resolution", "load_balancing", "efficiency"] },
-          date_range: { type: "string", description: "Date range to optimize" },          constraints: { type: "object", description: "Constraints" }
+          session_id: { type: "string" },
+          program_id: { type: "string" },
+          goal_id: { type: "string" },
+          goal_ids: {
+            type: "array",
+            items: { type: "string" },
+          },
+          started_at: { type: "string", format: "date-time" },
         },
-        required: ["type"]
+        required: ["session_id", "program_id", "goal_id"],
       }
     }
   },
@@ -281,36 +256,6 @@ const compressedFunctionSchemas = [
         },
         required: ["therapist_id", "client_id"]
       }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "analyze_workload",
-      description: "Therapist workload analysis with recommendations",
-      parameters: {
-        type: "object",
-        properties: {
-          therapist_id: { type: "string", description: "Optional, all if not provided" },
-          period_days: { type: "integer", default: 30 }
-        }
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "quick_actions",
-      description: "Common quick actions (create client/therapist, etc)",
-      parameters: {
-        type: "object",
-        properties: {
-          action: { type: "string", enum: ["create_client", "create_therapist", "update_client", "update_therapist"] },
-          data: { type: "object", description: "Entity data" }
-        },
-        required: ["action", "data"]
-      }
-    }
   },
   {
     type: "function",
@@ -382,7 +327,10 @@ const resolveActorRole = async (db: ReturnType<typeof createRequestClient>): Pro
 };
 
 const resolveExecutionGate = (role: AgentRole, requestedTools: string[] = []): Omit<ExecutionGate, "killSwitchEnabled" | "killSwitchReason" | "killSwitchSource"> => {
-  const roleTools = (ROLE_ALLOWED_TOOLS[role] ?? []).filter((tool) => KNOWN_TOOL_NAMES.has(tool));
+  const roleTools = Object.entries(SESSION_TOOL_REGISTRY)
+    .filter(([, metadata]) => metadata.roles.includes(role))
+    .map(([tool]) => tool)
+    .filter((tool) => KNOWN_TOOL_NAMES.has(tool));
   const requested = requestedTools.filter((tool) => KNOWN_TOOL_NAMES.has(tool));
   if (requested.length === 0) {
     return { role, allowedTools: roleTools, deniedTools: [] };
@@ -683,15 +631,6 @@ async function generateProactiveSuggestions(context: { summary?: { userRole?: st
       });
     }
 
-    if (context.summary?.userRole === 'admin') {
-      suggestions.push({
-        type: 'workload_analysis',
-        message: 'Run workload analysis to optimize therapist schedules',
-        confidence: 0.7,
-        action: 'analyze_workload'
-      });
-    }
-
     return suggestions as any;
   } catch (error) {
     console.warn('Suggestion generation failed:', error);
@@ -826,6 +765,7 @@ async function processOptimizedMessage(
         }
       }
 
+      const executionMode = SESSION_TOOL_REGISTRY[functionName]?.executionMode ?? "client_handoff";
       const toolAllowed = executionGate.allowedTools.includes(functionName);
       if (executionGate.killSwitchEnabled) {
         actionBlockedReason = executionGate.killSwitchReason ?? "actions_disabled";
@@ -897,6 +837,22 @@ async function processOptimizedMessage(
         }
 
         action = null as any;
+      } else if (executionMode === "suggestion_only") {
+        await trace({
+          stepName: "tool.execution.suggestion_only",
+          status: "ok",
+          payload: {
+            toolName: functionName,
+            role: executionGate.role,
+          },
+          replayPayload: {
+            requestId: traceContext.requestId,
+            correlationId: traceContext.correlationId,
+            toolName: functionName,
+            toolArguments: functionArgs,
+          },
+        });
+        action = null as any;
       } else {
         action = {
           type: functionName,
@@ -908,6 +864,7 @@ async function processOptimizedMessage(
           payload: {
             toolName: functionName,
             role: executionGate.role,
+            executionMode,
           },
           replayPayload: {
             requestId: traceContext.requestId,

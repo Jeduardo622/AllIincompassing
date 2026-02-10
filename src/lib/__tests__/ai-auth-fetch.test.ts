@@ -76,13 +76,11 @@ describe('AI edge function authentication', () => {
     expect(requestBody.message).toBe('Hello?');
     expect(requestBody.context.guardrails.allowedTools).toEqual([
       'schedule_session',
-      'modify_session',
       'cancel_sessions',
-      'create_client',
-      'update_client',
-      'create_authorization',
-      'update_authorization',
-      'initiate_client_onboarding',
+      'start_session',
+      'predict_conflicts',
+      'suggest_optimal_times',
+      'get_monthly_session_count',
     ]);
     expect(requestBody.context.guardrails.audit).toMatchObject({
       actorId: 'user-1',

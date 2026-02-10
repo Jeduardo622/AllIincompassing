@@ -27,6 +27,16 @@
   status = 200
 
 [[redirects]]
+  from = "/api/book"
+  to = "/.netlify/functions/book"
+  status = 200
+
+[[redirects]]
+  from = "/api/sessions-start"
+  to = "/.netlify/functions/sessions-start"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

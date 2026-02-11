@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderWithProviders, screen, userEvent } from '../../test/utils';
 import ServiceContractsTab from '../ClientDetails/ServiceContractsTab';
 import { supabase } from '../../lib/supabase';
+import { showError } from '../../lib/toast';
+
+vi.mock('../../lib/toast', () => ({
+  showError: vi.fn(),
+  showSuccess: vi.fn(),
+}));
 
 const createChain = (result: { data: unknown; error: unknown }) => {
   const chain: any = {
@@ -14,6 +20,7 @@ const createChain = (result: { data: unknown; error: unknown }) => {
 
 describe('ServiceContractsTab', () => {
   const fromSpy = vi.spyOn(supabase, 'from');
+  const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
 
   beforeEach(() => {
     fromSpy.mockImplementation((table: string) => {
@@ -67,6 +74,7 @@ describe('ServiceContractsTab', () => {
 
   afterEach(() => {
     fromSpy.mockReset();
+    openSpy.mockClear();
   });
 
   it('renders persisted service contracts with CPT descriptions', async () => {
@@ -77,5 +85,16 @@ describe('ServiceContractsTab', () => {
 
     expect(await screen.findByText('H0031')).toBeInTheDocument();
     expect(screen.getByText('Assessment (Medi-Cal/IEHP)')).toBeInTheDocument();
+  });
+
+  it('shows a safe error when original contract file is unavailable', async () => {
+    renderWithProviders(<ServiceContractsTab client={{ id: 'client-1' }} />);
+
+    const contractToggle = await screen.findByRole('button', { name: /CalOptima Health/i });
+    await userEvent.click(contractToggle);
+    await userEvent.click(screen.getByRole('button', { name: /download original/i }));
+
+    expect(showError).toHaveBeenCalled();
+    expect(openSpy).not.toHaveBeenCalled();
   });
 });

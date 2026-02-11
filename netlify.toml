@@ -37,6 +37,21 @@
   status = 200
 
 [[redirects]]
+  from = "/api/programs"
+  to = "/.netlify/functions/programs"
+  status = 200
+
+[[redirects]]
+  from = "/api/goals"
+  to = "/.netlify/functions/goals"
+  status = 200
+
+[[redirects]]
+  from = "/api/program-notes"
+  to = "/.netlify/functions/program-notes"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

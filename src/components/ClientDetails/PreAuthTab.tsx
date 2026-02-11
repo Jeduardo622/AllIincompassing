@@ -54,6 +54,7 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
   const organizationId = useActiveOrganizationId();
   const queryClient = useQueryClient();
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [selectedAuthorizationForView, setSelectedAuthorizationForView] = useState<Authorization | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [wizardData, setWizardData] = useState({
     insurance: '',
@@ -391,7 +392,9 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
       }
 
       showSuccess('Pre-authorization submitted and approved.');
-      await queryClient.invalidateQueries({ queryKey: ['authorizations', client.id] });
+      await queryClient.invalidateQueries({
+        queryKey: ['authorizations', client.id, organizationId ?? 'MISSING_ORG'],
+      });
       setIsWizardOpen(false);
       setCurrentStep(1);
       setWizardData({
@@ -645,6 +648,7 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                           </button>
                           <button
                             className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                            onClick={() => setSelectedAuthorizationForView(auth)}
                           >
                             View
                           </button>
@@ -1136,6 +1140,56 @@ export default function PreAuthTab({ client }: PreAuthTabProps) {
                   <>Next <ArrowRight className="ml-1 w-4 h-4" /></>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedAuthorizationForView && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl dark:bg-dark-lighter">
+            <div className="mb-4 flex items-start justify-between">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Authorization #{selectedAuthorizationForView.authorization_number}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSelectedAuthorizationForView(null)}
+                className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              >
+                Close
+              </button>
+            </div>
+            <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+              <p>
+                <span className="font-medium">Status:</span> {selectedAuthorizationForView.status}
+              </p>
+              <p>
+                <span className="font-medium">Date range:</span>{' '}
+                {new Date(selectedAuthorizationForView.start_date).toLocaleDateString()} -{' '}
+                {new Date(selectedAuthorizationForView.end_date).toLocaleDateString()}
+              </p>
+              <p>
+                <span className="font-medium">Provider:</span>{' '}
+                {selectedAuthorizationForView.insurance_provider?.name ?? 'Unknown'}
+              </p>
+              <div>
+                <p className="mb-1 font-medium">Services</p>
+                {(selectedAuthorizationForView.services ?? []).length > 0 ? (
+                  <ul className="list-inside list-disc space-y-1">
+                    {(selectedAuthorizationForView.services ?? []).map((service) => (
+                      <li key={service.id}>
+                        {service.service_code} - {service.service_description} (
+                        {service.approved_units}/{service.requested_units} {service.unit_type})
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    No services are attached to this authorization.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </div>

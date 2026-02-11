@@ -26,6 +26,12 @@ type EdgeTraceHeaders = {
   correlationId?: string;
 };
 
+const extractTraceHeaders = (response: Response): EdgeTraceHeaders => ({
+  requestId: typeof response.headers?.get === 'function' ? response.headers.get('x-request-id') ?? undefined : undefined,
+  correlationId:
+    typeof response.headers?.get === 'function' ? response.headers.get('x-correlation-id') ?? undefined : undefined,
+});
+
 const buildEdgeRequestInit = (
   payload: unknown,
   auth: EdgeAuthContext,
@@ -142,15 +148,18 @@ export async function processMessage(
       if (!fallbackResponse.ok) {
         throw new Error(`HTTP error! status: ${fallbackResponse.status}`);
       }
-      
-      return await fallbackResponse.json();
+
+      const fallbackData = (await fallbackResponse.json()) as AIResponse;
+      return {
+        ...fallbackData,
+        ...extractTraceHeaders(fallbackResponse as Response),
+      };
     }
 
     const data = await response.json() as AIResponse;
     return {
       ...data,
-      requestId: response.headers.get("x-request-id") ?? undefined,
-      correlationId: response.headers.get("x-correlation-id") ?? undefined,
+      ...extractTraceHeaders(response as Response),
     };
   } catch (error) {
     if (error instanceof AssistantGuardrailError) {

@@ -25,6 +25,28 @@ export function getAccessToken(request: Request): string | null {
   return accessToken.length > 0 ? accessToken : null;
 }
 
+export function getAccessTokenSubject(accessToken: string): string | null {
+  const token = accessToken.trim();
+  if (!token) {
+    return null;
+  }
+
+  const parts = token.split(".");
+  if (parts.length < 2 || !parts[1]) {
+    return null;
+  }
+
+  try {
+    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const payloadJson = Buffer.from(padded, "base64").toString("utf8");
+    const payload = JSON.parse(payloadJson) as { sub?: unknown };
+    return typeof payload.sub === "string" && payload.sub.length > 0 ? payload.sub : null;
+  } catch {
+    return null;
+  }
+}
+
 export function getSupabaseConfig(): { supabaseUrl: string; anonKey: string } {
   const supabaseUrl =
     getOptionalServerEnv("SUPABASE_URL") ||

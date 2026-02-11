@@ -18,14 +18,19 @@ import {
 
 type GuardianClientsQueryKey = ['guardian', 'clients'];
 type GuardianClientQueryKey = ['guardian', 'clients', string];
-type ClientNotesQueryKey = ['client-notes', string, 'parent' | 'all'];
-type ClientIssuesQueryKey = ['client-issues', string];
+type ClientNotesQueryKey = ['client-notes', string, 'parent' | 'all', string];
+type ClientIssuesQueryKey = ['client-issues', string, string];
 type GuardianContactMetadataKey = ['guardian', 'contact', string];
 
-const buildClientNotesKey = (clientId: string, options?: FetchClientNotesOptions): ClientNotesQueryKey => [
+const buildClientNotesKey = (
+  clientId: string,
+  options?: FetchClientNotesOptions,
+  orgScope?: string | null,
+): ClientNotesQueryKey => [
   'client-notes',
   clientId,
   options?.visibleToParentOnly ? 'parent' : 'all',
+  orgScope ?? 'ORG_UNSCOPED',
 ];
 
 export const useGuardianClients = () => {
@@ -61,12 +66,13 @@ export const useGuardianClient = (clientId: string | null | undefined) => {
 export const useClientNotes = (
   clientId: string | null | undefined,
   options?: FetchClientNotesOptions,
+  orgScope?: string | null,
 ) => {
   const queryKey = useMemo(
-    () => (clientId ? buildClientNotesKey(clientId, options) : null),
-    [clientId, options?.visibleToParentOnly],
+    () => (clientId ? buildClientNotesKey(clientId, options, orgScope) : null),
+    [clientId, options?.visibleToParentOnly, orgScope],
   );
-  const fallbackKey: ClientNotesQueryKey = ['client-notes', 'placeholder', 'all'];
+  const fallbackKey: ClientNotesQueryKey = ['client-notes', 'placeholder', 'all', 'ORG_UNSCOPED'];
 
   return useQuery<ClientNote[], Error>({
     queryKey: queryKey ?? fallbackKey,
@@ -81,9 +87,9 @@ export const useClientNotes = (
   });
 };
 
-export const useClientIssues = (clientId: string | null | undefined) => {
+export const useClientIssues = (clientId: string | null | undefined, orgScope?: string | null) => {
   return useQuery<ClientIssue[], Error>({
-    queryKey: ['client-issues', clientId ?? 'unknown'] satisfies ClientIssuesQueryKey,
+    queryKey: ['client-issues', clientId ?? 'unknown', orgScope ?? 'ORG_UNSCOPED'] satisfies ClientIssuesQueryKey,
     queryFn: async () => {
       if (!clientId) {
         return [];

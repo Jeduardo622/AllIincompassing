@@ -4,6 +4,7 @@ import { Plus, ClipboardList } from "lucide-react";
 import type { Client, Goal, Program, ProgramNote } from "../../types";
 import { callApi } from "../../lib/api";
 import { showError, showSuccess } from "../../lib/toast";
+import { useActiveOrganizationId } from "../../lib/organization";
 
 interface ProgramsGoalsTabProps {
   client: Client;
@@ -19,6 +20,7 @@ const parseJson = async <T,>(response: Response): Promise<T> => {
 
 export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const queryClient = useQueryClient();
+  const organizationId = useActiveOrganizationId();
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [programName, setProgramName] = useState("");
   const [programDescription, setProgramDescription] = useState("");
@@ -29,14 +31,18 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [noteContent, setNoteContent] = useState("");
 
   const { data: programs = [], isLoading: programsLoading } = useQuery({
-    queryKey: ["client-programs", client.id],
+    queryKey: ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
     queryFn: async () => {
-      const response = await callApi(`/api/programs?client_id=${client.id}`);
+      if (!organizationId) {
+        throw new Error("Organization context is required to load programs.");
+      }
+      const response = await callApi(`/api/programs?client_id=${encodeURIComponent(client.id)}`);
       if (!response.ok) {
         throw new Error("Failed to load programs");
       }
       return parseJson<Program[]>(response);
     },
+    enabled: Boolean(client.id && organizationId),
   });
 
   const resolvedProgramId = useMemo(() => {
@@ -45,10 +51,10 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   }, [programs, selectedProgramId]);
 
   const { data: goals = [], isLoading: goalsLoading } = useQuery({
-    queryKey: ["program-goals", resolvedProgramId],
+    queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
     queryFn: async () => {
       if (!resolvedProgramId) return [];
-      const response = await callApi(`/api/goals?program_id=${resolvedProgramId}`);
+      const response = await callApi(`/api/goals?program_id=${encodeURIComponent(resolvedProgramId)}`);
       if (!response.ok) {
         throw new Error("Failed to load goals");
       }
@@ -58,10 +64,10 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   });
 
   const { data: programNotes = [] } = useQuery({
-    queryKey: ["program-notes", resolvedProgramId],
+    queryKey: ["program-notes", resolvedProgramId, organizationId ?? "MISSING_ORG"],
     queryFn: async () => {
       if (!resolvedProgramId) return [];
-      const response = await callApi(`/api/program-notes?program_id=${resolvedProgramId}`);
+      const response = await callApi(`/api/program-notes?program_id=${encodeURIComponent(resolvedProgramId)}`);
       if (!response.ok) {
         throw new Error("Failed to load program notes");
       }
@@ -90,7 +96,9 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       setProgramName("");
       setProgramDescription("");
       setSelectedProgramId(created.id);
-      queryClient.invalidateQueries({ queryKey: ["client-programs", client.id] });
+      queryClient.invalidateQueries({
+        queryKey: ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
+      });
     },
     onError: showError,
   });
@@ -120,7 +128,9 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       setGoalTitle("");
       setGoalDescription("");
       setGoalOriginalText("");
-      queryClient.invalidateQueries({ queryKey: ["program-goals", resolvedProgramId] });
+      queryClient.invalidateQueries({
+        queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
+      });
     },
     onError: showError,
   });
@@ -146,7 +156,9 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     onSuccess: () => {
       showSuccess("Program note added");
       setNoteContent("");
-      queryClient.invalidateQueries({ queryKey: ["program-notes", resolvedProgramId] });
+      queryClient.invalidateQueries({
+        queryKey: ["program-notes", resolvedProgramId, organizationId ?? "MISSING_ORG"],
+      });
     },
     onError: showError,
   });
@@ -155,6 +167,14 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     return (
       <div className="flex items-center justify-center h-40">
         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!organizationId) {
+    return (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
+        Organization context is required to manage programs and goals.
       </div>
     );
   }

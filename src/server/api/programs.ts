@@ -14,6 +14,8 @@ const programUpdateSchema = programSchema.partial().extend({
   client_id: z.string().uuid().optional(),
 });
 
+const isUuid = (value: string): boolean => z.string().uuid().safeParse(value).success;
+
 export async function programsHandler(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: { ...CORS_HEADERS } });
@@ -36,11 +38,20 @@ export async function programsHandler(request: Request): Promise<Response> {
     Authorization: `Bearer ${accessToken}`,
   };
 
+  const clientExistsInOrg = async (clientId: string): Promise<boolean> => {
+    const clientLookupUrl = `${supabaseUrl}/rest/v1/clients?select=id&id=eq.${clientId}&organization_id=eq.${organizationId}&limit=1`;
+    const lookupResult = await fetchJson<Array<{ id: string }>>(clientLookupUrl, { method: "GET", headers });
+    return lookupResult.ok && Array.isArray(lookupResult.data) && lookupResult.data.length > 0;
+  };
+
   if (request.method === "GET") {
     const url = new URL(request.url);
     const clientId = url.searchParams.get("client_id");
     if (!clientId) {
       return json({ error: "client_id is required" }, 400);
+    }
+    if (!isUuid(clientId)) {
+      return json({ error: "client_id must be a valid UUID" }, 400);
     }
 
     const programsUrl = `${supabaseUrl}/rest/v1/programs?select=id,organization_id,client_id,name,description,status,start_date,end_date,created_at,updated_at&organization_id=eq.${organizationId}&client_id=eq.${clientId}&order=created_at.desc`;
@@ -62,6 +73,10 @@ export async function programsHandler(request: Request): Promise<Response> {
     const parsed = programSchema.safeParse(payload);
     if (!parsed.success) {
       return json({ error: "Invalid request body" }, 400);
+    }
+    const clientExists = await clientExistsInOrg(parsed.data.client_id);
+    if (!clientExists) {
+      return json({ error: "client_id is not in scope for this organization" }, 403);
     }
 
     const createPayload = {
@@ -100,6 +115,12 @@ export async function programsHandler(request: Request): Promise<Response> {
     const parsed = programUpdateSchema.safeParse(payload);
     if (!parsed.success || Object.keys(parsed.data).length === 0) {
       return json({ error: "Invalid request body" }, 400);
+    }
+    if (parsed.data.client_id) {
+      const clientExists = await clientExistsInOrg(parsed.data.client_id);
+      if (!clientExists) {
+        return json({ error: "client_id is not in scope for this organization" }, 403);
+      }
     }
 
     const programsUrl = `${supabaseUrl}/rest/v1/programs?id=eq.${programId}&organization_id=eq.${organizationId}`;

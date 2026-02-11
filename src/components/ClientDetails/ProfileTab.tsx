@@ -13,6 +13,7 @@ import AddGeneralNoteModal from '../AddGeneralNoteModal';
 import type { Note, Issue } from '../../types';
 import { useClientIssues, useClientNotes } from '../../lib/clients/hooks';
 import { useAuth } from '../../lib/authContext';
+import { useActiveOrganizationId } from '../../lib/organization';
 
 interface ProfileTabProps {
   client: {
@@ -35,6 +36,7 @@ interface ProfileTabProps {
 
 export default function ProfileTab({ client, viewerRole }: ProfileTabProps) {
   const { profile, user } = useAuth();
+  const organizationId = useActiveOrganizationId();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
   const [isAddIssueModalOpen, setIsAddIssueModalOpen] = useState(false);
@@ -45,11 +47,11 @@ export default function ProfileTab({ client, viewerRole }: ProfileTabProps) {
   const {
     data: notes = [],
     isLoading: isLoadingNotes,
-  } = useClientNotes(client.id);
+  } = useClientNotes(client.id, undefined, organizationId);
   const {
     data: issues = [],
     isLoading: isLoadingIssues,
-  } = useClientIssues(client.id);
+  } = useClientIssues(client.id, organizationId);
   
   const queryClient = useQueryClient();
 
@@ -58,7 +60,9 @@ export default function ProfileTab({ client, viewerRole }: ProfileTabProps) {
       return updateClientRecord(supabase, client.id, updatedClient);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['client', client.id] });
+      queryClient.invalidateQueries({
+        queryKey: ['client', client.id, organizationId ?? 'MISSING_ORG'],
+      });
       setIsEditModalOpen(false);
       showSuccess('Client updated successfully');
     },
@@ -84,8 +88,12 @@ export default function ProfileTab({ client, viewerRole }: ProfileTabProps) {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['client-notes', client.id, 'all'] });
-      queryClient.invalidateQueries({ queryKey: ['client-notes', client.id, 'parent'] });
+      queryClient.invalidateQueries({
+        queryKey: ['client-notes', client.id, 'all', organizationId ?? 'ORG_UNSCOPED'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['client-notes', client.id, 'parent', organizationId ?? 'ORG_UNSCOPED'],
+      });
       setIsAddNoteModalOpen(false);
       showSuccess('Note added successfully');
     },
@@ -114,7 +122,9 @@ export default function ProfileTab({ client, viewerRole }: ProfileTabProps) {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['client-issues', client.id] });
+      queryClient.invalidateQueries({
+        queryKey: ['client-issues', client.id, organizationId ?? 'ORG_UNSCOPED'],
+      });
       setIsAddIssueModalOpen(false);
       showSuccess('Issue added successfully');
     },
@@ -135,7 +145,9 @@ export default function ProfileTab({ client, viewerRole }: ProfileTabProps) {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['client-issues', client.id] });
+      queryClient.invalidateQueries({
+        queryKey: ['client-issues', client.id, organizationId ?? 'ORG_UNSCOPED'],
+      });
       showSuccess('Issue status updated');
     },
     onError: (error) => {

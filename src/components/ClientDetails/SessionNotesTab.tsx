@@ -58,16 +58,21 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
 
   // Fetch therapists for the session note modal
   const { data: therapists = [] } = useQuery({
-    queryKey: ['therapists'],
+    queryKey: ['therapists', organizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
+      if (!organizationId) {
+        throw new Error('Organization context is required to load therapists.');
+      }
       const { data, error } = await supabase
         .from('therapists')
         .select('*')
+        .eq('organization_id', organizationId)
         .order('full_name');
       
       if (error) throw error;
       return data as Therapist[];
     },
+    enabled: Boolean(organizationId),
   });
   
   const {
@@ -120,7 +125,9 @@ export default function SessionNotesTab({ client }: SessionNotesTabProps) {
     onSuccess: () => {
       showSuccess('Session note saved.');
       setIsAddNoteModalOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['client-session-notes', client.id] }).catch(() => {});
+      queryClient.invalidateQueries({
+        queryKey: ['client-session-notes', client.id, organizationId ?? 'MISSING_ORG'],
+      }).catch(() => {});
     },
     onError: (error) => {
       if (isSupabaseError(error)) {

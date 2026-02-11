@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Contact as FileContract, FileText, Plus, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useActiveOrganizationId } from '../../lib/organization';
+import { showError, showSuccess } from '../../lib/toast';
 
 interface ServiceContractsTabProps {
   client: { id: string };
@@ -32,6 +33,7 @@ interface Contract {
 export default function ServiceContractsTab({ client }: ServiceContractsTabProps) {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [expandedContract, setExpandedContract] = useState<string | null>(null);
+  const [selectedUploadName, setSelectedUploadName] = useState<string | null>(null);
   const organizationId = useActiveOrganizationId();
 
   const {
@@ -105,8 +107,15 @@ export default function ServiceContractsTab({ client }: ServiceContractsTabProps
   };
   
   const handleGenerateSummary = (contractId: string) => {
-    // This would generate a PDF summary of the contract
-    alert(`Generating summary for contract ${contractId}`);
+    showError(`Contract summary generation is not enabled yet (contract ${contractId}).`);
+  };
+
+  const handleDownloadOriginal = (fileUrl: string, payerName: string) => {
+    if (!fileUrl || fileUrl === '#') {
+      showError(`No original file is available for ${payerName}.`);
+      return;
+    }
+    window.open(fileUrl, '_blank', 'noopener,noreferrer');
   };
 
   const cptCodeOptions = useMemo(() => {
@@ -324,6 +333,7 @@ export default function ServiceContractsTab({ client }: ServiceContractsTabProps
                     <div className="mt-4 flex justify-end">
                       <button
                         className="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-dark border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+                        onClick={() => handleDownloadOriginal(contract.file_url, contract.payer_name)}
                       >
                         <Download className="w-4 h-4 mr-1" />
                         Download Original
@@ -432,9 +442,18 @@ export default function ServiceContractsTab({ client }: ServiceContractsTabProps
               <button
                 type="button"
                 className="px-4 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/20 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                onClick={() => {
+                  setSelectedUploadName('Selected contract document');
+                  showSuccess('Contract selection captured. Upload processing is currently disabled.');
+                }}
               >
                 Select File
               </button>
+              {selectedUploadName && (
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  {selectedUploadName}
+                </p>
+              )}
             </div>
             
             <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
@@ -461,6 +480,7 @@ export default function ServiceContractsTab({ client }: ServiceContractsTabProps
               </button>
               <button
                 type="button"
+                onClick={() => showError('Upload processing is not enabled for Service Contracts yet.')}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 Upload & Process

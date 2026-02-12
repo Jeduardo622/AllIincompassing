@@ -48,10 +48,11 @@ const Clients = () => {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [archivedFilter, setArchivedFilter] = useState<'all' | 'active' | 'archived'>('active');
   const queryClient = useQueryClient();
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, profile } = useAuth();
   const navigate = useNavigate();
   const activeOrganizationId = useActiveOrganizationId();
   const isSuperAdminUser = isSuperAdmin();
+  const isTherapistViewer = profile?.role === 'therapist';
   const resolvedOrganizationId = activeOrganizationId ?? null;
   const loadAllClients = isSuperAdminUser && !resolvedOrganizationId;
 
@@ -63,6 +64,7 @@ const Clients = () => {
       }
       return fetchClients({
         organizationId: loadAllClients ? undefined : resolvedOrganizationId,
+        therapistId: isTherapistViewer ? profile?.id ?? null : null,
         allowAll: loadAllClients,
       });
     },

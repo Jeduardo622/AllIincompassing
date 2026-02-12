@@ -59,8 +59,8 @@ describe('TherapistOnboarding validation', () => {
     });
   });
 
-  it('requires a license document before submission', async () => {
-    renderOnboarding();
+  it('allows submission without any uploaded documents', async () => {
+    const { handleComplete } = renderOnboarding();
 
     await userEvent.type(screen.getByLabelText(/first name/i), 'Avery');
     await userEvent.type(screen.getByLabelText(/last name/i), 'Blake');
@@ -73,15 +73,13 @@ describe('TherapistOnboarding validation', () => {
     await userEvent.click(screen.getByRole('button', { name: /next/i }));
 
     expect(screen.getByText(/documents & certifications/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText(/i consent to the collection/i));
 
     await userEvent.click(screen.getByRole('button', { name: /complete onboarding/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Professional license document is required')).toBeInTheDocument();
+      expect(handleComplete).toHaveBeenCalledTimes(1);
     });
-
-    const licenseInput = screen.getByLabelText(/license document upload/i);
-    expect(document.activeElement).toBe(licenseInput);
   });
 
   it('shows an error when organization context is unavailable', async () => {

@@ -104,6 +104,9 @@ export async function programsHandler(request: Request): Promise<Response> {
     if (!programId) {
       return json({ error: "program_id is required" }, 400);
     }
+    if (!isUuid(programId)) {
+      return json({ error: "program_id must be a valid UUID" }, 400);
+    }
 
     let payload: unknown;
     try {

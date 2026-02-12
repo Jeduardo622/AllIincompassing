@@ -90,4 +90,29 @@ describe("programsHandler", () => {
 
     expect(response.status).toBe(403);
   });
+
+  it("returns 400 when PATCH program_id is not a UUID", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    const response = await programsHandler(
+      new Request("http://localhost/api/programs?program_id=not-a-uuid", {
+        method: "PATCH",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ name: "Updated Program" }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
 });

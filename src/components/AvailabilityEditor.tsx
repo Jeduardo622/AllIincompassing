@@ -1,19 +1,10 @@
 import React from 'react';
 import { Clock } from 'lucide-react';
+import type { AvailabilityHours, AvailabilityWindow } from '../types';
 
 interface AvailabilityEditorProps {
-  value: {
-    [key: string]: {
-      start: string | null;
-      end: string | null;
-    };
-  };
-  onChange: (value: {
-    [key: string]: {
-      start: string | null;
-      end: string | null;
-    };
-  }) => void;
+  value: AvailabilityHours;
+  onChange: (value: AvailabilityHours) => void;
 }
 
 const DAYS = [
@@ -46,12 +37,12 @@ const TIME_OPTIONS = Array.from({ length: 61 }, (_, i) => {
 });
 
 const DEFAULT_AVAILABILITY = {
-  monday: { start: null, end: null },
-  tuesday: { start: null, end: null },
-  wednesday: { start: null, end: null },
-  thursday: { start: null, end: null },
-  friday: { start: null, end: null },
-  saturday: { start: null, end: null },
+  monday: { start: null, end: null, start2: null, end2: null },
+  tuesday: { start: null, end: null, start2: null, end2: null },
+  wednesday: { start: null, end: null, start2: null, end2: null },
+  thursday: { start: null, end: null, start2: null, end2: null },
+  friday: { start: null, end: null, start2: null, end2: null },
+  saturday: { start: null, end: null, start2: null, end2: null },
 };
 
 export default function AvailabilityEditor({ value = DEFAULT_AVAILABILITY, onChange }: AvailabilityEditorProps) {
@@ -62,12 +53,18 @@ export default function AvailabilityEditor({ value = DEFAULT_AVAILABILITY, onCha
       normalized[day] = {
         start: value[day]?.start ?? null,
         end: value[day]?.end ?? null,
+        start2: value[day]?.start2 ?? null,
+        end2: value[day]?.end2 ?? null,
       };
     });
     return normalized;
   }, [value]);
 
-  const handleDayChange = (day: string, field: 'start' | 'end', time: string | null) => {
+  const handleDayChange = (
+    day: string,
+    field: keyof AvailabilityWindow,
+    time: string | null,
+  ) => {
     onChange({
       ...normalizedValue,
       [day]: {
@@ -83,6 +80,19 @@ export default function AvailabilityEditor({ value = DEFAULT_AVAILABILITY, onCha
       [day]: {
         start: enabled ? '06:00' : null,
         end: enabled ? '21:00' : null,
+        start2: null,
+        end2: null,
+      },
+    });
+  };
+
+  const handleSecondBlockToggle = (day: string, enabled: boolean) => {
+    onChange({
+      ...normalizedValue,
+      [day]: {
+        ...normalizedValue[day],
+        start2: enabled ? '15:00' : null,
+        end2: enabled ? '20:00' : null,
       },
     });
   };
@@ -92,6 +102,7 @@ export default function AvailabilityEditor({ value = DEFAULT_AVAILABILITY, onCha
       {DAYS.map(day => {
         const dayValue = normalizedValue[day];
         const isEnabled = dayValue.start !== null && dayValue.end !== null;
+        const hasSecondBlock = dayValue.start2 !== null && dayValue.end2 !== null;
         
         return (
           <div key={day} className="bg-white dark:bg-dark-lighter rounded-lg border dark:border-gray-700 p-4">
@@ -161,6 +172,87 @@ export default function AvailabilityEditor({ value = DEFAULT_AVAILABILITY, onCha
                 </select>
               </div>
             </div>
+
+            {isEnabled && (
+              <div className="mt-3">
+                {!hasSecondBlock ? (
+                  <button
+                    type="button"
+                    onClick={() => handleSecondBlockToggle(day, true)}
+                    className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                  >
+                    + Add second time block
+                  </button>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between mb-2 mt-1">
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Second Time Block
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => handleSecondBlockToggle(day, false)}
+                        className="text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                      >
+                        Remove second block
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label
+                          htmlFor={`${`availability-${day}`.replace(/\s+/g, '-').toLowerCase()}-start2`}
+                          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                        >
+                          Second Start
+                        </label>
+                        <select
+                          id={`${`availability-${day}`.replace(/\s+/g, '-').toLowerCase()}-start2`}
+                          value={dayValue.start2 || ''}
+                          onChange={(e) => handleDayChange(day, 'start2', e.target.value || null)}
+                          className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        >
+                          <option value="">Select time</option>
+                          {TIME_OPTIONS.map(({ value: timeValue, label }) => (
+                            <option
+                              key={timeValue}
+                              value={timeValue}
+                              disabled={Boolean(dayValue.end && timeValue < dayValue.end)}
+                            >
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label
+                          htmlFor={`${`availability-${day}`.replace(/\s+/g, '-').toLowerCase()}-end2`}
+                          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                        >
+                          Second End
+                        </label>
+                        <select
+                          id={`${`availability-${day}`.replace(/\s+/g, '-').toLowerCase()}-end2`}
+                          value={dayValue.end2 || ''}
+                          onChange={(e) => handleDayChange(day, 'end2', e.target.value || null)}
+                          className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        >
+                          <option value="">Select time</option>
+                          {TIME_OPTIONS.map(({ value: timeValue, label }) => (
+                            <option
+                              key={timeValue}
+                              value={timeValue}
+                              disabled={Boolean(dayValue.start2 && timeValue <= dayValue.start2)}
+                            >
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         );
       })}

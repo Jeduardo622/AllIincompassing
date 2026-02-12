@@ -11,6 +11,7 @@ import {
 } from 'date-fns';
 import { getDistance } from 'geolib';
 import type { Therapist, Client, Session } from '../types';
+import type { AvailabilityWindow } from '../types';
 import { geocodeAddress, clearGeocodingCache } from './geocoding';
 
 // Performance optimizations
@@ -228,26 +229,49 @@ const calculateAvailabilityScore = memoize(
   (startTime: Date, endTime: Date, therapist: Therapist, client: Client, existingSessions: Session[]): number => {
   const dayName = format(startTime, 'EEEE').toLowerCase();
   let score = 0;
+  const sessionStartMinutes = startTime.getHours() * 60 + startTime.getMinutes();
+  const sessionEndMinutes = endTime.getHours() * 60 + endTime.getMinutes();
+
+  const parseMinutes = (value: string | null | undefined): number | null => {
+    if (!value) return null;
+    const [hoursPart, minutesPart = '0'] = value.split(':');
+    const hours = Number.parseInt(hoursPart, 10);
+    const minutes = Number.parseInt(minutesPart, 10);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+    return hours * 60 + minutes;
+  };
+
+  const getAvailabilityRanges = (availability: AvailabilityWindow | undefined) => {
+    if (!availability) return [] as Array<{ start: number; end: number }>;
+    const ranges: Array<{ start: number; end: number }> = [];
+    const start = parseMinutes(availability.start);
+    const end = parseMinutes(availability.end);
+    if (start !== null && end !== null && start < end) {
+      ranges.push({ start, end });
+    }
+
+    const start2 = parseMinutes(availability.start2);
+    const end2 = parseMinutes(availability.end2);
+    if (start2 !== null && end2 !== null && start2 < end2) {
+      ranges.push({ start: start2, end: end2 });
+    }
+
+    return ranges;
+  };
+
+  const fitsWithinRanges = (ranges: Array<{ start: number; end: number }>) => (
+    ranges.some(range => sessionStartMinutes >= range.start && sessionEndMinutes <= range.end)
+  );
 
   // Check therapist availability
     const therapistAvail = therapist.availability_hours?.[dayName];
-    if (!therapistAvail?.start || !therapistAvail?.end) return 0;
-
-  const [therapistStartHour] = therapistAvail.start.split(':').map(Number);
-  const [therapistEndHour] = therapistAvail.end.split(':').map(Number);
-  const sessionStartHour = startTime.getHours();
-  const sessionEndHour = endTime.getHours();
-
-  if (sessionStartHour < therapistStartHour || sessionEndHour > therapistEndHour) return 0;
+    const therapistRanges = getAvailabilityRanges(therapistAvail);
+    if (therapistRanges.length === 0 || !fitsWithinRanges(therapistRanges)) return 0;
 
   // Check client availability
     const clientAvail = client.availability_hours?.[dayName];
-    if (!clientAvail?.start || !clientAvail?.end) return 0;
-
-  const [clientStartHour] = clientAvail.start.split(':').map(Number);
-  const [clientEndHour] = clientAvail.end.split(':').map(Number);
-
-  if (sessionStartHour < clientStartHour || sessionEndHour > clientEndHour) return 0;
+    const clientRanges = getAvailabilityRanges(clientAvail);
+    if (clientRanges.length === 0 || !fitsWithinRanges(clientRanges)) return 0;
 
   // Check for conflicts with existing sessions
   const hasConflict = existingSessions.some(session => {
@@ -269,8 +293,8 @@ const calculateAvailabilityScore = memoize(
   // Calculate optimal time slot score
     const preferredStartHour = 9;
     const preferredEndHour = 15;
-  const hourFromStart = Math.abs(sessionStartHour - preferredStartHour);
-    const hourFromEnd = Math.abs(sessionEndHour - preferredEndHour);
+  const hourFromStart = Math.abs(startTime.getHours() - preferredStartHour);
+    const hourFromEnd = Math.abs(endTime.getHours() - preferredEndHour);
 
     score = Math.max(0, 1 - (hourFromStart + hourFromEnd) / 10);
 

@@ -1,6 +1,7 @@
 import { parseISO, isWithinInterval, format } from 'date-fns';
 import { toZonedTime as utcToZonedTime, fromZonedTime as zonedTimeToUtc } from 'date-fns-tz';
 import type { Session, Therapist, Client } from '../types';
+import type { AvailabilityWindow } from '../types';
 
 export interface Conflict {
   type: 'therapist_unavailable' | 'client_unavailable' | 'session_overlap';
@@ -17,6 +18,11 @@ export interface AlternativeTime {
 export interface ConflictCheckOptions {
   excludeSessionId?: string;
   timeZone?: string;
+}
+
+interface MinuteRange {
+  start: number;
+  end: number;
 }
 
 export async function checkSchedulingConflicts(
@@ -65,6 +71,34 @@ export async function checkSchedulingConflicts(
     return getMinutesSinceMidnight(adjusted);
   };
 
+  const toMinuteRanges = (
+    availability: AvailabilityWindow | undefined,
+    referenceDate: Date,
+  ): MinuteRange[] => {
+    if (!availability) {
+      return [];
+    }
+
+    const ranges: MinuteRange[] = [];
+    const firstStart = parseAvailabilityMinutes(availability.start, referenceDate);
+    const firstEnd = parseAvailabilityMinutes(availability.end, referenceDate);
+    if (firstStart !== null && firstEnd !== null && firstStart < firstEnd) {
+      ranges.push({ start: firstStart, end: firstEnd });
+    }
+
+    const secondStart = parseAvailabilityMinutes(availability.start2, referenceDate);
+    const secondEnd = parseAvailabilityMinutes(availability.end2, referenceDate);
+    if (secondStart !== null && secondEnd !== null && secondStart < secondEnd) {
+      ranges.push({ start: secondStart, end: secondEnd });
+    }
+
+    return ranges;
+  };
+
+  const isWithinAnyRange = (ranges: MinuteRange[], startMinutes: number, endMinutes: number): boolean => (
+    ranges.some((range) => startMinutes >= range.start && endMinutes <= range.end)
+  );
+
   const sessionStartMinutes = getMinutesSinceMidnight(startLocal);
   const sessionEndMinutes = getMinutesSinceMidnight(endLocal);
   const getDay = (d: Date) => d.getDay();
@@ -73,26 +107,9 @@ export async function checkSchedulingConflicts(
 
   // Check therapist availability using minute-level bounds
   const therapistAvailability = therapist.availability_hours[dayName];
-  if (
-    therapistAvailability &&
-    therapistAvailability.start &&
-    therapistAvailability.end
-  ) {
-    const availabilityStartMinutes = parseAvailabilityMinutes(
-      therapistAvailability.start,
-      startLocal,
-    );
-    const availabilityEndMinutes = parseAvailabilityMinutes(
-      therapistAvailability.end,
-      startLocal,
-    );
-
-    if (
-      availabilityStartMinutes === null ||
-      availabilityEndMinutes === null ||
-      sessionStartMinutes < availabilityStartMinutes ||
-      sessionEndMinutes > availabilityEndMinutes
-    ) {
+  const therapistRanges = toMinuteRanges(therapistAvailability, startLocal);
+  if (therapistRanges.length > 0) {
+    if (!isWithinAnyRange(therapistRanges, sessionStartMinutes, sessionEndMinutes)) {
       if (!addedTypes.has('therapist_unavailable')) {
         conflicts.push({
           type: 'therapist_unavailable',
@@ -118,26 +135,9 @@ export async function checkSchedulingConflicts(
 
   // Check client availability using minute-level bounds
   const clientAvailability = client.availability_hours[dayName];
-  if (
-    clientAvailability &&
-    clientAvailability.start &&
-    clientAvailability.end
-  ) {
-    const availabilityStartMinutes = parseAvailabilityMinutes(
-      clientAvailability.start,
-      startLocal,
-    );
-    const availabilityEndMinutes = parseAvailabilityMinutes(
-      clientAvailability.end,
-      startLocal,
-    );
-
-    if (
-      availabilityStartMinutes === null ||
-      availabilityEndMinutes === null ||
-      sessionStartMinutes < availabilityStartMinutes ||
-      sessionEndMinutes > availabilityEndMinutes
-    ) {
+  const clientRanges = toMinuteRanges(clientAvailability, startLocal);
+  if (clientRanges.length > 0) {
+    if (!isWithinAnyRange(clientRanges, sessionStartMinutes, sessionEndMinutes)) {
       if (!addedTypes.has('client_unavailable')) {
         conflicts.push({
           type: 'client_unavailable',

@@ -77,26 +77,54 @@ const dayAvailabilitySchema = z
   .object({
     start: availabilityTimeSchema,
     end: availabilityTimeSchema,
+    start2: availabilityTimeSchema.optional(),
+    end2: availabilityTimeSchema.optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.start && data.end) {
-      const start = new Date(`2000-01-01T${data.start}:00`);
-      const end = new Date(`2000-01-01T${data.end}:00`);
-      if (start >= end) {
+    const validateWindow = (
+      startValue: string | null | undefined,
+      endValue: string | null | undefined,
+      startPath: 'start' | 'start2',
+      endPath: 'end' | 'end2'
+    ) => {
+      if (startValue && endValue) {
+        const start = new Date(`2000-01-01T${startValue}:00`);
+        const end = new Date(`2000-01-01T${endValue}:00`);
+        if (start >= end) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'End time must be after start time',
+            path: [endPath],
+          });
+        }
+      }
+
+      if ((startValue && !endValue) || (!startValue && endValue)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'End time must be after start time',
-          path: ['end'],
+          message: 'Both start and end times are required for a day',
+          path: startValue ? [endPath] : [startPath],
         });
       }
-    }
+    };
 
-    if ((data.start && !data.end) || (!data.start && data.end)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Both start and end times are required for a day',
-        path: data.start ? ['end'] : ['start'],
-      });
+    validateWindow(data.start, data.end, 'start', 'end');
+    validateWindow(data.start2, data.end2, 'start2', 'end2');
+
+    if (data.start && data.end && data.start2 && data.end2) {
+      const firstStart = new Date(`2000-01-01T${data.start}:00`);
+      const firstEnd = new Date(`2000-01-01T${data.end}:00`);
+      const secondStart = new Date(`2000-01-01T${data.start2}:00`);
+      const secondEnd = new Date(`2000-01-01T${data.end2}:00`);
+      const hasOverlap = firstStart < secondEnd && secondStart < firstEnd;
+
+      if (hasOverlap) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Availability time blocks cannot overlap',
+          path: ['start2'],
+        });
+      }
     }
   });
 
@@ -225,6 +253,8 @@ const availabilityPayloadSchema = z
     z.object({
       start: z.string().nullable(),
       end: z.string().nullable(),
+      start2: z.string().nullable().optional(),
+      end2: z.string().nullable().optional(),
     })
   )
   .nullable();

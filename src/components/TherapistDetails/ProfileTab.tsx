@@ -9,9 +9,10 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/authContext';
 import { showSuccess, showError } from '../../lib/toast';
 import { TherapistModal } from '../TherapistModal';
+import type { AvailabilityHours } from '../../types';
 
 interface ProfileTabProps {
-  therapist: { id: string; full_name: string; title?: string; email?: string; phone?: string; specialties?: string[]; street?: string; city?: string; state?: string; zip_code?: string; facility?: string; employee_type?: string; availability_hours?: Record<string, { start: string | null; end: string | null }>; };
+  therapist: { id: string; full_name: string; title?: string; email?: string; phone?: string; specialties?: string[]; street?: string; city?: string; state?: string; zip_code?: string; facility?: string; employee_type?: string; availability_hours?: AvailabilityHours; };
 }
 
 interface Note {

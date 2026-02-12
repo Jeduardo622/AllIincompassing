@@ -195,6 +195,66 @@ describe('generateOptimalSchedule', () => {
     expect(second.slots[0]?.score).toBeCloseTo(first.slots[0]?.score ?? 0, 6);
   });
 
+  it('uses a second daily availability block when generating schedule slots', () => {
+    const therapistWithSplitDay = createTherapist({
+      id: 'therapist-split',
+      availability_hours: {
+        monday: { start: '08:00', end: '12:00', start2: '15:00', end2: '20:00' },
+        tuesday: { start: null, end: null },
+        wednesday: { start: null, end: null },
+        thursday: { start: null, end: null },
+        friday: { start: null, end: null },
+        saturday: { start: null, end: null },
+        sunday: { start: null, end: null },
+      },
+    });
+
+    const therapistMorningOnly = createTherapist({
+      id: 'therapist-morning',
+      availability_hours: {
+        monday: { start: '08:00', end: '12:00' },
+        tuesday: { start: null, end: null },
+        wednesday: { start: null, end: null },
+        thursday: { start: null, end: null },
+        friday: { start: null, end: null },
+        saturday: { start: null, end: null },
+        sunday: { start: null, end: null },
+      },
+    });
+
+    const afternoonClient = createClient({
+      id: 'client-afternoon',
+      availability_hours: {
+        monday: { start: '15:00', end: '18:00' },
+        tuesday: { start: null, end: null },
+        wednesday: { start: null, end: null },
+        thursday: { start: null, end: null },
+        friday: { start: null, end: null },
+        saturday: { start: null, end: null },
+        sunday: { start: null, end: null },
+      },
+    });
+
+    const splitResult = generateOptimalSchedule(
+      [therapistWithSplitDay],
+      [afternoonClient],
+      sessions,
+      new Date('2024-06-03T00:00:00Z'),
+      new Date('2024-06-03T23:59:59Z')
+    );
+
+    const morningOnlyResult = generateOptimalSchedule(
+      [therapistMorningOnly],
+      [afternoonClient],
+      sessions,
+      new Date('2024-06-03T00:00:00Z'),
+      new Date('2024-06-03T23:59:59Z')
+    );
+
+    expect(splitResult.slots.length).toBeGreaterThan(0);
+    expect(morningOnlyResult.slots).toHaveLength(0);
+  });
+
   it('supports injecting a custom geocoding provider for deterministic tests', () => {
     configureGeocoding({
       provider: () => ({ latitude: 35.123456, longitude: -120.654321 }),

@@ -5,6 +5,8 @@ import type { Client, Goal, Program, ProgramNote } from "../../types";
 import { callApi } from "../../lib/api";
 import { showError, showSuccess } from "../../lib/toast";
 import { useActiveOrganizationId } from "../../lib/organization";
+import { generateProgramGoalDraft, type ProgramGoalDraftResponse } from "../../lib/ai";
+import { useAuth } from "../../lib/authContext";
 
 interface ProgramsGoalsTabProps {
   client: Client;
@@ -21,14 +23,23 @@ const parseJson = async <T,>(response: Response): Promise<T> => {
 export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
+  const { session } = useAuth();
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [programName, setProgramName] = useState("");
   const [programDescription, setProgramDescription] = useState("");
   const [goalTitle, setGoalTitle] = useState("");
   const [goalDescription, setGoalDescription] = useState("");
   const [goalOriginalText, setGoalOriginalText] = useState("");
+  const [assessmentInput, setAssessmentInput] = useState("");
+  const [draftPlan, setDraftPlan] = useState<ProgramGoalDraftResponse | null>(null);
   const [noteType, setNoteType] = useState<ProgramNote["note_type"]>("plan_update");
   const [noteContent, setNoteContent] = useState("");
+
+  const applyDraftGoal = (goal: ProgramGoalDraftResponse["goals"][number]) => {
+    setGoalTitle(goal.title);
+    setGoalDescription(goal.description);
+    setGoalOriginalText(goal.original_text);
+  };
 
   const { data: programs = [], isLoading: programsLoading } = useQuery({
     queryKey: ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
@@ -163,6 +174,88 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     onError: showError,
   });
 
+  const generateDraftPlan = useMutation({
+    mutationFn: async () => {
+      if (!session?.access_token) {
+        throw new Error("An active login session is required to generate drafts.");
+      }
+      return generateProgramGoalDraft(
+        assessmentInput,
+        { accessToken: session.access_token },
+        { clientName: client.full_name },
+      );
+    },
+    onSuccess: (draft) => {
+      setDraftPlan(draft);
+      setProgramName(draft.program.name);
+      setProgramDescription(draft.program.description ?? "");
+      if (draft.goals[0]) {
+        applyDraftGoal(draft.goals[0]);
+      }
+      showSuccess("Draft program and goals generated. Review and create when ready.");
+    },
+    onError: showError,
+  });
+
+  const createDraftPlan = useMutation({
+    mutationFn: async () => {
+      if (!draftPlan) {
+        throw new Error("Generate a draft first.");
+      }
+
+      const programResponse = await callApi("/api/programs", {
+        method: "POST",
+        body: JSON.stringify({
+          client_id: client.id,
+          name: draftPlan.program.name,
+          description: draftPlan.program.description || undefined,
+        }),
+      });
+      if (!programResponse.ok) {
+        throw new Error("Failed to create generated program");
+      }
+
+      const createdProgram = await parseJson<Program>(programResponse);
+
+      for (const draftGoal of draftPlan.goals) {
+        const goalResponse = await callApi("/api/goals", {
+          method: "POST",
+          body: JSON.stringify({
+            client_id: client.id,
+            program_id: createdProgram.id,
+            title: draftGoal.title,
+            description: draftGoal.description,
+            original_text: draftGoal.original_text,
+            target_behavior: draftGoal.target_behavior || undefined,
+            measurement_type: draftGoal.measurement_type || undefined,
+            baseline_data: draftGoal.baseline_data || undefined,
+            target_criteria: draftGoal.target_criteria || undefined,
+          }),
+        });
+        if (!goalResponse.ok) {
+          throw new Error(`Failed to create generated goal "${draftGoal.title}"`);
+        }
+      }
+
+      return {
+        createdProgram,
+        createdGoalCount: draftPlan.goals.length,
+      };
+    },
+    onSuccess: ({ createdProgram, createdGoalCount }) => {
+      setSelectedProgramId(createdProgram.id);
+      setDraftPlan(null);
+      queryClient.invalidateQueries({
+        queryKey: ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["program-goals", createdProgram.id, organizationId ?? "MISSING_ORG"],
+      });
+      showSuccess(`Created 1 program and ${createdGoalCount} goals from assessment draft.`);
+    },
+    onError: showError,
+  });
+
   if (programsLoading) {
     return (
       <div className="flex items-center justify-center h-40">
@@ -183,6 +276,58 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-4">
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
+              Generate from Assessment
+            </h3>
+            <div className="space-y-3">
+              <textarea
+                value={assessmentInput}
+                onChange={(event) => setAssessmentInput(event.target.value)}
+                placeholder="Paste assessment summary or White Bible-aligned notes to draft a program and measurable goals."
+                rows={6}
+                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => generateDraftPlan.mutate()}
+                disabled={assessmentInput.trim().length < 20 || generateDraftPlan.isLoading}
+                className="w-full px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {generateDraftPlan.isLoading ? "Generating..." : "Generate Program + Goals"}
+              </button>
+            </div>
+
+            {draftPlan && (
+              <div className="mt-4 space-y-3 rounded-md border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900 dark:border-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-100">
+                <p className="font-semibold">Draft program: {draftPlan.program.name}</p>
+                {draftPlan.rationale && <p>{draftPlan.rationale}</p>}
+                <div className="space-y-2">
+                  {draftPlan.goals.map((goal, index) => (
+                    <div key={`${goal.title}-${index}`} className="rounded border border-indigo-200 bg-white px-2 py-2 dark:border-indigo-700 dark:bg-dark-lighter">
+                      <p className="font-medium">{goal.title}</p>
+                      <button
+                        type="button"
+                        onClick={() => applyDraftGoal(goal)}
+                        className="mt-1 text-indigo-700 underline hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-100"
+                      >
+                        Load into goal form
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => createDraftPlan.mutate()}
+                  disabled={createDraftPlan.isLoading}
+                  className="w-full px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {createDraftPlan.isLoading ? "Creating..." : "Create Program + All Draft Goals"}
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Programs</h3>
             <div className="space-y-2">

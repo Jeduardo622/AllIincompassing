@@ -4,6 +4,7 @@ import {
   getClientDetails,
   getTherapistDetails,
   getAuthorizationDetails,
+  generateProgramGoalDraft,
 } from '../ai';
 import {
   setRuntimeSupabaseConfig,
@@ -165,6 +166,48 @@ describe('AI edge function authentication', () => {
     await expect(
       getClientDetails('client-2', { accessToken: '' })
     ).rejects.toThrow('Missing Supabase access token');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('calls generate-program-goals with authenticated headers', async () => {
+    fetchMock.mockResolvedValueOnce(
+      buildFetchResponse({
+        program: { name: 'Communication Program' },
+        goals: [
+          {
+            title: 'Goal A',
+            description: 'desc',
+            original_text: 'original',
+          },
+        ],
+      })
+    );
+
+    const result = await generateProgramGoalDraft(
+      'Assessment text with sufficient detail for generation.',
+      { accessToken },
+      { clientName: 'Client One' }
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${edgeBase}generate-program-goals`,
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          apikey: anonKey,
+          Authorization: `Bearer ${accessToken}`,
+          'x-request-id': expect.any(String),
+          'x-correlation-id': expect.any(String),
+        }),
+      })
+    );
+    expect(result.program.name).toBe('Communication Program');
+  });
+
+  it('rejects generateProgramGoalDraft when assessment text is too short', async () => {
+    await expect(
+      generateProgramGoalDraft('Too short', { accessToken })
+    ).rejects.toThrow('Assessment text must be at least 20 characters');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -16,6 +16,13 @@ import { logger } from '../lib/logger/logger';
 import { callApi } from '../lib/api';
 import { showError } from '../lib/toast';
 
+const listOrFallback = (value: string[] | null | undefined, fallback: string): string => {
+  if (!Array.isArray(value) || value.length === 0) {
+    return fallback;
+  }
+  return value.join(', ');
+};
+
 interface AutoScheduleModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -307,7 +314,9 @@ export default function AutoScheduleModal({
                             <User className="w-4 h-4 mr-2 text-blue-500" />
                             <div>
                               <div className="font-medium">{slot.therapist.full_name}</div>
-                              <div className="text-xs text-gray-500">{slot.therapist.service_type.join(', ')}</div>
+                              <div className="text-xs text-gray-500">
+                                {listOrFallback(slot.therapist.service_type, 'No service types')}
+                              </div>
                             </div>
                           </div>
 
@@ -325,7 +334,9 @@ export default function AutoScheduleModal({
                             <User className="w-4 h-4 mr-2 text-green-500" />
                             <div>
                               <div className="font-medium">{slot.client.full_name}</div>
-                              <div className="text-xs text-gray-500">{slot.client.service_preference.join(', ')}</div>
+                              <div className="text-xs text-gray-500">
+                                {listOrFallback(slot.client.service_preference, 'No service preferences')}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -340,7 +351,7 @@ export default function AutoScheduleModal({
                               {slot.therapist.full_name}
                             </div>
                             <div className="text-xs text-gray-500 dark:text-gray-400">
-                              {slot.therapist.service_type.join(', ')}
+                              {listOrFallback(slot.therapist.service_type, 'No service types')}
                             </div>
                           </div>
 
@@ -365,7 +376,7 @@ export default function AutoScheduleModal({
                               {slot.client.full_name}
                             </div>
                             <div className="text-xs text-gray-500 dark:text-gray-400 text-right">
-                              {slot.client.service_preference.join(', ')}
+                              {listOrFallback(slot.client.service_preference, 'No service preferences')}
                             </div>
                           </div>
                         </div>

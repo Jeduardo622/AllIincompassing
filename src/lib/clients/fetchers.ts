@@ -170,6 +170,7 @@ const DEFAULT_ORDER_COLUMN = 'full_name';
 
 interface FetchClientsOptions {
   organizationId?: string | null;
+  therapistId?: string | null;
   client?: ClientsSupabaseClient;
   allowAll?: boolean;
 }
@@ -177,7 +178,7 @@ interface FetchClientsOptions {
 export const fetchClients = async (
   options: FetchClientsOptions
 ): Promise<Client[]> => {
-  const { organizationId, client: overrideClient, allowAll = false } = options;
+  const { organizationId, therapistId, client: overrideClient, allowAll = false } = options;
   if (!allowAll && !organizationId) {
     throw new Error('organizationId is required to fetch clients');
   }
@@ -192,6 +193,10 @@ export const fetchClients = async (
     query = query.eq('organization_id', organizationId);
   } else if (!allowAll) {
     throw new Error('organizationId is required to fetch clients');
+  }
+
+  if (therapistId) {
+    query = query.eq('therapist_id', therapistId);
   }
 
   const { data, error } = await query.order(DEFAULT_ORDER_COLUMN, { ascending: true });

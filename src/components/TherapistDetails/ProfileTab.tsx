@@ -34,7 +34,12 @@ interface Issue {
 }
 
 export default function ProfileTab({ therapist }: ProfileTabProps) {
-  const { hasRole } = useAuth();
+  const { hasRole, profile } = useAuth();
+  const isOwnProfile = Boolean(
+    profile?.role === 'therapist' &&
+      (profile.id === therapist.id ||
+        (profile.email && therapist.email && profile.email.toLowerCase() === therapist.email.toLowerCase())),
+  );
   
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);

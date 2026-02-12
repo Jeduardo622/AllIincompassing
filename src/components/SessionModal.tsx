@@ -229,6 +229,8 @@ export default function SessionModal({
 
   const selectedTherapist = therapists.find(t => t.id === therapistId);
   const selectedClient = clients.find(c => c.id === clientId);
+  const selectedTherapistServices = selectedTherapist?.service_type ?? [];
+  const selectedClientServices = selectedClient?.service_preference ?? [];
   const activePrograms = programs.filter((program) => program.status === 'active');
   const activeGoals = goals.filter((goal) => goal.status === 'active');
 
@@ -684,7 +686,7 @@ export default function SessionModal({
                     <span>{selectedTherapist.full_name}</span>
                   </div>
                   <div className="mt-1 text-xs text-gray-500">
-                    {selectedTherapist.service_type.join(', ')}
+                    {selectedTherapistServices.join(', ') || 'No service types'}
                   </div>
                 </div>
                 <div>
@@ -693,7 +695,7 @@ export default function SessionModal({
                     <span>{selectedClient.full_name}</span>
                   </div>
                   <div className="mt-1 text-xs text-gray-500">
-                    {selectedClient.service_preference.join(', ')}
+                    {selectedClientServices.join(', ') || 'No service preferences'}
                   </div>
                 </div>
               </div>

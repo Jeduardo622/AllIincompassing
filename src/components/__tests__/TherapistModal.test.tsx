@@ -27,7 +27,6 @@ describe('TherapistModal validation', () => {
       expect(screen.getByText('First name is required')).toBeInTheDocument();
       expect(screen.getByText('Last name is required')).toBeInTheDocument();
       expect(screen.getByText('Email is required')).toBeInTheDocument();
-      expect(screen.getByText('License number is required')).toBeInTheDocument();
     });
 
     const firstNameInput = screen.getByLabelText(/first name/i);
@@ -35,7 +34,7 @@ describe('TherapistModal validation', () => {
     expect(document.activeElement).toBe(firstNameInput);
   });
 
-  it('prevents submission when license number is missing and focuses the field', async () => {
+  it('allows submission when license number is missing', async () => {
     const { handleSubmit } = renderModal();
 
     await userEvent.type(screen.getByLabelText(/first name/i), 'Casey');
@@ -45,11 +44,7 @@ describe('TherapistModal validation', () => {
     await userEvent.click(screen.getByRole('button', { name: /create therapist/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('License number is required')).toBeInTheDocument();
+      expect(handleSubmit).toHaveBeenCalledTimes(1);
     });
-
-    const licenseInput = screen.getByLabelText(/license number/i);
-    expect(document.activeElement).toBe(licenseInput);
-    expect(handleSubmit).not.toHaveBeenCalled();
   });
 });

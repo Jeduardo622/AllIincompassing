@@ -53,7 +53,8 @@ const RuntimeConfigError: React.FC<{ message: string }> = ({ message }) => (
 
 const bootstrap = async (): Promise<void> => {
   try {
-    const [, { default: App }] = await Promise.all([ensureRuntimeSupabaseConfig(), import('./App.tsx')]);
+    await ensureRuntimeSupabaseConfig();
+    const { default: App } = await import('./App.tsx');
     root.render(
       <React.StrictMode>
         <DevErrorBoundary>

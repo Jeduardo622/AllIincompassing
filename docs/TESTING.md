@@ -30,6 +30,22 @@ VITEST_HANG_TIMEOUT_MS=90000 node scripts/run-vitest.mjs src/pages/__tests__/foo
 This keeps the entire suite responsive while still allowing individual specs to be diagnosed with
 focused commands.
 
+## Programs & Goals priority suite (2026-02)
+
+For the assessment-to-program/goals workflow, run this focused suite:
+
+```bash
+npm test -- \
+  src/components/__tests__/ProgramsGoalsTab.test.tsx \
+  src/lib/__tests__/ai-auth-fetch.test.ts \
+  src/server/__tests__/programsHandler.test.ts \
+  src/server/__tests__/goalsHandler.test.ts \
+  src/server/__tests__/programNotesHandler.test.ts \
+  src/pages/__tests__/ClientDetails.test.tsx
+```
+
+Expected result (current baseline): 6 files, 19 tests passing.
+
 ## Agent eval smoke (edge functions)
 
 Run the edge smoke harness against staging/preview using an authenticated user JWT:

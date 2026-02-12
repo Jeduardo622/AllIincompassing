@@ -5,6 +5,7 @@ import { getUserOrThrow } from "../_shared/auth.ts";
 import { resolveOrgId } from "../_shared/org.ts";
 import { getLogger } from "../_shared/logging.ts";
 import { errorEnvelope, getRequestId, IsoDateSchema } from "../lib/http/error.ts";
+import { persistChatMessage } from "./persistence.ts";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -947,35 +948,17 @@ async function saveChatMessage(
 ): Promise<string> {
   try {
     const db = createRequestClient((globalThis as any).currentRequest);
-    await getUserOrThrow(db);
+    const user = await getUserOrThrow(db);
 
-    let actualConversationId = conversationId;
-    if (!actualConversationId) {
-      const { data: convData, error: convError } = await db
-        .from('conversations')
-        .insert({ user_id: null, title: "New Conversation" })
-        .select('id')
-        .single();
-
-      if (convError) throw convError;
-      actualConversationId = (convData as any).id;
-    }
-
-    const { data: msgData, error: msgError } = await db
-      .from('chat_history')
-      .insert({
-        role,
-        content,
-        context,
-        action_type: action?.type,
-        action_data: action?.data,
-        conversation_id: actualConversationId
-      })
-      .select('conversation_id')
-      .single();
-
-    if (msgError) throw msgError;
-    return (msgData as any).conversation_id;
+    return await persistChatMessage({
+      db,
+      userId: user.id,
+      role,
+      content,
+      context,
+      action,
+      conversationId,
+    });
   } catch (error) {
     console.error('Error saving chat message:', error);
     return conversationId || crypto.randomUUID();

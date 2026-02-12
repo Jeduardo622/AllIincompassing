@@ -22,6 +22,24 @@ Enable therapists to select and track structured goals and program notes across 
 - **UI**: Client profile now includes a Programs & Goals tab; session modal supports program/goal selection and a Start Session action.
 - **Goal versioning**: Trigger-backed `goal_versions` logging for clinical field updates.
 
+## Implementation Update (2026-02-11)
+- **Assessment-driven drafting**: Programs & Goals tab now supports an AI-assisted "Generate from Assessment" flow.
+- **Therapist workflow**:
+  - Therapist pastes assessment summary text (manual input).
+  - System generates a draft program + measurable goals.
+  - Therapist can review/edit and then create records through existing `/api/programs` and `/api/goals`.
+- **Edge integration**:
+  - New Supabase Edge Function: `generate-program-goals`.
+  - Frontend helper: `generateProgramGoalDraft()` in `src/lib/ai.ts`.
+  - Function enforces authenticated access and org context before generation.
+- **Safety model**:
+  - Drafts are suggestions only; therapist is the final approver.
+  - Program/goal persistence still runs through existing scoped API handlers.
+- **Testing coverage added**:
+  - `src/components/__tests__/ProgramsGoalsTab.test.tsx`
+  - `src/lib/__tests__/ai-auth-fetch.test.ts` (new generator auth/header tests)
+  - Existing server handler suites for programs/goals/program notes validated.
+
 ## Proposed Data Model (Draft)
 > Updated to match the implemented schema.
 
@@ -138,6 +156,7 @@ Enable therapists to select and track structured goals and program notes across 
 - `POST /api/program-notes` (create)
 - `POST /api/sessions-start` (assign program + goals; mark started)
 - `POST /edge/ai-session-note-generator` (existing) should accept `goal_context`.
+- `POST /edge/generate-program-goals` (implemented as Supabase function `generate-program-goals`) for assessment-based draft generation.
 - `POST /edge/ai-program-note-generator` (new) to synthesize program notes.
 
 ## RLS + Security Considerations

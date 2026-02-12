@@ -71,6 +71,27 @@ interface AIResponse {
   correlationId?: string;
 }
 
+export interface ProgramGoalDraftGoal {
+  title: string;
+  description: string;
+  original_text: string;
+  target_behavior?: string;
+  measurement_type?: string;
+  baseline_data?: string;
+  target_criteria?: string;
+}
+
+export interface ProgramGoalDraftResponse {
+  program: {
+    name: string;
+    description?: string;
+  };
+  goals: ProgramGoalDraftGoal[];
+  rationale?: string;
+  requestId?: string;
+  correlationId?: string;
+}
+
 const allowFallbacks = import.meta.env.DEV;
 
 export async function processMessage(
@@ -239,4 +260,42 @@ export async function getAuthorizationDetails(
     console.error('Error getting authorization details:', error);
     throw error;
   }
+}
+
+export async function generateProgramGoalDraft(
+  assessmentText: string,
+  auth: EdgeAuthContext,
+  options?: {
+    clientName?: string;
+  },
+): Promise<ProgramGoalDraftResponse> {
+  if (typeof assessmentText !== 'string' || assessmentText.trim().length < 20) {
+    throw new Error('Assessment text must be at least 20 characters');
+  }
+
+  const requestId =
+    typeof globalThis.crypto?.randomUUID === 'function'
+      ? globalThis.crypto.randomUUID()
+      : `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const correlationId = requestId;
+
+  const payload = {
+    assessment_text: assessmentText.trim(),
+    client_name: options?.clientName?.trim() || undefined,
+  };
+
+  const response = await fetch(
+    buildSupabaseEdgeUrl('generate-program-goals'),
+    buildEdgeRequestInit(payload, auth, { requestId, correlationId }),
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to generate program/goal draft (status ${response.status})`);
+  }
+
+  const data = (await response.json()) as ProgramGoalDraftResponse;
+  return {
+    ...data,
+    ...extractTraceHeaders(response as Response),
+  };
 }

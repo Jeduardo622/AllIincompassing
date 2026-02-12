@@ -47,10 +47,11 @@ describe('supabase client singleton', () => {
     expect(data).toBeNull();
   });
 
-  it('throws a descriptive error when runtime config is missing', async () => {
+  it('throws a descriptive error when using client before runtime config is set', async () => {
     resetRuntimeSupabaseConfigForTests();
     vi.resetModules();
-    await expect(import('../supabaseClient')).rejects.toThrow(/Failed to initialise client/);
+    const { supabase } = await import('../supabaseClient');
+    expect(() => (supabase as any).from('roles')).toThrow(/Failed to initialise client/);
   });
 });
 

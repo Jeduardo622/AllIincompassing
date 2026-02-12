@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './generated/database.types';
 import { getRuntimeSupabaseConfig } from './runtimeConfig';
 
@@ -12,18 +13,35 @@ const resolveSupabaseConfig = (): { supabaseUrl: string; supabaseAnonKey: string
   }
 };
 
-const { supabaseUrl, supabaseAnonKey } = resolveSupabaseConfig();
+let supabaseClient: SupabaseClient<Database> | null = null;
 
-// Browser singleton client. Typed with generated Database.
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-  },
-  global: {
-    headers: {
-      apikey: supabaseAnonKey,
+const getSupabaseClient = (): SupabaseClient<Database> => {
+  if (supabaseClient) {
+    return supabaseClient;
+  }
+
+  const { supabaseUrl, supabaseAnonKey } = resolveSupabaseConfig();
+  supabaseClient = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true,
     },
+    global: {
+      headers: {
+        apikey: supabaseAnonKey,
+      },
+    },
+  });
+  return supabaseClient;
+};
+
+// Lazy singleton proxy. Importing this module never throws before runtime config
+// is initialised; the config is resolved only when the client is first used.
+export const supabase = new Proxy({} as SupabaseClient<Database>, {
+  get(_target, property, receiver) {
+    const client = getSupabaseClient() as Record<PropertyKey, unknown>;
+    const value = Reflect.get(client, property, receiver);
+    return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(client) : value;
   },
 });

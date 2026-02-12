@@ -102,18 +102,9 @@ const therapistOnboardingSchema = z
     last_name: z.string().trim().min(1, 'Last name is required'),
     email: z.string().trim().min(1, 'Email is required').email('Enter a valid email address'),
     license_number: z.string().trim().optional(),
-    license: z.instanceof(File).or(z.null()),
+    license: z.instanceof(File).or(z.null()).optional(),
   })
-  .passthrough()
-  .superRefine((data, ctx) => {
-    if (!(data.license instanceof File)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['license'],
-        message: 'Professional license document is required',
-      });
-    }
-  });
+  .passthrough();
 
 export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
   const [currentStep, setCurrentStep] = useState(1);
@@ -225,11 +216,6 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
               hasFile: Boolean(file),
             },
           });
-
-          // License upload is required; fail fast so we never silently create incomplete onboarding records.
-          if (key === 'license') {
-            throw uploadError;
-          }
         }
       }
 
@@ -864,7 +850,7 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
                     Document Upload
                   </p>
                   <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                    Please upload the following documents to complete the therapist onboarding process. 
+                    You can upload supporting documents now or add them later from therapist details.
                     All documents will be securely stored and only accessible to authorized personnel.
                   </p>
                 </div>

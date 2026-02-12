@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { Clock, AlertTriangle } from 'lucide-react';
 import type { Therapist, Client } from '../types';
+import type { AvailabilityWindow } from '../types';
 import { useVirtualizedList } from '../lib/performance';
 
 interface SchedulingMatrixProps {
@@ -45,6 +46,40 @@ export default function SchedulingMatrix({
 
   const dayName = format(selectedDate, 'EEEE').toLowerCase();
 
+  const isMinuteInAvailability = (minutes: number, availability: AvailabilityWindow | undefined): boolean => {
+    if (!availability) {
+      return false;
+    }
+
+    const toMinutes = (value: string | null | undefined): number | null => {
+      if (!value) {
+        return null;
+      }
+      const [hoursPart, minutesPart = '0'] = value.split(':');
+      const hours = Number.parseInt(hoursPart, 10);
+      const mins = Number.parseInt(minutesPart, 10);
+      if (Number.isNaN(hours) || Number.isNaN(mins)) {
+        return null;
+      }
+      return hours * 60 + mins;
+    };
+
+    const ranges: Array<{ start: number; end: number }> = [];
+    const firstStart = toMinutes(availability.start);
+    const firstEnd = toMinutes(availability.end);
+    if (firstStart !== null && firstEnd !== null && firstStart < firstEnd) {
+      ranges.push({ start: firstStart, end: firstEnd });
+    }
+
+    const secondStart = toMinutes(availability.start2);
+    const secondEnd = toMinutes(availability.end2);
+    if (secondStart !== null && secondEnd !== null && secondStart < secondEnd) {
+      ranges.push({ start: secondStart, end: secondEnd });
+    }
+
+    return ranges.some(range => minutes >= range.start && minutes < range.end);
+  };
+
   const availabilityMap = useMemo(() => {
     const map = new Map<string, { therapists: Set<string>; clients: Set<string> }>();
     
@@ -54,33 +89,19 @@ export default function SchedulingMatrix({
       
       therapists.forEach(therapist => {
         const avail = therapist.availability_hours?.[dayName];
-        if (avail?.start && avail?.end) {
-          const [startHour, startMinute] = avail.start.split(':').map(Number);
-          const [endHour, endMinute] = avail.end.split(':').map(Number);
-          
-          const startTotalMinutes = startHour * 60 + startMinute;
-          const endTotalMinutes = endHour * 60 + endMinute;
-          const currentTotalMinutes = hour * 60 + minute;
-          
-          if (currentTotalMinutes >= startTotalMinutes && currentTotalMinutes < endTotalMinutes) {
-            entry.therapists.add(therapist.id);
-          }
+        const currentTotalMinutes = hour * 60 + minute;
+
+        if (isMinuteInAvailability(currentTotalMinutes, avail)) {
+          entry.therapists.add(therapist.id);
         }
       });
       
       clients.forEach(client => {
         const avail = client.availability_hours?.[dayName];
-        if (avail?.start && avail?.end) {
-          const [startHour, startMinute] = avail.start.split(':').map(Number);
-          const [endHour, endMinute] = avail.end.split(':').map(Number);
-          
-          const startTotalMinutes = startHour * 60 + startMinute;
-          const endTotalMinutes = endHour * 60 + endMinute;
-          const currentTotalMinutes = hour * 60 + minute;
-          
-          if (currentTotalMinutes >= startTotalMinutes && currentTotalMinutes < endTotalMinutes) {
-            entry.clients.add(client.id);
-          }
+        const currentTotalMinutes = hour * 60 + minute;
+
+        if (isMinuteInAvailability(currentTotalMinutes, avail)) {
+          entry.clients.add(client.id);
         }
       });
       

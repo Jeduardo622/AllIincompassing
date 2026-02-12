@@ -17,7 +17,7 @@ import { showSuccess, showError } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
 import AvailabilityEditor from './AvailabilityEditor';
 import { OnboardingSteps } from './OnboardingSteps';
-import type { Therapist } from '../types';
+import type { Therapist, AvailabilityHours } from '../types';
 import { prepareFormData } from '../lib/validation';
 import { useActiveOrganizationId } from '../lib/organization';
 import { toError } from '../lib/logger/normalizeError';
@@ -70,12 +70,7 @@ interface OnboardingFormData {
   zip_code?: string;
   
   // Availability
-  availability_hours: {
-    [key: string]: {
-      start: string | null;
-      end: string | null;
-    };
-  };
+  availability_hours: AvailabilityHours;
 
   // Additional fields
   preferred_areas: string[];

@@ -6,9 +6,10 @@ import {
 } from 'lucide-react';
 import { format, addDays, startOfWeek, endOfWeek, isSameDay, parseISO } from 'date-fns';
 import { supabase } from '../../lib/supabase';
+import type { AvailabilityHours, AvailabilityWindow } from '../../types';
 
 interface ScheduleTabProps {
-  therapist: { id: string; availability_hours?: Record<string, { start: string | null; end: string | null }> };
+  therapist: { id: string; availability_hours?: AvailabilityHours };
 }
 
 export default function ScheduleTab({ therapist }: ScheduleTabProps) {
@@ -239,7 +240,7 @@ export default function ScheduleTab({ therapist }: ScheduleTabProps) {
         </p>
         
         <div className="space-y-4">
-          {Object.entries(therapist.availability_hours || {}).map(([day, hours]: [string, { start: string | null; end: string | null }]) => (
+          {Object.entries(therapist.availability_hours || {}).map(([day, hours]: [string, AvailabilityWindow]) => (
             <div key={day} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
               <div className="font-medium text-gray-900 dark:text-white capitalize">
                 {day}
@@ -248,6 +249,7 @@ export default function ScheduleTab({ therapist }: ScheduleTabProps) {
                 {hours.start && hours.end ? (
                   <span>
                     {hours.start} - {hours.end}
+                    {hours.start2 && hours.end2 ? `, ${hours.start2} - ${hours.end2}` : ''}
                   </span>
                 ) : (
                   <span className="text-gray-400 dark:text-gray-500">Not available</span>

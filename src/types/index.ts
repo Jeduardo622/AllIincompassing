@@ -34,6 +34,15 @@ export interface SchedulingPreferences {
   updated_at: string;
 }
 
+export interface AvailabilityWindow {
+  start: string | null;
+  end: string | null;
+  start2?: string | null;
+  end2?: string | null;
+}
+
+export type AvailabilityHours = Record<string, AvailabilityWindow>;
+
 export interface Therapist {
   id: string;
   email: string;
@@ -44,12 +53,7 @@ export interface Therapist {
   service_type: string[];
   weekly_hours_min: number;
   weekly_hours_max: number;
-  availability_hours: {
-    [key: string]: {
-      start: string | null;
-      end: string | null;
-    };
-  };
+  availability_hours: AvailabilityHours;
   created_at: string;
   deleted_at?: string | null;
   deleted_by?: string | null;
@@ -95,12 +99,7 @@ export interface Client {
   supervision_units: number;
   parent_consult_units: number;
   assessment_units: number;
-  availability_hours: {
-    [key: string]: {
-      start: string | null;
-      end: string | null;
-    };
-  };
+  availability_hours: AvailabilityHours;
   created_at: string;
   created_by?: string | null;
   updated_at?: string;

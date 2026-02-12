@@ -294,20 +294,37 @@ function sanitizeObject(obj: unknown): unknown {
 }
 
 // Sanitize availability hours
-function sanitizeAvailabilityHours(hours: unknown): Record<string, { start: string; end: string }> {
+function sanitizeAvailabilityHours(
+  hours: unknown
+): Record<string, { start: string; end: string; start2?: string; end2?: string }> {
   if (typeof hours !== 'object' || hours === null) {
     return {};
   }
   
   const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-  const sanitized: Record<string, { start: string; end: string }> = {};
+  const sanitized: Record<string, { start: string; end: string; start2?: string; end2?: string }> = {};
   
   for (const day of validDays) {
     const dayData = (hours as Record<string, unknown>)[day];
     if (dayData && typeof dayData === 'object') {
-      const { start, end } = dayData as { start: string; end: string };
+      const { start, end, start2, end2 } = dayData as {
+        start: string;
+        end: string;
+        start2?: string;
+        end2?: string;
+      };
       if (isValidTime(start) && isValidTime(end)) {
-        sanitized[day] = { start: sanitizeString(start), end: sanitizeString(end) };
+        const normalizedDay: { start: string; end: string; start2?: string; end2?: string } = {
+          start: sanitizeString(start),
+          end: sanitizeString(end),
+        };
+
+        if (isValidTime(start2 ?? '') && isValidTime(end2 ?? '')) {
+          normalizedDay.start2 = sanitizeString(start2 as string);
+          normalizedDay.end2 = sanitizeString(end2 as string);
+        }
+
+        sanitized[day] = normalizedDay;
       }
     }
   }

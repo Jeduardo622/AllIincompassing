@@ -260,6 +260,53 @@ describe('checkSchedulingConflicts', () => {
     expect(lateConflicts[0]?.type).toBe('therapist_unavailable');
   });
 
+  it('supports split-day availability windows for therapist and client', async () => {
+    const therapistWithSplitDay = {
+      ...mockTherapist,
+      availability_hours: {
+        ...mockTherapist.availability_hours,
+        tuesday: { start: '08:00', end: '12:00', start2: '15:00', end2: '20:00' },
+      },
+    };
+
+    const clientWithSplitDay = {
+      ...mockClient,
+      availability_hours: {
+        ...mockClient.availability_hours,
+        tuesday: { start: '07:30', end: '11:30', start2: '15:00', end2: '19:00' },
+      },
+    };
+
+    const middayStart = '2025-05-20T13:00:00Z';
+    const middayEnd = addHours(parseISO(middayStart), 1).toISOString();
+    const middayConflicts = await checkSchedulingConflicts(
+      middayStart,
+      middayEnd,
+      therapistWithSplitDay.id,
+      clientWithSplitDay.id,
+      [],
+      therapistWithSplitDay,
+      clientWithSplitDay
+    );
+
+    expect(middayConflicts).toHaveLength(1);
+    expect(middayConflicts[0]?.type).toBe('therapist_unavailable');
+
+    const afternoonStart = '2025-05-20T15:30:00Z';
+    const afternoonEnd = addHours(parseISO(afternoonStart), 1).toISOString();
+    const afternoonConflicts = await checkSchedulingConflicts(
+      afternoonStart,
+      afternoonEnd,
+      therapistWithSplitDay.id,
+      clientWithSplitDay.id,
+      [],
+      therapistWithSplitDay,
+      clientWithSplitDay
+    );
+
+    expect(afternoonConflicts).toHaveLength(0);
+  });
+
   it('enforces minute-level therapist availability after DST spring forward', async () => {
     const timeZone = 'America/New_York';
     const therapistWithOffsets = {

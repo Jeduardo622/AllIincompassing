@@ -21,7 +21,7 @@ const therapistModalSchema = z.object({
   first_name: z.string().trim().min(1, 'First name is required'),
   last_name: z.string().trim().min(1, 'Last name is required'),
   email: z.string().trim().min(1, 'Email is required').email('Enter a valid email address'),
-  license_number: z.string().trim().min(1, 'License number is required'),
+  license_number: z.string().trim().optional(),
 }).passthrough();
 
 type TherapistModalFormValues = Partial<Therapist> & {
@@ -91,7 +91,7 @@ export function TherapistModal({
       return;
     }
 
-    const orderedFields: (keyof TherapistModalFormValues)[] = ['first_name', 'last_name', 'email', 'license_number'];
+    const orderedFields: (keyof TherapistModalFormValues)[] = ['first_name', 'last_name', 'email'];
     const fieldWithError = orderedFields.find((field) => errors[field]);
 
     if (fieldWithError) {

@@ -6,13 +6,13 @@ import { AuthProvider, useAuth } from '../authContext';
 const {
   mockGetSession,
   mockSignOut,
-  mockProfilesSingle,
+  mockProfilesMaybeSingle,
   mockChannel,
 } = vi.hoisted(() => {
   return {
     mockGetSession: vi.fn(),
     mockSignOut: vi.fn(),
-    mockProfilesSingle: vi.fn(),
+    mockProfilesMaybeSingle: vi.fn(),
     mockChannel: {
       on: vi.fn().mockReturnThis(),
       subscribe: vi.fn().mockReturnValue({}),
@@ -40,7 +40,7 @@ vi.mock('../supabaseClient', () => {
       from: vi.fn(() => ({
         select: vi.fn(() => ({
           eq: vi.fn(() => ({
-            single: mockProfilesSingle,
+            maybeSingle: mockProfilesMaybeSingle,
           })),
         })),
       })),
@@ -64,7 +64,7 @@ describe('AuthProvider initializeAuth resilience', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSignOut.mockResolvedValue(undefined);
-    mockProfilesSingle.mockResolvedValue({
+    mockProfilesMaybeSingle.mockResolvedValue({
       data: {
         id: 'user-1',
         email: 'user@example.com',

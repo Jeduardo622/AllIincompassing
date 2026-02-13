@@ -133,7 +133,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (error) {
         logger.error('Failed to fetch profile record', {
@@ -574,7 +574,7 @@ export const validateAuth = async () => {
       .from('profiles')
       .select('id, email, role, is_active')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
     if (profileError || !profile) {
       return { isValid: false, error: 'User profile not found' };

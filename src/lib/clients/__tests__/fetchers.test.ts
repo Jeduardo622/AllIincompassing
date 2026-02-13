@@ -4,6 +4,7 @@ import type { Client } from '../../../types';
 import { CLIENT_SELECT } from '../select';
 import {
   fetchClientById,
+  fetchClientNotes,
   fetchClients,
   fetchGuardianClientById,
   fetchGuardianClients,
@@ -173,5 +174,108 @@ describe('clients fetchers', () => {
 
     expect(rpc).toHaveBeenCalledWith('get_guardian_client_portal', { p_client_id: 'missing' });
     expect(result).toBeNull();
+  });
+
+  it('hydrates client note author names from profiles lookup', async () => {
+    const order = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'note-1',
+          content: 'Progress note',
+          status: 'open',
+          created_at: '2026-02-13T00:00:00Z',
+          created_by: 'user-1',
+          is_visible_to_parent: true,
+          is_visible_to_therapist: true,
+        },
+      ],
+      error: null,
+    });
+    const eq = vi.fn().mockReturnValue({ order });
+    const notesSelect = vi.fn().mockReturnValue({ eq });
+
+    const inFilter = vi.fn().mockResolvedValue({
+      data: [{ id: 'user-1', full_name: 'Therapist One' }],
+      error: null,
+    });
+    const profilesSelect = vi.fn().mockReturnValue({ in: inFilter });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'client_notes') {
+        return { select: notesSelect };
+      }
+      if (table === 'profiles') {
+        return { select: profilesSelect };
+      }
+      throw new Error(`Unexpected table ${table}`);
+    });
+
+    const result = await fetchClientNotes('client-1', {}, { from } as any);
+
+    expect(from).toHaveBeenCalledWith('client_notes');
+    expect(from).toHaveBeenCalledWith('profiles');
+    expect(inFilter).toHaveBeenCalledWith('id', ['user-1']);
+    expect(result).toEqual([
+      {
+        id: 'note-1',
+        content: 'Progress note',
+        createdAt: '2026-02-13T00:00:00Z',
+        status: 'open',
+        createdBy: 'user-1',
+        createdByName: 'Therapist One',
+        isVisibleToParent: true,
+        isVisibleToTherapist: true,
+      },
+    ]);
+  });
+
+  it('returns notes even when profile lookup fails', async () => {
+    const order = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'note-2',
+          content: 'Another note',
+          status: null,
+          created_at: '2026-02-13T01:00:00Z',
+          created_by: 'user-2',
+          is_visible_to_parent: false,
+          is_visible_to_therapist: true,
+        },
+      ],
+      error: null,
+    });
+    const eq = vi.fn().mockReturnValue({ order });
+    const notesSelect = vi.fn().mockReturnValue({ eq });
+
+    const inFilter = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: 'profile query failed' },
+    });
+    const profilesSelect = vi.fn().mockReturnValue({ in: inFilter });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'client_notes') {
+        return { select: notesSelect };
+      }
+      if (table === 'profiles') {
+        return { select: profilesSelect };
+      }
+      throw new Error(`Unexpected table ${table}`);
+    });
+
+    const result = await fetchClientNotes('client-1', {}, { from } as any);
+
+    expect(result).toEqual([
+      {
+        id: 'note-2',
+        content: 'Another note',
+        createdAt: '2026-02-13T01:00:00Z',
+        status: null,
+        createdBy: 'user-2',
+        createdByName: null,
+        isVisibleToParent: false,
+        isVisibleToTherapist: true,
+      },
+    ]);
   });
 });

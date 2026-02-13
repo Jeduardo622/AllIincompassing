@@ -263,7 +263,10 @@ export interface FetchClientNotesOptions {
   readonly visibleToParentOnly?: boolean;
 }
 
-const parseClientNote = (row: Record<string, unknown>): ClientNote | null => {
+const parseClientNote = (
+  row: Record<string, unknown>,
+  createdByNameById: ReadonlyMap<string, string>,
+): ClientNote | null => {
   const id = typeof row.id === 'string' ? row.id : null;
   const content = typeof row.content === 'string' ? row.content : '';
   const createdAt = typeof row.created_at === 'string' ? row.created_at : null;
@@ -276,8 +279,7 @@ const parseClientNote = (row: Record<string, unknown>): ClientNote | null => {
     return null;
   }
 
-  const profile = (row.created_by_profile ?? null) as Record<string, unknown> | null;
-  const createdByName = typeof profile?.full_name === 'string' ? profile.full_name : null;
+  const createdByName = createdBy ? createdByNameById.get(createdBy) ?? null : null;
 
   return {
     id,
@@ -306,8 +308,7 @@ export const fetchClientNotes = async (
         created_at,
         created_by,
         is_visible_to_parent,
-        is_visible_to_therapist,
-        created_by_profile:profiles!client_notes_created_by_fkey(full_name)
+        is_visible_to_therapist
       `
     )
     .eq('client_id', clientId)
@@ -323,8 +324,35 @@ export const fetchClientNotes = async (
     throw error;
   }
 
-  return (data ?? [])
-    .map((row) => parseClientNote(row as Record<string, unknown>))
+  const rawRows = (data ?? []) as Record<string, unknown>[];
+  const creatorIds = Array.from(
+    new Set(
+      rawRows
+        .map((row) => (typeof row.created_by === 'string' ? row.created_by : null))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  const createdByNameById = new Map<string, string>();
+  if (creatorIds.length > 0) {
+    const { data: profileRows, error: profilesError } = await client
+      .from('profiles')
+      .select('id, full_name')
+      .in('id', creatorIds);
+
+    if (!profilesError) {
+      for (const row of (profileRows ?? []) as Array<Record<string, unknown>>) {
+        const id = typeof row.id === 'string' ? row.id : null;
+        const fullName = typeof row.full_name === 'string' ? row.full_name : null;
+        if (id && fullName) {
+          createdByNameById.set(id, fullName);
+        }
+      }
+    }
+  }
+
+  return rawRows
+    .map((row) => parseClientNote(row, createdByNameById))
     .filter((note): note is ClientNote => note !== null);
 };
 

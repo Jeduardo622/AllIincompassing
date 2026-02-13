@@ -401,6 +401,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     try {
       setLoading(true);
+
+      // Optimistically clear local auth state so route-level queries disable
+      // immediately and do not continue firing with a stale session.
+      setUser(null);
+      setProfile(null);
+      setSession(null);
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(STUB_AUTH_STORAGE_KEY);
+      }
+
       const { error } = await supabase.auth.signOut();
 
       if (error) {
@@ -412,15 +423,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         throw error;
       }
-
-      if (typeof window !== 'undefined') {
-        window.localStorage.removeItem(STUB_AUTH_STORAGE_KEY);
-      }
-
-      // Clear local state
-      setUser(null);
-      setProfile(null);
-      setSession(null);
     } catch (error) {
       logger.error('Supabase sign-out request threw an exception', {
         error: toError(error, 'Sign out failed'),

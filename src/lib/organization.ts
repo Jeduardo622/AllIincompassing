@@ -20,6 +20,11 @@ export const resolveOrganizationId = ({
   user,
   profile,
 }: ResolveOrganizationArgs): string | null => {
+  // Prevent protected queries from running during/after sign-out.
+  if (!user && !profile) {
+    return null;
+  }
+
   const metadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
   const metaSnake = normalizeId(metadata.organization_id);
   const metaCamel = normalizeId(metadata.organizationId);

@@ -21,7 +21,7 @@ import type { Therapist, AvailabilityHours } from '../types';
 import { prepareFormData } from '../lib/validation';
 import { useActiveOrganizationId } from '../lib/organization';
 import { toError } from '../lib/logger/normalizeError';
-import { describePostgrestError } from '../lib/supabase/isMissingRpcFunctionError';
+import { toTherapistMutationError, withMutationTimeout } from '../lib/supabase/mutationErrorHandling';
 import { uploadTherapistDocumentAndRecordManifest } from '../lib/therapist-documents';
 import {
   THERAPIST_SERVICE_TYPE_OPTIONS,
@@ -184,13 +184,23 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
       }
 
       // Insert therapist data
-      const { data: therapist, error } = await supabase
-        .from('therapists')
-        .insert([formattedTherapist])
-        .select()
-        .single();
+      let therapistInsertResult;
+      try {
+        therapistInsertResult = await withMutationTimeout(
+          supabase
+            .from('therapists')
+            .insert([formattedTherapist])
+            .select()
+            .single(),
+          'creating therapist',
+        );
+      } catch (error) {
+        throw toTherapistMutationError(error);
+      }
 
-      if (error) throw error;
+      const { data: therapist, error } = therapistInsertResult;
+
+      if (error) throw toTherapistMutationError(error);
 
       // Handle file uploads if any
       for (const [key, file] of Object.entries(uploadedFiles)) {
@@ -226,7 +236,7 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
       }
     },
     onError: (error) => {
-      const normalizedError = toError(error, describePostgrestError(error));
+      const normalizedError = toTherapistMutationError(error);
       logger.error('Therapist onboarding Supabase insert failed', {
         error: normalizedError,
         context: { component: 'TherapistOnboarding', operation: 'createTherapistMutation' },

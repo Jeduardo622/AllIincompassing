@@ -24,7 +24,7 @@ import { logger } from '../lib/logger/logger';
 import { toError } from '../lib/logger/normalizeError';
 import { useAuth } from '../lib/authContext';
 import { useActiveOrganizationId } from '../lib/organization';
-import { describePostgrestError } from '../lib/supabase/isMissingRpcFunctionError';
+import { toTherapistMutationError, withMutationTimeout } from '../lib/supabase/mutationErrorHandling';
 
 export const matchesStatusFilter = (
   status: Therapist['status'] | null | undefined,
@@ -126,13 +126,23 @@ const Therapists = () => {
       };
 
       // Insert the new therapist
-      const { data, error } = await supabase
-        .from('therapists')
-        .insert([parsedTherapist])
-        .select()
-        .single();
+      let createResult;
+      try {
+        createResult = await withMutationTimeout(
+          supabase
+            .from('therapists')
+            .insert([parsedTherapist])
+            .select()
+            .single(),
+          'creating therapist',
+        );
+      } catch (error) {
+        throw toTherapistMutationError(error);
+      }
 
-      if (error) throw error;
+      const { data, error } = createResult;
+
+      if (error) throw toTherapistMutationError(error);
       return data;
     },
     onSuccess: () => {
@@ -142,7 +152,7 @@ const Therapists = () => {
       showSuccess('Therapist saved successfully');
     },
     onError: (error) => {
-      const normalizedError = toError(error, describePostgrestError(error));
+      const normalizedError = toTherapistMutationError(error);
       logger.error('Therapist create mutation failed', {
         error: normalizedError,
         metadata: {

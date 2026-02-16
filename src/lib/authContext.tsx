@@ -270,7 +270,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
             return null;
           });
-          setProfile(profileData);
+          setProfile((currentProfile) => {
+            if (profileData) {
+              return profileData;
+            }
+
+            // Keep the current profile for the same user when refresh-time profile
+            // reads fail so route guards do not incorrectly downgrade permissions.
+            if (currentProfile?.id === session.user.id) {
+              return currentProfile;
+            }
+
+            return null;
+          });
         } else {
           const stubAuthState = readStubAuthState();
           if (stubAuthState) {

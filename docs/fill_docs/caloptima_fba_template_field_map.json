@@ -1,0 +1,317 @@
+{
+  "FBA": {
+    "template": "CalOptima Health Functional Behavior Assessment / Initial Treatment Plan",
+    "source_document": "7.21.2025_RoVa_CalOptima_FBA_FINAL (1).Redacted.docx.pdf",
+    "labels": [
+      {
+        "label": "Member Name",
+        "placeholder_key": "CALOPTIMA_FBA_MEMBER_NAME",
+        "mode": "AUTO",
+        "source": "clients.full_name",
+        "notes": "Prefer first_name + last_name when available."
+      },
+      {
+        "label": "Member DOB",
+        "placeholder_key": "CALOPTIMA_FBA_MEMBER_DOB",
+        "mode": "AUTO",
+        "source": "clients.date_of_birth",
+        "notes": "Format MM/DD/YYYY."
+      },
+      {
+        "label": "CIN #",
+        "placeholder_key": "CALOPTIMA_FBA_CIN",
+        "mode": "AUTO",
+        "source": "authorizations.member_id || clients.cin_number || clients.client_id",
+        "notes": "CalOptima member identifier fallback chain."
+      },
+      {
+        "label": "Diagnoses/with ICD Code",
+        "placeholder_key": "CALOPTIMA_FBA_DIAGNOSES_ICD",
+        "mode": "AUTO",
+        "source": "clients.diagnosis[] + optional authorizations.diagnosis_code",
+        "notes": "Join as code + description lines."
+      },
+      {
+        "label": "Guardian Name",
+        "placeholder_key": "CALOPTIMA_FBA_GUARDIAN_NAME",
+        "mode": "AUTO",
+        "source": "clients.parent1_first_name/last_name (fallback parent2)",
+        "notes": "Include relationship if known."
+      },
+      {
+        "label": "Phone (guardian/member)",
+        "placeholder_key": "CALOPTIMA_FBA_CONTACT_PHONE",
+        "mode": "AUTO",
+        "source": "clients.parent1_phone || clients.phone",
+        "notes": "Prefer guardian contact for this section."
+      },
+      {
+        "label": "Primary Care Provider",
+        "placeholder_key": "CALOPTIMA_FBA_PCP",
+        "mode": "ASSISTED",
+        "source": "clients.insurance_info.pcp",
+        "notes": "Not first-class modeled today."
+      },
+      {
+        "label": "Known Allergies",
+        "placeholder_key": "CALOPTIMA_FBA_KNOWN_ALLERGIES",
+        "mode": "ASSISTED",
+        "source": "clients.insurance_info.allergies",
+        "notes": "Not first-class modeled today."
+      },
+      {
+        "label": "Current Medications/Dosage",
+        "placeholder_key": "CALOPTIMA_FBA_MEDICATIONS",
+        "mode": "ASSISTED",
+        "source": "clients.insurance_info.medications",
+        "notes": "Editable list."
+      },
+      {
+        "label": "Dietary Restrictions",
+        "placeholder_key": "CALOPTIMA_FBA_DIETARY_RESTRICTIONS",
+        "mode": "ASSISTED",
+        "source": "clients.insurance_info.dietary_restrictions",
+        "notes": "Editable list."
+      },
+      {
+        "label": "Service Initiation Date",
+        "placeholder_key": "CALOPTIMA_FBA_SERVICE_INITIATION_DATE",
+        "mode": "AUTO",
+        "source": "earliest ABA start from sessions/authorizations",
+        "notes": "Fallback manual if not derivable."
+      },
+      {
+        "label": "Date ABA first began",
+        "placeholder_key": "CALOPTIMA_FBA_DATE_ABA_FIRST_BEGAN",
+        "mode": "ASSISTED",
+        "source": "intake/history narrative",
+        "notes": "Often differs from current authorization start."
+      },
+      {
+        "label": "Prior Applied Behavioral Health Agencies",
+        "placeholder_key": "CALOPTIMA_FBA_PRIOR_ABH_AGENCIES",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Free text or first-time flag."
+      },
+      {
+        "label": "Administrative Contact Full Name and Title",
+        "placeholder_key": "CALOPTIMA_FBA_ADMIN_CONTACT_NAME_TITLE",
+        "mode": "AUTO",
+        "source": "company_settings/org profile",
+        "notes": "May need dedicated org contact field."
+      },
+      {
+        "label": "Administrative Contact Phone Number",
+        "placeholder_key": "CALOPTIMA_FBA_ADMIN_CONTACT_PHONE",
+        "mode": "AUTO",
+        "source": "company_settings.phone",
+        "notes": ""
+      },
+      {
+        "label": "Administrative Contact Fax Number",
+        "placeholder_key": "CALOPTIMA_FBA_ADMIN_CONTACT_FAX",
+        "mode": "ASSISTED",
+        "source": "company_settings.fax",
+        "notes": "Editable fallback."
+      },
+      {
+        "label": "Chief Complaint/Reason for Seeking ABA Treatment",
+        "placeholder_key": "CALOPTIMA_FBA_CHIEF_COMPLAINT",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Narrative clinical statement."
+      },
+      {
+        "label": "Records Reviewed (table)",
+        "placeholder_key": "CALOPTIMA_FBA_RECORDS_REVIEWED",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Record type, author, date rows."
+      },
+      {
+        "label": "Initial Interview/Observation",
+        "placeholder_key": "CALOPTIMA_FBA_INITIAL_INTERVIEW_OBSERVATION",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Narrative with location/date/attendees."
+      },
+      {
+        "label": "Second Interview/Observation",
+        "placeholder_key": "CALOPTIMA_FBA_SECOND_INTERVIEW_OBSERVATION",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Narrative with location/date/attendees."
+      },
+      {
+        "label": "Daily schedule of all activities",
+        "placeholder_key": "CALOPTIMA_FBA_DAILY_ACTIVITY_SCHEDULE",
+        "mode": "ASSISTED",
+        "source": "clients.availability_hours + external services",
+        "notes": "Formatting transform required."
+      },
+      {
+        "label": "Daily school schedule",
+        "placeholder_key": "CALOPTIMA_FBA_SCHOOL_SCHEDULE",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "From IEP/school records."
+      },
+      {
+        "label": "Current IEP/equivalent",
+        "placeholder_key": "CALOPTIMA_FBA_HAS_IEP",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Checkbox value."
+      },
+      {
+        "label": "Date of current IEP/equivalent",
+        "placeholder_key": "CALOPTIMA_FBA_IEP_DATE",
+        "mode": "ASSISTED",
+        "source": "clients.insurance_info.school.last_iep_date",
+        "notes": ""
+      },
+      {
+        "label": "Previous interventions",
+        "placeholder_key": "CALOPTIMA_FBA_PREVIOUS_INTERVENTIONS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Provider/service/start/end/termination reason table."
+      },
+      {
+        "label": "Coordination of care sections",
+        "placeholder_key": "CALOPTIMA_FBA_COORDINATION_OF_CARE",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Parent/school/regional center/speech-OT-PT/PCP/MH narratives."
+      },
+      {
+        "label": "Vineland domain score table",
+        "placeholder_key": "CALOPTIMA_FBA_VINELAND_DOMAIN_SCORES",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Structured instrument output."
+      },
+      {
+        "label": "Current diagnosis code(s)",
+        "placeholder_key": "CALOPTIMA_FBA_CURRENT_DIAGNOSIS_CODES",
+        "mode": "AUTO",
+        "source": "clients.diagnosis[] / authorization diagnosis",
+        "notes": ""
+      },
+      {
+        "label": "Target behavior blocks",
+        "placeholder_key": "CALOPTIMA_FBA_TARGET_BEHAVIOR_BLOCKS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Includes identifying behavior/history/ABC/function."
+      },
+      {
+        "label": "Behavior intervention plan blocks",
+        "placeholder_key": "CALOPTIMA_FBA_BIP_BLOCKS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Ecological/replacement/focused/reactive/data procedures."
+      },
+      {
+        "label": "Target and replacement behavior goals",
+        "placeholder_key": "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Repeating LT/IT/ST goals plus baseline and settings."
+      },
+      {
+        "label": "Skill acquisition goals",
+        "placeholder_key": "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Communication/daily living/social/self-direction blocks."
+      },
+      {
+        "label": "Parent/Caregiver goals",
+        "placeholder_key": "CALOPTIMA_FBA_PARENT_GOALS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Repeating LT/IT/ST goals with baseline and setting."
+      },
+      {
+        "label": "Generalization and maintenance plan",
+        "placeholder_key": "CALOPTIMA_FBA_GENERALIZATION_MAINTENANCE_PLAN",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Includes procedural reliability, reinforcement thinning, family training."
+      },
+      {
+        "label": "Transition plan and exit criteria",
+        "placeholder_key": "CALOPTIMA_FBA_TRANSITION_PLAN",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Checkboxes + required prompts."
+      },
+      {
+        "label": "Crisis plan",
+        "placeholder_key": "CALOPTIMA_FBA_CRISIS_PLAN",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Preventative, response, and post-crisis protocol narrative."
+      },
+      {
+        "label": "Summary and recommendations",
+        "placeholder_key": "CALOPTIMA_FBA_SUMMARY_RECOMMENDATIONS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Clinical rationale for requested hours."
+      },
+      {
+        "label": "HCPCS recommendation rows",
+        "placeholder_key": "CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS",
+        "mode": "ASSISTED",
+        "source": "authorization/planning payload",
+        "notes": "Structured code/units/hours/location rows."
+      },
+      {
+        "label": "Telehealth consent confirmation",
+        "placeholder_key": "CALOPTIMA_FBA_TELEHEALTH_CONSENT",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Checkbox + consent date."
+      },
+      {
+        "label": "Parent/guardian involvement",
+        "placeholder_key": "CALOPTIMA_FBA_PARENT_INVOLVEMENT",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Yes/No responses + explanation."
+      },
+      {
+        "label": "Report written by",
+        "placeholder_key": "CALOPTIMA_FBA_REPORT_WRITTEN_BY",
+        "mode": "AUTO",
+        "source": "therapists.full_name + credentials",
+        "notes": ""
+      },
+      {
+        "label": "Title, License/Certificate #",
+        "placeholder_key": "CALOPTIMA_FBA_WRITER_CREDENTIALS",
+        "mode": "AUTO",
+        "source": "therapists.title + therapists.license_number/bcba_number/rbt_number",
+        "notes": ""
+      },
+      {
+        "label": "Date of Report Completed",
+        "placeholder_key": "CALOPTIMA_FBA_REPORT_COMPLETED_DATE",
+        "mode": "AUTO",
+        "source": "today (server)",
+        "notes": ""
+      },
+      {
+        "label": "Writer and reviewer signatures",
+        "placeholder_key": "CALOPTIMA_FBA_SIGNATURES",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Signature capture/approval workflow."
+      }
+    ],
+    "existing_placeholders": []
+  }
+}

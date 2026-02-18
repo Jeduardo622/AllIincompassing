@@ -308,6 +308,7 @@ SELECT auth.verify_role_system();
 ### Session Management
 - JWT tokens with expiration
 - Refresh token rotation
+- Browser auth session now uses `sessionStorage` (window-scoped) instead of persistent local storage. Closing the app/browser window clears the session so reopening starts logged out.
 - Secure token storage recommendations
 
 ### API Security
@@ -378,6 +379,10 @@ SELECT auth.has_role('admin'::role_type);
 - Verify user is active
 - Confirm profile exists
 - Check role permissions
+- If logs show `scope: authContext.onAuthStateChange` with profile fetch failures during `SIGNED_IN`, verify that profile refresh executes outside the auth callback (deferred task) and confirm new debug phases:
+  - `phase: profileRefresh.start`
+  - `phase: profileRefresh.complete`
+  These logs indicate the listener is no longer awaiting profile fetch inline, reducing callback re-entrancy/timeout failures.
 
 ### Debug Queries
 

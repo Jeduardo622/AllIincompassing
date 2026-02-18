@@ -21,11 +21,13 @@ const getSupabaseClient = (): SupabaseClient<Database> => {
   }
 
   const { supabaseUrl, supabaseAnonKey } = resolveSupabaseConfig();
+  const browserStorage = typeof window === 'undefined' ? undefined : window.sessionStorage;
   supabaseClient = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     auth: {
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: true,
+      ...(browserStorage ? { storage: browserStorage } : {}),
     },
     global: {
       headers: {

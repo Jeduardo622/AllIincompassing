@@ -245,44 +245,73 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [performInitialization]);
 
+  const refreshProfileForSession = useCallback(async (nextSession: Session, event: string) => {
+    logger.debug('Refreshing profile after auth state change', {
+      metadata: {
+        scope: 'authContext.onAuthStateChange',
+        phase: 'profileRefresh.start',
+        userId: nextSession.user.id,
+        event,
+      },
+    });
+
+    const profileData = await withTimeout(
+      fetchProfile(nextSession.user.id),
+      'fetchProfile in onAuthStateChange',
+      10000
+    ).catch((error) => {
+      logger.error('Failed to fetch profile in auth state change', {
+        error: toError(error, 'Profile fetch failed in listener'),
+        metadata: {
+          scope: 'authContext.onAuthStateChange',
+          userId: nextSession.user.id,
+          event,
+        },
+      });
+      return null;
+    });
+
+    logger.debug('Completed profile refresh after auth state change', {
+      metadata: {
+        scope: 'authContext.onAuthStateChange',
+        phase: 'profileRefresh.complete',
+        userId: nextSession.user.id,
+        event,
+        profileFound: Boolean(profileData),
+      },
+    });
+
+    setProfile((currentProfile) => {
+      if (profileData) {
+        return profileData;
+      }
+
+      // Keep the current profile for the same user when refresh-time profile
+      // reads fail so route guards do not incorrectly downgrade permissions.
+      if (currentProfile?.id === nextSession.user.id) {
+        return currentProfile;
+      }
+
+      return null;
+    });
+  }, [fetchProfile]);
+
   useEffect(() => {
     initializeAuth();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       try {
         setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          const profileData = await withTimeout(
-            fetchProfile(session.user.id),
-            'fetchProfile in onAuthStateChange',
-            10000
-          ).catch((error) => {
-            logger.error('Failed to fetch profile in auth state change', {
-              error: toError(error, 'Profile fetch failed in listener'),
-              metadata: {
-                scope: 'authContext.onAuthStateChange',
-                userId: session.user.id,
-                event,
-              },
-            });
-            return null;
-          });
-          setProfile((currentProfile) => {
-            if (profileData) {
-              return profileData;
-            }
-
-            // Keep the current profile for the same user when refresh-time profile
-            // reads fail so route guards do not incorrectly downgrade permissions.
-            if (currentProfile?.id === session.user.id) {
-              return currentProfile;
-            }
-
-            return null;
-          });
+          // Supabase warns against awaiting additional Supabase calls directly inside
+          // this callback. Schedule profile refresh in a separate task to avoid
+          // re-entrancy stalls that can lead to timeout errors during SIGNED_IN.
+          window.setTimeout(() => {
+            void refreshProfileForSession(session, event);
+          }, 0);
         } else {
           const stubAuthState = readStubAuthState();
           if (stubAuthState) {
@@ -313,7 +342,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return () => subscription.unsubscribe();
-  }, [initializeAuth, fetchProfile]);
+  }, [initializeAuth, refreshProfileForSession]);
 
   // Set up real-time profile updates
   useEffect(() => {

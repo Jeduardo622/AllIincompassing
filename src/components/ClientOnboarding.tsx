@@ -169,7 +169,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
         insurance_info: formattedData.insurance_info || {},
         full_name: `${formattedData.first_name} ${formattedData.middle_name || ''} ${formattedData.last_name}`.trim(),
         organization_id: organizationId,
-        status: formattedData.status || 'pending',
+        status: formattedData.status || 'active',
         created_by: user?.id ?? formattedData.created_by,
       };
 

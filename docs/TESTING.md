@@ -46,6 +46,22 @@ npm test -- \
 
 Expected result (current baseline): 6 files, 19 tests passing.
 
+## Assessment PDF generation suite (2026-02)
+
+For the staged assessment + completed CalOptima PDF flow, run:
+
+```bash
+npx vitest run \
+  src/server/__tests__/assessmentPlanPdfHandler.test.ts \
+  src/server/__tests__/assessmentPlanPdfTemplate.test.ts \
+  src/components/__tests__/ProgramsGoalsTab.test.tsx
+```
+
+This covers:
+- API precondition gating for `/api/assessment-plan-pdf`
+- checklist-to-render-map parity validation
+- UI trigger behavior for `Generate Completed CalOptima PDF`
+
 ## Agent eval smoke (edge functions)
 
 Run the edge smoke harness against staging/preview using an authenticated user JWT:

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardList, Plus, UploadCloud } from "lucide-react";
 import type { Client, Goal, Program, ProgramNote } from "../../types";
 import { callApi } from "../../lib/api";
-import { showError, showSuccess } from "../../lib/toast";
+import { showError, showInfo, showSuccess } from "../../lib/toast";
 import { useActiveOrganizationId } from "../../lib/organization";
 import { generateProgramGoalDraft, type ProgramGoalDraftResponse } from "../../lib/ai";
 import { useAuth } from "../../lib/authContext";
@@ -13,6 +13,8 @@ import {
   type AssessmentTemplateType,
 } from "../../lib/assessment-documents";
 import { supabase } from "../../lib/supabase";
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface ProgramsGoalsTabProps {
   client: Client;
@@ -174,6 +176,11 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
     enabled: Boolean(client.id && organizationId),
   });
+  const selectedAssessmentIdIsValid = Boolean(selectedAssessmentId && UUID_PATTERN.test(selectedAssessmentId));
+  const selectedAssessmentInQueue = Boolean(
+    selectedAssessmentId && assessmentDocuments.some((document) => document.id === selectedAssessmentId),
+  );
+  const canQuerySelectedAssessment = selectedAssessmentIdIsValid && selectedAssessmentInQueue;
 
   const { data: checklistItems = EMPTY_CHECKLIST_ITEMS } = useQuery({
     queryKey: ["assessment-checklist", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
@@ -187,7 +194,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       }
       return parseJson<AssessmentChecklistItem[]>(response);
     },
-    enabled: Boolean(selectedAssessmentId),
+    enabled: canQuerySelectedAssessment,
   });
 
   const { data: assessmentDrafts } = useQuery({
@@ -200,7 +207,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       }
       return parseJson<AssessmentDraftResponse>(response);
     },
-    enabled: Boolean(selectedAssessmentId),
+    enabled: canQuerySelectedAssessment,
   });
 
   const checklistBySection = useMemo(() => {
@@ -222,10 +229,24 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     : TEMPLATE_LABELS[assessmentTemplateType];
 
   useEffect(() => {
-    if (!selectedAssessmentId && assessmentDocuments[0]?.id) {
-      setSelectedAssessmentId(assessmentDocuments[0].id);
+    const firstAssessmentId = assessmentDocuments[0]?.id ?? null;
+    if (!firstAssessmentId) {
+      if (assessmentLoading) {
+        return;
+      }
+      if (selectedAssessmentId !== null) {
+        showInfo("Assessment selection was cleared because no assessments are available for this client.");
+        setSelectedAssessmentId(null);
+      }
+      return;
     }
-  }, [assessmentDocuments, selectedAssessmentId]);
+    if (!selectedAssessmentId || !assessmentDocuments.some((document) => document.id === selectedAssessmentId)) {
+      if (selectedAssessmentId && selectedAssessmentId !== firstAssessmentId) {
+        showInfo("Assessment selection was updated to match this client's available queue.");
+      }
+      setSelectedAssessmentId(firstAssessmentId);
+    }
+  }, [assessmentDocuments, selectedAssessmentId, assessmentLoading]);
 
   useEffect(() => {
     const next: Record<string, { status: AssessmentChecklistItem["status"]; reviewNotes: string; valueText: string }> = {};
@@ -725,7 +746,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               <button
                 type="button"
                 onClick={() => promoteAssessment.mutate()}
-                disabled={!selectedAssessmentId || promoteAssessment.isLoading}
+                disabled={!canQuerySelectedAssessment || promoteAssessment.isLoading}
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
               >
                 {promoteAssessment.isLoading ? "Promoting..." : "Promote Accepted Drafts to Program + Goals"}
@@ -733,7 +754,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               <button
                 type="button"
                 onClick={() => generateAssessmentPlanPdf.mutate()}
-                disabled={!selectedAssessmentId || generateAssessmentPlanPdf.isLoading}
+                disabled={!canQuerySelectedAssessment || generateAssessmentPlanPdf.isLoading}
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-violet-600 rounded-md hover:bg-violet-700 disabled:opacity-50"
               >
                 {generateAssessmentPlanPdf.isLoading ? "Generating..." : "Generate Completed CalOptima PDF"}
@@ -784,7 +805,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 <button
                   type="button"
                   onClick={() => persistAssessmentDrafts.mutate()}
-                  disabled={!selectedAssessmentId || persistAssessmentDrafts.isLoading}
+                  disabled={!canQuerySelectedAssessment || persistAssessmentDrafts.isLoading}
                   className="w-full px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {persistAssessmentDrafts.isLoading ? "Saving..." : "Save Drafts to Selected Assessment"}

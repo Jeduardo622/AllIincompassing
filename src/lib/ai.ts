@@ -267,6 +267,7 @@ export async function generateProgramGoalDraft(
   auth: EdgeAuthContext,
   options?: {
     clientName?: string;
+    assessmentDocumentId?: string;
   },
 ): Promise<ProgramGoalDraftResponse> {
   if (typeof assessmentText !== 'string' || assessmentText.trim().length < 20) {
@@ -282,6 +283,7 @@ export async function generateProgramGoalDraft(
   const payload = {
     assessment_text: assessmentText.trim(),
     client_name: options?.clientName?.trim() || undefined,
+    assessment_document_id: options?.assessmentDocumentId?.trim() || undefined,
   };
 
   const response = await fetch(

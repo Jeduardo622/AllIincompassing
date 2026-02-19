@@ -18,6 +18,7 @@ const corsHeaders = {
 const requestSchema = z.object({
   assessment_text: z.string().trim().min(20).max(12000),
   client_name: z.string().trim().min(1).max(120).optional(),
+  assessment_document_id: z.string().uuid().optional(),
 });
 
 const responseSchema = z.object({

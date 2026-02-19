@@ -4,6 +4,7 @@ Template: `CalOptima Health Functional Behavior Assessment / Initial Treatment P
 
 Source mapping: `docs/fill_docs/caloptima_fba_template_field_map.json`
 Source document reviewed: `7.21.2025_RoVa_CalOptima_FBA_FINAL (1).Redacted.docx.pdf`
+PDF render map (for completed PDF output): `docs/fill_docs/caloptima_fba_pdf_render_map.json`
 
 ## Checklist schema and workflow rules
 

@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
 import ProgramsGoalsTab from "../ClientDetails/ProgramsGoalsTab";
 import { generateProgramGoalDraft } from "../../lib/ai";
-import { showSuccess } from "../../lib/toast";
+import { showInfo, showSuccess } from "../../lib/toast";
 import { callApi } from "../../lib/api";
 
 const ORG_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
+const ASSESSMENT_ID = "11111111-1111-4111-8111-111111111111";
 
 vi.mock("../../lib/ai", async () => {
   const actual = await vi.importActual<typeof import("../../lib/ai")>("../../lib/ai");
@@ -17,6 +18,7 @@ vi.mock("../../lib/ai", async () => {
 
 vi.mock("../../lib/toast", () => ({
   showError: vi.fn(),
+  showInfo: vi.fn(),
   showSuccess: vi.fn(),
 }));
 
@@ -90,7 +92,7 @@ describe("ProgramsGoalsTab", () => {
       if (method === "POST" && path === "/api/assessment-documents") {
         return new Response(
           JSON.stringify({
-            id: "assessment-1",
+            id: ASSESSMENT_ID,
             organization_id: ORG_ID,
             client_id: "client-1",
             template_type: "iehp_fba",
@@ -268,7 +270,7 @@ describe("ProgramsGoalsTab", () => {
         return new Response(
           JSON.stringify([
             {
-              id: "assessment-1",
+              id: ASSESSMENT_ID,
               organization_id: ORG_ID,
               client_id: "client-1",
               template_type: "caloptima_fba",
@@ -339,5 +341,131 @@ describe("ProgramsGoalsTab", () => {
     expect(openSpy).toHaveBeenCalledWith("https://example.com/generated-plan.pdf", "_blank", "noopener,noreferrer");
     expect(showSuccess).toHaveBeenCalledWith("Completed CalOptima PDF generated (overlay mode).");
     openSpy.mockRestore();
+  });
+
+  it("resets stale selected assessment when client queue changes", async () => {
+    const assessmentIdA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const assessmentIdB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.includes("assessment_document_id=")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?client_id=client-a")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: assessmentIdA,
+              organization_id: ORG_ID,
+              client_id: "client-a",
+              template_type: "caloptima_fba",
+              file_name: "a-fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-a/assessments/a-fba.pdf",
+              status: "uploaded",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?client_id=client-b")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: assessmentIdB,
+              organization_id: ORG_ID,
+              client_id: "client-b",
+              template_type: "caloptima_fba",
+              file_name: "b-fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-b/assessments/b-fba.pdf",
+              status: "uploaded",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    const { rerender } = renderWithProviders(
+      <ProgramsGoalsTab
+        client={
+          {
+            id: "client-a",
+            email: "client@example.com",
+            full_name: "Client One",
+            date_of_birth: "2017-05-01",
+            insurance_info: {},
+            service_preference: [],
+            one_to_one_units: 0,
+            supervision_units: 0,
+            parent_consult_units: 0,
+            assessment_units: 0,
+            availability_hours: {},
+            created_at: "2026-02-11T00:00:00.000Z",
+          } as any
+        }
+      />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    await screen.findByText("a-fba.pdf");
+    await waitFor(() => {
+      expect(
+        vi.mocked(callApi).mock.calls.some(
+          ([path]) => typeof path === "string" && path.includes(`assessment_document_id=${assessmentIdA}`),
+        ),
+      ).toBe(true);
+    });
+
+    const callsBeforeRerender = vi.mocked(callApi).mock.calls.length;
+
+    rerender(
+      <ProgramsGoalsTab
+        client={
+          {
+            id: "client-b",
+            email: "client@example.com",
+            full_name: "Client Two",
+            date_of_birth: "2017-05-01",
+            insurance_info: {},
+            service_preference: [],
+            one_to_one_units: 0,
+            supervision_units: 0,
+            parent_consult_units: 0,
+            assessment_units: 0,
+            availability_hours: {},
+            created_at: "2026-02-11T00:00:00.000Z",
+          } as any
+        }
+      />,
+    );
+
+    await screen.findByText("b-fba.pdf");
+    await waitFor(() => {
+      const newCalls = vi.mocked(callApi).mock.calls.slice(callsBeforeRerender);
+      expect(
+        newCalls.some(([path]) => typeof path === "string" && path.includes(`assessment_document_id=${assessmentIdB}`)),
+      ).toBe(true);
+      expect(
+        newCalls.some(([path]) => typeof path === "string" && path.includes(`assessment_document_id=${assessmentIdA}`)),
+      ).toBe(false);
+    });
+    expect(showInfo).toHaveBeenCalledWith("Assessment selection was updated to match this client's available queue.");
   });
 });

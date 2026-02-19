@@ -169,6 +169,12 @@ describe('ClientOnboarding step progression', () => {
       expect(onComplete).toHaveBeenCalled();
     });
 
+    expect(createClientMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: 'active',
+      }),
+    );
     expect(createClientMock).toHaveBeenCalledTimes(1);
     expect(onComplete).toHaveBeenCalledTimes(1);
   });

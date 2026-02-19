@@ -52,6 +52,26 @@
   status = 200
 
 [[redirects]]
+  from = "/api/assessment-documents"
+  to = "/.netlify/functions/assessment-documents"
+  status = 200
+
+[[redirects]]
+  from = "/api/assessment-checklist"
+  to = "/.netlify/functions/assessment-checklist"
+  status = 200
+
+[[redirects]]
+  from = "/api/assessment-drafts"
+  to = "/.netlify/functions/assessment-drafts"
+  status = 200
+
+[[redirects]]
+  from = "/api/assessment-promote"
+  to = "/.netlify/functions/assessment-promote"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

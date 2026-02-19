@@ -1,16 +1,65 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, ClipboardList } from "lucide-react";
+import { ClipboardList, Plus, UploadCloud } from "lucide-react";
 import type { Client, Goal, Program, ProgramNote } from "../../types";
 import { callApi } from "../../lib/api";
 import { showError, showSuccess } from "../../lib/toast";
 import { useActiveOrganizationId } from "../../lib/organization";
 import { generateProgramGoalDraft, type ProgramGoalDraftResponse } from "../../lib/ai";
 import { useAuth } from "../../lib/authContext";
+import {
+  registerAssessmentDocument,
+  type AssessmentDocumentRecord,
+  type AssessmentTemplateType,
+} from "../../lib/assessment-documents";
+import { supabase } from "../../lib/supabase";
 
 interface ProgramsGoalsTabProps {
   client: Client;
 }
+
+interface AssessmentChecklistItem {
+  id: string;
+  section_key: string;
+  label: string;
+  placeholder_key: string;
+  required: boolean;
+  mode: "AUTO" | "ASSISTED" | "MANUAL";
+  status: "not_started" | "drafted" | "verified" | "approved";
+  review_notes: string | null;
+  value_text: string | null;
+}
+
+interface AssessmentDraftProgram {
+  id: string;
+  name: string;
+  description: string | null;
+  accept_state: "pending" | "accepted" | "rejected" | "edited";
+  review_notes: string | null;
+}
+
+interface AssessmentDraftGoal {
+  id: string;
+  title: string;
+  description: string;
+  original_text: string;
+  accept_state: "pending" | "accepted" | "rejected" | "edited";
+  review_notes: string | null;
+}
+
+interface AssessmentDraftResponse {
+  programs: AssessmentDraftProgram[];
+  goals: AssessmentDraftGoal[];
+}
+
+const EMPTY_ASSESSMENT_DOCUMENTS: AssessmentDocumentRecord[] = [];
+const EMPTY_CHECKLIST_ITEMS: AssessmentChecklistItem[] = [];
+const EMPTY_ASSESSMENT_DRAFTS: AssessmentDraftResponse = { programs: [], goals: [] };
+
+const TEMPLATE_LABELS: Record<AssessmentTemplateType, string> = {
+  caloptima_fba: "CalOptima FBA",
+  iehp_fba: "IEHP FBA",
+};
 
 const parseJson = async <T,>(response: Response): Promise<T> => {
   const text = await response.text();
@@ -25,6 +74,9 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const organizationId = useActiveOrganizationId();
   const { session } = useAuth();
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
+  const [selectedAssessmentId, setSelectedAssessmentId] = useState<string | null>(null);
+  const [assessmentFile, setAssessmentFile] = useState<File | null>(null);
+  const [assessmentTemplateType, setAssessmentTemplateType] = useState<AssessmentTemplateType>("caloptima_fba");
   const [programName, setProgramName] = useState("");
   const [programDescription, setProgramDescription] = useState("");
   const [goalTitle, setGoalTitle] = useState("");
@@ -32,6 +84,24 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [goalOriginalText, setGoalOriginalText] = useState("");
   const [assessmentInput, setAssessmentInput] = useState("");
   const [draftPlan, setDraftPlan] = useState<ProgramGoalDraftResponse | null>(null);
+  const [checklistEdits, setChecklistEdits] = useState<
+    Record<string, { status: AssessmentChecklistItem["status"]; reviewNotes: string; valueText: string }>
+  >({});
+  const [draftProgramEdits, setDraftProgramEdits] = useState<
+    Record<string, { acceptState: AssessmentDraftProgram["accept_state"]; reviewNotes: string; name: string; description: string }>
+  >({});
+  const [draftGoalEdits, setDraftGoalEdits] = useState<
+    Record<
+      string,
+      {
+        acceptState: AssessmentDraftGoal["accept_state"];
+        reviewNotes: string;
+        title: string;
+        description: string;
+        originalText: string;
+      }
+    >
+  >({});
   const [noteType, setNoteType] = useState<ProgramNote["note_type"]>("plan_update");
   const [noteContent, setNoteContent] = useState("");
 
@@ -85,6 +155,296 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       return parseJson<ProgramNote[]>(response);
     },
     enabled: Boolean(resolvedProgramId),
+  });
+
+  const { data: assessmentDocuments = EMPTY_ASSESSMENT_DOCUMENTS, isLoading: assessmentLoading } = useQuery({
+    queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
+    queryFn: async () => {
+      const response = await callApi(`/api/assessment-documents?client_id=${encodeURIComponent(client.id)}`);
+      if (!response.ok) {
+        throw new Error("Failed to load assessment documents");
+      }
+      return parseJson<AssessmentDocumentRecord[]>(response);
+    },
+    enabled: Boolean(client.id && organizationId),
+  });
+
+  const { data: checklistItems = EMPTY_CHECKLIST_ITEMS } = useQuery({
+    queryKey: ["assessment-checklist", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+    queryFn: async () => {
+      if (!selectedAssessmentId) return [];
+      const response = await callApi(
+        `/api/assessment-checklist?assessment_document_id=${encodeURIComponent(selectedAssessmentId)}`,
+      );
+      if (!response.ok) {
+        throw new Error("Failed to load checklist");
+      }
+      return parseJson<AssessmentChecklistItem[]>(response);
+    },
+    enabled: Boolean(selectedAssessmentId),
+  });
+
+  const { data: assessmentDrafts } = useQuery({
+    queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+    queryFn: async () => {
+      if (!selectedAssessmentId) return EMPTY_ASSESSMENT_DRAFTS;
+      const response = await callApi(`/api/assessment-drafts?assessment_document_id=${encodeURIComponent(selectedAssessmentId)}`);
+      if (!response.ok) {
+        throw new Error("Failed to load assessment drafts");
+      }
+      return parseJson<AssessmentDraftResponse>(response);
+    },
+    enabled: Boolean(selectedAssessmentId),
+  });
+
+  const checklistBySection = useMemo(() => {
+    const grouped = new Map<string, AssessmentChecklistItem[]>();
+    checklistItems.forEach((item) => {
+      const existing = grouped.get(item.section_key) ?? [];
+      existing.push(item);
+      grouped.set(item.section_key, existing);
+    });
+    return Array.from(grouped.entries());
+  }, [checklistItems]);
+
+  const selectedAssessmentDocument = useMemo(
+    () => assessmentDocuments.find((document) => document.id === selectedAssessmentId) ?? null,
+    [assessmentDocuments, selectedAssessmentId],
+  );
+  const selectedAssessmentTemplateLabel = selectedAssessmentDocument
+    ? TEMPLATE_LABELS[selectedAssessmentDocument.template_type]
+    : TEMPLATE_LABELS[assessmentTemplateType];
+
+  useEffect(() => {
+    if (!selectedAssessmentId && assessmentDocuments[0]?.id) {
+      setSelectedAssessmentId(assessmentDocuments[0].id);
+    }
+  }, [assessmentDocuments, selectedAssessmentId]);
+
+  useEffect(() => {
+    const next: Record<string, { status: AssessmentChecklistItem["status"]; reviewNotes: string; valueText: string }> = {};
+    checklistItems.forEach((item) => {
+      next[item.id] = {
+        status: item.status,
+        reviewNotes: item.review_notes ?? "",
+        valueText: item.value_text ?? "",
+      };
+    });
+    setChecklistEdits(next);
+  }, [checklistItems]);
+
+  useEffect(() => {
+    const nextPrograms: Record<
+      string,
+      { acceptState: AssessmentDraftProgram["accept_state"]; reviewNotes: string; name: string; description: string }
+    > = {};
+    (assessmentDrafts?.programs ?? []).forEach((program) => {
+      nextPrograms[program.id] = {
+        acceptState: program.accept_state,
+        reviewNotes: program.review_notes ?? "",
+        name: program.name,
+        description: program.description ?? "",
+      };
+    });
+    setDraftProgramEdits(nextPrograms);
+
+    const nextGoals: Record<
+      string,
+      { acceptState: AssessmentDraftGoal["accept_state"]; reviewNotes: string; title: string; description: string; originalText: string }
+    > = {};
+    (assessmentDrafts?.goals ?? []).forEach((goal) => {
+      nextGoals[goal.id] = {
+        acceptState: goal.accept_state,
+        reviewNotes: goal.review_notes ?? "",
+        title: goal.title,
+        description: goal.description,
+        originalText: goal.original_text,
+      };
+    });
+    setDraftGoalEdits(nextGoals);
+  }, [assessmentDrafts?.goals, assessmentDrafts?.programs]);
+
+  const uploadAssessment = useMutation({
+    mutationFn: async () => {
+      if (!assessmentFile) {
+        throw new Error("Select a file before uploading.");
+      }
+      const filePath = `clients/${client.id}/assessments/${Date.now()}-${assessmentFile.name.replace(/\s+/g, "-")}`;
+      const { error: uploadError } = await supabase.storage.from("client-documents").upload(filePath, assessmentFile);
+      if (uploadError) {
+        throw uploadError;
+      }
+      return registerAssessmentDocument({
+        client_id: client.id,
+        file_name: assessmentFile.name,
+        mime_type: assessmentFile.type || "application/octet-stream",
+        file_size: assessmentFile.size,
+        bucket_id: "client-documents",
+        object_path: filePath,
+        template_type: assessmentTemplateType,
+      });
+    },
+    onSuccess: (created) => {
+      const createdTemplateLabel = TEMPLATE_LABELS[created.template_type];
+      setAssessmentFile(null);
+      setSelectedAssessmentId(created.id);
+      queryClient.invalidateQueries({
+        queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
+      });
+      showSuccess(`${createdTemplateLabel} uploaded and checklist initialized.`);
+    },
+    onError: showError,
+  });
+
+  const updateChecklistItem = useMutation({
+    mutationFn: async (itemId: string) => {
+      const edit = checklistEdits[itemId];
+      if (!edit) {
+        throw new Error("Checklist row edit state not found.");
+      }
+      const response = await callApi("/api/assessment-checklist", {
+        method: "PATCH",
+        body: JSON.stringify({
+          item_id: itemId,
+          status: edit.status,
+          review_notes: edit.reviewNotes,
+          value_text: edit.valueText,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to update checklist row");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["assessment-checklist", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+      });
+      showSuccess("Checklist row updated.");
+    },
+    onError: showError,
+  });
+
+  const persistAssessmentDrafts = useMutation({
+    mutationFn: async () => {
+      if (!draftPlan) {
+        throw new Error("Generate drafts first.");
+      }
+      if (!selectedAssessmentId) {
+        throw new Error("Select an uploaded assessment before saving drafts.");
+      }
+      const response = await callApi("/api/assessment-drafts", {
+        method: "POST",
+        body: JSON.stringify({
+          assessment_document_id: selectedAssessmentId,
+          program: draftPlan.program,
+          goals: draftPlan.goals,
+          rationale: draftPlan.rationale ?? undefined,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to save draft program and goals to staged review.");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
+      });
+      showSuccess("Drafts saved to assessment queue for review.");
+    },
+    onError: showError,
+  });
+
+  const updateDraftProgram = useMutation({
+    mutationFn: async (programId: string) => {
+      const edit = draftProgramEdits[programId];
+      if (!edit) {
+        throw new Error("Program edit state not found.");
+      }
+      const response = await callApi("/api/assessment-drafts", {
+        method: "PATCH",
+        body: JSON.stringify({
+          draft_type: "program",
+          id: programId,
+          accept_state: edit.acceptState,
+          review_notes: edit.reviewNotes,
+          name: edit.name,
+          description: edit.description,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to update draft program.");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+      });
+      showSuccess("Draft program updated.");
+    },
+    onError: showError,
+  });
+
+  const updateDraftGoal = useMutation({
+    mutationFn: async (goalId: string) => {
+      const edit = draftGoalEdits[goalId];
+      if (!edit) {
+        throw new Error("Goal edit state not found.");
+      }
+      const response = await callApi("/api/assessment-drafts", {
+        method: "PATCH",
+        body: JSON.stringify({
+          draft_type: "goal",
+          id: goalId,
+          accept_state: edit.acceptState,
+          review_notes: edit.reviewNotes,
+          title: edit.title,
+          description: edit.description,
+          original_text: edit.originalText,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to update draft goal.");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+      });
+      showSuccess("Draft goal updated.");
+    },
+    onError: showError,
+  });
+
+  const promoteAssessment = useMutation({
+    mutationFn: async () => {
+      if (!selectedAssessmentId) {
+        throw new Error("Select an assessment first.");
+      }
+      const response = await callApi("/api/assessment-promote", {
+        method: "POST",
+        body: JSON.stringify({ assessment_document_id: selectedAssessmentId }),
+      });
+      if (!response.ok) {
+        throw new Error("Assessment cannot be promoted yet. Complete checklist approval and accept drafts first.");
+      }
+      return parseJson<{ created_goal_count: number }>(response);
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({
+        queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
+      });
+      showSuccess(`Assessment promoted. Created production program and ${result.created_goal_count} goals.`);
+    },
+    onError: showError,
   });
 
   const createProgram = useMutation({
@@ -277,8 +637,74 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-4">
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-2">
+              <UploadCloud className="w-4 h-4" />
+              Assessment Upload
+            </h3>
+            <div className="space-y-3">
+              <select
+                value={assessmentTemplateType}
+                onChange={(event) => setAssessmentTemplateType(event.target.value as AssessmentTemplateType)}
+                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              >
+                <option value="caloptima_fba">CalOptima FBA</option>
+                <option value="iehp_fba">IEHP FBA</option>
+              </select>
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx"
+                onChange={(event) => setAssessmentFile(event.target.files?.[0] ?? null)}
+                className="w-full text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => uploadAssessment.mutate()}
+                disabled={!assessmentFile || uploadAssessment.isLoading}
+                className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+              >
+                {uploadAssessment.isLoading ? "Uploading..." : `Upload ${TEMPLATE_LABELS[assessmentTemplateType]}`}
+              </button>
+              <div className="rounded-md border border-gray-200 dark:border-gray-700 p-2 max-h-48 overflow-auto">
+                {assessmentLoading ? (
+                  <p className="text-xs text-gray-500">Loading assessment queue...</p>
+                ) : assessmentDocuments.length === 0 ? (
+                  <p className="text-xs text-gray-500">No uploaded assessments yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {assessmentDocuments.map((doc) => (
+                      <button
+                        key={doc.id}
+                        type="button"
+                        onClick={() => setSelectedAssessmentId(doc.id)}
+                        className={`w-full text-left rounded px-2 py-2 border text-xs ${
+                          selectedAssessmentId === doc.id
+                            ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200"
+                            : "border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
+                        }`}
+                      >
+                        <div className="font-medium">{doc.file_name}</div>
+                        <div className="text-[11px] opacity-80">
+                          {TEMPLATE_LABELS[doc.template_type]} • Status: {doc.status} • {new Date(doc.created_at).toLocaleDateString()}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => promoteAssessment.mutate()}
+                disabled={!selectedAssessmentId || promoteAssessment.isLoading}
+                className="w-full px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {promoteAssessment.isLoading ? "Promoting..." : "Promote Accepted Drafts to Program + Goals"}
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
-              Generate from Assessment
+              Generate from Assessment (Fallback Drafting)
             </h3>
             <div className="space-y-3">
               <textarea
@@ -318,11 +744,19 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 </div>
                 <button
                   type="button"
+                  onClick={() => persistAssessmentDrafts.mutate()}
+                  disabled={!selectedAssessmentId || persistAssessmentDrafts.isLoading}
+                  className="w-full px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {persistAssessmentDrafts.isLoading ? "Saving..." : "Save Drafts to Selected Assessment"}
+                </button>
+                <button
+                  type="button"
                   onClick={() => createDraftPlan.mutate()}
                   disabled={createDraftPlan.isLoading}
                   className="w-full px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
                 >
-                  {createDraftPlan.isLoading ? "Creating..." : "Create Program + All Draft Goals"}
+                  {createDraftPlan.isLoading ? "Creating..." : "Legacy Quick Create (Skip Review)"}
                 </button>
               </div>
             )}
@@ -387,6 +821,300 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         </div>
 
         <div className="lg:col-span-2 space-y-4">
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
+              {selectedAssessmentTemplateLabel} Checklist Review
+            </h3>
+            {!selectedAssessmentId ? (
+              <p className="text-sm text-gray-500">Upload and select an assessment to review checklist items.</p>
+            ) : checklistBySection.length === 0 ? (
+              <p className="text-sm text-gray-500">Checklist not available yet for this assessment.</p>
+            ) : (
+              <div className="space-y-4">
+                {checklistBySection.map(([section, rows]) => (
+                  <div key={section} className="rounded-md border border-gray-200 dark:border-gray-700 p-3">
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">
+                      {section.replace(/_/g, " ")}
+                    </h4>
+                    <div className="space-y-3">
+                      {rows.map((row) => {
+                        const edit = checklistEdits[row.id] ?? {
+                          status: row.status,
+                          reviewNotes: row.review_notes ?? "",
+                          valueText: row.value_text ?? "",
+                        };
+                        return (
+                          <div key={row.id} className="rounded border border-gray-200 dark:border-gray-700 p-2">
+                            <div className="text-xs font-medium text-gray-800 dark:text-gray-200">{row.label}</div>
+                            <div className="text-[11px] text-gray-500 mb-2">
+                              {row.placeholder_key} • {row.mode} • required: {String(row.required)}
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                              <select
+                                value={edit.status}
+                                onChange={(event) =>
+                                  setChecklistEdits((current) => ({
+                                    ...current,
+                                    [row.id]: {
+                                      ...edit,
+                                      status: event.target.value as AssessmentChecklistItem["status"],
+                                    },
+                                  }))
+                                }
+                                className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                              >
+                                <option value="not_started">not_started</option>
+                                <option value="drafted">drafted</option>
+                                <option value="verified">verified</option>
+                                <option value="approved">approved</option>
+                              </select>
+                              <input
+                                value={edit.reviewNotes}
+                                onChange={(event) =>
+                                  setChecklistEdits((current) => ({
+                                    ...current,
+                                    [row.id]: {
+                                      ...edit,
+                                      reviewNotes: event.target.value,
+                                    },
+                                  }))
+                                }
+                                placeholder="Review notes"
+                                className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                              />
+                              <input
+                                value={edit.valueText}
+                                onChange={(event) =>
+                                  setChecklistEdits((current) => ({
+                                    ...current,
+                                    [row.id]: {
+                                      ...edit,
+                                      valueText: event.target.value,
+                                    },
+                                  }))
+                                }
+                                placeholder="Field value"
+                                className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => updateChecklistItem.mutate(row.id)}
+                              disabled={updateChecklistItem.isLoading}
+                              className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
+                            >
+                              Save Checklist Row
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
+              Draft Review (Accept / Reject / Edit)
+            </h3>
+            {!selectedAssessmentId ? (
+              <p className="text-sm text-gray-500">Select an assessment to review its draft program and goals.</p>
+            ) : (
+              <div className="space-y-4">
+                {(assessmentDrafts?.programs ?? []).map((program) => {
+                  const edit = draftProgramEdits[program.id] ?? {
+                    acceptState: program.accept_state,
+                    reviewNotes: program.review_notes ?? "",
+                    name: program.name,
+                    description: program.description ?? "",
+                  };
+                  return (
+                    <div key={program.id} className="rounded border border-gray-200 dark:border-gray-700 p-3">
+                      <p className="text-xs font-semibold mb-2">Draft Program</p>
+                      <div className="grid grid-cols-1 gap-2">
+                        <input
+                          value={edit.name}
+                          onChange={(event) =>
+                            setDraftProgramEdits((current) => ({
+                              ...current,
+                              [program.id]: {
+                                ...edit,
+                                name: event.target.value,
+                              },
+                            }))
+                          }
+                          className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                        />
+                        <textarea
+                          value={edit.description}
+                          onChange={(event) =>
+                            setDraftProgramEdits((current) => ({
+                              ...current,
+                              [program.id]: {
+                                ...edit,
+                                description: event.target.value,
+                              },
+                            }))
+                          }
+                          rows={2}
+                          className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                        />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <select
+                            value={edit.acceptState}
+                            onChange={(event) =>
+                              setDraftProgramEdits((current) => ({
+                                ...current,
+                                [program.id]: {
+                                  ...edit,
+                                  acceptState: event.target.value as AssessmentDraftProgram["accept_state"],
+                                },
+                              }))
+                            }
+                            className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                          >
+                            <option value="pending">pending</option>
+                            <option value="accepted">accepted</option>
+                            <option value="rejected">rejected</option>
+                            <option value="edited">edited</option>
+                          </select>
+                          <input
+                            value={edit.reviewNotes}
+                            onChange={(event) =>
+                              setDraftProgramEdits((current) => ({
+                                ...current,
+                                [program.id]: {
+                                  ...edit,
+                                  reviewNotes: event.target.value,
+                                },
+                              }))
+                            }
+                            placeholder="Program review notes"
+                            className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => updateDraftProgram.mutate(program.id)}
+                        disabled={updateDraftProgram.isLoading}
+                        className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        Save Program Review
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {(assessmentDrafts?.goals ?? []).map((goal) => {
+                  const edit = draftGoalEdits[goal.id] ?? {
+                    acceptState: goal.accept_state,
+                    reviewNotes: goal.review_notes ?? "",
+                    title: goal.title,
+                    description: goal.description,
+                    originalText: goal.original_text,
+                  };
+                  return (
+                    <div key={goal.id} className="rounded border border-gray-200 dark:border-gray-700 p-3">
+                      <p className="text-xs font-semibold mb-2">Draft Goal</p>
+                      <div className="grid grid-cols-1 gap-2">
+                        <input
+                          value={edit.title}
+                          onChange={(event) =>
+                            setDraftGoalEdits((current) => ({
+                              ...current,
+                              [goal.id]: {
+                                ...edit,
+                                title: event.target.value,
+                              },
+                            }))
+                          }
+                          className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                        />
+                        <textarea
+                          value={edit.description}
+                          onChange={(event) =>
+                            setDraftGoalEdits((current) => ({
+                              ...current,
+                              [goal.id]: {
+                                ...edit,
+                                description: event.target.value,
+                              },
+                            }))
+                          }
+                          rows={2}
+                          className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                        />
+                        <textarea
+                          value={edit.originalText}
+                          onChange={(event) =>
+                            setDraftGoalEdits((current) => ({
+                              ...current,
+                              [goal.id]: {
+                                ...edit,
+                                originalText: event.target.value,
+                              },
+                            }))
+                          }
+                          rows={2}
+                          className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                        />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <select
+                            value={edit.acceptState}
+                            onChange={(event) =>
+                              setDraftGoalEdits((current) => ({
+                                ...current,
+                                [goal.id]: {
+                                  ...edit,
+                                  acceptState: event.target.value as AssessmentDraftGoal["accept_state"],
+                                },
+                              }))
+                            }
+                            className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                          >
+                            <option value="pending">pending</option>
+                            <option value="accepted">accepted</option>
+                            <option value="rejected">rejected</option>
+                            <option value="edited">edited</option>
+                          </select>
+                          <input
+                            value={edit.reviewNotes}
+                            onChange={(event) =>
+                              setDraftGoalEdits((current) => ({
+                                ...current,
+                                [goal.id]: {
+                                  ...edit,
+                                  reviewNotes: event.target.value,
+                                },
+                              }))
+                            }
+                            placeholder="Goal review notes"
+                            className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => updateDraftGoal.mutate(goal.id)}
+                        disabled={updateDraftGoal.isLoading}
+                        className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        Save Goal Review
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {(assessmentDrafts?.programs?.length ?? 0) === 0 && (assessmentDrafts?.goals?.length ?? 0) === 0 && (
+                  <p className="text-sm text-gray-500">No staged drafts yet. Generate then save drafts to assessment.</p>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-2">
               <ClipboardList className="w-4 h-4" />

@@ -1,0 +1,247 @@
+{
+  "FBA": {
+    "template": "Inland Empire Health Plan Functional Behavioral Assessment Report",
+    "source_document": "Updated FBA -IEHP (2).docx",
+    "labels": [
+      {
+        "label": "First Name",
+        "placeholder_key": "IEHP_FBA_FIRST_NAME",
+        "mode": "AUTO",
+        "source": "clients.first_name",
+        "notes": "Fallback: split clients.full_name."
+      },
+      {
+        "label": "Last Name",
+        "placeholder_key": "IEHP_FBA_LAST_NAME",
+        "mode": "AUTO",
+        "source": "clients.last_name",
+        "notes": "Fallback: split clients.full_name."
+      },
+      {
+        "label": "Birth Date",
+        "placeholder_key": "IEHP_FBA_BIRTH_DATE",
+        "mode": "AUTO",
+        "source": "clients.date_of_birth",
+        "notes": "Format MM/DD/YYYY."
+      },
+      {
+        "label": "IEHP Member ID#",
+        "placeholder_key": "IEHP_FBA_MEMBER_ID",
+        "mode": "AUTO",
+        "source": "authorizations.member_id || clients.cin_number || clients.client_id",
+        "notes": "Prefer active payer member id."
+      },
+      {
+        "label": "Present Address",
+        "placeholder_key": "IEHP_FBA_PRESENT_ADDRESS",
+        "mode": "AUTO",
+        "source": "clients.address_line1/2 + clients.city/state/zip_code",
+        "notes": "Concatenate and omit null segments."
+      },
+      {
+        "label": "Parent/Guardian",
+        "placeholder_key": "IEHP_FBA_PARENT_GUARDIAN",
+        "mode": "AUTO",
+        "source": "clients.parent1_first_name/last_name (fallback parent2)",
+        "notes": "Include relationship when available."
+      },
+      {
+        "label": "Phone",
+        "placeholder_key": "IEHP_FBA_CONTACT_PHONE",
+        "mode": "AUTO",
+        "source": "clients.parent1_phone || clients.phone",
+        "notes": "Prefer guardian phone."
+      },
+      {
+        "label": "Language",
+        "placeholder_key": "IEHP_FBA_LANGUAGE",
+        "mode": "ASSISTED",
+        "source": "clients.preferred_language",
+        "notes": "May require clinician confirmation."
+      },
+      {
+        "label": "Referral Date",
+        "placeholder_key": "IEHP_FBA_REFERRAL_DATE",
+        "mode": "ASSISTED",
+        "source": "clients.insurance_info.referral_date",
+        "notes": "Not currently first-class modeled."
+      },
+      {
+        "label": "Report Date",
+        "placeholder_key": "IEHP_FBA_REPORT_DATE",
+        "mode": "AUTO",
+        "source": "today (server)",
+        "notes": ""
+      },
+      {
+        "label": "Assessor/Certification",
+        "placeholder_key": "IEHP_FBA_ASSESSOR_CERTIFICATION",
+        "mode": "AUTO",
+        "source": "therapists.full_name + therapists.title + license",
+        "notes": "Credential formatting by payer policy."
+      },
+      {
+        "label": "Assessor's phone number",
+        "placeholder_key": "IEHP_FBA_ASSESSOR_PHONE",
+        "mode": "ASSISTED",
+        "source": "therapists.phone || company_settings.phone",
+        "notes": "Fallback to clinic number."
+      },
+      {
+        "label": "Name of Referring Provider, Credentials",
+        "placeholder_key": "IEHP_FBA_REFERRING_PROVIDER",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Narrative source from referral packet."
+      },
+      {
+        "label": "Reason for Referral",
+        "placeholder_key": "IEHP_FBA_REASON_FOR_REFERRAL",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Clinical narrative."
+      },
+      {
+        "label": "Behaviors and Functional Skills to be Addressed",
+        "placeholder_key": "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Checklist of target behaviors and deficits."
+      },
+      {
+        "label": "Persons in Household and Relationship to IEHP Member",
+        "placeholder_key": "IEHP_FBA_HOUSEHOLD_MEMBERS",
+        "mode": "ASSISTED",
+        "source": "clients.insurance_info.household_members[]",
+        "notes": "Structured list."
+      },
+      {
+        "label": "School Information Block",
+        "placeholder_key": "IEHP_FBA_SCHOOL_INFORMATION_BLOCK",
+        "mode": "ASSISTED",
+        "source": "clients.insurance_info.school.*",
+        "notes": "School name, district, teacher, placement, services, times."
+      },
+      {
+        "label": "BHT School Hours Matrix",
+        "placeholder_key": "IEHP_FBA_BHT_SCHOOL_HOURS_MATRIX",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "M/Tu/W/Th/F + total and session time."
+      },
+      {
+        "label": "Health and Medical Summary",
+        "placeholder_key": "IEHP_FBA_HEALTH_MEDICAL_SUMMARY",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Diagnosis history, surgeries, allergies, medications, sleep, diet."
+      },
+      {
+        "label": "Current Services and Activities",
+        "placeholder_key": "IEHP_FBA_CURRENT_SERVICES_ACTIVITIES",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Insurance/RC services and activities with schedule."
+      },
+      {
+        "label": "Intervention History",
+        "placeholder_key": "IEHP_FBA_INTERVENTION_HISTORY",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Prior service timeline and providers."
+      },
+      {
+        "label": "BHT Availability Grid",
+        "placeholder_key": "IEHP_FBA_BHT_AVAILABILITY_GRID",
+        "mode": "ASSISTED",
+        "source": "clients.availability_hours",
+        "notes": "Mon-Sun with session windows and totals."
+      },
+      {
+        "label": "Member Environmental Analysis",
+        "placeholder_key": "IEHP_FBA_ENVIRONMENTAL_ANALYSIS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Yes/No indicators and noise/distraction level."
+      },
+      {
+        "label": "Assessment Procedures Table",
+        "placeholder_key": "IEHP_FBA_ASSESSMENT_PROCEDURES_TABLE",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Procedure, date/location, people/credentials."
+      },
+      {
+        "label": "Records Reviewed Table",
+        "placeholder_key": "IEHP_FBA_RECORDS_REVIEWED_TABLE",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Report type, date, author."
+      },
+      {
+        "label": "Preference Assessment Summary",
+        "placeholder_key": "IEHP_FBA_PREFERENCE_ASSESSMENT_SUMMARY",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Preference areas and potential reinforcers."
+      },
+      {
+        "label": "Adaptive and Functional Measure Summaries",
+        "placeholder_key": "IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "VB-MAPP, Vineland, ABAS-3, AFLS summary data."
+      },
+      {
+        "label": "Target Behavior and Intervention Blocks",
+        "placeholder_key": "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Definition, function, baseline, proactive/reactive, replacement."
+      },
+      {
+        "label": "Skill and School Goal Blocks",
+        "placeholder_key": "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Short/intermediate goals by domain with baseline/date/location."
+      },
+      {
+        "label": "Safety Procedure / Crisis Plan",
+        "placeholder_key": "IEHP_FBA_CRISIS_PLAN",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Preventative and response procedures."
+      },
+      {
+        "label": "Coordination of Care",
+        "placeholder_key": "IEHP_FBA_COORDINATION_OF_CARE",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Guardian, school, disability programs, related providers."
+      },
+      {
+        "label": "Discharge, Transition and Exit Plans",
+        "placeholder_key": "IEHP_FBA_DISCHARGE_TRANSITION_EXIT_PLAN",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Graduation criteria, timeline, documentation expectations."
+      },
+      {
+        "label": "Recommendations and HCPCS Rows",
+        "placeholder_key": "IEHP_FBA_RECOMMENDATIONS_HCPCS_ROWS",
+        "mode": "ASSISTED",
+        "source": "authorization/planning payload",
+        "notes": "H2019/H0032/H0032-HO/H0032-HP/S5111/H2014 rows."
+      },
+      {
+        "label": "Signature Block",
+        "placeholder_key": "IEHP_FBA_SIGNATURE_BLOCK",
+        "mode": "MANUAL",
+        "source": "N/A",
+        "notes": "Name/credentials, title, date, agency."
+      }
+    ],
+    "existing_placeholders": []
+  }
+}

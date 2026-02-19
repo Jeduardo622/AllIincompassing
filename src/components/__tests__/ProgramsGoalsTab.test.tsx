@@ -5,6 +5,8 @@ import { generateProgramGoalDraft } from "../../lib/ai";
 import { showSuccess } from "../../lib/toast";
 import { callApi } from "../../lib/api";
 
+const ORG_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
+
 vi.mock("../../lib/ai", async () => {
   const actual = await vi.importActual<typeof import("../../lib/ai")>("../../lib/ai");
   return {
@@ -22,6 +24,16 @@ vi.mock("../../lib/api", () => ({
   callApi: vi.fn(),
 }));
 
+vi.mock("../../lib/supabase", () => ({
+  supabase: {
+    storage: {
+      from: () => ({
+        upload: vi.fn().mockResolvedValue({ error: null }),
+      }),
+    },
+  },
+}));
+
 describe("ProgramsGoalsTab", () => {
   beforeEach(() => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
@@ -35,11 +47,20 @@ describe("ProgramsGoalsTab", () => {
       if (method === "GET" && path.startsWith("/api/program-notes?")) {
         return new Response(JSON.stringify([]), { status: 200 });
       }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
       if (method === "POST" && path === "/api/programs") {
         return new Response(
           JSON.stringify({
             id: "program-1",
-            organization_id: "org-1",
+            organization_id: ORG_ID,
             client_id: "client-1",
             name: "Communication Program",
             status: "active",
@@ -53,7 +74,7 @@ describe("ProgramsGoalsTab", () => {
         return new Response(
           JSON.stringify({
             id: "goal-1",
-            organization_id: "org-1",
+            organization_id: ORG_ID,
             client_id: "client-1",
             program_id: "program-1",
             title: "Goal",
@@ -62,6 +83,24 @@ describe("ProgramsGoalsTab", () => {
             status: "active",
             created_at: "2026-02-11T00:00:00.000Z",
             updated_at: "2026-02-11T00:00:00.000Z",
+          }),
+          { status: 201 },
+        );
+      }
+      if (method === "POST" && path === "/api/assessment-documents") {
+        return new Response(
+          JSON.stringify({
+            id: "assessment-1",
+            organization_id: ORG_ID,
+            client_id: "client-1",
+            template_type: "iehp_fba",
+            file_name: "iehp-fba.docx",
+            mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            file_size: 1000,
+            bucket_id: "client-documents",
+            object_path: "clients/client-1/assessments/iehp-fba.docx",
+            status: "uploaded",
+            created_at: "2026-02-11T00:00:00.000Z",
           }),
           { status: 201 },
         );
@@ -118,7 +157,7 @@ describe("ProgramsGoalsTab", () => {
       {
         auth: {
           role: "therapist",
-          organizationId: "org-1",
+          organizationId: ORG_ID,
           accessToken: "test-access-token",
         },
       },
@@ -139,7 +178,7 @@ describe("ProgramsGoalsTab", () => {
     expect(screen.getByPlaceholderText("Program name")).toHaveValue("Communication Program");
     expect(screen.getByText(/Requesting preferred items with 2-word phrase/i)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /Create Program \+ All Draft Goals/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Legacy Quick Create/i }));
 
     await waitFor(() => {
       expect(callApi).toHaveBeenCalledWith(
@@ -152,5 +191,56 @@ describe("ProgramsGoalsTab", () => {
     );
     expect(goalPostCalls).toHaveLength(2);
     expect(showSuccess).toHaveBeenCalledWith("Created 1 program and 2 goals from assessment draft.");
+  });
+
+  it("uploads IEHP assessment with selected template type", async () => {
+    renderWithProviders(
+      <ProgramsGoalsTab
+        client={
+          {
+            id: "client-1",
+            email: "client@example.com",
+            full_name: "Client One",
+            date_of_birth: "2017-05-01",
+            insurance_info: {},
+            service_preference: [],
+            one_to_one_units: 0,
+            supervision_units: 0,
+            parent_consult_units: 0,
+            assessment_units: 0,
+            availability_hours: {},
+            created_at: "2026-02-11T00:00:00.000Z",
+          } as any
+        }
+      />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    await screen.findByText(/Assessment Upload/i);
+    await userEvent.selectOptions(screen.getByDisplayValue("CalOptima FBA"), "iehp_fba");
+    const uploadInput = document.querySelector("input[type='file']") as HTMLInputElement | null;
+    expect(uploadInput).not.toBeNull();
+    const file = new File(["mock iehp content"], "iehp-fba.docx", {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+    await userEvent.upload(uploadInput as HTMLInputElement, file);
+    await userEvent.click(screen.getByRole("button", { name: /Upload IEHP FBA/i }));
+
+    await waitFor(() => {
+      expect(callApi).toHaveBeenCalledWith(
+        "/api/assessment-documents",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining("\"template_type\":\"iehp_fba\""),
+        }),
+      );
+    });
+    expect(showSuccess).toHaveBeenCalledWith("IEHP FBA uploaded and checklist initialized.");
   });
 });

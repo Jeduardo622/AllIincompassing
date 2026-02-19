@@ -105,6 +105,16 @@ describe("ProgramsGoalsTab", () => {
           { status: 201 },
         );
       }
+      if (method === "POST" && path === "/api/assessment-plan-pdf") {
+        return new Response(
+          JSON.stringify({
+            fill_mode: "overlay",
+            signed_url: "https://example.com/generated-plan.pdf",
+            object_path: "clients/client-1/assessments/generated.pdf",
+          }),
+          { status: 200 },
+        );
+      }
 
       return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
     });
@@ -242,5 +252,92 @@ describe("ProgramsGoalsTab", () => {
       );
     });
     expect(showSuccess).toHaveBeenCalledWith("IEHP FBA uploaded and checklist initialized.");
+  });
+
+  it("generates completed CalOptima PDF for selected assessment", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "assessment-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/fba.pdf",
+              status: "uploaded",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "POST" && path === "/api/assessment-plan-pdf") {
+        return new Response(
+          JSON.stringify({
+            fill_mode: "overlay",
+            signed_url: "https://example.com/generated-plan.pdf",
+            object_path: "clients/client-1/assessments/generated.pdf",
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    renderWithProviders(
+      <ProgramsGoalsTab
+        client={
+          {
+            id: "client-1",
+            email: "client@example.com",
+            full_name: "Client One",
+            date_of_birth: "2017-05-01",
+            insurance_info: {},
+            service_preference: [],
+            one_to_one_units: 0,
+            supervision_units: 0,
+            parent_consult_units: 0,
+            assessment_units: 0,
+            availability_hours: {},
+            created_at: "2026-02-11T00:00:00.000Z",
+          } as any
+        }
+      />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    await screen.findByText("fba.pdf");
+    await userEvent.click(screen.getByRole("button", { name: /Generate Completed CalOptima PDF/i }));
+
+    await waitFor(() => {
+      expect(callApi).toHaveBeenCalledWith(
+        "/api/assessment-plan-pdf",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    expect(openSpy).toHaveBeenCalledWith("https://example.com/generated-plan.pdf", "_blank", "noopener,noreferrer");
+    expect(showSuccess).toHaveBeenCalledWith("Completed CalOptima PDF generated (overlay mode).");
+    openSpy.mockRestore();
   });
 });

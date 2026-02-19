@@ -5,6 +5,9 @@
 [build.environment]
   NODE_VERSION = "20"
 
+[functions]
+  included_files = ["docs/fill_docs/*.json", "CalOptima Health FBA Template (2).pdf"]
+
 [context.staging]
   command = "npm run build"
   publish = "dist"

@@ -8,7 +8,11 @@ import {
   json,
   resolveOrgAndRole,
 } from "./shared";
-import { loadChecklistTemplateRows, type AssessmentTemplateType } from "../assessmentChecklistTemplate";
+import {
+  loadChecklistTemplateRows,
+  type AssessmentChecklistSeedRow,
+  type AssessmentTemplateType,
+} from "../assessmentChecklistTemplate";
 
 const SUPPORTED_TEMPLATE_TYPES = ["caloptima_fba", "iehp_fba"] as const;
 
@@ -156,7 +160,13 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
 
     const createdDocument = createResult.data[0];
 
-    const checklistRows = await loadChecklistTemplateRows(templateType);
+    let checklistRows: AssessmentChecklistSeedRow[];
+    try {
+      checklistRows = await loadChecklistTemplateRows(templateType);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to load checklist template rows.";
+      return json({ error: message }, 500);
+    }
     const checklistInsertPayload = checklistRows.map((row) => ({
       assessment_document_id: createdDocument.id,
       organization_id: organizationId,

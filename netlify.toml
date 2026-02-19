@@ -72,6 +72,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/assessment-plan-pdf"
+  to = "/.netlify/functions/assessment-plan-pdf"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

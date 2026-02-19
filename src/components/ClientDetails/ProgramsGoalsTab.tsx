@@ -52,6 +52,12 @@ interface AssessmentDraftResponse {
   goals: AssessmentDraftGoal[];
 }
 
+interface AssessmentPlanPdfResponse {
+  fill_mode: "acroform" | "overlay";
+  signed_url: string;
+  object_path: string;
+}
+
 const EMPTY_ASSESSMENT_DOCUMENTS: AssessmentDocumentRecord[] = [];
 const EMPTY_CHECKLIST_ITEMS: AssessmentChecklistItem[] = [];
 const EMPTY_ASSESSMENT_DRAFTS: AssessmentDraftResponse = { programs: [], goals: [] };
@@ -447,6 +453,31 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     onError: showError,
   });
 
+  const generateAssessmentPlanPdf = useMutation({
+    mutationFn: async () => {
+      if (!selectedAssessmentId) {
+        throw new Error("Select an assessment first.");
+      }
+      const response = await callApi("/api/assessment-plan-pdf", {
+        method: "POST",
+        body: JSON.stringify({ assessment_document_id: selectedAssessmentId }),
+      });
+      const result = await parseJson<AssessmentPlanPdfResponse>(response);
+      if (!response.ok) {
+        throw new Error("Unable to generate completed treatment plan PDF. Ensure required checklist rows are approved.");
+      }
+      return result;
+    },
+    onSuccess: (result) => {
+      if (typeof window !== "undefined" && result.signed_url) {
+        window.open(result.signed_url, "_blank", "noopener,noreferrer");
+      }
+      const modeLabel = result.fill_mode === "acroform" ? "AcroForm" : "overlay";
+      showSuccess(`Completed CalOptima PDF generated (${modeLabel} mode).`);
+    },
+    onError: showError,
+  });
+
   const createProgram = useMutation({
     mutationFn: async () => {
       const response = await callApi("/api/programs", {
@@ -698,6 +729,14 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
               >
                 {promoteAssessment.isLoading ? "Promoting..." : "Promote Accepted Drafts to Program + Goals"}
+              </button>
+              <button
+                type="button"
+                onClick={() => generateAssessmentPlanPdf.mutate()}
+                disabled={!selectedAssessmentId || generateAssessmentPlanPdf.isLoading}
+                className="w-full px-3 py-2 text-sm font-medium text-white bg-violet-600 rounded-md hover:bg-violet-700 disabled:opacity-50"
+              >
+                {generateAssessmentPlanPdf.isLoading ? "Generating..." : "Generate Completed CalOptima PDF"}
               </button>
             </div>
           </div>

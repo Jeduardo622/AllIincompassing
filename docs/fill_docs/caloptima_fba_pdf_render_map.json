@@ -1,0 +1,228 @@
+{
+  "template_type": "caloptima_fba",
+  "template_name": "CalOptima Health Functional Behavior Assessment / Initial Treatment Plan",
+  "source_document": "CalOptima Health FBA Template (2).pdf",
+  "version": "2026-02-19",
+  "entries": [
+    {
+      "placeholder_key": "CALOPTIMA_FBA_MEMBER_NAME",
+      "form_field_candidates": ["Member Name", "member_name"],
+      "fallback": { "page": 1, "x": 95, "y": 694, "font_size": 10, "max_width": 210 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_MEMBER_DOB",
+      "form_field_candidates": ["Member DOB", "member_dob"],
+      "fallback": { "page": 1, "x": 95, "y": 678, "font_size": 10, "max_width": 120 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_CIN",
+      "form_field_candidates": ["CIN #", "cin_number", "cin"],
+      "fallback": { "page": 1, "x": 245, "y": 678, "font_size": 10, "max_width": 120 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_DIAGNOSES_ICD",
+      "form_field_candidates": ["Diagnoses/with ICD Code", "diagnoses_icd"],
+      "fallback": { "page": 1, "x": 95, "y": 647, "font_size": 9, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_GUARDIAN_NAME",
+      "form_field_candidates": ["Guardian Name", "guardian_name"],
+      "fallback": { "page": 1, "x": 95, "y": 618, "font_size": 10, "max_width": 230 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_CONTACT_PHONE",
+      "form_field_candidates": ["Guardian Phone", "phone", "contact_phone"],
+      "fallback": { "page": 1, "x": 350, "y": 618, "font_size": 10, "max_width": 160 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_PCP",
+      "form_field_candidates": ["Primary Care Provider", "pcp"],
+      "fallback": { "page": 1, "x": 95, "y": 602, "font_size": 10, "max_width": 230 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_KNOWN_ALLERGIES",
+      "form_field_candidates": ["Known Allergies", "known_allergies"],
+      "fallback": { "page": 1, "x": 350, "y": 602, "font_size": 10, "max_width": 160 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_MEDICATIONS",
+      "form_field_candidates": ["Current Medications/Dosage", "medications"],
+      "fallback": { "page": 1, "x": 95, "y": 586, "font_size": 9, "max_width": 230 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_DIETARY_RESTRICTIONS",
+      "form_field_candidates": ["Dietary Restrictions", "dietary_restrictions"],
+      "fallback": { "page": 1, "x": 350, "y": 586, "font_size": 9, "max_width": 160 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_SERVICE_INITIATION_DATE",
+      "form_field_candidates": ["Service Initiation Date", "service_initiation_date"],
+      "fallback": { "page": 2, "x": 95, "y": 665, "font_size": 10, "max_width": 170 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_DATE_ABA_FIRST_BEGAN",
+      "form_field_candidates": ["Date ABA first began", "date_aba_first_began"],
+      "fallback": { "page": 2, "x": 280, "y": 665, "font_size": 10, "max_width": 170 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_PRIOR_ABH_AGENCIES",
+      "form_field_candidates": ["Prior Applied Behavioral Health Agencies", "prior_agencies"],
+      "fallback": { "page": 2, "x": 95, "y": 634, "font_size": 9, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_ADMIN_CONTACT_NAME_TITLE",
+      "form_field_candidates": ["Administrative Contact Full Name and Title", "admin_contact_name_title"],
+      "fallback": { "page": 2, "x": 95, "y": 603, "font_size": 10, "max_width": 190 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_ADMIN_CONTACT_PHONE",
+      "form_field_candidates": ["Administrative Contact Phone Number", "admin_contact_phone"],
+      "fallback": { "page": 2, "x": 300, "y": 603, "font_size": 10, "max_width": 110 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_ADMIN_CONTACT_FAX",
+      "form_field_candidates": ["Administrative Contact Fax Number", "admin_contact_fax"],
+      "fallback": { "page": 2, "x": 420, "y": 603, "font_size": 10, "max_width": 110 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_CHIEF_COMPLAINT",
+      "form_field_candidates": ["Chief Complaint", "reason_for_treatment"],
+      "fallback": { "page": 2, "x": 95, "y": 560, "font_size": 9, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_RECORDS_REVIEWED",
+      "form_field_candidates": ["Records Reviewed", "records_reviewed"],
+      "fallback": { "page": 2, "x": 95, "y": 470, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_INITIAL_INTERVIEW_OBSERVATION",
+      "form_field_candidates": ["Initial Interview/Observation", "initial_interview_observation"],
+      "fallback": { "page": 2, "x": 95, "y": 380, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_SECOND_INTERVIEW_OBSERVATION",
+      "form_field_candidates": ["Second Interview/Observation", "second_interview_observation"],
+      "fallback": { "page": 2, "x": 95, "y": 306, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_DAILY_ACTIVITY_SCHEDULE",
+      "form_field_candidates": ["Daily schedule of all activities", "daily_activity_schedule"],
+      "fallback": { "page": 3, "x": 95, "y": 336, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_SCHOOL_SCHEDULE",
+      "form_field_candidates": ["Daily School Schedule", "school_schedule"],
+      "fallback": { "page": 4, "x": 95, "y": 584, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_HAS_IEP",
+      "form_field_candidates": ["Has IEP", "current_iep"],
+      "fallback": { "page": 4, "x": 95, "y": 508, "font_size": 10, "max_width": 200 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_IEP_DATE",
+      "form_field_candidates": ["Date of current IEP/equivalent", "iep_date"],
+      "fallback": { "page": 4, "x": 95, "y": 480, "font_size": 10, "max_width": 200 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_PREVIOUS_INTERVENTIONS",
+      "form_field_candidates": ["Previous interventions", "previous_interventions"],
+      "fallback": { "page": 4, "x": 95, "y": 236, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_COORDINATION_OF_CARE",
+      "form_field_candidates": ["Coordination of Care", "coordination_of_care"],
+      "fallback": { "page": 5, "x": 95, "y": 380, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_VINELAND_DOMAIN_SCORES",
+      "form_field_candidates": ["Vineland domain score table", "vineland_scores"],
+      "fallback": { "page": 6, "x": 95, "y": 480, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_CURRENT_DIAGNOSIS_CODES",
+      "form_field_candidates": ["Current diagnosis code(s)", "current_diagnosis_codes"],
+      "fallback": { "page": 7, "x": 95, "y": 690, "font_size": 10, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_TARGET_BEHAVIOR_BLOCKS",
+      "form_field_candidates": ["Target behavior blocks", "target_behavior_blocks"],
+      "fallback": { "page": 11, "x": 95, "y": 620, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_BIP_BLOCKS",
+      "form_field_candidates": ["Behavior intervention plan blocks", "bip_blocks"],
+      "fallback": { "page": 14, "x": 95, "y": 650, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+      "form_field_candidates": ["Target and replacement behavior goals", "target_replacement_goals"],
+      "fallback": { "page": 17, "x": 95, "y": 650, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+      "form_field_candidates": ["Skill acquisition goals", "skill_acquisition_goals"],
+      "fallback": { "page": 20, "x": 95, "y": 650, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_PARENT_GOALS",
+      "form_field_candidates": ["Parent/Caregiver goals", "parent_goals"],
+      "fallback": { "page": 22, "x": 95, "y": 650, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_GENERALIZATION_MAINTENANCE_PLAN",
+      "form_field_candidates": ["Generalization and maintenance plan", "generalization_maintenance_plan"],
+      "fallback": { "page": 24, "x": 95, "y": 562, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_TRANSITION_PLAN",
+      "form_field_candidates": ["Transition plan and exit criteria", "transition_plan"],
+      "fallback": { "page": 25, "x": 95, "y": 610, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_CRISIS_PLAN",
+      "form_field_candidates": ["Crisis plan", "crisis_plan"],
+      "fallback": { "page": 24, "x": 95, "y": 486, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_SUMMARY_RECOMMENDATIONS",
+      "form_field_candidates": ["Summary and recommendations", "summary_recommendations"],
+      "fallback": { "page": 26, "x": 95, "y": 574, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS",
+      "form_field_candidates": ["HCPCS recommendation rows", "hcpcs_rows"],
+      "fallback": { "page": 26, "x": 95, "y": 416, "font_size": 8, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_TELEHEALTH_CONSENT",
+      "form_field_candidates": ["Telehealth consent confirmation", "telehealth_consent"],
+      "fallback": { "page": 26, "x": 95, "y": 388, "font_size": 10, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_PARENT_INVOLVEMENT",
+      "form_field_candidates": ["Parent/guardian involvement", "parent_involvement"],
+      "fallback": { "page": 26, "x": 95, "y": 366, "font_size": 10, "max_width": 430 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_REPORT_WRITTEN_BY",
+      "form_field_candidates": ["Report written by", "report_written_by"],
+      "fallback": { "page": 27, "x": 95, "y": 248, "font_size": 10, "max_width": 220 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_WRITER_CREDENTIALS",
+      "form_field_candidates": ["Title, License/Certificate #", "writer_credentials"],
+      "fallback": { "page": 27, "x": 330, "y": 248, "font_size": 10, "max_width": 190 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_REPORT_COMPLETED_DATE",
+      "form_field_candidates": ["Date of Report Completed", "report_completed_date"],
+      "fallback": { "page": 27, "x": 95, "y": 231, "font_size": 10, "max_width": 140 }
+    },
+    {
+      "placeholder_key": "CALOPTIMA_FBA_SIGNATURES",
+      "form_field_candidates": ["Writer and reviewer signatures", "signatures"],
+      "fallback": { "page": 27, "x": 95, "y": 206, "font_size": 8, "max_width": 430 }
+    }
+  ]
+}

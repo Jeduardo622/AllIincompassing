@@ -77,6 +77,22 @@ const parseJson = async <T,>(response: Response): Promise<T> => {
   return JSON.parse(text) as T;
 };
 
+const parseApiErrorMessage = async (response: Response, fallback: string): Promise<string> => {
+  const text = await response.text();
+  if (!text) {
+    return fallback;
+  }
+  try {
+    const parsed = JSON.parse(text) as { error?: unknown };
+    if (typeof parsed.error === "string" && parsed.error.trim().length > 0) {
+      return parsed.error;
+    }
+    return fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
@@ -227,6 +243,24 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const selectedAssessmentTemplateLabel = selectedAssessmentDocument
     ? TEMPLATE_LABELS[selectedAssessmentDocument.template_type]
     : TEMPLATE_LABELS[assessmentTemplateType];
+  const hasPendingRequiredChecklistItems = checklistItems.some((item) => item.required && item.status !== "approved");
+  const hasAcceptedDraftProgram = (assessmentDrafts?.programs ?? []).some(
+    (program) => program.accept_state === "accepted" || program.accept_state === "edited",
+  );
+  const hasAcceptedDraftGoal = (assessmentDrafts?.goals ?? []).some(
+    (goal) => goal.accept_state === "accepted" || goal.accept_state === "edited",
+  );
+  const canPromoteAssessment =
+    canQuerySelectedAssessment && !hasPendingRequiredChecklistItems && hasAcceptedDraftProgram && hasAcceptedDraftGoal;
+  const promoteDisabledReason = !canQuerySelectedAssessment
+    ? "Select a valid assessment first."
+    : hasPendingRequiredChecklistItems
+      ? "Approve all required checklist rows before promoting."
+      : !hasAcceptedDraftProgram
+        ? "Accept or edit at least one draft program before promoting."
+        : !hasAcceptedDraftGoal
+          ? "Accept or edit at least one draft goal before promoting."
+          : null;
 
   useEffect(() => {
     const firstAssessmentId = assessmentDocuments[0]?.id ?? null;
@@ -455,7 +489,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         body: JSON.stringify({ assessment_document_id: selectedAssessmentId }),
       });
       if (!response.ok) {
-        throw new Error("Assessment cannot be promoted yet. Complete checklist approval and accept drafts first.");
+        throw new Error(await parseApiErrorMessage(response, "Assessment cannot be promoted yet."));
       }
       return parseJson<{ created_goal_count: number }>(response);
     },
@@ -746,11 +780,15 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               <button
                 type="button"
                 onClick={() => promoteAssessment.mutate()}
-                disabled={!canQuerySelectedAssessment || promoteAssessment.isLoading}
+                disabled={!canPromoteAssessment || promoteAssessment.isLoading}
+                title={promoteDisabledReason ?? undefined}
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
               >
                 {promoteAssessment.isLoading ? "Promoting..." : "Promote Accepted Drafts to Program + Goals"}
               </button>
+              {promoteDisabledReason && !promoteAssessment.isLoading && (
+                <p className="text-xs text-amber-700 dark:text-amber-300">{promoteDisabledReason}</p>
+              )}
               <button
                 type="button"
                 onClick={() => generateAssessmentPlanPdf.mutate()}

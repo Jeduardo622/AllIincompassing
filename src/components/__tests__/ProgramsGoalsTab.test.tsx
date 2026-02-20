@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
 import ProgramsGoalsTab from "../ClientDetails/ProgramsGoalsTab";
 import { generateProgramGoalDraft } from "../../lib/ai";
-import { showInfo, showSuccess } from "../../lib/toast";
+import { showError, showInfo, showSuccess } from "../../lib/toast";
 import { callApi } from "../../lib/api";
 
 const ORG_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
@@ -467,5 +467,129 @@ describe("ProgramsGoalsTab", () => {
       ).toBe(false);
     });
     expect(showInfo).toHaveBeenCalledWith("Assessment selection was updated to match this client's available queue.");
+  });
+
+  it("shows promote precondition API error details", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(
+          JSON.stringify({
+            programs: [{ id: "p1", name: "Program A", description: null, accept_state: "accepted", review_notes: null }],
+            goals: [
+              {
+                id: "g1",
+                title: "Goal A",
+                description: "Goal description",
+                original_text: "Goal original text",
+                accept_state: "accepted",
+                review_notes: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/fba.pdf",
+              status: "drafted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "POST" && path === "/api/assessment-promote") {
+        return new Response(JSON.stringify({ error: "Required checklist items must be approved before promotion." }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <ProgramsGoalsTab
+        client={
+          {
+            id: "client-1",
+            email: "client@example.com",
+            full_name: "Client One",
+            date_of_birth: "2017-05-01",
+            insurance_info: {},
+            service_preference: [],
+            one_to_one_units: 0,
+            supervision_units: 0,
+            parent_consult_units: 0,
+            assessment_units: 0,
+            availability_hours: {},
+            created_at: "2026-02-11T00:00:00.000Z",
+          } as any
+        }
+      />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    await screen.findByText("fba.pdf");
+    await userEvent.click(screen.getByRole("button", { name: /Promote Accepted Drafts to Program \+ Goals/i }));
+
+    await waitFor(() => {
+      expect(showError).toHaveBeenCalled();
+    });
+    const firstErrorArg = vi.mocked(showError).mock.calls[0]?.[0];
+    expect(firstErrorArg).toBeInstanceOf(Error);
+    expect((firstErrorArg as Error).message).toBe("Required checklist items must be approved before promotion.");
+  });
+
+  it("shows inline helper when promote is disabled", async () => {
+    renderWithProviders(
+      <ProgramsGoalsTab
+        client={
+          {
+            id: "client-1",
+            email: "client@example.com",
+            full_name: "Client One",
+            date_of_birth: "2017-05-01",
+            insurance_info: {},
+            service_preference: [],
+            one_to_one_units: 0,
+            supervision_units: 0,
+            parent_consult_units: 0,
+            assessment_units: 0,
+            availability_hours: {},
+            created_at: "2026-02-11T00:00:00.000Z",
+          } as any
+        }
+      />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    expect(await screen.findByText("Select a valid assessment first.")).toBeInTheDocument();
   });
 });

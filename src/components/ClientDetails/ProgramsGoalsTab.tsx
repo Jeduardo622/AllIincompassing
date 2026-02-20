@@ -93,6 +93,22 @@ const parseApiErrorMessage = async (response: Response, fallback: string): Promi
   }
 };
 
+const statusToneByAssessment: Record<
+  AssessmentDocumentRecord["status"],
+  { label: string; className: string }
+> = {
+  uploaded: { label: "uploaded", className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200" },
+  extracting: { label: "extracting", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200" },
+  extracted: { label: "extracted", className: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-200" },
+  drafted: { label: "drafted", className: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200" },
+  approved: { label: "approved", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200" },
+  rejected: { label: "rejected", className: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200" },
+  extraction_failed: {
+    label: "extraction failed",
+    className: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200",
+  },
+};
+
 export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
@@ -252,6 +268,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   );
   const canPromoteAssessment =
     canQuerySelectedAssessment && !hasPendingRequiredChecklistItems && hasAcceptedDraftProgram && hasAcceptedDraftGoal;
+  const unresolvedRequiredCount = checklistItems.filter((item) => item.required && item.status !== "approved").length;
   const promoteDisabledReason = !canQuerySelectedAssessment
     ? "Select a valid assessment first."
     : hasPendingRequiredChecklistItems
@@ -414,6 +431,34 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
       });
       showSuccess("Drafts saved to assessment queue for review.");
+    },
+    onError: showError,
+  });
+
+  const generateDraftsFromUploadedAssessment = useMutation({
+    mutationFn: async () => {
+      if (!selectedAssessmentId) {
+        throw new Error("Select an uploaded assessment first.");
+      }
+      const response = await callApi("/api/assessment-drafts", {
+        method: "POST",
+        body: JSON.stringify({
+          assessment_document_id: selectedAssessmentId,
+          auto_generate: true,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, "Failed to generate drafts from uploaded assessment."));
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
+      });
+      showSuccess("Draft program and goals generated from uploaded assessment fields.");
     },
     onError: showError,
   });
@@ -769,9 +814,18 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         }`}
                       >
                         <div className="font-medium">{doc.file_name}</div>
-                        <div className="text-[11px] opacity-80">
-                          {TEMPLATE_LABELS[doc.template_type]} • Status: {doc.status} • {new Date(doc.created_at).toLocaleDateString()}
+                        <div className="mt-1 flex items-center gap-1 text-[11px] opacity-90">
+                          <span>{TEMPLATE_LABELS[doc.template_type]} •</span>
+                          <span className={`rounded px-1.5 py-0.5 font-semibold ${statusToneByAssessment[doc.status].className}`}>
+                            {statusToneByAssessment[doc.status].label}
+                          </span>
+                          <span>• {new Date(doc.created_at).toLocaleDateString()}</span>
                         </div>
+                        {doc.status === "extraction_failed" && (
+                          <div className="mt-1 text-[11px] text-rose-600 dark:text-rose-300">
+                            {doc.extraction_error ?? "Extraction failed. Review checklist manually."}
+                          </div>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -789,6 +843,16 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               {promoteDisabledReason && !promoteAssessment.isLoading && (
                 <p className="text-xs text-amber-700 dark:text-amber-300">{promoteDisabledReason}</p>
               )}
+              <button
+                type="button"
+                onClick={() => generateDraftsFromUploadedAssessment.mutate()}
+                disabled={!canQuerySelectedAssessment || generateDraftsFromUploadedAssessment.isLoading}
+                className="w-full px-3 py-2 text-sm font-medium text-white bg-cyan-600 rounded-md hover:bg-cyan-700 disabled:opacity-50"
+              >
+                {generateDraftsFromUploadedAssessment.isLoading
+                  ? "Generating Drafts..."
+                  : "Generate Drafts from Uploaded Assessment"}
+              </button>
               <button
                 type="button"
                 onClick={() => generateAssessmentPlanPdf.mutate()}
@@ -923,6 +987,16 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
               {selectedAssessmentTemplateLabel} Checklist Review
             </h3>
+            {selectedAssessmentDocument && (
+              <p className="mb-3 text-xs text-gray-500 dark:text-gray-300">
+                Document status:{" "}
+                <span className={`rounded px-1.5 py-0.5 font-semibold ${statusToneByAssessment[selectedAssessmentDocument.status].className}`}>
+                  {statusToneByAssessment[selectedAssessmentDocument.status].label}
+                </span>
+                {" • "}
+                Unresolved required rows: {unresolvedRequiredCount}
+              </p>
+            )}
             {!selectedAssessmentId ? (
               <p className="text-sm text-gray-500">Upload and select an assessment to review checklist items.</p>
             ) : checklistBySection.length === 0 ? (
@@ -946,6 +1020,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                             <div className="text-xs font-medium text-gray-800 dark:text-gray-200">{row.label}</div>
                             <div className="text-[11px] text-gray-500 mb-2">
                               {row.placeholder_key} • {row.mode} • required: {String(row.required)}
+                              {row.review_notes ? ` • ${row.review_notes}` : ""}
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                               <select

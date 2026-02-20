@@ -22,7 +22,9 @@ export interface AssessmentDocumentRecord {
   file_size: number;
   bucket_id: string;
   object_path: string;
-  status: string;
+  status: "uploaded" | "extracting" | "extracted" | "drafted" | "approved" | "rejected" | "extraction_failed";
+  extracted_at?: string | null;
+  extraction_error?: string | null;
   created_at: string;
 }
 

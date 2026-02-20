@@ -74,4 +74,96 @@ describe("assessmentDraftsHandler", () => {
       expect.objectContaining({ method: "POST" }),
     );
   });
+
+  it("auto-generates staged drafts from extracted checklist values", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1" }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              section_key: "clinical_summary",
+              label: "Summary",
+              placeholder_key: "CALOPTIMA_SUMMARY",
+              value_text: "Client presents with communication deficits.",
+              required: true,
+              status: "drafted",
+            },
+          ],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name")) {
+        return { ok: true, status: 200, data: [{ full_name: "Client One" }] };
+      }
+      if (method === "POST" && url.includes("/functions/v1/generate-program-goals")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            program: { name: "Communication Program", description: "Improve communication skills." },
+            goals: [
+              {
+                title: "Requesting with two-word phrases",
+                description: "Client requests preferred items with two-word phrases.",
+                original_text: "Client will request preferred items with two-word phrases.",
+              },
+            ],
+            rationale: "Generated from extracted field values.",
+          },
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_draft_programs")) {
+        return { ok: true, status: 201, data: [{ id: "draft-program-2" }] };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_draft_goals")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          assessment_document_id: "11111111-1111-1111-1111-111111111111",
+          auto_generate: true,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/functions/v1/generate-program-goals"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
 });

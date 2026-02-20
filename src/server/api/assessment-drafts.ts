@@ -29,6 +29,11 @@ const draftCreateSchema = z.object({
   goals: z.array(draftGoalSchema).min(1),
 });
 
+const draftAutoGenerateSchema = z.object({
+  assessment_document_id: z.string().uuid(),
+  auto_generate: z.literal(true),
+});
+
 const draftUpdateSchema = z.object({
   draft_type: z.enum(["program", "goal"]),
   id: z.string().uuid(),
@@ -68,6 +73,32 @@ interface AssessmentDraftGoalRow {
   accept_state: "pending" | "accepted" | "rejected" | "edited";
 }
 
+interface AssessmentChecklistValueRow {
+  section_key: string;
+  label: string;
+  placeholder_key: string;
+  value_text: string | null;
+  required: boolean;
+  status: "not_started" | "drafted" | "verified" | "approved";
+}
+
+interface GeneratedDraftPayload {
+  program: {
+    name: string;
+    description?: string;
+  };
+  goals: Array<{
+    title: string;
+    description: string;
+    original_text: string;
+    target_behavior?: string;
+    measurement_type?: string;
+    baseline_data?: string;
+    target_criteria?: string;
+  }>;
+  rationale?: string;
+}
+
 const getAssessmentDocument = async (
   supabaseUrl: string,
   headers: Record<string, string>,
@@ -82,6 +113,113 @@ const getAssessmentDocument = async (
     return null;
   }
   return lookup.data[0];
+};
+
+const composeAssessmentTextFromChecklist = (rows: AssessmentChecklistValueRow[]): string => {
+  const grouped = new Map<string, AssessmentChecklistValueRow[]>();
+  rows.forEach((row) => {
+    if (!row.value_text || row.value_text.trim().length === 0) {
+      return;
+    }
+    const sectionRows = grouped.get(row.section_key) ?? [];
+    sectionRows.push(row);
+    grouped.set(row.section_key, sectionRows);
+  });
+
+  const blocks = Array.from(grouped.entries()).map(([section, sectionRows]) => {
+    const title = section.replace(/_/g, " ").toUpperCase();
+    const values = sectionRows.map((row) => `- ${row.label}: ${row.value_text?.trim() ?? ""}`).join("\n");
+    return `${title}\n${values}`;
+  });
+
+  return blocks.join("\n\n").trim();
+};
+
+const persistDraftRows = async (args: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+  actorId: string | null;
+  document: AssessmentDocumentScopeRow;
+  assessmentDocumentId: string;
+  payload: GeneratedDraftPayload;
+}) => {
+  const { supabaseUrl, headers, organizationId, actorId, document, assessmentDocumentId, payload } = args;
+  const createProgramPayload = {
+    assessment_document_id: assessmentDocumentId,
+    organization_id: organizationId,
+    client_id: document.client_id,
+    name: payload.program.name,
+    description: payload.program.description ?? null,
+    rationale: payload.rationale ?? null,
+    accept_state: "pending",
+  };
+
+  const createProgramResult = await fetchJson<Array<{ id: string }>>(
+    `${supabaseUrl}/rest/v1/assessment_draft_programs`,
+    {
+      method: "POST",
+      headers: { ...headers, Prefer: "return=representation" },
+      body: JSON.stringify(createProgramPayload),
+    },
+  );
+
+  if (!createProgramResult.ok || !Array.isArray(createProgramResult.data) || !createProgramResult.data[0]) {
+    return { ok: false as const, status: createProgramResult.status || 500, error: "Failed to create draft program" };
+  }
+
+  const createdProgramId = createProgramResult.data[0].id;
+  const createGoalsPayload = payload.goals.map((goal) => ({
+    assessment_document_id: assessmentDocumentId,
+    draft_program_id: createdProgramId,
+    organization_id: organizationId,
+    client_id: document.client_id,
+    title: goal.title,
+    description: goal.description,
+    original_text: goal.original_text,
+    target_behavior: goal.target_behavior ?? null,
+    measurement_type: goal.measurement_type ?? null,
+    baseline_data: goal.baseline_data ?? null,
+    target_criteria: goal.target_criteria ?? null,
+    accept_state: "pending",
+  }));
+
+  const createGoalsResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_draft_goals`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(createGoalsPayload),
+  });
+
+  if (!createGoalsResult.ok) {
+    return { ok: false as const, status: createGoalsResult.status || 500, error: "Failed to create draft goals" };
+  }
+
+  await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({
+      status: "drafted",
+      updated_at: new Date().toISOString(),
+    }),
+  });
+
+  await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      assessment_document_id: document.id,
+      organization_id: organizationId,
+      client_id: document.client_id,
+      item_type: "document",
+      item_id: document.id,
+      action: "drafts_generated",
+      from_status: "extracted",
+      to_status: "drafted",
+      actor_id: actorId,
+    }),
+  });
+
+  return { ok: true as const, draftProgramId: createdProgramId };
 };
 
 export async function assessmentDraftsHandler(request: Request): Promise<Response> {
@@ -155,92 +293,90 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
       return json({ error: "Invalid JSON body" }, 400);
     }
 
-    const parsed = draftCreateSchema.safeParse(payload);
-    if (!parsed.success) {
+    const parsedManual = draftCreateSchema.safeParse(payload);
+    const parsedAuto = draftAutoGenerateSchema.safeParse(payload);
+    if (!parsedManual.success && !parsedAuto.success) {
       return json({ error: "Invalid request body" }, 400);
     }
 
-    const document = await getAssessmentDocument(supabaseUrl, headers, organizationId, parsed.data.assessment_document_id);
+    const assessmentDocumentId = parsedManual.success
+      ? parsedManual.data.assessment_document_id
+      : parsedAuto.data.assessment_document_id;
+    const document = await getAssessmentDocument(supabaseUrl, headers, organizationId, assessmentDocumentId);
     if (!document) {
       return json({ error: "assessment_document_id is not in scope for this organization" }, 403);
     }
 
     const actorId = getAccessTokenSubject(accessToken);
-    const createProgramPayload = {
-      assessment_document_id: parsed.data.assessment_document_id,
-      organization_id: organizationId,
-      client_id: document.client_id,
-      name: parsed.data.program.name,
-      description: parsed.data.program.description ?? null,
-      rationale: parsed.data.rationale ?? null,
-      accept_state: "pending",
-    };
+    if (parsedManual.success) {
+      const result = await persistDraftRows({
+        supabaseUrl,
+        headers,
+        organizationId,
+        actorId,
+        document,
+        assessmentDocumentId,
+        payload: {
+          program: parsedManual.data.program,
+          goals: parsedManual.data.goals,
+          rationale: parsedManual.data.rationale,
+        },
+      });
+      if (!result.ok) {
+        return json({ error: result.error }, result.status);
+      }
+      return json({ draft_program_id: result.draftProgramId }, 201);
+    }
 
-    const createProgramResult = await fetchJson<Array<{ id: string }>>(
-      `${supabaseUrl}/rest/v1/assessment_draft_programs`,
-      {
-        method: "POST",
-        headers: { ...headers, Prefer: "return=representation" },
-        body: JSON.stringify(createProgramPayload),
-      },
+    const checklistResult = await fetchJson<AssessmentChecklistValueRow[]>(
+      `${supabaseUrl}/rest/v1/assessment_checklist_items?select=section_key,label,placeholder_key,value_text,required,status&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocumentId)}&order=section_key.asc,created_at.asc`,
+      { method: "GET", headers },
     );
-
-    if (!createProgramResult.ok || !Array.isArray(createProgramResult.data) || !createProgramResult.data[0]) {
-      return json({ error: "Failed to create draft program" }, createProgramResult.status || 500);
+    if (!checklistResult.ok) {
+      return json({ error: "Failed to load extracted checklist values for auto-generation." }, checklistResult.status || 500);
+    }
+    const assessmentText = composeAssessmentTextFromChecklist(checklistResult.data ?? []);
+    if (assessmentText.length < 20) {
+      return json({ error: "Insufficient extracted checklist content to auto-generate drafts." }, 409);
     }
 
-    const createdProgramId = createProgramResult.data[0].id;
-    const createGoalsPayload = parsed.data.goals.map((goal) => ({
-      assessment_document_id: parsed.data.assessment_document_id,
-      draft_program_id: createdProgramId,
-      organization_id: organizationId,
-      client_id: document.client_id,
-      title: goal.title,
-      description: goal.description,
-      original_text: goal.original_text,
-      target_behavior: goal.target_behavior ?? null,
-      measurement_type: goal.measurement_type ?? null,
-      baseline_data: goal.baseline_data ?? null,
-      target_criteria: goal.target_criteria ?? null,
-      accept_state: "pending",
-    }));
+    const clientResult = await fetchJson<Array<{ full_name: string | null }>>(
+      `${supabaseUrl}/rest/v1/clients?select=full_name&id=eq.${encodeURIComponent(
+        document.client_id,
+      )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
+      { method: "GET", headers },
+    );
+    const clientName = Array.isArray(clientResult.data) ? clientResult.data[0]?.full_name ?? undefined : undefined;
 
-    const createGoalsResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_draft_goals`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(createGoalsPayload),
-    });
-
-    if (!createGoalsResult.ok) {
-      return json({ error: "Failed to create draft goals" }, createGoalsResult.status || 500);
-    }
-
-    await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}`, {
-      method: "PATCH",
-      headers,
-      body: JSON.stringify({
-        status: "drafted",
-        updated_at: new Date().toISOString(),
-      }),
-    });
-
-    await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
+    const generatedResult = await fetchJson<GeneratedDraftPayload>(`${supabaseUrl}/functions/v1/generate-program-goals`, {
       method: "POST",
       headers,
       body: JSON.stringify({
-        assessment_document_id: document.id,
-        organization_id: organizationId,
-        client_id: document.client_id,
-        item_type: "document",
-        item_id: document.id,
-        action: "drafts_generated",
-        from_status: "uploaded",
-        to_status: "drafted",
-        actor_id: actorId,
+        assessment_text: assessmentText,
+        client_name: clientName,
+        assessment_document_id: assessmentDocumentId,
       }),
     });
+    if (!generatedResult.ok || !generatedResult.data) {
+      return json({ error: "Failed to auto-generate draft program/goals from extracted fields." }, generatedResult.status || 500);
+    }
 
-    return json({ draft_program_id: createdProgramId }, 201);
+    const persisted = await persistDraftRows({
+      supabaseUrl,
+      headers,
+      organizationId,
+      actorId,
+      document,
+      assessmentDocumentId,
+      payload: generatedResult.data,
+    });
+    if (!persisted.ok) {
+      return json({ error: persisted.error }, persisted.status);
+    }
+
+    return json({ draft_program_id: persisted.draftProgramId, auto_generated: true }, 201);
   }
 
   if (request.method === "PATCH") {

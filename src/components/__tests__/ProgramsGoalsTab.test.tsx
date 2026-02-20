@@ -256,6 +256,93 @@ describe("ProgramsGoalsTab", () => {
     expect(showSuccess).toHaveBeenCalledWith("IEHP FBA uploaded and checklist initialized.");
   });
 
+  it("generates staged drafts from selected uploaded assessment", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/program-notes?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "fba.docx",
+              mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              file_size: 1234,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/fba.docx",
+              status: "extracted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      if (method === "POST" && path === "/api/assessment-drafts") {
+        return new Response(JSON.stringify({ draft_program_id: "draft-program-1", auto_generated: true }), { status: 201 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <ProgramsGoalsTab
+        client={
+          {
+            id: "client-1",
+            email: "client@example.com",
+            full_name: "Client One",
+            date_of_birth: "2017-05-01",
+            insurance_info: {},
+            service_preference: [],
+            one_to_one_units: 0,
+            supervision_units: 0,
+            parent_consult_units: 0,
+            assessment_units: 0,
+            availability_hours: {},
+            created_at: "2026-02-11T00:00:00.000Z",
+          } as any
+        }
+      />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    const generateButton = await screen.findByRole("button", { name: /Generate Drafts from Uploaded Assessment/i });
+    await userEvent.click(generateButton);
+
+    await waitFor(() => {
+      expect(callApi).toHaveBeenCalledWith(
+        "/api/assessment-drafts",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining("\"auto_generate\":true"),
+        }),
+      );
+    });
+    expect(showSuccess).toHaveBeenCalledWith("Draft program and goals generated from uploaded assessment fields.");
+  });
+
   it("generates completed CalOptima PDF for selected assessment", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();

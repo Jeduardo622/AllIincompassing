@@ -51,6 +51,9 @@ interface ClientSnapshotRow {
   parent1_last_name?: string | null;
 }
 
+const compactNullableRecord = <T extends Record<string, unknown>>(value: T): Partial<T> =>
+  Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== null && entry !== undefined)) as Partial<T>;
+
 interface ExtractionFieldResult {
   placeholder_key: string;
   value_text: string | null;
@@ -263,10 +266,11 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
         )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
         { method: "GET", headers },
       );
-      const clientSnapshot =
+      const clientSnapshotRow =
         clientSnapshotResult.ok && Array.isArray(clientSnapshotResult.data) && clientSnapshotResult.data[0]
           ? clientSnapshotResult.data[0]
           : null;
+      const clientSnapshot = clientSnapshotRow ? compactNullableRecord(clientSnapshotRow) : undefined;
 
       await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(createdDocument.id)}`, {
         method: "PATCH",

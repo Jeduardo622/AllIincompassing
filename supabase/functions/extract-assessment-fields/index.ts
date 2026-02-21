@@ -1,8 +1,6 @@
+import { createClient } from "npm:@supabase/supabase-js@2.50.0";
 import { OpenAI } from "npm:openai@5.5.1";
 import { z } from "npm:zod@3.23.8";
-import { createRequestClient } from "../_shared/database.ts";
-import { getUserOrThrow } from "../_shared/auth.ts";
-import { requireOrg } from "../_shared/org.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,16 +24,16 @@ const requestSchema = z.object({
   checklist_rows: z.array(checklistRowSchema).min(1),
   client_snapshot: z
     .object({
-      full_name: z.string().optional(),
-      first_name: z.string().optional(),
-      last_name: z.string().optional(),
-      date_of_birth: z.string().optional(),
-      cin_number: z.string().optional(),
-      client_id: z.string().optional(),
-      phone: z.string().optional(),
-      parent1_phone: z.string().optional(),
-      parent1_first_name: z.string().optional(),
-      parent1_last_name: z.string().optional(),
+      full_name: z.string().nullish(),
+      first_name: z.string().nullish(),
+      last_name: z.string().nullish(),
+      date_of_birth: z.string().nullish(),
+      cin_number: z.string().nullish(),
+      client_id: z.string().nullish(),
+      phone: z.string().nullish(),
+      parent1_phone: z.string().nullish(),
+      parent1_first_name: z.string().nullish(),
+      parent1_last_name: z.string().nullish(),
     })
     .optional(),
 });
@@ -252,9 +250,21 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const db = createRequestClient(req);
-    await getUserOrThrow(db);
-    await requireOrg(db);
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+      return json({ error: "Supabase environment configuration is missing." }, 500);
+    }
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const requestClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: userData, error: userError } = await requestClient.auth.getUser();
+    if (userError || !userData?.user) {
+      return json({ error: "Unauthorized" }, 401);
+    }
+    const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
     const parsed = requestSchema.safeParse(await req.json());
     if (!parsed.success) {
@@ -262,7 +272,7 @@ Deno.serve(async (req) => {
     }
 
     const { data } = parsed;
-    const download = await db.storage.from(data.bucket_id).download(data.object_path);
+    const download = await adminClient.storage.from(data.bucket_id).download(data.object_path);
     if (download.error || !download.data) {
       return json({ error: "Unable to download uploaded assessment document." }, 502);
     }

@@ -111,6 +111,67 @@ const extractLineNearLabel = (text: string, label: string): string | null => {
   return value.length > 0 ? value : null;
 };
 
+const clampConfidence = (value: number): number => {
+  if (!Number.isFinite(value)) {
+    return 0.0;
+  }
+  return Math.min(0.99, Math.max(0.0, value));
+};
+
+const normalizeForContains = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+const calibrateDeterministicConfidence = (rowLabel: string, valueText: string, text: string): number => {
+  const normalizedText = normalizeForContains(text);
+  const normalizedValue = normalizeForContains(valueText);
+  const normalizedLabel = normalizeForContains(rowLabel);
+  const hasValueInText = normalizedValue.length >= 3 && normalizedText.includes(normalizedValue);
+  const hasLabelInText = normalizedLabel.length >= 3 && normalizedText.includes(normalizedLabel);
+
+  let confidence = 0.88;
+  if (hasValueInText) {
+    confidence += 0.05;
+  }
+  if (hasLabelInText) {
+    confidence += 0.03;
+  }
+  return clampConfidence(confidence);
+};
+
+const calibrateAiConfidence = (args: {
+  providedConfidence?: number;
+  rowLabel: string;
+  valueText: string;
+  documentText: string;
+}): number => {
+  const { providedConfidence, rowLabel, valueText, documentText } = args;
+  const normalizedText = normalizeForContains(documentText);
+  const normalizedValue = normalizeForContains(valueText);
+  const normalizedLabel = normalizeForContains(rowLabel);
+  const hasValueInText = normalizedValue.length >= 3 && normalizedText.includes(normalizedValue);
+  const hasLabelInText = normalizedLabel.length >= 3 && normalizedText.includes(normalizedLabel);
+  const nearLabelRegex = new RegExp(
+    `${rowLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*[:\\-]?\\s*${valueText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+    "i",
+  );
+  const hasNearLabelEvidence = nearLabelRegex.test(documentText);
+
+  let confidence = typeof providedConfidence === "number" ? providedConfidence : 0.78;
+  if (hasValueInText) {
+    confidence += 0.10;
+  }
+  if (hasLabelInText) {
+    confidence += 0.04;
+  }
+  if (hasNearLabelEvidence) {
+    confidence += 0.06;
+  }
+  return clampConfidence(confidence);
+};
+
 const deterministicValueForRow = (
   row: z.infer<typeof checklistRowSchema>,
   text: string,
@@ -119,15 +180,16 @@ const deterministicValueForRow = (
   const key = row.placeholder_key;
   const fromLabel = extractLineNearLabel(text, row.label);
   if (fromLabel) {
+    const confidence = calibrateDeterministicConfidence(row.label, fromLabel, text);
     return {
       placeholder_key: key,
       value_text: fromLabel,
       value_json: null,
-      confidence: 0.75,
+      confidence,
       mode: "AUTO",
       status: "drafted",
       source_span: { method: "label_regex", label: row.label },
-      review_notes: "Deterministic extraction from document label match.",
+      review_notes: `Deterministic extraction from document label match. (Calibrated confidence ${confidence.toFixed(2)})`,
     };
   }
 
@@ -229,16 +291,26 @@ ${documentText.slice(0, 12000)}
     return [];
   }
 
-  return validated.data.fields.map((field) => ({
-    placeholder_key: field.placeholder_key,
-    value_text: field.value_text,
-    value_json: null,
-    confidence: field.confidence ?? 0.55,
-    mode: "ASSISTED",
-    status: "drafted",
-    source_span: { method: "ai_assist" },
-    review_notes: "AI-assisted extraction for unresolved field.",
-  }));
+  const rowByKey = new Map(unresolvedRows.map((row) => [row.placeholder_key, row]));
+  return validated.data.fields.map((field) => {
+    const row = rowByKey.get(field.placeholder_key);
+    const calibratedConfidence = calibrateAiConfidence({
+      providedConfidence: field.confidence,
+      rowLabel: row?.label ?? field.placeholder_key,
+      valueText: field.value_text,
+      documentText,
+    });
+    return {
+      placeholder_key: field.placeholder_key,
+      value_text: field.value_text,
+      value_json: null,
+      confidence: calibratedConfidence,
+      mode: "ASSISTED",
+      status: "drafted",
+      source_span: { method: "ai_assist" },
+      review_notes: `AI-assisted extraction for unresolved field. (Calibrated confidence ${calibratedConfidence.toFixed(2)})`,
+    };
+  });
 };
 
 Deno.serve(async (req) => {

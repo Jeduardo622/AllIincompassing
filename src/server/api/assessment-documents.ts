@@ -38,6 +38,14 @@ interface AssessmentDocumentRow {
   created_at: string;
 }
 
+interface AssessmentDocumentDeleteRow {
+  id: string;
+  organization_id: string;
+  client_id: string;
+  bucket_id: string | null;
+  object_path: string | null;
+}
+
 interface ClientSnapshotRow {
   full_name?: string | null;
   first_name?: string | null;
@@ -433,6 +441,65 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
     });
 
     return json({ ...createdDocument, status: finalStatus }, 201);
+  }
+
+  if (request.method === "DELETE") {
+    const url = new URL(request.url);
+    const assessmentDocumentId = url.searchParams.get("assessment_document_id");
+    if (!assessmentDocumentId) {
+      return json({ error: "assessment_document_id is required" }, 400);
+    }
+    if (!isUuid(assessmentDocumentId)) {
+      return json({ error: "assessment_document_id must be a valid UUID" }, 400);
+    }
+
+    const lookup = await fetchJson<AssessmentDocumentDeleteRow[]>(
+      `${supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id,bucket_id,object_path&id=eq.${encodeURIComponent(
+        assessmentDocumentId,
+      )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
+      { method: "GET", headers },
+    );
+    const document = Array.isArray(lookup.data) ? lookup.data[0] : null;
+    if (!lookup.ok || !document) {
+      return json({ error: "assessment_document_id is not in scope for this organization" }, 403);
+    }
+
+    const dependentTables = [
+      "assessment_review_events",
+      "assessment_draft_goals",
+      "assessment_draft_programs",
+      "assessment_checklist_items",
+      "assessment_extractions",
+    ] as const;
+
+    for (const table of dependentTables) {
+      const deletion = await fetchJson(
+        `${supabaseUrl}/rest/v1/${table}?assessment_document_id=eq.${encodeURIComponent(
+          assessmentDocumentId,
+        )}&organization_id=eq.${encodeURIComponent(organizationId)}`,
+        { method: "DELETE", headers },
+      );
+      if (!deletion.ok) {
+        return json({ error: `Failed to delete dependent ${table} records` }, deletion.status || 500);
+      }
+    }
+
+    const deleteDocument = await fetchJson(
+      `${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(assessmentDocumentId)}&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}`,
+      { method: "DELETE", headers },
+    );
+    if (!deleteDocument.ok) {
+      return json({ error: "Failed to delete assessment document" }, deleteDocument.status || 500);
+    }
+
+    return json({
+      deleted: true,
+      assessment_document_id: assessmentDocumentId,
+      bucket_id: document.bucket_id,
+      object_path: document.object_path,
+    });
   }
 
   return json({ error: "Method not allowed" }, 405);

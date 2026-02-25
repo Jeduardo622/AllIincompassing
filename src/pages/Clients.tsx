@@ -76,7 +76,8 @@ const Clients = () => {
     return (client.one_to_one_units || 0) + 
            (client.supervision_units || 0) + 
            (client.parent_consult_units || 0) +
-           (client.assessment_units || 0);
+           (client.assessment_units || 0) +
+           (client.auth_units || 0);
   };
 
   const getClientMutationErrorMessage = (error: unknown) => {
@@ -614,6 +615,12 @@ const Clients = () => {
                           <ClipboardCheck className="w-4 h-4 text-amber-500 mr-2" />
                           <span className="text-sm text-gray-900 dark:text-gray-200">
                             {client.assessment_units || 0} assessment units
+                          </span>
+                        </div>
+                        <div className="flex items-center">
+                          <ClipboardCheck className="w-4 h-4 text-cyan-500 mr-2" />
+                          <span className="text-sm text-gray-900 dark:text-gray-200">
+                            {client.auth_units || 0} auth units
                           </span>
                         </div>
                         <div className="flex items-center">

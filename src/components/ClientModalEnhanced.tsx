@@ -39,6 +39,7 @@ export default function ClientModalEnhanced({
     supervision_units: client?.supervision_units || 0,
     parent_consult_units: client?.parent_consult_units || 0,
     assessment_units: client?.assessment_units || 0,
+    auth_units: client?.auth_units || 0,
     availability_hours: client?.availability_hours || {
       monday: { start: "09:00", end: "17:00" },
       tuesday: { start: "09:00", end: "17:00" },
@@ -491,6 +492,22 @@ export default function ClientModalEnhanced({
                     type="number"
                     min="0"
                     label="Assessment Units"
+                    error={fieldState.error?.message}
+                    onChange={(e) => field.onChange(Number(e.target.value))}
+                  />
+                )}
+              />
+
+              <Controller
+                name="auth_units"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <ValidatedInput
+                    {...field}
+                    id="auth_units"
+                    type="number"
+                    min="0"
+                    label="Auth Units"
                     error={fieldState.error?.message}
                     onChange={(e) => field.onChange(Number(e.target.value))}
                   />

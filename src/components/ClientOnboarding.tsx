@@ -79,6 +79,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       supervision_units: 0,
       parent_consult_units: 0,
       assessment_units: 0,
+      auth_units: 0,
       availability_hours: DEFAULT_AVAILABILITY,
       documents_consent: false,
     }
@@ -111,7 +112,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       'parent2_relationship',
     ],
     3: ['address_line1', 'address_line2', 'city', 'state', 'zip_code'],
-    4: ['service_preference', 'one_to_one_units', 'supervision_units', 'parent_consult_units', 'assessment_units', 'insurance_info'],
+    4: ['service_preference', 'one_to_one_units', 'supervision_units', 'parent_consult_units', 'assessment_units', 'auth_units', 'insurance_info'],
   };
 
   // Check if email already exists in database
@@ -921,6 +922,22 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                   type="number"
                   min="0"
                   {...register('assessment_units', { valueAsNumber: true })}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="onboarding-auth-units"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Auth Units
+                </label>
+                <input
+                  id="onboarding-auth-units"
+                  type="number"
+                  min="0"
+                  {...register('auth_units', { valueAsNumber: true })}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
               </div>

@@ -52,6 +52,7 @@ export default function ClientModal({
       supervision_units: client?.supervision_units || 0,
       parent_consult_units: client?.parent_consult_units || 0,
       assessment_units: client?.assessment_units || 0,
+      auth_units: client?.auth_units || 0,
       availability_hours: client?.availability_hours || {
         monday: { start: "06:00", end: "21:00" },
         tuesday: { start: "06:00", end: "21:00" },
@@ -621,6 +622,24 @@ export default function ClientModal({
                   />
                   {errors.assessment_units && (
                     <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.assessment_units.message}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="units-auth" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Auth Units
+                  </label>
+                  <input
+                    id="units-auth"
+                    type="number"
+                    min={0}
+                    {...register('auth_units', {
+                      valueAsNumber: true,
+                    })}
+                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                  />
+                  {errors.auth_units && (
+                    <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.auth_units.message}</p>
                   )}
                 </div>
               </div>

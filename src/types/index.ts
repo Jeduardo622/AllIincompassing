@@ -99,6 +99,7 @@ export interface Client {
   supervision_units: number;
   parent_consult_units: number;
   assessment_units: number;
+  auth_units: number;
   availability_hours: AvailabilityHours;
   created_at: string;
   created_by?: string | null;

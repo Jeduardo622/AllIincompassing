@@ -63,6 +63,7 @@ interface AssessmentPlanPdfResponse {
 const EMPTY_ASSESSMENT_DOCUMENTS: AssessmentDocumentRecord[] = [];
 const EMPTY_CHECKLIST_ITEMS: AssessmentChecklistItem[] = [];
 const EMPTY_ASSESSMENT_DRAFTS: AssessmentDraftResponse = { programs: [], goals: [] };
+const ENABLE_CHECKLIST_MAPPING_UI = false;
 
 const TEMPLATE_LABELS: Record<AssessmentTemplateType, string> = {
   caloptima_fba: "CalOptima FBA",
@@ -227,7 +228,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       }
       return parseJson<AssessmentChecklistItem[]>(response);
     },
-    enabled: canQuerySelectedAssessment,
+    enabled: canQuerySelectedAssessment && ENABLE_CHECKLIST_MAPPING_UI,
   });
 
   const { data: assessmentDrafts } = useQuery({
@@ -260,7 +261,8 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const selectedAssessmentTemplateLabel = selectedAssessmentDocument
     ? TEMPLATE_LABELS[selectedAssessmentDocument.template_type]
     : TEMPLATE_LABELS[assessmentTemplateType];
-  const hasPendingRequiredChecklistItems = checklistItems.some((item) => item.required && item.status !== "approved");
+  const hasPendingRequiredChecklistItems =
+    ENABLE_CHECKLIST_MAPPING_UI && checklistItems.some((item) => item.required && item.status !== "approved");
   const hasAcceptedDraftProgram = (assessmentDrafts?.programs ?? []).some(
     (program) => program.accept_state === "accepted" || program.accept_state === "edited",
   );
@@ -269,12 +271,12 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   );
   const canPromoteAssessment =
     canQuerySelectedAssessment && !hasPendingRequiredChecklistItems && hasAcceptedDraftProgram && hasAcceptedDraftGoal;
-  const unresolvedRequiredCount = checklistItems.filter((item) => item.required && item.status !== "approved").length;
+  const unresolvedRequiredCount = ENABLE_CHECKLIST_MAPPING_UI
+    ? checklistItems.filter((item) => item.required && item.status !== "approved").length
+    : 0;
   const promoteDisabledReason = !canQuerySelectedAssessment
     ? "Select a valid assessment first."
-    : hasPendingRequiredChecklistItems
-      ? "Approve all required checklist rows before publishing."
-      : !hasAcceptedDraftProgram
+    : !hasAcceptedDraftProgram
         ? "Accept or edit at least one AI proposal program before publishing."
         : !hasAcceptedDraftGoal
           ? "Accept or edit at least one AI proposal goal before publishing."
@@ -980,110 +982,112 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         </div>
 
         <div className="lg:col-span-2 space-y-4">
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
-              {selectedAssessmentTemplateLabel} Checklist Review
-            </h3>
-            {selectedAssessmentDocument && (
-              <p className="mb-3 text-xs text-gray-500 dark:text-gray-300">
-                Document status:{" "}
-                <span className={`rounded px-1.5 py-0.5 font-semibold ${statusToneByAssessment[selectedAssessmentDocument.status].className}`}>
-                  {statusToneByAssessment[selectedAssessmentDocument.status].label}
-                </span>
-                {" • "}
-                Unresolved required rows: {unresolvedRequiredCount}
-              </p>
-            )}
-            {!selectedAssessmentId ? (
-              <p className="text-sm text-gray-500">Upload and select an assessment to review checklist items.</p>
-            ) : checklistBySection.length === 0 ? (
-              <p className="text-sm text-gray-500">Checklist not available yet for this assessment.</p>
-            ) : (
-              <div className="space-y-4">
-                {checklistBySection.map(([section, rows]) => (
-                  <div key={section} className="rounded-md border border-gray-200 dark:border-gray-700 p-3">
-                    <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">
-                      {section.replace(/_/g, " ")}
-                    </h4>
-                    <div className="space-y-3">
-                      {rows.map((row) => {
-                        const edit = checklistEdits[row.id] ?? {
-                          status: row.status,
-                          reviewNotes: row.review_notes ?? "",
-                          valueText: row.value_text ?? "",
-                        };
-                        return (
-                          <div key={row.id} className="rounded border border-gray-200 dark:border-gray-700 p-2">
-                            <div className="text-xs font-medium text-gray-800 dark:text-gray-200">{row.label}</div>
-                            <div className="text-[11px] text-gray-500 mb-2">
-                              {row.placeholder_key} • {row.mode} • required: {String(row.required)}
-                              {row.review_notes ? ` • ${row.review_notes}` : ""}
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                              <select
-                                value={edit.status}
-                                onChange={(event) =>
-                                  setChecklistEdits((current) => ({
-                                    ...current,
-                                    [row.id]: {
-                                      ...edit,
-                                      status: event.target.value as AssessmentChecklistItem["status"],
-                                    },
-                                  }))
-                                }
-                                className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+          {ENABLE_CHECKLIST_MAPPING_UI && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
+                {selectedAssessmentTemplateLabel} Checklist Review
+              </h3>
+              {selectedAssessmentDocument && (
+                <p className="mb-3 text-xs text-gray-500 dark:text-gray-300">
+                  Document status:{" "}
+                  <span className={`rounded px-1.5 py-0.5 font-semibold ${statusToneByAssessment[selectedAssessmentDocument.status].className}`}>
+                    {statusToneByAssessment[selectedAssessmentDocument.status].label}
+                  </span>
+                  {" • "}
+                  Unresolved required rows: {unresolvedRequiredCount}
+                </p>
+              )}
+              {!selectedAssessmentId ? (
+                <p className="text-sm text-gray-500">Upload and select an assessment to review checklist items.</p>
+              ) : checklistBySection.length === 0 ? (
+                <p className="text-sm text-gray-500">Checklist not available yet for this assessment.</p>
+              ) : (
+                <div className="space-y-4">
+                  {checklistBySection.map(([section, rows]) => (
+                    <div key={section} className="rounded-md border border-gray-200 dark:border-gray-700 p-3">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">
+                        {section.replace(/_/g, " ")}
+                      </h4>
+                      <div className="space-y-3">
+                        {rows.map((row) => {
+                          const edit = checklistEdits[row.id] ?? {
+                            status: row.status,
+                            reviewNotes: row.review_notes ?? "",
+                            valueText: row.value_text ?? "",
+                          };
+                          return (
+                            <div key={row.id} className="rounded border border-gray-200 dark:border-gray-700 p-2">
+                              <div className="text-xs font-medium text-gray-800 dark:text-gray-200">{row.label}</div>
+                              <div className="text-[11px] text-gray-500 mb-2">
+                                {row.placeholder_key} • {row.mode} • required: {String(row.required)}
+                                {row.review_notes ? ` • ${row.review_notes}` : ""}
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                <select
+                                  value={edit.status}
+                                  onChange={(event) =>
+                                    setChecklistEdits((current) => ({
+                                      ...current,
+                                      [row.id]: {
+                                        ...edit,
+                                        status: event.target.value as AssessmentChecklistItem["status"],
+                                      },
+                                    }))
+                                  }
+                                  className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                                >
+                                  <option value="not_started">not_started</option>
+                                  <option value="drafted">drafted</option>
+                                  <option value="verified">verified</option>
+                                  <option value="approved">approved</option>
+                                </select>
+                                <input
+                                  value={edit.reviewNotes}
+                                  onChange={(event) =>
+                                    setChecklistEdits((current) => ({
+                                      ...current,
+                                      [row.id]: {
+                                        ...edit,
+                                        reviewNotes: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder="Review notes"
+                                  className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                                />
+                                <input
+                                  value={edit.valueText}
+                                  onChange={(event) =>
+                                    setChecklistEdits((current) => ({
+                                      ...current,
+                                      [row.id]: {
+                                        ...edit,
+                                        valueText: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder="Field value"
+                                  className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => updateChecklistItem.mutate(row.id)}
+                                disabled={updateChecklistItem.isLoading}
+                                className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
                               >
-                                <option value="not_started">not_started</option>
-                                <option value="drafted">drafted</option>
-                                <option value="verified">verified</option>
-                                <option value="approved">approved</option>
-                              </select>
-                              <input
-                                value={edit.reviewNotes}
-                                onChange={(event) =>
-                                  setChecklistEdits((current) => ({
-                                    ...current,
-                                    [row.id]: {
-                                      ...edit,
-                                      reviewNotes: event.target.value,
-                                    },
-                                  }))
-                                }
-                                placeholder="Review notes"
-                                className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
-                              />
-                              <input
-                                value={edit.valueText}
-                                onChange={(event) =>
-                                  setChecklistEdits((current) => ({
-                                    ...current,
-                                    [row.id]: {
-                                      ...edit,
-                                      valueText: event.target.value,
-                                    },
-                                  }))
-                                }
-                                placeholder="Field value"
-                                className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
-                              />
+                                Save Checklist Row
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => updateChecklistItem.mutate(row.id)}
-                              disabled={updateChecklistItem.isLoading}
-                              className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
-                            >
-                              Save Checklist Row
-                            </button>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">

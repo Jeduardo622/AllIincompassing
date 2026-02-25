@@ -36,6 +36,10 @@ interface DraftGoalRow {
   measurement_type: string | null;
   baseline_data: string | null;
   target_criteria: string | null;
+  mastery_criteria: string | null;
+  maintenance_criteria: string | null;
+  generalization_criteria: string | null;
+  objective_data_points: Array<Record<string, unknown>> | null;
   accept_state: "pending" | "accepted" | "rejected" | "edited";
 }
 
@@ -101,7 +105,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
       { method: "GET", headers },
     ),
     fetchJson<DraftGoalRow[]>(
-      `${supabaseUrl}/rest/v1/assessment_draft_goals?select=id,title,description,original_text,target_behavior,measurement_type,baseline_data,target_criteria,accept_state&organization_id=eq.${encodeURIComponent(
+      `${supabaseUrl}/rest/v1/assessment_draft_goals?select=id,title,description,original_text,target_behavior,measurement_type,baseline_data,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,objective_data_points,accept_state&organization_id=eq.${encodeURIComponent(
         organizationId,
       )}&assessment_document_id=eq.${encodeURIComponent(parsed.data.assessment_document_id)}&order=created_at.asc`,
       { method: "GET", headers },
@@ -189,6 +193,10 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     measurement_type: goal.measurement_type,
     baseline_data: goal.baseline_data,
     target_criteria: goal.target_criteria,
+    mastery_criteria: goal.mastery_criteria,
+    maintenance_criteria: goal.maintenance_criteria,
+    generalization_criteria: goal.generalization_criteria,
+    objective_data_points: goal.objective_data_points ?? [],
     status: "active",
   }));
 

@@ -89,7 +89,9 @@ export default function AddSessionNoteModal({
       }
       const { data, error } = await supabase
         .from('goals')
-        .select('id, title, status, program_id')
+        .select(
+          'id, title, status, program_id, measurement_type, baseline_data, target_criteria, mastery_criteria, maintenance_criteria, generalization_criteria, objective_data_points',
+        )
         .eq('program_id', resolvedProgramId)
         .eq('organization_id', organizationId)
         .order('created_at', { ascending: false });
@@ -105,6 +107,10 @@ export default function AddSessionNoteModal({
   const availableGoals = useMemo(
     () => goals.filter((goal) => goal.status !== 'archived'),
     [goals],
+  );
+  const selectedGoalDetails = useMemo(
+    () => availableGoals.filter((goal) => selectedGoalIds.includes(goal.id)),
+    [availableGoals, selectedGoalIds],
   );
 
   const { data: sessions = [], isLoading: isLoadingSessions } = useQuery({
@@ -476,7 +482,24 @@ export default function AddSessionNoteModal({
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
                     <span>{goal.title}</span>
+                    <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                      ({Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} data points)
+                    </span>
                   </label>
+                ))}
+              </div>
+            )}
+            {selectedGoalDetails.length > 0 && (
+              <div className="mt-3 space-y-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-100">
+                {selectedGoalDetails.map((goal) => (
+                  <div key={goal.id} className="space-y-1">
+                    <p className="font-semibold">{goal.title}</p>
+                    {goal.measurement_type && <p>Measurement: {goal.measurement_type}</p>}
+                    {goal.target_criteria && <p>Target: {goal.target_criteria}</p>}
+                    {goal.mastery_criteria && <p>Mastery: {goal.mastery_criteria}</p>}
+                    {goal.maintenance_criteria && <p>Maintenance: {goal.maintenance_criteria}</p>}
+                    {goal.generalization_criteria && <p>Generalization: {goal.generalization_criteria}</p>}
+                  </div>
                 ))}
               </div>
             )}

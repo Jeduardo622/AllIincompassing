@@ -36,6 +36,10 @@ const responseSchema = z.object({
         measurement_type: z.string().trim().max(80).optional(),
         baseline_data: z.string().trim().max(500).optional(),
         target_criteria: z.string().trim().max(500).optional(),
+        mastery_criteria: z.string().trim().max(500).optional(),
+        maintenance_criteria: z.string().trim().max(500).optional(),
+        generalization_criteria: z.string().trim().max(500).optional(),
+        objective_data_points: z.array(z.record(z.unknown())).max(12).optional(),
       }),
     )
     .min(1)
@@ -157,7 +161,11 @@ Return JSON ONLY with this shape:
       "target_behavior": "string",
       "measurement_type": "string",
       "baseline_data": "string",
-      "target_criteria": "string"
+      "target_criteria": "string",
+      "mastery_criteria": "string",
+      "maintenance_criteria": "string",
+      "generalization_criteria": "string",
+      "objective_data_points": [{ "objective": "string", "data_settings": "string" }]
     }
   ],
   "rationale": "short explanation"
@@ -168,6 +176,7 @@ Rules:
 - Do not include PHI beyond supplied client first name.
 - Ensure each goal can be copied directly into an EHR.
 - If baseline/criteria are not explicit in the assessment, infer conservatively and state assumptions briefly.
+- If document includes objective-level data settings (targets, phases, mastery/maintenance details), include them in objective_data_points.
 
 Client: ${parsed.data.client_name ?? "Not provided"}
 Assessment:

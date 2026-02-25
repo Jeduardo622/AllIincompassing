@@ -215,7 +215,9 @@ export default function SessionModal({
       }
       const { data, error } = await supabase
         .from('goals')
-        .select('id, title, status, program_id')
+        .select(
+          'id, title, status, program_id, measurement_type, baseline_data, target_criteria, mastery_criteria, maintenance_criteria, generalization_criteria, objective_data_points',
+        )
         .eq('program_id', programId)
         .eq('organization_id', activeOrganizationId)
         .order('created_at', { ascending: false });
@@ -233,6 +235,7 @@ export default function SessionModal({
   const selectedClientServices = selectedClient?.service_preference ?? [];
   const activePrograms = programs.filter((program) => program.status === 'active');
   const activeGoals = goals.filter((goal) => goal.status === 'active');
+  const selectedPrimaryGoal = goals.find((goal) => goal.id === goalId);
 
   useEffect(() => {
     if (session?.therapist_id) {
@@ -678,6 +681,24 @@ export default function SessionModal({
               </div>
             </div>
 
+            {selectedPrimaryGoal && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-100">
+                <p className="font-semibold">{selectedPrimaryGoal.title}</p>
+                {selectedPrimaryGoal.measurement_type && <p>Measurement: {selectedPrimaryGoal.measurement_type}</p>}
+                {selectedPrimaryGoal.baseline_data && <p>Baseline: {selectedPrimaryGoal.baseline_data}</p>}
+                {selectedPrimaryGoal.target_criteria && <p>Target: {selectedPrimaryGoal.target_criteria}</p>}
+                {selectedPrimaryGoal.mastery_criteria && <p>Mastery: {selectedPrimaryGoal.mastery_criteria}</p>}
+                {selectedPrimaryGoal.maintenance_criteria && <p>Maintenance: {selectedPrimaryGoal.maintenance_criteria}</p>}
+                {selectedPrimaryGoal.generalization_criteria && <p>Generalization: {selectedPrimaryGoal.generalization_criteria}</p>}
+                <p>
+                  Objective data points:{" "}
+                  {Array.isArray(selectedPrimaryGoal.objective_data_points)
+                    ? selectedPrimaryGoal.objective_data_points.length
+                    : 0}
+                </p>
+              </div>
+            )}
+
             {selectedTherapist && selectedClient && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 <div>
@@ -772,6 +793,9 @@ export default function SessionModal({
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
                       <span>{goal.title}</span>
+                      <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                        ({Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} data points)
+                      </span>
                     </label>
                   ))}
                 </div>

@@ -62,6 +62,10 @@ describe("assessmentDraftsHandler", () => {
               title: "Goal A",
               description: "Description A",
               original_text: "Original A",
+              mastery_criteria: "80% across 2 sessions",
+              maintenance_criteria: "80% across 2 maintenance checks",
+              generalization_criteria: "Across home and clinic",
+              objective_data_points: [{ objective: "Identify 4 emotions", data_settings: "Opportunity based with prompts" }],
             },
           ],
         }),
@@ -73,6 +77,13 @@ describe("assessmentDraftsHandler", () => {
       expect.stringContaining("/assessment_draft_goals"),
       expect.objectContaining({ method: "POST" }),
     );
+    const goalCreateCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_draft_goals"));
+    expect(goalCreateCall).toBeTruthy();
+    const goalPayload = JSON.parse((goalCreateCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
+    expect(goalPayload[0]?.mastery_criteria).toBe("80% across 2 sessions");
+    expect(Array.isArray(goalPayload[0]?.objective_data_points)).toBe(true);
   });
 
   it("auto-generates staged drafts from extracted checklist values", async () => {

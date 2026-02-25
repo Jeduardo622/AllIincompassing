@@ -1,6 +1,6 @@
 import { OpenAI } from "npm:openai@5.5.1";
 import { z } from "npm:zod@3.23.8";
-import { createRequestClient } from "../_shared/database.ts";
+import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 import { requireOrg } from "../_shared/org.ts";
 
@@ -52,22 +52,37 @@ Applied Behavior Analysis practice guidance:
 - Write goals so progress can be tracked across sessions with objective data.
 `;
 
-const WHITE_BIBLE_GUIDANCE_PATH = new URL("./white-bible-guidance.md", import.meta.url);
 let cachedWhiteBibleGuidance: string | null = null;
 
 const loadWhiteBibleGuidance = async (): Promise<string> => {
   if (cachedWhiteBibleGuidance) {
     return cachedWhiteBibleGuidance;
   }
+
   try {
-    const guidance = (await Deno.readTextFile(WHITE_BIBLE_GUIDANCE_PATH)).trim();
-    if (guidance.length >= 30) {
-      cachedWhiteBibleGuidance = guidance;
-      return guidance;
+    const { data, error } = await supabaseAdmin
+      .from("ai_guidance_documents")
+      .select("guidance_text")
+      .eq("guidance_key", "white_bible_core")
+      .eq("is_active", true)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (!error && Array.isArray(data) && typeof data[0]?.guidance_text === "string") {
+      const guidance = data[0].guidance_text.trim();
+      if (guidance.length >= 30) {
+        cachedWhiteBibleGuidance = guidance;
+        return guidance;
+      }
+    }
+
+    if (error) {
+      console.warn("generate-program-goals: unable to load white-bible guidance from Supabase", error.message);
     }
   } catch (error) {
-    console.warn("generate-program-goals: unable to read white-bible guidance file", error);
+    console.warn("generate-program-goals: unexpected error loading white-bible guidance", error);
   }
+
   cachedWhiteBibleGuidance = FALLBACK_WHITE_BIBLE_GUIDANCE.trim();
   return cachedWhiteBibleGuidance;
 };

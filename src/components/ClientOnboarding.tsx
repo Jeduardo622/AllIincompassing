@@ -41,6 +41,8 @@ const DEFAULT_AVAILABILITY = {
   saturday: { start: "06:00", end: "21:00" },
 };
 
+const SERVICE_CONTRACT_PROVIDER_OPTIONS = ['IEHP', 'CalOptima'] as const;
+
 export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -64,6 +66,8 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
     formState: { errors, isValid },
     watch,
     setValue,
+    setError,
+    clearErrors,
   } = useForm<ClientFormData>({
     resolver: zodResolver(clientSchema),
     mode: 'onChange',
@@ -82,6 +86,8 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       auth_units: 0,
       auth_start_date: '',
       auth_end_date: '',
+      service_contract_provider: '',
+      service_contract_units: 0,
       availability_hours: DEFAULT_AVAILABILITY,
       documents_consent: false,
     }
@@ -114,7 +120,19 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       'parent2_relationship',
     ],
     3: ['address_line1', 'address_line2', 'city', 'state', 'zip_code'],
-    4: ['service_preference', 'one_to_one_units', 'supervision_units', 'parent_consult_units', 'assessment_units', 'auth_units', 'auth_start_date', 'auth_end_date', 'insurance_info'],
+    4: [
+      'service_preference',
+      'one_to_one_units',
+      'supervision_units',
+      'parent_consult_units',
+      'assessment_units',
+      'auth_units',
+      'auth_start_date',
+      'auth_end_date',
+      'service_contract_provider',
+      'service_contract_units',
+      'insurance_info',
+    ],
   };
 
   // Check if email already exists in database
@@ -164,12 +182,26 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
     mutationFn: async (data: Partial<Client>) => {
       // Format data for submission
       const formattedData = prepareFormData(data);
+      const serviceContractProvider = data.service_contract_provider?.trim();
+      const serviceContractUnits = Number.isFinite(data.service_contract_units)
+        ? data.service_contract_units
+        : 0;
+      const insuranceInfo =
+        formattedData.insurance_info && typeof formattedData.insurance_info === 'object' && !Array.isArray(formattedData.insurance_info)
+          ? { ...formattedData.insurance_info as Record<string, unknown> }
+          : {};
+      const normalizedInsuranceInfo = {
+        ...insuranceInfo,
+        provider: serviceContractProvider || insuranceInfo.provider || '',
+        service_contract_provider: serviceContractProvider || '',
+        service_contract_units: serviceContractUnits,
+      };
       
       // Prepare client data with proper formatting
       const formattedClient = {
         ...formattedData,
         service_preference: formattedData.service_preference || [],
-        insurance_info: formattedData.insurance_info || {},
+        insurance_info: normalizedInsuranceInfo,
         full_name: `${formattedData.first_name} ${formattedData.middle_name || ''} ${formattedData.last_name}`.trim(),
         organization_id: organizationId,
         status: formattedData.status || 'active',
@@ -323,6 +355,36 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
 
     if (emailValidationError) {
       return false;
+    }
+
+    if (currentStep === 4) {
+      const selectedProvider = watch('service_contract_provider');
+      const enteredUnits = watch('service_contract_units');
+      let hasBlockingError = false;
+
+      if (!selectedProvider || !SERVICE_CONTRACT_PROVIDER_OPTIONS.includes(selectedProvider as typeof SERVICE_CONTRACT_PROVIDER_OPTIONS[number])) {
+        setError('service_contract_provider', {
+          type: 'manual',
+          message: 'Please choose a service contract provider',
+        });
+        hasBlockingError = true;
+      } else {
+        clearErrors('service_contract_provider');
+      }
+
+      if (!Number.isFinite(enteredUnits) || enteredUnits <= 0) {
+        setError('service_contract_units', {
+          type: 'manual',
+          message: 'Service contract units must be greater than 0',
+        });
+        hasBlockingError = true;
+      } else {
+        clearErrors('service_contract_units');
+      }
+
+      if (hasBlockingError) {
+        return false;
+      }
     }
 
     setCurrentStep(prev => Math.min(prev + 1, 5));
@@ -849,17 +911,26 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               
               <div>
                 <label
-                  htmlFor="onboarding-insurance-provider"
+                  htmlFor="onboarding-service-contract-provider"
                   className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
                 >
-                  Insurance Provider
+                  Service Contract Provider
                 </label>
-                <input
-                  id="onboarding-insurance-provider"
-                  type="text"
-                  {...register('insurance_info.provider')}
+                <select
+                  id="onboarding-service-contract-provider"
+                  {...register('service_contract_provider')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                />
+                >
+                  <option value="">Select a provider</option>
+                  {SERVICE_CONTRACT_PROVIDER_OPTIONS.map((provider) => (
+                    <option key={provider} value={provider}>
+                      {provider}
+                    </option>
+                  ))}
+                </select>
+                {errors.service_contract_provider && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.service_contract_provider.message}</p>
+                )}
               </div>
             </div>
             
@@ -910,6 +981,25 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                   {...register('parent_consult_units', { valueAsNumber: true })}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="onboarding-service-contract-units"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Service Contract Units
+                </label>
+                <input
+                  id="onboarding-service-contract-units"
+                  type="number"
+                  min="0"
+                  {...register('service_contract_units', { valueAsNumber: true })}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                />
+                {errors.service_contract_units && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.service_contract_units.message}</p>
+                )}
               </div>
 
               <div>

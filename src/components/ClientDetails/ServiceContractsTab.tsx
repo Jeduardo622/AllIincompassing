@@ -12,6 +12,7 @@ interface ServiceContractsTabProps {
 interface Contract {
   id: string;
   payer_name: string;
+  authorized_units: number;
   effective_date: string;
   termination_date: string;
   covered_cpt_codes: {
@@ -69,6 +70,7 @@ export default function ServiceContractsTab({ client }: ServiceContractsTabProps
         .select(`
           id,
           payer_name,
+          authorized_units,
           effective_date,
           termination_date,
           reimbursement_method,
@@ -142,6 +144,7 @@ export default function ServiceContractsTab({ client }: ServiceContractsTabProps
     return (serviceContracts ?? []).map((contract: {
       id: string;
       payer_name: string;
+      authorized_units: number | null;
       effective_date: string;
       termination_date: string;
       reimbursement_method: string;
@@ -156,6 +159,7 @@ export default function ServiceContractsTab({ client }: ServiceContractsTabProps
     }) => ({
       id: contract.id,
       payer_name: contract.payer_name,
+      authorized_units: contract.authorized_units ?? 0,
       effective_date: contract.effective_date,
       termination_date: contract.termination_date,
       covered_cpt_codes: (contract.rates ?? []).map((rate) => ({
@@ -309,6 +313,10 @@ export default function ServiceContractsTab({ client }: ServiceContractsTabProps
                           <div className="flex justify-between text-sm">
                             <span className="text-gray-500 dark:text-gray-400">Confidence Score:</span>
                             <span className="text-gray-900 dark:text-white">{(contract.confidence_score * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500 dark:text-gray-400">Authorized Units:</span>
+                            <span className="text-gray-900 dark:text-white">{contract.authorized_units}</span>
                           </div>
                         </div>
                       </div>

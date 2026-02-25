@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
 import { OpenAI } from "npm:openai@5.5.1";
 import { z } from "npm:zod@3.23.8";
+import { Buffer } from "node:buffer";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -133,6 +134,37 @@ const decodeDocxText = async (bytes: Uint8Array): Promise<string> => {
 const decodePdfFallbackText = (bytes: Uint8Array): string => {
   const decoded = new TextDecoder("latin1").decode(bytes);
   return normalizeText(decoded.replace(/[^\x20-\x7E\n]/g, " "));
+};
+
+const decodePdfText = async (bytes: Uint8Array): Promise<string> => {
+  try {
+    const parsePdfModule = await import("npm:pdf-parse@1.1.1");
+    const parsePdf = parsePdfModule.default as (value: Buffer) => Promise<{ text?: string }>;
+    const parsed = await parsePdf(Buffer.from(bytes));
+    const text = typeof parsed?.text === "string" ? parsed.text : "";
+    const normalized = normalizeText(text);
+    if (normalized.length >= 80) {
+      return normalized;
+    }
+  } catch {
+    // Fall through to legacy fallback.
+  }
+  return decodePdfFallbackText(bytes);
+};
+
+const summarizeTextQuality = (text: string): "high" | "medium" | "low" => {
+  if (!text || text.length < 80) {
+    return "low";
+  }
+  const alphaMatches = text.match(/[A-Za-z]/g) ?? [];
+  const alphaRatio = alphaMatches.length / text.length;
+  if (alphaRatio < 0.25) {
+    return "low";
+  }
+  if (alphaRatio < 0.45) {
+    return "medium";
+  }
+  return "high";
 };
 
 const extractLineNearLabel = (text: string, label: string): string | null => {
@@ -286,7 +318,11 @@ const resolveAiAssistedFields = async (
   }
 
   const prompt = `
-Extract values for unresolved CalOptima FBA fields from this document text.
+You are a two-stage extraction agent for ABA assessments.
+Stage 1 (reader): locate the strongest candidate value per unresolved row.
+Stage 2 (validator): reject weak guesses and keep only values supported by document evidence.
+
+Task: extract values for unresolved FBA fields from document text.
 Return strict JSON only:
 {"fields":[{"placeholder_key":"...","value_text":"...","confidence":0.0}]}
 
@@ -294,12 +330,14 @@ Rules:
 - Only include keys you can infer with moderate confidence.
 - Omit unknown values.
 - Keep value_text concise and literal.
+- Prefer exact phrases from the source text.
+- If two candidates conflict, choose the one with clearer surrounding evidence.
 
 Unresolved rows:
 ${JSON.stringify(unresolvedRows)}
 
 Document text:
-${documentText.slice(0, 12000)}
+${documentText.slice(0, 16000)}
 `;
 
   const completion = await openai.chat.completions.create({
@@ -307,7 +345,11 @@ ${documentText.slice(0, 12000)}
     temperature: 0.1,
     max_tokens: 1200,
     messages: [
-      { role: "system", content: "You extract structured fields and return strict JSON only." },
+      {
+        role: "system",
+        content:
+          "You are an ABA extraction meta-agent. Internally read, validate, and cross-check candidates before returning strict JSON only.",
+      },
       { role: "user", content: prompt },
     ],
   });
@@ -378,6 +420,12 @@ const resolveStructuredRecommendationFields = async (
   }
 
   const prompt = `
+You are a meta-agent for ABA recommendation extraction.
+Use an internal reader->planner->validator loop:
+1) identify candidate recommendation blocks,
+2) map each to the requested schema,
+3) drop unsupported fields.
+
 Extract structured ABA recommendation data from this assessment text.
 Return strict JSON only with this shape:
 {
@@ -407,12 +455,14 @@ Rules:
 - Keep values literal and concise from source text when possible.
 - If a value is not present, omit it rather than inventing.
 - objective_data_points should be an array of objects when objective-level rows are present.
+- Prefer conservative extraction over broad inference.
+- Keep summaries short and evidence-aligned.
 
 Rows to extract:
 ${JSON.stringify(structuredRows)}
 
 Document text:
-${documentText.slice(0, 12000)}
+${documentText.slice(0, 18000)}
 `;
 
   const completion = await openai.chat.completions.create({
@@ -420,7 +470,11 @@ ${documentText.slice(0, 12000)}
     temperature: 0.1,
     max_tokens: 1400,
     messages: [
-      { role: "system", content: "You extract structured ABA recommendation data and return strict JSON only." },
+      {
+        role: "system",
+        content:
+          "You are an ABA recommendation extraction meta-agent. Think through candidates and validation internally, then output strict JSON only.",
+      },
       { role: "user", content: prompt },
     ],
   });
@@ -506,7 +560,8 @@ Deno.serve(async (req) => {
     const objectPathLower = data.object_path.toLowerCase();
     const documentText = objectPathLower.endsWith(".docx")
       ? await decodeDocxText(fileBytes)
-      : decodePdfFallbackText(fileBytes);
+      : await decodePdfText(fileBytes);
+    const textQuality = summarizeTextQuality(documentText);
 
     const deterministic = data.checklist_rows.map((row) => deterministicValueForRow(row, documentText, data.client_snapshot));
     const unresolvedRows = data.checklist_rows.filter(
@@ -531,6 +586,7 @@ Deno.serve(async (req) => {
       extracted_count: merged.filter((field) => field.value_text).length,
       unresolved_count: merged.filter((field) => !field.value_text).length,
       text_char_count: documentText.length,
+      text_quality: textQuality,
     });
   } catch (error) {
     console.error("extract-assessment-fields error", error);

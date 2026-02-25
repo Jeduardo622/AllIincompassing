@@ -265,6 +265,42 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_guidance_documents: {
+        Row: {
+          created_at: string
+          guidance_key: string
+          guidance_text: string
+          id: string
+          is_active: boolean
+          source_reference: string | null
+          source_type: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          guidance_key: string
+          guidance_text: string
+          id?: string
+          is_active?: boolean
+          source_reference?: string | null
+          source_type: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          guidance_key?: string
+          guidance_text?: string
+          id?: string
+          is_active?: boolean
+          source_reference?: string | null
+          source_type?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ai_performance_metrics: {
         Row: {
           cache_hit: boolean | null
@@ -519,6 +555,492 @@ export type Database = {
             columns: ["therapist_id"]
             isOneToOne: false
             referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessment_checklist_items: {
+        Row: {
+          assessment_document_id: string
+          client_id: string
+          created_at: string
+          extraction_method: string
+          extraction_owner: string | null
+          id: string
+          label: string
+          last_reviewed_at: string | null
+          last_reviewed_by: string | null
+          mode: string
+          organization_id: string
+          placeholder_key: string
+          required: boolean
+          review_notes: string | null
+          review_owner: string | null
+          section_key: string
+          source: string
+          status: string
+          updated_at: string
+          validation_rule: string
+          value_json: Json | null
+          value_text: string | null
+        }
+        Insert: {
+          assessment_document_id: string
+          client_id: string
+          created_at?: string
+          extraction_method?: string
+          extraction_owner?: string | null
+          id?: string
+          label: string
+          last_reviewed_at?: string | null
+          last_reviewed_by?: string | null
+          mode: string
+          organization_id: string
+          placeholder_key: string
+          required?: boolean
+          review_notes?: string | null
+          review_owner?: string | null
+          section_key: string
+          source?: string
+          status?: string
+          updated_at?: string
+          validation_rule?: string
+          value_json?: Json | null
+          value_text?: string | null
+        }
+        Update: {
+          assessment_document_id?: string
+          client_id?: string
+          created_at?: string
+          extraction_method?: string
+          extraction_owner?: string | null
+          id?: string
+          label?: string
+          last_reviewed_at?: string | null
+          last_reviewed_by?: string | null
+          mode?: string
+          organization_id?: string
+          placeholder_key?: string
+          required?: boolean
+          review_notes?: string | null
+          review_owner?: string | null
+          section_key?: string
+          source?: string
+          status?: string
+          updated_at?: string
+          validation_rule?: string
+          value_json?: Json | null
+          value_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_checklist_items_assessment_document_id_fkey"
+            columns: ["assessment_document_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_checklist_items_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_checklist_items_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessment_documents: {
+        Row: {
+          approved_at: string | null
+          bucket_id: string
+          client_id: string
+          created_at: string
+          extracted_at: string | null
+          extraction_error: string | null
+          file_name: string
+          file_size: number
+          id: string
+          mime_type: string
+          object_path: string
+          organization_id: string
+          status: string
+          template_type: string
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          bucket_id?: string
+          client_id: string
+          created_at?: string
+          extracted_at?: string | null
+          extraction_error?: string | null
+          file_name: string
+          file_size?: number
+          id?: string
+          mime_type: string
+          object_path: string
+          organization_id: string
+          status?: string
+          template_type?: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          bucket_id?: string
+          client_id?: string
+          created_at?: string
+          extracted_at?: string | null
+          extraction_error?: string | null
+          file_name?: string
+          file_size?: number
+          id?: string
+          mime_type?: string
+          object_path?: string
+          organization_id?: string
+          status?: string
+          template_type?: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_documents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_documents_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessment_draft_goals: {
+        Row: {
+          accept_state: string
+          assessment_document_id: string
+          baseline_data: string | null
+          client_id: string
+          created_at: string
+          description: string
+          draft_program_id: string | null
+          id: string
+          measurement_type: string | null
+          organization_id: string
+          original_text: string
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          target_behavior: string | null
+          target_criteria: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          accept_state?: string
+          assessment_document_id: string
+          baseline_data?: string | null
+          client_id: string
+          created_at?: string
+          description: string
+          draft_program_id?: string | null
+          id?: string
+          measurement_type?: string | null
+          organization_id: string
+          original_text: string
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          target_behavior?: string | null
+          target_criteria?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          accept_state?: string
+          assessment_document_id?: string
+          baseline_data?: string | null
+          client_id?: string
+          created_at?: string
+          description?: string
+          draft_program_id?: string | null
+          id?: string
+          measurement_type?: string | null
+          organization_id?: string
+          original_text?: string
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          target_behavior?: string | null
+          target_criteria?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_draft_goals_assessment_document_id_fkey"
+            columns: ["assessment_document_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_draft_goals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_draft_goals_draft_program_id_fkey"
+            columns: ["draft_program_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_draft_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_draft_goals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessment_draft_programs: {
+        Row: {
+          accept_state: string
+          assessment_document_id: string
+          client_id: string
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          organization_id: string
+          rationale: string | null
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          accept_state?: string
+          assessment_document_id: string
+          client_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          rationale?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          accept_state?: string
+          assessment_document_id?: string
+          client_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          rationale?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_draft_programs_assessment_document_id_fkey"
+            columns: ["assessment_document_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_draft_programs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_draft_programs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessment_extractions: {
+        Row: {
+          assessment_document_id: string
+          client_id: string
+          confidence: number | null
+          created_at: string
+          extraction_method_detail: string | null
+          field_key: string
+          id: string
+          label: string
+          mode: string
+          organization_id: string
+          required: boolean
+          review_notes: string | null
+          section_key: string
+          source_span: Json | null
+          status: string
+          updated_at: string
+          value_json: Json | null
+          value_text: string | null
+        }
+        Insert: {
+          assessment_document_id: string
+          client_id: string
+          confidence?: number | null
+          created_at?: string
+          extraction_method_detail?: string | null
+          field_key: string
+          id?: string
+          label: string
+          mode: string
+          organization_id: string
+          required?: boolean
+          review_notes?: string | null
+          section_key: string
+          source_span?: Json | null
+          status?: string
+          updated_at?: string
+          value_json?: Json | null
+          value_text?: string | null
+        }
+        Update: {
+          assessment_document_id?: string
+          client_id?: string
+          confidence?: number | null
+          created_at?: string
+          extraction_method_detail?: string | null
+          field_key?: string
+          id?: string
+          label?: string
+          mode?: string
+          organization_id?: string
+          required?: boolean
+          review_notes?: string | null
+          section_key?: string
+          source_span?: Json | null
+          status?: string
+          updated_at?: string
+          value_json?: Json | null
+          value_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_extractions_assessment_document_id_fkey"
+            columns: ["assessment_document_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_extractions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_extractions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessment_review_events: {
+        Row: {
+          action: string
+          actor_id: string | null
+          assessment_document_id: string
+          client_id: string
+          created_at: string
+          event_payload: Json
+          from_status: string | null
+          id: string
+          item_id: string | null
+          item_type: string
+          notes: string | null
+          organization_id: string
+          to_status: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          assessment_document_id: string
+          client_id: string
+          created_at?: string
+          event_payload?: Json
+          from_status?: string | null
+          id?: string
+          item_id?: string | null
+          item_type: string
+          notes?: string | null
+          organization_id: string
+          to_status?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          assessment_document_id?: string
+          client_id?: string
+          created_at?: string
+          event_payload?: Json
+          from_status?: string | null
+          id?: string
+          item_id?: string | null
+          item_type?: string
+          notes?: string | null
+          organization_id?: string
+          to_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_review_events_assessment_document_id_fkey"
+            columns: ["assessment_document_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_review_events_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_review_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1300,6 +1822,7 @@ export type Database = {
           address_line1: string | null
           address_line2: string | null
           assessment_units: number | null
+          auth_units: number | null
           authorized_hours_per_month: number | null
           availability_hours: Json | null
           avoid_rush_hour: boolean | null
@@ -1363,6 +1886,7 @@ export type Database = {
           address_line1?: string | null
           address_line2?: string | null
           assessment_units?: number | null
+          auth_units?: number | null
           authorized_hours_per_month?: number | null
           availability_hours?: Json | null
           avoid_rush_hour?: boolean | null
@@ -1426,6 +1950,7 @@ export type Database = {
           address_line1?: string | null
           address_line2?: string | null
           assessment_units?: number | null
+          auth_units?: number | null
           authorized_hours_per_month?: number | null
           availability_hours?: Json | null
           avoid_rush_hour?: boolean | null
@@ -5037,6 +5562,7 @@ export type Database = {
           address_line1: string | null
           address_line2: string | null
           assessment_units: number | null
+          auth_units: number | null
           authorized_hours_per_month: number | null
           availability_hours: Json | null
           avoid_rush_hour: boolean | null

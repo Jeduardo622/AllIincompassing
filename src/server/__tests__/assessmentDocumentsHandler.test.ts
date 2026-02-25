@@ -236,4 +236,69 @@ describe("assessmentDocumentsHandler", () => {
 
     expect(response.status).toBe(400);
   });
+
+  it("deletes an assessment document and dependent rows", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,bucket_id,object_path")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              organization_id: "org-1",
+              client_id: "client-1",
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/fba.pdf",
+            },
+          ],
+        };
+      }
+      if (
+        method === "DELETE" &&
+        (url.includes("/rest/v1/assessment_review_events") ||
+          url.includes("/rest/v1/assessment_draft_goals") ||
+          url.includes("/rest/v1/assessment_draft_programs") ||
+          url.includes("/rest/v1/assessment_checklist_items") ||
+          url.includes("/rest/v1/assessment_extractions") ||
+          url.includes("/rest/v1/assessment_documents?"))
+      ) {
+        return { ok: true, status: 200, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request(
+        "http://localhost/api/assessment-documents?assessment_document_id=11111111-1111-4111-8111-111111111111",
+        {
+          method: "DELETE",
+          headers: { Authorization: "Bearer token" },
+        },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_draft_goals"),
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_documents?id=eq.11111111-1111-4111-8111-111111111111"),
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
 });

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, Plus, UploadCloud } from "lucide-react";
+import { ClipboardList, Plus, Trash2, UploadCloud } from "lucide-react";
 import type { Client, Goal, Program, ProgramNote } from "../../types";
 import { callApi } from "../../lib/api";
 import { showError, showInfo, showSuccess } from "../../lib/toast";
@@ -144,6 +144,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   >({});
   const [noteType, setNoteType] = useState<ProgramNote["note_type"]>("plan_update");
   const [noteContent, setNoteContent] = useState("");
+  const [deletingAssessmentId, setDeletingAssessmentId] = useState<string | null>(null);
 
   const applyDraftGoal = (goal: ProgramGoalDraftResponse["goals"][number]) => {
     setGoalTitle(goal.title);
@@ -400,6 +401,48 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       showSuccess("Checklist row updated.");
     },
     onError: showError,
+  });
+
+  const deleteAssessmentDocument = useMutation({
+    mutationFn: async (document: AssessmentDocumentRecord) => {
+      const { error: storageError } = await supabase.storage.from(document.bucket_id).remove([document.object_path]);
+      if (storageError) {
+        // Storage cleanup can fail on already-deleted objects; continue with database cleanup.
+        console.warn("Failed to remove assessment document from storage", storageError);
+      }
+
+      const response = await callApi(
+        `/api/assessment-documents?assessment_document_id=${encodeURIComponent(document.id)}`,
+        {
+          method: "DELETE",
+        },
+      );
+      if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, "Failed to delete assessment document."));
+      }
+    },
+    onMutate: (document) => {
+      setDeletingAssessmentId(document.id);
+    },
+    onSuccess: (_, document) => {
+      if (selectedAssessmentId === document.id) {
+        setSelectedAssessmentId(null);
+      }
+      queryClient.invalidateQueries({
+        queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["assessment-checklist", document.id, organizationId ?? "MISSING_ORG"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["assessment-drafts", document.id, organizationId ?? "MISSING_ORG"],
+      });
+      showSuccess(`Deleted ${document.file_name}.`);
+    },
+    onError: showError,
+    onSettled: () => {
+      setDeletingAssessmentId(null);
+    },
   });
 
   const persistAssessmentDrafts = useMutation({
@@ -744,30 +787,51 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 ) : (
                   <div className="space-y-2">
                     {assessmentDocuments.map((doc) => (
-                      <button
+                      <div
                         key={doc.id}
-                        type="button"
-                        onClick={() => setSelectedAssessmentId(doc.id)}
-                        className={`w-full text-left rounded px-2 py-2 border text-xs ${
+                        className={`w-full rounded border text-xs ${
                           selectedAssessmentId === doc.id
                             ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200"
                             : "border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
                         }`}
                       >
-                        <div className="font-medium">{doc.file_name}</div>
-                        <div className="mt-1 flex items-center gap-1 text-[11px] opacity-90">
-                          <span>{TEMPLATE_LABELS[doc.template_type]} •</span>
-                          <span className={`rounded px-1.5 py-0.5 font-semibold ${statusToneByAssessment[doc.status].className}`}>
-                            {statusToneByAssessment[doc.status].label}
-                          </span>
-                          <span>• {new Date(doc.created_at).toLocaleDateString()}</span>
-                        </div>
-                        {doc.status === "extraction_failed" && (
-                          <div className="mt-1 text-[11px] text-rose-600 dark:text-rose-300">
-                            {doc.extraction_error ?? "Extraction failed. Review checklist manually."}
+                        <button type="button" onClick={() => setSelectedAssessmentId(doc.id)} className="w-full text-left px-2 pt-2">
+                          <div className="font-medium">{doc.file_name}</div>
+                          <div className="mt-1 flex items-center gap-1 text-[11px] opacity-90">
+                            <span>{TEMPLATE_LABELS[doc.template_type]} •</span>
+                            <span className={`rounded px-1.5 py-0.5 font-semibold ${statusToneByAssessment[doc.status].className}`}>
+                              {statusToneByAssessment[doc.status].label}
+                            </span>
+                            <span>• {new Date(doc.created_at).toLocaleDateString()}</span>
                           </div>
-                        )}
-                      </button>
+                          {doc.status === "extraction_failed" && (
+                            <div className="mt-1 text-[11px] text-rose-600 dark:text-rose-300">
+                              {doc.extraction_error ?? "Extraction failed. Review checklist manually."}
+                            </div>
+                          )}
+                        </button>
+                        <div className="px-2 pb-2 pt-1 flex justify-end">
+                          <button
+                            type="button"
+                            aria-label={`Delete ${doc.file_name}`}
+                            title={`Delete ${doc.file_name}`}
+                            onClick={() => {
+                              if (typeof window !== "undefined") {
+                                const confirmed = window.confirm(`Delete ${doc.file_name}? This cannot be undone.`);
+                                if (!confirmed) {
+                                  return;
+                                }
+                              }
+                              deleteAssessmentDocument.mutate(doc);
+                            }}
+                            disabled={deletingAssessmentId === doc.id && deleteAssessmentDocument.isLoading}
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            {deletingAssessmentId === doc.id && deleteAssessmentDocument.isLoading ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}

@@ -168,9 +168,12 @@ const genderSchema = preprocessTrim(
 );
 
 const servicePreferenceSchema = z.array(preprocessTrim(z.string())).default([]);
-const serviceContractProviderSchema = preprocessTrim(
-  z.union([z.literal(''), z.enum(['IEHP', 'CalOptima'])])
-);
+const serviceContractProviderSchema = z.enum(['Private', 'IEHP', 'CalOptima']);
+const serviceContractSchema = z.object({
+  provider: serviceContractProviderSchema,
+  units: nonNegativeNumber('Service contract units').default(0),
+  cpt_codes: z.array(preprocessTrim(z.string())).default([]),
+});
 
 // Client validation schema
 export const clientFormSchema = z
@@ -205,8 +208,7 @@ export const clientFormSchema = z
     auth_units: nonNegativeNumber('Auth units').default(0),
     auth_start_date: optionalStringSchema,
     auth_end_date: optionalStringSchema,
-    service_contract_provider: serviceContractProviderSchema.default(''),
-    service_contract_units: nonNegativeNumber('Service contract units').default(0),
+    service_contracts: z.array(serviceContractSchema).default([]),
 
     // Service preferences
     service_preference: servicePreferenceSchema,

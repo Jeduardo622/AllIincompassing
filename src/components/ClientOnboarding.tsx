@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle,
   ArrowRight,
@@ -41,7 +41,12 @@ const DEFAULT_AVAILABILITY = {
   saturday: { start: "06:00", end: "21:00" },
 };
 
-const SERVICE_CONTRACT_PROVIDER_OPTIONS = ['IEHP', 'CalOptima'] as const;
+const SERVICE_CONTRACT_PROVIDER_OPTIONS = ['Private', 'IEHP', 'CalOptima'] as const;
+type ServiceContractProvider = typeof SERVICE_CONTRACT_PROVIDER_OPTIONS[number];
+
+const getCodePrefixForProvider = (provider: ServiceContractProvider): '9' | 'H' => (
+  provider === 'Private' ? '9' : 'H'
+);
 
 export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
   const [currentStep, setCurrentStep] = useState(1);
@@ -86,8 +91,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       auth_units: 0,
       auth_start_date: '',
       auth_end_date: '',
-      service_contract_provider: '',
-      service_contract_units: 0,
+      service_contracts: [],
       availability_hours: DEFAULT_AVAILABILITY,
       documents_consent: false,
     }
@@ -129,11 +133,23 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       'auth_units',
       'auth_start_date',
       'auth_end_date',
-      'service_contract_provider',
-      'service_contract_units',
+      'service_contracts',
       'insurance_info',
     ],
   };
+
+  const { data: cptCatalog = [] } = useQuery({
+    queryKey: ['cpt-codes-onboarding'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('cpt_codes')
+        .select('code, short_description')
+        .eq('is_active', true)
+        .order('code');
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
 
   // Check if email already exists in database
   const checkEmailExists = async (email: string): Promise<boolean> => {
@@ -178,23 +194,49 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
     }
   };
 
+  const serviceContracts = watch('service_contracts') ?? [];
+  const availableCodesByProvider = useMemo(() => {
+    const grouped: Record<ServiceContractProvider, Array<{ code: string; description: string }>> = {
+      Private: [],
+      IEHP: [],
+      CalOptima: [],
+    };
+
+    for (const code of cptCatalog) {
+      const normalizedCode = String(code.code ?? '').toUpperCase();
+      const description = String(code.short_description ?? '');
+      if (normalizedCode.startsWith('9')) {
+        grouped.Private.push({ code: normalizedCode, description });
+      } else if (normalizedCode.startsWith('H')) {
+        grouped.IEHP.push({ code: normalizedCode, description });
+        grouped.CalOptima.push({ code: normalizedCode, description });
+      }
+    }
+
+    return grouped;
+  }, [cptCatalog]);
+
   const createClientMutation = useMutation({
     mutationFn: async (data: Partial<Client>) => {
       // Format data for submission
       const formattedData = prepareFormData(data);
-      const serviceContractProvider = data.service_contract_provider?.trim();
-      const serviceContractUnits = Number.isFinite(data.service_contract_units)
-        ? data.service_contract_units
-        : 0;
+      const normalizedContracts = (data.service_contracts ?? [])
+        .filter((contract) => SERVICE_CONTRACT_PROVIDER_OPTIONS.includes(contract.provider as ServiceContractProvider))
+        .map((contract) => ({
+          provider: contract.provider,
+          units: Number.isFinite(contract.units) ? contract.units : 0,
+          cpt_codes: Array.isArray(contract.cpt_codes)
+            ? contract.cpt_codes.map((code) => String(code).toUpperCase()).filter(Boolean)
+            : [],
+        }));
       const insuranceInfo =
         formattedData.insurance_info && typeof formattedData.insurance_info === 'object' && !Array.isArray(formattedData.insurance_info)
           ? { ...formattedData.insurance_info as Record<string, unknown> }
           : {};
       const normalizedInsuranceInfo = {
         ...insuranceInfo,
-        provider: serviceContractProvider || insuranceInfo.provider || '',
-        service_contract_provider: serviceContractProvider || '',
-        service_contract_units: serviceContractUnits,
+        provider: normalizedContracts[0]?.provider || insuranceInfo.provider || '',
+        service_contracts: normalizedContracts,
       };
       
       // Prepare client data with proper formatting
@@ -358,28 +400,49 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
     }
 
     if (currentStep === 4) {
-      const selectedProvider = watch('service_contract_provider');
-      const enteredUnits = watch('service_contract_units');
       let hasBlockingError = false;
+      const entries = watch('service_contracts') ?? [];
 
-      if (!selectedProvider || !SERVICE_CONTRACT_PROVIDER_OPTIONS.includes(selectedProvider as typeof SERVICE_CONTRACT_PROVIDER_OPTIONS[number])) {
-        setError('service_contract_provider', {
+      if (entries.length === 0) {
+        setError('service_contracts', {
           type: 'manual',
-          message: 'Please choose a service contract provider',
+          message: 'Add at least one insurance contract',
         });
         hasBlockingError = true;
       } else {
-        clearErrors('service_contract_provider');
+        clearErrors('service_contracts');
       }
 
-      if (!Number.isFinite(enteredUnits) || enteredUnits <= 0) {
-        setError('service_contract_units', {
-          type: 'manual',
-          message: 'Service contract units must be greater than 0',
+      entries.forEach((entry, index) => {
+        if (!SERVICE_CONTRACT_PROVIDER_OPTIONS.includes(entry.provider as ServiceContractProvider)) {
+          setError(`service_contracts.${index}.provider`, {
+            type: 'manual',
+            message: 'Choose an insurance',
+          });
+          hasBlockingError = true;
+        }
+        if (!Number.isFinite(entry.units) || entry.units <= 0) {
+          setError(`service_contracts.${index}.units`, {
+            type: 'manual',
+            message: 'Units must be greater than 0',
+          });
+          hasBlockingError = true;
+        }
+        if (!Array.isArray(entry.cpt_codes) || entry.cpt_codes.length === 0) {
+          setError(`service_contracts.${index}.cpt_codes`, {
+            type: 'manual',
+            message: 'Select at least one code',
+          });
+          hasBlockingError = true;
+        }
+      });
+
+      if (!hasBlockingError) {
+        entries.forEach((_, index) => {
+          clearErrors(`service_contracts.${index}.provider`);
+          clearErrors(`service_contracts.${index}.units`);
+          clearErrors(`service_contracts.${index}.cpt_codes`);
         });
-        hasBlockingError = true;
-      } else {
-        clearErrors('service_contract_units');
       }
 
       if (hasBlockingError) {
@@ -910,28 +973,145 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
               </div>
               
               <div>
-                <label
-                  htmlFor="onboarding-service-contract-provider"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Insurance Contracts
+                </span>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  Private uses 9-codes. IEHP and CalOptima use H-codes.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const current = watch('service_contracts') ?? [];
+                    setValue('service_contracts', [
+                      ...current,
+                      { provider: 'IEHP', units: 0, cpt_codes: [] },
+                    ], { shouldValidate: true, shouldDirty: true });
+                  }}
+                  className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
                 >
-                  Service Contract Provider
-                </label>
-                <select
-                  id="onboarding-service-contract-provider"
-                  {...register('service_contract_provider')}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                >
-                  <option value="">Select a provider</option>
-                  {SERVICE_CONTRACT_PROVIDER_OPTIONS.map((provider) => (
-                    <option key={provider} value={provider}>
-                      {provider}
-                    </option>
-                  ))}
-                </select>
-                {errors.service_contract_provider && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.service_contract_provider.message}</p>
+                  Add Insurance
+                </button>
+                {typeof errors.service_contracts?.message === 'string' && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.service_contracts.message}</p>
                 )}
               </div>
+            </div>
+
+            <div className="space-y-3">
+              {serviceContracts.map((entry, index) => {
+                const provider = SERVICE_CONTRACT_PROVIDER_OPTIONS.includes(entry.provider as ServiceContractProvider)
+                  ? entry.provider as ServiceContractProvider
+                  : 'IEHP';
+                const codesForProvider = availableCodesByProvider[provider] ?? [];
+                const insuranceId = `onboarding-contract-insurance-${index}`;
+                const unitsId = `onboarding-contract-units-${index}`;
+                const codesId = `onboarding-contract-codes-${index}`;
+
+                return (
+                  <div key={`${provider}-${index}`} className="rounded-md border border-gray-300 dark:border-gray-700 p-3">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <label htmlFor={insuranceId} className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Insurance
+                        </label>
+                        <select
+                          id={insuranceId}
+                          value={provider}
+                          onChange={(event) => {
+                            const nextProvider = event.target.value as ServiceContractProvider;
+                            const next = [...(watch('service_contracts') ?? [])];
+                            next[index] = {
+                              ...next[index],
+                              provider: nextProvider,
+                              cpt_codes: (next[index]?.cpt_codes ?? []).filter((code) =>
+                                String(code).toUpperCase().startsWith(getCodePrefixForProvider(nextProvider))
+                              ),
+                            };
+                            setValue('service_contracts', next, { shouldDirty: true, shouldValidate: true });
+                          }}
+                          className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                        >
+                          {SERVICE_CONTRACT_PROVIDER_OPTIONS.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                          {errors.service_contracts?.[index]?.provider?.message}
+                        </p>
+                      </div>
+                      <div>
+                        <label htmlFor={unitsId} className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Contract Units
+                        </label>
+                        <input
+                          id={unitsId}
+                          type="number"
+                          min="0"
+                          value={entry.units ?? 0}
+                          onChange={(event) => {
+                            const next = [...(watch('service_contracts') ?? [])];
+                            next[index] = {
+                              ...next[index],
+                              units: Number(event.target.value),
+                            };
+                            setValue('service_contracts', next, { shouldDirty: true, shouldValidate: true });
+                          }}
+                          className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                        />
+                        <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                          {errors.service_contracts?.[index]?.units?.message}
+                        </p>
+                      </div>
+                      <div className="flex items-end justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = [...(watch('service_contracts') ?? [])];
+                            next.splice(index, 1);
+                            setValue('service_contracts', next, { shouldDirty: true, shouldValidate: true });
+                          }}
+                          className="px-3 py-1.5 text-sm font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200 dark:text-red-200 dark:bg-red-900/30"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <label htmlFor={codesId} className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Select Codes
+                      </label>
+                      <select
+                        id={codesId}
+                        multiple
+                        value={Array.isArray(entry.cpt_codes) ? entry.cpt_codes : []}
+                        onChange={(event) => {
+                          const nextCodes = Array.from(event.target.selectedOptions).map((option) => option.value);
+                          const next = [...(watch('service_contracts') ?? [])];
+                          next[index] = {
+                            ...next[index],
+                            cpt_codes: nextCodes,
+                          };
+                          setValue('service_contracts', next, { shouldDirty: true, shouldValidate: true });
+                        }}
+                        className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 min-h-[120px]"
+                      >
+                        {codesForProvider.map((code) => (
+                          <option key={code.code} value={code.code}>
+                            {code.code} - {code.description}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Hold Ctrl/Cmd to select multiple codes.
+                      </p>
+                      <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                        {errors.service_contracts?.[index]?.cpt_codes?.message as string | undefined}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -981,25 +1161,6 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                   {...register('parent_consult_units', { valueAsNumber: true })}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="onboarding-service-contract-units"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                >
-                  Service Contract Units
-                </label>
-                <input
-                  id="onboarding-service-contract-units"
-                  type="number"
-                  min="0"
-                  {...register('service_contract_units', { valueAsNumber: true })}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                />
-                {errors.service_contract_units && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.service_contract_units.message}</p>
-                )}
               </div>
 
               <div>

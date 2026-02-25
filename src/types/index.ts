@@ -102,6 +102,11 @@ export interface Client {
   auth_units: number;
   auth_start_date?: string;
   auth_end_date?: string;
+  service_contracts?: Array<{
+    provider: 'Private' | 'IEHP' | 'CalOptima';
+    units: number;
+    cpt_codes: string[];
+  }>;
   availability_hours: AvailabilityHours;
   created_at: string;
   created_by?: string | null;

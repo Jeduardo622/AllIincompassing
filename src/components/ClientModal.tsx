@@ -8,6 +8,44 @@ import AvailabilityEditor from './AvailabilityEditor';
 import { clientSchema, type ClientFormData } from '../lib/validationSchemas';
 import { prepareFormData } from '../lib/validation';
 import { SERVICE_PREFERENCE_OPTIONS } from '../lib/constants/servicePreferences';
+import { supabase } from '../lib/supabase';
+
+const SERVICE_CONTRACT_PROVIDER_OPTIONS = ['Private', 'IEHP', 'CalOptima'] as const;
+type ServiceContractProvider = typeof SERVICE_CONTRACT_PROVIDER_OPTIONS[number];
+
+const getCodePrefixForProvider = (provider: ServiceContractProvider): '9' | 'H' => (
+  provider === 'Private' ? '9' : 'H'
+);
+
+const normalizeServiceContracts = (insuranceInfo: unknown): Array<{ provider: ServiceContractProvider; units: number; cpt_codes: string[] }> => {
+  if (!insuranceInfo || typeof insuranceInfo !== 'object' || Array.isArray(insuranceInfo)) {
+    return [];
+  }
+  const record = insuranceInfo as Record<string, unknown>;
+  const raw = Array.isArray(record.service_contracts) ? record.service_contracts : [];
+  const normalized = raw
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        return null;
+      }
+      const obj = entry as Record<string, unknown>;
+      const provider = String(obj.provider ?? '').trim();
+      if (!SERVICE_CONTRACT_PROVIDER_OPTIONS.includes(provider as ServiceContractProvider)) {
+        return null;
+      }
+      const unitsValue = Number(obj.units ?? 0);
+      const cptCodes = Array.isArray(obj.cpt_codes)
+        ? obj.cpt_codes.map((code) => String(code).toUpperCase()).filter(Boolean)
+        : [];
+      return {
+        provider: provider as ServiceContractProvider,
+        units: Number.isFinite(unitsValue) ? unitsValue : 0,
+        cpt_codes: cptCodes,
+      };
+    })
+    .filter((entry): entry is { provider: ServiceContractProvider; units: number; cpt_codes: string[] } => entry !== null);
+  return normalized;
+};
 
 interface ClientModalProps {
   isOpen: boolean;
@@ -34,6 +72,8 @@ export default function ClientModal({
     clearErrors,
     reset,
     getValues,
+    setValue,
+    watch,
   } = useForm<ClientFormData>({
     resolver: zodResolver(clientSchema),
     mode: 'onChange',
@@ -46,7 +86,8 @@ export default function ClientModal({
       date_of_birth: client?.date_of_birth || '',
       gender: client?.gender || '',
       client_id: client?.client_id || '',
-      insurance_info: client?.insurance_info ? JSON.stringify(client.insurance_info) : '',
+      insurance_info: client?.insurance_info || {},
+      service_contracts: normalizeServiceContracts(client?.insurance_info),
       service_preference: client?.service_preference || [], // Initialize as empty array if no value
       one_to_one_units: client?.one_to_one_units || 0,
       supervision_units: client?.supervision_units || 0,
@@ -87,6 +128,7 @@ export default function ClientModal({
   });
 
   const [localError, setLocalError] = useState<string | null>(null);
+  const [cptCodeOptions, setCptCodeOptions] = useState<Array<{ code: string; description: string }>>([]);
   const effectiveIsSaving = typeof isSaving === 'boolean' ? isSaving : isSubmitting;
   const displayedError = saveError || localError;
 
@@ -104,6 +146,26 @@ export default function ClientModal({
     previousSavingState.current = effectiveIsSaving;
   }, [effectiveIsSaving, isSaving, clearErrors, reset, getValues]);
 
+  useEffect(() => {
+    const loadCptCodes = async () => {
+      const { data, error } = await supabase
+        .from('cpt_codes')
+        .select('code, short_description')
+        .eq('is_active', true)
+        .order('code');
+      if (error) {
+        return;
+      }
+      setCptCodeOptions((data ?? []).map((row) => ({
+        code: String(row.code).toUpperCase(),
+        description: String(row.short_description ?? ''),
+      })));
+    };
+    void loadCptCodes();
+  }, []);
+
+  const serviceContracts = watch('service_contracts') ?? [];
+
   if (!isOpen) return null;
 
   const handleFormSubmit = async (data: ClientFormData) => {
@@ -114,19 +176,25 @@ export default function ClientModal({
       data.service_preference = [];
     }
 
-    if (typeof data.insurance_info === 'string') {
-      const trimmed = data.insurance_info.trim();
-      if (trimmed.length === 0) {
-        data.insurance_info = null as unknown as typeof data.insurance_info;
-      } else {
-        try {
-          data.insurance_info = JSON.parse(trimmed) as typeof data.insurance_info;
-        } catch (error) {
-          setLocalError('Insurance info must be valid JSON or left blank.');
-          throw error;
-        }
-      }
-    }
+    const normalizedContracts = (data.service_contracts ?? [])
+      .filter((entry) => SERVICE_CONTRACT_PROVIDER_OPTIONS.includes(entry.provider as ServiceContractProvider))
+      .map((entry) => ({
+        provider: entry.provider,
+        units: Number.isFinite(entry.units) ? entry.units : 0,
+        cpt_codes: Array.isArray(entry.cpt_codes)
+          ? entry.cpt_codes.map((code) => String(code).toUpperCase()).filter(Boolean)
+          : [],
+      }));
+
+    const insuranceInfo =
+      data.insurance_info && typeof data.insurance_info === 'object' && !Array.isArray(data.insurance_info)
+        ? { ...data.insurance_info as Record<string, unknown> }
+        : {};
+    data.insurance_info = {
+      ...insuranceInfo,
+      provider: normalizedContracts[0]?.provider || insuranceInfo.provider || '',
+      service_contracts: normalizedContracts,
+    } as typeof data.insurance_info;
 
     const formatted = prepareFormData(data);
     setLocalError(null);
@@ -716,25 +784,128 @@ export default function ClientModal({
               </p>
             </div>
 
-            <div className="mt-4">
-              <label htmlFor="insurance-info" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Insurance Information (JSON)
-              </label>
-              <textarea
-                id="insurance-info"
-                {...register('insurance_info')}
-                rows={3}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                placeholder="Enter insurance information in JSON format (optional)"
-              />
-              {errors.insurance_info && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {errors.insurance_info.message as string}
-                </p>
-              )}
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Leave blank if insurance details are unavailable.
-              </p>
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Insurance Contracts
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Private uses 9-codes. IEHP and CalOptima use H-codes.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = [...serviceContracts, { provider: 'IEHP', units: 0, cpt_codes: [] }];
+                    setValue('service_contracts', next, { shouldDirty: true, shouldValidate: true });
+                  }}
+                  className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                >
+                  Add Insurance
+                </button>
+              </div>
+
+              {serviceContracts.map((entry, index) => {
+                const provider = SERVICE_CONTRACT_PROVIDER_OPTIONS.includes(entry.provider as ServiceContractProvider)
+                  ? entry.provider as ServiceContractProvider
+                  : 'IEHP';
+                const allowedPrefix = getCodePrefixForProvider(provider);
+                const filteredOptions = cptCodeOptions.filter((option) => option.code.startsWith(allowedPrefix));
+                const insuranceId = `modal-contract-insurance-${index}`;
+                const unitsId = `modal-contract-units-${index}`;
+                const codesId = `modal-contract-codes-${index}`;
+
+                return (
+                  <div key={`${provider}-${index}`} className="rounded-md border border-gray-300 dark:border-gray-700 p-3">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                      <div>
+                        <label htmlFor={insuranceId} className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Insurance
+                        </label>
+                        <select
+                          id={insuranceId}
+                          value={provider}
+                          onChange={(event) => {
+                            const nextProvider = event.target.value as ServiceContractProvider;
+                            const next = [...serviceContracts];
+                            next[index] = {
+                              ...next[index],
+                              provider: nextProvider,
+                              cpt_codes: (next[index]?.cpt_codes ?? []).filter((code) =>
+                                String(code).toUpperCase().startsWith(getCodePrefixForProvider(nextProvider))
+                              ),
+                            };
+                            setValue('service_contracts', next, { shouldDirty: true, shouldValidate: true });
+                          }}
+                          className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                        >
+                          {SERVICE_CONTRACT_PROVIDER_OPTIONS.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label htmlFor={unitsId} className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Contract Units
+                        </label>
+                        <input
+                          id={unitsId}
+                          type="number"
+                          min={0}
+                          value={entry.units ?? 0}
+                          onChange={(event) => {
+                            const next = [...serviceContracts];
+                            next[index] = { ...next[index], units: Number(event.target.value) };
+                            setValue('service_contracts', next, { shouldDirty: true, shouldValidate: true });
+                          }}
+                          className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                        />
+                      </div>
+
+                      <div className="flex items-end justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = [...serviceContracts];
+                            next.splice(index, 1);
+                            setValue('service_contracts', next, { shouldDirty: true, shouldValidate: true });
+                          }}
+                          className="px-3 py-1.5 text-sm font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200 dark:text-red-200 dark:bg-red-900/30"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-3">
+                      <label htmlFor={codesId} className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Select Codes
+                      </label>
+                      <select
+                        id={codesId}
+                        multiple
+                        value={Array.isArray(entry.cpt_codes) ? entry.cpt_codes : []}
+                        onChange={(event) => {
+                          const values = Array.from(event.target.selectedOptions).map((option) => option.value);
+                          const next = [...serviceContracts];
+                          next[index] = { ...next[index], cpt_codes: values };
+                          setValue('service_contracts', next, { shouldDirty: true, shouldValidate: true });
+                        }}
+                        className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 min-h-[110px]"
+                      >
+                        {filteredOptions.map((option) => (
+                          <option key={option.code} value={option.code}>
+                            {option.code} - {option.description}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl/Cmd to select multiple codes.</p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

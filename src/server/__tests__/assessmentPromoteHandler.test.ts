@@ -55,6 +55,10 @@ describe("assessmentPromoteHandler", () => {
               measurement_type: null,
               baseline_data: null,
               target_criteria: null,
+              mastery_criteria: "80% across 2 sessions",
+              maintenance_criteria: "80% across maintenance checks",
+              generalization_criteria: "Across school and home",
+              objective_data_points: [{ objective: "Label 4 emotions", criterion: "4/5 opportunities" }],
             },
           ],
         };
@@ -83,6 +87,12 @@ describe("assessmentPromoteHandler", () => {
     );
 
     expect(response.status).toBe(200);
+    const createGoalsCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url, init]) => typeof url === "string" && url.includes("/rest/v1/goals") && init?.method === "POST");
+    expect(createGoalsCall).toBeTruthy();
+    const createGoalsPayload = JSON.parse((createGoalsCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
+    expect(createGoalsPayload[0]?.mastery_criteria).toBe("80% across 2 sessions");
   });
 
   it("blocks promotion when accepted goals contain duplicate titles", async () => {

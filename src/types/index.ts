@@ -212,6 +212,10 @@ export interface Goal {
   clinical_context?: string | null;
   baseline_data?: string | null;
   target_criteria?: string | null;
+  mastery_criteria?: string | null;
+  maintenance_criteria?: string | null;
+  generalization_criteria?: string | null;
+  objective_data_points?: Array<Record<string, unknown>> | null;
   status: 'active' | 'paused' | 'mastered' | 'archived';
   created_by?: string | null;
   updated_by?: string | null;
@@ -244,6 +248,10 @@ export interface GoalVersion {
   measurement_type?: string | null;
   baseline_data?: string | null;
   target_criteria?: string | null;
+  mastery_criteria?: string | null;
+  maintenance_criteria?: string | null;
+  generalization_criteria?: string | null;
+  objective_data_points?: Array<Record<string, unknown>> | null;
   status: string;
   changed_by: string;
   changed_at: string;

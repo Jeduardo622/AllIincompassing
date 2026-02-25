@@ -79,6 +79,10 @@ export interface ProgramGoalDraftGoal {
   measurement_type?: string;
   baseline_data?: string;
   target_criteria?: string;
+  mastery_criteria?: string;
+  maintenance_criteria?: string;
+  generalization_criteria?: string;
+  objective_data_points?: Array<Record<string, unknown>>;
 }
 
 export interface ProgramGoalDraftResponse {

@@ -48,6 +48,30 @@ const aiResponseSchema = z.object({
   fields: z.array(aiFieldSchema),
 });
 
+const structuredRecommendationJsonSchema = z.object({
+  title: z.string().min(1).max(240).optional(),
+  target_behavior: z.string().min(1).max(500).optional(),
+  measurement_type: z.string().min(1).max(120).optional(),
+  baseline_data: z.string().min(1).max(700).optional(),
+  target_criteria: z.string().min(1).max(700).optional(),
+  mastery_criteria: z.string().min(1).max(700).optional(),
+  maintenance_criteria: z.string().min(1).max(700).optional(),
+  generalization_criteria: z.string().min(1).max(700).optional(),
+  data_settings: z.record(z.unknown()).optional(),
+  objective_data_points: z.array(z.record(z.unknown())).optional(),
+});
+
+const structuredAiFieldSchema = z.object({
+  placeholder_key: z.string().min(1),
+  value_text: z.string().min(1).optional(),
+  confidence: z.number().min(0).max(1).optional(),
+  value_json: structuredRecommendationJsonSchema.optional(),
+});
+
+const structuredAiResponseSchema = z.object({
+  fields: z.array(structuredAiFieldSchema),
+});
+
 interface ExtractedFieldResult {
   placeholder_key: string;
   value_text: string | null;
@@ -58,6 +82,17 @@ interface ExtractedFieldResult {
   source_span: Record<string, unknown> | null;
   review_notes: string | null;
 }
+
+const STRUCTURED_RECOMMENDATION_KEYS = new Set<string>([
+  "CALOPTIMA_FBA_TARGET_BEHAVIOR_BLOCKS",
+  "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+  "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+  "CALOPTIMA_FBA_PARENT_GOALS",
+  "CALOPTIMA_FBA_GENERALIZATION_MAINTENANCE_PLAN",
+  "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
+  "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
+  "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
+]);
 
 const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
 const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
@@ -313,6 +348,124 @@ ${documentText.slice(0, 12000)}
   });
 };
 
+const summarizeStructuredRecommendation = (valueJson: z.infer<typeof structuredRecommendationJsonSchema> | undefined): string | null => {
+  if (!valueJson) {
+    return null;
+  }
+  const parts = [
+    valueJson.title,
+    valueJson.target_behavior,
+    valueJson.measurement_type,
+    valueJson.baseline_data,
+    valueJson.target_criteria,
+  ].filter((part): part is string => typeof part === "string" && part.trim().length > 0);
+  if (parts.length === 0) {
+    return null;
+  }
+  return parts.join(" | ").slice(0, 700);
+};
+
+const resolveStructuredRecommendationFields = async (
+  rows: z.infer<typeof checklistRowSchema>[],
+  documentText: string,
+): Promise<ExtractedFieldResult[]> => {
+  if (!openai || documentText.trim().length < 20) {
+    return [];
+  }
+  const structuredRows = rows.filter((row) => STRUCTURED_RECOMMENDATION_KEYS.has(row.placeholder_key));
+  if (structuredRows.length === 0) {
+    return [];
+  }
+
+  const prompt = `
+Extract structured ABA recommendation data from this assessment text.
+Return strict JSON only with this shape:
+{
+  "fields": [
+    {
+      "placeholder_key": "string",
+      "value_text": "short summary",
+      "confidence": 0.0,
+      "value_json": {
+        "title": "string",
+        "target_behavior": "string",
+        "measurement_type": "string",
+        "baseline_data": "string",
+        "target_criteria": "string",
+        "mastery_criteria": "string",
+        "maintenance_criteria": "string",
+        "generalization_criteria": "string",
+        "data_settings": {},
+        "objective_data_points": []
+      }
+    }
+  ]
+}
+
+Rules:
+- Include only fields with moderate confidence or better.
+- Keep values literal and concise from source text when possible.
+- If a value is not present, omit it rather than inventing.
+- objective_data_points should be an array of objects when objective-level rows are present.
+
+Rows to extract:
+${JSON.stringify(structuredRows)}
+
+Document text:
+${documentText.slice(0, 12000)}
+`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.1,
+    max_tokens: 1400,
+    messages: [
+      { role: "system", content: "You extract structured ABA recommendation data and return strict JSON only." },
+      { role: "user", content: prompt },
+    ],
+  });
+
+  const raw = completion.choices[0]?.message?.content?.trim();
+  if (!raw) {
+    return [];
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim());
+  } catch {
+    return [];
+  }
+
+  const validated = structuredAiResponseSchema.safeParse(parsed);
+  if (!validated.success) {
+    return [];
+  }
+
+  const rowByKey = new Map(structuredRows.map((row) => [row.placeholder_key, row]));
+  return validated.data.fields.map((field) => {
+    const row = rowByKey.get(field.placeholder_key);
+    const summary = field.value_text ?? summarizeStructuredRecommendation(field.value_json) ?? "Structured recommendation extracted";
+    const calibratedConfidence = calibrateAiConfidence({
+      providedConfidence: field.confidence,
+      rowLabel: row?.label ?? field.placeholder_key,
+      valueText: summary,
+      documentText,
+    });
+
+    return {
+      placeholder_key: field.placeholder_key,
+      value_text: summary,
+      value_json: field.value_json ? { ...field.value_json } : null,
+      confidence: calibratedConfidence,
+      mode: "ASSISTED",
+      status: "drafted",
+      source_span: { method: "ai_structured_recommendation" },
+      review_notes: `AI-assisted structured recommendation extraction. (Calibrated confidence ${calibratedConfidence.toFixed(2)})`,
+    };
+  });
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -360,9 +513,15 @@ Deno.serve(async (req) => {
       (row) => !deterministic.find((field) => field.placeholder_key === row.placeholder_key && field.value_text),
     );
 
-    const aiAssisted = await resolveAiAssistedFields(unresolvedRows, documentText);
+    const [aiAssisted, structuredRecommendations] = await Promise.all([
+      resolveAiAssistedFields(unresolvedRows, documentText),
+      resolveStructuredRecommendationFields(data.checklist_rows, documentText),
+    ]);
     const aiByKey = new Map(aiAssisted.map((field) => [field.placeholder_key, field]));
-    const merged = deterministic.map((field) => aiByKey.get(field.placeholder_key) ?? field);
+    const structuredByKey = new Map(structuredRecommendations.map((field) => [field.placeholder_key, field]));
+    const merged = deterministic.map(
+      (field) => structuredByKey.get(field.placeholder_key) ?? aiByKey.get(field.placeholder_key) ?? field,
+    );
 
     return json({
       assessment_document_id: data.assessment_document_id,

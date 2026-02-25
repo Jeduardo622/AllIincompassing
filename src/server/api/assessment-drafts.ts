@@ -17,6 +17,10 @@ const draftGoalSchema = z.object({
   measurement_type: z.string().trim().optional(),
   baseline_data: z.string().trim().optional(),
   target_criteria: z.string().trim().optional(),
+  mastery_criteria: z.string().trim().optional(),
+  maintenance_criteria: z.string().trim().optional(),
+  generalization_criteria: z.string().trim().optional(),
+  objective_data_points: z.array(z.record(z.unknown())).optional(),
 });
 
 const draftCreateSchema = z.object({
@@ -47,6 +51,10 @@ const draftUpdateSchema = z.object({
   measurement_type: z.string().trim().optional(),
   baseline_data: z.string().trim().optional(),
   target_criteria: z.string().trim().optional(),
+  mastery_criteria: z.string().trim().optional(),
+  maintenance_criteria: z.string().trim().optional(),
+  generalization_criteria: z.string().trim().optional(),
+  objective_data_points: z.array(z.record(z.unknown())).optional(),
 });
 
 const isUuid = (value: string): boolean => z.string().uuid().safeParse(value).success;
@@ -78,6 +86,7 @@ interface AssessmentChecklistValueRow {
   label: string;
   placeholder_key: string;
   value_text: string | null;
+  value_json: Record<string, unknown> | null;
   required: boolean;
   status: "not_started" | "drafted" | "verified" | "approved";
 }
@@ -95,6 +104,10 @@ interface GeneratedDraftPayload {
     measurement_type?: string;
     baseline_data?: string;
     target_criteria?: string;
+    mastery_criteria?: string;
+    maintenance_criteria?: string;
+    generalization_criteria?: string;
+    objective_data_points?: Array<Record<string, unknown>>;
   }>;
   rationale?: string;
 }
@@ -118,7 +131,9 @@ const getAssessmentDocument = async (
 const composeAssessmentTextFromChecklist = (rows: AssessmentChecklistValueRow[]): string => {
   const grouped = new Map<string, AssessmentChecklistValueRow[]>();
   rows.forEach((row) => {
-    if (!row.value_text || row.value_text.trim().length === 0) {
+    const hasText = !!row.value_text && row.value_text.trim().length > 0;
+    const hasJson = !!row.value_json && Object.keys(row.value_json).length > 0;
+    if (!hasText && !hasJson) {
       return;
     }
     const sectionRows = grouped.get(row.section_key) ?? [];
@@ -128,7 +143,19 @@ const composeAssessmentTextFromChecklist = (rows: AssessmentChecklistValueRow[])
 
   const blocks = Array.from(grouped.entries()).map(([section, sectionRows]) => {
     const title = section.replace(/_/g, " ").toUpperCase();
-    const values = sectionRows.map((row) => `- ${row.label}: ${row.value_text?.trim() ?? ""}`).join("\n");
+    const values = sectionRows
+      .map((row) => {
+        const textPart = row.value_text?.trim();
+        if (textPart && textPart.length > 0) {
+          return `- ${row.label}: ${textPart}`;
+        }
+        if (row.value_json && Object.keys(row.value_json).length > 0) {
+          return `- ${row.label}: ${JSON.stringify(row.value_json)}`;
+        }
+        return null;
+      })
+      .filter((value): value is string => value !== null)
+      .join("\n");
     return `${title}\n${values}`;
   });
 
@@ -181,6 +208,10 @@ const persistDraftRows = async (args: {
     measurement_type: goal.measurement_type ?? null,
     baseline_data: goal.baseline_data ?? null,
     target_criteria: goal.target_criteria ?? null,
+    mastery_criteria: goal.mastery_criteria ?? null,
+    maintenance_criteria: goal.maintenance_criteria ?? null,
+    generalization_criteria: goal.generalization_criteria ?? null,
+    objective_data_points: goal.objective_data_points ?? [],
     accept_state: "pending",
   }));
 
@@ -329,7 +360,7 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
     }
 
     const checklistResult = await fetchJson<AssessmentChecklistValueRow[]>(
-      `${supabaseUrl}/rest/v1/assessment_checklist_items?select=section_key,label,placeholder_key,value_text,required,status&organization_id=eq.${encodeURIComponent(
+      `${supabaseUrl}/rest/v1/assessment_checklist_items?select=section_key,label,placeholder_key,value_text,value_json,required,status&organization_id=eq.${encodeURIComponent(
         organizationId,
       )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocumentId)}&order=section_key.asc,created_at.asc`,
       { method: "GET", headers },
@@ -502,6 +533,18 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
     }
     if (parsed.data.target_criteria !== undefined) {
       updatePayload.target_criteria = parsed.data.target_criteria;
+    }
+    if (parsed.data.mastery_criteria !== undefined) {
+      updatePayload.mastery_criteria = parsed.data.mastery_criteria;
+    }
+    if (parsed.data.maintenance_criteria !== undefined) {
+      updatePayload.maintenance_criteria = parsed.data.maintenance_criteria;
+    }
+    if (parsed.data.generalization_criteria !== undefined) {
+      updatePayload.generalization_criteria = parsed.data.generalization_criteria;
+    }
+    if (parsed.data.objective_data_points !== undefined) {
+      updatePayload.objective_data_points = parsed.data.objective_data_points;
     }
 
     const update = await fetchJson<Array<Record<string, unknown>>>(

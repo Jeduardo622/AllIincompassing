@@ -214,15 +214,15 @@
       "section": "behavior_background_services",
       "label": "Behaviors and Functional Skills to be Addressed",
       "placeholder_key": "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
-      "mode": "MANUAL",
-      "source": "N/A",
+      "mode": "ASSISTED",
+      "source": "uploaded_assessment_document",
       "required": true,
-      "extraction_method": "clinician_manual_entry",
+      "extraction_method": "ai_structured_recommendation",
       "validation_rule": "structured_payload_required",
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Behavior and skill target checklist."
+      "review_notes": "AI-assisted extraction of behavior/skill targets and related data-point details."
     },
     {
       "section": "behavior_background_services",
@@ -396,29 +396,29 @@
       "section": "treatment_coordination_recommendations",
       "label": "Target Behavior and Intervention Blocks",
       "placeholder_key": "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
-      "mode": "MANUAL",
-      "source": "N/A",
+      "mode": "ASSISTED",
+      "source": "uploaded_assessment_document",
       "required": true,
-      "extraction_method": "clinician_manual_entry",
+      "extraction_method": "ai_structured_recommendation",
       "validation_rule": "structured_payload_required",
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Definition/function/baseline/proactive/reactive."
+      "review_notes": "AI-assisted extraction of intervention blocks including baseline and measurement context."
     },
     {
       "section": "treatment_coordination_recommendations",
       "label": "Skill and School Goal Blocks",
       "placeholder_key": "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
-      "mode": "MANUAL",
-      "source": "N/A",
+      "mode": "ASSISTED",
+      "source": "uploaded_assessment_document",
       "required": true,
-      "extraction_method": "clinician_manual_entry",
+      "extraction_method": "ai_structured_recommendation",
       "validation_rule": "structured_payload_required",
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Short/intermediate goal rows."
+      "review_notes": "AI-assisted extraction for school/skill goals with objective-level criteria and data settings."
     },
     {
       "section": "treatment_coordination_recommendations",

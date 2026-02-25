@@ -45,6 +45,13 @@ interface AssessmentDraftGoal {
   title: string;
   description: string;
   original_text: string;
+  measurement_type?: string | null;
+  baseline_data?: string | null;
+  target_criteria?: string | null;
+  mastery_criteria?: string | null;
+  maintenance_criteria?: string | null;
+  generalization_criteria?: string | null;
+  objective_data_points?: Array<Record<string, unknown>> | null;
   accept_state: "pending" | "accepted" | "rejected" | "edited";
   review_notes: string | null;
 }
@@ -94,6 +101,17 @@ const parseApiErrorMessage = async (response: Response, fallback: string): Promi
   }
 };
 
+const parseObjectiveDataPointsInput = (value: string): Array<Record<string, unknown>> => {
+  if (!value.trim()) {
+    return [];
+  }
+  const parsed = JSON.parse(value);
+  if (!Array.isArray(parsed)) {
+    throw new Error("Objective data points must be a JSON array.");
+  }
+  return parsed.filter((item): item is Record<string, unknown> => !!item && typeof item === "object");
+};
+
 const statusToneByAssessment: Record<
   AssessmentDocumentRecord["status"],
   { label: string; className: string }
@@ -123,6 +141,13 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [goalTitle, setGoalTitle] = useState("");
   const [goalDescription, setGoalDescription] = useState("");
   const [goalOriginalText, setGoalOriginalText] = useState("");
+  const [goalMeasurementType, setGoalMeasurementType] = useState("");
+  const [goalBaselineData, setGoalBaselineData] = useState("");
+  const [goalTargetCriteria, setGoalTargetCriteria] = useState("");
+  const [goalMasteryCriteria, setGoalMasteryCriteria] = useState("");
+  const [goalMaintenanceCriteria, setGoalMaintenanceCriteria] = useState("");
+  const [goalGeneralizationCriteria, setGoalGeneralizationCriteria] = useState("");
+  const [goalObjectiveDataPoints, setGoalObjectiveDataPoints] = useState("[]");
   const [assessmentInput, setAssessmentInput] = useState("");
   const [draftPlan, setDraftPlan] = useState<ProgramGoalDraftResponse | null>(null);
   const [checklistEdits, setChecklistEdits] = useState<
@@ -140,6 +165,13 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         title: string;
         description: string;
         originalText: string;
+        measurementType: string;
+        baselineData: string;
+        targetCriteria: string;
+        masteryCriteria: string;
+        maintenanceCriteria: string;
+        generalizationCriteria: string;
+        objectiveDataPoints: string;
       }
     >
   >({});
@@ -151,6 +183,13 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     setGoalTitle(goal.title);
     setGoalDescription(goal.description);
     setGoalOriginalText(goal.original_text);
+    setGoalMeasurementType(goal.measurement_type ?? "");
+    setGoalBaselineData(goal.baseline_data ?? "");
+    setGoalTargetCriteria(goal.target_criteria ?? "");
+    setGoalMasteryCriteria(goal.mastery_criteria ?? "");
+    setGoalMaintenanceCriteria(goal.maintenance_criteria ?? "");
+    setGoalGeneralizationCriteria(goal.generalization_criteria ?? "");
+    setGoalObjectiveDataPoints(JSON.stringify(goal.objective_data_points ?? [], null, 2));
   };
 
   const { data: programs = [], isLoading: programsLoading } = useQuery({
@@ -331,7 +370,20 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
 
     const nextGoals: Record<
       string,
-      { acceptState: AssessmentDraftGoal["accept_state"]; reviewNotes: string; title: string; description: string; originalText: string }
+      {
+        acceptState: AssessmentDraftGoal["accept_state"];
+        reviewNotes: string;
+        title: string;
+        description: string;
+        originalText: string;
+        measurementType: string;
+        baselineData: string;
+        targetCriteria: string;
+        masteryCriteria: string;
+        maintenanceCriteria: string;
+        generalizationCriteria: string;
+        objectiveDataPoints: string;
+      }
     > = {};
     (assessmentDrafts?.goals ?? []).forEach((goal) => {
       nextGoals[goal.id] = {
@@ -340,6 +392,13 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         title: goal.title,
         description: goal.description,
         originalText: goal.original_text,
+        measurementType: goal.measurement_type ?? "",
+        baselineData: goal.baseline_data ?? "",
+        targetCriteria: goal.target_criteria ?? "",
+        masteryCriteria: goal.mastery_criteria ?? "",
+        maintenanceCriteria: goal.maintenance_criteria ?? "",
+        generalizationCriteria: goal.generalization_criteria ?? "",
+        objectiveDataPoints: JSON.stringify(goal.objective_data_points ?? [], null, 2),
       };
     });
     setDraftGoalEdits(nextGoals);
@@ -410,7 +469,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       const { error: storageError } = await supabase.storage.from(document.bucket_id).remove([document.object_path]);
       if (storageError) {
         // Storage cleanup can fail on already-deleted objects; continue with database cleanup.
-        console.warn("Failed to remove assessment document from storage", storageError);
+        showInfo("Storage object was already removed; continuing with assessment cleanup.");
       }
 
       const response = await callApi(
@@ -544,6 +603,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!edit) {
         throw new Error("Goal edit state not found.");
       }
+      const objectiveDataPoints = parseObjectiveDataPointsInput(edit.objectiveDataPoints);
       const response = await callApi("/api/assessment-drafts", {
         method: "PATCH",
         body: JSON.stringify({
@@ -554,6 +614,13 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           title: edit.title,
           description: edit.description,
           original_text: edit.originalText,
+          measurement_type: edit.measurementType || undefined,
+          baseline_data: edit.baselineData || undefined,
+          target_criteria: edit.targetCriteria || undefined,
+          mastery_criteria: edit.masteryCriteria || undefined,
+          maintenance_criteria: edit.maintenanceCriteria || undefined,
+          generalization_criteria: edit.generalizationCriteria || undefined,
+          objective_data_points: objectiveDataPoints,
         }),
       });
       if (!response.ok) {
@@ -655,6 +722,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!resolvedProgramId) {
         throw new Error("Select a program first");
       }
+      const objectiveDataPoints = parseObjectiveDataPointsInput(goalObjectiveDataPoints);
       const response = await callApi("/api/goals", {
         method: "POST",
         body: JSON.stringify({
@@ -663,6 +731,13 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           title: goalTitle,
           description: goalDescription,
           original_text: goalOriginalText,
+          measurement_type: goalMeasurementType || undefined,
+          baseline_data: goalBaselineData || undefined,
+          target_criteria: goalTargetCriteria || undefined,
+          mastery_criteria: goalMasteryCriteria || undefined,
+          maintenance_criteria: goalMaintenanceCriteria || undefined,
+          generalization_criteria: goalGeneralizationCriteria || undefined,
+          objective_data_points: objectiveDataPoints,
         }),
       });
       if (!response.ok) {
@@ -675,6 +750,13 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       setGoalTitle("");
       setGoalDescription("");
       setGoalOriginalText("");
+      setGoalMeasurementType("");
+      setGoalBaselineData("");
+      setGoalTargetCriteria("");
+      setGoalMasteryCriteria("");
+      setGoalMaintenanceCriteria("");
+      setGoalGeneralizationCriteria("");
+      setGoalObjectiveDataPoints("[]");
       queryClient.invalidateQueries({
         queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
       });
@@ -1189,6 +1271,13 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                     title: goal.title,
                     description: goal.description,
                     originalText: goal.original_text,
+                    measurementType: goal.measurement_type ?? "",
+                    baselineData: goal.baseline_data ?? "",
+                    targetCriteria: goal.target_criteria ?? "",
+                    masteryCriteria: goal.mastery_criteria ?? "",
+                    maintenanceCriteria: goal.maintenance_criteria ?? "",
+                    generalizationCriteria: goal.generalization_criteria ?? "",
+                    objectiveDataPoints: JSON.stringify(goal.objective_data_points ?? [], null, 2),
                   };
                   return (
                     <div key={goal.id} className="rounded border border-gray-200 dark:border-gray-700 p-3">
@@ -1234,6 +1323,110 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           }
                           rows={2}
                           className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                        />
+                        <input
+                          value={edit.measurementType}
+                          onChange={(event) =>
+                            setDraftGoalEdits((current) => ({
+                              ...current,
+                              [goal.id]: {
+                                ...edit,
+                                measurementType: event.target.value,
+                              },
+                            }))
+                          }
+                          placeholder="Measurement type"
+                          className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                        />
+                        <textarea
+                          value={edit.baselineData}
+                          onChange={(event) =>
+                            setDraftGoalEdits((current) => ({
+                              ...current,
+                              [goal.id]: {
+                                ...edit,
+                                baselineData: event.target.value,
+                              },
+                            }))
+                          }
+                          placeholder="Baseline data"
+                          rows={2}
+                          className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                        />
+                        <textarea
+                          value={edit.targetCriteria}
+                          onChange={(event) =>
+                            setDraftGoalEdits((current) => ({
+                              ...current,
+                              [goal.id]: {
+                                ...edit,
+                                targetCriteria: event.target.value,
+                              },
+                            }))
+                          }
+                          placeholder="Target criteria"
+                          rows={2}
+                          className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                        />
+                        <textarea
+                          value={edit.masteryCriteria}
+                          onChange={(event) =>
+                            setDraftGoalEdits((current) => ({
+                              ...current,
+                              [goal.id]: {
+                                ...edit,
+                                masteryCriteria: event.target.value,
+                              },
+                            }))
+                          }
+                          placeholder="Mastery criteria"
+                          rows={2}
+                          className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                        />
+                        <textarea
+                          value={edit.maintenanceCriteria}
+                          onChange={(event) =>
+                            setDraftGoalEdits((current) => ({
+                              ...current,
+                              [goal.id]: {
+                                ...edit,
+                                maintenanceCriteria: event.target.value,
+                              },
+                            }))
+                          }
+                          placeholder="Maintenance criteria"
+                          rows={2}
+                          className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                        />
+                        <textarea
+                          value={edit.generalizationCriteria}
+                          onChange={(event) =>
+                            setDraftGoalEdits((current) => ({
+                              ...current,
+                              [goal.id]: {
+                                ...edit,
+                                generalizationCriteria: event.target.value,
+                              },
+                            }))
+                          }
+                          placeholder="Generalization criteria"
+                          rows={2}
+                          className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                        />
+                        <textarea
+                          value={edit.objectiveDataPoints}
+                          onChange={(event) =>
+                            setDraftGoalEdits((current) => ({
+                              ...current,
+                              [goal.id]: {
+                                ...edit,
+                                objectiveDataPoints: event.target.value,
+                              },
+                            }))
+                          }
+                          placeholder="Objective data points JSON array"
+                          rows={3}
+                          className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm font-mono"
                         />
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                           <select
@@ -1310,6 +1503,17 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                       <span className="text-xs uppercase text-gray-500">{goal.status}</span>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">{goal.description}</p>
+                    <div className="mt-2 space-y-1 text-xs text-gray-500">
+                      {goal.measurement_type && <p>Measurement: {goal.measurement_type}</p>}
+                      {goal.baseline_data && <p>Baseline: {goal.baseline_data}</p>}
+                      {goal.target_criteria && <p>Target: {goal.target_criteria}</p>}
+                      {goal.mastery_criteria && <p>Mastery: {goal.mastery_criteria}</p>}
+                      {goal.maintenance_criteria && <p>Maintenance: {goal.maintenance_criteria}</p>}
+                      {goal.generalization_criteria && <p>Generalization: {goal.generalization_criteria}</p>}
+                      <p>
+                        Objective data points: {Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0}
+                      </p>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1339,6 +1543,55 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 placeholder="Original clinical wording"
                 rows={2}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              />
+              <input
+                type="text"
+                value={goalMeasurementType}
+                onChange={(event) => setGoalMeasurementType(event.target.value)}
+                placeholder="Measurement type (optional)"
+                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              />
+              <textarea
+                value={goalBaselineData}
+                onChange={(event) => setGoalBaselineData(event.target.value)}
+                placeholder="Baseline data (optional)"
+                rows={2}
+                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              />
+              <textarea
+                value={goalTargetCriteria}
+                onChange={(event) => setGoalTargetCriteria(event.target.value)}
+                placeholder="Target criteria (optional)"
+                rows={2}
+                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              />
+              <textarea
+                value={goalMasteryCriteria}
+                onChange={(event) => setGoalMasteryCriteria(event.target.value)}
+                placeholder="Mastery criteria (optional)"
+                rows={2}
+                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              />
+              <textarea
+                value={goalMaintenanceCriteria}
+                onChange={(event) => setGoalMaintenanceCriteria(event.target.value)}
+                placeholder="Maintenance criteria (optional)"
+                rows={2}
+                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              />
+              <textarea
+                value={goalGeneralizationCriteria}
+                onChange={(event) => setGoalGeneralizationCriteria(event.target.value)}
+                placeholder="Generalization criteria (optional)"
+                rows={2}
+                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+              />
+              <textarea
+                value={goalObjectiveDataPoints}
+                onChange={(event) => setGoalObjectiveDataPoints(event.target.value)}
+                placeholder='Objective data points JSON array (optional), e.g. [{"objective":"Identify 4 emotions","data_settings":"Opportunity based with prompts"}]'
+                rows={3}
+                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm font-mono"
               />
               <button
                 type="button"

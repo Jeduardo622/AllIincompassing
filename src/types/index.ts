@@ -100,6 +100,8 @@ export interface Client {
   parent_consult_units: number;
   assessment_units: number;
   auth_units: number;
+  auth_start_date?: string;
+  auth_end_date?: string;
   availability_hours: AvailabilityHours;
   created_at: string;
   created_by?: string | null;

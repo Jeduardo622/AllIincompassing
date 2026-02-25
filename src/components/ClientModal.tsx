@@ -53,6 +53,8 @@ export default function ClientModal({
       parent_consult_units: client?.parent_consult_units || 0,
       assessment_units: client?.assessment_units || 0,
       auth_units: client?.auth_units || 0,
+      auth_start_date: client?.auth_start_date || '',
+      auth_end_date: client?.auth_end_date || '',
       availability_hours: client?.availability_hours || {
         monday: { start: "06:00", end: "21:00" },
         tuesday: { start: "06:00", end: "21:00" },
@@ -215,6 +217,7 @@ export default function ClientModal({
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.last_name.message}</p>
                 )}
               </div>
+
             </div>
 
             <div className="grid grid-cols-3 gap-4 mt-4">
@@ -641,6 +644,31 @@ export default function ClientModal({
                   {errors.auth_units && (
                     <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.auth_units.message}</p>
                   )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mt-2">
+                <div>
+                  <label htmlFor="auth-start-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Authorization Start Date
+                  </label>
+                  <input
+                    id="auth-start-date"
+                    type="date"
+                    {...register('auth_start_date')}
+                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="auth-end-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Authorization End Date
+                  </label>
+                  <input
+                    id="auth-end-date"
+                    type="date"
+                    {...register('auth_end_date')}
+                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                  />
                 </div>
               </div>
             </div>

@@ -200,6 +200,8 @@ export const clientFormSchema = z
     parent_consult_units: nonNegativeNumber('Parent consult units').default(0),
     assessment_units: nonNegativeNumber('Assessment units').default(0),
     auth_units: nonNegativeNumber('Auth units').default(0),
+    auth_start_date: optionalStringSchema,
+    auth_end_date: optionalStringSchema,
 
     // Service preferences
     service_preference: servicePreferenceSchema,
@@ -242,6 +244,18 @@ export const clientFormSchema = z
         message: 'If parent information is provided, both first and last names are required',
         path: ['parent1_first_name'],
       });
+    }
+
+    if (data.auth_start_date && data.auth_end_date) {
+      const start = new Date(data.auth_start_date);
+      const end = new Date(data.auth_end_date);
+      if (start > end) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Authorization end date must be on or after the start date',
+          path: ['auth_end_date'],
+        });
+      }
     }
   });
 
@@ -299,6 +313,8 @@ export const clientPayloadSchema: z.ZodType<ClientInsert> = z
     parent_consult_units: z.number().nullable().optional(),
     assessment_units: z.number().nullable().optional(),
     auth_units: z.number().nullable().optional(),
+    auth_start_date: z.string().nullable().optional(),
+    auth_end_date: z.string().nullable().optional(),
     parent1_email: z.string().nullable().optional(),
     parent1_first_name: z.string().nullable().optional(),
     parent1_last_name: z.string().nullable().optional(),

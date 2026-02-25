@@ -80,6 +80,8 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       parent_consult_units: 0,
       assessment_units: 0,
       auth_units: 0,
+      auth_start_date: '',
+      auth_end_date: '',
       availability_hours: DEFAULT_AVAILABILITY,
       documents_consent: false,
     }
@@ -112,7 +114,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       'parent2_relationship',
     ],
     3: ['address_line1', 'address_line2', 'city', 'state', 'zip_code'],
-    4: ['service_preference', 'one_to_one_units', 'supervision_units', 'parent_consult_units', 'assessment_units', 'auth_units', 'insurance_info'],
+    4: ['service_preference', 'one_to_one_units', 'supervision_units', 'parent_consult_units', 'assessment_units', 'auth_units', 'auth_start_date', 'auth_end_date', 'insurance_info'],
   };
 
   // Check if email already exists in database
@@ -938,6 +940,37 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                   type="number"
                   min="0"
                   {...register('auth_units', { valueAsNumber: true })}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label
+                  htmlFor="onboarding-auth-start-date"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Authorization Start Date
+                </label>
+                <input
+                  id="onboarding-auth-start-date"
+                  type="date"
+                  {...register('auth_start_date')}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="onboarding-auth-end-date"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Authorization End Date
+                </label>
+                <input
+                  id="onboarding-auth-end-date"
+                  type="date"
+                  {...register('auth_end_date')}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                 />
               </div>

@@ -80,6 +80,14 @@ const Clients = () => {
            (client.auth_units || 0);
   };
 
+  const getAuthorizationDateRange = (client: Client) => {
+    const start = client.auth_start_date?.trim();
+    const end = client.auth_end_date?.trim();
+    if (!start && !end) return null;
+    if (start && end) return `${start} - ${end}`;
+    return start ?? end ?? null;
+  };
+
   const getClientMutationErrorMessage = (error: unknown) => {
     if (!error) {
       return null;
@@ -629,6 +637,14 @@ const Clients = () => {
                             {Object.entries(client.availability_hours || {}).filter(([_, v]) => v.start && v.end).length} days available
                           </span>
                         </div>
+                        {getAuthorizationDateRange(client) && (
+                          <div className="flex items-center">
+                            <Calendar className="w-4 h-4 text-indigo-400 mr-2" />
+                            <span className="text-sm text-gray-600 dark:text-gray-300">
+                              Auth window: {getAuthorizationDateRange(client)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4">

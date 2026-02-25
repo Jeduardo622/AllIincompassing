@@ -40,6 +40,8 @@ export default function ClientModalEnhanced({
     parent_consult_units: client?.parent_consult_units || 0,
     assessment_units: client?.assessment_units || 0,
     auth_units: client?.auth_units || 0,
+    auth_start_date: client?.auth_start_date || '',
+    auth_end_date: client?.auth_end_date || '',
     availability_hours: client?.availability_hours || {
       monday: { start: "09:00", end: "17:00" },
       tuesday: { start: "09:00", end: "17:00" },
@@ -510,6 +512,35 @@ export default function ClientModalEnhanced({
                     label="Auth Units"
                     error={fieldState.error?.message}
                     onChange={(e) => field.onChange(Number(e.target.value))}
+                  />
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mt-4">
+              <Controller
+                name="auth_start_date"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <ValidatedInput
+                    {...field}
+                    id="auth_start_date"
+                    type="date"
+                    label="Authorization Start Date"
+                    error={fieldState.error?.message}
+                  />
+                )}
+              />
+              <Controller
+                name="auth_end_date"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <ValidatedInput
+                    {...field}
+                    id="auth_end_date"
+                    type="date"
+                    label="Authorization End Date"
+                    error={fieldState.error?.message}
                   />
                 )}
               />

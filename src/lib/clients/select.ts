@@ -33,6 +33,8 @@ const CLIENT_BASE_COLUMNS = [
   'parent_consult_units',
   'assessment_units',
   'auth_units',
+  'auth_start_date',
+  'auth_end_date',
   'authorized_hours_per_month',
   'therapist_id',
   'therapist_assigned_at',

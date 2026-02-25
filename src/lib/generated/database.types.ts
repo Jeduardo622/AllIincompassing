@@ -1823,6 +1823,8 @@ export type Database = {
           address_line2: string | null
           assessment_units: number | null
           auth_units: number | null
+          auth_end_date: string | null
+          auth_start_date: string | null
           authorized_hours_per_month: number | null
           availability_hours: Json | null
           avoid_rush_hour: boolean | null
@@ -1887,6 +1889,8 @@ export type Database = {
           address_line2?: string | null
           assessment_units?: number | null
           auth_units?: number | null
+          auth_end_date?: string | null
+          auth_start_date?: string | null
           authorized_hours_per_month?: number | null
           availability_hours?: Json | null
           avoid_rush_hour?: boolean | null
@@ -1951,6 +1955,8 @@ export type Database = {
           address_line2?: string | null
           assessment_units?: number | null
           auth_units?: number | null
+          auth_end_date?: string | null
+          auth_start_date?: string | null
           authorized_hours_per_month?: number | null
           availability_hours?: Json | null
           avoid_rush_hour?: boolean | null
@@ -5563,6 +5569,8 @@ export type Database = {
           address_line2: string | null
           assessment_units: number | null
           auth_units: number | null
+          auth_end_date: string | null
+          auth_start_date: string | null
           authorized_hours_per_month: number | null
           availability_hours: Json | null
           avoid_rush_hour: boolean | null

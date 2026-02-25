@@ -43,7 +43,7 @@ const responseSchema = z.object({
   rationale: z.string().trim().max(2000).optional(),
 });
 
-const WHITE_BIBLE_GUIDANCE = `
+const FALLBACK_WHITE_BIBLE_GUIDANCE = `
 Applied Behavior Analysis practice guidance:
 - Build goals from observable and measurable behavior, not traits.
 - Use clear operational definitions and context for each target behavior.
@@ -51,6 +51,41 @@ Applied Behavior Analysis practice guidance:
 - Keep interventions function-based, socially significant, and feasible for caregivers/therapists.
 - Write goals so progress can be tracked across sessions with objective data.
 `;
+
+const WHITE_BIBLE_GUIDANCE_PATH = new URL("./white-bible-guidance.md", import.meta.url);
+let cachedWhiteBibleGuidance: string | null = null;
+
+const loadWhiteBibleGuidance = async (): Promise<string> => {
+  if (cachedWhiteBibleGuidance) {
+    return cachedWhiteBibleGuidance;
+  }
+  try {
+    const guidance = (await Deno.readTextFile(WHITE_BIBLE_GUIDANCE_PATH)).trim();
+    if (guidance.length >= 30) {
+      cachedWhiteBibleGuidance = guidance;
+      return guidance;
+    }
+  } catch (error) {
+    console.warn("generate-program-goals: unable to read white-bible guidance file", error);
+  }
+  cachedWhiteBibleGuidance = FALLBACK_WHITE_BIBLE_GUIDANCE.trim();
+  return cachedWhiteBibleGuidance;
+};
+
+const dedupeGoalsByTitle = (goals: z.infer<typeof responseSchema>["goals"]): z.infer<typeof responseSchema>["goals"] => {
+  const seen = new Set<string>();
+  return goals.filter((goal) => {
+    const normalizedTitle = goal.title.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!normalizedTitle) {
+      return false;
+    }
+    if (seen.has(normalizedTitle)) {
+      return false;
+    }
+    seen.add(normalizedTitle);
+    return true;
+  });
+};
 
 const stripCodeFences = (value: string): string => {
   const trimmed = value.trim();
@@ -89,10 +124,12 @@ Deno.serve(async (req) => {
       return json({ error: "Invalid request body" }, 400);
     }
 
+    const whiteBibleGuidance = await loadWhiteBibleGuidance();
     const prompt = `
 You are an ABA clinical planning assistant.
 Use the assessment to draft one program and 3-6 goals.
-${WHITE_BIBLE_GUIDANCE}
+Use this White Bible guidance as the highest-priority clinical style reference:
+${whiteBibleGuidance}
 
 Return JSON ONLY with this shape:
 {
@@ -155,7 +192,12 @@ ${parsed.data.assessment_text}
       return json({ error: "Generated draft did not pass schema validation" }, 502);
     }
 
-    return json(validated.data, 200);
+    const dedupedGoals = dedupeGoalsByTitle(validated.data.goals);
+    if (dedupedGoals.length === 0) {
+      return json({ error: "Generated draft did not contain valid unique goals" }, 502);
+    }
+
+    return json({ ...validated.data, goals: dedupedGoals }, 200);
   } catch (error) {
     console.error("generate-program-goals error", error);
     return json({ error: "Failed to generate draft" }, 500);

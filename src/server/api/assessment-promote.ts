@@ -45,6 +45,11 @@ interface DraftGoalRow {
   accept_state: "pending" | "accepted" | "rejected" | "edited";
 }
 
+const normalizeTitle = (value: string): string => value.trim().replace(/\s+/g, " ").toLowerCase();
+
+const isMinGoalQuality = (goal: DraftGoalRow): boolean =>
+  goal.title.trim().length >= 3 && goal.description.trim().length >= 10 && goal.original_text.trim().length >= 10;
+
 export async function assessmentPromoteHandler(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: { ...CORS_HEADERS } });
@@ -140,6 +145,40 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
   }
   if (acceptedGoals.length === 0) {
     return json({ error: "At least one accepted draft goal is required before promotion." }, 409);
+  }
+
+  const lowQualityGoals = acceptedGoals.filter((goal) => !isMinGoalQuality(goal));
+  if (lowQualityGoals.length > 0) {
+    return json(
+      {
+        error: "Accepted goals must include minimally complete title, description, and original text before promotion.",
+        invalid_goal_count: lowQualityGoals.length,
+      },
+      409,
+    );
+  }
+
+  const seenGoalTitles = new Set<string>();
+  const duplicateGoalTitles = new Set<string>();
+  acceptedGoals.forEach((goal) => {
+    const normalized = normalizeTitle(goal.title);
+    if (!normalized) {
+      return;
+    }
+    if (seenGoalTitles.has(normalized)) {
+      duplicateGoalTitles.add(goal.title.trim());
+      return;
+    }
+    seenGoalTitles.add(normalized);
+  });
+  if (duplicateGoalTitles.size > 0) {
+    return json(
+      {
+        error: "Duplicate accepted goal titles detected. Resolve duplicates before promotion.",
+        duplicate_goal_titles: Array.from(duplicateGoalTitles.values()),
+      },
+      409,
+    );
   }
 
   const selectedProgram = acceptedPrograms[0];

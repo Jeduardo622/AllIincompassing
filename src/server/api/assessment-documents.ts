@@ -422,6 +422,7 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
         template_type: templateType,
         template_label: templateTypeToDisplayLabel(templateType),
         source: "assessment-documents-api",
+        upload_workflow: "manual_fba_clinician_authored",
       },
     };
 

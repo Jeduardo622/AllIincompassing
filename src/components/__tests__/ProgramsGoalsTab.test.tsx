@@ -117,6 +117,14 @@ describe("ProgramsGoalsTab", () => {
           { status: 200 },
         );
       }
+      if (method === "POST" && path === "/api/assessment-drafts") {
+        return new Response(
+          JSON.stringify({
+            draft_program_id: "draft-program-1",
+          }),
+          { status: 201 },
+        );
+      }
 
       return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
     });
@@ -146,7 +154,42 @@ describe("ProgramsGoalsTab", () => {
     vi.clearAllMocks();
   });
 
-  it("generates program/goals draft and creates all draft records", async () => {
+  it("generates program/goals proposal and saves it for review", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1234,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/fba.pdf",
+              status: "extracted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "POST" && path === "/api/assessment-drafts") {
+        return new Response(JSON.stringify({ draft_program_id: "draft-program-1" }), { status: 201 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
     renderWithProviders(
       <ProgramsGoalsTab
         client={
@@ -182,7 +225,7 @@ describe("ProgramsGoalsTab", () => {
       assessmentInput,
       "Assessment shows deficits in functional communication and WH-question responding with moderate prompt dependence.",
     );
-    await userEvent.click(screen.getByRole("button", { name: /Generate Program \+ Goals/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Generate AI Proposal Program \+ Goals/i }));
 
     await waitFor(() => {
       expect(generateProgramGoalDraft).toHaveBeenCalledTimes(1);
@@ -190,19 +233,16 @@ describe("ProgramsGoalsTab", () => {
     expect(screen.getByPlaceholderText("Program name")).toHaveValue("Communication Program");
     expect(screen.getByText(/Requesting preferred items with 2-word phrase/i)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /Legacy Quick Create/i }));
+    expect(screen.queryByRole("button", { name: /Legacy Quick Create/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Save AI Proposal to Selected Assessment/i }));
 
     await waitFor(() => {
       expect(callApi).toHaveBeenCalledWith(
-        "/api/programs",
+        "/api/assessment-drafts",
         expect.objectContaining({ method: "POST" }),
       );
     });
-    const goalPostCalls = vi.mocked(callApi).mock.calls.filter(
-      (call) => call[0] === "/api/goals" && (call[1] as RequestInit | undefined)?.method === "POST",
-    );
-    expect(goalPostCalls).toHaveLength(2);
-    expect(showSuccess).toHaveBeenCalledWith("Created 1 program and 2 goals from assessment draft.");
+    expect(showSuccess).toHaveBeenCalledWith("AI proposal saved to assessment queue for review.");
   });
 
   it("uploads IEHP assessment with selected template type", async () => {
@@ -234,7 +274,7 @@ describe("ProgramsGoalsTab", () => {
       },
     );
 
-    await screen.findByText(/Assessment Upload/i);
+    await screen.findByText(/FBA Upload \+ AI Workflow/i);
     await userEvent.selectOptions(screen.getByDisplayValue("CalOptima FBA"), "iehp_fba");
     const uploadInput = document.querySelector("input[type='file']") as HTMLInputElement | null;
     expect(uploadInput).not.toBeNull();
@@ -328,7 +368,7 @@ describe("ProgramsGoalsTab", () => {
       },
     );
 
-    const generateButton = await screen.findByRole("button", { name: /Generate Drafts from Uploaded Assessment/i });
+    const generateButton = await screen.findByRole("button", { name: /Generate with AI from Uploaded FBA/i });
     await userEvent.click(generateButton);
 
     await waitFor(() => {
@@ -340,7 +380,7 @@ describe("ProgramsGoalsTab", () => {
         }),
       );
     });
-    expect(showSuccess).toHaveBeenCalledWith("Draft program and goals generated from uploaded assessment fields.");
+    expect(showSuccess).toHaveBeenCalledWith("AI proposal program and goals generated from uploaded FBA.");
   });
 
   it("generates completed CalOptima PDF for selected assessment", async () => {
@@ -417,7 +457,7 @@ describe("ProgramsGoalsTab", () => {
     );
 
     await screen.findByText("fba.pdf");
-    await userEvent.click(screen.getByRole("button", { name: /Generate Completed CalOptima PDF/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Optional: Export Completed CalOptima PDF/i }));
 
     await waitFor(() => {
       expect(callApi).toHaveBeenCalledWith(
@@ -638,7 +678,7 @@ describe("ProgramsGoalsTab", () => {
     );
 
     await screen.findByText("fba.pdf");
-    await userEvent.click(screen.getByRole("button", { name: /Promote Accepted Drafts to Program \+ Goals/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Publish Approved Programs \+ Goals/i }));
 
     await waitFor(() => {
       expect(showError).toHaveBeenCalled();

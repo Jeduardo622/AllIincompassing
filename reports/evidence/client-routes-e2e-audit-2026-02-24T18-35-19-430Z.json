@@ -1,0 +1,49 @@
+{
+  "target": "https://app.allincompassing.ai",
+  "timestamp": "2026-02-24T18:35:19.430Z",
+  "summary": {
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0,
+    "blocked": 3
+  },
+  "auth": {
+    "attempted": true,
+    "success": false,
+    "reason": "Could not locate or fill email field on login page"
+  },
+  "routes": [
+    {
+      "route": "/schedule",
+      "status": "blocked",
+      "url": "https://app.allincompassing.ai/schedule",
+      "checks": [],
+      "errors": [
+        "Audit blocked: authentication failed (Could not locate or fill email field on login page)."
+      ],
+      "screenshotPath": "C:\\Users\\test\\Desktop\\AllIincompassing\\artifacts\\latest\\playwright-client-routes-auth-failure-1771958120762.png"
+    },
+    {
+      "route": "/clients",
+      "status": "blocked",
+      "url": "https://app.allincompassing.ai/clients",
+      "checks": [],
+      "errors": [
+        "Audit blocked: authentication failed (Could not locate or fill email field on login page)."
+      ],
+      "screenshotPath": "C:\\Users\\test\\Desktop\\AllIincompassing\\artifacts\\latest\\playwright-client-routes-auth-failure-1771958120762.png"
+    },
+    {
+      "route": "/clients/:clientId",
+      "status": "blocked",
+      "url": "https://app.allincompassing.ai/clients/:clientId",
+      "checks": [],
+      "errors": [
+        "Audit blocked: authentication failed (Could not locate or fill email field on login page)."
+      ],
+      "screenshotPath": "C:\\Users\\test\\Desktop\\AllIincompassing\\artifacts\\latest\\playwright-client-routes-auth-failure-1771958120762.png"
+    }
+  ],
+  "consoleErrors": [],
+  "networkErrors": []
+}

@@ -1,0 +1,51 @@
+{
+  "target": "https://app.allincompassing.ai",
+  "timestamp": "2026-02-24T18:02:54.957Z",
+  "summary": {
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0,
+    "blocked": 3
+  },
+  "auth": {
+    "attempted": true,
+    "success": false,
+    "reason": "Login did not complete within timeout (still on /login)."
+  },
+  "routes": [
+    {
+      "route": "/schedule",
+      "status": "blocked",
+      "url": "https://app.allincompassing.ai/schedule",
+      "checks": [],
+      "errors": [
+        "Audit blocked: authentication failed (Login did not complete within timeout (still on /login).)."
+      ],
+      "screenshotPath": "C:\\Users\\test\\Desktop\\AllIincompassing\\artifacts\\latest\\playwright-client-routes-auth-failure-1771956199104.png"
+    },
+    {
+      "route": "/clients",
+      "status": "blocked",
+      "url": "https://app.allincompassing.ai/clients",
+      "checks": [],
+      "errors": [
+        "Audit blocked: authentication failed (Login did not complete within timeout (still on /login).)."
+      ],
+      "screenshotPath": "C:\\Users\\test\\Desktop\\AllIincompassing\\artifacts\\latest\\playwright-client-routes-auth-failure-1771956199104.png"
+    },
+    {
+      "route": "/clients/:clientId",
+      "status": "blocked",
+      "url": "https://app.allincompassing.ai/clients/:clientId",
+      "checks": [],
+      "errors": [
+        "Audit blocked: authentication failed (Login did not complete within timeout (still on /login).)."
+      ],
+      "screenshotPath": "C:\\Users\\test\\Desktop\\AllIincompassing\\artifacts\\latest\\playwright-client-routes-auth-failure-1771956199104.png"
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 400 ()",
+    "[ERROR] Login error returned from sign-in {flow: signIn, attemptedEmail: ****}"
+  ]
+}

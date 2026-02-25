@@ -1,0 +1,74 @@
+{
+  "target": "https://app.allincompassing.ai",
+  "timestamp": "2026-02-24T21:00:54.414Z",
+  "summary": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "blocked": 0
+  },
+  "auth": {
+    "attempted": true,
+    "success": true
+  },
+  "routes": [
+    {
+      "route": "/schedule",
+      "status": "passed",
+      "url": "https://app.allincompassing.ai/schedule",
+      "checks": [
+        "Schedule heading is visible",
+        "Day view control is visible",
+        "Week view control is visible"
+      ],
+      "errors": []
+    },
+    {
+      "route": "/clients",
+      "status": "passed",
+      "url": "https://app.allincompassing.ai/clients",
+      "checks": [
+        "Clients heading is visible",
+        "Search clients input is visible",
+        "Found at least one client details link"
+      ],
+      "errors": []
+    },
+    {
+      "route": "/clients/:clientId",
+      "status": "passed",
+      "url": "https://app.allincompassing.ai/clients/d33c28d7-6edd-4c0c-bff1-a73c4275c031",
+      "checks": [
+        "Client details heading is visible",
+        "Profile tab is visible",
+        "Session Notes tab is visible"
+      ],
+      "errors": []
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 400 ()",
+    "Failed to load resource: the server responded with a status of 400 ()",
+    "Failed to load resource: the server responded with a status of 400 ()"
+  ],
+  "networkErrors": [
+    {
+      "url": "https://wnnjeqheqxxyrgsjmygy.supabase.co/rest/v1/rpc/get_schedule_data_batch",
+      "status": 400,
+      "method": "POST",
+      "statusText": ""
+    },
+    {
+      "url": "https://wnnjeqheqxxyrgsjmygy.supabase.co/rest/v1/rpc/get_schedule_data_batch",
+      "status": 400,
+      "method": "POST",
+      "statusText": ""
+    },
+    {
+      "url": "https://wnnjeqheqxxyrgsjmygy.supabase.co/rest/v1/rpc/get_schedule_data_batch",
+      "status": 400,
+      "method": "POST",
+      "statusText": ""
+    }
+  ]
+}

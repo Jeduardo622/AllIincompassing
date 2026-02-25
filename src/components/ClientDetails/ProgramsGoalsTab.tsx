@@ -100,7 +100,7 @@ const statusToneByAssessment: Record<
   uploaded: { label: "uploaded", className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200" },
   extracting: { label: "extracting", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200" },
   extracted: { label: "extracted", className: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-200" },
-  drafted: { label: "drafted", className: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200" },
+  drafted: { label: "ai proposal ready", className: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200" },
   approved: { label: "approved", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200" },
   rejected: { label: "rejected", className: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200" },
   extraction_failed: {
@@ -272,11 +272,11 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const promoteDisabledReason = !canQuerySelectedAssessment
     ? "Select a valid assessment first."
     : hasPendingRequiredChecklistItems
-      ? "Approve all required checklist rows before promoting."
+      ? "Approve all required checklist rows before publishing."
       : !hasAcceptedDraftProgram
-        ? "Accept or edit at least one draft program before promoting."
+        ? "Accept or edit at least one AI proposal program before publishing."
         : !hasAcceptedDraftGoal
-          ? "Accept or edit at least one draft goal before promoting."
+          ? "Accept or edit at least one AI proposal goal before publishing."
           : null;
 
   useEffect(() => {
@@ -430,7 +430,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       queryClient.invalidateQueries({
         queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
       });
-      showSuccess("Drafts saved to assessment queue for review.");
+      showSuccess("AI proposal saved to assessment queue for review.");
     },
     onError: showError,
   });
@@ -458,7 +458,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       queryClient.invalidateQueries({
         queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
       });
-      showSuccess("Draft program and goals generated from uploaded assessment fields.");
+      showSuccess("AI proposal program and goals generated from uploaded FBA.");
     },
     onError: showError,
   });
@@ -548,7 +548,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       queryClient.invalidateQueries({
         queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
       });
-      showSuccess(`Assessment promoted. Created production program and ${result.created_goal_count} goals.`);
+      showSuccess(`Published approved records. Created production program and ${result.created_goal_count} goals.`);
     },
     onError: showError,
   });
@@ -688,65 +688,6 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     onError: showError,
   });
 
-  const createDraftPlan = useMutation({
-    mutationFn: async () => {
-      if (!draftPlan) {
-        throw new Error("Generate a draft first.");
-      }
-
-      const programResponse = await callApi("/api/programs", {
-        method: "POST",
-        body: JSON.stringify({
-          client_id: client.id,
-          name: draftPlan.program.name,
-          description: draftPlan.program.description || undefined,
-        }),
-      });
-      if (!programResponse.ok) {
-        throw new Error("Failed to create generated program");
-      }
-
-      const createdProgram = await parseJson<Program>(programResponse);
-
-      for (const draftGoal of draftPlan.goals) {
-        const goalResponse = await callApi("/api/goals", {
-          method: "POST",
-          body: JSON.stringify({
-            client_id: client.id,
-            program_id: createdProgram.id,
-            title: draftGoal.title,
-            description: draftGoal.description,
-            original_text: draftGoal.original_text,
-            target_behavior: draftGoal.target_behavior || undefined,
-            measurement_type: draftGoal.measurement_type || undefined,
-            baseline_data: draftGoal.baseline_data || undefined,
-            target_criteria: draftGoal.target_criteria || undefined,
-          }),
-        });
-        if (!goalResponse.ok) {
-          throw new Error(`Failed to create generated goal "${draftGoal.title}"`);
-        }
-      }
-
-      return {
-        createdProgram,
-        createdGoalCount: draftPlan.goals.length,
-      };
-    },
-    onSuccess: ({ createdProgram, createdGoalCount }) => {
-      setSelectedProgramId(createdProgram.id);
-      setDraftPlan(null);
-      queryClient.invalidateQueries({
-        queryKey: ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["program-goals", createdProgram.id, organizationId ?? "MISSING_ORG"],
-      });
-      showSuccess(`Created 1 program and ${createdGoalCount} goals from assessment draft.`);
-    },
-    onError: showError,
-  });
-
   if (programsLoading) {
     return (
       <div className="flex items-center justify-center h-40">
@@ -770,7 +711,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-2">
               <UploadCloud className="w-4 h-4" />
-              Assessment Upload
+              FBA Upload + AI Workflow
             </h3>
             <div className="space-y-3">
               <select
@@ -838,7 +779,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 title={promoteDisabledReason ?? undefined}
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
               >
-                {promoteAssessment.isLoading ? "Promoting..." : "Promote Accepted Drafts to Program + Goals"}
+                {promoteAssessment.isLoading ? "Publishing..." : "Publish Approved Programs + Goals"}
               </button>
               {promoteDisabledReason && !promoteAssessment.isLoading && (
                 <p className="text-xs text-amber-700 dark:text-amber-300">{promoteDisabledReason}</p>
@@ -850,8 +791,8 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-cyan-600 rounded-md hover:bg-cyan-700 disabled:opacity-50"
               >
                 {generateDraftsFromUploadedAssessment.isLoading
-                  ? "Generating Drafts..."
-                  : "Generate Drafts from Uploaded Assessment"}
+                  ? "Generating AI Proposal..."
+                  : "Generate with AI from Uploaded FBA"}
               </button>
               <button
                 type="button"
@@ -859,14 +800,14 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 disabled={!canQuerySelectedAssessment || generateAssessmentPlanPdf.isLoading}
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-violet-600 rounded-md hover:bg-violet-700 disabled:opacity-50"
               >
-                {generateAssessmentPlanPdf.isLoading ? "Generating..." : "Generate Completed CalOptima PDF"}
+                {generateAssessmentPlanPdf.isLoading ? "Generating..." : "Optional: Export Completed CalOptima PDF"}
               </button>
             </div>
           </div>
 
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
-              Generate from Assessment (Fallback Drafting)
+              Generate with AI from Manual Notes (Optional Fallback)
             </h3>
             <div className="space-y-3">
               <textarea
@@ -882,7 +823,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 disabled={assessmentInput.trim().length < 20 || generateDraftPlan.isLoading}
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50"
               >
-                {generateDraftPlan.isLoading ? "Generating..." : "Generate Program + Goals"}
+                {generateDraftPlan.isLoading ? "Generating..." : "Generate AI Proposal Program + Goals"}
               </button>
             </div>
 
@@ -910,15 +851,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                   disabled={!canQuerySelectedAssessment || persistAssessmentDrafts.isLoading}
                   className="w-full px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  {persistAssessmentDrafts.isLoading ? "Saving..." : "Save Drafts to Selected Assessment"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => createDraftPlan.mutate()}
-                  disabled={createDraftPlan.isLoading}
-                  className="w-full px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  {createDraftPlan.isLoading ? "Creating..." : "Legacy Quick Create (Skip Review)"}
+                  {persistAssessmentDrafts.isLoading ? "Saving..." : "Save AI Proposal to Selected Assessment"}
                 </button>
               </div>
             )}
@@ -1090,7 +1023,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
 
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
-              Draft Review (Accept / Reject / Edit)
+              AI Proposal Review (Approve / Reject / Edit)
             </h3>
             {!selectedAssessmentId ? (
               <p className="text-sm text-gray-500">Select an assessment to review its draft program and goals.</p>

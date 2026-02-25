@@ -23,10 +23,21 @@ export const useScheduleDataBatch = (startDate: Date, endDate: Date) => {
         p_start_date: startDate.toISOString(),
         p_end_date: endDate.toISOString()
       });
-      
-      if (error) throw error;
+
+      if (error) {
+        // Gracefully fall back to the non-batched queries when the RPC is unavailable/misconfigured.
+        logger.warn('Schedule batch RPC failed; falling back to individual queries', {
+          metadata: {
+            rpc: 'get_schedule_data_batch',
+            code: (error as { code?: string }).code ?? null,
+            message: (error as { message?: string }).message ?? 'Unknown RPC error',
+          },
+        });
+        return null;
+      }
       return data;
     },
+    retry: false,
     staleTime: CACHE_STRATEGIES.SESSIONS.schedule_batch,
     gcTime: CACHE_STRATEGIES.SESSIONS.schedule_batch * 2,
     refetchOnWindowFocus: false,

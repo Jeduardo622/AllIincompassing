@@ -36,3 +36,6 @@ cypress/screenshots
 !.env.example
 # Local Netlify folder
 .netlify
+
+# Large local reference documents
+WHITE BIBLE.pdf

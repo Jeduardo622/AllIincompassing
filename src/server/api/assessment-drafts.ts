@@ -335,11 +335,11 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
       { method: "GET", headers },
     );
     if (!checklistResult.ok) {
-      return json({ error: "Failed to load extracted checklist values for auto-generation." }, checklistResult.status || 500);
+      return json({ error: "Failed to load extracted checklist values for AI proposal generation." }, checklistResult.status || 500);
     }
     const assessmentText = composeAssessmentTextFromChecklist(checklistResult.data ?? []);
     if (assessmentText.length < 20) {
-      return json({ error: "Insufficient extracted checklist content to auto-generate drafts." }, 409);
+      return json({ error: "Insufficient extracted checklist content to generate AI proposals." }, 409);
     }
 
     const clientResult = await fetchJson<Array<{ full_name: string | null }>>(
@@ -360,7 +360,10 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
       }),
     });
     if (!generatedResult.ok || !generatedResult.data) {
-      return json({ error: "Failed to auto-generate draft program/goals from extracted fields." }, generatedResult.status || 500);
+      return json(
+        { error: "Failed to auto-generate AI proposal program/goals from extracted fields." },
+        generatedResult.status || 500,
+      );
     }
 
     const persisted = await persistDraftRows({

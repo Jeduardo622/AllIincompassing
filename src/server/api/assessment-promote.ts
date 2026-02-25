@@ -20,12 +20,6 @@ interface AssessmentDocumentRow {
   status: string;
 }
 
-interface ChecklistItemRow {
-  id: string;
-  required: boolean;
-  status: "not_started" | "drafted" | "verified" | "approved";
-}
-
 interface DraftProgramRow {
   id: string;
   name: string;
@@ -99,13 +93,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     return json({ error: "assessment_document_id is not in scope for this organization" }, 403);
   }
 
-  const [checklistResult, draftProgramsResult, draftGoalsResult] = await Promise.all([
-    fetchJson<ChecklistItemRow[]>(
-      `${supabaseUrl}/rest/v1/assessment_checklist_items?select=id,required,status&organization_id=eq.${encodeURIComponent(
-        organizationId,
-      )}&assessment_document_id=eq.${encodeURIComponent(parsed.data.assessment_document_id)}`,
-      { method: "GET", headers },
-    ),
+  const [draftProgramsResult, draftGoalsResult] = await Promise.all([
     fetchJson<DraftProgramRow[]>(
       `${supabaseUrl}/rest/v1/assessment_draft_programs?select=id,name,description,accept_state&organization_id=eq.${encodeURIComponent(
         organizationId,
@@ -120,17 +108,8 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     ),
   ]);
 
-  if (!checklistResult.ok || !draftProgramsResult.ok || !draftGoalsResult.ok) {
+  if (!draftProgramsResult.ok || !draftGoalsResult.ok) {
     return json({ error: "Failed to evaluate promote preconditions" }, 500);
-  }
-
-  const checklistItems = checklistResult.data ?? [];
-  const requiredPending = checklistItems.filter((item) => item.required && item.status !== "approved");
-  if (requiredPending.length > 0) {
-    return json(
-      { error: "Required checklist items must be approved before promotion.", pending_required_count: requiredPending.length },
-      409,
-    );
   }
 
   const acceptedPrograms = (draftProgramsResult.data ?? []).filter(

@@ -4055,6 +4055,7 @@ export type Database = {
       }
       service_contracts: {
         Row: {
+          authorized_units: number
           client_id: string
           confidence_score: number | null
           created_at: string
@@ -4071,6 +4072,7 @@ export type Database = {
           updated_by: string | null
         }
         Insert: {
+          authorized_units?: number
           client_id: string
           confidence_score?: number | null
           created_at?: string
@@ -4087,6 +4089,7 @@ export type Database = {
           updated_by?: string | null
         }
         Update: {
+          authorized_units?: number
           client_id?: string
           confidence_score?: number | null
           created_at?: string

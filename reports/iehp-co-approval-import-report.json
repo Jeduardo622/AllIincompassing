@@ -41,7 +41,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.983Z",
+            "imported_at": "2026-03-02T15:12:53.584Z",
             "row_number": 3,
             "raw": {
               "client_name": "Aguilar, Eli",
@@ -61,7 +61,9 @@
             }
           }
         },
-        "authorized_hours_per_month": 20
+        "authorized_hours_per_month": 20,
+        "auth_units": 20,
+        "supervision_units": 4
       }
     },
     {
@@ -74,7 +76,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.585Z",
             "row_number": 5,
             "raw": {
               "client_name": "Aguirre, Allison",
@@ -94,7 +96,10 @@
             }
           }
         },
-        "authorized_hours_per_month": 30
+        "authorized_hours_per_month": 30,
+        "auth_units": 30,
+        "one_to_one_units": 9,
+        "supervision_units": 2
       }
     },
     {
@@ -106,7 +111,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.585Z",
             "row_number": 7,
             "raw": {
               "client_name": "Almaida, Mariam",
@@ -126,7 +131,8 @@
             }
           }
         },
-        "authorized_hours_per_month": 15
+        "authorized_hours_per_month": 15,
+        "auth_units": 15
       }
     },
     {
@@ -138,7 +144,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.585Z",
             "row_number": 9,
             "raw": {
               "client_name": "Andrade, Damon",
@@ -158,7 +164,10 @@
             }
           }
         },
-        "authorized_hours_per_month": 30
+        "authorized_hours_per_month": 30,
+        "auth_units": 30,
+        "one_to_one_units": 11,
+        "supervision_units": 2
       }
     },
     {
@@ -171,7 +180,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.585Z",
             "row_number": 11,
             "raw": {
               "client_name": "Arriola, Gia",
@@ -191,7 +200,10 @@
             }
           }
         },
-        "authorized_hours_per_month": 18
+        "authorized_hours_per_month": 18,
+        "auth_units": 18,
+        "one_to_one_units": 8,
+        "supervision_units": 3
       }
     },
     {
@@ -203,7 +215,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.585Z",
             "row_number": 13,
             "raw": {
               "client_name": "Avila, Xavier",
@@ -223,7 +235,10 @@
             }
           }
         },
-        "authorized_hours_per_month": 25
+        "authorized_hours_per_month": 25,
+        "auth_units": 25,
+        "one_to_one_units": 5,
+        "supervision_units": 6
       }
     },
     {
@@ -235,7 +250,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.585Z",
             "row_number": 15,
             "raw": {
               "client_name": "Basoco, Zavier",
@@ -256,7 +271,10 @@
             }
           }
         },
-        "authorized_hours_per_month": 30
+        "authorized_hours_per_month": 30,
+        "auth_units": 30,
+        "one_to_one_units": 7,
+        "supervision_units": 2
       }
     },
     {
@@ -268,7 +286,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.585Z",
             "row_number": 17,
             "raw": {
               "client_name": "Bedolla, Maximiliano",
@@ -288,7 +306,10 @@
             }
           }
         },
-        "authorized_hours_per_month": 30
+        "authorized_hours_per_month": 30,
+        "auth_units": 30,
+        "one_to_one_units": 11,
+        "supervision_units": 2
       }
     },
     {
@@ -300,7 +321,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.585Z",
             "row_number": 19,
             "raw": {
               "client_name": "Berber Avila, Aleah",
@@ -321,7 +342,10 @@
             }
           }
         },
-        "authorized_hours_per_month": 25
+        "authorized_hours_per_month": 25,
+        "auth_units": 25,
+        "one_to_one_units": 5,
+        "supervision_units": 3
       }
     },
     {
@@ -333,7 +357,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.585Z",
             "row_number": 21,
             "raw": {
               "client_name": "Cabrera, Jesus",
@@ -353,7 +377,9 @@
             }
           }
         },
-        "authorized_hours_per_month": 15
+        "authorized_hours_per_month": 15,
+        "auth_units": 15,
+        "supervision_units": 9
       }
     },
     {
@@ -365,7 +391,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.585Z",
             "row_number": 23,
             "raw": {
               "client_name": "Castillo Melendez, Ernesto",
@@ -385,7 +411,10 @@
             }
           }
         },
-        "authorized_hours_per_month": 19
+        "authorized_hours_per_month": 19,
+        "auth_units": 19,
+        "one_to_one_units": 9,
+        "supervision_units": 2
       }
     },
     {
@@ -397,7 +426,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.585Z",
             "row_number": 25,
             "raw": {
               "client_name": "Cazares, Jacob",
@@ -417,7 +446,9 @@
             }
           }
         },
-        "authorized_hours_per_month": 15
+        "authorized_hours_per_month": 15,
+        "auth_units": 15,
+        "supervision_units": 8
       }
     },
     {
@@ -430,7 +461,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.586Z",
             "row_number": 27,
             "raw": {
               "client_name": "Cobos, Chloe",
@@ -450,7 +481,10 @@
             }
           }
         },
-        "authorized_hours_per_month": 25
+        "authorized_hours_per_month": 25,
+        "auth_units": 25,
+        "one_to_one_units": 9,
+        "supervision_units": 6
       }
     },
     {
@@ -462,7 +496,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.586Z",
             "row_number": 29,
             "raw": {
               "client_name": "Davenport, Vannah",
@@ -482,7 +516,9 @@
             }
           }
         },
-        "authorized_hours_per_month": 15
+        "authorized_hours_per_month": 15,
+        "auth_units": 15,
+        "supervision_units": 8
       }
     },
     {
@@ -494,7 +530,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.586Z",
             "row_number": 31,
             "raw": {
               "client_name": "Davenport, Zayin",
@@ -514,7 +550,9 @@
             }
           }
         },
-        "authorized_hours_per_month": 15
+        "authorized_hours_per_month": 15,
+        "auth_units": 15,
+        "supervision_units": 8
       }
     },
     {
@@ -526,7 +564,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.586Z",
             "row_number": 33,
             "raw": {
               "client_name": "Erebholo, Elijah",
@@ -546,7 +584,10 @@
             }
           }
         },
-        "authorized_hours_per_month": 20
+        "authorized_hours_per_month": 20,
+        "auth_units": 20,
+        "one_to_one_units": 10,
+        "supervision_units": 5
       }
     },
     {
@@ -558,7 +599,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.586Z",
             "row_number": 35,
             "raw": {
               "client_name": "Fetu, Matthias",
@@ -578,7 +619,10 @@
             }
           }
         },
-        "authorized_hours_per_month": 20
+        "authorized_hours_per_month": 20,
+        "auth_units": 20,
+        "one_to_one_units": 8,
+        "supervision_units": 1
       }
     },
     {
@@ -590,7 +634,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.586Z",
             "row_number": 37,
             "raw": {
               "client_name": "Figueroa, Matthew",
@@ -610,7 +654,10 @@
             }
           }
         },
-        "authorized_hours_per_month": 15
+        "authorized_hours_per_month": 15,
+        "auth_units": 15,
+        "one_to_one_units": 8,
+        "supervision_units": 8
       }
     },
     {
@@ -622,7 +669,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.586Z",
             "row_number": 39,
             "raw": {
               "client_name": "Figueroa, Maxson",
@@ -642,7 +689,9 @@
             }
           }
         },
-        "authorized_hours_per_month": 30
+        "authorized_hours_per_month": 30,
+        "auth_units": 30,
+        "supervision_units": 10
       }
     },
     {
@@ -655,7 +704,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.586Z",
             "row_number": 41,
             "raw": {
               "client_name": "Gallegos Fernandez, David",
@@ -676,7 +725,10 @@
             }
           }
         },
-        "authorized_hours_per_month": 15
+        "authorized_hours_per_month": 15,
+        "auth_units": 15,
+        "one_to_one_units": 9,
+        "supervision_units": 2
       }
     },
     {
@@ -688,7 +740,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.586Z",
             "row_number": 43,
             "raw": {
               "client_name": "Garcia, Alannah",
@@ -708,7 +760,10 @@
             }
           }
         },
-        "authorized_hours_per_month": 15
+        "authorized_hours_per_month": 15,
+        "auth_units": 15,
+        "one_to_one_units": 8,
+        "supervision_units": 1
       }
     },
     {
@@ -721,7 +776,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.586Z",
             "row_number": 45,
             "raw": {
               "client_name": "Gillespie, Ryder",
@@ -741,7 +796,9 @@
             }
           }
         },
-        "authorized_hours_per_month": 30
+        "authorized_hours_per_month": 30,
+        "auth_units": 30,
+        "supervision_units": 11
       }
     },
     {
@@ -754,7 +811,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.586Z",
             "row_number": 47,
             "raw": {
               "client_name": "Gillespie, Ryze",
@@ -774,7 +831,9 @@
             }
           }
         },
-        "authorized_hours_per_month": 30
+        "authorized_hours_per_month": 30,
+        "auth_units": 30,
+        "supervision_units": 11
       }
     },
     {
@@ -786,7 +845,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.586Z",
             "row_number": 49,
             "raw": {
               "client_name": "Gonzalez, Edwin",
@@ -806,7 +865,10 @@
             }
           }
         },
-        "authorized_hours_per_month": 12
+        "authorized_hours_per_month": 12,
+        "auth_units": 12,
+        "one_to_one_units": 7,
+        "supervision_units": 2
       }
     },
     {
@@ -819,7 +881,7 @@
           "iehp_co_approval": {
             "source_file": "IEHP + CO approval amounts.xlsx",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-02T02:33:32.984Z",
+            "imported_at": "2026-03-02T15:12:53.586Z",
             "row_number": 51,
             "raw": {
               "client_name": "Gonzalez, Guilliam",
@@ -840,7 +902,10 @@
             }
           }
         },
-        "authorized_hours_per_month": 15
+        "authorized_hours_per_month": 15,
+        "auth_units": 15,
+        "one_to_one_units": 6,
+        "supervision_units": 2
       }
     }
   ]

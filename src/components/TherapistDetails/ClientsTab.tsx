@@ -47,6 +47,7 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [linkSearchQuery, setLinkSearchQuery] = useState('');
   const [linkingClientId, setLinkingClientId] = useState<string | null>(null);
+  const [unlinkingClientId, setUnlinkingClientId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { isAdmin, isSuperAdmin } = useAuth();
   const canManageLinks = isAdmin() || isSuperAdmin();
@@ -299,12 +300,82 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
     },
   });
 
+  const unlinkClientMutation = useMutation({
+    mutationFn: async (input: { clientId: string; primaryTherapistId: string | null }) => {
+      const { clientId, primaryTherapistId } = input;
+
+      const { error: unlinkError } = await supabase
+        .from('client_therapist_links')
+        .delete()
+        .eq('client_id', clientId)
+        .eq('therapist_id', therapist.id);
+
+      if (unlinkError) throw unlinkError;
+
+      if (primaryTherapistId !== therapist.id) return;
+
+      const { data: nextPrimaryLink, error: nextPrimaryError } = await supabase
+        .from('client_therapist_links')
+        .select('therapist_id')
+        .eq('client_id', clientId)
+        .neq('therapist_id', therapist.id)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (nextPrimaryError) throw nextPrimaryError;
+
+      const nextPrimaryTherapistId = (nextPrimaryLink?.therapist_id as string | undefined) ?? null;
+
+      const { error: clearPrimaryError } = await supabase
+        .from('clients')
+        .update({
+          therapist_id: nextPrimaryTherapistId,
+          therapist_assigned_at: nextPrimaryTherapistId ? new Date().toISOString() : null,
+        })
+        .eq('id', clientId)
+        .eq('therapist_id', therapist.id);
+
+      if (clearPrimaryError) throw clearPrimaryError;
+    },
+    onSuccess: () => {
+      showSuccess('Client unlinked from therapist');
+      queryClient.invalidateQueries({ queryKey: ['therapist-clients', therapist.id] });
+      queryClient.invalidateQueries({ queryKey: ['linkable-clients', therapist.id] });
+    },
+    onError: (error) => {
+      showError(error);
+    },
+  });
+
   const handleLinkClient = async (clientId: string) => {
     setLinkingClientId(clientId);
     try {
       await linkClientMutation.mutateAsync(clientId);
     } finally {
       setLinkingClientId(null);
+    }
+  };
+
+  const handleUnlinkClient = async (input: {
+    clientId: string;
+    primaryTherapistId: string | null;
+    clientName: string;
+  }) => {
+    const shouldUnlink = window.confirm(
+      `Unlink ${input.clientName} from this therapist? This will remove this therapist relationship.`,
+    );
+
+    if (!shouldUnlink) return;
+
+    setUnlinkingClientId(input.clientId);
+    try {
+      await unlinkClientMutation.mutateAsync({
+        clientId: input.clientId,
+        primaryTherapistId: input.primaryTherapistId,
+      });
+    } finally {
+      setUnlinkingClientId(null);
     }
   };
   
@@ -487,9 +558,11 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
         searchValue={linkSearchQuery}
         onSearchChange={setLinkSearchQuery}
         clients={filteredLinkableClients}
-        isLoading={isLoadingLinkableClients || linkClientMutation.isPending}
+        isLoading={isLoadingLinkableClients || linkClientMutation.isPending || unlinkClientMutation.isPending}
         onLink={handleLinkClient}
+        onUnlink={handleUnlinkClient}
         linkingClientId={linkingClientId}
+        unlinkingClientId={unlinkingClientId}
         therapistId={therapist.id}
       />
     </div>
@@ -504,7 +577,13 @@ interface LinkClientModalProps {
   clients: LinkableClient[];
   isLoading: boolean;
   onLink: (clientId: string) => void;
+  onUnlink: (input: {
+    clientId: string;
+    primaryTherapistId: string | null;
+    clientName: string;
+  }) => void;
   linkingClientId: string | null;
+  unlinkingClientId: string | null;
   therapistId: string;
 }
 
@@ -516,7 +595,9 @@ const LinkClientModal: React.FC<LinkClientModalProps> = ({
   clients,
   isLoading,
   onLink,
+  onUnlink,
   linkingClientId,
+  unlinkingClientId,
   therapistId,
 }) => {
   if (!isOpen) return null;
@@ -569,6 +650,7 @@ const LinkClientModal: React.FC<LinkClientModalProps> = ({
                 {clients.map((client) => {
                   const alreadyLinkedHere = isAlreadyLinkedToTherapist(client, therapistId);
                   const isLinking = linkingClientId === client.id;
+                  const isUnlinking = unlinkingClientId === client.id;
                   const linkedToOtherNames = client.linked_therapist_names.filter((name) => name.trim().length > 0);
                   const currentLinkText = linkedToOtherNames.length > 0
                     ? `Currently linked to ${linkedToOtherNames.join(', ')}`
@@ -586,14 +668,29 @@ const LinkClientModal: React.FC<LinkClientModalProps> = ({
                           </p>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => onLink(client.id)}
-                        disabled={alreadyLinkedHere || isLinking}
-                        className="rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                      >
-                        {alreadyLinkedHere ? 'Linked' : isLinking ? 'Linking…' : 'Link'}
-                      </button>
+                      {alreadyLinkedHere ? (
+                        <button
+                          type="button"
+                          onClick={() => onUnlink({
+                            clientId: client.id,
+                            primaryTherapistId: client.primary_therapist_id,
+                            clientName: client.full_name,
+                          })}
+                          disabled={isUnlinking}
+                          className="rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:border-red-900/50 dark:bg-transparent dark:text-red-300"
+                        >
+                          {isUnlinking ? 'Unlinking…' : 'Unlink'}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onLink(client.id)}
+                          disabled={isLinking}
+                          className="rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                        >
+                          {isLinking ? 'Linking…' : 'Link'}
+                        </button>
+                      )}
                     </li>
                   );
                 })}

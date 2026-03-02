@@ -56,6 +56,9 @@ type ClientRecord = {
   full_name: string;
   insurance_info: Json | null;
   authorized_hours_per_month: number | null;
+  auth_units: number | null;
+  one_to_one_units: number | null;
+  supervision_units: number | null;
 };
 
 type PlannedUpdate = {
@@ -66,6 +69,9 @@ type PlannedUpdate = {
   update: {
     insurance_info: Json;
     authorized_hours_per_month?: number;
+    auth_units?: number;
+    one_to_one_units?: number;
+    supervision_units?: number;
   };
 };
 
@@ -212,6 +218,8 @@ const asRecord = (value: Json | null): Record<string, unknown> => {
   return value as Record<string, unknown>;
 };
 
+const toIntUnits = (value: number): number => Math.round(value);
+
 const main = async () => {
   const args = parseArgs(process.argv.slice(2));
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -228,7 +236,9 @@ const main = async () => {
   });
   const { data: clients, error: clientsError } = await supabase
     .from('clients')
-    .select('id, organization_id, first_name, last_name, full_name, insurance_info, authorized_hours_per_month');
+    .select(
+      'id, organization_id, first_name, last_name, full_name, insurance_info, authorized_hours_per_month, auth_units, one_to_one_units, supervision_units'
+    );
   if (clientsError) {
     throw clientsError;
   }
@@ -316,15 +326,28 @@ const main = async () => {
         Number.isFinite(row.authorizedHoursPerMonth) &&
         row.authorizedHoursPerMonth >= 0
       ) {
-        updatePayload.authorized_hours_per_month = row.authorizedHoursPerMonth;
+        updatePayload.authorized_hours_per_month = toIntUnits(row.authorizedHoursPerMonth);
+        updatePayload.auth_units = toIntUnits(row.authorizedHoursPerMonth);
+      }
+
+      if (typeof row.serviceBreakdown.h0032Hours === 'number' && Number.isFinite(row.serviceBreakdown.h0032Hours)) {
+        updatePayload.one_to_one_units = toIntUnits(row.serviceBreakdown.h0032Hours);
+      }
+      if (typeof row.serviceBreakdown.hoHours === 'number' && Number.isFinite(row.serviceBreakdown.hoHours)) {
+        updatePayload.supervision_units = toIntUnits(row.serviceBreakdown.hoHours);
       }
 
       const changedInsurance = JSON.stringify(client.insurance_info ?? null) !== JSON.stringify(nextInsuranceInfo);
       const changedHours =
         updatePayload.authorized_hours_per_month !== undefined &&
         updatePayload.authorized_hours_per_month !== client.authorized_hours_per_month;
+      const changedAuthUnits = updatePayload.auth_units !== undefined && updatePayload.auth_units !== client.auth_units;
+      const changedOneToOne =
+        updatePayload.one_to_one_units !== undefined && updatePayload.one_to_one_units !== client.one_to_one_units;
+      const changedSupervision =
+        updatePayload.supervision_units !== undefined && updatePayload.supervision_units !== client.supervision_units;
 
-      if (changedInsurance || changedHours) {
+      if (changedInsurance || changedHours || changedAuthUnits || changedOneToOne || changedSupervision) {
         plannedUpdates.push({
           id: client.id,
           rowNumber: row.rowNumber,
@@ -395,15 +418,28 @@ const main = async () => {
       Number.isFinite(row.authorizedHoursPerMonth) &&
       row.authorizedHoursPerMonth >= 0
     ) {
-      updatePayload.authorized_hours_per_month = row.authorizedHoursPerMonth;
+      updatePayload.authorized_hours_per_month = toIntUnits(row.authorizedHoursPerMonth);
+      updatePayload.auth_units = toIntUnits(row.authorizedHoursPerMonth);
+    }
+
+    if (typeof row.serviceBreakdown.h0032Hours === 'number' && Number.isFinite(row.serviceBreakdown.h0032Hours)) {
+      updatePayload.one_to_one_units = toIntUnits(row.serviceBreakdown.h0032Hours);
+    }
+    if (typeof row.serviceBreakdown.hoHours === 'number' && Number.isFinite(row.serviceBreakdown.hoHours)) {
+      updatePayload.supervision_units = toIntUnits(row.serviceBreakdown.hoHours);
     }
 
     const changedInsurance = JSON.stringify(client.insurance_info ?? null) !== JSON.stringify(nextInsuranceInfo);
     const changedHours =
       updatePayload.authorized_hours_per_month !== undefined &&
       updatePayload.authorized_hours_per_month !== client.authorized_hours_per_month;
+    const changedAuthUnits = updatePayload.auth_units !== undefined && updatePayload.auth_units !== client.auth_units;
+    const changedOneToOne =
+      updatePayload.one_to_one_units !== undefined && updatePayload.one_to_one_units !== client.one_to_one_units;
+    const changedSupervision =
+      updatePayload.supervision_units !== undefined && updatePayload.supervision_units !== client.supervision_units;
 
-    if (changedInsurance || changedHours) {
+    if (changedInsurance || changedHours || changedAuthUnits || changedOneToOne || changedSupervision) {
       plannedUpdates.push({
         id: client.id,
         rowNumber: row.rowNumber,

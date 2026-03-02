@@ -1,0 +1,847 @@
+{
+  "sourceFile": "D:\\downloads\\IEHP + CO approval amounts.xlsx",
+  "parserVersion": "1.0.0",
+  "applied": true,
+  "targetOrganizationId": "5238e88b-6198-4862-80a2-dbe15bbeabdd",
+  "organizationDetectionCounts": {
+    "5238e88b-6198-4862-80a2-dbe15bbeabdd": 96
+  },
+  "totals": {
+    "sourceRows": 110,
+    "skipped": 1,
+    "matched": 109,
+    "unmatched": 0,
+    "ambiguous": 0,
+    "plannedUpdates": 109
+  },
+  "skippedRows": [
+    {
+      "rowNumber": 141,
+      "clientName": "CO",
+      "reason": "Non-client context row"
+    }
+  ],
+  "unmatchedRows": [],
+  "ambiguousRows": [],
+  "warningsByRow": {
+    "7": [
+      "Unable to parse service breakdown from \"8hrs\"."
+    ],
+    "203": [
+      "Unable to parse service breakdown from \"H0032H0 6 hrs S5110 6hrs\"."
+    ]
+  },
+  "updatePreview": [
+    {
+      "rowNumber": 3,
+      "clientId": "64713d7f-da81-4327-9520-def2d2ee3925",
+      "fullName": "Eli Aguilar",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.983Z",
+            "row_number": 3,
+            "raw": {
+              "client_name": "Aguilar, Eli",
+              "auth_type": "1to1",
+              "auth_amount": "20hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "H0032HO 4 hrs",
+              "location": "San Bernardino",
+              "staffing_notes": "2 Staff, 10 hours for both, possibly 1 depends on availability"
+            },
+            "parsed": {
+              "full_name": "Eli Aguilar",
+              "authorized_hours_per_month": 20,
+              "h0032_hours": null,
+              "ho_hours": 4,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 20
+      }
+    },
+    {
+      "rowNumber": 5,
+      "clientId": "ca548a63-d142-484a-9867-b0ad6c85c62b",
+      "fullName": "Allison Aguirre",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 5,
+            "raw": {
+              "client_name": "Aguirre, Allison",
+              "auth_type": "1to1",
+              "auth_amount": "30hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "9hrs 0032 2hrs HO",
+              "location": "Moreno Valley",
+              "staffing_notes": "2 staff to cover all hours"
+            },
+            "parsed": {
+              "full_name": "Allison Aguirre",
+              "authorized_hours_per_month": 30,
+              "h0032_hours": 9,
+              "ho_hours": 2,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 30
+      }
+    },
+    {
+      "rowNumber": 7,
+      "clientId": "2d23e74d-4485-48cf-bdd8-1bc3decd4016",
+      "fullName": "Mariam Almaida",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 7,
+            "raw": {
+              "client_name": "Almaida, Mariam",
+              "auth_type": "1to1",
+              "auth_amount": "15hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "8hrs",
+              "location": "Victorville",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "full_name": "Mariam Almaida",
+              "authorized_hours_per_month": 15,
+              "h0032_hours": null,
+              "ho_hours": null,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 15
+      }
+    },
+    {
+      "rowNumber": 9,
+      "clientId": "5200376b-64d9-44c1-a836-8bba356ef5df",
+      "fullName": "Damon Andrade",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 9,
+            "raw": {
+              "client_name": "Andrade, Damon",
+              "auth_type": "1to1",
+              "auth_amount": "30 hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "H0032 11 hrs H0032 HO 2 hrs",
+              "location": "Adelanto",
+              "staffing_notes": "2 staff to cover all hours"
+            },
+            "parsed": {
+              "full_name": "Damon Andrade",
+              "authorized_hours_per_month": 30,
+              "h0032_hours": 11,
+              "ho_hours": 2,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 30
+      }
+    },
+    {
+      "rowNumber": 11,
+      "clientId": "90c6c016-75ba-41d7-bf76-100739183d81",
+      "fullName": "Gia Arriola",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 11,
+            "raw": {
+              "client_name": "Arriola, Gia",
+              "auth_type": "1to1",
+              "auth_amount": "18hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "H0032 8hrs H0032HO 3 hrs",
+              "location": "Hesperia",
+              "staffing_notes": "Potentially 1 staff, maybe 2 depends on staff availability"
+            },
+            "parsed": {
+              "full_name": "Gia Arriola",
+              "authorized_hours_per_month": 18,
+              "h0032_hours": 8,
+              "ho_hours": 3,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 18
+      }
+    },
+    {
+      "rowNumber": 13,
+      "clientId": "88edfd3d-c22b-4714-917a-7e077769f2e2",
+      "fullName": "Xavier Avila",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 13,
+            "raw": {
+              "client_name": "Avila, Xavier",
+              "auth_type": "1to1",
+              "auth_amount": "25 hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "H0032 5hrs H0032HO 6hrs S5111 50 visits",
+              "location": "AV",
+              "staffing_notes": "2 staff members"
+            },
+            "parsed": {
+              "full_name": "Xavier Avila",
+              "authorized_hours_per_month": 25,
+              "h0032_hours": 5,
+              "ho_hours": 6,
+              "s5111_visits": 50
+            }
+          }
+        },
+        "authorized_hours_per_month": 25
+      }
+    },
+    {
+      "rowNumber": 15,
+      "clientId": "84effcda-2706-4874-ae7e-e44ba7622b85",
+      "fullName": "Zavier Basoco",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 15,
+            "raw": {
+              "client_name": "Basoco, Zavier",
+              "auth_type": "1to1",
+              "auth_amount": "30hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "6.5hrs 0032 2hrs HO",
+              "location": "Colton",
+              "staffing_notes": "2 staff members",
+              "match_override": "84effcda-2706-4874-ae7e-e44ba7622b85"
+            },
+            "parsed": {
+              "full_name": "Zavier Basoco",
+              "authorized_hours_per_month": 30,
+              "h0032_hours": 6.5,
+              "ho_hours": 2,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 30
+      }
+    },
+    {
+      "rowNumber": 17,
+      "clientId": "4eb82a09-bc17-427e-8d5e-a80bdccdd06d",
+      "fullName": "Maximiliano Bedolla",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 17,
+            "raw": {
+              "client_name": "Bedolla, Maximiliano",
+              "auth_type": "1to1",
+              "auth_amount": "30hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "H0032 11 hrs H0032HO 2hrs",
+              "location": "Adelanto",
+              "staffing_notes": "2 staff members"
+            },
+            "parsed": {
+              "full_name": "Maximiliano Bedolla",
+              "authorized_hours_per_month": 30,
+              "h0032_hours": 11,
+              "ho_hours": 2,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 30
+      }
+    },
+    {
+      "rowNumber": 19,
+      "clientId": "41e752a6-877e-4142-94d6-92727fe53fd8",
+      "fullName": "Aleah Berber Avila",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 19,
+            "raw": {
+              "client_name": "Berber Avila, Aleah",
+              "auth_type": "1to1",
+              "auth_amount": "25 hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "H0032 5hrs H0032HO 3hrs S5111 50 visits",
+              "location": "AV",
+              "staffing_notes": "2 staff members",
+              "match_override": "41e752a6-877e-4142-94d6-92727fe53fd8"
+            },
+            "parsed": {
+              "full_name": "Aleah Berber Avila",
+              "authorized_hours_per_month": 25,
+              "h0032_hours": 5,
+              "ho_hours": 3,
+              "s5111_visits": 50
+            }
+          }
+        },
+        "authorized_hours_per_month": 25
+      }
+    },
+    {
+      "rowNumber": 21,
+      "clientId": "bfd10232-4b7d-4111-82c1-89ded8fdb1c7",
+      "fullName": "Jesus Cabrera",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 21,
+            "raw": {
+              "client_name": "Cabrera, Jesus",
+              "auth_type": "1to1",
+              "auth_amount": "15hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "H0032HO 9hrs",
+              "location": "Adelanto",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "full_name": "Jesus Cabrera",
+              "authorized_hours_per_month": 15,
+              "h0032_hours": null,
+              "ho_hours": 9,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 15
+      }
+    },
+    {
+      "rowNumber": 23,
+      "clientId": "f21a5c8d-a12d-4d78-b873-8656f059cd8d",
+      "fullName": "Ernesto Castillo Melendez",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 23,
+            "raw": {
+              "client_name": "Castillo Melendez, Ernesto",
+              "auth_type": "1to1",
+              "auth_amount": "19hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "H0032 9hrs H0032HO 2 hrs",
+              "location": "Barstow",
+              "staffing_notes": "2 staff members most likely"
+            },
+            "parsed": {
+              "full_name": "Ernesto Castillo Melendez",
+              "authorized_hours_per_month": 19,
+              "h0032_hours": 9,
+              "ho_hours": 2,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 19
+      }
+    },
+    {
+      "rowNumber": 25,
+      "clientId": "2964599d-6610-4e9c-ab54-9139c8ec926a",
+      "fullName": "Jacob Cazares",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 25,
+            "raw": {
+              "client_name": "Cazares, Jacob",
+              "auth_type": "1to1",
+              "auth_amount": "15hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "H0032HO 8hrs",
+              "location": "Moreno Valley",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "full_name": "Jacob Cazares",
+              "authorized_hours_per_month": 15,
+              "h0032_hours": null,
+              "ho_hours": 8,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 15
+      }
+    },
+    {
+      "rowNumber": 27,
+      "clientId": "4d758a4d-e709-4189-a336-991094ff0793",
+      "fullName": "Chloe Cobos",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 27,
+            "raw": {
+              "client_name": "Cobos, Chloe",
+              "auth_type": "1to1",
+              "auth_amount": "25 hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "H0032 9hrs H0032HO 6hrs",
+              "location": "Adelanto",
+              "staffing_notes": "2 staff members"
+            },
+            "parsed": {
+              "full_name": "Chloe Cobos",
+              "authorized_hours_per_month": 25,
+              "h0032_hours": 9,
+              "ho_hours": 6,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 25
+      }
+    },
+    {
+      "rowNumber": 29,
+      "clientId": "ee998ad7-59a0-41a6-933e-7b21b95f9c64",
+      "fullName": "Vannah Davenport",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 29,
+            "raw": {
+              "client_name": "Davenport, Vannah",
+              "auth_type": "1to1",
+              "auth_amount": "15hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "H0032HO 8hrs",
+              "location": "Victorville",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "full_name": "Vannah Davenport",
+              "authorized_hours_per_month": 15,
+              "h0032_hours": null,
+              "ho_hours": 8,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 15
+      }
+    },
+    {
+      "rowNumber": 31,
+      "clientId": "31e5fd10-e9ab-4eda-8872-f8b2dc6ae51d",
+      "fullName": "Zayin Davenport",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 31,
+            "raw": {
+              "client_name": "Davenport, Zayin",
+              "auth_type": "1to1",
+              "auth_amount": "15hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "H0032HO 8hrs",
+              "location": "Victorville",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "full_name": "Zayin Davenport",
+              "authorized_hours_per_month": 15,
+              "h0032_hours": null,
+              "ho_hours": 8,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 15
+      }
+    },
+    {
+      "rowNumber": 33,
+      "clientId": "cde92a02-6e36-4c8c-a3c7-b69bf2f8b6c8",
+      "fullName": "Elijah Erebholo",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 33,
+            "raw": {
+              "client_name": "Erebholo, Elijah",
+              "auth_type": "1to1",
+              "auth_amount": "20hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "10hrs 0032 5hrs HO",
+              "location": "Moreno Valley",
+              "staffing_notes": "2 staff members most likely, maybe 1 depends on availability"
+            },
+            "parsed": {
+              "full_name": "Elijah Erebholo",
+              "authorized_hours_per_month": 20,
+              "h0032_hours": 10,
+              "ho_hours": 5,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 20
+      }
+    },
+    {
+      "rowNumber": 35,
+      "clientId": "d5a207f8-5828-4b35-ad9d-eea7106267d4",
+      "fullName": "Matthias Fetu",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 35,
+            "raw": {
+              "client_name": "Fetu, Matthias",
+              "auth_type": "1to1",
+              "auth_amount": "20hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "H0032 8hrs H0032 HO 1hrs",
+              "location": "Hesperia",
+              "staffing_notes": "2 staff members most likely, maybe 1 depends on availability"
+            },
+            "parsed": {
+              "full_name": "Matthias Fetu",
+              "authorized_hours_per_month": 20,
+              "h0032_hours": 8,
+              "ho_hours": 1,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 20
+      }
+    },
+    {
+      "rowNumber": 37,
+      "clientId": "eb809f7a-c5e8-4fe4-a0c1-ee4be842460c",
+      "fullName": "Matthew Figueroa",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 37,
+            "raw": {
+              "client_name": "Figueroa, Matthew",
+              "auth_type": "1to1",
+              "auth_amount": "15hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "H0032 HO 8hrs H0032 5hrs",
+              "location": "Hesperia",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "full_name": "Matthew Figueroa",
+              "authorized_hours_per_month": 15,
+              "h0032_hours": 8,
+              "ho_hours": 8,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 15
+      }
+    },
+    {
+      "rowNumber": 39,
+      "clientId": "65f738ac-8120-4d87-ba86-8946b8c7b2f2",
+      "fullName": "Maxson Figueroa",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 39,
+            "raw": {
+              "client_name": "Figueroa, Maxson",
+              "auth_type": "1to1",
+              "auth_amount": "30hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "H0032HO 10hrs",
+              "location": "Hesperia",
+              "staffing_notes": "2 staff members"
+            },
+            "parsed": {
+              "full_name": "Maxson Figueroa",
+              "authorized_hours_per_month": 30,
+              "h0032_hours": null,
+              "ho_hours": 10,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 30
+      }
+    },
+    {
+      "rowNumber": 41,
+      "clientId": "4823c8fa-ab51-441d-ba67-e1508a4f18c5",
+      "fullName": "David Gallegos Fernandez",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 41,
+            "raw": {
+              "client_name": "Gallegos Fernandez, David",
+              "auth_type": "1to1",
+              "auth_amount": "15hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "9hrs 0032 2hrs HO",
+              "location": "Victorville",
+              "staffing_notes": "1 staff member",
+              "match_override": "4823c8fa-ab51-441d-ba67-e1508a4f18c5"
+            },
+            "parsed": {
+              "full_name": "David Gallegos Fernandez",
+              "authorized_hours_per_month": 15,
+              "h0032_hours": 9,
+              "ho_hours": 2,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 15
+      }
+    },
+    {
+      "rowNumber": 43,
+      "clientId": "aab2ca3a-bfc9-445f-9814-b544539f086a",
+      "fullName": "Alannah Garcia",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 43,
+            "raw": {
+              "client_name": "Garcia, Alannah",
+              "auth_type": "1to1",
+              "auth_amount": "15hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "H0032 8hrs H0032HO 1hrs",
+              "location": "Hesperia",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "full_name": "Alannah Garcia",
+              "authorized_hours_per_month": 15,
+              "h0032_hours": 8,
+              "ho_hours": 1,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 15
+      }
+    },
+    {
+      "rowNumber": 45,
+      "clientId": "ab44713e-5be7-42a6-ac05-7a5d8f475337",
+      "fullName": "Ryder Gillespie",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 45,
+            "raw": {
+              "client_name": "Gillespie, Ryder",
+              "auth_type": "1to1",
+              "auth_amount": "30hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "11hrs HO",
+              "location": "Adelanto",
+              "staffing_notes": "2 staff members"
+            },
+            "parsed": {
+              "full_name": "Ryder Gillespie",
+              "authorized_hours_per_month": 30,
+              "h0032_hours": null,
+              "ho_hours": 11,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 30
+      }
+    },
+    {
+      "rowNumber": 47,
+      "clientId": "acc5ca34-841d-4061-a919-5ab38571bacd",
+      "fullName": "Ryze Gillespie",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 47,
+            "raw": {
+              "client_name": "Gillespie, Ryze",
+              "auth_type": "1to1",
+              "auth_amount": "30hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "11hrs HO",
+              "location": "Adelanto",
+              "staffing_notes": "2 staff members"
+            },
+            "parsed": {
+              "full_name": "Ryze Gillespie",
+              "authorized_hours_per_month": 30,
+              "h0032_hours": null,
+              "ho_hours": 11,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 30
+      }
+    },
+    {
+      "rowNumber": 49,
+      "clientId": "e65303a8-fb60-4812-a1c9-5e26ada7276b",
+      "fullName": "Edwin Gonzalez",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 49,
+            "raw": {
+              "client_name": "Gonzalez, Edwin",
+              "auth_type": "1to1",
+              "auth_amount": "12hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "7hrs 0032 2hrs HO",
+              "location": "Adelanto",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "full_name": "Edwin Gonzalez",
+              "authorized_hours_per_month": 12,
+              "h0032_hours": 7,
+              "ho_hours": 2,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 12
+      }
+    },
+    {
+      "rowNumber": 51,
+      "clientId": "72bd1663-5343-4e79-8127-17aed338fdb4",
+      "fullName": "Guilliam Gonzalez",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "iehp_co_approval": {
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-02T02:33:32.984Z",
+            "row_number": 51,
+            "raw": {
+              "client_name": "Gonzalez, Guilliam",
+              "auth_type": "1to1",
+              "auth_amount": "15hrs",
+              "iehp_label": "PC and Sup",
+              "iehp_text": "6hrs 0032 2hrs HO",
+              "location": "Victorville",
+              "staffing_notes": "1 staff member",
+              "match_override": "72bd1663-5343-4e79-8127-17aed338fdb4"
+            },
+            "parsed": {
+              "full_name": "Guilliam Gonzalez",
+              "authorized_hours_per_month": 15,
+              "h0032_hours": 6,
+              "ho_hours": 2,
+              "s5111_visits": null
+            }
+          }
+        },
+        "authorized_hours_per_month": 15
+      }
+    }
+  ]
+}

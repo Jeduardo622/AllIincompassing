@@ -20,9 +20,27 @@ interface LinkableClient {
   id: string;
   full_name: string;
   email: string | null;
-  therapist_id: string | null;
-  therapist_name: string | null;
+  primary_therapist_id: string | null;
+  primary_therapist_name: string | null;
+  linked_therapist_ids: string[];
+  linked_therapist_names: string[];
 }
+
+export const getMissingClientIds = (
+  directAssignmentIds: string[],
+  linkedClientIds: string[],
+  sessionClientIds: string[],
+): string[] => {
+  const directSet = new Set(directAssignmentIds);
+  return [...new Set([...linkedClientIds, ...sessionClientIds])].filter((clientId) => !directSet.has(clientId));
+};
+
+export const isAlreadyLinkedToTherapist = (
+  client: LinkableClient,
+  therapistId: string,
+): boolean => (
+  client.linked_therapist_ids.includes(therapistId) || client.primary_therapist_id === therapistId
+);
 
 export default function ClientsTab({ therapist }: ClientsTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,6 +63,13 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
 
       if (directError) throw directError;
 
+      const { data: linkRows, error: linksError } = await supabase
+        .from('client_therapist_links')
+        .select('client_id')
+        .eq('therapist_id', therapist.id);
+
+      if (linksError) throw linksError;
+
       // Get unique client IDs from sessions
       const { data: sessions, error: sessionsError } = await supabase
         .from('sessions')
@@ -59,6 +84,14 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
         directAssignmentsList.map((client) => [client.id, client]),
       );
 
+      const linkedClientIds = Array.from(
+        new Set(
+          (linkRows ?? [])
+            .map((row) => row.client_id)
+            .filter((clientId): clientId is string => typeof clientId === 'string' && clientId.length > 0),
+        ),
+      );
+
       const sessionClientIds = Array.from(
         new Set(
           (sessions ?? [])
@@ -67,8 +100,10 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
         ),
       );
 
-      const missingClientIds = sessionClientIds.filter(
-        (clientId) => !directAssignmentsMap.has(clientId),
+      const missingClientIds = getMissingClientIds(
+        Array.from(directAssignmentsMap.keys()),
+        linkedClientIds,
+        sessionClientIds,
       );
 
       if (missingClientIds.length > 0) {
@@ -169,13 +204,50 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
 
       if (error) throw error;
 
+      const { data: linkRows, error: linkError } = await supabase
+        .from('client_therapist_links')
+        .select(`
+          client_id,
+          therapist_id,
+          therapist:therapists(full_name)
+        `);
+
+      if (linkError) throw linkError;
+
+      const linkMap = new Map<
+        string,
+        { therapistIds: Set<string>; therapistNames: Set<string> }
+      >();
+
+      (linkRows ?? []).forEach((row) => {
+        const clientId = row.client_id;
+        const linkedTherapistId = row.therapist_id;
+        if (!clientId || !linkedTherapistId) return;
+
+        const existing = linkMap.get(clientId) ?? {
+          therapistIds: new Set<string>(),
+          therapistNames: new Set<string>(),
+        };
+        existing.therapistIds.add(linkedTherapistId);
+
+        const therapistName = (row as unknown as { therapist?: { full_name?: string | null } | null }).therapist
+          ?.full_name;
+        if (therapistName) {
+          existing.therapistNames.add(therapistName);
+        }
+
+        linkMap.set(clientId, existing);
+      });
+
       return (data ?? []).map((client) => ({
         id: client.id as string,
         full_name: (client.full_name as string) ?? 'Unnamed client',
         email: (client.email as string | null) ?? null,
-        therapist_id: (client.therapist_id as string | null) ?? null,
-        therapist_name: (client as unknown as { therapist?: { full_name?: string | null } | null })?.therapist
+        primary_therapist_id: (client.therapist_id as string | null) ?? null,
+        primary_therapist_name: (client as unknown as { therapist?: { full_name?: string | null } | null })?.therapist
           ?.full_name ?? null,
+        linked_therapist_ids: Array.from(linkMap.get(client.id as string)?.therapistIds ?? []),
+        linked_therapist_names: Array.from(linkMap.get(client.id as string)?.therapistNames ?? []),
       }));
     },
     enabled: isLinkModalOpen && canManageLinks,
@@ -194,13 +266,26 @@ export default function ClientsTab({ therapist }: ClientsTabProps) {
 
   const linkClientMutation = useMutation({
     mutationFn: async (clientId: string) => {
+      const { error: linkError } = await supabase
+        .from('client_therapist_links')
+        .upsert(
+          {
+            client_id: clientId,
+            therapist_id: therapist.id,
+          },
+          { onConflict: 'client_id,therapist_id' },
+        );
+
+      if (linkError) throw linkError;
+
       const { error } = await supabase
         .from('clients')
         .update({
           therapist_id: therapist.id,
           therapist_assigned_at: new Date().toISOString(),
         })
-        .eq('id', clientId);
+        .eq('id', clientId)
+        .is('therapist_id', null);
 
       if (error) throw error;
     },
@@ -482,18 +567,22 @@ const LinkClientModal: React.FC<LinkClientModalProps> = ({
             ) : (
               <ul className="divide-y divide-gray-200 dark:divide-gray-700">
                 {clients.map((client) => {
-                  const alreadyLinkedHere = client.therapist_id === therapistId;
+                  const alreadyLinkedHere = isAlreadyLinkedToTherapist(client, therapistId);
                   const isLinking = linkingClientId === client.id;
+                  const linkedToOtherNames = client.linked_therapist_names.filter((name) => name.trim().length > 0);
+                  const currentLinkText = linkedToOtherNames.length > 0
+                    ? `Currently linked to ${linkedToOtherNames.join(', ')}`
+                    : `Currently linked to ${client.primary_therapist_name ?? 'another therapist'}`;
                   return (
                     <li key={client.id} className="flex items-center justify-between py-3">
                       <div>
                         <p className="font-medium text-gray-900 dark:text-white">{client.full_name}</p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">{client.email ?? 'No email listed'}</p>
-                        {client.therapist_id && (
+                        {(client.primary_therapist_id || client.linked_therapist_ids.length > 0) && (
                           <p className="text-xs text-amber-600 dark:text-amber-300">
                             {alreadyLinkedHere
                               ? 'Already linked to this therapist'
-                              : `Currently linked to ${client.therapist_name ?? 'another therapist'}`}
+                              : currentLinkText}
                           </p>
                         )}
                       </div>

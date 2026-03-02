@@ -83,14 +83,17 @@ export default createProtectedRoute(async (req: Request, userContext) => {
 
     if (!therapistData.is_active) return new Response(JSON.stringify({ error: 'Cannot assign to inactive therapist' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    const { data: existingClient } = await adminClient.from('clients').select('id, therapist_id').eq('id', userId).single();
+    const { data: existingClient } = await adminClient
+      .from('clients')
+      .select('id, therapist_id, organization_id')
+      .eq('id', userId)
+      .single();
 
     let result: any;
     if (existingClient) {
       const { data: updateData, error: updateError } = await adminClient
         .from('clients')
         .update({
-          therapist_id: therapistId,
           updated_at: new Date().toISOString(),
           organization_id: callerOrganizationId,
         })
@@ -118,6 +121,40 @@ export default createProtectedRoute(async (req: Request, userContext) => {
       result = { action: 'created', client: newClient };
     }
 
+    const primaryTherapistId = (result.client as { therapist_id?: string | null }).therapist_id ?? null;
+    if (!primaryTherapistId) {
+      const { data: primedClient, error: primeError } = await adminClient
+        .from('clients')
+        .update({
+          therapist_id: therapistId,
+          therapist_assigned_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId)
+        .is('therapist_id', null)
+        .select()
+        .single();
+
+      if (primeError) throw new Error(`Error setting primary therapist: ${primeError.message}`);
+      if (primedClient) {
+        result.client = primedClient;
+      }
+    }
+
+    const linkOrganizationId =
+      ((result.client as { organization_id?: string | null }).organization_id ?? callerOrganizationId);
+    const { error: linkError } = await adminClient
+      .from('client_therapist_links')
+      .upsert(
+        {
+          client_id: userId,
+          therapist_id: therapistId,
+          organization_id: linkOrganizationId,
+        },
+        { onConflict: 'client_id,therapist_id' },
+      );
+    if (linkError) throw new Error(`Error creating therapist link: ${linkError.message}`);
+
     const { error: logError } = await adminClient.from('admin_actions').insert({
       admin_user_id: userContext.user.id,
       action_type: 'therapist_assignment',
@@ -133,7 +170,7 @@ export default createProtectedRoute(async (req: Request, userContext) => {
     if (logError) console.warn('Failed to log admin action:', logError);
 
     logApiAccess('POST', '/assign-therapist-user', userContext, 200);
-    return new Response(JSON.stringify({ success: true, message: `User ${result.action === 'created' ? 'created as client and assigned' : 'reassigned'} to therapist successfully`, data: { userId, userEmail, therapistId, therapistName: therapistData.full_name, action: result.action, client: result.client } }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ success: true, message: `User ${result.action === 'created' ? 'created as client and assigned' : 'linked'} to therapist successfully`, data: { userId, userEmail, therapistId, therapistName: therapistData.full_name, action: result.action, client: result.client } }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (error) {
     console.error('Error assigning therapist to user:', error);
     logApiAccess('POST', '/assign-therapist-user', userContext, 500);

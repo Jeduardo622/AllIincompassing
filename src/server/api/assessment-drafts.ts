@@ -118,6 +118,10 @@ interface GeneratedDraftPayload {
   rationale?: string;
 }
 
+interface GeneratedDraftErrorPayload {
+  error?: string;
+}
+
 const validateGoalMinimums = (
   goals: Array<{ goal_type: "child" | "parent" }>,
 ): { valid: true } | { valid: false; childCount: number; parentCount: number } => {
@@ -420,8 +424,14 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
       }),
     });
     if (!generatedResult.ok || !generatedResult.data) {
+      const generatedError = (generatedResult.data as unknown as GeneratedDraftErrorPayload | null)?.error;
       return json(
-        { error: "Failed to auto-generate AI proposal program/goals from extracted fields." },
+        {
+          error:
+            typeof generatedError === "string" && generatedError.trim().length > 0
+              ? generatedError
+              : "Failed to auto-generate AI proposal program/goals from extracted fields.",
+        },
         generatedResult.status || 500,
       );
     }

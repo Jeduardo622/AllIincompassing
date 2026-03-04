@@ -23,6 +23,7 @@ const requestSchema = z.object({
 
 const MIN_CHILD_GOALS = 20;
 const MIN_PARENT_GOALS = 6;
+const MAX_GENERATION_ATTEMPTS = 3;
 
 const responseSchema = z.object({
   program: z.object({
@@ -123,6 +124,57 @@ const countGoalsByType = (goals: z.infer<typeof responseSchema>["goals"]) => {
   return { childCount, parentCount };
 };
 
+const buildPrompt = (args: {
+  whiteBibleGuidance: string;
+  clientName?: string;
+  assessmentText: string;
+  retryHint?: string;
+}): string => `
+You are an ABA clinical planning assistant.
+Use the assessment to draft one program and enough goals to support a full treatment plan.
+Use this White Bible guidance as the highest-priority clinical style reference:
+${args.whiteBibleGuidance}
+
+Return JSON ONLY with this shape:
+{
+  "program": { "name": "string", "description": "string" },
+  "goals": [
+    {
+      "title": "string",
+      "description": "string",
+      "original_text": "string",
+      "goal_type": "child or parent",
+      "target_behavior": "string",
+      "measurement_type": "string",
+      "baseline_data": "string",
+      "target_criteria": "string",
+      "mastery_criteria": "string",
+      "maintenance_criteria": "string",
+      "generalization_criteria": "string",
+      "objective_data_points": [{ "objective": "string", "data_settings": "string" }]
+    }
+  ],
+  "rationale": "short explanation"
+}
+
+Rules:
+- Keep language clinical and objective.
+- Do not include PHI beyond supplied client first name.
+- Ensure each goal can be copied directly into an EHR.
+- Goal titles must be unique.
+- You MUST return at least ${MIN_CHILD_GOALS} goals with "goal_type":"child".
+- You MUST return at least ${MIN_PARENT_GOALS} goals with "goal_type":"parent".
+- Child goals should target learner skill acquisition, reduction, replacement, or adaptive behaviors.
+- Parent goals should target caregiver implementation, parent training participation, and generalization support.
+- If baseline/criteria are not explicit in the assessment, infer conservatively and state assumptions briefly.
+- If document includes objective-level data settings (targets, phases, mastery/maintenance details), include them in objective_data_points.
+${args.retryHint ? `- IMPORTANT RETRY FIX: ${args.retryHint}` : ""}
+
+Client: ${args.clientName ?? "Not provided"}
+Assessment:
+${args.assessmentText}
+`;
+
 const stripCodeFences = (value: string): string => {
   const trimmed = value.trim();
   if (!trimmed.startsWith("```")) {
@@ -161,101 +213,74 @@ Deno.serve(async (req) => {
     }
 
     const whiteBibleGuidance = await loadWhiteBibleGuidance();
-    const prompt = `
-You are an ABA clinical planning assistant.
-Use the assessment to draft one program and enough goals to support a full treatment plan.
-Use this White Bible guidance as the highest-priority clinical style reference:
-${whiteBibleGuidance}
+    let retryHint: string | undefined;
 
-Return JSON ONLY with this shape:
-{
-  "program": { "name": "string", "description": "string" },
-  "goals": [
-    {
-      "title": "string",
-      "description": "string",
-      "original_text": "string",
-      "goal_type": "child or parent",
-      "target_behavior": "string",
-      "measurement_type": "string",
-      "baseline_data": "string",
-      "target_criteria": "string",
-      "mastery_criteria": "string",
-      "maintenance_criteria": "string",
-      "generalization_criteria": "string",
-      "objective_data_points": [{ "objective": "string", "data_settings": "string" }]
-    }
-  ],
-  "rationale": "short explanation"
-}
+    for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt += 1) {
+      const prompt = buildPrompt({
+        whiteBibleGuidance,
+        clientName: parsed.data.client_name,
+        assessmentText: parsed.data.assessment_text,
+        retryHint,
+      });
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        temperature: 0.2,
+        max_tokens: 4200,
+        messages: [
+          {
+            role: "system",
+            content: "You produce strict JSON for ABA program and goal drafting.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+      });
 
-Rules:
-- Keep language clinical and objective.
-- Do not include PHI beyond supplied client first name.
-- Ensure each goal can be copied directly into an EHR.
-- You MUST return at least ${MIN_CHILD_GOALS} goals with "goal_type":"child".
-- You MUST return at least ${MIN_PARENT_GOALS} goals with "goal_type":"parent".
-- Child goals should target learner skill acquisition, reduction, replacement, or adaptive behaviors.
-- Parent goals should target caregiver implementation, parent training participation, and generalization support.
-- If baseline/criteria are not explicit in the assessment, infer conservatively and state assumptions briefly.
-- If document includes objective-level data settings (targets, phases, mastery/maintenance details), include them in objective_data_points.
+      const rawContent = completion.choices[0]?.message?.content;
+      if (!rawContent) {
+        retryHint = "Previous attempt returned no content. Return full JSON object with program, goals, and rationale.";
+        continue;
+      }
 
-Client: ${parsed.data.client_name ?? "Not provided"}
-Assessment:
-${parsed.data.assessment_text}
-`;
+      let candidate: unknown;
+      try {
+        candidate = JSON.parse(stripCodeFences(rawContent));
+      } catch {
+        retryHint = "Previous attempt returned invalid JSON. Return JSON only, no markdown or commentary.";
+        continue;
+      }
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      temperature: 0.2,
-      max_tokens: 3600,
-      messages: [
-        {
-          role: "system",
-          content: "You produce strict JSON for ABA program and goal drafting.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-    });
+      const validated = responseSchema.safeParse(candidate);
+      if (!validated.success) {
+        retryHint =
+          "Previous attempt failed schema validation. Every goal must include goal_type child or parent, and all required text fields.";
+        continue;
+      }
 
-    const rawContent = completion.choices[0]?.message?.content;
-    if (!rawContent) {
-      return json({ error: "No draft generated" }, 502);
+      const dedupedGoals = dedupeGoalsByTitle(validated.data.goals);
+      if (dedupedGoals.length === 0) {
+        retryHint = "Previous attempt had no valid unique goals. Use distinct titles for all goals.";
+        continue;
+      }
+      const { childCount, parentCount } = countGoalsByType(dedupedGoals);
+      if (childCount < MIN_CHILD_GOALS || parentCount < MIN_PARENT_GOALS) {
+        retryHint =
+          `Previous attempt only had ${childCount} child and ${parentCount} parent goals after dedupe. Regenerate full response with at least ${MIN_CHILD_GOALS} child and ${MIN_PARENT_GOALS} parent goals using unique titles.`;
+        continue;
+      }
+
+      return json({ ...validated.data, goals: dedupedGoals }, 200);
     }
 
-    let candidate: unknown;
-    try {
-      candidate = JSON.parse(stripCodeFences(rawContent));
-    } catch {
-      return json({ error: "Model returned invalid JSON" }, 502);
-    }
-
-    const validated = responseSchema.safeParse(candidate);
-    if (!validated.success) {
-      return json({ error: "Generated draft did not pass schema validation" }, 502);
-    }
-
-    const dedupedGoals = dedupeGoalsByTitle(validated.data.goals);
-    if (dedupedGoals.length === 0) {
-      return json({ error: "Generated draft did not contain valid unique goals" }, 502);
-    }
-    const { childCount, parentCount } = countGoalsByType(dedupedGoals);
-    if (childCount < MIN_CHILD_GOALS || parentCount < MIN_PARENT_GOALS) {
-      return json(
-        {
-          error:
-            `Generated draft did not meet goal minimums: child>=${MIN_CHILD_GOALS}, parent>=${MIN_PARENT_GOALS}`,
-          child_goal_count: childCount,
-          parent_goal_count: parentCount,
-        },
-        502,
-      );
-    }
-
-    return json({ ...validated.data, goals: dedupedGoals }, 200);
+    return json(
+      {
+        error:
+          `Generated draft did not meet goal minimums after ${MAX_GENERATION_ATTEMPTS} attempts: child>=${MIN_CHILD_GOALS}, parent>=${MIN_PARENT_GOALS}`,
+      },
+      502,
+    );
   } catch (error) {
     console.error("generate-program-goals error", error);
     return json({ error: "Failed to generate draft" }, 500);

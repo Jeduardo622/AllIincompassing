@@ -6,14 +6,6 @@ interface PrepareClientPayloadOptions {
   enforceFullName?: boolean;
 }
 
-const canPostDebugLogs = (): boolean => {
-  if (typeof window === 'undefined') {
-    return true;
-  }
-
-  return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-};
-
 const computeFullName = (client: Partial<Client>): string => {
   const parts = [client.first_name, client.middle_name, client.last_name]
     .map(part => (typeof part === 'string' ? part.trim() : ''))
@@ -27,11 +19,6 @@ export const prepareClientPayload = (
   options: PrepareClientPayloadOptions = {}
 ) => {
   const prepared = prepareFormData(clientData);
-  // #region agent log
-  if (canPostDebugLogs()) {
-    fetch('http://127.0.0.1:7802/ingest/c639188e-4d1d-4ae2-8578-fbb07665dceb',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27eafc'},body:JSON.stringify({sessionId:'27eafc',runId:'initial',hypothesisId:'H1',location:'src/lib/clientPayload.ts:28',message:'prepareClientPayload received prepared data',data:{preparedKeys:Object.keys((prepared && typeof prepared === 'object') ? prepared as Record<string, unknown> : {}),hasTopLevelServiceContracts:Boolean(prepared && typeof prepared === 'object' && 'service_contracts' in (prepared as Record<string, unknown>)),hasTopLevelDocumentsConsent:Boolean(prepared && typeof prepared === 'object' && 'documents_consent' in (prepared as Record<string, unknown>)),insuranceInfoType:typeof (prepared as Partial<Client>).insurance_info},timestamp:Date.now()})}).catch(()=>{});
-  }
-  // #endregion
   const {
     documents_consent: _documentsConsent,
     service_contracts: _serviceContracts,
@@ -72,21 +59,8 @@ export const prepareClientPayload = (
       payload.full_name = '';
     }
   }
-  // #region agent log
-  if (canPostDebugLogs()) {
-    fetch('http://127.0.0.1:7802/ingest/c639188e-4d1d-4ae2-8578-fbb07665dceb',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27eafc'},body:JSON.stringify({sessionId:'27eafc',runId:'initial',hypothesisId:'H2',location:'src/lib/clientPayload.ts:75',message:'about to parse payload with clientPayloadSchema',data:{payloadKeys:Object.keys((payload && typeof payload === 'object') ? payload as Record<string, unknown> : {}),hasTopLevelServiceContracts:Boolean(payload && typeof payload === 'object' && 'service_contracts' in (payload as Record<string, unknown>)),hasInsuranceInfoServiceContracts:Boolean(payload && typeof payload === 'object' && payload.insurance_info && typeof payload.insurance_info === 'object' && !Array.isArray(payload.insurance_info) && 'service_contracts' in (payload.insurance_info as Record<string, unknown>))},timestamp:Date.now()})}).catch(()=>{});
-  }
-  // #endregion
-  try {
-    return clientPayloadSchema.strip().parse(payload);
-  } catch (error) {
-    // #region agent log
-    if (canPostDebugLogs()) {
-      fetch('http://127.0.0.1:7802/ingest/c639188e-4d1d-4ae2-8578-fbb07665dceb',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27eafc'},body:JSON.stringify({sessionId:'27eafc',runId:'initial',hypothesisId:'H4',location:'src/lib/clientPayload.ts:84',message:'clientPayloadSchema.parse failed',data:{errorType:error instanceof Error ? error.name : typeof error,errorMessage:error instanceof Error ? error.message : 'non-error thrown',zodIssues:error && typeof error === 'object' && 'issues' in (error as Record<string, unknown>) ? (error as { issues?: unknown }).issues : null},timestamp:Date.now()})}).catch(()=>{});
-    }
-    // #endregion
-    throw error;
-  }
+
+  return clientPayloadSchema.parse(payload);
 };
 
 type SupabaseUpdateResponse<T> = Promise<{ data: T | null; error: unknown }>;

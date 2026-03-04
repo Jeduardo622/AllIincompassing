@@ -17,6 +17,20 @@ const getCodePrefixForProvider = (provider: ServiceContractProvider): '9' | 'H' 
   provider === 'Private' ? '9' : 'H'
 );
 
+const normalizeCptCodes = (codes: unknown): string[] => {
+  if (!Array.isArray(codes)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      codes
+        .map((code) => String(code).trim().toUpperCase())
+        .filter(Boolean)
+    )
+  );
+};
+
 const normalizeServiceContracts = (insuranceInfo: unknown): Array<{ provider: ServiceContractProvider; units: number; cpt_codes: string[] }> => {
   if (!insuranceInfo || typeof insuranceInfo !== 'object' || Array.isArray(insuranceInfo)) {
     return [];
@@ -34,9 +48,7 @@ const normalizeServiceContracts = (insuranceInfo: unknown): Array<{ provider: Se
         return null;
       }
       const unitsValue = Number(obj.units ?? 0);
-      const cptCodes = Array.isArray(obj.cpt_codes)
-        ? obj.cpt_codes.map((code) => String(code).toUpperCase()).filter(Boolean)
-        : [];
+      const cptCodes = normalizeCptCodes(obj.cpt_codes);
       return {
         provider: provider as ServiceContractProvider,
         units: Number.isFinite(unitsValue) ? unitsValue : 0,
@@ -190,9 +202,7 @@ export default function ClientModal({
       .map((entry) => ({
         provider: entry.provider,
         units: Number.isFinite(entry.units) ? entry.units : 0,
-        cpt_codes: Array.isArray(entry.cpt_codes)
-          ? entry.cpt_codes.map((code) => String(code).toUpperCase()).filter(Boolean)
-          : [],
+        cpt_codes: normalizeCptCodes(entry.cpt_codes),
       }));
 
     const insuranceInfo =
@@ -895,12 +905,31 @@ export default function ClientModal({
                       <select
                         id={codesId}
                         multiple
-                        value={Array.isArray(entry.cpt_codes) ? entry.cpt_codes : []}
+                        value={normalizeCptCodes(entry.cpt_codes)}
+                        onMouseDown={(event) => {
+                          const target = event.target;
+                          if (!(target instanceof HTMLOptionElement)) {
+                            return;
+                          }
+
+                          event.preventDefault();
+                          const nextCode = String(target.value).trim().toUpperCase();
+                          const existingCodes = normalizeCptCodes(entry.cpt_codes);
+                          const nextCodes = existingCodes.includes(nextCode)
+                            ? existingCodes.filter((code) => code !== nextCode)
+                            : [...existingCodes, nextCode];
+
+                          const next = [...serviceContracts];
+                          next[index] = { ...next[index], cpt_codes: nextCodes };
+                          setValue('service_contracts', next, { shouldDirty: true, shouldValidate: false });
+                        }}
                         onChange={(event) => {
-                          const values = Array.from(event.target.selectedOptions).map((option) => option.value);
+                          const values = normalizeCptCodes(
+                            Array.from(event.target.selectedOptions).map((option) => option.value)
+                          );
                           const next = [...serviceContracts];
                           next[index] = { ...next[index], cpt_codes: values };
-                          setValue('service_contracts', next, { shouldDirty: true, shouldValidate: true });
+                          setValue('service_contracts', next, { shouldDirty: true, shouldValidate: false });
                         }}
                         className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 min-h-[110px]"
                       >

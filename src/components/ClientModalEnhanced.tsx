@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Controller } from 'react-hook-form';
 import { X } from 'lucide-react';
 import type { Client } from '../types';
@@ -17,6 +17,50 @@ interface ClientModalEnhancedProps {
   client?: Client;
 }
 
+const buildDefaultValues = (client?: Client): ClientFormData => ({
+  email: client?.email || '',
+  first_name: client?.first_name || '',
+  middle_name: client?.middle_name || '',
+  last_name: client?.last_name || '',
+  full_name: client?.full_name || '',
+  date_of_birth: client?.date_of_birth || '',
+  gender: client?.gender || '',
+  client_id: client?.client_id || '',
+  insurance_info: client?.insurance_info || {},
+  service_preference: client?.service_preference || [],
+  one_to_one_units: client?.one_to_one_units || 0,
+  supervision_units: client?.supervision_units || 0,
+  parent_consult_units: client?.parent_consult_units || 0,
+  assessment_units: client?.assessment_units || 0,
+  auth_units: client?.auth_units || 0,
+  auth_start_date: client?.auth_start_date || '',
+  auth_end_date: client?.auth_end_date || '',
+  availability_hours: client?.availability_hours || {
+    monday: { start: '09:00', end: '17:00' },
+    tuesday: { start: '09:00', end: '17:00' },
+    wednesday: { start: '09:00', end: '17:00' },
+    thursday: { start: '09:00', end: '17:00' },
+    friday: { start: '09:00', end: '17:00' },
+  },
+  parent1_first_name: client?.parent1_first_name || '',
+  parent1_last_name: client?.parent1_last_name || '',
+  parent1_phone: client?.parent1_phone || '',
+  parent1_email: client?.parent1_email || '',
+  parent1_relationship: client?.parent1_relationship || '',
+  parent2_first_name: client?.parent2_first_name || '',
+  parent2_last_name: client?.parent2_last_name || '',
+  parent2_phone: client?.parent2_phone || '',
+  parent2_email: client?.parent2_email || '',
+  parent2_relationship: client?.parent2_relationship || '',
+  address_line1: client?.address_line1 || '',
+  address_line2: client?.address_line2 || '',
+  city: client?.city || '',
+  state: client?.state || '',
+  zip_code: client?.zip_code || '',
+  phone: client?.phone || '',
+  cin_number: client?.cin_number || '',
+});
+
 export default function ClientModalEnhanced({
   isOpen,
   onClose,
@@ -24,51 +68,16 @@ export default function ClientModalEnhanced({
   client,
 }: ClientModalEnhancedProps) {
   // Use enhanced form with Zod validation
-  const form = useValidatedForm(clientSchema, {
-    email: client?.email || '',
-    first_name: client?.first_name || '',
-    middle_name: client?.middle_name || '',
-    last_name: client?.last_name || '',
-    full_name: client?.full_name || '',
-    date_of_birth: client?.date_of_birth || '',
-    gender: client?.gender || '',
-    client_id: client?.client_id || '',
-    insurance_info: client?.insurance_info || {},
-    service_preference: client?.service_preference || [],
-    one_to_one_units: client?.one_to_one_units || 0,
-    supervision_units: client?.supervision_units || 0,
-    parent_consult_units: client?.parent_consult_units || 0,
-    assessment_units: client?.assessment_units || 0,
-    auth_units: client?.auth_units || 0,
-    auth_start_date: client?.auth_start_date || '',
-    auth_end_date: client?.auth_end_date || '',
-    availability_hours: client?.availability_hours || {
-      monday: { start: "09:00", end: "17:00" },
-      tuesday: { start: "09:00", end: "17:00" },
-      wednesday: { start: "09:00", end: "17:00" },
-      thursday: { start: "09:00", end: "17:00" },
-      friday: { start: "09:00", end: "17:00" },
-    },
-    // Parent/Guardian information
-    parent1_first_name: client?.parent1_first_name || '',
-    parent1_last_name: client?.parent1_last_name || '',
-    parent1_phone: client?.parent1_phone || '',
-    parent1_email: client?.parent1_email || '',
-    parent1_relationship: client?.parent1_relationship || '',
-    parent2_first_name: client?.parent2_first_name || '',
-    parent2_last_name: client?.parent2_last_name || '',
-    parent2_phone: client?.parent2_phone || '',
-    parent2_email: client?.parent2_email || '',
-    parent2_relationship: client?.parent2_relationship || '',
-    // Address information
-    address_line1: client?.address_line1 || '',
-    address_line2: client?.address_line2 || '',
-    city: client?.city || '',
-    state: client?.state || '',
-    zip_code: client?.zip_code || '',
-    phone: client?.phone || '',
-    cin_number: client?.cin_number || '',
-  });
+  const form = useValidatedForm(clientSchema, buildDefaultValues(client));
+  const { reset, clearErrors } = form;
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    clearErrors();
+    reset(buildDefaultValues(client));
+  }, [isOpen, client, clearErrors, reset]);
 
   // Enhanced form submission with validation
   const { handleSubmit, isSubmitting, submitError } = useValidatedSubmission(

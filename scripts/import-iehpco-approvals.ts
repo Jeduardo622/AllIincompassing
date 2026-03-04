@@ -43,7 +43,7 @@ const AMBIGUOUS_RECOMMENDATIONS: Record<number, string> = {
 };
 
 type Args = {
-  xlsx: string;
+  input: string;
   apply: boolean;
   organizationId?: string;
 };
@@ -51,6 +51,7 @@ type Args = {
 type ClientRecord = {
   id: string;
   organization_id: string;
+  client_id: string | null;
   first_name: string | null;
   last_name: string | null;
   full_name: string;
@@ -90,7 +91,7 @@ const parseArgs = (argv: string[]): Args => {
   });
 
   return {
-    xlsx: String(args.get('--xlsx') ?? DEFAULT_XLSX_PATH),
+    input: String(args.get('--input') ?? args.get('--xlsx') ?? args.get('--pdf') ?? DEFAULT_XLSX_PATH),
     apply: Boolean(args.get('--apply')),
     organizationId: typeof args.get('--organization-id') === 'string' ? String(args.get('--organization-id')) : undefined,
   };
@@ -161,6 +162,41 @@ const readXlsxRows = async (xlsxPath: string): Promise<string[][]> => {
   return JSON.parse(result.stdout) as string[][];
 };
 
+const readPdfRows = async (pdfPath: string): Promise<string[][]> => {
+  await fs.access(pdfPath);
+  const pythonProgram = [
+    'import re, json, sys',
+    'from pypdf import PdfReader',
+    "p = sys.argv[1]",
+    "reader = PdfReader(p)",
+    "text = '\\n'.join((page.extract_text() or '') for page in reader.pages)",
+    "text = re.sub(r'--\\s*\\d+\\s*of\\s*\\d+\\s*--', ' ', text, flags=re.I)",
+    "text = re.sub(r'Client Name\\s*Client auth amount.*?Column 21', ' ', text, flags=re.I|re.S)",
+    "text = re.sub(r'\\s+', ' ', text).strip()",
+    "token_pat = r\"[A-Z][A-Za-z'’\\.-]*\"",
+    "name_pat = rf\"{token_pat}(?:\\s+{token_pat})*,\\s*{token_pat}(?:\\s+{token_pat})*\"",
+    "row_pat = re.compile(rf'(?P<name>{name_pat})\\s*1to1\\s*(?P<auth>\\d+(?:\\.\\d+)?\\s*hrs?)\\s*PC and Sup\\s*(?P<svc>.*?)(?=(?:{name_pat}\\s*1to1\\s*\\d)|$)', re.I)",
+    "rows = [[\"Client Name\",\"Client auth amount\",\"APPROVED HR\",\"IEHP\",\"PROVIDER AND INSURANCE\",\"Client Location\",\"Staff Needed to Staff/Maximize 1:1 Services\"]]",
+    "for m in row_pat.finditer(text):",
+    "    name_raw = m.group('name').strip()",
+    "    clean_name_match = re.search(rf'({name_pat})$', name_raw)",
+    "    name = clean_name_match.group(1) if clean_name_match else name_raw",
+    "    auth = m.group('auth').strip()",
+    "    svc = m.group('svc').strip()",
+    "    rows.append([name, '1to1', auth, 'PC and Sup', svc, '', ''])",
+    "print(json.dumps(rows, ensure_ascii=False))",
+  ].join('\n');
+
+  const result = spawnSync('python', ['-c', pythonProgram, pdfPath], {
+    encoding: 'utf8',
+    maxBuffer: 50 * 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    throw new Error(`Failed to parse PDF file: ${result.stderr || result.stdout}`);
+  }
+  return JSON.parse(result.stdout) as string[][];
+};
+
 const normalizeClientName = (client: ClientRecord): string => {
   const fromParts = `${client.first_name ?? ''} ${client.last_name ?? ''}`.trim();
   const source = fromParts.length > 0 ? fromParts : client.full_name;
@@ -178,6 +214,20 @@ const getClientKeys = (client: ClientRecord): string[] => {
     keys.add(firstLastKey);
   }
   return Array.from(keys);
+};
+
+const toSiblingFiveKey = (fullName: string): string | null => {
+  const parts = fullName
+    .split(/\s+/)
+    .map(token => token.replace(/[^a-zA-Z]/g, ''))
+    .filter(Boolean);
+  if (parts.length < 2) {
+    return null;
+  }
+  const firstName = parts[0].toUpperCase();
+  const lastName = parts[parts.length - 1].toUpperCase();
+  const key = `${firstName.slice(0, 3)}${lastName.slice(0, 2)}`;
+  return key.length === 5 ? key : null;
 };
 
 const detectOrganizationId = (
@@ -228,7 +278,8 @@ const main = async () => {
     throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment.');
   }
 
-  const rowMatrix = await readXlsxRows(args.xlsx);
+  const inputExtension = path.extname(args.input).toLowerCase();
+  const rowMatrix = inputExtension === '.pdf' ? await readPdfRows(args.input) : await readXlsxRows(args.input);
   const parsedRows = parseIehpApprovalRows(rowMatrix);
 
   const supabase = createClient(supabaseUrl, supabaseKey, {
@@ -237,7 +288,7 @@ const main = async () => {
   const { data: clients, error: clientsError } = await supabase
     .from('clients')
     .select(
-      'id, organization_id, first_name, last_name, full_name, insurance_info, authorized_hours_per_month, auth_units, one_to_one_units, supervision_units'
+      'id, organization_id, client_id, first_name, last_name, full_name, insurance_info, authorized_hours_per_month, auth_units, one_to_one_units, supervision_units'
     );
   if (clientsError) {
     throw clientsError;
@@ -263,12 +314,32 @@ const main = async () => {
     : detectOrganizationId(minimalRows, index);
 
   const targetOrg = detection.organizationId;
+  const targetOrgClients = clients.filter(client => client.organization_id === targetOrg);
   const matchedRows: Array<{ rowNumber: number; clientId: string; fullName: string }> = [];
   const unmatchedRows: Array<{ rowNumber: number; clientName: string }> = [];
   const ambiguousRows: Array<{ rowNumber: number; clientName: string; candidateClientIds: string[] }> = [];
   const skippedRows: Array<{ rowNumber: number; clientName: string; reason: string }> = [];
   const plannedUpdates: PlannedUpdate[] = [];
   const warningsByRow: Record<string, string[]> = {};
+  type ClientAccumulator = {
+    client: ClientRecord;
+    sourceRows: ParsedApprovalRow[];
+    maxAuthorizedHours: number | null;
+    maxH0032Hours: number | null;
+    maxHoHours: number | null;
+    maxS5111Visits: number | null;
+  };
+  const mergedByClientId = new Map<string, ClientAccumulator>();
+
+  const toMaxOrCurrent = (current: number | null, next: number | null): number | null => {
+    if (typeof next !== 'number' || !Number.isFinite(next)) {
+      return current;
+    }
+    if (current === null) {
+      return next;
+    }
+    return Math.max(current, next);
+  };
 
   for (const row of parsedRows) {
     if (SKIP_NAME_KEYS.has(row.nameKey)) {
@@ -282,88 +353,18 @@ const main = async () => {
 
     const overrideClientId = ROW_CLIENT_OVERRIDES[row.rowNumber];
     const overrideClient = overrideClientId ? clientsById.get(overrideClientId) : undefined;
-    if (overrideClient && overrideClient.organization_id === targetOrg) {
-      const candidates = [overrideClient];
-      const client = candidates[0];
-      matchedRows.push({ rowNumber: row.rowNumber, clientId: client.id, fullName: row.fullName });
-
-      const importPayload = {
-        source_file: path.basename(args.xlsx),
-        parser_version: PARSER_VERSION,
-        imported_at: new Date().toISOString(),
-        row_number: row.rowNumber,
-        raw: {
-          client_name: row.clientNameRaw,
-          auth_type: row.authType,
-          auth_amount: row.authAmountRaw,
-          iehp_label: row.iehpLabel,
-          iehp_text: row.iehpRaw,
-          location: row.location,
-          staffing_notes: row.staffingNotes,
-          match_override: overrideClientId,
-        },
-        parsed: {
-          full_name: row.fullName,
-          authorized_hours_per_month: row.authorizedHoursPerMonth,
-          h0032_hours: row.serviceBreakdown.h0032Hours,
-          ho_hours: row.serviceBreakdown.hoHours,
-          s5111_visits: row.serviceBreakdown.s5111Visits,
-        },
-      };
-
-      const existingInsuranceInfo = asRecord(client.insurance_info);
-      const nextInsuranceInfo = {
-        ...existingInsuranceInfo,
-        iehp_co_approval: importPayload,
-      };
-
-      const updatePayload: PlannedUpdate['update'] = {
-        insurance_info: nextInsuranceInfo as Json,
-      };
-
-      if (
-        typeof row.authorizedHoursPerMonth === 'number' &&
-        Number.isFinite(row.authorizedHoursPerMonth) &&
-        row.authorizedHoursPerMonth >= 0
-      ) {
-        updatePayload.authorized_hours_per_month = toIntUnits(row.authorizedHoursPerMonth);
-        updatePayload.auth_units = toIntUnits(row.authorizedHoursPerMonth);
-      }
-
-      if (typeof row.serviceBreakdown.h0032Hours === 'number' && Number.isFinite(row.serviceBreakdown.h0032Hours)) {
-        updatePayload.one_to_one_units = toIntUnits(row.serviceBreakdown.h0032Hours);
-      }
-      if (typeof row.serviceBreakdown.hoHours === 'number' && Number.isFinite(row.serviceBreakdown.hoHours)) {
-        updatePayload.supervision_units = toIntUnits(row.serviceBreakdown.hoHours);
-      }
-
-      const changedInsurance = JSON.stringify(client.insurance_info ?? null) !== JSON.stringify(nextInsuranceInfo);
-      const changedHours =
-        updatePayload.authorized_hours_per_month !== undefined &&
-        updatePayload.authorized_hours_per_month !== client.authorized_hours_per_month;
-      const changedAuthUnits = updatePayload.auth_units !== undefined && updatePayload.auth_units !== client.auth_units;
-      const changedOneToOne =
-        updatePayload.one_to_one_units !== undefined && updatePayload.one_to_one_units !== client.one_to_one_units;
-      const changedSupervision =
-        updatePayload.supervision_units !== undefined && updatePayload.supervision_units !== client.supervision_units;
-
-      if (changedInsurance || changedHours || changedAuthUnits || changedOneToOne || changedSupervision) {
-        plannedUpdates.push({
-          id: client.id,
-          rowNumber: row.rowNumber,
-          fullName: row.fullName,
-          organizationId: client.organization_id,
-          update: updatePayload,
-        });
-      }
-
-      if (row.warnings.length > 0) {
-        warningsByRow[String(row.rowNumber)] = row.warnings;
-      }
-      continue;
-    }
-
-    const candidates = (index.get(row.nameKey) ?? []).filter(client => client.organization_id === targetOrg);
+    const namedCandidates = (index.get(row.nameKey) ?? []).filter(client => client.organization_id === targetOrg);
+    const siblingKey = toSiblingFiveKey(row.fullName);
+    const siblingCandidates =
+      namedCandidates.length > 0 || !siblingKey
+        ? []
+        : targetOrgClients.filter(client => toSiblingFiveKey(client.full_name) === siblingKey);
+    const candidates =
+      overrideClient && overrideClient.organization_id === targetOrg
+        ? [overrideClient]
+        : namedCandidates.length > 0
+          ? namedCandidates
+          : siblingCandidates;
     if (candidates.length === 0) {
       unmatchedRows.push({ rowNumber: row.rowNumber, clientName: row.clientNameRaw });
       continue;
@@ -379,27 +380,71 @@ const main = async () => {
 
     const client = candidates[0];
     matchedRows.push({ rowNumber: row.rowNumber, clientId: client.id, fullName: row.fullName });
+    const existingAccumulator = mergedByClientId.get(client.id);
+    if (!existingAccumulator) {
+      mergedByClientId.set(client.id, {
+        client,
+        sourceRows: [row],
+        maxAuthorizedHours: toMaxOrCurrent(null, row.authorizedHoursPerMonth),
+        maxH0032Hours: toMaxOrCurrent(null, row.serviceBreakdown.h0032Hours),
+        maxHoHours: toMaxOrCurrent(null, row.serviceBreakdown.hoHours),
+        maxS5111Visits: toMaxOrCurrent(null, row.serviceBreakdown.s5111Visits),
+      });
+    } else {
+      existingAccumulator.sourceRows.push(row);
+      existingAccumulator.maxAuthorizedHours = toMaxOrCurrent(existingAccumulator.maxAuthorizedHours, row.authorizedHoursPerMonth);
+      existingAccumulator.maxH0032Hours = toMaxOrCurrent(existingAccumulator.maxH0032Hours, row.serviceBreakdown.h0032Hours);
+      existingAccumulator.maxHoHours = toMaxOrCurrent(existingAccumulator.maxHoHours, row.serviceBreakdown.hoHours);
+      existingAccumulator.maxS5111Visits = toMaxOrCurrent(existingAccumulator.maxS5111Visits, row.serviceBreakdown.s5111Visits);
+    }
+
+    if (row.warnings.length > 0) {
+      warningsByRow[String(row.rowNumber)] = row.warnings;
+    }
+  }
+
+  if (args.apply && ambiguousRows.length > 0) {
+    throw new Error(`Aborting apply: ${ambiguousRows.length} ambiguous row(s) require manual resolution.`);
+  }
+
+  for (const accumulator of mergedByClientId.values()) {
+    const client = accumulator.client;
+    const sourceRows = accumulator.sourceRows
+      .slice()
+      .sort((a, b) => a.rowNumber - b.rowNumber)
+      .map(sourceRow => ({
+        row_number: sourceRow.rowNumber,
+        raw: {
+          client_name: sourceRow.clientNameRaw,
+          auth_type: sourceRow.authType,
+          auth_amount: sourceRow.authAmountRaw,
+          iehp_label: sourceRow.iehpLabel,
+          iehp_text: sourceRow.iehpRaw,
+          location: sourceRow.location,
+          staffing_notes: sourceRow.staffingNotes,
+          match_override: ROW_CLIENT_OVERRIDES[sourceRow.rowNumber] ?? null,
+        },
+        parsed: {
+          full_name: sourceRow.fullName,
+          authorized_hours_per_month: sourceRow.authorizedHoursPerMonth,
+          h0032_hours: sourceRow.serviceBreakdown.h0032Hours,
+          ho_hours: sourceRow.serviceBreakdown.hoHours,
+          s5111_visits: sourceRow.serviceBreakdown.s5111Visits,
+        },
+      }));
 
     const importPayload = {
-      source_file: path.basename(args.xlsx),
+      source_file: path.basename(args.input),
+      source_type: inputExtension === '.pdf' ? 'pdf' : 'xlsx',
       parser_version: PARSER_VERSION,
       imported_at: new Date().toISOString(),
-      row_number: row.rowNumber,
-      raw: {
-        client_name: row.clientNameRaw,
-        auth_type: row.authType,
-        auth_amount: row.authAmountRaw,
-        iehp_label: row.iehpLabel,
-        iehp_text: row.iehpRaw,
-        location: row.location,
-        staffing_notes: row.staffingNotes,
-      },
+      source_rows: sourceRows,
       parsed: {
-        full_name: row.fullName,
-        authorized_hours_per_month: row.authorizedHoursPerMonth,
-        h0032_hours: row.serviceBreakdown.h0032Hours,
-        ho_hours: row.serviceBreakdown.hoHours,
-        s5111_visits: row.serviceBreakdown.s5111Visits,
+        full_name: sourceRows[0]?.parsed.full_name ?? client.full_name,
+        authorized_hours_per_month: accumulator.maxAuthorizedHours,
+        h0032_hours: accumulator.maxH0032Hours,
+        ho_hours: accumulator.maxHoHours,
+        s5111_visits: accumulator.maxS5111Visits,
       },
     };
 
@@ -408,25 +453,19 @@ const main = async () => {
       ...existingInsuranceInfo,
       iehp_co_approval: importPayload,
     };
-
     const updatePayload: PlannedUpdate['update'] = {
       insurance_info: nextInsuranceInfo as Json,
     };
 
-    if (
-      typeof row.authorizedHoursPerMonth === 'number' &&
-      Number.isFinite(row.authorizedHoursPerMonth) &&
-      row.authorizedHoursPerMonth >= 0
-    ) {
-      updatePayload.authorized_hours_per_month = toIntUnits(row.authorizedHoursPerMonth);
-      updatePayload.auth_units = toIntUnits(row.authorizedHoursPerMonth);
+    if (typeof accumulator.maxAuthorizedHours === 'number' && Number.isFinite(accumulator.maxAuthorizedHours)) {
+      updatePayload.authorized_hours_per_month = toIntUnits(accumulator.maxAuthorizedHours);
+      updatePayload.auth_units = toIntUnits(accumulator.maxAuthorizedHours);
     }
-
-    if (typeof row.serviceBreakdown.h0032Hours === 'number' && Number.isFinite(row.serviceBreakdown.h0032Hours)) {
-      updatePayload.one_to_one_units = toIntUnits(row.serviceBreakdown.h0032Hours);
+    if (typeof accumulator.maxH0032Hours === 'number' && Number.isFinite(accumulator.maxH0032Hours)) {
+      updatePayload.one_to_one_units = toIntUnits(accumulator.maxH0032Hours);
     }
-    if (typeof row.serviceBreakdown.hoHours === 'number' && Number.isFinite(row.serviceBreakdown.hoHours)) {
-      updatePayload.supervision_units = toIntUnits(row.serviceBreakdown.hoHours);
+    if (typeof accumulator.maxHoHours === 'number' && Number.isFinite(accumulator.maxHoHours)) {
+      updatePayload.supervision_units = toIntUnits(accumulator.maxHoHours);
     }
 
     const changedInsurance = JSON.stringify(client.insurance_info ?? null) !== JSON.stringify(nextInsuranceInfo);
@@ -440,22 +479,15 @@ const main = async () => {
       updatePayload.supervision_units !== undefined && updatePayload.supervision_units !== client.supervision_units;
 
     if (changedInsurance || changedHours || changedAuthUnits || changedOneToOne || changedSupervision) {
+      const firstRowNumber = sourceRows[0]?.row_number ?? -1;
       plannedUpdates.push({
         id: client.id,
-        rowNumber: row.rowNumber,
-        fullName: row.fullName,
+        rowNumber: firstRowNumber,
+        fullName: client.full_name,
         organizationId: client.organization_id,
         update: updatePayload,
       });
     }
-
-    if (row.warnings.length > 0) {
-      warningsByRow[String(row.rowNumber)] = row.warnings;
-    }
-  }
-
-  if (args.apply && ambiguousRows.length > 0) {
-    throw new Error(`Aborting apply: ${ambiguousRows.length} ambiguous row(s) require manual resolution.`);
   }
 
   if (args.apply) {
@@ -468,7 +500,8 @@ const main = async () => {
   }
 
   const report = {
-    sourceFile: args.xlsx,
+    sourceFile: args.input,
+    sourceType: inputExtension === '.pdf' ? 'pdf' : 'xlsx',
     parserVersion: PARSER_VERSION,
     applied: args.apply,
     targetOrganizationId: targetOrg,
@@ -480,6 +513,7 @@ const main = async () => {
       unmatched: unmatchedRows.length,
       ambiguous: ambiguousRows.length,
       plannedUpdates: plannedUpdates.length,
+      mergedClients: mergedByClientId.size,
     },
     skippedRows,
     unmatchedRows,
@@ -496,7 +530,7 @@ const main = async () => {
   await fs.mkdir(path.dirname(REPORT_PATH), { recursive: true });
   await fs.writeFile(REPORT_PATH, JSON.stringify(report, null, 2));
   const unresolved = {
-    sourceFile: args.xlsx,
+    sourceFile: args.input,
     targetOrganizationId: targetOrg,
     unresolvedCounts: {
       unmatched: unmatchedRows.length,

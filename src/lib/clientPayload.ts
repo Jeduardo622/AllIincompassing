@@ -6,6 +6,46 @@ interface PrepareClientPayloadOptions {
   enforceFullName?: boolean;
 }
 
+const normalizeNullableDateField = (value: unknown): string | null | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  return null;
+};
+
+const formatSupabaseError = (error: unknown): string => {
+  if (typeof error === 'string' && error.trim().length > 0) {
+    return error;
+  }
+
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    const message =
+      typeof record.message === 'string' && record.message.trim().length > 0
+        ? record.message.trim()
+        : 'Failed to update client';
+    const details =
+      typeof record.details === 'string' && record.details.trim().length > 0
+        ? record.details.trim()
+        : null;
+    const hint =
+      typeof record.hint === 'string' && record.hint.trim().length > 0
+        ? record.hint.trim()
+        : null;
+
+    return [message, details, hint].filter(Boolean).join(' | ');
+  }
+
+  return 'Failed to update client';
+};
+
 const computeFullName = (client: Partial<Client>): string => {
   const parts = [client.first_name, client.middle_name, client.last_name]
     .map(part => (typeof part === 'string' ? part.trim() : ''))
@@ -31,6 +71,10 @@ export const prepareClientPayload = (
   const payload: Partial<Client> = {
     ...sanitizedData,
   };
+
+  payload.date_of_birth = normalizeNullableDateField(sanitizedData.date_of_birth);
+  payload.auth_start_date = normalizeNullableDateField(sanitizedData.auth_start_date);
+  payload.auth_end_date = normalizeNullableDateField(sanitizedData.auth_end_date);
 
   if ('insurance_info' in sanitizedData) {
     const info = sanitizedData.insurance_info;
@@ -96,7 +140,7 @@ export const updateClientRecord = async (
       throw error;
     }
 
-    throw new Error(typeof error === 'string' ? error : 'Failed to update client');
+    throw new Error(formatSupabaseError(error));
   }
 
   return data;

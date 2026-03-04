@@ -12,6 +12,8 @@ import { supabase } from '../lib/supabase';
 
 const SERVICE_CONTRACT_PROVIDER_OPTIONS = ['Private', 'IEHP', 'CalOptima'] as const;
 type ServiceContractProvider = typeof SERVICE_CONTRACT_PROVIDER_OPTIONS[number];
+const UNIVERSAL_CPT_CODE = 'S5110';
+const UNIVERSAL_CPT_DESCRIPTION = 'Parent consultation';
 type ServiceContractCodeAuthorization = {
   code: string;
   units: number;
@@ -28,6 +30,17 @@ type EditableServiceContract = {
 const getCodePrefixForProvider = (provider: ServiceContractProvider): '9' | 'H' => (
   provider === 'Private' ? '9' : 'H'
 );
+
+const isCodeAllowedForProvider = (provider: ServiceContractProvider, code: unknown): boolean => {
+  const normalizedCode = String(code ?? '').trim().toUpperCase();
+  if (!normalizedCode) {
+    return false;
+  }
+  if (normalizedCode === UNIVERSAL_CPT_CODE) {
+    return true;
+  }
+  return normalizedCode.startsWith(getCodePrefixForProvider(provider));
+};
 
 const extractCodeValue = (value: unknown): string | null => {
   if (typeof value === 'string') {
@@ -278,10 +291,14 @@ export default function ClientModal({
       if (error) {
         return;
       }
-      setCptCodeOptions((data ?? []).map((row) => ({
+      const mapped = (data ?? []).map((row) => ({
         code: String(row.code).toUpperCase(),
         description: String(row.short_description ?? ''),
-      })));
+      }));
+      if (!mapped.some((entry) => entry.code === UNIVERSAL_CPT_CODE)) {
+        mapped.push({ code: UNIVERSAL_CPT_CODE, description: UNIVERSAL_CPT_DESCRIPTION });
+      }
+      setCptCodeOptions(mapped);
     };
     void loadCptCodes();
   }, []);
@@ -851,8 +868,9 @@ export default function ClientModal({
                 const selectedCodes = normalizeCptCodes(entry.cpt_codes);
                 const codeAuthorizations = normalizeCodeAuthorizations(entry.code_authorizations, Number(entry.units ?? 0))
                   .filter((authorization) => selectedCodes.includes(authorization.code));
-                const allowedPrefix = getCodePrefixForProvider(provider);
-                const filteredOptions = cptCodeOptions.filter((option) => option.code.startsWith(allowedPrefix));
+                const filteredOptions = cptCodeOptions.filter((option) =>
+                  isCodeAllowedForProvider(provider, option.code)
+                );
                 const insuranceId = `modal-contract-insurance-${index}`;
                 const codesId = `modal-contract-codes-${index}`;
 
@@ -873,10 +891,10 @@ export default function ClientModal({
                               ...next[index],
                               provider: nextProvider,
                               cpt_codes: (next[index]?.cpt_codes ?? []).filter((code) =>
-                                String(code).toUpperCase().startsWith(getCodePrefixForProvider(nextProvider))
+                                isCodeAllowedForProvider(nextProvider, code)
                               ),
                               code_authorizations: (next[index]?.code_authorizations ?? []).filter((authorization) =>
-                                String(authorization.code ?? '').toUpperCase().startsWith(getCodePrefixForProvider(nextProvider))
+                                isCodeAllowedForProvider(nextProvider, authorization.code)
                               ),
                             };
                             setValue('service_contracts', next, { shouldDirty: true, shouldValidate: true });

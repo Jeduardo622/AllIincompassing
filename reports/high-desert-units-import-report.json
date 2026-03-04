@@ -1,0 +1,2054 @@
+{
+  "sourceFile": "D:\\downloads\\High_Desert_Clients_REBUILT_with_units.pdf",
+  "parserVersion": "1.0.0",
+  "applied": true,
+  "targetOrganizationId": "5238e88b-6198-4862-80a2-dbe15bbeabdd",
+  "organizationDetectionCounts": {
+    "5238e88b-6198-4862-80a2-dbe15bbeabdd": 31
+  },
+  "totals": {
+    "parsedServiceRows": 191,
+    "parsedClients": 59,
+    "matched": 59,
+    "unmatched": 0,
+    "ambiguous": 0,
+    "plannedUpdates": 59
+  },
+  "unmatchedRows": [],
+  "ambiguousRows": [],
+  "updatePreview": [
+    {
+      "normalizedClientId": "ABOR",
+      "clientId": "4949990c-19bf-4894-ac07-534ca6f4288d",
+      "fullName": "Abraham Orozco",
+      "update": {
+        "insurance_info": {
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.142Z",
+            "source_identifiers": [
+              "AbOr(CAMP)"
+            ],
+            "parsed": {
+              "normalized_client_id": "ABOR",
+              "h0032_units": null,
+              "ho_units": 936,
+              "h2019_units": 2080,
+              "s5111_visits": null
+            }
+          }
+        },
+        "supervision_units": 936,
+        "auth_units": 2080
+      }
+    },
+    {
+      "normalizedClientId": "ABPEAR",
+      "clientId": "cd985f4a-fe70-44a8-a6a3-ef4c2dd12100",
+      "fullName": "Abigail Peredo Arias",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "H0032HO 14 hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "30 hrs",
+              "client_name": "Peredo Arias, Abigail",
+              "staffing_notes": "2 staff members"
+            },
+            "parsed": {
+              "ho_hours": 14,
+              "full_name": "Abigail Peredo Arias",
+              "h0032_hours": null,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 30
+            },
+            "row_number": 95,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.143Z",
+            "source_identifiers": [
+              "AbPeAr (Victorville)"
+            ],
+            "parsed": {
+              "normalized_client_id": "ABPEAR",
+              "h0032_units": null,
+              "ho_units": 1456,
+              "h2019_units": 3120,
+              "s5111_visits": null
+            }
+          }
+        },
+        "supervision_units": 1456,
+        "auth_units": 3120
+      }
+    },
+    {
+      "normalizedClientId": "ADVO",
+      "clientId": "21180c45-cbeb-4d04-95dc-cdaa90e831ae",
+      "fullName": "Adalynn Vollrath",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "H0032 4 hrs H0032HO 6 hrs S5111 26 visits",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "18 hrs",
+              "client_name": "Vollrath, Adalynn",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 6,
+              "full_name": "Adalynn Vollrath",
+              "h0032_hours": 4,
+              "s5111_visits": 26,
+              "authorized_hours_per_month": 18
+            },
+            "row_number": 123,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.143Z",
+            "source_identifiers": [
+              "AdVo"
+            ],
+            "parsed": {
+              "normalized_client_id": "ADVO",
+              "h0032_units": 416,
+              "ho_units": 624,
+              "h2019_units": 1872,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 416,
+        "supervision_units": 624,
+        "auth_units": 1872
+      }
+    },
+    {
+      "normalizedClientId": "ALGA",
+      "clientId": "aab2ca3a-bfc9-445f-9814-b544539f086a",
+      "fullName": "Alannah Garcia",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": "Hesperia",
+              "auth_type": "1to1",
+              "iehp_text": "H0032 8hrs H0032HO 1hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "15hrs",
+              "client_name": "Garcia, Alannah",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 1,
+              "full_name": "Alannah Garcia",
+              "h0032_hours": 8,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 15
+            },
+            "row_number": 43,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.143Z",
+            "source_identifiers": [
+              "AlGa(hesperia)"
+            ],
+            "parsed": {
+              "normalized_client_id": "ALGA",
+              "h0032_units": 832,
+              "ho_units": 104,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 832,
+        "supervision_units": 104,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "ALSAGA",
+      "clientId": "92f1078b-d1ca-4e0d-b0ae-24919e6eac04",
+      "fullName": "Alan Salazar Garcia",
+      "update": {
+        "insurance_info": {
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.143Z",
+            "source_identifiers": [
+              "AlSaGa (Victorville)"
+            ],
+            "parsed": {
+              "normalized_client_id": "ALSAGA",
+              "h0032_units": 728,
+              "ho_units": 208,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 728,
+        "supervision_units": 208,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "AMTO",
+      "clientId": "493625d1-6324-4733-9276-6e1e28ce4fe8",
+      "fullName": "Amir Tobler",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "H0032HO 11hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "20 hrs",
+              "client_name": "Tobler, Amir",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 11,
+              "full_name": "Amir Tobler",
+              "h0032_hours": null,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 20
+            },
+            "row_number": 119,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.143Z",
+            "source_identifiers": [
+              "AmTo AV"
+            ],
+            "parsed": {
+              "normalized_client_id": "AMTO",
+              "h0032_units": null,
+              "ho_units": 1144,
+              "h2019_units": 2080,
+              "s5111_visits": null
+            }
+          }
+        },
+        "supervision_units": 1144,
+        "auth_units": 2080
+      }
+    },
+    {
+      "normalizedClientId": "ANLO",
+      "clientId": "e8d2be9c-cd4d-4176-be64-ed6eaa07e6b5",
+      "fullName": "Anthony Lopez",
+      "update": {
+        "insurance_info": {
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.143Z",
+            "source_identifiers": [
+              "AnLo(Victorville)"
+            ],
+            "parsed": {
+              "normalized_client_id": "ANLO",
+              "h0032_units": 832,
+              "ho_units": 208,
+              "h2019_units": 1248,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 832,
+        "supervision_units": 208,
+        "auth_units": 1248
+      }
+    },
+    {
+      "normalizedClientId": "ATHA",
+      "clientId": "92132224-d05a-4f34-847a-517f504933cb",
+      "fullName": "Athena  Hamburg",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.143Z",
+            "source_identifiers": [
+              "AtHa-(Menifee)"
+            ],
+            "parsed": {
+              "normalized_client_id": "ATHA",
+              "h0032_units": 624,
+              "ho_units": 208,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 624,
+        "supervision_units": 208,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "BEMU",
+      "clientId": "72747a0d-c990-41a0-ba57-b5595bfd6fd4",
+      "fullName": "Benjamin Murrieta",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "H0032 9 hrs H0032 HO 2 hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "20 hrs",
+              "client_name": "Murrieta, Benjamin",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 2,
+              "full_name": "Benjamin Murrieta",
+              "h0032_hours": 9,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 20
+            },
+            "row_number": 89,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.143Z",
+            "source_identifiers": [
+              "BeMu (Hesperia)"
+            ],
+            "parsed": {
+              "normalized_client_id": "BEMU",
+              "h0032_units": 936,
+              "ho_units": 208,
+              "h2019_units": 2080,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 936,
+        "supervision_units": 208,
+        "auth_units": 2080
+      }
+    },
+    {
+      "normalizedClientId": "CAAR",
+      "clientId": "1c4ce922-3f46-4f48-9913-e0c0d1c49ec8",
+      "fullName": "Carlos Garcia Arias",
+      "update": {
+        "insurance_info": {
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.143Z",
+            "source_identifiers": [
+              "CaAr (hesperia)"
+            ],
+            "parsed": {
+              "normalized_client_id": "CAAR",
+              "h0032_units": 576,
+              "ho_units": 96,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 576,
+        "supervision_units": 96,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "CAGA",
+      "clientId": "1c4ce922-3f46-4f48-9913-e0c0d1c49ec8",
+      "fullName": "Carlos Garcia Arias",
+      "update": {
+        "insurance_info": {
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.143Z",
+            "source_identifiers": [
+              "CaGa (Hesperia)"
+            ],
+            "parsed": {
+              "normalized_client_id": "CAGA",
+              "h0032_units": 576,
+              "ho_units": 96,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 576,
+        "supervision_units": 96,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "CHLO",
+      "clientId": "9674275d-acad-43a3-93c6-59412dc28f33",
+      "fullName": "Christopher Lopez",
+      "update": {
+        "insurance_info": {
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.143Z",
+            "source_identifiers": [
+              "ChLo(victorville)"
+            ],
+            "parsed": {
+              "normalized_client_id": "CHLO",
+              "h0032_units": 832,
+              "ho_units": 208,
+              "h2019_units": 1248,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 832,
+        "supervision_units": 208,
+        "auth_units": 1248
+      }
+    },
+    {
+      "normalizedClientId": "DAAN",
+      "clientId": "5200376b-64d9-44c1-a836-8bba356ef5df",
+      "fullName": "Damon Andrade",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": "Adelanto",
+              "auth_type": "1to1",
+              "iehp_text": "H0032 11 hrs H0032 HO 2 hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "30 hrs",
+              "client_name": "Andrade, Damon",
+              "staffing_notes": "2 staff to cover all hours"
+            },
+            "parsed": {
+              "ho_hours": 2,
+              "full_name": "Damon Andrade",
+              "h0032_hours": 11,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 30
+            },
+            "row_number": 9,
+            "imported_at": "2026-03-02T15:12:53.585Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.144Z",
+            "source_identifiers": [
+              "DaAn (Victorville)"
+            ],
+            "parsed": {
+              "normalized_client_id": "DAAN",
+              "h0032_units": 1092,
+              "ho_units": 208,
+              "h2019_units": 3120,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 1092,
+        "supervision_units": 208,
+        "auth_units": 3120
+      }
+    },
+    {
+      "normalizedClientId": "DAFE",
+      "clientId": "4823c8fa-ab51-441d-ba67-e1508a4f18c5",
+      "fullName": "David Emmanuel Gallegos Fernadez",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "iehp_co_approval": {
+            "raw": {
+              "location": "Victorville",
+              "auth_type": "1to1",
+              "iehp_text": "9hrs 0032 2hrs HO",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "15hrs",
+              "client_name": "Gallegos Fernandez, David",
+              "match_override": "4823c8fa-ab51-441d-ba67-e1508a4f18c5",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 2,
+              "full_name": "David Gallegos Fernandez",
+              "h0032_hours": 9,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 15
+            },
+            "row_number": 41,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.144Z",
+            "source_identifiers": [
+              "DaFe victorville"
+            ],
+            "parsed": {
+              "normalized_client_id": "DAFE",
+              "h0032_units": 936,
+              "ho_units": 208,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 936,
+        "supervision_units": 208,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "DEROME",
+      "clientId": "8f95f1d3-792b-4f08-8b32-874df60d32a1",
+      "fullName": "Denver Rodriguez-Meza",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "H0032 7hrs H0032HO 1 hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "15hrs",
+              "client_name": "Rodriguez Meza, Denver",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 1,
+              "full_name": "Denver Rodriguez Meza",
+              "h0032_hours": 7,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 15
+            },
+            "row_number": 107,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.144Z",
+            "source_identifiers": [
+              "DeRoMe(Hesperia)1"
+            ],
+            "parsed": {
+              "normalized_client_id": "DEROME",
+              "h0032_units": 650,
+              "ho_units": 78,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 650,
+        "supervision_units": 78,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "DVLE",
+      "clientId": "9d494520-21fb-49c8-9e60-9a5e10f89c5d",
+      "fullName": "D'vine Leroy",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": "Victorville",
+              "auth_type": "1to1",
+              "iehp_text": "H0032HO 10hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "26hrs",
+              "client_name": "Leroy, D'vine",
+              "staffing_notes": "2 staff members"
+            },
+            "parsed": {
+              "ho_hours": 10,
+              "full_name": "D'vine Leroy",
+              "h0032_hours": null,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 26
+            },
+            "row_number": 63,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.144Z",
+            "source_identifiers": [
+              "DvLe (Victorville)"
+            ],
+            "parsed": {
+              "normalized_client_id": "DVLE",
+              "h0032_units": null,
+              "ho_units": 1040,
+              "h2019_units": 2704,
+              "s5111_visits": null
+            }
+          }
+        },
+        "supervision_units": 1040,
+        "auth_units": 2704
+      }
+    },
+    {
+      "normalizedClientId": "ERES",
+      "clientId": "e3fef4c2-c155-41f4-9b87-2aec73ae00f7",
+      "fullName": "Erick  Estrada",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.144Z",
+            "source_identifiers": [
+              "ERES Victorville"
+            ],
+            "parsed": {
+              "normalized_client_id": "ERES",
+              "h0032_units": 728,
+              "ho_units": 208,
+              "h2019_units": 2600,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 728,
+        "supervision_units": 208,
+        "auth_units": 2600
+      }
+    },
+    {
+      "normalizedClientId": "ELLO",
+      "clientId": "23401dd4-1ecb-4f9c-89c3-5ee80e28addd",
+      "fullName": "Elias Lopez",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "H0032 11 hrs H0032HO 3 hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "20 hrs",
+              "client_name": "Lopez, Elias",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 3,
+              "full_name": "Elias Lopez",
+              "h0032_hours": 11,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 20
+            },
+            "row_number": 65,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.144Z",
+            "source_identifiers": [
+              "ElLo (Victorville)"
+            ],
+            "parsed": {
+              "normalized_client_id": "ELLO",
+              "h0032_units": 1144,
+              "ho_units": 312,
+              "h2019_units": 2080,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 1144,
+        "supervision_units": 312,
+        "auth_units": 2080
+      }
+    },
+    {
+      "normalizedClientId": "EMVO",
+      "clientId": "3ef9bef4-5c17-40d1-aa47-faeb4199999a",
+      "fullName": "Emmalynn Vollrath",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "H0032HO 12 hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "30 hrs",
+              "client_name": "Vollrath, Emmalynn",
+              "staffing_notes": "2 staff members"
+            },
+            "parsed": {
+              "ho_hours": 12,
+              "full_name": "Emmalynn Vollrath",
+              "h0032_hours": null,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 30
+            },
+            "row_number": 125,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.144Z",
+            "source_identifiers": [
+              "EmVo(Hesperia)"
+            ],
+            "parsed": {
+              "normalized_client_id": "EMVO",
+              "h0032_units": null,
+              "ho_units": 1248,
+              "h2019_units": 3120,
+              "s5111_visits": null
+            }
+          }
+        },
+        "supervision_units": 1248,
+        "auth_units": 3120
+      }
+    },
+    {
+      "normalizedClientId": "ERCARME",
+      "clientId": "f21a5c8d-a12d-4d78-b873-8656f059cd8d",
+      "fullName": "Ernesto Castillo Melendez",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": "Barstow",
+              "auth_type": "1to1",
+              "iehp_text": "H0032 9hrs H0032HO 2 hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "19hrs",
+              "client_name": "Castillo Melendez, Ernesto",
+              "staffing_notes": "2 staff members most likely"
+            },
+            "parsed": {
+              "ho_hours": 2,
+              "full_name": "Ernesto Castillo Melendez",
+              "h0032_hours": 9,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 19
+            },
+            "row_number": 23,
+            "imported_at": "2026-03-02T15:12:53.585Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.144Z",
+            "source_identifiers": [
+              "ErCarMe Barstow"
+            ],
+            "parsed": {
+              "normalized_client_id": "ERCARME",
+              "h0032_units": 936,
+              "ho_units": 208,
+              "h2019_units": 1892,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 936,
+        "supervision_units": 208,
+        "auth_units": 1892
+      }
+    },
+    {
+      "normalizedClientId": "ETHE",
+      "clientId": "4afab316-c9ef-48a3-872e-04cea32dfd05",
+      "fullName": "Ethan  Hernandez",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.144Z",
+            "source_identifiers": [
+              "EtHe (Victorville)"
+            ],
+            "parsed": {
+              "normalized_client_id": "ETHE",
+              "h0032_units": 728,
+              "ho_units": 208,
+              "h2019_units": 2080,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 728,
+        "supervision_units": 208,
+        "auth_units": 2080
+      }
+    },
+    {
+      "normalizedClientId": "EVSA",
+      "clientId": "79497934-d094-4120-904e-4dc14bfc774e",
+      "fullName": "Everest Carrillo Sanchez",
+      "update": {
+        "insurance_info": {
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.144Z",
+            "source_identifiers": [
+              "EvSa(Hesperia)"
+            ],
+            "parsed": {
+              "normalized_client_id": "EVSA",
+              "h0032_units": 936,
+              "ho_units": 208,
+              "h2019_units": 1872,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 936,
+        "supervision_units": 208,
+        "auth_units": 1872
+      }
+    },
+    {
+      "normalizedClientId": "GIAR",
+      "clientId": "90c6c016-75ba-41d7-bf76-100739183d81",
+      "fullName": "Gia  Arriola",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "iehp_co_approval": {
+            "raw": {
+              "location": "Hesperia",
+              "auth_type": "1to1",
+              "iehp_text": "H0032 8hrs H0032HO 3 hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "18hrs",
+              "client_name": "Arriola, Gia",
+              "staffing_notes": "Potentially 1 staff, maybe 2 depends on staff availability"
+            },
+            "parsed": {
+              "ho_hours": 3,
+              "full_name": "Gia Arriola",
+              "h0032_hours": 8,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 18
+            },
+            "row_number": 11,
+            "imported_at": "2026-03-02T15:12:53.585Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.145Z",
+            "source_identifiers": [
+              "GiAr (Hesperia)"
+            ],
+            "parsed": {
+              "normalized_client_id": "GIAR",
+              "h0032_units": 832,
+              "ho_units": 312,
+              "h2019_units": 1872,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 832,
+        "supervision_units": 312,
+        "auth_units": 1872
+      }
+    },
+    {
+      "normalizedClientId": "HAME",
+      "clientId": "06406c86-771c-41e0-a816-309d3d38b8ce",
+      "fullName": "Haumea  Menke",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "9hrs 0032 2hrs HO",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "15hrs",
+              "client_name": "Menke, Haumea",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 2,
+              "full_name": "Haumea Menke",
+              "h0032_hours": 9,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 15
+            },
+            "row_number": 83,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.145Z",
+            "source_identifiers": [
+              "HaMe (Victorville)"
+            ],
+            "parsed": {
+              "normalized_client_id": "HAME",
+              "h0032_units": 936,
+              "ho_units": 208,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 936,
+        "supervision_units": 208,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "HEME",
+      "clientId": "be26b68b-1e15-48eb-8e72-1ba5b768a7ad",
+      "fullName": "Hera  Menke",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "6hrs 0032 2hrs HO",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "15hrs",
+              "client_name": "Menke, Hera",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 2,
+              "full_name": "Hera Menke",
+              "h0032_hours": 6,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 15
+            },
+            "row_number": 85,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.145Z",
+            "source_identifiers": [
+              "HeMe (Victorville)"
+            ],
+            "parsed": {
+              "normalized_client_id": "HEME",
+              "h0032_units": 624,
+              "ho_units": 208,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 624,
+        "supervision_units": 208,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "ISKI",
+      "clientId": "4b728358-e465-4fcb-a8d9-e83c4df217bc",
+      "fullName": "Isaiah Kimble",
+      "update": {
+        "insurance_info": {
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.145Z",
+            "source_identifiers": [
+              "IsKi ADELANTO"
+            ],
+            "parsed": {
+              "normalized_client_id": "ISKI",
+              "h0032_units": 962,
+              "ho_units": 182,
+              "h2019_units": 3640,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 962,
+        "supervision_units": 182,
+        "auth_units": 3640
+      }
+    },
+    {
+      "normalizedClientId": "ISLA",
+      "clientId": "41285094-7f4a-4a60-8851-b7f7b5d33048",
+      "fullName": "Isaack Lara",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": "Adelanto",
+              "auth_type": "1to1",
+              "iehp_text": "H0032 10hrs H0032HO 3hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "20hrs",
+              "client_name": "Lara, Isaack",
+              "staffing_notes": "1 staff member, maybe 2"
+            },
+            "parsed": {
+              "ho_hours": 3,
+              "full_name": "Isaack Lara",
+              "h0032_hours": 10,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 20
+            },
+            "row_number": 61,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.145Z",
+            "source_identifiers": [
+              "IsLa (Adelanto)"
+            ],
+            "parsed": {
+              "normalized_client_id": "ISLA",
+              "h0032_units": 1040,
+              "ho_units": 312,
+              "h2019_units": 2080,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 1040,
+        "supervision_units": 312,
+        "auth_units": 2080
+      }
+    },
+    {
+      "normalizedClientId": "ISLU",
+      "clientId": "3ed2a02e-3012-4123-8d5e-8edb7fd8cc76",
+      "fullName": "Isaias  Lule",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "H0032HO 11 hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "30 hrs",
+              "client_name": "Lule, Isaias",
+              "staffing_notes": "2 staff members"
+            },
+            "parsed": {
+              "ho_hours": 11,
+              "full_name": "Isaias Lule",
+              "h0032_hours": null,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 30
+            },
+            "row_number": 75,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.145Z",
+            "source_identifiers": [
+              "IsLu Hesperia"
+            ],
+            "parsed": {
+              "normalized_client_id": "ISLU",
+              "h0032_units": null,
+              "ho_units": 1144,
+              "h2019_units": 3120,
+              "s5111_visits": null
+            }
+          }
+        },
+        "supervision_units": 1144,
+        "auth_units": 3120
+      }
+    },
+    {
+      "normalizedClientId": "ISZA",
+      "clientId": "b606d918-0554-4038-b22a-3cce6b22b672",
+      "fullName": "Ismael Zavala",
+      "update": {
+        "insurance_info": {
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.145Z",
+            "source_identifiers": [
+              "IsZa (Hesperia)"
+            ],
+            "parsed": {
+              "normalized_client_id": "ISZA",
+              "h0032_units": 936,
+              "ho_units": 208,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 936,
+        "supervision_units": 208,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "JAMO",
+      "clientId": "770452f8-d809-49c2-8c70-dab2b4dbef26",
+      "fullName": "Jackson Moody",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "H0032HO 8 hrs H0032 4 hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "20 hrs",
+              "client_name": "Moody, Jackson",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 8,
+              "full_name": "Jackson Moody",
+              "h0032_hours": 8,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 20
+            },
+            "row_number": 87,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.145Z",
+            "source_identifiers": [
+              "JaMo (CAMP)"
+            ],
+            "parsed": {
+              "normalized_client_id": "JAMO",
+              "h0032_units": 416,
+              "ho_units": 832,
+              "h2019_units": 2080,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 416,
+        "supervision_units": 832,
+        "auth_units": 2080
+      }
+    },
+    {
+      "normalizedClientId": "JEKI",
+      "clientId": "b2c542a0-7064-4485-90a1-92133dd203fd",
+      "fullName": "Jeremiah  Kiever",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.145Z",
+            "source_identifiers": [
+              "JeKi AV"
+            ],
+            "parsed": {
+              "normalized_client_id": "JEKI",
+              "h0032_units": null,
+              "ho_units": 208,
+              "h2019_units": 1040,
+              "s5111_visits": null
+            }
+          }
+        },
+        "supervision_units": 208,
+        "auth_units": 1040
+      }
+    },
+    {
+      "normalizedClientId": "JESCAB",
+      "clientId": "bfd10232-4b7d-4111-82c1-89ded8fdb1c7",
+      "fullName": "Jesus Cabrera",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": "Adelanto",
+              "auth_type": "1to1",
+              "iehp_text": "H0032HO 9hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "15hrs",
+              "client_name": "Cabrera, Jesus",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 9,
+              "full_name": "Jesus Cabrera",
+              "h0032_hours": null,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 15
+            },
+            "row_number": 21,
+            "imported_at": "2026-03-02T15:12:53.585Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.145Z",
+            "source_identifiers": [
+              "JesCab(Adelanto)"
+            ],
+            "parsed": {
+              "normalized_client_id": "JESCAB",
+              "h0032_units": null,
+              "ho_units": 936,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "supervision_units": 936,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "KAROME",
+      "clientId": "ced6bf7d-9c74-4ea3-ac1b-6ad980a82b72",
+      "fullName": "Kailany Rodriguez-Meza",
+      "update": {
+        "insurance_info": {
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.145Z",
+            "source_identifiers": [
+              "KaRoMe(Hesperia)"
+            ],
+            "parsed": {
+              "normalized_client_id": "KAROME",
+              "h0032_units": 624,
+              "ho_units": 208,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 624,
+        "supervision_units": 208,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "KAYA",
+      "clientId": "ed8666ea-ba6a-4373-9ede-6e3a6d1f3dd6",
+      "fullName": "Kaylina Yates",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "H0032HO 5 hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "15 hrs",
+              "client_name": "Yates, Kaylina",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 5,
+              "full_name": "Kaylina Yates",
+              "h0032_hours": null,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 15
+            },
+            "row_number": 135,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.145Z",
+            "source_identifiers": [
+              "KaYa Hesperia"
+            ],
+            "parsed": {
+              "normalized_client_id": "KAYA",
+              "h0032_units": null,
+              "ho_units": 520,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "supervision_units": 520,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "LEKN",
+      "clientId": "da3a6712-26e3-44f7-88a5-e184757ea64c",
+      "fullName": "Leon Knoblach",
+      "update": {
+        "insurance_info": {
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.145Z",
+            "source_identifiers": [
+              "LeKn(Menifee)"
+            ],
+            "parsed": {
+              "normalized_client_id": "LEKN",
+              "h0032_units": 936,
+              "ho_units": 208,
+              "h2019_units": 2080,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 936,
+        "supervision_units": 208,
+        "auth_units": 2080
+      }
+    },
+    {
+      "normalizedClientId": "LETE",
+      "clientId": "4235dc49-91e5-4d5e-9fc8-d03ba5210ba3",
+      "fullName": "Leyla Terrazas",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "H0032 9 hrs H0032HO 5 hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "20 hrs",
+              "client_name": "Terrazas, Leyla",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 5,
+              "full_name": "Leyla Terrazas",
+              "h0032_hours": 9,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 20
+            },
+            "row_number": 115,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.145Z",
+            "source_identifiers": [
+              "LeTe(Hesperia)"
+            ],
+            "parsed": {
+              "normalized_client_id": "LETE",
+              "h0032_units": 936,
+              "ho_units": 520,
+              "h2019_units": 2080,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 936,
+        "supervision_units": 520,
+        "auth_units": 2080
+      }
+    },
+    {
+      "normalizedClientId": "MABA",
+      "clientId": "abbec34b-7cda-43f6-8a7f-4c6501aa4afe",
+      "fullName": "Mauricio  Banderas Gutierez",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.145Z",
+            "source_identifiers": [
+              "MaBa-(Cathedral Cty)"
+            ],
+            "parsed": {
+              "normalized_client_id": "MABA",
+              "h0032_units": 520,
+              "ho_units": 208,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 520,
+        "supervision_units": 208,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "MALO",
+      "clientId": "b0b1c8ea-b171-4c9d-b4b0-1ea6a671708a",
+      "fullName": "Matthew  Lopez",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "9hrs 0032 2hrs HO",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "20 hrs",
+              "client_name": "Lopez, Mathew",
+              "match_override": "b0b1c8ea-b171-4c9d-b4b0-1ea6a671708a",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 2,
+              "full_name": "Mathew Lopez",
+              "h0032_hours": 9,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 20
+            },
+            "row_number": 71,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.146Z",
+            "source_identifiers": [
+              "MaLo(Adelanto)"
+            ],
+            "parsed": {
+              "normalized_client_id": "MALO",
+              "h0032_units": 936,
+              "ho_units": 208,
+              "h2019_units": 2080,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 936,
+        "supervision_units": 208,
+        "auth_units": 2080
+      }
+    },
+    {
+      "normalizedClientId": "MARO",
+      "clientId": "0a1bdc01-0f5e-4380-a76f-6aec217be047",
+      "fullName": "Mario Robledo",
+      "update": {
+        "insurance_info": {
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.146Z",
+            "source_identifiers": [
+              "MaRo Victorville"
+            ],
+            "parsed": {
+              "normalized_client_id": "MARO",
+              "h0032_units": null,
+              "ho_units": 1144,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "supervision_units": 1144,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "MAYO",
+      "clientId": "88c86832-55ef-4b72-be37-d9e618a785fe",
+      "fullName": "Maverick Young",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "H0032HO 9hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "15 hrs",
+              "client_name": "Young, Maverick",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 9,
+              "full_name": "Maverick Young",
+              "h0032_hours": null,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 15
+            },
+            "row_number": 137,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.146Z",
+            "source_identifiers": [
+              "MaYo (Victorville)"
+            ],
+            "parsed": {
+              "normalized_client_id": "MAYO",
+              "h0032_units": null,
+              "ho_units": 936,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "supervision_units": 936,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "MAZA",
+      "clientId": "1f343ddb-1a46-4cf9-8355-c8ac1e89e34d",
+      "fullName": "Mathew Zamudio",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "H0032HO 14 hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "30 hrs",
+              "client_name": "Zamudio, Mathew",
+              "staffing_notes": "2 staff members"
+            },
+            "parsed": {
+              "ho_hours": 14,
+              "full_name": "Mathew Zamudio",
+              "h0032_hours": null,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 30
+            },
+            "row_number": 139,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.146Z",
+            "source_identifiers": [
+              "MaZa (Victorville)"
+            ],
+            "parsed": {
+              "normalized_client_id": "MAZA",
+              "h0032_units": null,
+              "ho_units": 1456,
+              "h2019_units": 3120,
+              "s5111_visits": null
+            }
+          }
+        },
+        "supervision_units": 1456,
+        "auth_units": 3120
+      }
+    },
+    {
+      "normalizedClientId": "MACMA",
+      "clientId": "b909128f-a71b-46de-b49c-03a3e94c285f",
+      "fullName": "Mathew Camacho",
+      "update": {
+        "insurance_info": {
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.146Z",
+            "source_identifiers": [
+              "MacMa(AppleValley)"
+            ],
+            "parsed": {
+              "normalized_client_id": "MACMA",
+              "h0032_units": 220,
+              "ho_units": 208,
+              "h2019_units": 832,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 220,
+        "supervision_units": 208,
+        "auth_units": 832
+      }
+    },
+    {
+      "normalizedClientId": "MACAAR",
+      "clientId": "4446eb1e-58a3-43c9-988f-90470c262561",
+      "fullName": "Maximilan  Castellanos-Arenas",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.146Z",
+            "source_identifiers": [
+              "Macaar(applevalley)"
+            ],
+            "parsed": {
+              "normalized_client_id": "MACAAR",
+              "h0032_units": 624,
+              "ho_units": 208,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 624,
+        "supervision_units": 208,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "MARAL",
+      "clientId": "2d23e74d-4485-48cf-bdd8-1bc3decd4016",
+      "fullName": "Mariam Almaida",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": "Victorville",
+              "auth_type": "1to1",
+              "iehp_text": "8hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "15hrs",
+              "client_name": "Almaida, Mariam",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": null,
+              "full_name": "Mariam Almaida",
+              "h0032_hours": null,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 15
+            },
+            "row_number": 7,
+            "imported_at": "2026-03-02T15:12:53.585Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.147Z",
+            "source_identifiers": [
+              "MarAl"
+            ],
+            "parsed": {
+              "normalized_client_id": "MARAL",
+              "h0032_units": null,
+              "ho_units": 832,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "supervision_units": 832,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "MATFI",
+      "clientId": "eb809f7a-c5e8-4fe4-a0c1-ee4be842460c",
+      "fullName": "Matthew Figueroa",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": "Hesperia",
+              "auth_type": "1to1",
+              "iehp_text": "H0032 HO 8hrs H0032 5hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "15hrs",
+              "client_name": "Figueroa, Matthew",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 8,
+              "full_name": "Matthew Figueroa",
+              "h0032_hours": 8,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 15
+            },
+            "row_number": 37,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.147Z",
+            "source_identifiers": [
+              "MatFi"
+            ],
+            "parsed": {
+              "normalized_client_id": "MATFI",
+              "h0032_units": 468,
+              "ho_units": 768,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 468,
+        "supervision_units": 768,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "NARE",
+      "clientId": "975af778-18a7-4849-a60d-c96377275038",
+      "fullName": "Natalie Reyes",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "H0032HO 8hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "20hrs",
+              "client_name": "Reyes, Natalie",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 8,
+              "full_name": "Natalie Reyes",
+              "h0032_hours": null,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 20
+            },
+            "row_number": 101,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.147Z",
+            "source_identifiers": [
+              "NaRe (Adelanto)"
+            ],
+            "parsed": {
+              "normalized_client_id": "NARE",
+              "h0032_units": null,
+              "ho_units": 832,
+              "h2019_units": 2080,
+              "s5111_visits": null
+            }
+          }
+        },
+        "supervision_units": 832,
+        "auth_units": 2080
+      }
+    },
+    {
+      "normalizedClientId": "NOWR",
+      "clientId": "28a3550a-7428-4122-9121-e02ec0e0df44",
+      "fullName": "Noah Wright",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "H0032 9 hrs H0032HO 5 hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "15 hrs",
+              "client_name": "Wright, Noah",
+              "staffing_notes": "1 staff member"
+            },
+            "parsed": {
+              "ho_hours": 5,
+              "full_name": "Noah Wright",
+              "h0032_hours": 9,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 15
+            },
+            "row_number": 129,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.147Z",
+            "source_identifiers": [
+              "NoWr victorville"
+            ],
+            "parsed": {
+              "normalized_client_id": "NOWR",
+              "h0032_units": 936,
+              "ho_units": 520,
+              "h2019_units": 1560,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 936,
+        "supervision_units": 520,
+        "auth_units": 1560
+      }
+    },
+    {
+      "normalizedClientId": "RISE",
+      "clientId": "007cfc3f-605a-46d5-979d-a06ce266fb8e",
+      "fullName": "River Self",
+      "update": {
+        "insurance_info": {
+          "iehp_co_approval": {
+            "raw": {
+              "location": null,
+              "auth_type": "1to1",
+              "iehp_text": "H0032 13 hrs H0032HO 5 hrs",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "40hrs",
+              "client_name": "Self, River",
+              "staffing_notes": "3 staff members, really depends on availability"
+            },
+            "parsed": {
+              "ho_hours": 5,
+              "full_name": "River Self",
+              "h0032_hours": 13,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 40
+            },
+            "row_number": 109,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.147Z",
+            "source_identifiers": [
+              "RiSe (Hesperia)"
+            ],
+            "parsed": {
+              "normalized_client_id": "RISE",
+              "h0032_units": 1352,
+              "ho_units": 520,
+              "h2019_units": 4160,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 1352,
+        "supervision_units": 520,
+        "auth_units": 4160
+      }
+    },
+    {
+      "normalizedClientId": "RYGI",
+      "clientId": "ab44713e-5be7-42a6-ac05-7a5d8f475337",
+      "fullName": "Ryder  Gillespie",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "iehp_co_approval": {
+            "raw": {
+              "location": "Adelanto",
+              "auth_type": "1to1",
+              "iehp_text": "11hrs HO",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "30hrs",
+              "client_name": "Gillespie, Ryder",
+              "staffing_notes": "2 staff members"
+            },
+            "parsed": {
+              "ho_hours": 11,
+              "full_name": "Ryder Gillespie",
+              "h0032_hours": null,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 30
+            },
+            "row_number": 45,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.147Z",
+            "source_identifiers": [
+              "RyGi (Adenlanto)"
+            ],
+            "parsed": {
+              "normalized_client_id": "RYGI",
+              "h0032_units": null,
+              "ho_units": 1144,
+              "h2019_units": 3120,
+              "s5111_visits": null
+            }
+          }
+        },
+        "supervision_units": 1144,
+        "auth_units": 3120
+      }
+    },
+    {
+      "normalizedClientId": "RYDGI",
+      "clientId": "ab44713e-5be7-42a6-ac05-7a5d8f475337",
+      "fullName": "Ryder  Gillespie",
+      "update": {
+        "insurance_info": {
+          "provider": "",
+          "iehp_co_approval": {
+            "raw": {
+              "location": "Adelanto",
+              "auth_type": "1to1",
+              "iehp_text": "11hrs HO",
+              "iehp_label": "PC and Sup",
+              "auth_amount": "30hrs",
+              "client_name": "Gillespie, Ryder",
+              "staffing_notes": "2 staff members"
+            },
+            "parsed": {
+              "ho_hours": 11,
+              "full_name": "Ryder Gillespie",
+              "h0032_hours": null,
+              "s5111_visits": null,
+              "authorized_hours_per_month": 30
+            },
+            "row_number": 45,
+            "imported_at": "2026-03-02T15:12:53.586Z",
+            "source_file": "IEHP + CO approval amounts.xlsx",
+            "parser_version": "1.0.0"
+          },
+          "high_desert_units_import": {
+            "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "parser_version": "1.0.0",
+            "imported_at": "2026-03-04T15:06:15.148Z",
+            "source_identifiers": [
+              "RydGi-Adelanto"
+            ],
+            "parsed": {
+              "normalized_client_id": "RYDGI",
+              "h0032_units": 624,
+              "ho_units": 208,
+              "h2019_units": 4160,
+              "s5111_visits": null
+            }
+          }
+        },
+        "one_to_one_units": 624,
+        "supervision_units": 208,
+        "auth_units": 4160
+      }
+    }
+  ]
+}

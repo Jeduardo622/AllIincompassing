@@ -87,6 +87,169 @@ const templateTypeToDisplayLabel = (templateType: AssessmentTemplateType): strin
   return "CalOptima FBA";
 };
 
+const runCaloptimaExtractionWorkflow = async (args: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+  actorId: string | null;
+  createdDocumentId: string;
+  clientId: string;
+  checklistRows: AssessmentChecklistSeedRow[];
+  bucketId: string;
+  objectPath: string;
+}) => {
+  const { supabaseUrl, headers, organizationId, actorId, createdDocumentId, clientId, checklistRows, bucketId, objectPath } =
+    args;
+  try {
+    const clientSnapshotResult = await fetchJson<ClientSnapshotRow[]>(
+      `${supabaseUrl}/rest/v1/clients?select=full_name,first_name,last_name,date_of_birth,cin_number,client_id,phone,parent1_phone,parent1_first_name,parent1_last_name&id=eq.${encodeURIComponent(
+        clientId,
+      )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
+      { method: "GET", headers },
+    );
+    const clientSnapshotRow =
+      clientSnapshotResult.ok && Array.isArray(clientSnapshotResult.data) && clientSnapshotResult.data[0]
+        ? clientSnapshotResult.data[0]
+        : null;
+    const clientSnapshot = clientSnapshotRow ? compactNullableRecord(clientSnapshotRow) : undefined;
+
+    const extractionResult = await fetchJson<ExtractionFunctionResponse>(`${supabaseUrl}/functions/v1/extract-assessment-fields`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        assessment_document_id: createdDocumentId,
+        template_type: "caloptima_fba",
+        bucket_id: bucketId,
+        object_path: objectPath,
+        checklist_rows: checklistRows.map((row) => ({
+          section: row.section,
+          label: row.label,
+          placeholder_key: row.placeholder_key,
+          required: row.required,
+        })),
+        client_snapshot: clientSnapshot,
+      }),
+    });
+
+    if (extractionResult.ok && extractionResult.data) {
+      for (const field of extractionResult.data.fields) {
+        const reviewNotesParts = [
+          field.review_notes ?? null,
+          typeof field.confidence === "number" ? `Confidence: ${field.confidence.toFixed(2)}` : null,
+          `Mode: ${field.mode}`,
+        ].filter(Boolean) as string[];
+        const mergedReviewNotes = reviewNotesParts.length > 0 ? reviewNotesParts.join(" | ") : null;
+
+        await fetchJson(
+          `${supabaseUrl}/rest/v1/assessment_checklist_items?assessment_document_id=eq.${encodeURIComponent(
+            createdDocumentId,
+          )}&placeholder_key=eq.${encodeURIComponent(field.placeholder_key)}&organization_id=eq.${encodeURIComponent(organizationId)}`,
+          {
+            method: "PATCH",
+            headers,
+            body: JSON.stringify({
+              value_text: field.value_text,
+              value_json: field.value_json,
+              status: field.status,
+              review_notes: mergedReviewNotes,
+              updated_at: new Date().toISOString(),
+            }),
+          },
+        );
+
+        await fetchJson(
+          `${supabaseUrl}/rest/v1/assessment_extractions?assessment_document_id=eq.${encodeURIComponent(
+            createdDocumentId,
+          )}&field_key=eq.${encodeURIComponent(field.placeholder_key)}&organization_id=eq.${encodeURIComponent(organizationId)}`,
+          {
+            method: "PATCH",
+            headers,
+            body: JSON.stringify({
+              value_text: field.value_text,
+              value_json: field.value_json,
+              confidence: field.confidence,
+              source_span: field.source_span,
+              mode: field.mode,
+              status: field.status,
+              review_notes: field.review_notes,
+              updated_at: new Date().toISOString(),
+            }),
+          },
+        );
+      }
+
+      await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(createdDocumentId)}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({
+          status: "extracted",
+          extracted_at: new Date().toISOString(),
+          extraction_error: null,
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          assessment_document_id: createdDocumentId,
+          organization_id: organizationId,
+          client_id: clientId,
+          item_type: "document",
+          item_id: createdDocumentId,
+          action: "extraction_completed",
+          from_status: "extracting",
+          to_status: "extracted",
+          actor_id: actorId,
+          event_payload: {
+            extracted_count: extractionResult.data.extracted_count,
+            unresolved_count: extractionResult.data.unresolved_count,
+            unresolved_keys: extractionResult.data.unresolved_keys,
+          },
+        }),
+      });
+      return;
+    }
+
+    const extractionError = "Field extraction failed. Review checklist manually.";
+    await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(createdDocumentId)}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({
+        status: "extraction_failed",
+        extraction_error: extractionError,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        assessment_document_id: createdDocumentId,
+        organization_id: organizationId,
+        client_id: clientId,
+        item_type: "document",
+        item_id: createdDocumentId,
+        action: "extraction_failed",
+        from_status: "extracting",
+        to_status: "extraction_failed",
+        actor_id: actorId,
+      }),
+    });
+  } catch (error) {
+    console.error("assessment-documents extraction workflow failed", error);
+    await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(createdDocumentId)}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({
+        status: "extraction_failed",
+        extraction_error: "Field extraction failed. Review checklist manually.",
+        updated_at: new Date().toISOString(),
+      }),
+    });
+  }
+};
+
 export async function assessmentDocumentsHandler(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: { ...CORS_HEADERS } });
@@ -268,151 +431,23 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
 
     let finalStatus: string = "uploaded";
     if (templateType === "caloptima_fba") {
-      const clientSnapshotResult = await fetchJson<ClientSnapshotRow[]>(
-        `${supabaseUrl}/rest/v1/clients?select=full_name,first_name,last_name,date_of_birth,cin_number,client_id,phone,parent1_phone,parent1_first_name,parent1_last_name&id=eq.${encodeURIComponent(
-          parsed.data.client_id,
-        )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
-        { method: "GET", headers },
-      );
-      const clientSnapshotRow =
-        clientSnapshotResult.ok && Array.isArray(clientSnapshotResult.data) && clientSnapshotResult.data[0]
-          ? clientSnapshotResult.data[0]
-          : null;
-      const clientSnapshot = clientSnapshotRow ? compactNullableRecord(clientSnapshotRow) : undefined;
-
       await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(createdDocument.id)}`, {
         method: "PATCH",
         headers,
         body: JSON.stringify({ status: "extracting", updated_at: new Date().toISOString() }),
       });
-
-      const extractionResult = await fetchJson<ExtractionFunctionResponse>(
-        `${supabaseUrl}/functions/v1/extract-assessment-fields`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            assessment_document_id: createdDocument.id,
-            template_type: templateType,
-            bucket_id: createPayload.bucket_id,
-            object_path: createPayload.object_path,
-            checklist_rows: checklistRows.map((row) => ({
-              section: row.section,
-              label: row.label,
-              placeholder_key: row.placeholder_key,
-              required: row.required,
-            })),
-            client_snapshot: clientSnapshot,
-          }),
-        },
-      );
-
-      if (extractionResult.ok && extractionResult.data) {
-      for (const field of extractionResult.data.fields) {
-        const reviewNotesParts = [
-          field.review_notes ?? null,
-          typeof field.confidence === "number" ? `Confidence: ${field.confidence.toFixed(2)}` : null,
-          `Mode: ${field.mode}`,
-        ].filter(Boolean) as string[];
-        const mergedReviewNotes = reviewNotesParts.length > 0 ? reviewNotesParts.join(" | ") : null;
-
-        await fetchJson(
-          `${supabaseUrl}/rest/v1/assessment_checklist_items?assessment_document_id=eq.${encodeURIComponent(
-            createdDocument.id,
-          )}&placeholder_key=eq.${encodeURIComponent(field.placeholder_key)}&organization_id=eq.${encodeURIComponent(organizationId)}`,
-          {
-            method: "PATCH",
-            headers,
-            body: JSON.stringify({
-              value_text: field.value_text,
-              value_json: field.value_json,
-              status: field.status,
-              review_notes: mergedReviewNotes,
-              updated_at: new Date().toISOString(),
-            }),
-          },
-        );
-
-        await fetchJson(
-          `${supabaseUrl}/rest/v1/assessment_extractions?assessment_document_id=eq.${encodeURIComponent(
-            createdDocument.id,
-          )}&field_key=eq.${encodeURIComponent(field.placeholder_key)}&organization_id=eq.${encodeURIComponent(organizationId)}`,
-          {
-            method: "PATCH",
-            headers,
-            body: JSON.stringify({
-              value_text: field.value_text,
-              value_json: field.value_json,
-              confidence: field.confidence,
-              source_span: field.source_span,
-              mode: field.mode,
-              status: field.status,
-              review_notes: field.review_notes,
-              updated_at: new Date().toISOString(),
-            }),
-          },
-        );
-      }
-
-      await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(createdDocument.id)}`, {
-        method: "PATCH",
+      void runCaloptimaExtractionWorkflow({
+        supabaseUrl,
         headers,
-        body: JSON.stringify({
-          status: "extracted",
-          extracted_at: new Date().toISOString(),
-          extraction_error: null,
-          updated_at: new Date().toISOString(),
-        }),
+        organizationId,
+        actorId,
+        createdDocumentId: createdDocument.id,
+        clientId: parsed.data.client_id,
+        checklistRows,
+        bucketId: createPayload.bucket_id,
+        objectPath: createPayload.object_path,
       });
-      finalStatus = "extracted";
-      await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          assessment_document_id: createdDocument.id,
-          organization_id: organizationId,
-          client_id: parsed.data.client_id,
-          item_type: "document",
-          item_id: createdDocument.id,
-          action: "extraction_completed",
-          from_status: "extracting",
-          to_status: "extracted",
-          actor_id: actorId,
-          event_payload: {
-            extracted_count: extractionResult.data.extracted_count,
-            unresolved_count: extractionResult.data.unresolved_count,
-            unresolved_keys: extractionResult.data.unresolved_keys,
-          },
-        }),
-      });
-      } else {
-        const extractionError = "Field extraction failed. Review checklist manually.";
-        await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(createdDocument.id)}`, {
-          method: "PATCH",
-          headers,
-          body: JSON.stringify({
-            status: "extraction_failed",
-            extraction_error: extractionError,
-            updated_at: new Date().toISOString(),
-          }),
-        });
-        finalStatus = "extraction_failed";
-        await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            assessment_document_id: createdDocument.id,
-            organization_id: organizationId,
-            client_id: parsed.data.client_id,
-            item_type: "document",
-            item_id: createdDocument.id,
-            action: "extraction_failed",
-            from_status: "extracting",
-            to_status: "extraction_failed",
-            actor_id: actorId,
-          }),
-        });
-      }
+      finalStatus = "extracting";
     }
 
     const eventPayload = {

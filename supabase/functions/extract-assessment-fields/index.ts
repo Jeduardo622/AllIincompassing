@@ -97,12 +97,21 @@ const STRUCTURED_RECOMMENDATION_KEYS = new Set<string>([
 
 const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
 const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
+const AI_EXTRACTION_TIMEOUT_MS = 4500;
+const MAX_AI_DOCUMENT_CHARS = 12000;
 
 const json = (payload: unknown, status = 200): Response =>
   new Response(JSON.stringify(payload), {
     status,
     headers: { "Content-Type": "application/json", ...corsHeaders },
   });
+
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> => {
+  const timeoutPromise = new Promise<null>((resolve) => {
+    setTimeout(() => resolve(null), timeoutMs);
+  });
+  return (await Promise.race([promise, timeoutPromise])) as T | null;
+};
 
 const stripXmlTags = (xml: string): string =>
   xml
@@ -313,7 +322,8 @@ const resolveAiAssistedFields = async (
   unresolvedRows: z.infer<typeof checklistRowSchema>[],
   documentText: string,
 ): Promise<ExtractedFieldResult[]> => {
-  if (!openai || unresolvedRows.length === 0 || documentText.trim().length < 20) {
+  const trimmedText = documentText.trim();
+  if (!openai || unresolvedRows.length === 0 || trimmedText.length < 20 || trimmedText.length > MAX_AI_DOCUMENT_CHARS) {
     return [];
   }
 
@@ -337,22 +347,28 @@ Unresolved rows:
 ${JSON.stringify(unresolvedRows)}
 
 Document text:
-${documentText.slice(0, 16000)}
+${trimmedText.slice(0, MAX_AI_DOCUMENT_CHARS)}
 `;
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0.1,
-    max_tokens: 1200,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are an ABA extraction meta-agent. Internally read, validate, and cross-check candidates before returning strict JSON only.",
-      },
-      { role: "user", content: prompt },
-    ],
-  });
+  const completion = await withTimeout(
+    openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.1,
+      max_tokens: 700,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are an ABA extraction meta-agent. Internally read, validate, and cross-check candidates before returning strict JSON only.",
+        },
+        { role: "user", content: prompt },
+      ],
+    }),
+    AI_EXTRACTION_TIMEOUT_MS,
+  );
+  if (!completion) {
+    return [];
+  }
   const raw = completion.choices[0]?.message?.content?.trim();
   if (!raw) {
     return [];
@@ -411,7 +427,8 @@ const resolveStructuredRecommendationFields = async (
   rows: z.infer<typeof checklistRowSchema>[],
   documentText: string,
 ): Promise<ExtractedFieldResult[]> => {
-  if (!openai || documentText.trim().length < 20) {
+  const trimmedText = documentText.trim();
+  if (!openai || trimmedText.length < 20 || trimmedText.length > MAX_AI_DOCUMENT_CHARS) {
     return [];
   }
   const structuredRows = rows.filter((row) => STRUCTURED_RECOMMENDATION_KEYS.has(row.placeholder_key));
@@ -462,22 +479,28 @@ Rows to extract:
 ${JSON.stringify(structuredRows)}
 
 Document text:
-${documentText.slice(0, 18000)}
+${trimmedText.slice(0, MAX_AI_DOCUMENT_CHARS)}
 `;
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0.1,
-    max_tokens: 1400,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are an ABA recommendation extraction meta-agent. Think through candidates and validation internally, then output strict JSON only.",
-      },
-      { role: "user", content: prompt },
-    ],
-  });
+  const completion = await withTimeout(
+    openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.1,
+      max_tokens: 900,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are an ABA recommendation extraction meta-agent. Think through candidates and validation internally, then output strict JSON only.",
+        },
+        { role: "user", content: prompt },
+      ],
+    }),
+    AI_EXTRACTION_TIMEOUT_MS,
+  );
+  if (!completion) {
+    return [];
+  }
 
   const raw = completion.choices[0]?.message?.content?.trim();
   if (!raw) {

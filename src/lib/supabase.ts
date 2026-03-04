@@ -7,6 +7,31 @@ import { fetchWithRetry, type RetryOptions } from './retry';
 // Re-export for modules importing from './supabase'
 export { supabase };
 
+const getServerEnvValue = (key: string): string | undefined => {
+  if (typeof process === 'undefined' || !process?.env) {
+    return undefined;
+  }
+  const value = process.env[key];
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const buildEdgeUrlWithFallback = (path: string): string => {
+  try {
+    return buildSupabaseEdgeUrl(path);
+  } catch (error) {
+    const supabaseUrl = getServerEnvValue('SUPABASE_URL');
+    if (supabaseUrl) {
+      const normalized = supabaseUrl.endsWith('/') ? supabaseUrl : `${supabaseUrl}/`;
+      return new URL(path, `${normalized}functions/v1/`).toString();
+    }
+    throw error;
+  }
+};
+
 // Performance monitoring for database operations
 const monitorDatabaseOperation = async <T>(
   operation: () => Promise<T>,
@@ -258,9 +283,13 @@ export async function callEdge(
   if (providedToken.length > 0) {
     headers.set('Authorization', `Bearer ${providedToken}`);
   } else if (!headers.has('Authorization')) {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.access_token) {
-      headers.set('Authorization', `Bearer ${session.access_token}`);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers.set('Authorization', `Bearer ${session.access_token}`);
+      }
+    } catch {
+      // In server runtimes without browser bootstrap, proceed unauthenticated.
     }
   }
 
@@ -278,7 +307,7 @@ export async function callEdge(
     headers.set("x-agent-operation-id", options.agentOperationId.trim());
   }
 
-  const url = buildSupabaseEdgeUrl(path);
+  const url = buildEdgeUrlWithFallback(path);
   if (options.retry) {
     return fetchWithRetry(url, { ...init, headers }, options.retry);
   }

@@ -21,6 +21,9 @@ const requestSchema = z.object({
   assessment_document_id: z.string().uuid().optional(),
 });
 
+const MIN_CHILD_GOALS = 20;
+const MIN_PARENT_GOALS = 6;
+
 const responseSchema = z.object({
   program: z.object({
     name: z.string().trim().min(3).max(120),
@@ -32,6 +35,7 @@ const responseSchema = z.object({
         title: z.string().trim().min(3).max(160),
         description: z.string().trim().min(10).max(1500),
         original_text: z.string().trim().min(10).max(2000),
+        goal_type: z.enum(["child", "parent"]),
         target_behavior: z.string().trim().max(300).optional(),
         measurement_type: z.string().trim().max(80).optional(),
         baseline_data: z.string().trim().max(500).optional(),
@@ -42,8 +46,8 @@ const responseSchema = z.object({
         objective_data_points: z.array(z.record(z.unknown())).max(12).optional(),
       }),
     )
-    .min(1)
-    .max(8),
+    .min(MIN_CHILD_GOALS + MIN_PARENT_GOALS)
+    .max(48),
   rationale: z.string().trim().max(2000).optional(),
 });
 
@@ -106,6 +110,19 @@ const dedupeGoalsByTitle = (goals: z.infer<typeof responseSchema>["goals"]): z.i
   });
 };
 
+const countGoalsByType = (goals: z.infer<typeof responseSchema>["goals"]) => {
+  let childCount = 0;
+  let parentCount = 0;
+  goals.forEach((goal) => {
+    if (goal.goal_type === "parent") {
+      parentCount += 1;
+      return;
+    }
+    childCount += 1;
+  });
+  return { childCount, parentCount };
+};
+
 const stripCodeFences = (value: string): string => {
   const trimmed = value.trim();
   if (!trimmed.startsWith("```")) {
@@ -146,7 +163,7 @@ Deno.serve(async (req) => {
     const whiteBibleGuidance = await loadWhiteBibleGuidance();
     const prompt = `
 You are an ABA clinical planning assistant.
-Use the assessment to draft one program and 3-6 goals.
+Use the assessment to draft one program and enough goals to support a full treatment plan.
 Use this White Bible guidance as the highest-priority clinical style reference:
 ${whiteBibleGuidance}
 
@@ -158,6 +175,7 @@ Return JSON ONLY with this shape:
       "title": "string",
       "description": "string",
       "original_text": "string",
+      "goal_type": "child or parent",
       "target_behavior": "string",
       "measurement_type": "string",
       "baseline_data": "string",
@@ -175,6 +193,10 @@ Rules:
 - Keep language clinical and objective.
 - Do not include PHI beyond supplied client first name.
 - Ensure each goal can be copied directly into an EHR.
+- You MUST return at least ${MIN_CHILD_GOALS} goals with "goal_type":"child".
+- You MUST return at least ${MIN_PARENT_GOALS} goals with "goal_type":"parent".
+- Child goals should target learner skill acquisition, reduction, replacement, or adaptive behaviors.
+- Parent goals should target caregiver implementation, parent training participation, and generalization support.
 - If baseline/criteria are not explicit in the assessment, infer conservatively and state assumptions briefly.
 - If document includes objective-level data settings (targets, phases, mastery/maintenance details), include them in objective_data_points.
 
@@ -186,7 +208,7 @@ ${parsed.data.assessment_text}
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       temperature: 0.2,
-      max_tokens: 1800,
+      max_tokens: 3600,
       messages: [
         {
           role: "system",
@@ -219,6 +241,18 @@ ${parsed.data.assessment_text}
     const dedupedGoals = dedupeGoalsByTitle(validated.data.goals);
     if (dedupedGoals.length === 0) {
       return json({ error: "Generated draft did not contain valid unique goals" }, 502);
+    }
+    const { childCount, parentCount } = countGoalsByType(dedupedGoals);
+    if (childCount < MIN_CHILD_GOALS || parentCount < MIN_PARENT_GOALS) {
+      return json(
+        {
+          error:
+            `Generated draft did not meet goal minimums: child>=${MIN_CHILD_GOALS}, parent>=${MIN_PARENT_GOALS}`,
+          child_goal_count: childCount,
+          parent_goal_count: parentCount,
+        },
+        502,
+      );
     }
 
     return json({ ...validated.data, goals: dedupedGoals }, 200);

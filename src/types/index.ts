@@ -206,6 +206,7 @@ export interface Goal {
   program_id: string;
   title: string;
   description: string;
+  goal_type?: 'child' | 'parent';
   target_behavior?: string | null;
   measurement_type?: string | null;
   original_text: string;

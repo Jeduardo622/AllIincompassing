@@ -45,6 +45,7 @@ interface AssessmentDraftGoal {
   title: string;
   description: string;
   original_text: string;
+  goal_type: "child" | "parent";
   measurement_type?: string | null;
   baseline_data?: string | null;
   target_criteria?: string | null;
@@ -76,6 +77,8 @@ const TEMPLATE_LABELS: Record<AssessmentTemplateType, string> = {
   caloptima_fba: "CalOptima FBA",
   iehp_fba: "IEHP FBA",
 };
+const MIN_CHILD_GOALS = 20;
+const MIN_PARENT_GOALS = 6;
 
 const parseJson = async <T,>(response: Response): Promise<T> => {
   const text = await response.text();
@@ -165,6 +168,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         title: string;
         description: string;
         originalText: string;
+        goalType: AssessmentDraftGoal["goal_type"];
         measurementType: string;
         baselineData: string;
         targetCriteria: string;
@@ -309,8 +313,20 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const hasAcceptedDraftGoal = (assessmentDrafts?.goals ?? []).some(
     (goal) => goal.accept_state === "accepted" || goal.accept_state === "edited",
   );
+  const acceptedDraftChildGoalCount = (assessmentDrafts?.goals ?? []).filter(
+    (goal) => (goal.accept_state === "accepted" || goal.accept_state === "edited") && goal.goal_type === "child",
+  ).length;
+  const acceptedDraftParentGoalCount = (assessmentDrafts?.goals ?? []).filter(
+    (goal) => (goal.accept_state === "accepted" || goal.accept_state === "edited") && goal.goal_type === "parent",
+  ).length;
+  const hasRequiredAcceptedGoalMix =
+    acceptedDraftChildGoalCount >= MIN_CHILD_GOALS && acceptedDraftParentGoalCount >= MIN_PARENT_GOALS;
   const canPromoteAssessment =
-    canQuerySelectedAssessment && !hasPendingRequiredChecklistItems && hasAcceptedDraftProgram && hasAcceptedDraftGoal;
+    canQuerySelectedAssessment &&
+    !hasPendingRequiredChecklistItems &&
+    hasAcceptedDraftProgram &&
+    hasAcceptedDraftGoal &&
+    hasRequiredAcceptedGoalMix;
   const unresolvedRequiredCount = ENABLE_CHECKLIST_MAPPING_UI
     ? checklistItems.filter((item) => item.required && item.status !== "approved").length
     : 0;
@@ -320,6 +336,8 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         ? "Accept or edit at least one AI proposal program before publishing."
         : !hasAcceptedDraftGoal
           ? "Accept or edit at least one AI proposal goal before publishing."
+          : !hasRequiredAcceptedGoalMix
+            ? `Accepted draft goals must include at least ${MIN_CHILD_GOALS} child and ${MIN_PARENT_GOALS} parent goals before publishing.`
           : null;
 
   useEffect(() => {
@@ -377,6 +395,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         title: string;
         description: string;
         originalText: string;
+        goalType: AssessmentDraftGoal["goal_type"];
         measurementType: string;
         baselineData: string;
         targetCriteria: string;
@@ -393,6 +412,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         title: goal.title,
         description: goal.description,
         originalText: goal.original_text,
+        goalType: goal.goal_type,
         measurementType: goal.measurement_type ?? "",
         baselineData: goal.baseline_data ?? "",
         targetCriteria: goal.target_criteria ?? "",
@@ -627,6 +647,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           title: edit.title,
           description: edit.description,
           original_text: edit.originalText,
+          goal_type: edit.goalType,
           measurement_type: edit.measurementType || undefined,
           baseline_data: edit.baselineData || undefined,
           target_criteria: edit.targetCriteria || undefined,
@@ -958,6 +979,11 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               </button>
               {promoteDisabledReason && !promoteAssessment.isLoading && (
                 <p className="text-xs text-amber-700 dark:text-amber-300">{promoteDisabledReason}</p>
+              )}
+              {!promoteAssessment.isLoading && (
+                <p className="text-xs text-gray-500 dark:text-gray-300">
+                  Accepted draft goals: {acceptedDraftChildGoalCount} child / {acceptedDraftParentGoalCount} parent
+                </p>
               )}
               <button
                 type="button"
@@ -1298,6 +1324,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                     title: goal.title,
                     description: goal.description,
                     originalText: goal.original_text,
+                    goalType: goal.goal_type,
                     measurementType: goal.measurement_type ?? "",
                     baselineData: goal.baseline_data ?? "",
                     targetCriteria: goal.target_criteria ?? "",
@@ -1351,6 +1378,22 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           rows={2}
                           className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
                         />
+                        <select
+                          value={edit.goalType}
+                          onChange={(event) =>
+                            setDraftGoalEdits((current) => ({
+                              ...current,
+                              [goal.id]: {
+                                ...edit,
+                                goalType: event.target.value as AssessmentDraftGoal["goal_type"],
+                              },
+                            }))
+                          }
+                          className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                        >
+                          <option value="child">child goal</option>
+                          <option value="parent">parent goal</option>
+                        </select>
                         <input
                           value={edit.measurementType}
                           onChange={(event) =>

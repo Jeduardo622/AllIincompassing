@@ -15,6 +15,25 @@ vi.mock("../api/shared", async () => {
 
 import { fetchJson, getAccessToken, getSupabaseConfig, resolveOrgAndRole } from "../api/shared";
 
+const buildAcceptedGoals = (): Array<Record<string, unknown>> => [
+  ...Array.from({ length: 20 }, (_, index) => ({
+    id: `child-goal-${index + 1}`,
+    title: `Child Goal ${index + 1}`,
+    description: `Child goal description ${index + 1} with enough detail.`,
+    original_text: `Child goal original text ${index + 1} with enough detail for validation.`,
+    goal_type: "child",
+    accept_state: "accepted",
+  })),
+  ...Array.from({ length: 6 }, (_, index) => ({
+    id: `parent-goal-${index + 1}`,
+    title: `Parent Goal ${index + 1}`,
+    description: `Parent goal description ${index + 1} with enough detail.`,
+    original_text: `Parent goal original text ${index + 1} with enough detail for validation.`,
+    goal_type: "parent",
+    accept_state: "accepted",
+  })),
+];
+
 describe("assessmentPromoteHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -44,23 +63,7 @@ describe("assessmentPromoteHandler", () => {
         return {
           ok: true,
           status: 200,
-          data: [
-            {
-              id: "goal-1",
-              title: "Requesting help",
-              description: "Client requests help across instructional and natural routines.",
-              original_text: "Client will request help independently in 4 out of 5 opportunities.",
-              accept_state: "accepted",
-              target_behavior: null,
-              measurement_type: null,
-              baseline_data: null,
-              target_criteria: null,
-              mastery_criteria: "80% across 2 sessions",
-              maintenance_criteria: "80% across maintenance checks",
-              generalization_criteria: "Across school and home",
-              objective_data_points: [{ objective: "Label 4 emotions", criterion: "4/5 opportunities" }],
-            },
-          ],
+          data: buildAcceptedGoals(),
         };
       }
       if (method === "POST" && url.includes("/rest/v1/programs")) {
@@ -92,7 +95,9 @@ describe("assessmentPromoteHandler", () => {
       .mock.calls.find(([url, init]) => typeof url === "string" && url.includes("/rest/v1/goals") && init?.method === "POST");
     expect(createGoalsCall).toBeTruthy();
     const createGoalsPayload = JSON.parse((createGoalsCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
-    expect(createGoalsPayload[0]?.mastery_criteria).toBe("80% across 2 sessions");
+    expect(createGoalsPayload[0]?.goal_type).toBe("child");
+    expect(createGoalsPayload.filter((goal) => goal.goal_type === "child")).toHaveLength(20);
+    expect(createGoalsPayload.filter((goal) => goal.goal_type === "parent")).toHaveLength(6);
   });
 
   it("blocks promotion when accepted goals contain duplicate titles", async () => {
@@ -121,22 +126,15 @@ describe("assessmentPromoteHandler", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        data: [
-          {
-            id: "goal-1",
-            title: "Requesting help",
-            description: "Client requests help in structured opportunities.",
-            original_text: "Client will request help in 4/5 opportunities.",
-            accept_state: "accepted",
-          },
-          {
-            id: "goal-2",
-            title: "requesting   help",
-            description: "Client requests support with natural cues.",
-            original_text: "Client will request support independently.",
+        data: (() => {
+          const goals = buildAcceptedGoals();
+          goals[1] = {
+            ...(goals[1] as Record<string, unknown>),
+            title: "Child Goal 1",
             accept_state: "edited",
-          },
-        ],
+          };
+          return goals;
+        })(),
       });
 
     const response = await assessmentPromoteHandler(
@@ -178,15 +176,16 @@ describe("assessmentPromoteHandler", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        data: [
-          {
-            id: "goal-1",
+        data: (() => {
+          const goals = buildAcceptedGoals();
+          goals[0] = {
+            ...(goals[0] as Record<string, unknown>),
             title: "Hi",
             description: "short",
             original_text: "tiny",
-            accept_state: "accepted",
-          },
-        ],
+          };
+          return goals;
+        })(),
       });
 
     const response = await assessmentPromoteHandler(
@@ -200,5 +199,54 @@ describe("assessmentPromoteHandler", () => {
     const body = await response.json();
     expect(response.status).toBe(409);
     expect(body.error).toContain("minimally complete");
+  });
+
+  it("blocks promotion when accepted parent/child minimums are not met", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "drafted" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "program-1", name: "Draft Program", description: "x", accept_state: "accepted" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: Array.from({ length: 26 }, (_, index) => ({
+          id: `child-goal-${index + 1}`,
+          title: `Child Goal ${index + 1}`,
+          description: `Child goal description ${index + 1} with enough detail.`,
+          original_text: `Child goal original text ${index + 1} with enough detail for validation.`,
+          goal_type: "child",
+          accept_state: "accepted",
+        })),
+      });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    const body = await response.json();
+    expect(response.status).toBe(409);
+    expect(body.error).toContain("Promotion requires at least");
   });
 });

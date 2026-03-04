@@ -75,6 +75,7 @@ export interface ProgramGoalDraftGoal {
   title: string;
   description: string;
   original_text: string;
+  goal_type: 'child' | 'parent';
   target_behavior?: string;
   measurement_type?: string;
   baseline_data?: string;

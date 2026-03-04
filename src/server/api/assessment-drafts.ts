@@ -9,10 +9,14 @@ import {
   resolveOrgAndRole,
 } from "./shared";
 
+const MIN_CHILD_GOALS = 20;
+const MIN_PARENT_GOALS = 6;
+
 const draftGoalSchema = z.object({
   title: z.string().trim().min(1),
   description: z.string().trim().min(1),
   original_text: z.string().trim().min(1),
+  goal_type: z.enum(["child", "parent"]),
   target_behavior: z.string().trim().optional(),
   measurement_type: z.string().trim().optional(),
   baseline_data: z.string().trim().optional(),
@@ -30,7 +34,7 @@ const draftCreateSchema = z.object({
     description: z.string().trim().optional(),
   }),
   rationale: z.string().trim().optional(),
-  goals: z.array(draftGoalSchema).min(1),
+  goals: z.array(draftGoalSchema).min(MIN_CHILD_GOALS + MIN_PARENT_GOALS),
 });
 
 const draftAutoGenerateSchema = z.object({
@@ -47,6 +51,7 @@ const draftUpdateSchema = z.object({
   description: z.string().trim().optional(),
   title: z.string().trim().optional(),
   original_text: z.string().trim().optional(),
+  goal_type: z.enum(["child", "parent"]).optional(),
   target_behavior: z.string().trim().optional(),
   measurement_type: z.string().trim().optional(),
   baseline_data: z.string().trim().optional(),
@@ -100,6 +105,7 @@ interface GeneratedDraftPayload {
     title: string;
     description: string;
     original_text: string;
+    goal_type: "child" | "parent";
     target_behavior?: string;
     measurement_type?: string;
     baseline_data?: string;
@@ -111,6 +117,17 @@ interface GeneratedDraftPayload {
   }>;
   rationale?: string;
 }
+
+const validateGoalMinimums = (
+  goals: Array<{ goal_type: "child" | "parent" }>,
+): { valid: true } | { valid: false; childCount: number; parentCount: number } => {
+  const childCount = goals.filter((goal) => goal.goal_type === "child").length;
+  const parentCount = goals.filter((goal) => goal.goal_type === "parent").length;
+  if (childCount < MIN_CHILD_GOALS || parentCount < MIN_PARENT_GOALS) {
+    return { valid: false, childCount, parentCount };
+  }
+  return { valid: true };
+};
 
 const getAssessmentDocument = async (
   supabaseUrl: string,
@@ -204,6 +221,7 @@ const persistDraftRows = async (args: {
     title: goal.title,
     description: goal.description,
     original_text: goal.original_text,
+    goal_type: goal.goal_type,
     target_behavior: goal.target_behavior ?? null,
     measurement_type: goal.measurement_type ?? null,
     baseline_data: goal.baseline_data ?? null,
@@ -340,6 +358,17 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
 
     const actorId = getAccessTokenSubject(accessToken);
     if (parsedManual.success) {
+      const minimumValidation = validateGoalMinimums(parsedManual.data.goals);
+      if (!minimumValidation.valid) {
+        return json(
+          {
+            error: `Draft must include at least ${MIN_CHILD_GOALS} child goals and ${MIN_PARENT_GOALS} parent goals.`,
+            child_goal_count: minimumValidation.childCount,
+            parent_goal_count: minimumValidation.parentCount,
+          },
+          409,
+        );
+      }
       const result = await persistDraftRows({
         supabaseUrl,
         headers,
@@ -394,6 +423,17 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
       return json(
         { error: "Failed to auto-generate AI proposal program/goals from extracted fields." },
         generatedResult.status || 500,
+      );
+    }
+    const minimumValidation = validateGoalMinimums(generatedResult.data.goals);
+    if (!minimumValidation.valid) {
+      return json(
+        {
+          error: `Auto-generated draft must include at least ${MIN_CHILD_GOALS} child goals and ${MIN_PARENT_GOALS} parent goals.`,
+          child_goal_count: minimumValidation.childCount,
+          parent_goal_count: minimumValidation.parentCount,
+        },
+        409,
       );
     }
 
@@ -521,6 +561,9 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
     }
     if (parsed.data.original_text !== undefined) {
       updatePayload.original_text = parsed.data.original_text;
+    }
+    if (parsed.data.goal_type !== undefined) {
+      updatePayload.goal_type = parsed.data.goal_type;
     }
     if (parsed.data.target_behavior !== undefined) {
       updatePayload.target_behavior = parsed.data.target_behavior;

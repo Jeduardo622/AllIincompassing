@@ -80,6 +80,20 @@ describe('prepareClientPayload', () => {
       provider: 'IEHP',
     });
   });
+
+  it('normalizes empty date fields to null before payload parse', () => {
+    const payload = prepareClientPayload({
+      first_name: 'Date',
+      last_name: 'Null',
+      date_of_birth: '',
+      auth_start_date: ' ',
+      auth_end_date: '',
+    });
+
+    expect(payload.date_of_birth).toBeNull();
+    expect(payload.auth_start_date).toBeNull();
+    expect(payload.auth_end_date).toBeNull();
+  });
 });
 
 describe('updateClientRecord', () => {

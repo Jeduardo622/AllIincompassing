@@ -247,6 +247,18 @@ describe("ProgramsGoalsTab", () => {
   });
 
   it("uploads IEHP assessment with selected template type", async () => {
+    const baseCallApiImpl = vi.mocked(callApi).getMockImplementation();
+    if (!baseCallApiImpl) {
+      throw new Error("Missing base API mock implementation.");
+    }
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "POST" && path === "/api/assessment-documents") {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      return baseCallApiImpl(path, init);
+    });
+
     renderWithProviders(
       <ProgramsGoalsTab
         client={
@@ -284,6 +296,8 @@ describe("ProgramsGoalsTab", () => {
     });
     await userEvent.upload(uploadInput as HTMLInputElement, file);
     await userEvent.click(screen.getByRole("button", { name: /Upload IEHP FBA/i }));
+    await screen.findByText(/Uploading and processing your FBA/i);
+    expect(screen.getByRole("button", { name: /Uploading and processing/i })).toBeDisabled();
 
     await waitFor(() => {
       expect(callApi).toHaveBeenCalledWith(
@@ -294,7 +308,9 @@ describe("ProgramsGoalsTab", () => {
         }),
       );
     });
-    expect(showSuccess).toHaveBeenCalledWith("IEHP FBA uploaded and checklist initialized.");
+    await waitFor(() => {
+      expect(showSuccess).toHaveBeenCalledWith("IEHP FBA uploaded and checklist initialized.");
+    });
   });
 
   it("generates staged drafts from selected uploaded assessment", async () => {

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, Plus, Trash2, UploadCloud } from "lucide-react";
+import { ClipboardList, Loader2, Plus, Trash2, UploadCloud } from "lucide-react";
 import type { Client, Goal, Program, ProgramNote } from "../../types";
 import { callApi } from "../../lib/api";
 import { showError, showInfo, showSuccess } from "../../lib/toast";
@@ -178,6 +178,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [noteType, setNoteType] = useState<ProgramNote["note_type"]>("plan_update");
   const [noteContent, setNoteContent] = useState("");
   const [deletingAssessmentId, setDeletingAssessmentId] = useState<string | null>(null);
+  const [isUploadProcessing, setIsUploadProcessing] = useState(false);
 
   const applyDraftGoal = (goal: ProgramGoalDraftResponse["goals"][number]) => {
     setGoalTitle(goal.title);
@@ -435,6 +436,18 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
     onError: showError,
   });
+
+  const handleUploadAssessment = async () => {
+    if (!assessmentFile || isUploadProcessing) {
+      return;
+    }
+    setIsUploadProcessing(true);
+    try {
+      await uploadAssessment.mutateAsync();
+    } finally {
+      setIsUploadProcessing(false);
+    }
+  };
 
   const updateChecklistItem = useMutation({
     mutationFn: async (itemId: string) => {
@@ -857,12 +870,26 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               />
               <button
                 type="button"
-                onClick={() => uploadAssessment.mutate()}
-                disabled={!assessmentFile || uploadAssessment.isLoading}
+                onClick={() => {
+                  void handleUploadAssessment();
+                }}
+                disabled={!assessmentFile || isUploadProcessing}
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
               >
-                {uploadAssessment.isLoading ? "Uploading..." : `Upload ${TEMPLATE_LABELS[assessmentTemplateType]}`}
+                {isUploadProcessing ? (
+                  <span className="inline-flex items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    Uploading and processing...
+                  </span>
+                ) : (
+                  `Upload ${TEMPLATE_LABELS[assessmentTemplateType]}`
+                )}
               </button>
+              {isUploadProcessing && (
+                <p className="text-xs text-gray-500 dark:text-gray-300" role="status" aria-live="polite">
+                  Uploading and processing your FBA. This can take a moment.
+                </p>
+              )}
               <div className="rounded-md border border-gray-200 dark:border-gray-700 p-2 max-h-48 overflow-auto">
                 {assessmentLoading ? (
                   <p className="text-xs text-gray-500">Loading assessment queue...</p>

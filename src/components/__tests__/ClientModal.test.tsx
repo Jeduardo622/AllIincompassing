@@ -42,7 +42,7 @@ describe('ClientModal validation', () => {
     expect(handleSubmit).not.toHaveBeenCalled();
   });
 
-  it('shows a JSON validation error when insurance information is invalid', async () => {
+  it('renders insurance contract controls instead of a raw insurance JSON input', () => {
     const handleSubmit = vi.fn();
 
     renderWithProviders(
@@ -53,21 +53,8 @@ describe('ClientModal validation', () => {
       />
     );
 
-    fireEvent.change(getInputByName('first_name'), { target: { value: 'Jamie' } });
-    fireEvent.change(getInputByName('last_name'), { target: { value: 'Rivera' } });
-    fireEvent.change(getInputByName('date_of_birth'), { target: { value: '2012-05-01' } });
-    fireEvent.change(getInputByName('email'), { target: { value: 'jamie@example.com' } });
-
-    const insuranceField = screen.getByPlaceholderText('Enter insurance information in JSON format (optional)');
-    fireEvent.change(insuranceField, { target: { value: 'not-json' } });
-
-    fireEvent.click(screen.getByRole('button', { name: /create client/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText('Insurance information must be valid JSON')).toBeInTheDocument();
-    });
-
-    expect(handleSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /add insurance/i })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Enter insurance information in JSON format (optional)')).not.toBeInTheDocument();
   });
 
   it('saves clients that do not provide an email', async () => {
@@ -95,7 +82,7 @@ describe('ClientModal validation', () => {
     expect(submitted.email).toBeNull();
   });
 
-  it('prevents submission when unit inputs contain negative values', async () => {
+  it('hides legacy aggregate unit/date fields from service details', () => {
     const handleSubmit = vi.fn();
 
     renderWithProviders(
@@ -106,22 +93,13 @@ describe('ClientModal validation', () => {
       />
     );
 
-    fireEvent.change(getInputByName('first_name'), { target: { value: 'Jamie' } });
-    fireEvent.change(getInputByName('last_name'), { target: { value: 'Rivera' } });
-    fireEvent.change(getInputByName('date_of_birth'), { target: { value: '2012-05-01' } });
-    fireEvent.change(getInputByName('email'), { target: { value: 'jamie@example.com' } });
-
-    fireEvent.change(getInputByName('one_to_one_units'), { target: { value: -5 } });
-    fireEvent.change(getInputByName('assessment_units'), { target: { value: -2 } });
-
-    fireEvent.click(screen.getByRole('button', { name: /create client/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText('1:1 units must be 0 or greater')).toBeInTheDocument();
-      expect(screen.getByText('Assessment units must be 0 or greater')).toBeInTheDocument();
-    });
-
-    expect(handleSubmit).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('1:1 Units')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Supervision Units')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Parent Consult Units')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Assessment Units')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Auth Units')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Authorization Start Date')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Authorization End Date')).not.toBeInTheDocument();
   });
 
   it('submits selected service preferences', async () => {

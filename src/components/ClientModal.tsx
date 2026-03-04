@@ -12,10 +12,39 @@ import { supabase } from '../lib/supabase';
 
 const SERVICE_CONTRACT_PROVIDER_OPTIONS = ['Private', 'IEHP', 'CalOptima'] as const;
 type ServiceContractProvider = typeof SERVICE_CONTRACT_PROVIDER_OPTIONS[number];
+type ServiceContractCodeAuthorization = {
+  code: string;
+  units: number;
+  auth_start_date: string;
+  auth_end_date: string;
+};
+type EditableServiceContract = {
+  provider: ServiceContractProvider;
+  units: number;
+  cpt_codes: string[];
+  code_authorizations: ServiceContractCodeAuthorization[];
+};
 
 const getCodePrefixForProvider = (provider: ServiceContractProvider): '9' | 'H' => (
   provider === 'Private' ? '9' : 'H'
 );
+
+const extractCodeValue = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    const normalized = value.trim().toUpperCase();
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const code = (value as { code?: unknown }).code;
+    if (typeof code === 'string') {
+      const normalized = code.trim().toUpperCase();
+      return normalized.length > 0 ? normalized : null;
+    }
+  }
+
+  return null;
+};
 
 const normalizeCptCodes = (codes: unknown): string[] => {
   if (!Array.isArray(codes)) {
@@ -25,13 +54,44 @@ const normalizeCptCodes = (codes: unknown): string[] => {
   return Array.from(
     new Set(
       codes
-        .map((code) => String(code).trim().toUpperCase())
+        .map(extractCodeValue)
         .filter(Boolean)
     )
-  );
+  ) as string[];
 };
 
-const normalizeServiceContracts = (insuranceInfo: unknown): Array<{ provider: ServiceContractProvider; units: number; cpt_codes: string[] }> => {
+const normalizeCodeAuthorizations = (
+  value: unknown,
+  fallbackUnits: number
+): ServiceContractCodeAuthorization[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const authorizations: ServiceContractCodeAuthorization[] = [];
+  value.forEach((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      return;
+    }
+    const record = entry as Record<string, unknown>;
+    const code = extractCodeValue(record.code);
+    if (!code) {
+      return;
+    }
+
+    const unitsValue = Number(record.units ?? fallbackUnits);
+    authorizations.push({
+      code,
+      units: Number.isFinite(unitsValue) && unitsValue >= 0 ? unitsValue : 0,
+      auth_start_date: typeof record.auth_start_date === 'string' ? record.auth_start_date : '',
+      auth_end_date: typeof record.auth_end_date === 'string' ? record.auth_end_date : '',
+    });
+  });
+
+  return authorizations;
+};
+
+const normalizeServiceContracts = (insuranceInfo: unknown): EditableServiceContract[] => {
   if (!insuranceInfo || typeof insuranceInfo !== 'object' || Array.isArray(insuranceInfo)) {
     return [];
   }
@@ -49,13 +109,54 @@ const normalizeServiceContracts = (insuranceInfo: unknown): Array<{ provider: Se
       }
       const unitsValue = Number(obj.units ?? 0);
       const cptCodes = normalizeCptCodes(obj.cpt_codes);
+      const cptCodeObjects = Array.isArray(obj.cpt_codes)
+        ? obj.cpt_codes
+            .filter((code): code is Record<string, unknown> => Boolean(code) && typeof code === 'object' && !Array.isArray(code))
+            .map((code) => ({
+              code: extractCodeValue(code.code),
+              units: Number(code.units ?? unitsValue),
+              auth_start_date: typeof code.auth_start_date === 'string' ? code.auth_start_date : '',
+              auth_end_date: typeof code.auth_end_date === 'string' ? code.auth_end_date : '',
+            }))
+            .filter((entry): entry is ServiceContractCodeAuthorization => Boolean(entry.code))
+            .map((entry) => ({
+              code: entry.code,
+              units: Number.isFinite(entry.units) && entry.units >= 0 ? entry.units : 0,
+              auth_start_date: entry.auth_start_date,
+              auth_end_date: entry.auth_end_date,
+            }))
+        : [];
+      const explicitAuthorizations = normalizeCodeAuthorizations(obj.code_authorizations, unitsValue);
+      const mergedCodes = normalizeCptCodes([
+        ...cptCodes,
+        ...cptCodeObjects.map((entry) => entry.code),
+        ...explicitAuthorizations.map((entry) => entry.code),
+      ]);
+      const mergedAuthorizationsMap = new Map<string, ServiceContractCodeAuthorization>();
+      [...cptCodeObjects, ...explicitAuthorizations].forEach((entry) => {
+        if (!mergedAuthorizationsMap.has(entry.code)) {
+          mergedAuthorizationsMap.set(entry.code, entry);
+        }
+      });
+      const mergedAuthorizations = mergedCodes.map((code) => {
+        const existing = mergedAuthorizationsMap.get(code);
+        return {
+          code,
+          units:
+            existing?.units ??
+            (Number.isFinite(unitsValue) && unitsValue >= 0 ? unitsValue : 0),
+          auth_start_date: existing?.auth_start_date ?? '',
+          auth_end_date: existing?.auth_end_date ?? '',
+        };
+      });
       return {
         provider: provider as ServiceContractProvider,
         units: Number.isFinite(unitsValue) ? unitsValue : 0,
-        cpt_codes: cptCodes,
+        cpt_codes: mergedCodes,
+        code_authorizations: mergedAuthorizations,
       };
     })
-    .filter((entry): entry is { provider: ServiceContractProvider; units: number; cpt_codes: string[] } => entry !== null);
+    .filter((entry): entry is EditableServiceContract => entry !== null);
   return normalized;
 };
 
@@ -199,11 +300,38 @@ export default function ClientModal({
 
     const normalizedContracts = (data.service_contracts ?? [])
       .filter((entry) => SERVICE_CONTRACT_PROVIDER_OPTIONS.includes(entry.provider as ServiceContractProvider))
-      .map((entry) => ({
-        provider: entry.provider,
-        units: Number.isFinite(entry.units) ? entry.units : 0,
-        cpt_codes: normalizeCptCodes(entry.cpt_codes),
-      }));
+      .map((entry) => {
+        const normalizedCodes = normalizeCptCodes(entry.cpt_codes);
+        const normalizedAuthorizations = normalizeCodeAuthorizations(
+          entry.code_authorizations,
+          Number(entry.units ?? 0)
+        )
+          .filter((authorization) => normalizedCodes.includes(authorization.code))
+          .map((authorization) => ({
+            ...authorization,
+            code: authorization.code.toUpperCase(),
+          }));
+        const unitsFromCodes = normalizedAuthorizations.reduce((sum, authorization) => sum + authorization.units, 0);
+
+        return {
+          provider: entry.provider,
+          units: Number.isFinite(unitsFromCodes) ? unitsFromCodes : 0,
+          cpt_codes: normalizedCodes,
+          code_authorizations: normalizedAuthorizations,
+        };
+      });
+
+    const totalAuthorizedUnits = normalizedContracts.reduce(
+      (sum, contract) => sum + (Number.isFinite(contract.units) ? contract.units : 0),
+      0
+    );
+    data.auth_units = totalAuthorizedUnits;
+    data.auth_start_date = '';
+    data.auth_end_date = '';
+    data.one_to_one_units = 0;
+    data.supervision_units = 0;
+    data.parent_consult_units = 0;
+    data.assessment_units = 0;
 
     const insuranceInfo =
       data.insurance_info && typeof data.insurance_info === 'object' && !Array.isArray(data.insurance_info)
@@ -642,122 +770,13 @@ export default function ClientModal({
                 )}
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div>
-                  <label htmlFor="units-1to1" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    1:1 Units
-                  </label>
-                  <input
-                    id="units-1to1"
-                    type="number"
-                    min={0}
-                    {...register('one_to_one_units', {
-                      valueAsNumber: true,
-                    })}
-                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                  />
-                  {errors.one_to_one_units && (
-                    <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.one_to_one_units.message}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="units-supervision" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Supervision Units
-                  </label>
-                  <input
-                    id="units-supervision"
-                    type="number"
-                    min={0}
-                    {...register('supervision_units', {
-                      valueAsNumber: true,
-                    })}
-                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                  />
-                  {errors.supervision_units && (
-                    <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.supervision_units.message}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="units-parent" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Parent Consult Units
-                  </label>
-                  <input
-                    id="units-parent"
-                    type="number"
-                    min={0}
-                    {...register('parent_consult_units', {
-                      valueAsNumber: true,
-                    })}
-                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                  />
-                  {errors.parent_consult_units && (
-                    <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.parent_consult_units.message}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="units-assessment" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Assessment Units
-                  </label>
-                  <input
-                    id="units-assessment"
-                    type="number"
-                    min={0}
-                    {...register('assessment_units', {
-                      valueAsNumber: true,
-                    })}
-                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                  />
-                  {errors.assessment_units && (
-                    <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.assessment_units.message}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="units-auth" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Auth Units
-                  </label>
-                  <input
-                    id="units-auth"
-                    type="number"
-                    min={0}
-                    {...register('auth_units', {
-                      valueAsNumber: true,
-                    })}
-                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                  />
-                  {errors.auth_units && (
-                    <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.auth_units.message}</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mt-2">
-                <div>
-                  <label htmlFor="auth-start-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Authorization Start Date
-                  </label>
-                  <input
-                    id="auth-start-date"
-                    type="date"
-                    {...register('auth_start_date')}
-                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="auth-end-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Authorization End Date
-                  </label>
-                  <input
-                    id="auth-end-date"
-                    type="date"
-                    {...register('auth_end_date')}
-                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                  />
-                </div>
-              </div>
+              <input type="hidden" {...register('one_to_one_units', { valueAsNumber: true })} />
+              <input type="hidden" {...register('supervision_units', { valueAsNumber: true })} />
+              <input type="hidden" {...register('parent_consult_units', { valueAsNumber: true })} />
+              <input type="hidden" {...register('assessment_units', { valueAsNumber: true })} />
+              <input type="hidden" {...register('auth_units', { valueAsNumber: true })} />
+              <input type="hidden" {...register('auth_start_date')} />
+              <input type="hidden" {...register('auth_end_date')} />
             </div>
 
             <div className="mt-4">
@@ -816,7 +835,7 @@ export default function ClientModal({
                 <button
                   type="button"
                   onClick={() => {
-                    const next = [...serviceContracts, { provider: 'IEHP', units: 0, cpt_codes: [] }];
+                    const next = [...serviceContracts, { provider: 'IEHP', units: 0, cpt_codes: [], code_authorizations: [] }];
                     setValue('service_contracts', next, { shouldDirty: true, shouldValidate: true });
                   }}
                   className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
@@ -829,15 +848,17 @@ export default function ClientModal({
                 const provider = SERVICE_CONTRACT_PROVIDER_OPTIONS.includes(entry.provider as ServiceContractProvider)
                   ? entry.provider as ServiceContractProvider
                   : 'IEHP';
+                const selectedCodes = normalizeCptCodes(entry.cpt_codes);
+                const codeAuthorizations = normalizeCodeAuthorizations(entry.code_authorizations, Number(entry.units ?? 0))
+                  .filter((authorization) => selectedCodes.includes(authorization.code));
                 const allowedPrefix = getCodePrefixForProvider(provider);
                 const filteredOptions = cptCodeOptions.filter((option) => option.code.startsWith(allowedPrefix));
                 const insuranceId = `modal-contract-insurance-${index}`;
-                const unitsId = `modal-contract-units-${index}`;
                 const codesId = `modal-contract-codes-${index}`;
 
                 return (
                   <div key={`${provider}-${index}`} className="rounded-md border border-gray-300 dark:border-gray-700 p-3">
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       <div>
                         <label htmlFor={insuranceId} className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                           Insurance
@@ -854,6 +875,9 @@ export default function ClientModal({
                               cpt_codes: (next[index]?.cpt_codes ?? []).filter((code) =>
                                 String(code).toUpperCase().startsWith(getCodePrefixForProvider(nextProvider))
                               ),
+                              code_authorizations: (next[index]?.code_authorizations ?? []).filter((authorization) =>
+                                String(authorization.code ?? '').toUpperCase().startsWith(getCodePrefixForProvider(nextProvider))
+                              ),
                             };
                             setValue('service_contracts', next, { shouldDirty: true, shouldValidate: true });
                           }}
@@ -863,24 +887,6 @@ export default function ClientModal({
                             <option key={option} value={option}>{option}</option>
                           ))}
                         </select>
-                      </div>
-
-                      <div>
-                        <label htmlFor={unitsId} className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Contract Units
-                        </label>
-                        <input
-                          id={unitsId}
-                          type="number"
-                          min={0}
-                          value={entry.units ?? 0}
-                          onChange={(event) => {
-                            const next = [...serviceContracts];
-                            next[index] = { ...next[index], units: Number(event.target.value) };
-                            setValue('service_contracts', next, { shouldDirty: true, shouldValidate: true });
-                          }}
-                          className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-                        />
                       </div>
 
                       <div className="flex items-end justify-end">
@@ -914,7 +920,6 @@ export default function ClientModal({
                           </p>
                         ) : (
                           filteredOptions.map((option) => {
-                            const selectedCodes = normalizeCptCodes(entry.cpt_codes);
                             const isChecked = selectedCodes.includes(option.code);
                             return (
                               <label
@@ -928,8 +933,15 @@ export default function ClientModal({
                                     const nextCodes = event.target.checked
                                       ? [...selectedCodes, option.code]
                                       : selectedCodes.filter((code) => code !== option.code);
+                                    const nextAuthorizations = event.target.checked
+                                      ? [...codeAuthorizations, { code: option.code, units: 0, auth_start_date: '', auth_end_date: '' }]
+                                      : codeAuthorizations.filter((authorization) => authorization.code !== option.code);
                                     const next = [...serviceContracts];
-                                    next[index] = { ...next[index], cpt_codes: normalizeCptCodes(nextCodes) };
+                                    next[index] = {
+                                      ...next[index],
+                                      cpt_codes: normalizeCptCodes(nextCodes),
+                                      code_authorizations: nextAuthorizations,
+                                    };
                                     setValue('service_contracts', next, { shouldDirty: true, shouldValidate: false });
                                   }}
                                   className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-dark dark:border-gray-600"
@@ -945,6 +957,98 @@ export default function ClientModal({
                       </div>
                       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Click to toggle one or more codes.</p>
                     </div>
+
+                    {selectedCodes.length > 0 && (
+                      <div className="mt-4 space-y-2">
+                        <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                          Authorization by CPT code
+                        </p>
+                        {selectedCodes.map((code) => {
+                          const existingAuthorization = codeAuthorizations.find((authorization) => authorization.code === code);
+                          const authUnitsId = `modal-contract-auth-units-${index}-${code}`;
+                          const authStartId = `modal-contract-auth-start-${index}-${code}`;
+                          const authEndId = `modal-contract-auth-end-${index}-${code}`;
+
+                          return (
+                            <div key={`${index}-${code}`} className="grid grid-cols-1 gap-2 md:grid-cols-4 rounded border border-gray-200 dark:border-gray-800 p-2">
+                              <div className="md:col-span-1 flex items-center text-sm font-medium text-gray-800 dark:text-gray-200">
+                                {code}
+                              </div>
+                              <div>
+                                <label htmlFor={authUnitsId} className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                                  Units
+                                </label>
+                                <input
+                                  id={authUnitsId}
+                                  type="number"
+                                  min={0}
+                                  value={existingAuthorization?.units ?? 0}
+                                  onChange={(event) => {
+                                    const next = [...serviceContracts];
+                                    const nextAuthorizations = codeAuthorizations.filter((authorization) => authorization.code !== code);
+                                    nextAuthorizations.push({
+                                      code,
+                                      units: Number(event.target.value),
+                                      auth_start_date: existingAuthorization?.auth_start_date ?? '',
+                                      auth_end_date: existingAuthorization?.auth_end_date ?? '',
+                                    });
+                                    next[index] = { ...next[index], code_authorizations: nextAuthorizations };
+                                    setValue('service_contracts', next, { shouldDirty: true, shouldValidate: false });
+                                  }}
+                                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                                />
+                              </div>
+                              <div>
+                                <label htmlFor={authStartId} className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                                  Auth Start
+                                </label>
+                                <input
+                                  id={authStartId}
+                                  type="date"
+                                  value={existingAuthorization?.auth_start_date ?? ''}
+                                  onChange={(event) => {
+                                    const next = [...serviceContracts];
+                                    const nextAuthorizations = codeAuthorizations.filter((authorization) => authorization.code !== code);
+                                    nextAuthorizations.push({
+                                      code,
+                                      units: existingAuthorization?.units ?? 0,
+                                      auth_start_date: event.target.value,
+                                      auth_end_date: existingAuthorization?.auth_end_date ?? '',
+                                    });
+                                    next[index] = { ...next[index], code_authorizations: nextAuthorizations };
+                                    setValue('service_contracts', next, { shouldDirty: true, shouldValidate: false });
+                                  }}
+                                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                                />
+                              </div>
+                              <div>
+                                <label htmlFor={authEndId} className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                                  Auth End
+                                </label>
+                                <input
+                                  id={authEndId}
+                                  type="date"
+                                  value={existingAuthorization?.auth_end_date ?? ''}
+                                  onChange={(event) => {
+                                    const next = [...serviceContracts];
+                                    const nextAuthorizations = codeAuthorizations.filter((authorization) => authorization.code !== code);
+                                    nextAuthorizations.push({
+                                      code,
+                                      units: existingAuthorization?.units ?? 0,
+                                      auth_start_date: existingAuthorization?.auth_start_date ?? '',
+                                      auth_end_date: event.target.value,
+                                    });
+                                    next[index] = { ...next[index], code_authorizations: nextAuthorizations };
+                                    setValue('service_contracts', next, { shouldDirty: true, shouldValidate: false });
+                                  }}
+                                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}

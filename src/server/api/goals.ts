@@ -9,6 +9,7 @@ const goalSchema = z.object({
   target_behavior: z.string().optional(),
   measurement_type: z.string().optional(),
   original_text: z.string().trim().min(1),
+  goal_type: z.enum(["child", "parent"]).optional(),
   clinical_context: z.string().optional(),
   baseline_data: z.string().optional(),
   target_criteria: z.string().optional(),
@@ -70,7 +71,7 @@ export async function goalsHandler(request: Request): Promise<Response> {
       return json({ error: "program_id must be a valid UUID" }, 400);
     }
 
-    const goalsUrl = `${supabaseUrl}/rest/v1/goals?select=id,organization_id,client_id,program_id,title,description,target_behavior,measurement_type,original_text,clinical_context,baseline_data,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,objective_data_points,status,created_at,updated_at&organization_id=eq.${organizationId}&program_id=eq.${programId}&order=created_at.desc`;
+    const goalsUrl = `${supabaseUrl}/rest/v1/goals?select=id,organization_id,client_id,program_id,title,description,target_behavior,measurement_type,original_text,goal_type,clinical_context,baseline_data,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,objective_data_points,status,created_at,updated_at&organization_id=eq.${organizationId}&program_id=eq.${programId}&order=created_at.desc`;
     const result = await fetchJson(goalsUrl, { method: "GET", headers });
     if (!result.ok) {
       return json({ error: "Failed to load goals" }, result.status || 500);

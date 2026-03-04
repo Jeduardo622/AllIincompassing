@@ -9,6 +9,9 @@ import {
   resolveOrgAndRole,
 } from "./shared";
 
+const MIN_CHILD_GOALS = 20;
+const MIN_PARENT_GOALS = 6;
+
 const promoteSchema = z.object({
   assessment_document_id: z.string().uuid(),
 });
@@ -32,6 +35,7 @@ interface DraftGoalRow {
   title: string;
   description: string;
   original_text: string;
+  goal_type: "child" | "parent";
   target_behavior: string | null;
   measurement_type: string | null;
   baseline_data: string | null;
@@ -105,7 +109,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
       { method: "GET", headers },
     ),
     fetchJson<DraftGoalRow[]>(
-      `${supabaseUrl}/rest/v1/assessment_draft_goals?select=id,title,description,original_text,target_behavior,measurement_type,baseline_data,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,objective_data_points,accept_state&organization_id=eq.${encodeURIComponent(
+      `${supabaseUrl}/rest/v1/assessment_draft_goals?select=id,title,description,original_text,goal_type,target_behavior,measurement_type,baseline_data,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,objective_data_points,accept_state&organization_id=eq.${encodeURIComponent(
         organizationId,
       )}&assessment_document_id=eq.${encodeURIComponent(parsed.data.assessment_document_id)}&order=created_at.asc`,
       { method: "GET", headers },
@@ -128,6 +132,18 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
   }
   if (acceptedGoals.length === 0) {
     return json({ error: "At least one accepted draft goal is required before promotion." }, 409);
+  }
+  const acceptedChildGoalCount = acceptedGoals.filter((goal) => goal.goal_type === "child").length;
+  const acceptedParentGoalCount = acceptedGoals.filter((goal) => goal.goal_type === "parent").length;
+  if (acceptedChildGoalCount < MIN_CHILD_GOALS || acceptedParentGoalCount < MIN_PARENT_GOALS) {
+    return json(
+      {
+        error: `Promotion requires at least ${MIN_CHILD_GOALS} accepted child goals and ${MIN_PARENT_GOALS} accepted parent goals.`,
+        accepted_child_goal_count: acceptedChildGoalCount,
+        accepted_parent_goal_count: acceptedParentGoalCount,
+      },
+      409,
+    );
   }
 
   const lowQualityGoals = acceptedGoals.filter((goal) => !isMinGoalQuality(goal));
@@ -189,6 +205,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     title: goal.title,
     description: goal.description,
     original_text: goal.original_text,
+    goal_type: goal.goal_type,
     target_behavior: goal.target_behavior,
     measurement_type: goal.measurement_type,
     baseline_data: goal.baseline_data,

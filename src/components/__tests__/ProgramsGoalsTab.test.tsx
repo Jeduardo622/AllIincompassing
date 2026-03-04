@@ -8,6 +8,27 @@ import { callApi } from "../../lib/api";
 const ORG_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
 const ASSESSMENT_ID = "11111111-1111-4111-8111-111111111111";
 
+const buildAcceptedDraftGoals = () => [
+  ...Array.from({ length: 20 }, (_, index) => ({
+    id: `child-${index + 1}`,
+    title: `Child Goal ${index + 1}`,
+    description: `Child goal description ${index + 1}`,
+    original_text: `Child goal original text ${index + 1}`,
+    goal_type: "child" as const,
+    accept_state: "accepted" as const,
+    review_notes: null,
+  })),
+  ...Array.from({ length: 6 }, (_, index) => ({
+    id: `parent-${index + 1}`,
+    title: `Parent Goal ${index + 1}`,
+    description: `Parent goal description ${index + 1}`,
+    original_text: `Parent goal original text ${index + 1}`,
+    goal_type: "parent" as const,
+    accept_state: "accepted" as const,
+    review_notes: null,
+  })),
+];
+
 vi.mock("../../lib/ai", async () => {
   const actual = await vi.importActual<typeof import("../../lib/ai")>("../../lib/ai");
   return {
@@ -140,11 +161,13 @@ describe("ProgramsGoalsTab", () => {
           title: "Requesting preferred items with 2-word phrase",
           description: "Client requests preferred items in natural environment opportunities.",
           original_text: "Client will request preferred items using a 2-word phrase.",
+          goal_type: "child",
         },
         {
           title: "Answering simple WH questions",
           description: "Client answers WH questions with visual support.",
           original_text: "Client will answer who/what/where questions with 80% accuracy.",
+          goal_type: "child",
         },
       ],
       rationale: "Derived from assessment deficits and ABA measurement guidelines.",
@@ -624,16 +647,7 @@ describe("ProgramsGoalsTab", () => {
         return new Response(
           JSON.stringify({
             programs: [{ id: "p1", name: "Program A", description: null, accept_state: "accepted", review_notes: null }],
-            goals: [
-              {
-                id: "g1",
-                title: "Goal A",
-                description: "Goal description",
-                original_text: "Goal original text",
-                accept_state: "accepted",
-                review_notes: null,
-              },
-            ],
+            goals: buildAcceptedDraftGoals(),
           }),
           { status: 200 },
         );

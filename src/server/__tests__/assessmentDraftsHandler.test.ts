@@ -21,6 +21,21 @@ import {
   resolveOrgAndRole,
 } from "../api/shared";
 
+const buildTypedGoals = (): Array<Record<string, unknown>> => [
+  ...Array.from({ length: 20 }, (_, index) => ({
+    title: `Child Goal ${index + 1}`,
+    description: `Child goal description ${index + 1}`,
+    original_text: `Child goal original text ${index + 1}`,
+    goal_type: "child",
+  })),
+  ...Array.from({ length: 6 }, (_, index) => ({
+    title: `Parent Goal ${index + 1}`,
+    description: `Parent goal description ${index + 1}`,
+    original_text: `Parent goal original text ${index + 1}`,
+    goal_type: "parent",
+  })),
+];
+
 describe("assessmentDraftsHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -59,14 +74,27 @@ describe("assessmentDraftsHandler", () => {
           program: { name: "Communication Program" },
           goals: [
             {
-              title: "Goal A",
+              title: "Child Goal A",
               description: "Description A",
               original_text: "Original A",
+              goal_type: "child",
               mastery_criteria: "80% across 2 sessions",
               maintenance_criteria: "80% across 2 maintenance checks",
               generalization_criteria: "Across home and clinic",
               objective_data_points: [{ objective: "Identify 4 emotions", data_settings: "Opportunity based with prompts" }],
             },
+            ...Array.from({ length: 19 }, (_, index) => ({
+              title: `Child Goal ${index + 2}`,
+              description: `Description child ${index + 2}`,
+              original_text: `Original child ${index + 2}`,
+              goal_type: "child",
+            })),
+            ...Array.from({ length: 6 }, (_, index) => ({
+              title: `Parent Goal ${index + 1}`,
+              description: `Description parent ${index + 1}`,
+              original_text: `Original parent ${index + 1}`,
+              goal_type: "parent",
+            })),
           ],
         }),
       }),
@@ -83,6 +111,7 @@ describe("assessmentDraftsHandler", () => {
     expect(goalCreateCall).toBeTruthy();
     const goalPayload = JSON.parse((goalCreateCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
     expect(goalPayload[0]?.mastery_criteria).toBe("80% across 2 sessions");
+    expect(goalPayload[0]?.goal_type).toBe("child");
     expect(Array.isArray(goalPayload[0]?.objective_data_points)).toBe(true);
   });
 
@@ -134,13 +163,7 @@ describe("assessmentDraftsHandler", () => {
           status: 200,
           data: {
             program: { name: "Communication Program", description: "Improve communication skills." },
-            goals: [
-              {
-                title: "Requesting with two-word phrases",
-                description: "Client requests preferred items with two-word phrases.",
-                original_text: "Client will request preferred items with two-word phrases.",
-              },
-            ],
+            goals: buildTypedGoals(),
             rationale: "Generated from extracted field values.",
           },
         };
@@ -176,5 +199,14 @@ describe("assessmentDraftsHandler", () => {
       expect.stringContaining("/functions/v1/generate-program-goals"),
       expect.objectContaining({ method: "POST" }),
     );
+    const goalCreateCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_draft_goals"));
+    expect(goalCreateCall).toBeTruthy();
+    const goalPayload = JSON.parse((goalCreateCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
+    const childGoalCount = goalPayload.filter((goal) => goal.goal_type === "child").length;
+    const parentGoalCount = goalPayload.filter((goal) => goal.goal_type === "parent").length;
+    expect(childGoalCount).toBe(20);
+    expect(parentGoalCount).toBe(6);
   });
 });

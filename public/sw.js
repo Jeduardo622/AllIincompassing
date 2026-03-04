@@ -1,4 +1,4 @@
-const APP_VERSION = '20260212';
+const APP_VERSION = '20260304';
 const PRECACHE_CACHE = `allincompassing-precache-${APP_VERSION}`;
 const RUNTIME_CACHE = `allincompassing-runtime-${APP_VERSION}`;
 const IMMUTABLE_CACHE = `allincompassing-immutable-${APP_VERSION}`;

@@ -62,6 +62,24 @@ describe('prepareClientPayload', () => {
 
     expect('documents_consent' in payload).toBe(false);
   });
+
+  it('strips form-only service_contracts before strict payload parse', () => {
+    const payload = prepareClientPayload({
+      first_name: 'Service',
+      last_name: 'Contract',
+      service_contracts: [
+        { provider: 'IEHP', units: 8, cpt_codes: ['H2019'] },
+      ],
+      insurance_info: {
+        provider: 'IEHP',
+      },
+    } as Partial<Client> & { service_contracts: Array<Record<string, unknown>> });
+
+    expect('service_contracts' in payload).toBe(false);
+    expect(payload.insurance_info).toMatchObject({
+      provider: 'IEHP',
+    });
+  });
 });
 
 describe('updateClientRecord', () => {

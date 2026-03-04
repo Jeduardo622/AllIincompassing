@@ -902,44 +902,48 @@ export default function ClientModal({
                       <label htmlFor={codesId} className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Select Codes
                       </label>
-                      <select
+                      <div
                         id={codesId}
-                        multiple
-                        value={normalizeCptCodes(entry.cpt_codes)}
-                        onMouseDown={(event) => {
-                          const target = event.target;
-                          if (!(target instanceof HTMLOptionElement)) {
-                            return;
-                          }
-
-                          event.preventDefault();
-                          const nextCode = String(target.value).trim().toUpperCase();
-                          const existingCodes = normalizeCptCodes(entry.cpt_codes);
-                          const nextCodes = existingCodes.includes(nextCode)
-                            ? existingCodes.filter((code) => code !== nextCode)
-                            : [...existingCodes, nextCode];
-
-                          const next = [...serviceContracts];
-                          next[index] = { ...next[index], cpt_codes: nextCodes };
-                          setValue('service_contracts', next, { shouldDirty: true, shouldValidate: false });
-                        }}
-                        onChange={(event) => {
-                          const values = normalizeCptCodes(
-                            Array.from(event.target.selectedOptions).map((option) => option.value)
-                          );
-                          const next = [...serviceContracts];
-                          next[index] = { ...next[index], cpt_codes: values };
-                          setValue('service_contracts', next, { shouldDirty: true, shouldValidate: false });
-                        }}
-                        className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 min-h-[110px]"
+                        className="w-full rounded-md border border-gray-300 dark:border-gray-600 shadow-sm dark:bg-dark text-gray-900 dark:text-gray-200 min-h-[110px] max-h-[220px] overflow-y-auto p-2 space-y-1"
+                        role="group"
+                        aria-label={`Select CPT codes for ${provider}`}
                       >
-                        {filteredOptions.map((option) => (
-                          <option key={option.code} value={option.code}>
-                            {option.code} - {option.description}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl/Cmd to select multiple codes.</p>
+                        {filteredOptions.length === 0 ? (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 px-1 py-2">
+                            No codes available for this insurance.
+                          </p>
+                        ) : (
+                          filteredOptions.map((option) => {
+                            const selectedCodes = normalizeCptCodes(entry.cpt_codes);
+                            const isChecked = selectedCodes.includes(option.code);
+                            return (
+                              <label
+                                key={option.code}
+                                className="flex items-start gap-2 rounded px-1 py-1 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(event) => {
+                                    const nextCodes = event.target.checked
+                                      ? [...selectedCodes, option.code]
+                                      : selectedCodes.filter((code) => code !== option.code);
+                                    const next = [...serviceContracts];
+                                    next[index] = { ...next[index], cpt_codes: normalizeCptCodes(nextCodes) };
+                                    setValue('service_contracts', next, { shouldDirty: true, shouldValidate: false });
+                                  }}
+                                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-dark dark:border-gray-600"
+                                />
+                                <span>
+                                  <span className="font-medium">{option.code}</span>
+                                  <span className="text-gray-600 dark:text-gray-400"> - {option.description}</span>
+                                </span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Click to toggle one or more codes.</p>
                     </div>
                   </div>
                 );

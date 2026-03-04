@@ -5,7 +5,7 @@
   "applied": true,
   "targetOrganizationId": "5238e88b-6198-4862-80a2-dbe15bbeabdd",
   "organizationDetectionCounts": {
-    "5238e88b-6198-4862-80a2-dbe15bbeabdd": 97
+    "5238e88b-6198-4862-80a2-dbe15bbeabdd": -1
   },
   "totals": {
     "sourceRows": 109,
@@ -100,7 +100,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.704Z",
+            "imported_at": "2026-03-04T15:45:05.453Z",
             "source_rows": [
               {
                 "row_number": 2,
@@ -147,7 +147,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.454Z",
             "source_rows": [
               {
                 "row_number": 3,
@@ -194,7 +194,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.454Z",
             "source_rows": [
               {
                 "row_number": 4,
@@ -241,7 +241,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.454Z",
             "source_rows": [
               {
                 "row_number": 5,
@@ -288,7 +288,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 6,
@@ -324,14 +324,31 @@
               "ho_units": 832,
               "h0032_units": null,
               "h2019_units": 1560,
-              "s5111_visits": null,
-              "normalized_client_id": "MARAL"
+              "s5111_visits": null
             },
-            "imported_at": "2026-03-04T15:06:15.147Z",
+            "imported_at": "2026-03-04T15:36:55.922Z",
             "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "source_rows": [
+              {
+                "parsed": {
+                  "ho_units": 832,
+                  "h0032_units": null,
+                  "h2019_units": 1560,
+                  "s5111_visits": null
+                },
+                "source_identifiers": [
+                  "MarAl"
+                ],
+                "normalized_client_id": "MARAL"
+              }
+            ],
+            "source_type": "pdf",
             "parser_version": "1.0.0",
             "source_identifiers": [
               "MarAl"
+            ],
+            "normalized_client_ids": [
+              "MARAL"
             ]
           }
         },
@@ -349,7 +366,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 7,
@@ -396,7 +413,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 8,
@@ -443,7 +460,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 9,
@@ -479,14 +496,31 @@
               "ho_units": 208,
               "h0032_units": 1092,
               "h2019_units": 3120,
-              "s5111_visits": null,
-              "normalized_client_id": "DAAN"
+              "s5111_visits": null
             },
-            "imported_at": "2026-03-04T15:06:15.144Z",
+            "imported_at": "2026-03-04T15:36:55.921Z",
             "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "source_rows": [
+              {
+                "parsed": {
+                  "ho_units": 208,
+                  "h0032_units": 1092,
+                  "h2019_units": 3120,
+                  "s5111_visits": null
+                },
+                "source_identifiers": [
+                  "DaAn (Victorville)"
+                ],
+                "normalized_client_id": "DAAN"
+              }
+            ],
+            "source_type": "pdf",
             "parser_version": "1.0.0",
             "source_identifiers": [
               "DaAn (Victorville)"
+            ],
+            "normalized_client_ids": [
+              "DAAN"
             ]
           }
         },
@@ -506,7 +540,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 10,
@@ -542,14 +576,31 @@
               "ho_units": 312,
               "h0032_units": 832,
               "h2019_units": 1872,
-              "s5111_visits": null,
-              "normalized_client_id": "GIAR"
+              "s5111_visits": null
             },
-            "imported_at": "2026-03-04T15:06:15.145Z",
+            "imported_at": "2026-03-04T15:36:55.922Z",
             "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "source_rows": [
+              {
+                "parsed": {
+                  "ho_units": 312,
+                  "h0032_units": 832,
+                  "h2019_units": 1872,
+                  "s5111_visits": null
+                },
+                "source_identifiers": [
+                  "GiAr (Hesperia)"
+                ],
+                "normalized_client_id": "GIAR"
+              }
+            ],
+            "source_type": "pdf",
             "parser_version": "1.0.0",
             "source_identifiers": [
               "GiAr (Hesperia)"
+            ],
+            "normalized_client_ids": [
+              "GIAR"
             ]
           }
         },
@@ -568,7 +619,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 11,
@@ -604,14 +655,31 @@
               "ho_units": 728,
               "h0032_units": 624,
               "h2019_units": 2704,
-              "s5111_visits": null,
-              "normalized_client_id": "XAAV"
+              "s5111_visits": null
             },
-            "imported_at": "2026-03-04T15:06:15.148Z",
+            "imported_at": "2026-03-04T15:36:55.922Z",
             "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "source_rows": [
+              {
+                "parsed": {
+                  "ho_units": 728,
+                  "h0032_units": 624,
+                  "h2019_units": 2704,
+                  "s5111_visits": null
+                },
+                "source_identifiers": [
+                  "XaAv(CAMP)"
+                ],
+                "normalized_client_id": "XAAV"
+              }
+            ],
+            "source_type": "pdf",
             "parser_version": "1.0.0",
             "source_identifiers": [
               "XaAv(CAMP)"
+            ],
+            "normalized_client_ids": [
+              "XAAV"
             ]
           }
         },
@@ -631,7 +699,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 12,
@@ -699,7 +767,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 13,
@@ -746,7 +814,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 14,
@@ -814,7 +882,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 16,
@@ -850,14 +918,31 @@
               "ho_units": 936,
               "h0032_units": null,
               "h2019_units": 1560,
-              "s5111_visits": null,
-              "normalized_client_id": "JESCAB"
+              "s5111_visits": null
             },
-            "imported_at": "2026-03-04T15:06:15.145Z",
+            "imported_at": "2026-03-04T15:36:55.922Z",
             "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "source_rows": [
+              {
+                "parsed": {
+                  "ho_units": 936,
+                  "h0032_units": null,
+                  "h2019_units": 1560,
+                  "s5111_visits": null
+                },
+                "source_identifiers": [
+                  "JesCab(Adelanto)"
+                ],
+                "normalized_client_id": "JESCAB"
+              }
+            ],
+            "source_type": "pdf",
             "parser_version": "1.0.0",
             "source_identifiers": [
               "JesCab(Adelanto)"
+            ],
+            "normalized_client_ids": [
+              "JESCAB"
             ]
           }
         },
@@ -875,7 +960,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 17,
@@ -922,7 +1007,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 18,
@@ -958,14 +1043,31 @@
               "ho_units": 208,
               "h0032_units": 936,
               "h2019_units": 1892,
-              "s5111_visits": null,
-              "normalized_client_id": "ERCARME"
+              "s5111_visits": null
             },
-            "imported_at": "2026-03-04T15:06:15.144Z",
+            "imported_at": "2026-03-04T15:36:55.922Z",
             "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "source_rows": [
+              {
+                "parsed": {
+                  "ho_units": 208,
+                  "h0032_units": 936,
+                  "h2019_units": 1892,
+                  "s5111_visits": null
+                },
+                "source_identifiers": [
+                  "ErCarMe Barstow"
+                ],
+                "normalized_client_id": "ERCARME"
+              }
+            ],
+            "source_type": "pdf",
             "parser_version": "1.0.0",
             "source_identifiers": [
               "ErCarMe Barstow"
+            ],
+            "normalized_client_ids": [
+              "ERCARME"
             ]
           }
         },
@@ -985,7 +1087,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 20,
@@ -1032,7 +1134,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 21,
@@ -1068,14 +1170,31 @@
               "ho_units": 832,
               "h0032_units": null,
               "h2019_units": 1560,
-              "s5111_visits": null,
-              "normalized_client_id": "VADA"
+              "s5111_visits": null
             },
-            "imported_at": "2026-03-04T15:06:15.148Z",
+            "imported_at": "2026-03-04T15:36:55.922Z",
             "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "source_rows": [
+              {
+                "parsed": {
+                  "ho_units": 832,
+                  "h0032_units": null,
+                  "h2019_units": 1560,
+                  "s5111_visits": null
+                },
+                "source_identifiers": [
+                  "VaDa(CAMP)"
+                ],
+                "normalized_client_id": "VADA"
+              }
+            ],
+            "source_type": "pdf",
             "parser_version": "1.0.0",
             "source_identifiers": [
               "VaDa(CAMP)"
+            ],
+            "normalized_client_ids": [
+              "VADA"
             ]
           }
         },
@@ -1093,7 +1212,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 22,
@@ -1129,14 +1248,31 @@
               "ho_units": 832,
               "h0032_units": null,
               "h2019_units": 1560,
-              "s5111_visits": null,
-              "normalized_client_id": "ZADA"
+              "s5111_visits": null
             },
-            "imported_at": "2026-03-04T15:06:15.148Z",
+            "imported_at": "2026-03-04T15:36:55.922Z",
             "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "source_rows": [
+              {
+                "parsed": {
+                  "ho_units": 832,
+                  "h0032_units": null,
+                  "h2019_units": 1560,
+                  "s5111_visits": null
+                },
+                "source_identifiers": [
+                  "ZaDa (CAMP)"
+                ],
+                "normalized_client_id": "ZADA"
+              }
+            ],
+            "source_type": "pdf",
             "parser_version": "1.0.0",
             "source_identifiers": [
               "ZaDa (CAMP)"
+            ],
+            "normalized_client_ids": [
+              "ZADA"
             ]
           }
         },
@@ -1154,7 +1290,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 23,
@@ -1201,7 +1337,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 24,
@@ -1248,7 +1384,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 25,
@@ -1295,7 +1431,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 26,
@@ -1342,7 +1478,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 27,
@@ -1389,7 +1525,7 @@
             "source_file": "Copy of IEHP + CO approval amounts - Sheet1.pdf",
             "source_type": "pdf",
             "parser_version": "1.0.0",
-            "imported_at": "2026-03-04T15:36:44.705Z",
+            "imported_at": "2026-03-04T15:45:05.455Z",
             "source_rows": [
               {
                 "row_number": 28,
@@ -1425,14 +1561,31 @@
               "ho_units": 768,
               "h0032_units": 468,
               "h2019_units": 1560,
-              "s5111_visits": null,
-              "normalized_client_id": "MATFI"
+              "s5111_visits": null
             },
-            "imported_at": "2026-03-04T15:06:15.147Z",
+            "imported_at": "2026-03-04T15:36:55.922Z",
             "source_file": "High_Desert_Clients_REBUILT_with_units.pdf",
+            "source_rows": [
+              {
+                "parsed": {
+                  "ho_units": 768,
+                  "h0032_units": 468,
+                  "h2019_units": 1560,
+                  "s5111_visits": null
+                },
+                "source_identifiers": [
+                  "MatFi"
+                ],
+                "normalized_client_id": "MATFI"
+              }
+            ],
+            "source_type": "pdf",
             "parser_version": "1.0.0",
             "source_identifiers": [
               "MatFi"
+            ],
+            "normalized_client_ids": [
+              "MATFI"
             ]
           }
         },

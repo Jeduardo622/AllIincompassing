@@ -56,6 +56,53 @@ interface ClientModalProps {
   saveError?: string | null;
 }
 
+const buildDefaultValues = (client?: Client): ClientFormData => ({
+  email: client?.email || '',
+  first_name: client?.first_name || '',
+  middle_name: client?.middle_name || '',
+  last_name: client?.last_name || '',
+  full_name: client?.full_name || '',
+  date_of_birth: client?.date_of_birth || '',
+  gender: client?.gender || '',
+  client_id: client?.client_id || '',
+  insurance_info: client?.insurance_info || {},
+  service_contracts: normalizeServiceContracts(client?.insurance_info),
+  service_preference: client?.service_preference || [],
+  one_to_one_units: client?.one_to_one_units || 0,
+  supervision_units: client?.supervision_units || 0,
+  parent_consult_units: client?.parent_consult_units || 0,
+  assessment_units: client?.assessment_units || 0,
+  auth_units: client?.auth_units || 0,
+  auth_start_date: client?.auth_start_date || '',
+  auth_end_date: client?.auth_end_date || '',
+  availability_hours: client?.availability_hours || {
+    monday: { start: '06:00', end: '21:00' },
+    tuesday: { start: '06:00', end: '21:00' },
+    wednesday: { start: '06:00', end: '21:00' },
+    thursday: { start: '06:00', end: '21:00' },
+    friday: { start: '06:00', end: '21:00' },
+    saturday: { start: '06:00', end: '21:00' },
+  },
+  parent1_first_name: client?.parent1_first_name || '',
+  parent1_last_name: client?.parent1_last_name || '',
+  parent1_phone: client?.parent1_phone || '',
+  parent1_email: client?.parent1_email || '',
+  parent1_relationship: client?.parent1_relationship || '',
+  parent2_first_name: client?.parent2_first_name || '',
+  parent2_last_name: client?.parent2_last_name || '',
+  parent2_phone: client?.parent2_phone || '',
+  parent2_email: client?.parent2_email || '',
+  parent2_relationship: client?.parent2_relationship || '',
+  address_line1: client?.address_line1 || '',
+  address_line2: client?.address_line2 || '',
+  city: client?.city || '',
+  state: client?.state || '',
+  zip_code: client?.zip_code || '',
+  phone: client?.phone || '',
+  cin_number: client?.cin_number || '',
+  documents_consent: true,
+});
+
 export default function ClientModal({
   isOpen,
   onClose,
@@ -77,54 +124,7 @@ export default function ClientModal({
   } = useForm<ClientFormData>({
     resolver: zodResolver(clientSchema),
     mode: 'onChange',
-    defaultValues: {
-      email: client?.email || '',
-      first_name: client?.first_name || '',
-      middle_name: client?.middle_name || '',
-      last_name: client?.last_name || '',
-      full_name: client?.full_name || '',
-      date_of_birth: client?.date_of_birth || '',
-      gender: client?.gender || '',
-      client_id: client?.client_id || '',
-      insurance_info: client?.insurance_info || {},
-      service_contracts: normalizeServiceContracts(client?.insurance_info),
-      service_preference: client?.service_preference || [], // Initialize as empty array if no value
-      one_to_one_units: client?.one_to_one_units || 0,
-      supervision_units: client?.supervision_units || 0,
-      parent_consult_units: client?.parent_consult_units || 0,
-      assessment_units: client?.assessment_units || 0,
-      auth_units: client?.auth_units || 0,
-      auth_start_date: client?.auth_start_date || '',
-      auth_end_date: client?.auth_end_date || '',
-      availability_hours: client?.availability_hours || {
-        monday: { start: "06:00", end: "21:00" },
-        tuesday: { start: "06:00", end: "21:00" },
-        wednesday: { start: "06:00", end: "21:00" },
-        thursday: { start: "06:00", end: "21:00" },
-        friday: { start: "06:00", end: "21:00" },
-        saturday: { start: "06:00", end: "21:00" },
-      },
-      // Parent/Guardian information
-      parent1_first_name: client?.parent1_first_name || '',
-      parent1_last_name: client?.parent1_last_name || '',
-      parent1_phone: client?.parent1_phone || '',
-      parent1_email: client?.parent1_email || '',
-      parent1_relationship: client?.parent1_relationship || '',
-      parent2_first_name: client?.parent2_first_name || '',
-      parent2_last_name: client?.parent2_last_name || '',
-      parent2_phone: client?.parent2_phone || '',
-      parent2_email: client?.parent2_email || '',
-      parent2_relationship: client?.parent2_relationship || '',
-      // Address information
-      address_line1: client?.address_line1 || '',
-      address_line2: client?.address_line2 || '',
-      city: client?.city || '',
-      state: client?.state || '',
-      zip_code: client?.zip_code || '',
-      phone: client?.phone || '',
-      cin_number: client?.cin_number || '',
-      documents_consent: true,
-    },
+    defaultValues: buildDefaultValues(client),
   });
 
   const [localError, setLocalError] = useState<string | null>(null);
@@ -133,6 +133,15 @@ export default function ClientModal({
   const displayedError = saveError || localError;
 
   const previousSavingState = useRef(effectiveIsSaving);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    clearErrors();
+    setLocalError(null);
+    reset(buildDefaultValues(client));
+  }, [isOpen, client, clearErrors, reset]);
 
   useEffect(() => {
     const wasSaving = previousSavingState.current;

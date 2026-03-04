@@ -316,6 +316,24 @@ const main = async () => {
   const unmatchedRows: Array<{ normalizedClientId: string; sourceIdentifiers: string[] }> = [];
   const ambiguousRows: Array<{ normalizedClientId: string; sourceIdentifiers: string[]; candidateClientIds: string[] }> = [];
   const plannedUpdates: PlannedUpdate[] = [];
+  type ClientAccumulator = {
+    client: ClientRecord;
+    sourceRows: AggregatedUnits[];
+    maxOneToOneUnits: number | null;
+    maxSupervisionUnits: number | null;
+    maxAuthUnits: number | null;
+    maxS5111Visits: number | null;
+  };
+  const mergedByClientId = new Map<string, ClientAccumulator>();
+  const toMaxOrCurrent = (current: number | null, next: number | null): number | null => {
+    if (typeof next !== 'number' || !Number.isFinite(next)) {
+      return current;
+    }
+    if (current === null) {
+      return next;
+    }
+    return Math.max(current, next);
+  };
 
   for (const row of aggregated) {
     const overrideId = SECOND_PASS_OVERRIDES[row.normalizedClientId];
@@ -363,19 +381,65 @@ const main = async () => {
       clientRecordId: client.id,
       fullName: client.full_name,
     });
+    const existingAccumulator = mergedByClientId.get(client.id);
+    if (!existingAccumulator) {
+      mergedByClientId.set(client.id, {
+        client,
+        sourceRows: [row],
+        maxOneToOneUnits: toMaxOrCurrent(null, row.oneToOneUnits),
+        maxSupervisionUnits: toMaxOrCurrent(null, row.supervisionUnits),
+        maxAuthUnits: toMaxOrCurrent(null, row.authUnits),
+        maxS5111Visits: toMaxOrCurrent(null, row.s5111Visits),
+      });
+    } else {
+      existingAccumulator.sourceRows.push(row);
+      existingAccumulator.maxOneToOneUnits = toMaxOrCurrent(existingAccumulator.maxOneToOneUnits, row.oneToOneUnits);
+      existingAccumulator.maxSupervisionUnits = toMaxOrCurrent(existingAccumulator.maxSupervisionUnits, row.supervisionUnits);
+      existingAccumulator.maxAuthUnits = toMaxOrCurrent(existingAccumulator.maxAuthUnits, row.authUnits);
+      existingAccumulator.maxS5111Visits = toMaxOrCurrent(existingAccumulator.maxS5111Visits, row.s5111Visits);
+    }
+  }
+
+  if (args.apply && ambiguousRows.length > 0) {
+    throw new Error(`Aborting apply: ${ambiguousRows.length} ambiguous client_id match(es) require manual resolution.`);
+  }
+
+  for (const accumulator of mergedByClientId.values()) {
+    const client = accumulator.client;
+    const sourceRows = accumulator.sourceRows
+      .slice()
+      .sort((a, b) => a.normalizedClientId.localeCompare(b.normalizedClientId))
+      .map(sourceRow => ({
+        normalized_client_id: sourceRow.normalizedClientId,
+        source_identifiers: sourceRow.sourceIdentifiers,
+        parsed: {
+          h0032_units: sourceRow.oneToOneUnits,
+          ho_units: sourceRow.supervisionUnits,
+          h2019_units: sourceRow.authUnits,
+          s5111_visits: sourceRow.s5111Visits,
+        },
+      }));
+    const allIdentifiers = Array.from(
+      new Set(sourceRows.flatMap(sourceRow => sourceRow.source_identifiers).filter(identifier => Boolean(identifier)))
+    );
+    const allNormalizedClientIds = Array.from(
+      new Set(sourceRows.map(sourceRow => sourceRow.normalized_client_id).filter(identifier => Boolean(identifier)))
+    );
 
     const existingInsuranceInfo = asRecord(client.insurance_info);
     const importPayload = {
       source_file: path.basename(args.pdf),
+      source_type: 'pdf',
       parser_version: PARSER_VERSION,
       imported_at: new Date().toISOString(),
-      source_identifiers: row.sourceIdentifiers,
+      source_identifiers: allIdentifiers,
+      normalized_client_ids: allNormalizedClientIds,
+      source_rows: sourceRows,
       parsed: {
-        normalized_client_id: row.normalizedClientId,
-        h0032_units: row.oneToOneUnits,
-        ho_units: row.supervisionUnits,
-        h2019_units: row.authUnits,
-        s5111_visits: row.s5111Visits,
+        h0032_units: accumulator.maxOneToOneUnits,
+        ho_units: accumulator.maxSupervisionUnits,
+        h2019_units: accumulator.maxAuthUnits,
+        s5111_visits: accumulator.maxS5111Visits,
       },
     };
     const nextInsuranceInfo = {
@@ -386,14 +450,14 @@ const main = async () => {
       insurance_info: nextInsuranceInfo as Json,
     };
 
-    if (typeof row.oneToOneUnits === 'number' && Number.isFinite(row.oneToOneUnits)) {
-      updatePayload.one_to_one_units = toIntUnits(row.oneToOneUnits);
+    if (typeof accumulator.maxOneToOneUnits === 'number' && Number.isFinite(accumulator.maxOneToOneUnits)) {
+      updatePayload.one_to_one_units = toIntUnits(accumulator.maxOneToOneUnits);
     }
-    if (typeof row.supervisionUnits === 'number' && Number.isFinite(row.supervisionUnits)) {
-      updatePayload.supervision_units = toIntUnits(row.supervisionUnits);
+    if (typeof accumulator.maxSupervisionUnits === 'number' && Number.isFinite(accumulator.maxSupervisionUnits)) {
+      updatePayload.supervision_units = toIntUnits(accumulator.maxSupervisionUnits);
     }
-    if (typeof row.authUnits === 'number' && Number.isFinite(row.authUnits)) {
-      updatePayload.auth_units = toIntUnits(row.authUnits);
+    if (typeof accumulator.maxAuthUnits === 'number' && Number.isFinite(accumulator.maxAuthUnits)) {
+      updatePayload.auth_units = toIntUnits(accumulator.maxAuthUnits);
     }
 
     const changedInsurance = JSON.stringify(client.insurance_info ?? null) !== JSON.stringify(nextInsuranceInfo);
@@ -406,16 +470,12 @@ const main = async () => {
     if (changedInsurance || changedAuthUnits || changedOneToOne || changedSupervision) {
       plannedUpdates.push({
         id: client.id,
-        normalizedClientId: row.normalizedClientId,
+        normalizedClientId: allNormalizedClientIds[0] ?? '',
         fullName: client.full_name,
         organizationId: client.organization_id,
         update: updatePayload,
       });
     }
-  }
-
-  if (args.apply && ambiguousRows.length > 0) {
-    throw new Error(`Aborting apply: ${ambiguousRows.length} ambiguous client_id match(es) require manual resolution.`);
   }
 
   if (args.apply) {
@@ -440,6 +500,13 @@ const main = async () => {
       unmatched: unmatchedRows.length,
       ambiguous: ambiguousRows.length,
       plannedUpdates: plannedUpdates.length,
+      mergedClients: mergedByClientId.size,
+    },
+    sourceCoverage: {
+      sourceFile: args.pdf,
+      sourceType: 'pdf',
+      normalizedIdentifiersParsed: aggregated.length,
+      uniqueClientMatches: mergedByClientId.size,
     },
     unmatchedRows,
     ambiguousRows,

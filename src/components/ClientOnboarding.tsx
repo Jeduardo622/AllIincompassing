@@ -43,10 +43,23 @@ const DEFAULT_AVAILABILITY = {
 
 const SERVICE_CONTRACT_PROVIDER_OPTIONS = ['Private', 'IEHP', 'CalOptima'] as const;
 type ServiceContractProvider = typeof SERVICE_CONTRACT_PROVIDER_OPTIONS[number];
+const UNIVERSAL_CPT_CODE = 'S5110';
+const UNIVERSAL_CPT_DESCRIPTION = 'Parent consultation';
 
 const getCodePrefixForProvider = (provider: ServiceContractProvider): '9' | 'H' => (
   provider === 'Private' ? '9' : 'H'
 );
+
+const isCodeAllowedForProvider = (provider: ServiceContractProvider, code: unknown): boolean => {
+  const normalizedCode = String(code ?? '').trim().toUpperCase();
+  if (!normalizedCode) {
+    return false;
+  }
+  if (normalizedCode === UNIVERSAL_CPT_CODE) {
+    return true;
+  }
+  return normalizedCode.startsWith(getCodePrefixForProvider(provider));
+};
 
 export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
   const [currentStep, setCurrentStep] = useState(1);
@@ -201,17 +214,37 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
       IEHP: [],
       CalOptima: [],
     };
+    const pushIfMissing = (
+      provider: ServiceContractProvider,
+      code: string,
+      description: string
+    ) => {
+      if (!grouped[provider].some((entry) => entry.code === code)) {
+        grouped[provider].push({ code, description });
+      }
+    };
 
     for (const code of cptCatalog) {
       const normalizedCode = String(code.code ?? '').toUpperCase();
       const description = String(code.short_description ?? '');
-      if (normalizedCode.startsWith('9')) {
-        grouped.Private.push({ code: normalizedCode, description });
+      if (!normalizedCode) {
+        continue;
+      }
+      if (normalizedCode === UNIVERSAL_CPT_CODE) {
+        pushIfMissing('Private', normalizedCode, description || UNIVERSAL_CPT_DESCRIPTION);
+        pushIfMissing('IEHP', normalizedCode, description || UNIVERSAL_CPT_DESCRIPTION);
+        pushIfMissing('CalOptima', normalizedCode, description || UNIVERSAL_CPT_DESCRIPTION);
+      } else if (normalizedCode.startsWith('9')) {
+        pushIfMissing('Private', normalizedCode, description);
       } else if (normalizedCode.startsWith('H')) {
-        grouped.IEHP.push({ code: normalizedCode, description });
-        grouped.CalOptima.push({ code: normalizedCode, description });
+        pushIfMissing('IEHP', normalizedCode, description);
+        pushIfMissing('CalOptima', normalizedCode, description);
       }
     }
+
+    pushIfMissing('Private', UNIVERSAL_CPT_CODE, UNIVERSAL_CPT_DESCRIPTION);
+    pushIfMissing('IEHP', UNIVERSAL_CPT_CODE, UNIVERSAL_CPT_DESCRIPTION);
+    pushIfMissing('CalOptima', UNIVERSAL_CPT_CODE, UNIVERSAL_CPT_DESCRIPTION);
 
     return grouped;
   }, [cptCatalog]);
@@ -1025,7 +1058,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
                               ...next[index],
                               provider: nextProvider,
                               cpt_codes: (next[index]?.cpt_codes ?? []).filter((code) =>
-                                String(code).toUpperCase().startsWith(getCodePrefixForProvider(nextProvider))
+                                isCodeAllowedForProvider(nextProvider, code)
                               ),
                             };
                             setValue('service_contracts', next, { shouldDirty: true, shouldValidate: true });

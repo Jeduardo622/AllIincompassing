@@ -519,11 +519,17 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
     onMutate: (document) => {
       setDeletingAssessmentId(document.id);
-    },
-    onSuccess: (_, document) => {
       if (selectedAssessmentId === document.id) {
         setSelectedAssessmentId(null);
       }
+    },
+    onSuccess: (_, document) => {
+      queryClient.removeQueries({
+        queryKey: ["assessment-checklist", document.id, organizationId ?? "MISSING_ORG"],
+      });
+      queryClient.removeQueries({
+        queryKey: ["assessment-drafts", document.id, organizationId ?? "MISSING_ORG"],
+      });
       queryClient.invalidateQueries({
         queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
       });

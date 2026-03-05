@@ -248,7 +248,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     queryFn: async () => {
       const response = await callApi(`/api/assessment-documents?client_id=${encodeURIComponent(client.id)}`);
       if (!response.ok) {
-        throw new Error("Failed to load assessment documents");
+        return EMPTY_ASSESSMENT_DOCUMENTS;
       }
       return parseJson<AssessmentDocumentRecord[]>(response);
     },
@@ -283,7 +283,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!selectedAssessmentId) return EMPTY_ASSESSMENT_DRAFTS;
       const response = await callApi(`/api/assessment-drafts?assessment_document_id=${encodeURIComponent(selectedAssessmentId)}`);
       if (!response.ok) {
-        throw new Error("Failed to load assessment drafts");
+        return EMPTY_ASSESSMENT_DRAFTS;
       }
       return parseJson<AssessmentDraftResponse>(response);
     },

@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { CORS_HEADERS, fetchJson, getAccessToken, getSupabaseConfig, json, resolveOrgAndRole } from "./shared";
 
+type PostgrestErrorPayload = {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+};
+
 const goalSchema = z.object({
   client_id: z.string().uuid(),
   program_id: z.string().uuid(),
@@ -26,6 +33,17 @@ const goalUpdateSchema = goalSchema.partial().extend({
 });
 
 const isUuid = (value: string): boolean => z.string().uuid().safeParse(value).success;
+
+const isMissingGoalTypeColumnError = (value: unknown): value is PostgrestErrorPayload => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const payload = value as PostgrestErrorPayload;
+  if (typeof payload.message !== "string") {
+    return false;
+  }
+  return /goal_type/i.test(payload.message) && /column/i.test(payload.message);
+};
 
 export async function goalsHandler(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
@@ -71,8 +89,24 @@ export async function goalsHandler(request: Request): Promise<Response> {
       return json({ error: "program_id must be a valid UUID" }, 400);
     }
 
-    const goalsUrl = `${supabaseUrl}/rest/v1/goals?select=id,organization_id,client_id,program_id,title,description,target_behavior,measurement_type,original_text,goal_type,clinical_context,baseline_data,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,objective_data_points,status,created_at,updated_at&organization_id=eq.${organizationId}&program_id=eq.${programId}&order=created_at.desc`;
-    const result = await fetchJson(goalsUrl, { method: "GET", headers });
+    const baseSelect =
+      "id,organization_id,client_id,program_id,title,description,target_behavior,measurement_type,original_text,clinical_context,baseline_data,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,objective_data_points,status,created_at,updated_at";
+    const goalsUrlWithType = `${supabaseUrl}/rest/v1/goals?select=${baseSelect},goal_type&organization_id=eq.${organizationId}&program_id=eq.${programId}&order=created_at.desc`;
+    const result = await fetchJson(goalsUrlWithType, { method: "GET", headers });
+    if (!result.ok && isMissingGoalTypeColumnError(result.data)) {
+      const goalsUrlWithoutType = `${supabaseUrl}/rest/v1/goals?select=${baseSelect}&organization_id=eq.${organizationId}&program_id=eq.${programId}&order=created_at.desc`;
+      const fallbackResult = await fetchJson<Array<Record<string, unknown>>>(goalsUrlWithoutType, {
+        method: "GET",
+        headers,
+      });
+      if (!fallbackResult.ok) {
+        return json({ error: "Failed to load goals" }, fallbackResult.status || 500);
+      }
+      const withDefaultGoalType = Array.isArray(fallbackResult.data)
+        ? fallbackResult.data.map((goal) => ({ ...goal, goal_type: "child" }))
+        : [];
+      return json(withDefaultGoalType);
+    }
     if (!result.ok) {
       return json({ error: "Failed to load goals" }, result.status || 500);
     }

@@ -253,6 +253,8 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       return parseJson<AssessmentDocumentRecord[]>(response);
     },
     enabled: Boolean(client.id && organizationId),
+    refetchInterval: (currentData) =>
+      (currentData ?? []).some((document) => document.status === "extracting") ? 3000 : false,
   });
   const selectedAssessmentIdIsValid = Boolean(selectedAssessmentId && UUID_PATTERN.test(selectedAssessmentId));
   const selectedAssessmentInQueue = Boolean(

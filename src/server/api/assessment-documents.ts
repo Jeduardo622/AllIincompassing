@@ -80,6 +80,17 @@ interface ExtractionFunctionResponse {
   unresolved_count: number;
 }
 
+const processInBatches = async <T,>(
+  items: T[],
+  batchSize: number,
+  handler: (item: T) => Promise<void>,
+): Promise<void> => {
+  for (let index = 0; index < items.length; index += batchSize) {
+    const batch = items.slice(index, index + batchSize);
+    await Promise.all(batch.map((item) => handler(item)));
+  }
+};
+
 interface AssessmentChecklistValueRow {
   section_key: string;
   label: string;
@@ -331,51 +342,57 @@ const runCaloptimaExtractionWorkflow = async (args: {
     });
 
     if (extractionResult.ok && extractionResult.data) {
-      for (const field of extractionResult.data.fields) {
+      await processInBatches(extractionResult.data.fields, 10, async (field) => {
         const reviewNotesParts = [
           field.review_notes ?? null,
           typeof field.confidence === "number" ? `Confidence: ${field.confidence.toFixed(2)}` : null,
           `Mode: ${field.mode}`,
         ].filter(Boolean) as string[];
         const mergedReviewNotes = reviewNotesParts.length > 0 ? reviewNotesParts.join(" | ") : null;
+        const updatedAt = new Date().toISOString();
 
-        await fetchJson(
-          `${supabaseUrl}/rest/v1/assessment_checklist_items?assessment_document_id=eq.${encodeURIComponent(
-            createdDocumentId,
-          )}&placeholder_key=eq.${encodeURIComponent(field.placeholder_key)}&organization_id=eq.${encodeURIComponent(organizationId)}`,
-          {
-            method: "PATCH",
-            headers,
-            body: JSON.stringify({
-              value_text: field.value_text,
-              value_json: field.value_json,
-              status: field.status,
-              review_notes: mergedReviewNotes,
-              updated_at: new Date().toISOString(),
-            }),
-          },
-        );
-
-        await fetchJson(
-          `${supabaseUrl}/rest/v1/assessment_extractions?assessment_document_id=eq.${encodeURIComponent(
-            createdDocumentId,
-          )}&field_key=eq.${encodeURIComponent(field.placeholder_key)}&organization_id=eq.${encodeURIComponent(organizationId)}`,
-          {
-            method: "PATCH",
-            headers,
-            body: JSON.stringify({
-              value_text: field.value_text,
-              value_json: field.value_json,
-              confidence: field.confidence,
-              source_span: field.source_span,
-              mode: field.mode,
-              status: field.status,
-              review_notes: field.review_notes,
-              updated_at: new Date().toISOString(),
-            }),
-          },
-        );
-      }
+        await Promise.all([
+          fetchJson(
+            `${supabaseUrl}/rest/v1/assessment_checklist_items?assessment_document_id=eq.${encodeURIComponent(
+              createdDocumentId,
+            )}&placeholder_key=eq.${encodeURIComponent(field.placeholder_key)}&organization_id=eq.${encodeURIComponent(
+              organizationId,
+            )}`,
+            {
+              method: "PATCH",
+              headers,
+              body: JSON.stringify({
+                value_text: field.value_text,
+                value_json: field.value_json,
+                status: field.status,
+                review_notes: mergedReviewNotes,
+                updated_at: updatedAt,
+              }),
+            },
+          ),
+          fetchJson(
+            `${supabaseUrl}/rest/v1/assessment_extractions?assessment_document_id=eq.${encodeURIComponent(
+              createdDocumentId,
+            )}&field_key=eq.${encodeURIComponent(field.placeholder_key)}&organization_id=eq.${encodeURIComponent(
+              organizationId,
+            )}`,
+            {
+              method: "PATCH",
+              headers,
+              body: JSON.stringify({
+                value_text: field.value_text,
+                value_json: field.value_json,
+                confidence: field.confidence,
+                source_span: field.source_span,
+                mode: field.mode,
+                status: field.status,
+                review_notes: field.review_notes,
+                updated_at: updatedAt,
+              }),
+            },
+          ),
+        ]);
+      });
 
       await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(createdDocumentId)}`, {
         method: "PATCH",

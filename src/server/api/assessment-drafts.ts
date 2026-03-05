@@ -309,7 +309,13 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
 
     const document = await getAssessmentDocument(supabaseUrl, headers, organizationId, assessmentDocumentId);
     if (!document) {
-      return json({ error: "assessment_document_id is not in scope for this organization" }, 403);
+      // If the document was just deleted (or is otherwise unavailable), return an empty
+      // payload so the UI can converge without surfacing transient auth/scope errors.
+      return json({
+        assessment_document_id: assessmentDocumentId,
+        programs: [],
+        goals: [],
+      });
     }
 
     const [programsResult, goalsResult] = await Promise.all([

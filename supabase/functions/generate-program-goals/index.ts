@@ -27,7 +27,7 @@ const MIN_PARENT_GOALS_PER_SUBTYPE = 2;
 const PARENT_GOAL_SUBTYPES = ["fidelity", "bst_participation", "generalization_support"] as const;
 type ParentGoalSubtype = (typeof PARENT_GOAL_SUBTYPES)[number];
 const MAX_GENERATION_ATTEMPTS = 2;
-const OPENAI_ATTEMPT_TIMEOUT_MS = 12000;
+const OPENAI_ATTEMPT_TIMEOUT_MS = 15000;
 const MAX_ASSESSMENT_PROMPT_CHARS = 6500;
 
 const responseSchema = z.object({
@@ -346,6 +346,38 @@ const ensureMinimumGoalMix = (args: {
   return normalized;
 };
 
+type AttemptFailureReason =
+  | "timeout"
+  | "empty_content"
+  | "invalid_json"
+  | "schema_validation"
+  | "empty_deduped_goals"
+  | "postprocess_schema_validation"
+  | "postprocess_minimum_mismatch";
+
+const buildFallbackResponse = (args: {
+  clientName?: string;
+  assessmentText: string;
+  reason: string;
+}): z.infer<typeof responseSchema> => {
+  const compactAssessment = args.assessmentText.replace(/\s+/g, " ").trim();
+  const seededGoals = ensureMinimumGoalMix({
+    goals: [],
+    clientName: args.clientName,
+    assessmentText: compactAssessment,
+  });
+  const fallback = responseSchema.parse({
+    program: {
+      name: `${args.clientName?.trim() || "Client"} ABA Program`,
+      description:
+        "Fallback draft generated after model timeout to preserve workflow continuity. Review and edit before publishing.",
+    },
+    goals: seededGoals,
+    rationale: `Fallback draft generated due to model generation issue: ${args.reason}.`,
+  });
+  return fallback;
+};
+
 const buildPrompt = (args: {
   whiteBibleGuidance: string;
   clientName?: string;
@@ -462,6 +494,8 @@ Deno.serve(async (req) => {
 
     const whiteBibleGuidance = await loadWhiteBibleGuidance();
     let retryHint: string | undefined;
+    const attemptFailures: AttemptFailureReason[] = [];
+    let lastFailureReason = "unknown";
 
     for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt += 1) {
       const prompt = buildPrompt({
@@ -490,6 +524,8 @@ Deno.serve(async (req) => {
       ) as Awaited<ReturnType<typeof openai.chat.completions.create>> | null;
 
       if (!completion) {
+        attemptFailures.push("timeout");
+        lastFailureReason = `attempt ${attempt} timed out after ${OPENAI_ATTEMPT_TIMEOUT_MS}ms`;
         retryHint =
           `Previous attempt timed out after ${OPENAI_ATTEMPT_TIMEOUT_MS}ms. Return concise JSON only with required minimum counts.`;
         continue;
@@ -497,6 +533,8 @@ Deno.serve(async (req) => {
 
       const rawContent = completion.choices[0]?.message?.content;
       if (!rawContent) {
+        attemptFailures.push("empty_content");
+        lastFailureReason = `attempt ${attempt} returned empty content`;
         retryHint = "Previous attempt returned no content. Return full JSON object with program, goals, and rationale.";
         continue;
       }
@@ -505,12 +543,16 @@ Deno.serve(async (req) => {
       try {
         candidate = JSON.parse(stripCodeFences(rawContent));
       } catch {
+        attemptFailures.push("invalid_json");
+        lastFailureReason = `attempt ${attempt} returned invalid JSON`;
         retryHint = "Previous attempt returned invalid JSON. Return JSON only, no markdown or commentary.";
         continue;
       }
 
       const validated = responseSchema.safeParse(candidate);
       if (!validated.success) {
+        attemptFailures.push("schema_validation");
+        lastFailureReason = `attempt ${attempt} failed response schema validation`;
         retryHint =
           "Previous attempt failed schema validation. Every goal must include goal_type child or parent, and all required text fields.";
         continue;
@@ -518,6 +560,8 @@ Deno.serve(async (req) => {
 
       const dedupedGoals = dedupeGoalsByTitle(validated.data.goals);
       if (dedupedGoals.length === 0) {
+        attemptFailures.push("empty_deduped_goals");
+        lastFailureReason = `attempt ${attempt} produced zero goals after title dedupe`;
         retryHint = "Previous attempt had no valid unique goals. Use distinct titles for all goals.";
         continue;
       }
@@ -531,6 +575,8 @@ Deno.serve(async (req) => {
         goals: completedGoalMix,
       });
       if (!normalizedResponse.success) {
+        attemptFailures.push("postprocess_schema_validation");
+        lastFailureReason = `attempt ${attempt} failed post-processing schema validation`;
         retryHint =
           "Previous attempt produced goals that failed post-processing validation. Return concise JSON with complete required fields.";
         continue;
@@ -538,6 +584,8 @@ Deno.serve(async (req) => {
 
       const { childCount, parentCount } = countGoalsByType(normalizedResponse.data.goals);
       if (childCount < MIN_CHILD_GOALS || parentCount < MIN_PARENT_GOALS) {
+        attemptFailures.push("postprocess_minimum_mismatch");
+        lastFailureReason = `attempt ${attempt} post-processed mix child=${childCount} parent=${parentCount}`;
         retryHint =
           `Previous attempt only had ${childCount} child and ${parentCount} parent goals after post-processing. Regenerate full response with required minimums.`;
         continue;
@@ -546,13 +594,26 @@ Deno.serve(async (req) => {
       return json(normalizedResponse.data, 200);
     }
 
-    return json(
-      {
-        error:
-          `Generated draft did not meet goal minimums after ${MAX_GENERATION_ATTEMPTS} attempts: child>=${MIN_CHILD_GOALS}, parent>=${MIN_PARENT_GOALS}`,
-      },
-      502,
-    );
+    const failuresSummary = Array.from(new Set(attemptFailures)).join(",");
+    const allTimeouts = attemptFailures.length > 0 && attemptFailures.every((reason) => reason === "timeout");
+    if (allTimeouts) {
+      console.warn("generate-program-goals timeout-only failure, returning fallback draft", {
+        attempts: MAX_GENERATION_ATTEMPTS,
+        timeout_ms: OPENAI_ATTEMPT_TIMEOUT_MS,
+      });
+      const fallbackResponse = buildFallbackResponse({
+        clientName: parsed.data.client_name,
+        assessmentText: parsed.data.assessment_text.slice(0, MAX_ASSESSMENT_PROMPT_CHARS),
+        reason: `timeout-only failure (${MAX_GENERATION_ATTEMPTS} attempts)`,
+      });
+      return json(fallbackResponse, 200);
+    }
+
+    return json({
+      error:
+        `Generated draft failed after ${MAX_GENERATION_ATTEMPTS} attempts. Last failure: ${lastFailureReason}. ` +
+        `Failure categories: ${failuresSummary || "none"}.`,
+    }, 502);
   } catch (error) {
     console.error("generate-program-goals error", error);
     return json({ error: "Failed to generate draft" }, 500);

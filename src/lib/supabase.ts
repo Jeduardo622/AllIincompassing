@@ -194,11 +194,7 @@ export const shouldRunConnectionDiagnostics = (): boolean => {
   }
 
   const explicitFlag = parseBooleanFlag(import.meta.env?.VITE_ENABLE_CONNECTION_DIAGNOSTICS);
-  if (explicitFlag !== null) {
-    return explicitFlag;
-  }
-
-  return parseBooleanFlag(import.meta.env?.DEV) === true;
+  return explicitFlag === true;
 };
 
 const testConnection = async () => {
@@ -236,11 +232,7 @@ const testConnection = async () => {
 
   } catch (error) {
     console.error('Supabase connection error:', error);
-    // Don't throw error in bolt.new environment to prevent app crashes
-    // Also don't throw if it's just an authentication issue
-    if (import.meta.env.DEV && error instanceof Error && !error.message.includes('No authenticated user found')) {
-      throw error;
-    }
+    // Diagnostics must never break app boot.
   }
 };
 

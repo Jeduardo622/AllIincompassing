@@ -41,9 +41,10 @@ const getSupabaseClient = (): SupabaseClient<Database> => {
 // Lazy singleton proxy. Importing this module never throws before runtime config
 // is initialised; the config is resolved only when the client is first used.
 export const supabase = new Proxy({} as SupabaseClient<Database>, {
-  get(_target, property, receiver) {
+  get(_target, property) {
     const client = getSupabaseClient() as Record<PropertyKey, unknown>;
-    const value = Reflect.get(client, property, receiver);
+    // Use the client itself as receiver to avoid private-field access errors.
+    const value = Reflect.get(client, property, client);
     return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(client) : value;
   },
 });

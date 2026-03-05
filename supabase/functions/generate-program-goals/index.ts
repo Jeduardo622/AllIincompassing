@@ -24,6 +24,8 @@ const requestSchema = z.object({
 const MIN_CHILD_GOALS = 20;
 const MIN_PARENT_GOALS = 6;
 const MAX_GENERATION_ATTEMPTS = 3;
+const OPENAI_ATTEMPT_TIMEOUT_MS = 20000;
+const MAX_ASSESSMENT_PROMPT_CHARS = 9000;
 
 const responseSchema = z.object({
   program: z.object({
@@ -186,6 +188,21 @@ const stripCodeFences = (value: string): string => {
     .trim();
 };
 
+const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<T | null> => {
+  let timeoutId: number | null = null;
+  const timeoutPromise = new Promise<null>((resolve) => {
+    timeoutId = setTimeout(() => resolve(null), ms) as unknown as number;
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
+  }
+};
+
 const json = (payload: unknown, status = 200): Response =>
   new Response(JSON.stringify(payload), {
     status,
@@ -219,24 +236,33 @@ Deno.serve(async (req) => {
       const prompt = buildPrompt({
         whiteBibleGuidance,
         clientName: parsed.data.client_name,
-        assessmentText: parsed.data.assessment_text,
+        assessmentText: parsed.data.assessment_text.slice(0, MAX_ASSESSMENT_PROMPT_CHARS),
         retryHint,
       });
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        temperature: 0.2,
-        max_tokens: 4200,
-        messages: [
-          {
-            role: "system",
-            content: "You produce strict JSON for ABA program and goal drafting.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-      });
+      const completion = await withTimeout(
+        openai.chat.completions.create({
+          model: "gpt-4o",
+          temperature: 0.2,
+          max_tokens: 3000,
+          messages: [
+            {
+              role: "system",
+              content: "You produce strict JSON for ABA program and goal drafting.",
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+        }),
+        OPENAI_ATTEMPT_TIMEOUT_MS,
+      );
+
+      if (!completion) {
+        retryHint =
+          `Previous attempt timed out after ${OPENAI_ATTEMPT_TIMEOUT_MS}ms. Return concise JSON only with required minimum counts.`;
+        continue;
+      }
 
       const rawContent = completion.choices[0]?.message?.content;
       if (!rawContent) {

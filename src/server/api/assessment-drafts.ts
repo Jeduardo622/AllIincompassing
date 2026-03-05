@@ -183,6 +183,33 @@ const composeAssessmentTextFromChecklist = (rows: AssessmentChecklistValueRow[])
   return blocks.join("\n\n").trim();
 };
 
+const draftsAlreadyExistForDocument = async (args: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+  assessmentDocumentId: string;
+}): Promise<boolean> => {
+  const { supabaseUrl, headers, organizationId, assessmentDocumentId } = args;
+  const [programsLookup, goalsLookup] = await Promise.all([
+    fetchJson<Array<{ id: string }>>(
+      `${supabaseUrl}/rest/v1/assessment_draft_programs?select=id&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocumentId)}&limit=1`,
+      { method: "GET", headers },
+    ),
+    fetchJson<Array<{ id: string }>>(
+      `${supabaseUrl}/rest/v1/assessment_draft_goals?select=id&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocumentId)}&limit=1`,
+      { method: "GET", headers },
+    ),
+  ]);
+
+  const hasPrograms = programsLookup.ok && Array.isArray(programsLookup.data) && programsLookup.data.length > 0;
+  const hasGoals = goalsLookup.ok && Array.isArray(goalsLookup.data) && goalsLookup.data.length > 0;
+  return hasPrograms || hasGoals;
+};
+
 const persistDraftRows = async (args: {
   supabaseUrl: string;
   headers: Record<string, string>;
@@ -411,6 +438,16 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
     const assessmentText = composeAssessmentTextFromChecklist(checklistResult.data ?? []);
     if (assessmentText.length < 20) {
       return json({ error: "Insufficient extracted checklist content to generate AI proposals." }, 409);
+    }
+
+    const hasExistingDrafts = await draftsAlreadyExistForDocument({
+      supabaseUrl,
+      headers,
+      organizationId,
+      assessmentDocumentId,
+    });
+    if (hasExistingDrafts) {
+      return json({ error: "Drafts already exist for this assessment. Review existing drafts instead of regenerating." }, 409);
     }
 
     const clientResult = await fetchJson<Array<{ full_name: string | null }>>(

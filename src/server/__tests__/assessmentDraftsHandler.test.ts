@@ -107,7 +107,12 @@ describe("assessmentDraftsHandler", () => {
     );
     const goalCreateCall = vi
       .mocked(fetchJson)
-      .mock.calls.find(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_draft_goals"));
+      .mock.calls.find(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url.includes("/rest/v1/assessment_draft_goals") &&
+          (init?.method ?? "").toUpperCase() === "POST",
+      );
     expect(goalCreateCall).toBeTruthy();
     const goalPayload = JSON.parse((goalCreateCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
     expect(goalPayload[0]?.mastery_criteria).toBe("80% across 2 sessions");
@@ -201,7 +206,12 @@ describe("assessmentDraftsHandler", () => {
     );
     const goalCreateCall = vi
       .mocked(fetchJson)
-      .mock.calls.find(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_draft_goals"));
+      .mock.calls.find(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url.includes("/rest/v1/assessment_draft_goals") &&
+          (init?.method ?? "").toUpperCase() === "POST",
+      );
     expect(goalCreateCall).toBeTruthy();
     const goalPayload = JSON.parse((goalCreateCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
     const childGoalCount = goalPayload.filter((goal) => goal.goal_type === "child").length;

@@ -2,6 +2,9 @@
   "plugins": {
     "cursor-team-kit": {
       "enabled": true
+    },
+    "figma": {
+      "enabled": true
     }
   }
 }

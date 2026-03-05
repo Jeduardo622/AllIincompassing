@@ -135,6 +135,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   const { session } = useAuth();
+  const assessmentDocumentsQueryKey = ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"] as const;
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [selectedAssessmentId, setSelectedAssessmentId] = useState<string | null>(null);
   const [assessmentFile, setAssessmentFile] = useState<File | null>(null);
@@ -244,11 +245,12 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   });
 
   const { data: assessmentDocuments = EMPTY_ASSESSMENT_DOCUMENTS, isLoading: assessmentLoading } = useQuery({
-    queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
+    queryKey: assessmentDocumentsQueryKey,
     queryFn: async () => {
       const response = await callApi(`/api/assessment-documents?client_id=${encodeURIComponent(client.id)}`);
       if (!response.ok) {
-        return EMPTY_ASSESSMENT_DOCUMENTS;
+        const cachedDocuments = queryClient.getQueryData<AssessmentDocumentRecord[]>(assessmentDocumentsQueryKey);
+        return cachedDocuments ?? EMPTY_ASSESSMENT_DOCUMENTS;
       }
       return parseJson<AssessmentDocumentRecord[]>(response);
     },
@@ -451,9 +453,12 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       const createdTemplateLabel = TEMPLATE_LABELS[created.template_type];
       setAssessmentFile(null);
       setSelectedAssessmentId(created.id);
-      queryClient.invalidateQueries({
-        queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
+      queryClient.setQueryData<AssessmentDocumentRecord[]>(assessmentDocumentsQueryKey, (current) => {
+        const currentRecords = Array.isArray(current) ? current : [];
+        const withoutCreated = currentRecords.filter((record) => record.id !== created.id);
+        return [{ ...created }, ...withoutCreated];
       });
+      queryClient.invalidateQueries({ queryKey: assessmentDocumentsQueryKey });
       showSuccess(`${createdTemplateLabel} uploaded and checklist initialized.`);
     },
     onError: showError,
@@ -524,6 +529,10 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       }
     },
     onSuccess: (_, document) => {
+      queryClient.setQueryData<AssessmentDocumentRecord[]>(assessmentDocumentsQueryKey, (current) => {
+        const currentRecords = Array.isArray(current) ? current : [];
+        return currentRecords.filter((record) => record.id !== document.id);
+      });
       queryClient.removeQueries({
         queryKey: ["assessment-checklist", document.id, organizationId ?? "MISSING_ORG"],
       });
@@ -531,7 +540,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         queryKey: ["assessment-drafts", document.id, organizationId ?? "MISSING_ORG"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
+        queryKey: assessmentDocumentsQueryKey,
       });
       queryClient.invalidateQueries({
         queryKey: ["assessment-checklist", document.id, organizationId ?? "MISSING_ORG"],

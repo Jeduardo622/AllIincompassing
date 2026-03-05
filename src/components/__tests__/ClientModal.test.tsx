@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '../../test/utils';
 import { renderWithProviders } from '../../test/utils';
 import { SCHOOL_DAYCARE_LABEL } from '../../lib/constants/servicePreferences';
+import type { Client } from '../../types';
 import ClientModal from '../ClientModal';
 
 const getInputByName = (name: string) => {
@@ -14,6 +15,41 @@ const getInputByName = (name: string) => {
 
   return input;
 };
+
+const createClientWithContractAuthorization = (): Client => ({
+  id: 'client-1',
+  email: 'jamie@example.com',
+  full_name: 'Jamie Rivera',
+  first_name: 'Jamie',
+  last_name: 'Rivera',
+  date_of_birth: '2012-05-01',
+  insurance_info: {
+    provider: 'IEHP',
+    service_contracts: [
+      {
+        provider: 'IEHP',
+        units: 8,
+        cpt_codes: ['H2019'],
+        code_authorizations: [
+          {
+            code: 'H2019',
+            units: 8,
+            auth_start_date: '2026-01-01',
+            auth_end_date: '2026-12-31',
+          },
+        ],
+      },
+    ],
+  },
+  service_preference: [],
+  one_to_one_units: 0,
+  supervision_units: 0,
+  parent_consult_units: 0,
+  assessment_units: 0,
+  auth_units: 8,
+  availability_hours: {},
+  created_at: '2026-01-01T00:00:00.000Z',
+});
 
 describe('ClientModal validation', () => {
   it('shows inline errors and disables submit when required fields are missing', async () => {
@@ -190,5 +226,77 @@ describe('ClientModal validation', () => {
     );
 
     expect(screen.getByText(errorMessage)).toBeInTheDocument();
+  });
+
+  it('converts hours input to units and persists only units in payload', async () => {
+    const handleSubmit = vi.fn().mockResolvedValue(undefined);
+    const client = createClientWithContractAuthorization();
+
+    renderWithProviders(
+      <ClientModal
+        isOpen
+        onClose={() => {}}
+        onSubmit={handleSubmit}
+        client={client}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Authorization by CPT code')).toBeInTheDocument();
+    });
+
+    const inputModeSelect = document.getElementById('modal-contract-auth-input-mode-0-H2019') as HTMLSelectElement;
+    const amountInput = document.getElementById('modal-contract-auth-units-0-H2019') as HTMLInputElement;
+
+    expect(inputModeSelect.value).toBe('units');
+    expect(amountInput.value).toBe('8');
+
+    fireEvent.change(inputModeSelect, { target: { value: 'hours' } });
+    expect(amountInput.value).toBe('2');
+
+    fireEvent.change(amountInput, { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: /update client/i }));
+
+    await waitFor(() => {
+      expect(handleSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    const submitted = handleSubmit.mock.calls[0][0];
+    const submittedContracts = submitted.insurance_info.service_contracts as Array<Record<string, unknown>>;
+    const firstContract = submittedContracts[0];
+    const codeAuthorizations = firstContract.code_authorizations as Array<Record<string, unknown>>;
+    const firstAuthorization = codeAuthorizations[0];
+
+    expect(firstAuthorization.units).toBe(12);
+    expect(firstAuthorization).not.toHaveProperty('input_mode');
+  });
+
+  it('keeps units value unchanged when toggling between units and hours', async () => {
+    const handleSubmit = vi.fn();
+    const client = createClientWithContractAuthorization();
+
+    renderWithProviders(
+      <ClientModal
+        isOpen
+        onClose={() => {}}
+        onSubmit={handleSubmit}
+        client={client}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Authorization by CPT code')).toBeInTheDocument();
+    });
+
+    const inputModeSelect = document.getElementById('modal-contract-auth-input-mode-0-H2019') as HTMLSelectElement;
+    const amountInput = document.getElementById('modal-contract-auth-units-0-H2019') as HTMLInputElement;
+
+    expect(amountInput.value).toBe('8');
+
+    fireEvent.change(inputModeSelect, { target: { value: 'hours' } });
+    expect(amountInput.value).toBe('2');
+
+    fireEvent.change(inputModeSelect, { target: { value: 'units' } });
+    expect(amountInput.value).toBe('8');
   });
 });

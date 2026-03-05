@@ -14,11 +14,14 @@ const SERVICE_CONTRACT_PROVIDER_OPTIONS = ['Private', 'IEHP', 'CalOptima'] as co
 type ServiceContractProvider = typeof SERVICE_CONTRACT_PROVIDER_OPTIONS[number];
 const UNIVERSAL_CPT_CODE = 'S5110';
 const UNIVERSAL_CPT_DESCRIPTION = 'Parent consultation';
+type AuthorizationInputMode = 'units' | 'hours';
+const UNITS_PER_HOUR = 4;
 type ServiceContractCodeAuthorization = {
   code: string;
   units: number;
   auth_start_date: string;
   auth_end_date: string;
+  input_mode?: AuthorizationInputMode;
 };
 type EditableServiceContract = {
   provider: ServiceContractProvider;
@@ -73,6 +76,21 @@ const normalizeCptCodes = (codes: unknown): string[] => {
   ) as string[];
 };
 
+const normalizeInputMode = (value: unknown): AuthorizationInputMode => (
+  value === 'hours' ? 'hours' : 'units'
+);
+
+const normalizeNonNegativeNumber = (value: unknown, fallback = 0): number => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    return fallback;
+  }
+  return numericValue;
+};
+
+const hoursToUnits = (hours: unknown): number => normalizeNonNegativeNumber(hours) * UNITS_PER_HOUR;
+const unitsToHours = (units: unknown): number => normalizeNonNegativeNumber(units) / UNITS_PER_HOUR;
+
 const normalizeCodeAuthorizations = (
   value: unknown,
   fallbackUnits: number
@@ -98,6 +116,7 @@ const normalizeCodeAuthorizations = (
       units: Number.isFinite(unitsValue) && unitsValue >= 0 ? unitsValue : 0,
       auth_start_date: typeof record.auth_start_date === 'string' ? record.auth_start_date : '',
       auth_end_date: typeof record.auth_end_date === 'string' ? record.auth_end_date : '',
+      input_mode: normalizeInputMode(record.input_mode),
     });
   });
 
@@ -130,6 +149,7 @@ const normalizeServiceContracts = (insuranceInfo: unknown): EditableServiceContr
               units: Number(code.units ?? unitsValue),
               auth_start_date: typeof code.auth_start_date === 'string' ? code.auth_start_date : '',
               auth_end_date: typeof code.auth_end_date === 'string' ? code.auth_end_date : '',
+              input_mode: normalizeInputMode(code.input_mode),
             }))
             .filter((entry): entry is ServiceContractCodeAuthorization => Boolean(entry.code))
             .map((entry) => ({
@@ -137,6 +157,7 @@ const normalizeServiceContracts = (insuranceInfo: unknown): EditableServiceContr
               units: Number.isFinite(entry.units) && entry.units >= 0 ? entry.units : 0,
               auth_start_date: entry.auth_start_date,
               auth_end_date: entry.auth_end_date,
+              input_mode: normalizeInputMode(entry.input_mode),
             }))
         : [];
       const explicitAuthorizations = normalizeCodeAuthorizations(obj.code_authorizations, unitsValue);
@@ -160,6 +181,7 @@ const normalizeServiceContracts = (insuranceInfo: unknown): EditableServiceContr
             (Number.isFinite(unitsValue) && unitsValue >= 0 ? unitsValue : 0),
           auth_start_date: existing?.auth_start_date ?? '',
           auth_end_date: existing?.auth_end_date ?? '',
+          input_mode: normalizeInputMode(existing?.input_mode),
         };
       });
       return {
@@ -325,8 +347,10 @@ export default function ClientModal({
         )
           .filter((authorization) => normalizedCodes.includes(authorization.code))
           .map((authorization) => ({
-            ...authorization,
             code: authorization.code.toUpperCase(),
+            units: normalizeNonNegativeNumber(authorization.units, 0),
+            auth_start_date: authorization.auth_start_date,
+            auth_end_date: authorization.auth_end_date,
           }));
         const unitsFromCodes = normalizedAuthorizations.reduce((sum, authorization) => sum + authorization.units, 0);
 
@@ -952,7 +976,7 @@ export default function ClientModal({
                                       ? [...selectedCodes, option.code]
                                       : selectedCodes.filter((code) => code !== option.code);
                                     const nextAuthorizations = event.target.checked
-                                      ? [...codeAuthorizations, { code: option.code, units: 0, auth_start_date: '', auth_end_date: '' }]
+                                      ? [...codeAuthorizations, { code: option.code, units: 0, auth_start_date: '', auth_end_date: '', input_mode: 'units' }]
                                       : codeAuthorizations.filter((authorization) => authorization.code !== option.code);
                                     const next = [...serviceContracts];
                                     next[index] = {
@@ -983,38 +1007,74 @@ export default function ClientModal({
                         </p>
                         {selectedCodes.map((code) => {
                           const existingAuthorization = codeAuthorizations.find((authorization) => authorization.code === code);
+                          const inputMode = normalizeInputMode(existingAuthorization?.input_mode);
+                          const displayedAmount = inputMode === 'hours'
+                            ? unitsToHours(existingAuthorization?.units ?? 0)
+                            : normalizeNonNegativeNumber(existingAuthorization?.units, 0);
                           const authUnitsId = `modal-contract-auth-units-${index}-${code}`;
+                          const authInputModeId = `modal-contract-auth-input-mode-${index}-${code}`;
                           const authStartId = `modal-contract-auth-start-${index}-${code}`;
                           const authEndId = `modal-contract-auth-end-${index}-${code}`;
 
                           return (
-                            <div key={`${index}-${code}`} className="grid grid-cols-1 gap-2 md:grid-cols-4 rounded border border-gray-200 dark:border-gray-800 p-2">
+                            <div key={`${index}-${code}`} className="grid grid-cols-1 gap-2 md:grid-cols-5 rounded border border-gray-200 dark:border-gray-800 p-2">
                               <div className="md:col-span-1 flex items-center text-sm font-medium text-gray-800 dark:text-gray-200">
                                 {code}
                               </div>
                               <div>
                                 <label htmlFor={authUnitsId} className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
-                                  Units
+                                  {inputMode === 'hours' ? 'Hours' : 'Units'}
                                 </label>
                                 <input
                                   id={authUnitsId}
                                   type="number"
                                   min={0}
-                                  value={existingAuthorization?.units ?? 0}
+                                  step={inputMode === 'hours' ? 0.25 : 1}
+                                  value={displayedAmount}
                                   onChange={(event) => {
                                     const next = [...serviceContracts];
                                     const nextAuthorizations = codeAuthorizations.filter((authorization) => authorization.code !== code);
+                                    const parsedValue = normalizeNonNegativeNumber(event.target.value, 0);
+                                    const units = inputMode === 'hours' ? hoursToUnits(parsedValue) : parsedValue;
                                     nextAuthorizations.push({
                                       code,
-                                      units: Number(event.target.value),
+                                      units,
                                       auth_start_date: existingAuthorization?.auth_start_date ?? '',
                                       auth_end_date: existingAuthorization?.auth_end_date ?? '',
+                                      input_mode: inputMode,
                                     });
                                     next[index] = { ...next[index], code_authorizations: nextAuthorizations };
                                     setValue('service_contracts', next, { shouldDirty: true, shouldValidate: false });
                                   }}
                                   className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
                                 />
+                              </div>
+                              <div>
+                                <label htmlFor={authInputModeId} className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                                  Input Mode
+                                </label>
+                                <select
+                                  id={authInputModeId}
+                                  value={inputMode}
+                                  onChange={(event) => {
+                                    const nextMode = normalizeInputMode(event.target.value);
+                                    const next = [...serviceContracts];
+                                    const nextAuthorizations = codeAuthorizations.filter((authorization) => authorization.code !== code);
+                                    nextAuthorizations.push({
+                                      code,
+                                      units: normalizeNonNegativeNumber(existingAuthorization?.units, 0),
+                                      auth_start_date: existingAuthorization?.auth_start_date ?? '',
+                                      auth_end_date: existingAuthorization?.auth_end_date ?? '',
+                                      input_mode: nextMode,
+                                    });
+                                    next[index] = { ...next[index], code_authorizations: nextAuthorizations };
+                                    setValue('service_contracts', next, { shouldDirty: true, shouldValidate: false });
+                                  }}
+                                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                                >
+                                  <option value="units">Units</option>
+                                  <option value="hours">Hours</option>
+                                </select>
                               </div>
                               <div>
                                 <label htmlFor={authStartId} className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
@@ -1029,9 +1089,10 @@ export default function ClientModal({
                                     const nextAuthorizations = codeAuthorizations.filter((authorization) => authorization.code !== code);
                                     nextAuthorizations.push({
                                       code,
-                                      units: existingAuthorization?.units ?? 0,
+                                      units: normalizeNonNegativeNumber(existingAuthorization?.units, 0),
                                       auth_start_date: event.target.value,
                                       auth_end_date: existingAuthorization?.auth_end_date ?? '',
+                                      input_mode: inputMode,
                                     });
                                     next[index] = { ...next[index], code_authorizations: nextAuthorizations };
                                     setValue('service_contracts', next, { shouldDirty: true, shouldValidate: false });
@@ -1052,9 +1113,10 @@ export default function ClientModal({
                                     const nextAuthorizations = codeAuthorizations.filter((authorization) => authorization.code !== code);
                                     nextAuthorizations.push({
                                       code,
-                                      units: existingAuthorization?.units ?? 0,
+                                      units: normalizeNonNegativeNumber(existingAuthorization?.units, 0),
                                       auth_start_date: existingAuthorization?.auth_start_date ?? '',
                                       auth_end_date: event.target.value,
+                                      input_mode: inputMode,
                                     });
                                     next[index] = { ...next[index], code_authorizations: nextAuthorizations };
                                     setValue('service_contracts', next, { shouldDirty: true, shouldValidate: false });

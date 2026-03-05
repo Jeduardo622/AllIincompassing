@@ -223,7 +223,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!resolvedProgramId) return [];
       const response = await callApi(`/api/goals?program_id=${encodeURIComponent(resolvedProgramId)}`);
       if (!response.ok) {
-        throw new Error("Failed to load goals");
+        return [];
       }
       return parseJson<Goal[]>(response);
     },

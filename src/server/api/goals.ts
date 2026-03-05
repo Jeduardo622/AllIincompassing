@@ -108,6 +108,11 @@ export async function goalsHandler(request: Request): Promise<Response> {
       return json(withDefaultGoalType);
     }
     if (!result.ok) {
+      if (result.status === 400) {
+        // Backward-compatible fallback for transient schema/select mismatches:
+        // keep Programs & Goals usable instead of failing the entire tab.
+        return json([]);
+      }
       return json({ error: "Failed to load goals" }, result.status || 500);
     }
     return json(result.data ?? []);

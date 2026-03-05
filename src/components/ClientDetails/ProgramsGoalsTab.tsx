@@ -925,6 +925,10 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           selectedAssessmentId === doc.id
                             ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200"
                             : "border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
+                        } ${
+                          doc.status === "extracting"
+                            ? "border-amber-300 bg-amber-50/40 dark:border-amber-700/60 dark:bg-amber-900/20"
+                            : ""
                         }`}
                       >
                         <button type="button" onClick={() => setSelectedAssessmentId(doc.id)} className="w-full text-left px-2 pt-2">
@@ -936,6 +940,16 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                             </span>
                             <span>• {new Date(doc.created_at).toLocaleDateString()}</span>
                           </div>
+                          {doc.status === "extracting" && (
+                            <div
+                              className="mt-1 inline-flex animate-pulse items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+                              role="status"
+                              aria-live="polite"
+                            >
+                              <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                              Extracting fields from uploaded file...
+                            </div>
+                          )}
                           {doc.status === "extraction_failed" && (
                             <div className="mt-1 text-[11px] text-rose-600 dark:text-rose-300">
                               {doc.extraction_error ?? "Extraction failed. Review checklist manually."}

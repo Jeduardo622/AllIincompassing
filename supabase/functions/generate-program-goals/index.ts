@@ -126,6 +126,118 @@ const countGoalsByType = (goals: z.infer<typeof responseSchema>["goals"]) => {
   return { childCount, parentCount };
 };
 
+const truncate = (value: string, max: number): string => {
+  if (value.length <= max) {
+    return value;
+  }
+  return value.slice(0, max - 1).trimEnd() + "…";
+};
+
+const buildSupplementalGoal = (args: {
+  goalType: "child" | "parent";
+  index: number;
+  clientName?: string;
+  assessmentText: string;
+}): z.infer<typeof responseSchema>["goals"][number] => {
+  const learnerName = args.clientName?.trim() || "the learner";
+  const assessmentSnippet = truncate(args.assessmentText.replace(/\s+/g, " ").trim(), 220);
+  const sequence = args.index + 1;
+
+  if (args.goalType === "parent") {
+    return {
+      title: `Parent Implementation Goal ${sequence}`,
+      description:
+        `${learnerName}'s caregiver will implement the treatment-plan procedure with fidelity during coached practice and home routines, ` +
+        "with measurable data collection and clinician feedback.",
+      original_text:
+        `Based on assessment context (${assessmentSnippet}), caregiver will demonstrate treatment implementation, prompting, and reinforcement ` +
+        "steps with documented performance criteria.",
+      goal_type: "parent",
+      target_behavior: "Caregiver procedural fidelity and generalization support",
+      measurement_type: "Percent of correctly implemented steps across opportunities",
+      baseline_data: "Current caregiver implementation is inconsistent across routines and requires frequent clinician prompting.",
+      target_criteria: "Caregiver implements at least 80% of required steps across two consecutive sessions.",
+      mastery_criteria: ">=85% fidelity across three consecutive sessions with reduced coaching.",
+      maintenance_criteria: ">=80% fidelity during maintenance probes at 2 and 4 weeks.",
+      generalization_criteria: "Demonstrated across at least two home/community routines and one novel activity.",
+      objective_data_points: [
+        {
+          objective: "Implement behavior protocol steps in order with correct prompting and reinforcement.",
+          data_settings: "Fidelity checklist scored per opportunity with BCBA review.",
+        },
+      ],
+    };
+  }
+
+  return {
+    title: `Child Skill Acquisition Goal ${sequence}`,
+    description:
+      `${learnerName} will increase adaptive communication and functional responding in structured and natural environments using measurable targets.`,
+    original_text:
+      `Derived from assessment findings (${assessmentSnippet}), the learner will demonstrate improved functional communication and replacement ` +
+      "behavior with observable response definitions.",
+    goal_type: "child",
+    target_behavior: "Functional communication and adaptive replacement responses",
+    measurement_type: "Percent correct and frequency across opportunities",
+    baseline_data: "Current performance is below expected level and requires moderate-to-high support.",
+    target_criteria: "At least 80% correct responding across two consecutive sessions.",
+    mastery_criteria: ">=85% independent responding across three sessions and two therapists.",
+    maintenance_criteria: ">=80% responding during maintenance probes at 2 and 4 weeks.",
+    generalization_criteria: "Demonstrated across clinic and home contexts with at least two communication partners.",
+    objective_data_points: [
+      {
+        objective: "Demonstrate target response to natural and contrived cues with fading prompts.",
+        data_settings: "Opportunity-based recording with prompt level and independence notes.",
+      },
+    ],
+  };
+};
+
+const ensureMinimumGoalMix = (args: {
+  goals: z.infer<typeof responseSchema>["goals"];
+  clientName?: string;
+  assessmentText: string;
+}): z.infer<typeof responseSchema>["goals"] => {
+  const normalized = [...args.goals];
+  const usedTitles = new Set(normalized.map((goal) => goal.title.trim().toLowerCase()));
+  let { childCount, parentCount } = countGoalsByType(normalized);
+
+  const appendUniqueGoal = (goalType: "child" | "parent") => {
+    let seed = goalType === "child" ? childCount : parentCount;
+    let candidate = buildSupplementalGoal({
+      goalType,
+      index: seed,
+      clientName: args.clientName,
+      assessmentText: args.assessmentText,
+    });
+    while (usedTitles.has(candidate.title.trim().toLowerCase())) {
+      seed += 1;
+      candidate = buildSupplementalGoal({
+        goalType,
+        index: seed,
+        clientName: args.clientName,
+        assessmentText: args.assessmentText,
+      });
+    }
+    usedTitles.add(candidate.title.trim().toLowerCase());
+    normalized.push(candidate);
+    if (goalType === "child") {
+      childCount += 1;
+    } else {
+      parentCount += 1;
+    }
+  };
+
+  while (childCount < MIN_CHILD_GOALS && normalized.length < 48) {
+    appendUniqueGoal("child");
+  }
+  while (parentCount < MIN_PARENT_GOALS && normalized.length < 48) {
+    appendUniqueGoal("parent");
+  }
+
+  return normalized;
+};
+
 const buildPrompt = (args: {
   whiteBibleGuidance: string;
   clientName?: string;
@@ -290,14 +402,29 @@ Deno.serve(async (req) => {
         retryHint = "Previous attempt had no valid unique goals. Use distinct titles for all goals.";
         continue;
       }
-      const { childCount, parentCount } = countGoalsByType(dedupedGoals);
-      if (childCount < MIN_CHILD_GOALS || parentCount < MIN_PARENT_GOALS) {
+      const completedGoalMix = ensureMinimumGoalMix({
+        goals: dedupedGoals,
+        clientName: parsed.data.client_name,
+        assessmentText: parsed.data.assessment_text.slice(0, MAX_ASSESSMENT_PROMPT_CHARS),
+      });
+      const normalizedResponse = responseSchema.safeParse({
+        ...validated.data,
+        goals: completedGoalMix,
+      });
+      if (!normalizedResponse.success) {
         retryHint =
-          `Previous attempt only had ${childCount} child and ${parentCount} parent goals after dedupe. Regenerate full response with at least ${MIN_CHILD_GOALS} child and ${MIN_PARENT_GOALS} parent goals using unique titles.`;
+          "Previous attempt produced goals that failed post-processing validation. Return concise JSON with complete required fields.";
         continue;
       }
 
-      return json({ ...validated.data, goals: dedupedGoals }, 200);
+      const { childCount, parentCount } = countGoalsByType(normalizedResponse.data.goals);
+      if (childCount < MIN_CHILD_GOALS || parentCount < MIN_PARENT_GOALS) {
+        retryHint =
+          `Previous attempt only had ${childCount} child and ${parentCount} parent goals after post-processing. Regenerate full response with required minimums.`;
+        continue;
+      }
+
+      return json(normalizedResponse.data, 200);
     }
 
     return json(

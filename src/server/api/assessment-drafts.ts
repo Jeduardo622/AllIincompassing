@@ -252,6 +252,7 @@ const persistDraftRows = async (args: {
     headers,
     body: JSON.stringify({
       status: "drafted",
+      extraction_error: null,
       updated_at: new Date().toISOString(),
     }),
   });

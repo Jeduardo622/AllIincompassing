@@ -23,6 +23,9 @@ const requestSchema = z.object({
 
 const MIN_CHILD_GOALS = 20;
 const MIN_PARENT_GOALS = 6;
+const MIN_PARENT_GOALS_PER_SUBTYPE = 2;
+const PARENT_GOAL_SUBTYPES = ["fidelity", "bst_participation", "generalization_support"] as const;
+type ParentGoalSubtype = (typeof PARENT_GOAL_SUBTYPES)[number];
 const MAX_GENERATION_ATTEMPTS = 2;
 const OPENAI_ATTEMPT_TIMEOUT_MS = 12000;
 const MAX_ASSESSMENT_PROMPT_CHARS = 6500;
@@ -100,7 +103,7 @@ const loadWhiteBibleGuidance = async (): Promise<string> => {
 
 const dedupeGoalsByTitle = (goals: z.infer<typeof responseSchema>["goals"]): z.infer<typeof responseSchema>["goals"] => {
   const seen = new Set<string>();
-  return goals.filter((goal) => {
+  return goals.filter((goal: z.infer<typeof responseSchema>["goals"][number]) => {
     const normalizedTitle = goal.title.trim().toLowerCase().replace(/\s+/g, " ");
     if (!normalizedTitle) {
       return false;
@@ -116,7 +119,7 @@ const dedupeGoalsByTitle = (goals: z.infer<typeof responseSchema>["goals"]): z.i
 const countGoalsByType = (goals: z.infer<typeof responseSchema>["goals"]) => {
   let childCount = 0;
   let parentCount = 0;
-  goals.forEach((goal) => {
+  goals.forEach((goal: z.infer<typeof responseSchema>["goals"][number]) => {
     if (goal.goal_type === "parent") {
       parentCount += 1;
       return;
@@ -138,14 +141,67 @@ const buildSupplementalGoal = (args: {
   index: number;
   clientName?: string;
   assessmentText: string;
+  parentSubtype?: ParentGoalSubtype;
 }): z.infer<typeof responseSchema>["goals"][number] => {
   const learnerName = args.clientName?.trim() || "the learner";
   const assessmentSnippet = truncate(args.assessmentText.replace(/\s+/g, " ").trim(), 220);
   const sequence = args.index + 1;
 
   if (args.goalType === "parent") {
+    if (args.parentSubtype === "bst_participation") {
+      return {
+        title: `Parent BST Participation Goal ${sequence}`,
+        description:
+          `${learnerName}'s caregiver will engage in behavior skills training (instruction, modeling, rehearsal, feedback) and ` +
+          "demonstrate skill transfer to daily routines with measurable performance.",
+        original_text:
+          `Based on assessment context (${assessmentSnippet}), caregiver will complete structured BST sessions and apply trained ` +
+          "procedures during home routines with documented outcomes.",
+        goal_type: "parent",
+        target_behavior: "Caregiver participation in BST and coached rehearsal performance",
+        measurement_type: "Percent of BST components completed and independent rehearsal performance",
+        baseline_data: "Caregiver participation and independent use of trained strategies are limited and require active coaching.",
+        target_criteria: "Caregiver completes all BST components and reaches at least 80% correct rehearsal performance across two sessions.",
+        mastery_criteria: ">=85% independent rehearsal performance across three sessions with reduced prompts.",
+        maintenance_criteria: ">=80% performance during maintenance probes at 2 and 4 weeks.",
+        generalization_criteria: "Caregiver applies trained skills across at least two routines and with two target behaviors.",
+        objective_data_points: [
+          {
+            objective: "Participate in BST sequence and demonstrate coached rehearsal with performance feedback.",
+            data_settings: "BST checklist + rehearsal fidelity scoring each session.",
+          },
+        ],
+      };
+    }
+
+    if (args.parentSubtype === "generalization_support") {
+      return {
+        title: `Parent Generalization Support Goal ${sequence}`,
+        description:
+          `${learnerName}'s caregiver will plan and implement generalization opportunities across home/community contexts while ` +
+          "collecting simple performance data for clinical review.",
+        original_text:
+          `Given assessment findings (${assessmentSnippet}), caregiver will implement and document generalization opportunities ` +
+          "for target skills across settings, people, and routines.",
+        goal_type: "parent",
+        target_behavior: "Caregiver-led generalization planning, implementation, and tracking",
+        measurement_type: "Frequency and quality of completed generalization opportunities",
+        baseline_data: "Generalization opportunities are currently inconsistent and not systematically documented.",
+        target_criteria: "Caregiver implements and records at least 4 planned generalization opportunities per week for two weeks.",
+        mastery_criteria: "Caregiver sustains weekly generalization plan completion with >=85% task completion over three review periods.",
+        maintenance_criteria: ">=80% plan adherence across monthly maintenance reviews.",
+        generalization_criteria: "Demonstrated across home, community, and caregiver-led routines with at least two communication partners.",
+        objective_data_points: [
+          {
+            objective: "Carry out scheduled generalization opportunities and record learner response/outcome.",
+            data_settings: "Weekly caregiver log reviewed in supervision.",
+          },
+        ],
+      };
+    }
+
     return {
-      title: `Parent Implementation Goal ${sequence}`,
+      title: `Parent Implementation Fidelity Goal ${sequence}`,
       description:
         `${learnerName}'s caregiver will implement the treatment-plan procedure with fidelity during coached practice and home routines, ` +
         "with measurable data collection and clinician feedback.",
@@ -193,6 +249,35 @@ const buildSupplementalGoal = (args: {
   };
 };
 
+const classifyParentGoalSubtype = (goal: z.infer<typeof responseSchema>["goals"][number]): ParentGoalSubtype => {
+  const text = `${goal.title} ${goal.description} ${goal.target_behavior ?? ""} ${
+    goal.objective_data_points ? JSON.stringify(goal.objective_data_points) : ""
+  }`
+    .toLowerCase()
+    .trim();
+
+  if (
+    text.includes("bst") ||
+    text.includes("behavior skills training") ||
+    text.includes("instruction") ||
+    text.includes("modeling") ||
+    text.includes("rehearsal") ||
+    text.includes("feedback")
+  ) {
+    return "bst_participation";
+  }
+  if (
+    text.includes("generalization") ||
+    text.includes("community") ||
+    text.includes("home routine") ||
+    text.includes("across settings") ||
+    text.includes("across people")
+  ) {
+    return "generalization_support";
+  }
+  return "fidelity";
+};
+
 const ensureMinimumGoalMix = (args: {
   goals: z.infer<typeof responseSchema>["goals"];
   clientName?: string;
@@ -201,14 +286,28 @@ const ensureMinimumGoalMix = (args: {
   const normalized = [...args.goals];
   const usedTitles = new Set(normalized.map((goal) => goal.title.trim().toLowerCase()));
   let { childCount, parentCount } = countGoalsByType(normalized);
+  const parentSubtypeCounts: Record<ParentGoalSubtype, number> = {
+    fidelity: 0,
+    bst_participation: 0,
+    generalization_support: 0,
+  };
 
-  const appendUniqueGoal = (goalType: "child" | "parent") => {
+  normalized.forEach((goal) => {
+    if (goal.goal_type !== "parent") {
+      return;
+    }
+    const subtype = classifyParentGoalSubtype(goal);
+    parentSubtypeCounts[subtype] += 1;
+  });
+
+  const appendUniqueGoal = (goalType: "child" | "parent", parentSubtype?: ParentGoalSubtype) => {
     let seed = goalType === "child" ? childCount : parentCount;
     let candidate = buildSupplementalGoal({
       goalType,
       index: seed,
       clientName: args.clientName,
       assessmentText: args.assessmentText,
+      parentSubtype,
     });
     while (usedTitles.has(candidate.title.trim().toLowerCase())) {
       seed += 1;
@@ -217,6 +316,7 @@ const ensureMinimumGoalMix = (args: {
         index: seed,
         clientName: args.clientName,
         assessmentText: args.assessmentText,
+        parentSubtype,
       });
     }
     usedTitles.add(candidate.title.trim().toLowerCase());
@@ -225,8 +325,16 @@ const ensureMinimumGoalMix = (args: {
       childCount += 1;
     } else {
       parentCount += 1;
+      const subtype = parentSubtype ?? classifyParentGoalSubtype(candidate);
+      parentSubtypeCounts[subtype] += 1;
     }
   };
+
+  for (const subtype of PARENT_GOAL_SUBTYPES) {
+    while (parentSubtypeCounts[subtype] < MIN_PARENT_GOALS_PER_SUBTYPE && normalized.length < 48) {
+      appendUniqueGoal("parent", subtype);
+    }
+  }
 
   while (childCount < MIN_CHILD_GOALS && normalized.length < 48) {
     appendUniqueGoal("child");
@@ -276,12 +384,23 @@ Rules:
 - Do not include PHI beyond supplied client first name.
 - Ensure each goal can be copied directly into an EHR.
 - Goal titles must be unique.
+- Use exact enum values for goal_type: "child" or "parent" (lowercase only).
 - You MUST return at least ${MIN_CHILD_GOALS} goals with "goal_type":"child".
 - You MUST return at least ${MIN_PARENT_GOALS} goals with "goal_type":"parent".
-- Child goals should target learner skill acquisition, reduction, replacement, or adaptive behaviors.
-- Parent goals should target caregiver implementation, parent training participation, and generalization support.
+- Prefer returning 28-36 total goals unless assessment scope clearly requires more.
+- Child goals should span skill acquisition, communication, social/play, behavior reduction/replacement, and adaptive behavior when supported by assessment findings.
+- Parent goals should target caregiver implementation fidelity, behavior skills training participation, prompt/reinforcement accuracy, and home generalization support.
+- Parent sub-distribution requirement: include at least ${MIN_PARENT_GOALS_PER_SUBTYPE} goals in each parent subtype:
+  (1) caregiver implementation fidelity,
+  (2) behavior skills training participation,
+  (3) home/community generalization support.
+- Parent goals must be concrete and measurable (avoid vague wording like "support child more").
+- Avoid generic titles like "Parent Goal 1" or "Child Goal 1"; use behavior-specific, clinically meaningful titles.
+- For every goal, include measurable baseline_data, target_criteria, mastery_criteria, maintenance_criteria, and generalization_criteria.
 - If baseline/criteria are not explicit in the assessment, infer conservatively and state assumptions briefly.
 - If document includes objective-level data settings (targets, phases, mastery/maintenance details), include them in objective_data_points.
+- Ensure objective_data_points entries are actionable and specific to the goal target (not boilerplate duplicates).
+- Do not output markdown, prose prefaces, or explanatory text outside the JSON object.
 ${args.retryHint ? `- IMPORTANT RETRY FIX: ${args.retryHint}` : ""}
 
 Client: ${args.clientName ?? "Not provided"}
@@ -368,7 +487,7 @@ Deno.serve(async (req) => {
           ],
         }),
         OPENAI_ATTEMPT_TIMEOUT_MS,
-      );
+      ) as Awaited<ReturnType<typeof openai.chat.completions.create>> | null;
 
       if (!completion) {
         retryHint =

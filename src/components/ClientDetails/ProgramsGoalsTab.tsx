@@ -317,6 +317,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const hasAcceptedDraftGoal = (assessmentDrafts?.goals ?? []).some(
     (goal) => goal.accept_state === "accepted" || goal.accept_state === "edited",
   );
+  const hasExistingDrafts = (assessmentDrafts?.programs?.length ?? 0) > 0 || (assessmentDrafts?.goals?.length ?? 0) > 0;
   const acceptedDraftChildGoalCount = (assessmentDrafts?.goals ?? []).filter(
     (goal) => (goal.accept_state === "accepted" || goal.accept_state === "edited") && goal.goal_type === "child",
   ).length;
@@ -1024,13 +1025,18 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               <button
                 type="button"
                 onClick={() => generateDraftsFromUploadedAssessment.mutate()}
-                disabled={!canQuerySelectedAssessment || generateDraftsFromUploadedAssessment.isLoading}
+                disabled={!canQuerySelectedAssessment || hasExistingDrafts || generateDraftsFromUploadedAssessment.isLoading}
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-cyan-600 rounded-md hover:bg-cyan-700 disabled:opacity-50"
               >
                 {generateDraftsFromUploadedAssessment.isLoading
                   ? "Generating AI Proposal..."
                   : "Generate with AI from Uploaded FBA"}
               </button>
+              {hasExistingDrafts && !generateDraftsFromUploadedAssessment.isLoading && (
+                <p className="text-xs text-gray-500 dark:text-gray-300">
+                  Drafts already exist for this assessment. Review/edit current drafts instead of regenerating.
+                </p>
+              )}
               <button
                 type="button"
                 onClick={() => generateAssessmentPlanPdf.mutate()}

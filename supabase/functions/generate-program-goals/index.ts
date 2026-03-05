@@ -23,9 +23,9 @@ const requestSchema = z.object({
 
 const MIN_CHILD_GOALS = 20;
 const MIN_PARENT_GOALS = 6;
-const MAX_GENERATION_ATTEMPTS = 3;
-const OPENAI_ATTEMPT_TIMEOUT_MS = 20000;
-const MAX_ASSESSMENT_PROMPT_CHARS = 9000;
+const MAX_GENERATION_ATTEMPTS = 2;
+const OPENAI_ATTEMPT_TIMEOUT_MS = 12000;
+const MAX_ASSESSMENT_PROMPT_CHARS = 6500;
 
 const responseSchema = z.object({
   program: z.object({
@@ -243,7 +243,7 @@ Deno.serve(async (req) => {
         openai.chat.completions.create({
           model: "gpt-4o",
           temperature: 0.2,
-          max_tokens: 3000,
+          max_tokens: 2200,
           messages: [
             {
               role: "system",

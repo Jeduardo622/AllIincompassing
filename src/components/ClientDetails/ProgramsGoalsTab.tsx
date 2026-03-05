@@ -972,6 +972,11 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                               {doc.extraction_error ?? "Extraction failed. Review checklist manually."}
                             </div>
                           )}
+                          {doc.status !== "extraction_failed" && doc.extraction_error && (
+                            <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+                              {doc.extraction_error}
+                            </div>
+                          )}
                         </button>
                         <div className="px-2 pb-2 pt-1 flex justify-end">
                           <button

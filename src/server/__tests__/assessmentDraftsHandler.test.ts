@@ -209,4 +209,40 @@ describe("assessmentDraftsHandler", () => {
     expect(childGoalCount).toBe(20);
     expect(parentGoalCount).toBe(6);
   });
+
+  it("returns empty drafts when requested assessment is no longer in scope", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [],
+    });
+
+    const response = await assessmentDraftsHandler(
+      new Request(
+        "http://localhost/api/assessment-drafts?assessment_document_id=11111111-1111-1111-1111-111111111111",
+        {
+          method: "GET",
+          headers: { Authorization: "Bearer token" },
+        },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      assessment_document_id: "11111111-1111-1111-1111-111111111111",
+      programs: [],
+      goals: [],
+    });
+  });
 });

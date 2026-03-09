@@ -24,7 +24,7 @@ Running the seed script produces:
 
 1. Apply migrations and seeds together:
    ```bash
-   supabase db reset --force --project-ref wnnjeqheqxxyrgsjmygy
+   supabase db reset --linked --yes
    ```
 2. Log in locally or in the Netlify preview using the credentials above to verify end-to-end flows.
 3. When migrations introduce new required lookup data (roles, enums, status codes, etc.), extend `supabase/seed.sql` so `db reset` remains idempotent.
@@ -33,6 +33,7 @@ Running the seed script produces:
 ## Contribution checklist
 
 - [ ] Update `supabase/seed.sql` whenever migrations add mandatory reference data.
-- [ ] Re-run `supabase db reset --force` locally to ensure migrations + seeds apply cleanly.
+- [ ] Re-run `supabase db reset --local --yes` locally to ensure migrations + seeds apply cleanly.
 - [ ] Validate front-end smoke flows with the seeded credentials (login, schedule overview, etc.).
 - [ ] Mention any seed changes in PR summaries so reviewers know to refresh their local databases.
+

@@ -103,13 +103,23 @@ describe('runtimeConfigHandler', () => {
   });
 
   it('fails with 500 when env vars are missing', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'runtime-config-missing-env-'));
+    const missingEnvPath = join(tempDir, '.env.does-not-exist');
     delete process.env.SUPABASE_URL;
     delete process.env.SUPABASE_ANON_KEY;
+    delete process.env.DEFAULT_ORGANIZATION_ID;
+    process.env.CODEX_ENV_PATH = missingEnvPath;
+    resetEnvCacheForTests();
 
-    const response = await runtimeConfigHandler(new Request('http://localhost/api/runtime-config'));
-    expect(response.status).toBe(500);
-    const payload = await response.json();
-    expect(payload.error).toMatch(/Missing required environment variable SUPABASE_URL/);
+    try {
+      const response = await runtimeConfigHandler(new Request('http://localhost/api/runtime-config'));
+      expect(response.status).toBe(500);
+      const payload = await response.json();
+      expect(payload.error).toMatch(/Missing required environment variable SUPABASE_URL/);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+      delete process.env.CODEX_ENV_PATH;
+    }
   });
 
   it('rejects unsupported methods', async () => {

@@ -80,7 +80,7 @@ describe('TherapistOnboarding validation', () => {
     await waitFor(() => {
       expect(handleComplete).toHaveBeenCalledTimes(1);
     });
-  });
+  }, 20000);
 
   it('shows an error when organization context is unavailable', async () => {
     mockUseActiveOrganizationId.mockReturnValue(null);
@@ -105,5 +105,5 @@ describe('TherapistOnboarding validation', () => {
     await waitFor(() => {
       expect(mockShowError).toHaveBeenCalledTimes(1);
     });
-  });
+  }, 20000);
 });

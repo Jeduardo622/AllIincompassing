@@ -12,6 +12,7 @@
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { runPostgresQuery } from './lib/postgres-query.js';
 
 // Configuration
 const REQUIRED_TABLES = [
@@ -76,18 +77,10 @@ function title(message) {
 }
 
 /**
- * Execute SQL query via Supabase CLI
+ * Execute SQL query via direct Postgres connection
  */
-function runQuery(query) {
-  try {
-    const result = execSync(`supabase db query "${query}"`, { 
-      encoding: 'utf8',
-      stdio: 'pipe' 
-    });
-    return result.trim();
-  } catch (err) {
-    throw new Error(`Query failed: ${err.message}`);
-  }
+async function runQuery(query) {
+  return runPostgresQuery(query);
 }
 
 /**
@@ -105,7 +98,7 @@ function checkSupabaseCLI() {
 /**
  * Verify RLS is enabled on all required tables
  */
-function verifyRLSEnabled() {
+async function verifyRLSEnabled() {
   title('Verifying RLS Policies');
   
   try {
@@ -119,13 +112,13 @@ function verifyRLSEnabled() {
       ORDER BY table_name;
     `;
     
-    const result = runQuery(query);
-    const tables = result.split('\n').slice(1); // Skip header
+    const tables = await runQuery(query);
     
     let allEnabled = true;
     
-    tables.forEach(tableRow => {
-      const [tableName, rlsEnabled] = tableRow.split('|').map(s => s.trim());
+    tables.forEach((tableRow) => {
+      const tableName = tableRow.table_name;
+      const rlsEnabled = tableRow.rls_enabled;
       
       if (rlsEnabled === 'on' || rlsEnabled === 'true') {
         success(`RLS enabled on ${tableName}`);
@@ -150,7 +143,7 @@ function verifyRLSEnabled() {
 /**
  * Verify role_type enum exists with all required roles
  */
-function verifyRoleSystem() {
+async function verifyRoleSystem() {
   title('Verifying Role System');
   
   try {
@@ -166,8 +159,8 @@ function verifyRoleSystem() {
       ORDER BY enumlabel;
     `;
     
-    const result = runQuery(enumQuery);
-    const existingRoles = result.split('\n').slice(1).map(role => role.trim());
+    const result = await runQuery(enumQuery);
+    const existingRoles = result.map((role) => role.enumlabel);
     
     let allRolesExist = true;
     
@@ -195,7 +188,7 @@ function verifyRoleSystem() {
 /**
  * Verify profiles table has correct structure
  */
-function verifyProfilesTable() {
+async function verifyProfilesTable() {
   title('Verifying Profiles Table');
   
   try {
@@ -211,8 +204,7 @@ function verifyProfilesTable() {
       ORDER BY ordinal_position;
     `;
     
-    const result = runQuery(query);
-    const columns = result.split('\n').slice(1);
+    const columns = await runQuery(query);
     
     const requiredColumns = [
       'id',
@@ -223,7 +215,7 @@ function verifyProfilesTable() {
       'updated_at'
     ];
     
-    const existingColumns = columns.map(col => col.split('|')[0].trim());
+    const existingColumns = columns.map((col) => col.column_name);
     
     let allColumnsExist = true;
     
@@ -251,7 +243,7 @@ function verifyProfilesTable() {
 /**
  * Verify required authentication functions exist
  */
-function verifyAuthFunctions() {
+async function verifyAuthFunctions() {
   title('Verifying Authentication Functions');
   
   try {
@@ -265,13 +257,11 @@ function verifyAuthFunctions() {
       ORDER BY routine_name;
     `;
     
-    const result = runQuery(query);
-    const functions = result.split('\n').slice(1);
-    
-    const existingFunctions = functions.map(func => {
-      const [name, schema] = func.split('|').map(s => s.trim());
-      return `${schema}.${name}`;
-    });
+    const functions = await runQuery(query);
+
+    const existingFunctions = functions.map(
+      (func) => `${func.routine_schema}.${func.routine_name}`,
+    );
     
     let allFunctionsExist = true;
     
@@ -410,10 +400,10 @@ async function runVerification() {
   
   try {
     // Run all verification steps
-    verifyRLSEnabled();
-    verifyRoleSystem();
-    verifyProfilesTable();
-    verifyAuthFunctions();
+    await verifyRLSEnabled();
+    await verifyRoleSystem();
+    await verifyProfilesTable();
+    await verifyAuthFunctions();
     verifyAPIRoutes();
     verifyTestFiles();
     checkSchemaDrift();

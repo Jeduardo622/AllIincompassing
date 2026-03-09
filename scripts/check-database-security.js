@@ -13,14 +13,13 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { runPostgresQuery } from './lib/postgres-query.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Configuration
 const REPORTS_DIR = path.join(__dirname, '..', '.reports');
-const PROJECT_REF = process.env.SUPABASE_PROJECT_REF || 'wnnjeqheqxxyrgsjmygy';
-
 /**
  * Logger utility
  */
@@ -73,17 +72,21 @@ function ensureReportsDir() {
 async function runSecurityAdvisors(branchId) {
   return withRetry(async () => {
     logger.info(`Running security advisors for branch: ${branchId}`);
-    
-    const projectRef = branchId || PROJECT_REF;
-    const command = `supabase advisors --type security --project-ref ${projectRef} --experimental`;
-    
+
+    const dbUrl = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+    if (!dbUrl) {
+      throw new Error('SUPABASE_DB_URL or DATABASE_URL is required for inspect db role-stats');
+    }
+
+    const command = `supabase inspect db role-stats --db-url "${dbUrl}" --output json`;
+
     const output = execSync(command, {
       encoding: 'utf8',
       stdio: 'pipe',
       timeout: 60000 // 60 second timeout
     });
-    
-    logger.success('Security advisors completed');
+
+    logger.success('Security inspect completed');
     return parseAdvisorOutput(output);
   }, 3, 2000).catch(error => {
     logger.error(`Security advisors failed after all retries: ${error.message}`);
@@ -157,8 +160,6 @@ async function checkRLSPolicies(branchId) {
   return withRetry(async () => {
     logger.info('Checking RLS policies...');
     
-    const projectRef = branchId || PROJECT_REF;
-    
     // Get all tables and check RLS status
     const tablesQuery = `
       SELECT 
@@ -173,14 +174,7 @@ async function checkRLSPolicies(branchId) {
       AND n.nspname = 'public';
     `;
     
-    const command = `supabase db query '${tablesQuery}' --project-ref ${projectRef} --experimental`;
-    const output = execSync(command, {
-      encoding: 'utf8',
-      stdio: 'pipe',
-      timeout: 30000 // 30 second timeout
-    });
-    
-    const tables = parseQueryOutput(output);
+    const tables = await runPostgresQuery(tablesQuery);
     const rlsIssues = [];
     
     for (const table of tables) {
@@ -208,8 +202,6 @@ async function checkExposedFunctions(branchId) {
   return withRetry(async () => {
     logger.info('Checking for exposed functions...');
     
-    const projectRef = branchId || PROJECT_REF;
-    
     const functionsQuery = `
       SELECT 
         n.nspname as schema_name,
@@ -222,14 +214,7 @@ async function checkExposedFunctions(branchId) {
       AND p.prokind = 'f';
     `;
     
-    const command = `supabase db query '${functionsQuery}' --project-ref ${projectRef} --experimental`;
-    const output = execSync(command, {
-      encoding: 'utf8',
-      stdio: 'pipe',
-      timeout: 30000 // 30 second timeout
-    });
-    
-    const functions = parseQueryOutput(output);
+    const functions = await runPostgresQuery(functionsQuery);
     const exposedFunctions = [];
     
     for (const func of functions) {
@@ -248,35 +233,6 @@ async function checkExposedFunctions(branchId) {
     logger.error(`Function check failed after all retries: ${error.message}`);
     return [];
   });
-}
-
-/**
- * Parse query output
- */
-function parseQueryOutput(output) {
-  try {
-    const lines = output.split('\n').filter(line => line.trim());
-    if (lines.length < 2) return [];
-    
-    const headers = lines[0].split('|').map(h => h.trim());
-    const rows = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split('|').map(v => v.trim());
-      if (values.length === headers.length) {
-        const row = {};
-        headers.forEach((header, index) => {
-          row[header] = values[index];
-        });
-        rows.push(row);
-      }
-    }
-    
-    return rows;
-  } catch (error) {
-    logger.error(`Failed to parse query output: ${error.message}`);
-    return [];
-  }
 }
 
 /**

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as orgHelpers from "../../supabase/functions/_shared/org.ts";
 import { __TESTING__ } from "../../supabase/functions/sessions-cancel/index.ts";
@@ -159,3 +160,4 @@ describe("sessions-cancel org scoping", () => {
     expect(updateBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "cancelled" }));
   });
 });
+

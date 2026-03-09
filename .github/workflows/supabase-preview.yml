@@ -23,7 +23,7 @@ jobs:
       - name: Start local Supabase (ephemeral)
         run: supabase start | sed -e 's/\(anon key\|service_role key\):.*/\1: <redacted>/'
       - name: Apply migrations
-        run: supabase db reset --force
+        run: supabase db reset --local --yes
       - name: Generate DB types (optional)
         if: ${{ vars.SUPABASE_PROJECT_ID != '' }}
         run: supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/lib/db.types.ts

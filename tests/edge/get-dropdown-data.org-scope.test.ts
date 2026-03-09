@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 import { __TESTING__ } from "../../supabase/functions/get-dropdown-data/index.ts";
 import * as orgHelpers from "../../supabase/functions/_shared/org.ts";
@@ -35,3 +36,4 @@ describe("get-dropdown-data org scoping", () => {
     expect(builder.eq).toHaveBeenCalledWith("status", "active");
   });
 });
+

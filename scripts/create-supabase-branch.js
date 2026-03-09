@@ -49,7 +49,7 @@ async function listExistingBranches() {
     
     // This would normally be done via MCP server call
     // For now, we'll simulate the response or use CLI as fallback
-    const output = execSync('supabase branches list --experimental --output json', {
+    const output = execSync(`supabase branches list --output json --project-ref ${PROJECT_REF}`, {
       encoding: 'utf8',
       stdio: 'pipe'
     });
@@ -135,7 +135,7 @@ async function createBranchWithMCP(branchName) {
     
     // This would be the actual MCP server call
     // For now, we'll use the CLI as a fallback but structure it properly
-    const createCommand = `supabase branches create ${branchName} --experimental --project-ref ${PROJECT_REF}`;
+    const createCommand = `supabase branches create ${branchName} --project-ref ${PROJECT_REF}`;
     
     logger.info(`Executing: ${createCommand}`);
     const output = execSync(createCommand, {
@@ -174,7 +174,7 @@ async function cleanupExistingBranch(branchName) {
     logger.info(`Cleaning up existing branch: ${branchName}`);
     
     // Try to delete the branch
-    const deleteCommand = `supabase branches delete ${branchName} --experimental --project-ref ${PROJECT_REF}`;
+    const deleteCommand = `supabase branches delete ${branchName} --project-ref ${PROJECT_REF}`;
     execSync(deleteCommand, {
       encoding: 'utf8',
       stdio: 'pipe'

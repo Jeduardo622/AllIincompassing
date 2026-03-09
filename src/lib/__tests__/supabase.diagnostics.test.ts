@@ -86,9 +86,10 @@ describe('supabase connection diagnostics guard', () => {
     );
   });
 
-  it('runs diagnostics automatically in development', async () => {
+  it('runs diagnostics when explicitly enabled', async () => {
     vi.stubEnv('DEV', 'true');
     vi.stubEnv('VITEST', 'false');
+    vi.stubEnv('VITE_ENABLE_CONNECTION_DIAGNOSTICS', 'true');
     const consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
 
     const { mod, supabaseMock } = await setupModule();

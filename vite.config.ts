@@ -107,7 +107,7 @@ export default defineConfig(() => {
       host: true,
       allowedHosts: ['host.docker.internal'],
       fs: {
-        strict: false,
+        strict: true,
       },
     },
   };

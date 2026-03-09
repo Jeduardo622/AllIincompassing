@@ -104,7 +104,7 @@ Before applying the migration, you can investigate current state:
 
 ```bash
 # Using Supabase CLI
-supabase db query --file scripts/investigate-advisor-warnings.sql --project-ref wnnjeqheqxxyrgsjmygy
+psql "$SUPABASE_DB_URL" -f scripts/investigate-advisor-warnings.sql
 
 # Or via psql
 psql $DATABASE_URL -f scripts/investigate-advisor-warnings.sql
@@ -137,3 +137,4 @@ psql $DATABASE_URL -f scripts/investigate-advisor-warnings.sql
 - [Supabase Advisors: Unindexed Foreign Keys](https://supabase.com/docs/guides/database/advisors/unindexed_foreign_keys)
 - [PostgreSQL search_path Security](https://www.postgresql.org/docs/current/ddl-schemas.html#DDL-SCHEMAS-PATH)
 - [Engineering Rules: DB rules](.cursor/rules/engineering.mdc)
+

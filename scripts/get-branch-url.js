@@ -62,7 +62,7 @@ function getBranchUrlFromAPI(branchId) {
   try {
     logger.info(`Querying Supabase for branch URL: ${branchId}`);
     
-    const output = execSync(`supabase branches list --experimental --output json --project-ref ${PROJECT_REF}`, {
+    const output = execSync(`supabase branches list --output json --project-ref ${PROJECT_REF}`, {
       encoding: 'utf8',
       stdio: 'pipe'
     });

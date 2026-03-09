@@ -49,12 +49,12 @@ If a preview project fails to provision, check the Supabase dashboard activity f
 We currently run all environments (preview, staging, production) against the same hosted Supabase project `wnnjeqheqxxyrgsjmygy`. There is no dedicated staging database. Instead, we:
 
 1. Merge approved changes into the `develop` branch once preview smoke tests succeed (Netlify staging deploy kicks off automatically).
-2. If you need an isolated database before promoting, create a Supabase **branch** via `npm run db:branch:create <name>` or `supabase branches create <name> --project-ref wnnjeqheqxxyrgsjmygy`. Apply migrations there with `supabase db push --project-ref <branch-id>`.
+2. If you need an isolated database before promoting, create a Supabase **branch** via `npm run db:branch:create <name>` or `supabase branches create <name> --project-ref wnnjeqheqxxyrgsjmygy`. Apply migrations there with `supabase db push --linked`.
 3. When ready, apply migrations to the hosted project using the Supabase dashboard (**Promote branch** → select your preview) or the CLI:
    ```bash
-   supabase db push --project-ref wnnjeqheqxxyrgsjmygy
+   supabase db push --linked
    ```
-4. Confirm RLS policies/seed scripts ran successfully by executing `supabase db diff --project-ref wnnjeqheqxxyrgsjmygy --schema public --linked`. The diff should be empty.
+4. Confirm RLS policies/seed scripts ran successfully by executing `supabase db diff --linked --schema public`. The diff should be empty.
 5. Rotate service-role keys after major schema updates (see [Environment Matrix](./ENVIRONMENT_MATRIX.md)) and update Netlify staging env vars accordingly (mask values as `****`).
 
 ### Promoting to Production (`main`)
@@ -87,3 +87,4 @@ If staging promotion fails, roll back by restoring the previous staging backup (
 - **Service role leakage:** never embed `SUPABASE_SERVICE_ROLE_KEY` in browser bundles. Restrict usage to server-side code and tests.
 
 Reach out to the platform team if the branch limit of 50 previews is reached or if you need to retain a preview database longer than a PR’s lifetime.
+

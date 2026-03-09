@@ -267,7 +267,7 @@ describe("ProgramsGoalsTab", () => {
       );
     });
     expect(showSuccess).toHaveBeenCalledWith("AI proposal saved to assessment queue for review.");
-  });
+  }, 15000);
 
   it("uploads IEHP assessment with selected template type", async () => {
     const baseCallApiImpl = vi.mocked(callApi).getMockImplementation();

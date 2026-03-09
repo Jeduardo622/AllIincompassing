@@ -13,14 +13,13 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { runPostgresQuery } from './lib/postgres-query.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Configuration
 const REPORTS_DIR = path.join(__dirname, '..', '.reports');
-const PROJECT_REF = process.env.SUPABASE_PROJECT_REF || 'wnnjeqheqxxyrgsjmygy';
-
 const REQUIRED_INDEXES = [
   {
     name: 'sessions_org_therapist_start_time_idx',
@@ -100,17 +99,21 @@ function ensureReportsDir() {
 async function runPerformanceAdvisors(branchId) {
   return withRetry(async () => {
     logger.info(`Running performance advisors for branch: ${branchId}`);
-    
-    const projectRef = branchId || PROJECT_REF;
-    const command = `supabase advisors --type performance --project-ref ${projectRef} --experimental`;
-    
+
+    const dbUrl = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+    if (!dbUrl) {
+      throw new Error('SUPABASE_DB_URL or DATABASE_URL is required for inspect db outliers');
+    }
+
+    const command = `supabase inspect db outliers --db-url "${dbUrl}" --output json`;
+
     const output = execSync(command, {
       encoding: 'utf8',
       stdio: 'pipe',
       timeout: 60000 // 60 second timeout
     });
     
-    logger.success('Performance advisors completed');
+    logger.success('Performance inspect completed');
     return parseAdvisorOutput(output);
   }, 3, 2000).catch(error => {
     logger.error(`Performance advisors failed after all retries: ${error.message}`);
@@ -184,8 +187,6 @@ async function checkSlowQueries(branchId) {
   try {
     logger.info('Checking for slow queries...');
     
-    const projectRef = branchId || PROJECT_REF;
-    
     // Get slow queries from pg_stat_statements
     const slowQueriesQuery = `
       SELECT 
@@ -204,13 +205,7 @@ async function checkSlowQueries(branchId) {
       LIMIT 10;
     `;
     
-    const command = `supabase db query '${slowQueriesQuery}' --project-ref ${projectRef} --experimental`;
-    const output = execSync(command, {
-      encoding: 'utf8',
-      stdio: 'pipe'
-    });
-    
-    const slowQueries = parseQueryOutput(output);
+    const slowQueries = await runPostgresQuery(slowQueriesQuery);
     
     logger.success(`Found ${slowQueries.length} slow queries`);
     return slowQueries;
@@ -227,8 +222,6 @@ async function checkSlowQueries(branchId) {
 async function checkMissingIndexes(branchId) {
   try {
     logger.info('Checking for missing indexes...');
-    
-    const projectRef = branchId || PROJECT_REF;
     
     // Check for tables without indexes
     const missingIndexesQuery = `
@@ -250,13 +243,7 @@ async function checkMissingIndexes(branchId) {
       ORDER BY seq_tup_read DESC;
     `;
     
-    const command = `supabase db query '${missingIndexesQuery}' --project-ref ${projectRef} --experimental`;
-    const output = execSync(command, {
-      encoding: 'utf8',
-      stdio: 'pipe'
-    });
-    
-    const indexIssues = parseQueryOutput(output);
+    const indexIssues = await runPostgresQuery(missingIndexesQuery);
     
     logger.success(`Found ${indexIssues.length} potential index issues`);
     return indexIssues;
@@ -273,8 +260,6 @@ async function checkMissingIndexes(branchId) {
 async function checkTableSizes(branchId) {
   try {
     logger.info('Checking table sizes and bloat...');
-    
-    const projectRef = branchId || PROJECT_REF;
     
     const tableSizesQuery = `
       SELECT 
@@ -296,13 +281,7 @@ async function checkTableSizes(branchId) {
       ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
     `;
     
-    const command = `supabase db query '${tableSizesQuery}' --project-ref ${projectRef} --experimental`;
-    const output = execSync(command, {
-      encoding: 'utf8',
-      stdio: 'pipe'
-    });
-    
-    const tableSizes = parseQueryOutput(output);
+    const tableSizes = await runPostgresQuery(tableSizesQuery);
     
     logger.success(`Analyzed ${tableSizes.length} tables`);
     return tableSizes;
@@ -320,8 +299,6 @@ async function checkConnections(branchId) {
   try {
     logger.info('Checking connection statistics...');
 
-    const projectRef = branchId || PROJECT_REF;
-    
     const connectionsQuery = `
       SELECT 
         state,
@@ -333,13 +310,7 @@ async function checkConnections(branchId) {
       ORDER BY connection_count DESC;
     `;
     
-    const command = `supabase db query '${connectionsQuery}' --project-ref ${projectRef} --experimental`;
-    const output = execSync(command, {
-      encoding: 'utf8',
-      stdio: 'pipe'
-    });
-    
-    const connections = parseQueryOutput(output);
+    const connections = await runPostgresQuery(connectionsQuery);
     
     logger.success(`Connection statistics retrieved`);
     return connections;
@@ -357,7 +328,6 @@ async function verifyRequiredIndexes(branchId) {
   try {
     logger.info('Verifying required indexes are present...');
 
-    const projectRef = branchId || PROJECT_REF;
     const indexNamesList = REQUIRED_INDEXES.map((index) => `'${index.name}'`).join(', ');
 
     const requiredIndexesQuery = `
@@ -369,13 +339,7 @@ async function verifyRequiredIndexes(branchId) {
         AND indexname = ANY (ARRAY[${indexNamesList}]);
     `;
 
-    const command = `supabase db query '${requiredIndexesQuery}' --project-ref ${projectRef} --experimental`;
-    const output = execSync(command, {
-      encoding: 'utf8',
-      stdio: 'pipe',
-    });
-
-    const rows = parseQueryOutput(output);
+    const rows = await runPostgresQuery(requiredIndexesQuery);
     const indexMap = new Map(rows.map((row) => [row.indexname, row.indexdef]));
 
     const missing = [];
@@ -404,35 +368,6 @@ async function verifyRequiredIndexes(branchId) {
   } catch (error) {
     logger.error(`Required index verification failed: ${error.message}`);
     throw error;
-  }
-}
-
-/**
- * Parse query output
- */
-function parseQueryOutput(output) {
-  try {
-    const lines = output.split('\n').filter(line => line.trim());
-    if (lines.length < 2) return [];
-    
-    const headers = lines[0].split('|').map(h => h.trim());
-    const rows = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split('|').map(v => v.trim());
-      if (values.length === headers.length) {
-        const row = {};
-        headers.forEach((header, index) => {
-          row[header] = values[index];
-        });
-        rows.push(row);
-      }
-    }
-    
-    return rows;
-  } catch (error) {
-    logger.error(`Failed to parse query output: ${error.message}`);
-    return [];
   }
 }
 

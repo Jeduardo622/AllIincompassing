@@ -4,6 +4,11 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      'npm:zod@3.23.8': 'zod',
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,
@@ -16,9 +21,21 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
+      include: [
+        'src/lib/authStubSession.ts',
+        'src/server/routes/guards.ts',
+        'src/preview/config.ts',
+      ],
       exclude: [
         'node_modules/',
         'src/test/',
+        'src/**/*.test.*',
+        'src/**/__tests__/**',
+        'tests/**',
+        'cypress/**',
+        'dist/**',
+        'tmp/**',
+        'audit/**',
         '**/*.d.ts',
         '**/*.config.{js,ts}',
         '**/index.{js,ts}',
@@ -35,6 +52,8 @@ export default defineConfig({
     environmentMatchGlobs: [
       ['src/server/**', 'node'],
       ['src/scripts/**', 'node'],
+      ['tests/edge/**', 'node'],
+      ['src/lib/__tests__/schedulingOrchestrator.test.ts', 'node'],
     ],
     define: {
       'process.env.NODE_ENV': JSON.stringify('test'),

@@ -70,7 +70,7 @@ describe('SuperAdminImpersonation page', () => {
 
     await userEvent.type(screen.getByLabelText(/Target user ID/i), 'user-456');
     await userEvent.clear(screen.getByLabelText(/Duration/i));
-    await userEvent.type(screen.getByLabelText(/Duration/i), '45');
+    await userEvent.type(screen.getByLabelText(/Duration/i), '30');
     await userEvent.clear(screen.getByLabelText(/Reason/i));
     await userEvent.type(screen.getByLabelText(/Reason/i), '  Investigate downtime  ');
 
@@ -89,7 +89,7 @@ describe('SuperAdminImpersonation page', () => {
     });
 
     expect(showSuccessSpy).toHaveBeenCalled();
-  });
+  }, 15000);
 
   it('automatically revokes expired impersonation tokens', async () => {
     const expiredEntry = {

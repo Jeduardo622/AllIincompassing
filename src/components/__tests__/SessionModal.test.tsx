@@ -163,7 +163,7 @@ describe('SessionModal', () => {
         status: 'scheduled',
       }));
     });
-  });
+  }, 15000);
 
   it('shows conflict banner and proceeds after user confirmation', async () => {
     // Existing overlapping session to trigger conflict

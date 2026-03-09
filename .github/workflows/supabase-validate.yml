@@ -22,7 +22,7 @@ jobs:
         with:
           access-token: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       - name: Run Supabase migration lint
-        run: supabase db lint --project-ref wnnjeqheqxxyrgsjmygy
+        run: supabase db lint --linked
 
   test-main:
     if: github.event_name == 'push'

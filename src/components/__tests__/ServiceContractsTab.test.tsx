@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderWithProviders, screen, userEvent } from '../../test/utils';
+import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import ServiceContractsTab from '../ClientDetails/ServiceContractsTab';
 import { supabase } from '../../lib/supabase';
 import { showError } from '../../lib/toast';
@@ -80,7 +80,11 @@ describe('ServiceContractsTab', () => {
   it('renders persisted service contracts with CPT descriptions', async () => {
     renderWithProviders(<ServiceContractsTab client={{ id: 'client-1' }} />);
 
-    const contractToggle = await screen.findByRole('button', { name: /CalOptima Health/i });
+    await waitFor(() => {
+      expect(screen.queryByText(/Loading contracts/i)).not.toBeInTheDocument();
+    });
+    const contractName = await screen.findByText(/CalOptima Health/i);
+    const contractToggle = contractName.closest('button') ?? contractName;
     await userEvent.click(contractToggle);
 
     expect(await screen.findByText('H0031')).toBeInTheDocument();
@@ -90,7 +94,11 @@ describe('ServiceContractsTab', () => {
   it('shows a safe error when original contract file is unavailable', async () => {
     renderWithProviders(<ServiceContractsTab client={{ id: 'client-1' }} />);
 
-    const contractToggle = await screen.findByRole('button', { name: /CalOptima Health/i });
+    await waitFor(() => {
+      expect(screen.queryByText(/Loading contracts/i)).not.toBeInTheDocument();
+    });
+    const contractName = await screen.findByText(/CalOptima Health/i);
+    const contractToggle = contractName.closest('button') ?? contractName;
     await userEvent.click(contractToggle);
     await userEvent.click(screen.getByRole('button', { name: /download original/i }));
 

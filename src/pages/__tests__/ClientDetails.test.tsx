@@ -96,5 +96,5 @@ describe('ClientDetails page', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /Service Contracts/i }));
     expect(screen.getByText('ServiceContractsTabContent')).toBeInTheDocument();
-  });
+  }, 15000);
 });

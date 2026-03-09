@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 import { __TESTING__ } from "../../supabase/functions/get-sessions-optimized/index.ts";
 import * as orgHelpers from "../../supabase/functions/_shared/org.ts";
@@ -14,3 +15,4 @@ describe("get-sessions-optimized org scoping", () => {
     expect(spy).toHaveBeenCalledWith(expect.anything(), "sessions", "org-123");
   });
 });
+

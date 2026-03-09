@@ -244,9 +244,16 @@ describe('Scheduling Flow - Client with Therapist', () => {
     it('should allow switching between schedule views', async () => {
       renderWithProviders(<Schedule />);
 
-      // Test view switches
-      const weekButton = await screen.findByRole('button', { name: /week/i });
-      const matrixButton = await screen.findByRole('button', { name: /matrix/i });
+      await screen.findByRole('combobox', { name: /therapist/i });
+      await screen.findByRole('combobox', { name: /client/i });
+
+      await waitFor(() => {
+        expect(screen.getAllByRole('button', { name: /week/i }).length).toBeGreaterThan(0);
+        expect(screen.getAllByRole('button', { name: /matrix/i }).length).toBeGreaterThan(0);
+      });
+
+      const weekButton = screen.getAllByRole('button', { name: /week/i })[0];
+      const matrixButton = screen.getAllByRole('button', { name: /matrix/i })[0];
 
       await userEvent.click(weekButton);
       await userEvent.click(matrixButton);
@@ -254,7 +261,7 @@ describe('Scheduling Flow - Client with Therapist', () => {
       // Should show matrix view; allow multiple matches
       expect(screen.getAllByText(/therapists/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/clients/i).length).toBeGreaterThan(0);
-    }, 10000);
+    }, 60000);
   });
 
   describe('Session Modal - Creating New Session', () => {

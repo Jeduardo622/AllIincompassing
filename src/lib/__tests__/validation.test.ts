@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { prepareFormData } from '../validation';
+import { prepareFormData, sanitizeString } from '../validation';
 
 describe('prepareFormData', () => {
   it('parses insurance_info JSON strings into objects', () => {
@@ -16,6 +16,21 @@ describe('prepareFormData', () => {
     });
 
     expect(result.insurance_info).toBeNull();
+  });
+});
+
+describe('sanitizeString', () => {
+  it('removes script tags and event handlers', () => {
+    const input = '<img src=x onerror=alert(1)><script>alert(2)</script>hello';
+    const result = sanitizeString(input);
+
+    expect(result).toBe('hello');
+    expect(result).not.toMatch(/script|onerror|alert/i);
+  });
+
+  it('trims whitespace and keeps plain text', () => {
+    const result = sanitizeString('   Safe text   ');
+    expect(result).toBe('Safe text');
   });
 });
 

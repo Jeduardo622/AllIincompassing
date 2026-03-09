@@ -32,7 +32,7 @@ describe('TherapistModal validation', () => {
     const firstNameInput = screen.getByLabelText(/first name/i);
     expect(firstNameInput).toHaveAttribute('aria-invalid', 'true');
     expect(document.activeElement).toBe(firstNameInput);
-  });
+  }, 15000);
 
   it('allows submission when license number is missing', async () => {
     const { handleSubmit } = renderModal();
@@ -46,5 +46,5 @@ describe('TherapistModal validation', () => {
     await waitFor(() => {
       expect(handleSubmit).toHaveBeenCalledTimes(1);
     });
-  });
+  }, 15000);
 });

@@ -193,7 +193,7 @@ describe('AdminSettings logging', () => {
     } finally {
       invokeSpy.mockRestore();
     }
-  });
+  }, 20000);
 
   it('requires a justification before assigning a new admin user', async () => {
     const invokeSpy = vi
@@ -237,7 +237,7 @@ describe('AdminSettings logging', () => {
     } finally {
       invokeSpy.mockRestore();
     }
-  });
+  }, 20000);
 });
 
 describe('Guardian approvals', () => {

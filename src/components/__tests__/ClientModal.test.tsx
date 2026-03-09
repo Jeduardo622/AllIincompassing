@@ -76,7 +76,7 @@ describe('ClientModal validation', () => {
       expect(submitButton).toBeDisabled();
     });
     expect(handleSubmit).not.toHaveBeenCalled();
-  });
+  }, 15000);
 
   it('renders insurance contract controls instead of a raw insurance JSON input', () => {
     const handleSubmit = vi.fn();

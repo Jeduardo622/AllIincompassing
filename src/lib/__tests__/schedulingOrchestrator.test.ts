@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { __TESTING__ } from "../../../supabase/functions/_shared/scheduling-orchestrator.ts";
 
@@ -31,3 +32,4 @@ describe("scheduling-orchestrator helpers", () => {
     expect(message).toContain("conflictCode=CLIENT_CONFLICT");
   });
 });
+

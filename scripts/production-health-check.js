@@ -14,12 +14,12 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { runPostgresQuery } from './lib/postgres-query.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Configuration
-const PROJECT_REF = process.env.SUPABASE_PROJECT_REF || 'wnnjeqheqxxyrgsjmygy';
 const PRODUCTION_URL = process.env.PRODUCTION_URL || 'https://allincompassing.netlify.app';
 const REPORTS_DIR = path.join(__dirname, '..', '.reports');
 
@@ -40,13 +40,7 @@ async function checkDatabaseConnectivity() {
   try {
     logger.info('Checking database connectivity...');
     
-    const query = 'SELECT NOW() as current_time;';
-    const command = `supabase db query '${query}' --project-ref ${PROJECT_REF}`;
-    
-    const output = execSync(command, {
-      encoding: 'utf8',
-      stdio: 'pipe'
-    });
+    await runPostgresQuery('SELECT NOW() as current_time;');
     
     logger.success('Database connectivity: OK');
     return { status: 'ok', response_time: Date.now() };
@@ -77,12 +71,7 @@ async function checkCriticalTables() {
     for (const table of criticalTables) {
       try {
         const query = `SELECT COUNT(*) as count FROM ${table} LIMIT 1;`;
-        const command = `supabase db query '${query}' --project-ref ${PROJECT_REF}`;
-        
-        execSync(command, {
-          encoding: 'utf8',
-          stdio: 'pipe'
-        });
+        await runPostgresQuery(query);
         
         results.push({ table, status: 'ok' });
       } catch (error) {
@@ -125,13 +114,7 @@ async function checkDatabaseFunctions() {
       ORDER BY p.proname;
     `;
     
-    const command = `supabase db query '${functionsQuery}' --project-ref ${PROJECT_REF}`;
-    const output = execSync(command, {
-      encoding: 'utf8',
-      stdio: 'pipe'
-    });
-    
-    const functions = parseQueryOutput(output);
+    const functions = await runPostgresQuery(functionsQuery);
     
     logger.success(`Found ${functions.length} database functions`);
     return { status: 'ok', count: functions.length, functions };
@@ -160,13 +143,7 @@ async function checkRLSPolicies() {
       ORDER BY tablename;
     `;
     
-    const command = `supabase db query '${rlsQuery}' --project-ref ${PROJECT_REF}`;
-    const output = execSync(command, {
-      encoding: 'utf8',
-      stdio: 'pipe'
-    });
-    
-    const tables = parseQueryOutput(output);
+    const tables = await runPostgresQuery(rlsQuery);
     const rlsIssues = tables.filter(t => !t.rls_enabled);
     
     if (rlsIssues.length === 0) {
@@ -269,13 +246,7 @@ async function checkPerformanceMetrics() {
       WHERE datname = current_database();
     `;
     
-    const command = `supabase db query '${metricsQuery}' --project-ref ${PROJECT_REF}`;
-    const output = execSync(command, {
-      encoding: 'utf8',
-      stdio: 'pipe'
-    });
-    
-    const metrics = parseQueryOutput(output);
+    const metrics = await runPostgresQuery(metricsQuery);
     
     logger.success('Performance metrics retrieved');
     return { status: 'ok', metrics: metrics[0] || {} };
@@ -283,35 +254,6 @@ async function checkPerformanceMetrics() {
   } catch (error) {
     logger.error(`Performance metrics check failed: ${error.message}`);
     return { status: 'error', error: error.message };
-  }
-}
-
-/**
- * Parse query output
- */
-function parseQueryOutput(output) {
-  try {
-    const lines = output.split('\n').filter(line => line.trim());
-    if (lines.length < 2) return [];
-    
-    const headers = lines[0].split('|').map(h => h.trim());
-    const rows = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split('|').map(v => v.trim());
-      if (values.length === headers.length) {
-        const row = {};
-        headers.forEach((header, index) => {
-          row[header] = values[index];
-        });
-        rows.push(row);
-      }
-    }
-    
-    return rows;
-  } catch (error) {
-    logger.error(`Failed to parse query output: ${error.message}`);
-    return [];
   }
 }
 

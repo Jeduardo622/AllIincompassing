@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { __TESTING__ } from '../../supabase/functions/get-dashboard-data/index.ts'
 

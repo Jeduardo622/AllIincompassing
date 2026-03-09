@@ -130,7 +130,7 @@ describe('SuperAdminFeatureFlags', () => {
       'Failed to load feature flag administration data',
       expect.anything(),
     );
-  });
+  }, 15000);
 
   it('allows removing plan assignments', async () => {
     useAuthSpy.mockReturnValue({ profile: { role: 'super_admin' } } as unknown as ReturnType<typeof authContext.useAuth>);

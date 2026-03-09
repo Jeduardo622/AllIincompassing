@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { __TESTING__ } from "../../supabase/functions/initiate-client-onboarding/index.ts";
 
@@ -12,3 +13,4 @@ describe("initiate-client-onboarding helpers", () => {
     expect(cleaned).toEqual(["ABA", "Speech"]);
   });
 });
+

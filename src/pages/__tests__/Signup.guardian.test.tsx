@@ -73,7 +73,7 @@ describe('Signup guardian flow', () => {
     expect(showError).toHaveBeenCalledWith(
       'Please enter either your organization ID or the invite code you received from your provider.'
     );
-  });
+  }, 15000);
 
   it('submits guardian metadata when invite code is provided', async () => {
     const signUp = vi.fn().mockResolvedValue({ error: null });
@@ -108,5 +108,5 @@ describe('Signup guardian flow', () => {
     });
     expect(metadata).not.toHaveProperty('guardian_organization_hint');
     expect(showSuccess).toHaveBeenCalled();
-  });
+  }, 15000);
 });

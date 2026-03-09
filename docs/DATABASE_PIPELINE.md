@@ -29,7 +29,7 @@ The current implementation does **not** create per-PR Supabase branches automati
 ## 🔄 Pipeline Flow
 
 1. **Pull request touches migrations**
-   - `supabase-validate.yml` triggers `lint-migrations`, which checks out the PR, installs the Supabase CLI, and runs `supabase db lint --project-ref wnnjeqheqxxyrgsjmygy`. Failures block the PR until policies, functions, and grants pass lint.
+   - `supabase-validate.yml` triggers `lint-migrations`, which checks out the PR, installs the Supabase CLI, and runs `supabase db lint --linked`. Failures block the PR until policies, functions, and grants pass lint.
 2. **Push to `main`**
    - `supabase-validate.yml` runs the `test-main` job. It installs dependencies, sets `RUN_DB_IT=1`, injects hosted Supabase credentials, and executes `npm test` so database-backed Vitest suites run with live data.
 3. **Repo-wide CI (`ci.yml`)**
@@ -96,7 +96,7 @@ For local runs, export the same variables and set `RUN_DB_IT=1` before invoking 
 
 ### `supabase-validate.yml`
 - **Triggers**: Pull requests that modify `supabase/migrations/**` and pushes to `main` touching those paths.【.github/workflows/supabase-validate.yml†4-L13】
-- **PR behavior**: Runs `supabase db lint --project-ref wnnjeqheqxxyrgsjmygy` to ensure policies, grants, and SQL syntax conform before review.【.github/workflows/supabase-validate.yml†15-L26】
+- **PR behavior**: Runs `supabase db lint --linked` to ensure policies, grants, and SQL syntax conform before review.【.github/workflows/supabase-validate.yml†15-L26】
 - **Push behavior**: Installs dependencies and executes `npm test` with `RUN_DB_IT=1`, pointing to the hosted Supabase environment so RLS and RPC tests run against real data.【.github/workflows/supabase-validate.yml†27-L46】
 
 ### `ci.yml`
@@ -261,7 +261,7 @@ supabase branches get branch-id
 supabase db diff --schema public
 
 # Test database connection
-supabase db query 'SELECT NOW();' --project-ref branch-id
+psql "$SUPABASE_DB_URL" -c "SELECT NOW();"
 ```
 
 ### Log Locations

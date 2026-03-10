@@ -5,6 +5,7 @@ import { supabaseAdmin } from "../_shared/database.ts";
 const FUNCTION_NAME = "admin-actions-retention";
 const DEFAULT_RETENTION_DAYS = 365;
 const BUCKET_NAME = "audit-exports";
+const EXPORT_BATCH_SIZE = 1000;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -34,24 +35,57 @@ async function exportAndPrune({ days }: { days: number }): Promise<{ exportedKey
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   const cutoffIso = cutoff.toISOString();
 
-  // Export rows older than cutoff to storage JSON
-  const { data: rows, error: selectError } = await supabaseAdmin
-    .from("admin_actions")
-    .select("*")
-    .lt("created_at", cutoffIso);
-  if (selectError) throw new Error(`select admin_actions failed: ${selectError.message}`);
-
   await ensureBucket(supabaseAdmin, BUCKET_NAME);
-  const key = `admin_actions_${formatDate(cutoff)}.json`;
-  const { error: uploadError } = await supabaseAdmin.storage
-    .from(BUCKET_NAME)
-    .upload(key, new Blob([JSON.stringify(rows ?? [], null, 2)], { type: "application/json" }), { upsert: true });
-  if (uploadError) throw new Error(`upload export failed: ${uploadError.message}`);
+  const keyPrefix = `admin_actions_${formatDate(cutoff)}`;
+
+  let from = 0;
+  let batchIndex = 0;
+  let hasRows = false;
+
+  while (true) {
+    const to = from + EXPORT_BATCH_SIZE - 1;
+    const { data: rows, error: selectError } = await supabaseAdmin
+      .from("admin_actions")
+      .select("*")
+      .lt("created_at", cutoffIso)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to);
+
+    if (selectError) throw new Error(`select admin_actions batch failed: ${selectError.message}`);
+
+    const batch = rows ?? [];
+    if (batch.length === 0) {
+      break;
+    }
+
+    hasRows = true;
+    const key = `${keyPrefix}.part-${String(batchIndex).padStart(4, "0")}.json`;
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from(BUCKET_NAME)
+      .upload(key, new Blob([JSON.stringify(batch, null, 2)], { type: "application/json" }), { upsert: true });
+    if (uploadError) throw new Error(`upload export batch failed: ${uploadError.message}`);
+
+    batchIndex += 1;
+    from += batch.length;
+    if (batch.length < EXPORT_BATCH_SIZE) {
+      break;
+    }
+  }
+
+  if (!hasRows) {
+    const emptyKey = `${keyPrefix}.part-0000.json`;
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from(BUCKET_NAME)
+      .upload(emptyKey, new Blob(["[]"], { type: "application/json" }), { upsert: true });
+    if (uploadError) throw new Error(`upload empty export failed: ${uploadError.message}`);
+    batchIndex = 1;
+  }
 
   // Prune via RPC (security definer)
   const { data: pruned, error: pruneError } = await supabaseAdmin.rpc("prune_admin_actions", { retention_days: days });
   if (pruneError) throw new Error(`prune_admin_actions failed: ${pruneError.message}`);
-  return { exportedKey: key, pruned: pruned ?? 0 };
+  return { exportedKey: `${keyPrefix}.part-0000.json (${batchIndex} part files)`, pruned: pruned ?? 0 };
 }
 
 async function handler(_req: Request, _ctx: UserContext): Promise<Response> {

@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
 import { createPublicRoute, corsHeaders, logApiAccess } from "../_shared/auth-middleware.ts";
+import { errorEnvelope, getRequestId, rateLimit } from "../lib/http/error.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
@@ -24,6 +25,33 @@ export default createPublicRoute(async (req: Request, userContext) => {
 
   try {
     const { email, password }: LoginRequest = await req.json();
+    const requestId = getRequestId(req);
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const emailKey = typeof email === "string" ? email.trim().toLowerCase() : "unknown";
+
+    const ipGuard = rateLimit(`auth-login:ip:${ip}`, 20, 60_000);
+    if (!ipGuard.allowed) {
+      logApiAccess("POST", "/auth/login", null, 429);
+      return errorEnvelope({
+        requestId,
+        code: "rate_limited",
+        message: "Too many login attempts. Please try again shortly.",
+        status: 429,
+        headers: { ...corsHeaders, "Retry-After": String(ipGuard.retryAfter ?? 60) },
+      });
+    }
+
+    const identityGuard = rateLimit(`auth-login:identity:${emailKey}`, 8, 60_000);
+    if (!identityGuard.allowed) {
+      logApiAccess("POST", "/auth/login", null, 429);
+      return errorEnvelope({
+        requestId,
+        code: "rate_limited",
+        message: "Too many login attempts for this account. Please try again shortly.",
+        status: 429,
+        headers: { ...corsHeaders, "Retry-After": String(identityGuard.retryAfter ?? 60) },
+      });
+    }
 
     // Validate required fields
     if (!email || !password) {

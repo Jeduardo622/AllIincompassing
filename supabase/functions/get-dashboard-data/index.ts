@@ -4,9 +4,10 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
 import { createRequestClient } from "../_shared/database.ts";
 import { createProtectedRoute, RouteOptions } from "../_shared/auth-middleware.ts";
 import { MissingOrgContextError, orgScopedQuery, requireOrg } from "../_shared/org.ts";
+import { resolveAllowedOrigin } from "../_shared/cors.ts";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': resolveAllowedOrigin(),
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id',
 }
@@ -83,50 +84,56 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
     monthStart.setDate(1);
     const monthStartStr = monthStart.toISOString().split('T')[0];
 
-    const { data: todaySessions, error: todayError, count: todaySessionsCount } = await orgScopedQuery(db, 'sessions', orgId)
-      .select('id, status, start_time, end_time', { count: 'exact' })
-      .gte('start_time', `${today}T00:00:00`)
-      .lte('start_time', `${today}T23:59:59`)
-      .returns<TodaySession[]>()
-    if (todayError) throw todayError;
-
-    const { data: weekSessions, error: weekError } = await orgScopedQuery(db, 'sessions', orgId)
-      .select('id, status, client_id, therapist_id')
-      .gte('start_time', `${weekStartStr}T00:00:00`).lte('start_time', `${(endDate ?? today)}T23:59:59`)
-      .then(res => res);
-    if (weekError) throw weekError;
-
-    const { count: activeClientsCount, error: clientError } = await orgScopedQuery(db, 'clients', orgId)
-      .select('id', { count: 'exact', head: true })
-      .is('deleted_at', null)
-      .eq('status', 'active');
-    if (clientError) throw clientError;
-
-    const { count: activeTherapistsCount, error: therapistError } = await orgScopedQuery(db, 'therapists', orgId)
-      .select('id', { count: 'exact', head: true })
-      .is('deleted_at', null)
-      .eq('status', 'active');
-    if (therapistError) throw therapistError;
-
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
-    const { count: expiringAuthsCount, error: authError } = await orgScopedQuery(db, 'authorizations', orgId)
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'approved')
-      .lte('end_date', thirtyDaysFromNow.toISOString().split('T')[0]);
+    const [
+      { data: todaySessions, error: todayError, count: todaySessionsCount },
+      { data: weekSessions, error: weekError },
+      { count: activeClientsCount, error: clientError },
+      { count: activeTherapistsCount, error: therapistError },
+      { count: expiringAuthsCount, error: authError },
+      { data: recentSessions, error: recentError },
+      { data: monthlyBilling, error: billingError },
+    ] = await Promise.all([
+      orgScopedQuery(db, 'sessions', orgId)
+        .select('id, status, start_time, end_time', { count: 'exact' })
+        .gte('start_time', `${today}T00:00:00`)
+        .lte('start_time', `${today}T23:59:59`)
+        .returns<TodaySession[]>(),
+      orgScopedQuery(db, 'sessions', orgId)
+        .select('id, status, client_id, therapist_id')
+        .gte('start_time', `${weekStartStr}T00:00:00`)
+        .lte('start_time', `${(endDate ?? today)}T23:59:59`),
+      orgScopedQuery(db, 'clients', orgId)
+        .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null)
+        .eq('status', 'active'),
+      orgScopedQuery(db, 'therapists', orgId)
+        .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null)
+        .eq('status', 'active'),
+      orgScopedQuery(db, 'authorizations', orgId)
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'approved')
+        .lte('end_date', thirtyDaysFromNow.toISOString().split('T')[0]),
+      orgScopedQuery(db, 'sessions', orgId)
+        .select(
+          'id, status, start_time, created_at, created_by, updated_at, updated_by, client:clients(full_name), therapist:therapists(full_name)'
+        )
+        .order('created_at', { ascending: false })
+        .limit(10),
+      orgScopedQuery(db, 'billing_records', orgId)
+        .select('amount_paid')
+        .gte('created_at', `${monthStartStr}T00:00:00`),
+    ]);
+
+    if (todayError) throw todayError;
+    if (weekError) throw weekError;
+    if (clientError) throw clientError;
+    if (therapistError) throw therapistError;
     if (authError) throw authError;
-
-    const { data: recentSessions, error: recentError } = await orgScopedQuery(db, 'sessions', orgId)
-      .select(
-        'id, status, start_time, created_at, created_by, updated_at, updated_by, client:clients(full_name), therapist:therapists(full_name)'
-      )
-      .order('created_at', { ascending: false }).limit(10);
     if (recentError) throw recentError;
-
-    const { data: monthlyBilling, error: billingError } = await orgScopedQuery(db, 'billing_records', orgId)
-      .select('amount_paid')
-      .gte('created_at', `${monthStartStr}T00:00:00`);
     if (billingError) throw billingError;
 
     const todaysSessionsData = aggregateTodaysSessions(todaySessions, todaySessionsCount)

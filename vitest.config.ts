@@ -25,6 +25,10 @@ export default defineConfig({
         'src/lib/authStubSession.ts',
         'src/server/routes/guards.ts',
         'src/preview/config.ts',
+        'src/lib/runtimeConfig.ts',
+        'src/lib/supabaseClient.ts',
+        'src/server/api/book.ts',
+        'src/server/api/dashboard.ts',
       ],
       exclude: [
         'node_modules/',

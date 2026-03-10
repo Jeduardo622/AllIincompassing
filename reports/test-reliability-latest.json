@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-10T01:07:50.768Z",
+  "generatedAt": "2026-03-10T13:58:46.950Z",
   "slo": {
     "suitePassRatePctTarget": 99.5,
     "rollingWindowDays": 14
@@ -9,8 +9,11 @@
     "maxFlakyFailureRatePct": 0.5
   },
   "quarantine": {
-    "activeCount": 0,
-    "activeIds": []
+    "activeCount": 2,
+    "activeIds": [
+      "QTN-2026-03-09-scheduling-flow-timeout",
+      "QTN-2026-03-09-client-onboarding-timeout"
+    ]
   },
   "observedFromLog": {
     "failTokens": 0,

@@ -77,6 +77,7 @@ Long-term policy guardrails are now enforced through `npm run ci:check-focused`:
 - Migration governance and duplicate detection for new migration files.
 - Test reliability/quarantine policy budget and TTL checks.
 - Architecture pack freshness and required-reference check.
+- Repository hygiene check for tracked backup/archive artifacts.
 
 ### CI pipeline stages
 

@@ -108,8 +108,15 @@ CI enforcement:
   - API convergence tracker guard,
   - migration governance guard,
   - test reliability policy guard,
-  - architecture pack freshness guard.
+  - architecture pack freshness guard,
+  - repo hygiene guard (blocks tracked `*.backup` and `src/*.zip` artifacts).
 - `npm run test:ci` emits `reports/test-reliability-latest.json` each run.
+
+## Cypress typing policy
+
+- Cypress ships its own TypeScript definitions through the `cypress` package.
+- `@types/cypress` is intentionally not used to avoid stale/incompatible type bundles.
+- Keep Cypress type behavior aligned by upgrading `cypress` itself rather than adding separate ambient type packages.
 
 ## RC documentation hygiene
 

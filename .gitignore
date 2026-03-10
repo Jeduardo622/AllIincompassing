@@ -34,6 +34,10 @@ cypress/screenshots
 .env
 .env.*
 !.env.example
+
+# Local/editor backup artifacts
+*.backup
+/src/*.zip
 # Local Netlify folder
 .netlify
 

@@ -4,7 +4,6 @@ const RUNTIME_CACHE = `allincompassing-runtime-${APP_VERSION}`;
 const IMMUTABLE_CACHE = `allincompassing-immutable-${APP_VERSION}`;
 const FONT_CACHE = `allincompassing-fonts-${APP_VERSION}`;
 const IMAGE_CACHE = `allincompassing-images-${APP_VERSION}`;
-const API_CACHE = `allincompassing-api-${APP_VERSION}`;
 const PRECACHE_URLS = ['/', '/index.html', '/offline.html', '/manifest.webmanifest'];
 const OFFLINE_URL = '/offline.html';
 
@@ -69,19 +68,10 @@ const staleWhileRevalidate = async (request, cacheName) => {
   return cachedResponse || networkResponsePromise;
 };
 
-const networkFirst = async (request, cacheName) => {
-  const cache = await caches.open(cacheName);
+const networkOnly = async (request) => {
   try {
-    const response = await fetch(request);
-    if (response && response.status === 200) {
-      cache.put(request, response.clone());
-    }
-    return response;
+    return await fetch(request);
   } catch (error) {
-    const cached = await cache.match(request);
-    if (cached) {
-      return cached;
-    }
     throw error;
   }
 };
@@ -116,7 +106,7 @@ self.addEventListener('fetch', (event) => {
 
   if (isJsonRequest(request) || url.pathname.startsWith('/api/')) {
     event.respondWith(
-      networkFirst(request, API_CACHE).catch(async () => {
+      networkOnly(request).catch(async () => {
         const fallback = await caches.match(OFFLINE_URL);
         return fallback || Response.error();
       }),

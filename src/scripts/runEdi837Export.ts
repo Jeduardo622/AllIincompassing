@@ -6,6 +6,7 @@ import {
   type Edi837GeneratorOptions,
   type RunEdiExportResult,
 } from "../server/edi837";
+import { serverLogger } from "../lib/logger/server";
 
 const createSupabaseServiceClient = (): SupabaseClient => {
   const url = getRequiredServerEnv("SUPABASE_URL");
@@ -31,9 +32,9 @@ export const runEdi837ExportCli = async (): Promise<RunEdiExportResult> => {
   const options = resolveGeneratorOptions();
   const result = await runEdi837ExportPipeline({ repository, generatorOptions: options });
   if (!result.exported) {
-    console.info("EDI 837 export completed: no pending claims");
+    serverLogger.info("EDI 837 export completed: no pending claims");
   } else {
-    console.info(
+    serverLogger.info(
       `EDI 837 export completed: exported ${result.claimCount} claims to ${result.file?.fileName ?? "generated file"}`,
     );
   }
@@ -54,7 +55,7 @@ const isExecutedFromCli = (): boolean => {
 
 if (isExecutedFromCli()) {
   runEdi837ExportCli().catch((error) => {
-    console.error("Failed to run EDI 837 export", error);
+    serverLogger.error("Failed to run EDI 837 export", { error });
     process.exitCode = 1;
   });
 }

@@ -6,9 +6,9 @@ const normalizeOrgId = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
-import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
-import { supabase } from './supabaseClient'; // Use consistent client
+import { clearSupabaseAuthStorage, supabase } from './supabaseClient'; // Use consistent client
 import { logger } from './logger/logger';
 import { toError } from './logger/normalizeError';
 import { readStubAuthState, STUB_AUTH_STORAGE_KEY } from './authStubSession';
@@ -63,6 +63,24 @@ const sanitizeSignupRoleMetadata = (value: unknown): 'client' | 'therapist' => {
   return normalized === 'therapist' ? 'therapist' : 'client';
 };
 
+const PROFILE_SELECT_COLUMNS = [
+  'id',
+  'email',
+  'role',
+  'organization_id',
+  'first_name',
+  'last_name',
+  'full_name',
+  'phone',
+  'avatar_url',
+  'time_zone',
+  'preferences',
+  'is_active',
+  'last_login_at',
+  'created_at',
+  'updated_at',
+].join(', ');
+
 interface AuthContextType {
   user: User | null;
   profile: UserProfile | null;
@@ -97,6 +115,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const signOutInProgressRef = useRef(false);
 
   const metadataRole = useMemo<Role | null>(() => {
     if (!user) return null;
@@ -135,7 +154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select(PROFILE_SELECT_COLUMNS)
         .eq('id', userId)
         .maybeSingle();
 
@@ -300,12 +319,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, [fetchProfile]);
 
+  const waitForSignedOutEvent = useCallback((timeoutMs = 5000): Promise<void> => {
+    return new Promise((resolve) => {
+      let settled = false;
+      const settle = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        subscription.unsubscribe();
+        resolve();
+      };
+
+      const timeoutId = globalThis.setTimeout(() => {
+        logger.warn('Timed out waiting for SIGNED_OUT auth event during sign-out', {
+          metadata: {
+            scope: 'authContext.signOut',
+            timeoutMs,
+          },
+        });
+        settle();
+      }, timeoutMs);
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+        if (event !== 'SIGNED_OUT') {
+          return;
+        }
+        globalThis.clearTimeout(timeoutId);
+        settle();
+      });
+    });
+  }, []);
+
   useEffect(() => {
     initializeAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       try {
+        if (signOutInProgressRef.current) {
+          if (event === 'SIGNED_OUT' || !session?.user) {
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+            signOutInProgressRef.current = false;
+          }
+          return;
+        }
+
         setSession(session);
         setUser(session?.user ?? null);
 
@@ -448,6 +509,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     try {
       setLoading(true);
+      signOutInProgressRef.current = true;
 
       // Optimistically clear local auth state so route-level queries disable
       // immediately and do not continue firing with a stale session.
@@ -457,8 +519,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(STUB_AUTH_STORAGE_KEY);
+        clearSupabaseAuthStorage();
       }
 
+      const signedOutEvent = waitForSignedOutEvent();
       const { error } = await supabase.auth.signOut();
 
       if (error) {
@@ -470,7 +534,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         throw error;
       }
+
+      await signedOutEvent;
     } catch (error) {
+      signOutInProgressRef.current = false;
       logger.error('Supabase sign-out request threw an exception', {
         error: toError(error, 'Sign out failed'),
         metadata: {
@@ -479,6 +546,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       throw error instanceof Error ? error : new Error('Sign out failed');
     } finally {
+      signOutInProgressRef.current = false;
+      clearSupabaseAuthStorage();
       setLoading(false);
     }
   };
@@ -519,7 +588,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .from('profiles')
         .update(updates)
         .eq('id', user.id)
-        .select()
+        .select(PROFILE_SELECT_COLUMNS)
         .single();
 
       if (error) {

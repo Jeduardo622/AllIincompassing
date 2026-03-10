@@ -13,6 +13,7 @@ import {
   type AssessmentChecklistSeedRow,
   type AssessmentTemplateType,
 } from "../assessmentChecklistTemplate";
+import { serverLogger } from "../../lib/logger/server";
 
 const SUPPORTED_TEMPLATE_TYPES = ["caloptima_fba", "iehp_fba"] as const;
 
@@ -507,7 +508,7 @@ const runCaloptimaExtractionWorkflow = async (args: {
         createdDocumentId,
         clientId,
       }).catch((error) => {
-        console.error("assessment-documents auto-generate workflow failed", error);
+        serverLogger.error("assessment-documents auto-generate workflow failed", { error });
       });
       return;
     }
@@ -538,7 +539,7 @@ const runCaloptimaExtractionWorkflow = async (args: {
       }),
     });
   } catch (error) {
-    console.error("assessment-documents extraction workflow failed", error);
+    serverLogger.error("assessment-documents extraction workflow failed", { error });
     await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(createdDocumentId)}`, {
       method: "PATCH",
       headers,

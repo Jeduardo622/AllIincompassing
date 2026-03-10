@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PostgrestSingleResponse } from '@supabase/supabase-js';
 import type { Client } from '../../../types';
-import { CLIENT_SELECT } from '../select';
+import { CLIENT_DETAIL_SELECT, CLIENT_LIST_SELECT } from '../select';
 import {
   fetchClientById,
   fetchClientNotes,
@@ -20,7 +20,7 @@ describe('clients fetchers', () => {
     await fetchClients({ organizationId: 'org-1', client: { from } as any });
 
     expect(from).toHaveBeenCalledWith('clients');
-    expect(select).toHaveBeenCalledWith(CLIENT_SELECT);
+    expect(select).toHaveBeenCalledWith(CLIENT_LIST_SELECT);
     expect(eq).toHaveBeenCalledWith('organization_id', 'org-1');
     expect(order).toHaveBeenCalledWith('full_name', { ascending: true });
   });
@@ -33,7 +33,7 @@ describe('clients fetchers', () => {
     await fetchClients({ allowAll: true, client: { from } as any });
 
     expect(from).toHaveBeenCalledWith('clients');
-    expect(select).toHaveBeenCalledWith(CLIENT_SELECT);
+    expect(select).toHaveBeenCalledWith(CLIENT_LIST_SELECT);
     expect(order).toHaveBeenCalledWith('full_name', { ascending: true });
   });
 
@@ -47,7 +47,7 @@ describe('clients fetchers', () => {
     await fetchClientById('client-123', 'org-1', { from } as any);
 
     expect(from).toHaveBeenCalledWith('clients');
-    expect(select).toHaveBeenCalledWith(CLIENT_SELECT);
+    expect(select).toHaveBeenCalledWith(CLIENT_DETAIL_SELECT);
     expect(firstEq).toHaveBeenCalledWith('organization_id', 'org-1');
     expect(secondEq).toHaveBeenCalledWith('id', 'client-123');
     expect(single).toHaveBeenCalled();

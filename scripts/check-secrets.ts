@@ -1,5 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import fs from 'node:fs';
+import { execSync } from 'node:child_process';
 
 type EnvGroup = {
   readonly name: string;
@@ -167,13 +169,115 @@ export function formatMissingMessage(missingKeys: string[]): string {
 
 export function checkSecretsAndReport(env: NodeJS.ProcessEnv): { missing: string[]; exitCode: number } {
   const missing = collectMissingEnvVars(env);
-  const exitCode = missing.length === 0 ? 0 : 1;
-  const message = formatMissingMessage(missing);
-  const output = exitCode === 0 ? console.log : console.error;
-  output(message);
+  const secretFindings = collectCommittedSecretFindings();
+  const hasMissing = missing.length > 0;
+  const hasFindings = secretFindings.length > 0;
 
-  return { missing, exitCode };
+  if (!hasMissing && !hasFindings) {
+    console.log('✅ All required secrets are configured.');
+    console.log('✅ No committed secret patterns were detected.');
+    return { missing, exitCode: 0 };
+  }
+
+  if (hasMissing) {
+    console.error(formatMissingMessage(missing));
+  }
+
+  if (hasFindings) {
+    console.error('❌ Committed secret risk detected:');
+    secretFindings.forEach((finding) => {
+      console.error(`  - ${finding}`);
+    });
+    console.error('\nRemove committed secret material and replace with masked placeholders (****).');
+  }
+
+  return { missing, exitCode: 1 };
 }
+
+const FORBIDDEN_TRACKED_FILES = new Set([
+  'artifacts/api-keys.json',
+]);
+
+const COMMITTED_SECRET_PATTERNS: ReadonlyArray<{ readonly label: string; readonly regex: RegExp }> = [
+  { label: 'Supabase access token', regex: /\bsbp_[A-Za-z0-9]{20,}\b/g },
+  { label: 'Supabase secret key', regex: /\bsb_secret_[A-Za-z0-9_-]{12,}\b/g },
+  { label: 'JWT token literal', regex: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
+];
+
+const SCAN_DIRECTORIES = ['src/', 'scripts/', 'supabase/', 'public/', 'artifacts/'] as const;
+const SCAN_FILE_EXTENSIONS = new Set([
+  '.ts',
+  '.tsx',
+  '.js',
+  '.mjs',
+  '.cjs',
+  '.json',
+  '.sql',
+  '.yml',
+  '.yaml',
+  '.env',
+]);
+
+const listTrackedFiles = (): string[] => {
+  try {
+    const output = execSync('git ls-files', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    return output
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  } catch {
+    return [];
+  }
+};
+
+const isScannableFile = (filePath: string): boolean => {
+  if (!SCAN_DIRECTORIES.some((prefix) => filePath.startsWith(prefix))) {
+    return false;
+  }
+
+  const extension = path.extname(filePath);
+  return SCAN_FILE_EXTENSIONS.has(extension);
+};
+
+const collectCommittedSecretFindings = (): string[] => {
+  const findings: string[] = [];
+  const trackedFiles = listTrackedFiles();
+
+  for (const filePath of trackedFiles) {
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    const fileExists = fs.existsSync(normalizedPath);
+
+    if (!fileExists) {
+      continue;
+    }
+
+    if (FORBIDDEN_TRACKED_FILES.has(normalizedPath)) {
+      findings.push(`${normalizedPath} must never be committed.`);
+      continue;
+    }
+
+    if (!isScannableFile(normalizedPath)) {
+      continue;
+    }
+
+    let content = '';
+    try {
+      content = fs.readFileSync(normalizedPath, 'utf8');
+    } catch {
+      continue;
+    }
+
+    for (const { label, regex } of COMMITTED_SECRET_PATTERNS) {
+      const matched = regex.test(content);
+      regex.lastIndex = 0;
+      if (matched) {
+        findings.push(`${normalizedPath} contains potential ${label}.`);
+      }
+    }
+  }
+
+  return findings;
+};
 
 const moduleFilePath = fileURLToPath(import.meta.url);
 

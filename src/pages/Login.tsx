@@ -271,17 +271,6 @@ export function Login() {
             </div>
           </form>
 
-          {!showForgotPassword && (
-            <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
-              <h3 className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-2">Test Accounts:</h3>
-              <div className="space-y-1 text-sm text-blue-700 dark:text-blue-400">
-                <p><strong>Client:</strong> client@test.com / password123</p>
-                <p><strong>Therapist:</strong> therapist@test.com / password123</p>
-                <p><strong>Admin:</strong> admin@test.com / password123</p>
-                <p><strong>Super Admin:</strong> superadmin@test.com / password123</p>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

@@ -3,6 +3,36 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './generated/database.types';
 import { getRuntimeSupabaseConfig } from './runtimeConfig';
 
+const AUTH_STORAGE_PREFIX = 'sb-';
+const AUTH_STORAGE_SUFFIX = '-auth-token';
+
+const clearStorageByPrefix = (storage: Storage | undefined): void => {
+  if (!storage) {
+    return;
+  }
+
+  const keysToRemove: string[] = [];
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (!key) {
+      continue;
+    }
+    if (key.startsWith(AUTH_STORAGE_PREFIX) && key.endsWith(AUTH_STORAGE_SUFFIX)) {
+      keysToRemove.push(key);
+    }
+  }
+
+  keysToRemove.forEach((key) => storage.removeItem(key));
+};
+
+export const clearSupabaseAuthStorage = (): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  clearStorageByPrefix(window.sessionStorage);
+  clearStorageByPrefix(window.localStorage);
+};
+
 const resolveSupabaseConfig = (): { supabaseUrl: string; supabaseAnonKey: string } => {
   try {
     const { supabaseUrl, supabaseAnonKey } = getRuntimeSupabaseConfig();

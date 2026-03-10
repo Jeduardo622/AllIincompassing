@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, beforeEach, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AuthProvider, useAuth } from '../authContext';
 
 const {
@@ -41,6 +41,7 @@ vi.mock('../supabaseClient', () => {
   const removeChannel = vi.fn();
 
   return {
+    clearSupabaseAuthStorage: vi.fn(),
     supabase: {
       auth: {
         getSession: mockGetSession,
@@ -61,12 +62,15 @@ vi.mock('../supabaseClient', () => {
 });
 
 const TestConsumer = () => {
-  const { user, loading, profile } = useAuth();
+  const { user, loading, profile, signOut } = useAuth();
   return (
     <>
       <div data-testid="loading">{loading ? 'yes' : 'no'}</div>
       <div data-testid="user">{user?.id ?? 'none'}</div>
       <div data-testid="role">{profile?.role ?? 'none'}</div>
+      <button type="button" data-testid="signout" onClick={() => void signOut()}>
+        Sign out
+      </button>
     </>
   );
 };
@@ -75,7 +79,7 @@ describe('AuthProvider initializeAuth resilience', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authStateChangeListenerRef.current = null;
-    mockSignOut.mockResolvedValue(undefined);
+    mockSignOut.mockResolvedValue({ error: null });
     mockProfilesMaybeSingle.mockResolvedValue({
       data: {
         id: 'user-1',
@@ -150,6 +154,43 @@ describe('AuthProvider initializeAuth resilience', () => {
     });
 
     await waitFor(() => expect(screen.getByTestId('role')).toHaveTextContent('admin'));
+  });
+
+  it('ignores token refresh events while sign-out is in progress', async () => {
+    mockGetSession.mockResolvedValueOnce({
+      data: {
+        session: {
+          user: {
+            id: 'user-1',
+            email: 'user@example.com',
+          },
+        },
+      },
+      error: null,
+    });
+
+    mockSignOut.mockImplementation(async () => {
+      await authStateChangeListenerRef.current?.('TOKEN_REFRESHED', {
+        user: {
+          id: 'user-1',
+          email: 'user@example.com',
+        },
+      });
+      await authStateChangeListenerRef.current?.('SIGNED_OUT', null);
+      return { error: null };
+    });
+
+    render(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('user-1'));
+    fireEvent.click(screen.getByTestId('signout'));
+
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('none'));
+    expect(mockProfilesMaybeSingle).toHaveBeenCalledTimes(1);
   });
 });
 

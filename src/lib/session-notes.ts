@@ -12,6 +12,34 @@ interface TherapistSummary {
 }
 
 const TABLE = 'client_session_notes';
+const SESSION_NOTE_SELECT_COLUMNS = `
+  id,
+  authorization_id,
+  client_id,
+  created_at,
+  end_time,
+  goal_ids,
+  goals_addressed,
+  is_locked,
+  narrative,
+  organization_id,
+  service_code,
+  session_date,
+  session_duration,
+  session_id,
+  signed_at,
+  start_time,
+  therapist_id,
+  updated_at
+`;
+
+const SESSION_NOTE_WITH_THERAPIST_SELECT = `
+  ${SESSION_NOTE_SELECT_COLUMNS},
+  therapists:therapist_id (
+    full_name,
+    title
+  )
+`;
 
 const mapRowToSessionNote = (
   row: ClientSessionNoteRow,
@@ -59,15 +87,7 @@ export const fetchClientSessionNotes = async (
 
   const { data, error } = await supabase
     .from(TABLE)
-    .select(
-      `
-        *,
-        therapists:therapist_id (
-          full_name,
-          title
-        )
-      `
-    )
+    .select(SESSION_NOTE_WITH_THERAPIST_SELECT)
     .eq('client_id', clientId)
     .eq('organization_id', organizationId)
     .order('session_date', { ascending: false })
@@ -172,15 +192,7 @@ export const createClientSessionNote = async (
   const { data, error } = await supabase
     .from(TABLE)
     .insert(insertPayload)
-    .select(
-      `
-        *,
-        therapists:therapist_id (
-          full_name,
-          title
-        )
-      `
-    )
+    .select(SESSION_NOTE_WITH_THERAPIST_SELECT)
     .single();
 
   if (error || !data) {

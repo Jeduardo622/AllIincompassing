@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Client } from '../../types';
 import type { Database } from '../generated/database.types';
 import { supabase } from '../supabase';
-import { CLIENT_SELECT } from './select';
+import { CLIENT_DETAIL_SELECT, CLIENT_LIST_SELECT } from './select';
 
 export type ClientsSupabaseClient = SupabaseClient<Database>;
 
@@ -187,7 +187,7 @@ export const fetchClients = async (
 
   let query = clientRef
     .from('clients')
-    .select(CLIENT_SELECT);
+    .select(CLIENT_LIST_SELECT);
 
   if (organizationId) {
     query = query.eq('organization_id', organizationId);
@@ -219,7 +219,7 @@ export const fetchClientById = async (
 
   const { data, error } = await client
     .from('clients')
-    .select(CLIENT_SELECT)
+    .select(CLIENT_DETAIL_SELECT)
     .eq('organization_id', organizationId)
     .eq('id', clientId)
     .single();
@@ -386,7 +386,15 @@ export const fetchClientIssues = async (
 ): Promise<ClientIssue[]> => {
   const { data, error } = await client
     .from('client_issues')
-    .select('*')
+    .select(`
+      id,
+      category,
+      description,
+      status,
+      priority,
+      date_opened,
+      last_action
+    `)
     .eq('client_id', clientId)
     .order('created_at', { ascending: false });
 

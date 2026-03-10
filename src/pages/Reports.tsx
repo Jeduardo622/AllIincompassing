@@ -14,6 +14,7 @@ import { showError } from '../lib/toast';
 import { useDebounce } from '../lib/performance';
 import { logger } from '../lib/logger/logger';
 import { toError } from '../lib/logger/normalizeError';
+import { useAuth } from '../lib/authContext';
 // import { CACHE_STRATEGIES, generateCacheKey } from './cacheStrategy';
 import { useDropdownData, useSessionMetrics } from '../lib/optimizedQueries';
 
@@ -89,7 +90,10 @@ const ReportMetrics = React.memo(({
 ReportMetrics.displayName = 'ReportMetrics';
 
 const Reports = React.memo(() => {
+  const { profile } = useAuth();
   const [reportType, setReportType] = useState<ReportType>('sessions');
+  const canExportReports = profile?.role === 'therapist' || profile?.role === 'admin' || profile?.role === 'super_admin';
+
   const [filters, setFilters] = useState<ReportFilters>({
     dateRange: 'current_month',
     startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
@@ -264,18 +268,35 @@ const Reports = React.memo(() => {
 
   // Memoized CSV export function
   const exportToCsv = useCallback(() => {
+    if (!canExportReports) {
+      logger.warn('Blocked unauthorized report export attempt', {
+        metadata: {
+          scope: 'reports.exportToCsv',
+          role: profile?.role ?? 'unknown',
+        },
+      });
+      showError('You do not have permission to export reports.');
+      return;
+    }
+
     if (!reportData?.rawData) return;
     
     const rawData = reportData.rawData;
     if (rawData.length === 0) return;
-    
-    const headers = Object.keys(rawData[0]).filter(key => typeof rawData[0][key] !== 'object');
-    
+
+    const exportRows = rawData.map((item) => ({
+      start_time: item.start_time,
+      status: item.status,
+      therapist_name: item.therapist?.full_name ?? '',
+      client_name: item.client?.full_name ?? '',
+    }));
+    const headers = ['start_time', 'status', 'therapist_name', 'client_name'];
+
     let csvContent = headers.join(',') + '\n';
     
-    rawData.forEach(item => {
+    exportRows.forEach(item => {
       const row = headers.map(header => {
-        const value = item[header];
+        const value = item[header as keyof typeof item];
         if (Array.isArray(value)) {
           return `"${value.join(';')}"`;
         } else if (value instanceof Date) {
@@ -300,7 +321,14 @@ const Reports = React.memo(() => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [reportData, reportType]);
+    logger.info('Report export completed', {
+      metadata: {
+        scope: 'reports.exportToCsv',
+        reportType,
+        rowCount: exportRows.length,
+      },
+    });
+  }, [canExportReports, profile?.role, reportData, reportType]);
 
   // Memoized report content
   const reportContent = useMemo(() => {
@@ -350,7 +378,7 @@ const Reports = React.memo(() => {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Reports</h1>
         
-        {reportData && (
+        {reportData && canExportReports && (
           <button
             onClick={exportToCsv}
             className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 flex items-center"

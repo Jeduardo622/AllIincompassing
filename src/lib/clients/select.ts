@@ -1,15 +1,34 @@
-const CLIENT_BASE_COLUMNS = [
+const CLIENT_LIST_COLUMNS = [
   'id',
   'client_id',
   'full_name',
-  'first_name',
-  'middle_name',
-  'last_name',
   'email',
-  'gender',
   'date_of_birth',
   'service_preference',
   'availability_hours',
+  'one_to_one_units',
+  'supervision_units',
+  'parent_consult_units',
+  'assessment_units',
+  'auth_units',
+  'auth_start_date',
+  'auth_end_date',
+  'authorized_hours_per_month',
+  'therapist_id',
+  'therapist_assigned_at',
+  'created_at',
+  'created_by',
+  'updated_at',
+  'deleted_at',
+  'organization_id',
+  'status',
+] as const;
+
+const CLIENT_DETAIL_ONLY_COLUMNS = [
+  'first_name',
+  'middle_name',
+  'last_name',
+  'gender',
   'insurance_info',
   'phone',
   'cin_number',
@@ -28,25 +47,11 @@ const CLIENT_BASE_COLUMNS = [
   'parent2_phone',
   'parent2_email',
   'parent2_relationship',
-  'one_to_one_units',
-  'supervision_units',
-  'parent_consult_units',
-  'assessment_units',
-  'auth_units',
-  'auth_start_date',
-  'auth_end_date',
-  'authorized_hours_per_month',
-  'therapist_id',
-  'therapist_assigned_at',
-  'created_at',
-  'created_by',
-  'updated_at',
   'updated_by',
-  'deleted_at',
   'deleted_by',
-  'organization_id',
-  'status',
 ] as const;
+
+const CLIENT_DETAIL_COLUMNS = [...CLIENT_LIST_COLUMNS, ...CLIENT_DETAIL_ONLY_COLUMNS];
 
 type ClientVirtualRelation = 'one_supervision_units' | 'parent_consult_units';
 
@@ -65,10 +70,13 @@ const formatColumns = (columns: Iterable<string>): string => {
 
 export interface BuildClientSelectOptions {
   readonly include?: readonly string[];
+  readonly scope?: 'list' | 'detail';
 }
 
 export const buildClientSelect = (options: BuildClientSelectOptions = {}): string => {
-  const columns = new Set<string>(CLIENT_BASE_COLUMNS);
+  const columns = new Set<string>(
+    options.scope === 'detail' ? CLIENT_DETAIL_COLUMNS : CLIENT_LIST_COLUMNS
+  );
   const relations: string[] = [];
 
   for (const token of options.include ?? []) {
@@ -93,4 +101,10 @@ export const CLIENT_SELECT = buildClientSelect({
   include: ['one_supervision_units', 'parent_consult_units'],
 });
 
-export const CLIENT_COLUMNS = [...CLIENT_BASE_COLUMNS];
+export const CLIENT_LIST_SELECT = CLIENT_SELECT;
+export const CLIENT_DETAIL_SELECT = buildClientSelect({
+  scope: 'detail',
+  include: ['one_supervision_units', 'parent_consult_units'],
+});
+
+export const CLIENT_COLUMNS = [...CLIENT_DETAIL_COLUMNS];

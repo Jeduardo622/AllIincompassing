@@ -60,7 +60,7 @@ const SERVER_CONFIGS = {
     command: 'npx',
     args: ['-y', '@supabase/mcp-server-supabase@latest', '--project-ref=wnnjeqheqxxyrgsjmygy'],
     env: {
-      SUPABASE_ACCESS_TOKEN: process.env.SUPABASE_ACCESS_TOKEN || 'sbp_a6d1e749c37e86298e3a49ec7ab93f0b8eb9e653'
+      SUPABASE_ACCESS_TOKEN: process.env.SUPABASE_ACCESS_TOKEN
     },
     conflictingTools: ['list_branches', 'create_branch', 'delete_branch']
   }
@@ -152,6 +152,11 @@ function detectConflicts() {
  */
 function enableSupabaseOnly() {
   logger.info('Configuring MCP for Supabase only...');
+
+  if (!process.env.SUPABASE_ACCESS_TOKEN) {
+    logger.error('SUPABASE_ACCESS_TOKEN environment variable required');
+    return;
+  }
   
   const config = {
     mcpServers: {
@@ -195,6 +200,10 @@ function enableBothWithWorkaround() {
   
   if (!process.env.GITHUB_PERSONAL_ACCESS_TOKEN) {
     logger.error('GITHUB_PERSONAL_ACCESS_TOKEN environment variable required');
+    return;
+  }
+  if (!process.env.SUPABASE_ACCESS_TOKEN) {
+    logger.error('SUPABASE_ACCESS_TOKEN environment variable required');
     return;
   }
   

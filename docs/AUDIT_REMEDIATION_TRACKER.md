@@ -72,3 +72,13 @@ Track remediation work from the executive audit report to close production-readi
 - Remaining backlog plan:
   1. Continue table-by-table permissive-policy consolidation with role-safety validation.
   2. Continue conservative unused-index retirement in small reversible batches.
+
+## Documentation change log (2026-03-10)
+- Updated `docs/advisors-migration-summary.md` with the focused hardening pass details:
+  - Added applied migrations for policy consolidation and unused-index cleanup.
+  - Added before/after advisor counts and net delta.
+  - Added safety notes describing scope limits for policy/index changes.
+- Updated `docs/AUDIT_REMEDIATION_TRACKER.md` to reflect:
+  - Completion evidence for RLS hardening and CI guardrails.
+  - Current advisor backlog after FK and focused hardening batches.
+  - Remaining conservative backlog strategy (policy consolidation + unused index retirement).

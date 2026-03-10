@@ -60,6 +60,19 @@ afterEach(() => {
 });
 
 describe('SuperAdminImpersonation page', () => {
+  it('does not expose issuance controls to non-super-admin users', () => {
+    useAuthSpy.mockReturnValue({
+      user: { user_metadata: { organization_id: 'org-123' } },
+      profile: { role: 'admin' },
+    } as unknown as ReturnType<typeof authContext.useAuth>);
+
+    renderWithProviders(<SuperAdminImpersonation />);
+
+    expect(screen.getByText(/You must be a super admin to issue impersonation tokens./i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Issue impersonation token/i })).not.toBeInTheDocument();
+    expect(invokeSpy).not.toHaveBeenCalled();
+  });
+
   it('submits impersonation issuance with sanitized payload', async () => {
     invokeSpy.mockResolvedValue({
       data: { token: 'token-123', expiresAt: '2025-06-01T12:15:00.000Z', auditId: 'audit-1', expiresInMinutes: 30 },

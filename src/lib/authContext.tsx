@@ -58,6 +58,11 @@ const toRole = (value: unknown): Role | null => {
   }
 };
 
+const sanitizeSignupRoleMetadata = (value: unknown): 'client' | 'therapist' => {
+  const normalized = toRole(value);
+  return normalized === 'therapist' ? 'therapist' : 'client';
+};
+
 interface AuthContextType {
   user: User | null;
   profile: UserProfile | null;
@@ -118,9 +123,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const effectiveRole = useMemo<Role>(() => {
     if (profileRole) return profileRole;
-    if (metadataRole) return metadataRole;
     return 'client';
-  }, [profileRole, metadataRole]);
+  }, [profileRole]);
 
   const roleMismatch = useMemo(
     () => Boolean(profileRole && metadataRole && profileRole !== metadataRole),
@@ -391,6 +395,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(true);
 
       const normalizedMetadata = { ...metadata } as Record<string, unknown>;
+      normalizedMetadata.role = sanitizeSignupRoleMetadata(normalizedMetadata.role);
+      normalizedMetadata.signup_role = sanitizeSignupRoleMetadata(normalizedMetadata.signup_role);
       const explicitSnake = normalizeOrgId(normalizedMetadata.organization_id);
       const explicitCamel = normalizeOrgId(normalizedMetadata.organizationId);
       const defaultOrganizationId = (() => {
@@ -542,17 +548,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const resolveRoleForComparison = useCallback((): Role => {
-    const tokenRoles = Array.isArray((session as any)?.user?.user_metadata?.roles)
-      ? ((session as any).user.user_metadata.roles as string[])
-      : null;
-
-    if (tokenRoles?.includes('super_admin')) return 'super_admin';
-    if (tokenRoles?.includes('admin')) return 'admin';
-    if (tokenRoles?.includes('therapist')) return 'therapist';
-    if (tokenRoles?.includes('client')) return 'client';
-
     return effectiveRole;
-  }, [session, effectiveRole]);
+  }, [effectiveRole]);
 
   const roleHierarchy: Record<Role, number> = {
     super_admin: 4,

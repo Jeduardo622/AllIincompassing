@@ -133,7 +133,7 @@ export async function getUserContext(req: Request): Promise<UserContext | null> 
       return null;
     }
 
-    // Get user profile with role
+    // Get user profile shell (identity + active flag)
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('id, email, role, is_active')
@@ -144,12 +144,27 @@ export async function getUserContext(req: Request): Promise<UserContext | null> 
       return null;
     }
 
+    const { data: roleRows, error: roleRowsError } = await supabase
+      .from('user_roles')
+      .select('is_active, expires_at, roles(name)')
+      .eq('user_id', user.id);
+
+    if (roleRowsError || !Array.isArray(roleRows)) {
+      return null;
+    }
+
     return {
       user: {
         id: user.id,
         email: user.email ?? null,
       },
-      profile: { ...profile, email: profile.email ?? null },
+      profile: {
+        ...profile,
+        email: profile.email ?? null,
+        role: resolveRoleFromRoleRows(
+          roleRows as Array<{ is_active?: unknown; expires_at?: unknown; roles?: { name?: unknown } | null }>
+        ),
+      },
     };
   } catch (error) {
     console.error('Error getting user context:', error);
@@ -176,6 +191,62 @@ function hasRequiredRole(userRole: Role, allowedRoles: Role[]): boolean {
     const requiredLevel = roleHierarchy[role];
     return userLevel >= requiredLevel;
   });
+}
+
+const roleOrder: ReadonlyArray<Role> = ['super_admin', 'admin', 'therapist', 'client'];
+
+function parseRole(value: unknown): Role | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (normalized === 'client' || normalized === 'therapist' || normalized === 'admin' || normalized === 'super_admin') {
+    return normalized;
+  }
+
+  return null;
+}
+
+function roleRowIsActive(isActive: unknown, expiresAt: unknown): boolean {
+  if (isActive === false) {
+    return false;
+  }
+
+  if (typeof expiresAt !== 'string' || expiresAt.trim().length === 0) {
+    return true;
+  }
+
+  const parsed = new Date(expiresAt);
+  if (Number.isNaN(parsed.getTime())) {
+    return true;
+  }
+
+  return parsed.getTime() > Date.now();
+}
+
+function resolveRoleFromRoleRows(
+  rows: Array<{ is_active?: unknown; expires_at?: unknown; roles?: { name?: unknown } | null }>
+): Role {
+  const granted = new Set<Role>();
+
+  for (const row of rows) {
+    if (!roleRowIsActive(row.is_active, row.expires_at)) {
+      continue;
+    }
+    const parsed = parseRole(row.roles?.name);
+    if (parsed) {
+      granted.add(parsed);
+    }
+  }
+
+  for (const role of roleOrder) {
+    if (granted.has(role)) {
+      return role;
+    }
+  }
+
+  return 'client';
 }
 
 /**

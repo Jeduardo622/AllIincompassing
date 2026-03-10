@@ -285,6 +285,25 @@ SELECT auth.verify_role_system();
 3. **Permission testing**: Automated role-based access tests
 4. **Security scanning**: Regular vulnerability assessments
 
+### Auth Launch Gate (Required)
+
+The following checks are mandatory before launch:
+
+1. **No metadata-driven privileged role assignment**
+   - Signup metadata must never grant `admin` or `super_admin`.
+   - `auth.users` trigger paths must not derive privileged roles from `raw_user_meta_data`.
+2. **Canonical auth trigger set**
+   - Legacy triggers (`on_auth_user_created`, `trg_sync_admin_roles_from_metadata`, `assign_role_on_signup_trigger`) remain disabled.
+   - Role/profile sync behavior is enforced by the canonical, reviewed trigger pipeline.
+3. **Profiles policy hardening**
+   - `public.profiles` policies enforce strict owner/admin checks.
+   - No permissive profile insert/update policy (`WITH CHECK (true)`) remains.
+4. **Role trust boundary**
+   - Authorization decisions for privileged routes/functions resolve from trusted role mappings (`user_roles`/role RPCs), not mutable client metadata.
+5. **Regression suite green**
+   - Guard + impersonation + role tampering tests pass in CI.
+   - Cross-org access denial tests pass for auth-critical RPC/table paths.
+
 ### Build Pipeline Integration
 
 ```yaml

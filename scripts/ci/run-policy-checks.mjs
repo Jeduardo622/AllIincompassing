@@ -5,6 +5,7 @@ const checks = [
   ['node', ['scripts/ci/check-startup-canary.mjs']],
   ['node', ['scripts/ci/check-api-boundary.mjs']],
   ['node', ['scripts/ci/check-api-convergence.mjs']],
+  ['node', ['scripts/ci/check-auth-invariants.mjs']],
   ['node', ['scripts/ci/check-rls-policy-coverage.mjs']],
   ['node', ['scripts/ci/check-migration-governance.mjs']],
   ['node', ['scripts/ci/check-test-reliability.mjs']],

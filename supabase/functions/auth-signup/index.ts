@@ -12,10 +12,10 @@ interface SignupRequest {
   password: string;
   firstName?: string;
   lastName?: string;
-  role?: 'client' | 'therapist' | 'admin' | 'super_admin';
+  role?: 'client' | 'therapist' | 'admin' | 'super_admin' | 'guardian';
 }
 
-export default createPublicRoute(async (req: Request, userContext) => {
+export default createPublicRoute(async (req: Request) => {
   if (req.method !== 'POST') {
     return new Response(
       JSON.stringify({ error: 'Method not allowed' }),
@@ -34,7 +34,7 @@ export default createPublicRoute(async (req: Request, userContext) => {
 
     const ipGuard = rateLimit(`auth-signup:ip:${ip}`, 10, 60_000);
     if (!ipGuard.allowed) {
-      logApiAccess("POST", "/auth/signup", userContext, 429);
+      logApiAccess("POST", "/auth/signup", null, 429);
       return errorEnvelope({
         requestId,
         code: "rate_limited",
@@ -46,7 +46,7 @@ export default createPublicRoute(async (req: Request, userContext) => {
 
     const identityGuard = rateLimit(`auth-signup:identity:${emailKey}`, 4, 60_000);
     if (!identityGuard.allowed) {
-      logApiAccess("POST", "/auth/signup", userContext, 429);
+      logApiAccess("POST", "/auth/signup", null, 429);
       return errorEnvelope({
         requestId,
         code: "rate_limited",
@@ -90,19 +90,9 @@ export default createPublicRoute(async (req: Request, userContext) => {
       );
     }
 
-    // Default role is client, only admins can create admin/super_admin accounts
-    const assignedRole = role || 'client';
-    if (['admin', 'super_admin'].includes(assignedRole)) {
-      if (!userContext || !['admin', 'super_admin'].includes(userContext.profile.role)) {
-        return new Response(
-          JSON.stringify({ error: 'Insufficient permissions to create admin accounts' }),
-          {
-            status: 403,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
-      }
-    }
+    // Public signup must remain least-privilege and metadata-safe.
+    // Any untrusted role value downgrades to client.
+    const assignedRole = role === 'therapist' ? 'therapist' : 'client';
 
     // Create user account
     const { data, error } = await supabase.auth.signUp({
@@ -113,6 +103,7 @@ export default createPublicRoute(async (req: Request, userContext) => {
           first_name: firstName,
           last_name: lastName,
           role: assignedRole,
+          signup_role: assignedRole,
         },
       },
     });
@@ -129,7 +120,7 @@ export default createPublicRoute(async (req: Request, userContext) => {
     }
 
     // Log the signup
-    logApiAccess('POST', '/auth/signup', userContext, 201);
+    logApiAccess('POST', '/auth/signup', null, 201);
 
     return new Response(
       JSON.stringify({
@@ -147,7 +138,7 @@ export default createPublicRoute(async (req: Request, userContext) => {
     );
   } catch (error) {
     console.error('Signup error:', error);
-    logApiAccess('POST', '/auth/signup', userContext, 500);
+    logApiAccess('POST', '/auth/signup', null, 500);
     
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),

@@ -88,6 +88,14 @@ export async function resolveOrgAndRole(accessToken: string): Promise<{
     Authorization: `Bearer ${accessToken}`,
   };
 
+  const superAdminUrl = `${supabaseUrl}/rest/v1/rpc/current_user_is_super_admin`;
+  const superAdminResult = await fetchJson<boolean>(superAdminUrl, {
+    method: "POST",
+    headers,
+    body: "{}",
+  });
+  const isSuperAdmin = superAdminResult.ok && superAdminResult.data === true;
+
   const orgUrl = `${supabaseUrl}/rest/v1/rpc/current_user_organization_id`;
   const orgResult = await fetchJson<string>(orgUrl, {
     method: "POST",
@@ -101,7 +109,12 @@ export async function resolveOrgAndRole(accessToken: string): Promise<{
       : null;
 
   if (!organizationId) {
-    return { organizationId: null, isTherapist: false, isAdmin: false, isSuperAdmin: false };
+    return {
+      organizationId: null,
+      isTherapist: false,
+      isAdmin: false,
+      isSuperAdmin,
+    };
   }
 
   const roleUrl = `${supabaseUrl}/rest/v1/rpc/user_has_role_for_org`;
@@ -115,18 +128,11 @@ export async function resolveOrgAndRole(accessToken: string): Promise<{
     headers,
     body: JSON.stringify({ role_name: "admin", target_organization_id: organizationId }),
   });
-  const superAdminUrl = `${supabaseUrl}/rest/v1/rpc/current_user_is_super_admin`;
-  const superAdminResult = await fetchJson<boolean>(superAdminUrl, {
-    method: "POST",
-    headers,
-    body: "{}",
-  });
-
   return {
     organizationId,
     isTherapist: therapistResult.ok && therapistResult.data === true,
     isAdmin: adminResult.ok && adminResult.data === true,
-    isSuperAdmin: superAdminResult.ok && superAdminResult.data === true,
+    isSuperAdmin,
   };
 }
 

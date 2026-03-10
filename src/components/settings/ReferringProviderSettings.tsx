@@ -68,7 +68,7 @@ const CREDENTIALS = [
   'PT',
 ];
 
-export default function ReferringProviderSettings() {
+export function ReferringProviderSettings() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState<ReferringProvider | null>(null);
   const [formData, setFormData] = useState<ReferringProviderFormData>({

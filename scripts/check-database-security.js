@@ -9,7 +9,6 @@
  * Usage: node scripts/check-database-security.js <branch-id>
  */
 
-import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -71,86 +70,34 @@ function ensureReportsDir() {
  */
 async function runSecurityAdvisors(branchId) {
   return withRetry(async () => {
-    logger.info(`Running security advisors for branch: ${branchId}`);
+    logger.info(`Running SQL security advisors for branch: ${branchId}`);
 
-    const dbUrl = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
-    if (!dbUrl) {
-      throw new Error('SUPABASE_DB_URL or DATABASE_URL is required for inspect db role-stats');
-    }
+    const roleStatsQuery = `
+      SELECT
+        CASE
+          WHEN rolname IN ('postgres', 'supabase_admin', 'supabase_auth_admin', 'supabase_storage_admin')
+            THEN 'warning'
+          WHEN rolsuper THEN 'critical'
+          WHEN rolbypassrls THEN 'high'
+          ELSE 'warning'
+        END as level,
+        format('Role %I: superuser=%s bypassrls=%s canlogin=%s', rolname, rolsuper, rolbypassrls, rolcanlogin) as message,
+        'security' as category
+      FROM pg_roles
+      WHERE rolsuper OR rolbypassrls
+      ORDER BY rolsuper DESC, rolbypassrls DESC, rolname;
+    `;
 
-    const command = `supabase inspect db role-stats --db-url "${dbUrl}" --output json`;
-
-    const output = execSync(command, {
-      encoding: 'utf8',
-      stdio: 'pipe',
-      timeout: 60000 // 60 second timeout
-    });
-
-    logger.success('Security inspect completed');
-    return parseAdvisorOutput(output);
-  }, 3, 2000).catch(error => {
+    const advisors = await runPostgresQuery(roleStatsQuery);
+    logger.success('SQL security advisors completed');
+    return { advisors, errors: [] };
+  }, 2, 1000).catch(error => {
     logger.error(`Security advisors failed after all retries: ${error.message}`);
-    
-    // Return a default structure if advisors fail
     return {
       advisors: [],
       errors: [error.message]
     };
   });
-}
-
-/**
- * Parse advisor output
- */
-function parseAdvisorOutput(output) {
-  try {
-    // Try to parse as JSON first
-    if (output.trim().startsWith('{') || output.trim().startsWith('[')) {
-      return JSON.parse(output);
-    }
-    
-    // Parse text output
-    const lines = output.split('\n');
-    const advisors = [];
-    
-    let currentAdvisor = null;
-    for (const line of lines) {
-      if (line.includes('[ERROR]') || line.includes('[CRITICAL]')) {
-        if (currentAdvisor) {
-          advisors.push(currentAdvisor);
-        }
-        currentAdvisor = {
-          level: line.includes('[CRITICAL]') ? 'critical' : 'error',
-          message: line.replace(/^\[[^\]]+\]/, '').trim(),
-          category: 'security'
-        };
-      } else if (line.includes('[WARNING]')) {
-        if (currentAdvisor) {
-          advisors.push(currentAdvisor);
-        }
-        currentAdvisor = {
-          level: 'warning',
-          message: line.replace(/^\[[^\]]+\]/, '').trim(),
-          category: 'security'
-        };
-      } else if (currentAdvisor && line.trim()) {
-        currentAdvisor.details = (currentAdvisor.details || '') + line + '\n';
-      }
-    }
-    
-    if (currentAdvisor) {
-      advisors.push(currentAdvisor);
-    }
-    
-    return { advisors, errors: [] };
-    
-  } catch (error) {
-    logger.error(`Failed to parse advisor output: ${error.message}`);
-    return {
-      advisors: [],
-      errors: [error.message]
-    };
-  }
 }
 
 /**
@@ -160,25 +107,24 @@ async function checkRLSPolicies(branchId) {
   return withRetry(async () => {
     logger.info('Checking RLS policies...');
     
-    // Get all tables and check RLS status
+    // Get all public tables and check RLS from pg_class metadata.
     const tablesQuery = `
       SELECT 
-        schemaname,
-        tablename,
-        rowsecurity,
-        hasrls
-      FROM pg_tables t
-      LEFT JOIN pg_class c ON c.relname = t.tablename
-      LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE schemaname = 'public'
-      AND n.nspname = 'public';
+        n.nspname as schemaname,
+        c.relname as tablename,
+        c.relrowsecurity as rls_enabled
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relkind = 'r'
+      ORDER BY c.relname;
     `;
     
     const tables = await runPostgresQuery(tablesQuery);
     const rlsIssues = [];
     
     for (const table of tables) {
-      if (!table.hasrls) {
+      if (!table.rls_enabled) {
         rlsIssues.push({
           table: table.tablename,
           issue: 'RLS not enabled',
@@ -366,7 +312,7 @@ async function main() {
 }
 
 // Run the script if called directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   main();
 }
 

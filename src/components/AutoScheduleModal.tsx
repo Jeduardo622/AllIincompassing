@@ -13,7 +13,7 @@ import {
 } from '../lib/autoSchedule';
 import { getDistance } from 'geolib';
 import { logger } from '../lib/logger/logger';
-import { callApi } from '../lib/api';
+import { callEdgeFunctionHttp } from '../lib/api';
 import { showError } from '../lib/toast';
 
 const listOrFallback = (value: string[] | null | undefined, fallback: string): string => {
@@ -40,7 +40,7 @@ interface AutoScheduleModalProps {
   existingSessions: Session[];
 }
 
-export default function AutoScheduleModal({
+export function AutoScheduleModal({
   isOpen,
   onClose,
   onSchedule,
@@ -78,7 +78,7 @@ export default function AutoScheduleModal({
       const uniqueClientIds = Array.from(new Set(preview.slots.map((slot) => slot.client.id)));
       const programGoalPairs = await Promise.all(
         uniqueClientIds.map(async (clientId) => {
-          const programsResponse = await callApi(`/api/programs?client_id=${clientId}`);
+          const programsResponse = await callEdgeFunctionHttp(`programs?client_id=${clientId}`);
           if (!programsResponse.ok) {
             throw new Error(`Failed to load programs for client ${clientId}`);
           }
@@ -87,7 +87,7 @@ export default function AutoScheduleModal({
           if (!program) {
             throw new Error(`No program found for client ${clientId}`);
           }
-          const goalsResponse = await callApi(`/api/goals?program_id=${program.id}`);
+          const goalsResponse = await callEdgeFunctionHttp(`goals?program_id=${program.id}`);
           if (!goalsResponse.ok) {
             throw new Error(`Failed to load goals for client ${clientId}`);
           }

@@ -154,27 +154,26 @@ export const useSessionMetrics = (
  * Reduces 5+ separate queries to 1 optimized RPC call
  */
 export const fetchDashboardData = async () => {
-  // Proxy through server to enforce SECURITY INVOKER policy and org checks
-  const headers = new Headers({ 'Accept': 'application/json' });
-  try {
-    const result: any = await (supabase as any)?.auth?.getSession?.();
-    const token = result?.data?.session?.access_token;
-    if (typeof token === 'string' && token.length > 0) {
-      headers.set('Authorization', `Bearer ${token}`);
-    }
-  } catch {
-    // In tests/SSR, session lookup may fail; proceed without auth header
+  const { data, error } = await supabase.functions.invoke('get-dashboard-data', {
+    body: {},
+  });
+
+  if (error) {
+    const invokeError = error as Error & { context?: { status?: number }; status?: number };
+    const enriched = new Error(invokeError.message || 'Failed to load dashboard data') as Error & {
+      status?: number;
+    };
+    enriched.status = invokeError.status ?? invokeError.context?.status;
+    throw enriched;
   }
-  const response = await fetch('/api/dashboard', { method: 'GET', headers });
-  if (!response.ok) {
-    const status = response.status;
-    const payload = await response.json().catch(() => ({}));
-    const message = typeof payload?.error === 'string' ? payload.error : 'Failed to load dashboard data';
-    const error = new Error(message) as Error & { status?: number };
-    error.status = status;
-    throw error;
+
+  const envelope = data as { success?: boolean; data?: unknown; error?: string } | null;
+  if (!envelope || envelope.success !== true) {
+    const message = envelope?.error ?? 'Failed to load dashboard data';
+    throw new Error(message);
   }
-  return response.json();
+
+  return envelope.data;
 };
 
 export const useDashboardData = () => {

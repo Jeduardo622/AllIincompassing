@@ -1,7 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
-import { renderWithProviders, screen } from "../../test/utils";
-import { act } from "@testing-library/react";
-import Schedule from "../Schedule";
+import { describe, it, expect } from "vitest";
+import { renderWithProviders, screen, waitFor } from "../../test/utils";
+import { Schedule } from "../Schedule";
 
 // Integration test for event-based scheduling
 
@@ -36,7 +35,6 @@ describe("Schedule page event listener", () => {
   });
 
   it("opens modal based on pendingSchedule in localStorage", async () => {
-    vi.useFakeTimers();
     const detail = {
       therapist_id: "t1",
       client_id: "c1",
@@ -47,16 +45,13 @@ describe("Schedule page event listener", () => {
     };
     localStorage.setItem("pendingSchedule", JSON.stringify(detail));
 
-    try {
-      renderWithProviders(<Schedule />);
-      await screen.findByRole("heading", { name: /Schedule/i });
-      await act(async () => {
-        await vi.runAllTimersAsync();
-      });
+    renderWithProviders(<Schedule />);
+    await screen.findByRole("heading", { name: /Schedule/i });
+
+    await waitFor(async () => {
       expect(await screen.findByText(/New Session/i)).toBeInTheDocument();
       expect(localStorage.getItem("pendingSchedule")).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
+    });
   });
 });
+

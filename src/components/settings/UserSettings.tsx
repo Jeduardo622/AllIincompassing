@@ -15,7 +15,7 @@ interface UserSettingsForm {
   title: string;
 }
 
-export default function UserSettings() {
+export function UserSettings() {
   const { user } = useAuth();
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 

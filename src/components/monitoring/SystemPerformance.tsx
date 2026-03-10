@@ -2,11 +2,11 @@ import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { Cpu, MemoryStick as Memory, HardDrive, Activity, Network, Scale, ServerCrash } from 'lucide-react';
-import MetricCard from './MetricCard';
-import TimeSeriesChart from './TimeSeriesChart';
-import AlertsList from './AlertsList';
+import { MetricCard } from './MetricCard';
+import { TimeSeriesChart } from './TimeSeriesChart';
+import { AlertsList } from './AlertsList';
 
-export default function SystemPerformance() {
+export function SystemPerformance() {
   const queryClient = useQueryClient();
 
   // Fetch system performance metrics

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardList, Loader2, Plus, Trash2, UploadCloud } from "lucide-react";
 import type { Client, Goal, Program, ProgramNote } from "../../types";
-import { callApi } from "../../lib/api";
+import { callApi, callEdgeFunctionHttp } from "../../lib/api";
 import { showError, showInfo, showSuccess } from "../../lib/toast";
 import { useActiveOrganizationId } from "../../lib/organization";
 import { generateProgramGoalDraft, type ProgramGoalDraftResponse } from "../../lib/ai";
@@ -13,6 +13,24 @@ import {
   type AssessmentTemplateType,
 } from "../../lib/assessment-documents";
 import { supabase } from "../../lib/supabase";
+import {
+  EMPTY_ASSESSMENT_DOCUMENTS,
+  EMPTY_ASSESSMENT_DRAFTS,
+  EMPTY_CHECKLIST_ITEMS,
+  ENABLE_CHECKLIST_MAPPING_UI,
+  MIN_CHILD_GOALS,
+  MIN_PARENT_GOALS,
+  parseApiErrorMessage,
+  parseJson,
+  parseObjectiveDataPointsInput,
+  statusToneByAssessment,
+  TEMPLATE_LABELS,
+  type AssessmentChecklistItem,
+  type AssessmentDraftGoal,
+  type AssessmentDraftProgram,
+  type AssessmentDraftResponse,
+  type AssessmentPlanPdfResponse,
+} from "./ProgramsGoalsTab.helpers";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -20,118 +38,7 @@ interface ProgramsGoalsTabProps {
   client: Client;
 }
 
-interface AssessmentChecklistItem {
-  id: string;
-  section_key: string;
-  label: string;
-  placeholder_key: string;
-  required: boolean;
-  mode: "AUTO" | "ASSISTED" | "MANUAL";
-  status: "not_started" | "drafted" | "verified" | "approved";
-  review_notes: string | null;
-  value_text: string | null;
-}
-
-interface AssessmentDraftProgram {
-  id: string;
-  name: string;
-  description: string | null;
-  accept_state: "pending" | "accepted" | "rejected" | "edited";
-  review_notes: string | null;
-}
-
-interface AssessmentDraftGoal {
-  id: string;
-  title: string;
-  description: string;
-  original_text: string;
-  goal_type: "child" | "parent";
-  measurement_type?: string | null;
-  baseline_data?: string | null;
-  target_criteria?: string | null;
-  mastery_criteria?: string | null;
-  maintenance_criteria?: string | null;
-  generalization_criteria?: string | null;
-  objective_data_points?: Array<Record<string, unknown>> | null;
-  accept_state: "pending" | "accepted" | "rejected" | "edited";
-  review_notes: string | null;
-}
-
-interface AssessmentDraftResponse {
-  programs: AssessmentDraftProgram[];
-  goals: AssessmentDraftGoal[];
-}
-
-interface AssessmentPlanPdfResponse {
-  fill_mode: "acroform" | "overlay";
-  signed_url: string;
-  object_path: string;
-}
-
-const EMPTY_ASSESSMENT_DOCUMENTS: AssessmentDocumentRecord[] = [];
-const EMPTY_CHECKLIST_ITEMS: AssessmentChecklistItem[] = [];
-const EMPTY_ASSESSMENT_DRAFTS: AssessmentDraftResponse = { programs: [], goals: [] };
-const ENABLE_CHECKLIST_MAPPING_UI = false;
-
-const TEMPLATE_LABELS: Record<AssessmentTemplateType, string> = {
-  caloptima_fba: "CalOptima FBA",
-  iehp_fba: "IEHP FBA",
-};
-const MIN_CHILD_GOALS = 20;
-const MIN_PARENT_GOALS = 6;
-
-const parseJson = async <T,>(response: Response): Promise<T> => {
-  const text = await response.text();
-  if (!text) {
-    return [] as unknown as T;
-  }
-  return JSON.parse(text) as T;
-};
-
-const parseApiErrorMessage = async (response: Response, fallback: string): Promise<string> => {
-  const text = await response.text();
-  if (!text) {
-    return fallback;
-  }
-  try {
-    const parsed = JSON.parse(text) as { error?: unknown };
-    if (typeof parsed.error === "string" && parsed.error.trim().length > 0) {
-      return parsed.error;
-    }
-    return fallback;
-  } catch {
-    return fallback;
-  }
-};
-
-const parseObjectiveDataPointsInput = (value: string): Array<Record<string, unknown>> => {
-  if (!value.trim()) {
-    return [];
-  }
-  const parsed = JSON.parse(value);
-  if (!Array.isArray(parsed)) {
-    throw new Error("Objective data points must be a JSON array.");
-  }
-  return parsed.filter((item): item is Record<string, unknown> => !!item && typeof item === "object");
-};
-
-const statusToneByAssessment: Record<
-  AssessmentDocumentRecord["status"],
-  { label: string; className: string }
-> = {
-  uploaded: { label: "uploaded", className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200" },
-  extracting: { label: "extracting", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200" },
-  extracted: { label: "extracted", className: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-200" },
-  drafted: { label: "ai proposal ready", className: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200" },
-  approved: { label: "approved", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200" },
-  rejected: { label: "rejected", className: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200" },
-  extraction_failed: {
-    label: "extraction failed",
-    className: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200",
-  },
-};
-
-export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
+export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   const { session } = useAuth();
@@ -204,7 +111,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!organizationId) {
         throw new Error("Organization context is required to load programs.");
       }
-      const response = await callApi(`/api/programs?client_id=${encodeURIComponent(client.id)}`);
+      const response = await callEdgeFunctionHttp(`programs?client_id=${encodeURIComponent(client.id)}`);
       if (!response.ok) {
         throw new Error("Failed to load programs");
       }
@@ -222,7 +129,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
     queryFn: async () => {
       if (!resolvedProgramId) return [];
-      const response = await callApi(`/api/goals?program_id=${encodeURIComponent(resolvedProgramId)}`);
+      const response = await callEdgeFunctionHttp(`goals?program_id=${encodeURIComponent(resolvedProgramId)}`);
       if (!response.ok) {
         return [];
       }
@@ -235,7 +142,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     queryKey: ["program-notes", resolvedProgramId, organizationId ?? "MISSING_ORG"],
     queryFn: async () => {
       if (!resolvedProgramId) return [];
-      const response = await callApi(`/api/program-notes?program_id=${encodeURIComponent(resolvedProgramId)}`);
+      const response = await callEdgeFunctionHttp(`program-notes?program_id=${encodeURIComponent(resolvedProgramId)}`);
       if (!response.ok) {
         throw new Error("Failed to load program notes");
       }
@@ -744,7 +651,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
 
   const createProgram = useMutation({
     mutationFn: async () => {
-      const response = await callApi("/api/programs", {
+      const response = await callEdgeFunctionHttp("programs", {
         method: "POST",
         body: JSON.stringify({
           client_id: client.id,
@@ -775,7 +682,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         throw new Error("Select a program first");
       }
       const objectiveDataPoints = parseObjectiveDataPointsInput(goalObjectiveDataPoints);
-      const response = await callApi("/api/goals", {
+      const response = await callEdgeFunctionHttp("goals", {
         method: "POST",
         body: JSON.stringify({
           client_id: client.id,
@@ -821,7 +728,7 @@ export default function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!resolvedProgramId) {
         throw new Error("Select a program first");
       }
-      const response = await callApi("/api/program-notes", {
+      const response = await callEdgeFunctionHttp("program-notes", {
         method: "POST",
         body: JSON.stringify({
           program_id: resolvedProgramId,

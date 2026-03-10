@@ -39,7 +39,7 @@ interface TimeSeriesChartProps {
   height?: number;
 }
 
-export default function TimeSeriesChart({ title, data, height = 300 }: TimeSeriesChartProps) {
+export function TimeSeriesChart({ title, data, height = 300 }: TimeSeriesChartProps) {
   const options = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,

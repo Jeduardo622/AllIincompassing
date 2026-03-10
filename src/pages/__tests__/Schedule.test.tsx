@@ -64,7 +64,7 @@ vi.mock("../../lib/optimizedQueries", () => ({
   }),
 }));
 
-import Schedule from "../Schedule";
+import { Schedule } from "../Schedule";
 
 const defaultRpcImplementation = vi.mocked(supabase.rpc as any).getMockImplementation();
 
@@ -139,3 +139,4 @@ describe("Schedule", () => {
   });
 
 });
+

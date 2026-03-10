@@ -1,4 +1,5 @@
-const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
+import { resolveAllowedOrigin } from "../_shared/cors.ts";
+const corsHeaders = { "Access-Control-Allow-Origin": resolveAllowedOrigin(), "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 import { createRequestClient } from "../_shared/database.ts";
 import { createProtectedRoute, RouteOptions } from "../_shared/auth-middleware.ts";
 

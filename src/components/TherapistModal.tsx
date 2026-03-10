@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { X } from 'lucide-react';
 import type { Therapist } from '../types';
-import AvailabilityEditor from './AvailabilityEditor';
+import { AvailabilityEditor } from './AvailabilityEditor';
 import {
   THERAPIST_SERVICE_TYPE_OPTIONS,
   THERAPIST_SPECIALTY_OPTIONS,

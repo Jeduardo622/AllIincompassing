@@ -1,4 +1,5 @@
 import { OpenAI } from "npm:openai@5.5.1";
+import { resolveAllowedOrigin } from "../_shared/cors.ts";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -6,7 +7,7 @@ const openai = new OpenAI({
 });
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };

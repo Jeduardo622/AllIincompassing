@@ -55,7 +55,7 @@ interface ClientOption {
   displayName: string;
 }
 
-export default function AdminSettings() {
+export function AdminSettings() {
   const ALL_ORGANIZATIONS_VALUE = 'ALL';
 
   const [isModalOpen, setIsModalOpen] = useState(false);

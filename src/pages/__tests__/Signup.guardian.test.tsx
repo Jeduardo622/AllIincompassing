@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
-import Signup from '../Signup';
+import { Signup } from '../Signup';
 import { useAuth } from '../../lib/authContext';
 import { showError, showSuccess } from '../../lib/toast';
 

@@ -1,0 +1,15 @@
+{
+  "slo": {
+    "suitePassRatePctTarget": 99.5,
+    "rollingWindowDays": 14
+  },
+  "maxFlakyFailureRatePct": 0.5,
+  "maxActiveQuarantinedTests": 5,
+  "defaultTimeoutMs": {
+    "unit": 10000,
+    "integration": 30000,
+    "e2e": 90000
+  },
+  "quarantineTtlDays": 14
+}
+

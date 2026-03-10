@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import App from '../../App';
+import { App } from '../../App';
 
 let authRole: 'client' | 'therapist' | 'admin' | 'super_admin' = 'client';
 
@@ -34,15 +34,15 @@ const MockLayout: React.FC = () => (
 );
 
 vi.mock('../../components/Layout', () => ({
-  default: MockLayout,
+  Layout: MockLayout,
 }));
 
 vi.mock('../../pages/Dashboard', () => ({
-  default: () => <div>DashboardPage</div>,
+  Dashboard: () => <div>DashboardPage</div>,
 }));
 
 vi.mock('../../pages/FamilyDashboard', () => ({
-  default: () => <div>FamilyDashboardPage</div>,
+  FamilyDashboard: () => <div>FamilyDashboardPage</div>,
 }));
 
 const renderApp = () => {

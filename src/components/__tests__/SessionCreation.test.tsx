@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../test/setup';
-import SessionModal from '../SessionModal';
+import { SessionModal } from '../SessionModal';
 
 // Mock data for testing session creation
 const mockTherapist = {

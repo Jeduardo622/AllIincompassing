@@ -3,15 +3,15 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { User, FileText, Calendar, AlertCircle, Clock, Award, MapPin } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import ProfileTab from '../components/TherapistDetails/ProfileTab';
-import CertificationsTab from '../components/TherapistDetails/CertificationsTab';
-import ScheduleTab from '../components/TherapistDetails/ScheduleTab';
-import ClientsTab from '../components/TherapistDetails/ClientsTab';
+import { ProfileTab } from '../components/TherapistDetails/ProfileTab';
+import { CertificationsTab } from '../components/TherapistDetails/CertificationsTab';
+import { ScheduleTab } from '../components/TherapistDetails/ScheduleTab';
+import { ClientsTab } from '../components/TherapistDetails/ClientsTab';
 import { useAuth } from '../lib/authContext';
 
 type TabType = 'profile' | 'certifications' | 'schedule' | 'clients';
 
-export default function TherapistDetails() {
+export function TherapistDetails() {
   const { therapistId } = useParams<{ therapistId: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('profile');

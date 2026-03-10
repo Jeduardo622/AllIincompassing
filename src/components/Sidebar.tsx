@@ -8,11 +8,11 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/theme';
-import ChatBot from './ChatBot';
+import { ChatBot } from './ChatBot';
 // Theme is toggled directly via context; no hidden proxy button
 import { logger } from '../lib/logger/logger';
 
-export default function Sidebar() {
+export function Sidebar() {
   const { signOut, hasRole, hasAnyRole, user, profile } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const [isSigningOut, setIsSigningOut] = useState(false);

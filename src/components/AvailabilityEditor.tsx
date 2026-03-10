@@ -45,7 +45,7 @@ const DEFAULT_AVAILABILITY = {
   saturday: { start: null, end: null, start2: null, end2: null },
 };
 
-export default function AvailabilityEditor({ value = DEFAULT_AVAILABILITY, onChange }: AvailabilityEditorProps) {
+export function AvailabilityEditor({ value = DEFAULT_AVAILABILITY, onChange }: AvailabilityEditorProps) {
   // Ensure value has all required days with proper structure
   const normalizedValue = React.useMemo(() => {
     const normalized = { ...DEFAULT_AVAILABILITY };

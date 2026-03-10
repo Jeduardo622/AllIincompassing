@@ -2,9 +2,10 @@ import { createClient } from "npm:@supabase/supabase-js@2.50.0";
 import { OpenAI } from "npm:openai@5.5.1";
 import { z } from "npm:zod@3.23.8";
 import { Buffer } from "node:buffer";
+import { resolveAllowedOrigin } from "../_shared/cors.ts";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers":
     "Content-Type, Authorization, apikey, x-client-info, x-request-id, x-correlation-id",

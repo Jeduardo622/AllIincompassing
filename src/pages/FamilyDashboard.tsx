@@ -60,7 +60,7 @@ const formatTimeRange = (start: string, end: string) => {
   }
 };
 
-export default function FamilyDashboard() {
+export function FamilyDashboard() {
   const { profile, user } = useAuth();
   const guardianClientsQuery = useGuardianClients();
   const contactMetadataQuery = useGuardianContactMetadata();

@@ -36,7 +36,7 @@ AllIncompassing delivers therapist scheduling, billing, and operational telemetr
 
 - **Node.js 18+** and npm or another package manager supported by the repo (pnpm, yarn).
 - **Supabase CLI** (installed globally or via `npx`) with access to the project reference `wnnjeqheqxxyrgsjmygy`.
-- **Environment variables** available in your shell: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_ACCESS_TOKEN`.
+- **Environment variables** available in your shell: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ACCESS_TOKEN`, and `DATABASE_URL`/`SUPABASE_DB_URL` for DB health scripts.
 - **Vite runtime env file** – copy `.env.example` to `.env.codex` (preferred) or `.env`, then replace every `****` placeholder. The runtime loader in `src/server/env.ts` reads `.env.codex` by default, so keeping that filename avoids additional configuration. Provide `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_SUPABASE_EDGE_URL` values that mirror the non-prefixed Supabase settings.
 
 > ℹ️ Run `./scripts/setup.sh` to validate Supabase credentials, generate database types, and create the `.env` file automatically. The script also configures `~/.supabase/config.toml` for non-interactive CLI sessions.
@@ -68,8 +68,15 @@ AllIncompassing delivers therapist scheduling, billing, and operational telemetr
 | Cypress end-to-end suite | `npm run test:e2e` or `npm run test:e2e:open` |
 | Route integrity tests | `npm run test:routes` or `npm run test:routes:open` |
 
-> CI fails if `.only`/`.skip` usages slip outside `tests/utils/testControls.ts` or if line coverage drops below 85% in
+> CI fails if `.only`/`.skip` usages slip outside `tests/utils/testControls.ts` or if line coverage drops below 90% in
 > `coverage/coverage-summary.json`. Run the focus guard and coverage verification commands locally before opening a PR.
+
+Long-term policy guardrails are now enforced through `npm run ci:check-focused`:
+- Authoritative API boundary check (Supabase Edge-first policy).
+- API convergence tracker consistency check for legacy Netlify compatibility shims.
+- Migration governance and duplicate detection for new migration files.
+- Test reliability/quarantine policy budget and TTL checks.
+- Architecture pack freshness and required-reference check.
 
 ### CI pipeline stages
 
@@ -93,6 +100,7 @@ If the smoke test fails, re-run it locally with the preview URL shown in the wor
 - Create a new database branch for experimentation: `npm run db:branch:create`
 - Remove stale preview branches: `npm run db:branch:cleanup`
 - Generate diff-based migrations with the Supabase CLI (`supabase migration new` or `supabase db diff --use-migrations`) and commit SQL under `supabase/migrations/`.
+- Prefer `npm run migration:new -- <name>` to create migration files with required governance headers.
 - After applying migrations, regenerate types with `npm run typegen`.
 - Review database security, performance, and health dashboards:
   - `npm run db:check:security`
@@ -100,6 +108,12 @@ If the smoke test fails, re-run it locally with the preview URL shown in the wor
   - `npm run db:health:report` (markdown summary)
   - `npm run db:health:production` (production-grade diagnostics)
   - `npm run pipeline:health` (aggregates the security, performance, and health report checks)
+  - Optional env knobs:
+    - `PRODUCTION_URL` (defaults to `https://velvety-cendol-dae4d6.netlify.app`)
+    - `PRODUCTION_HEALTH_PATHS` (comma-separated route list; default `/,/start,/login,/dashboard`)
+    - `RUN_SCHEMA_DIFF=true` only when you explicitly want `verify-auth` to execute `supabase db diff --linked`
+    - `CORS_ALLOWED_ORIGINS` (comma-separated allowlist for edge-function CORS; first entry is returned as `Access-Control-Allow-Origin`)
+    - `APP_ENV` (`development` enables localhost CORS fallback; production defaults to the deployed Netlify origin)
 
 ### Edge function & API workflows
 
@@ -116,6 +130,14 @@ If the smoke test fails, re-run it locally with the preview URL shown in the wor
 - [docs/AUTH_ROLES.md](docs/AUTH_ROLES.md) – RBAC hierarchy, permissions, and RLS policies across profiles, sessions, and billing tables.
 - [docs/DATABASE_PIPELINE.md](docs/DATABASE_PIPELINE.md) – Step-by-step ingestion pipeline for Supabase migrations, seeds, and CI validation.
 - [docs/MCP_ROUTING_TROUBLESHOOTING.md](docs/MCP_ROUTING_TROUBLESHOOTING.md) – Troubleshooting guide for multi-channel routing and API backplanes.
+- [docs/long-term-platform-simplification.md](docs/long-term-platform-simplification.md) – Long-term (1-2 quarter) platform simplification scope and implementation status.
+- [docs/api/API_AUTHORITY_CONTRACT.md](docs/api/API_AUTHORITY_CONTRACT.md) – Canonical runtime boundary policy (Supabase Edge-first).
+- [docs/api/ENDPOINT_OWNERSHIP_MATRIX.md](docs/api/ENDPOINT_OWNERSHIP_MATRIX.md) – Endpoint-to-runtime ownership mapping and migration wave tracking.
+- [docs/api/endpoint-convergence-status.json](docs/api/endpoint-convergence-status.json) – Machine-readable Q2 convergence status for legacy Netlify endpoint shims.
+- [docs/api/runtime-exceptions.json](docs/api/runtime-exceptions.json) – Temporary non-authoritative runtime exceptions with required owner and expiry.
+- [docs/migrations/MIGRATION_GOVERNANCE.md](docs/migrations/MIGRATION_GOVERNANCE.md) – Migration metadata standard and forward-fix governance.
+- [docs/architecture/NEW_ENGINEER_PACK.md](docs/architecture/NEW_ENGINEER_PACK.md) – New engineer onboarding flow, system diagram, and deployment map.
+- [docs/architecture/pack-metadata.json](docs/architecture/pack-metadata.json) – Architecture pack owner, freshness threshold, and required references for CI validation.
 - [docs/SEEDING.md](docs/SEEDING.md) – Controlled data seeding flows for Supabase environments.
 - [docs/SESSION_HOLD_CONTRACT.md](docs/SESSION_HOLD_CONTRACT.md) & [docs/SESSION_HOLD_CONFLICT_CODES.md](docs/SESSION_HOLD_CONFLICT_CODES.md) – Session hold payload contracts, retry semantics, and conflict reason catalogues.
 - [README_SCHEDULING_TESTS.md](README_SCHEDULING_TESTS.md) – Detailed coverage of scheduling UI and server tests.

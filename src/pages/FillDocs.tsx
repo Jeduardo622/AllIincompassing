@@ -46,7 +46,7 @@ function downloadBase64File(params: { base64: string; filename: string; contentT
   }
 }
 
-export default function FillDocs() {
+export function FillDocs() {
   const [template, setTemplate] = useState<TemplateKey>('ER');
   const [rows, setRows] = useState<FieldRow[]>(() => SUGGESTED_FIELDS.map((item) => ({ key: item.key, value: '' })));
   const [isSubmitting, setIsSubmitting] = useState(false);

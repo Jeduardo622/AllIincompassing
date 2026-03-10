@@ -31,7 +31,7 @@ interface Contract {
   }[];
 }
 
-export default function ServiceContractsTab({ client }: ServiceContractsTabProps) {
+export function ServiceContractsTab({ client }: ServiceContractsTabProps) {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [expandedContract, setExpandedContract] = useState<string | null>(null);
   const [selectedUploadName, setSelectedUploadName] = useState<string | null>(null);

@@ -49,7 +49,7 @@ const ACCEPTED_FILE_TYPES = [
   'image/png'
 ] as const;
 
-export default function PreAuthTab({ client }: PreAuthTabProps) {
+export function PreAuthTab({ client }: PreAuthTabProps) {
   const { user } = useAuth();
   const organizationId = useActiveOrganizationId();
   const queryClient = useQueryClient();

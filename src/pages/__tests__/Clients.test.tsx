@@ -5,7 +5,7 @@ import {
   userEvent,
   waitFor,
 } from '../../test/utils';
-import Clients from '../Clients';
+import { Clients } from '../Clients';
 const invalidateQueries = vi.fn();
 const useQueryMock = vi.fn();
 const mutationHandlers: Array<{ options: any; mutateAsync: ReturnType<typeof vi.fn> }> = [];

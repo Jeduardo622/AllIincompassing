@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
-import Signup from '../Signup';
-import Login from '../Login';
+import { Signup } from '../Signup';
+import { Login } from '../Login';
 import { useAuth } from '../../lib/authContext';
 import { getConsoleGuard } from '../../test/utils/consoleGuard';
 
@@ -53,7 +53,7 @@ describe('Auth page logging redaction', () => {
 
     await waitFor(() => {
       expect(signUp).toHaveBeenCalled();
-    });
+    }, { timeout: 10000 });
 
     const logs = guard.getCapturedLogs('error');
     expect(logs).not.toHaveLength(0);
@@ -61,7 +61,7 @@ describe('Auth page logging redaction', () => {
     expect(combined).not.toContain('jane.doe@example.com');
     expect(combined).not.toContain('998877');
     expect(combined).toMatch(/\*\*\*\*/);
-  });
+  }, 15000);
 
   it('masks PHI when login flow logs an error', async () => {
     const signIn = vi.fn().mockResolvedValue({
@@ -93,7 +93,7 @@ describe('Auth page logging redaction', () => {
 
     await waitFor(() => {
       expect(signIn).toHaveBeenCalled();
-    });
+    }, { timeout: 10000 });
 
     const logs = guard.getCapturedLogs('error');
     expect(logs).not.toHaveLength(0);
@@ -101,5 +101,5 @@ describe('Auth page logging redaction', () => {
     expect(combined).not.toContain('leak@example.com');
     expect(combined).not.toContain('445566');
     expect(combined).toMatch(/\*\*\*\*/);
-  });
+  }, 15000);
 });

@@ -1,0 +1,26 @@
+{
+  "entries": [
+    {
+      "id": "QTN-2026-03-09-scheduling-flow-timeout",
+      "testPath": "src/components/__tests__/SchedulingFlow.test.tsx",
+      "reason": "Historically timing-sensitive integration assertions in scheduling flow; tracked to prevent silent retries from masking regressions.",
+      "issue": "ENG-4521",
+      "owner": "QA / Scheduling",
+      "createdAt": "2026-03-09",
+      "expiresAt": "2026-03-23",
+      "exitCriteria": "Stabilize synchronization points and observe 10 consecutive CI runs without retry/timeout symptom.",
+      "status": "active"
+    },
+    {
+      "id": "QTN-2026-03-09-client-onboarding-timeout",
+      "testPath": "src/components/__tests__/ClientOnboarding.test.tsx",
+      "reason": "Prior flaky timeout behavior during step-progression validation under CI load.",
+      "issue": "ENG-4522",
+      "owner": "QA / Onboarding",
+      "createdAt": "2026-03-09",
+      "expiresAt": "2026-03-23",
+      "exitCriteria": "Convert remaining timing-coupled checks to deterministic state assertions and pass 10 straight CI runs.",
+      "status": "active"
+    }
+  ]
+}

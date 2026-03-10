@@ -21,7 +21,7 @@ const KEY_LIST = [
   ['SUPABASE_EDGE_URL', 'supabaseEdgeUrl'],
 ] as const;
 
-export default function BootDiagnostics({ enabled, children }: BootDiagnosticsProps) {
+export function BootDiagnostics({ enabled, children }: BootDiagnosticsProps) {
   const [open, setOpen] = useState(false);
   const [firstPaint, setFirstPaint] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);

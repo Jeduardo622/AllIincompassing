@@ -26,8 +26,8 @@ import {
 import { supabase } from '../lib/supabase';
 import { fetchClients } from '../lib/clients/fetchers';
 import type { Client } from '../types';
-import ClientModal from '../components/ClientModal';
-import CSVImport from '../components/CSVImport';
+import { ClientModal } from '../components/ClientModal';
+import { CSVImport } from '../components/CSVImport';
 import { prepareClientPayload, updateClientRecord } from '../lib/clientPayload';
 import { showSuccess, showError } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
@@ -713,4 +713,4 @@ const Clients = () => {
   );
 };
 
-export default Clients;
+export { Clients };

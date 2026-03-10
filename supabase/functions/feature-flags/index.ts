@@ -1,3 +1,4 @@
+import { resolveAllowedOrigin } from "../_shared/cors.ts";
 // deno-lint-ignore-file no-import-prefix
 import { z } from "npm:zod@3.23.8";
 import { organizationMetadataSchema, type OrganizationMetadata } from "./schema.ts";
@@ -53,7 +54,7 @@ const DEFAULT_ORGANIZATION_ID = ((): string | null => {
 })();
 
 const BASE_CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Client-Info, apikey",
   "Access-Control-Max-Age": "86400",

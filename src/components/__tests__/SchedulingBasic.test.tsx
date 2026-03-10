@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { renderWithProviders, screen, waitFor } from '../../test/utils';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../test/setup';
-import Schedule from '../../pages/Schedule';
+import { Schedule } from '../../pages/Schedule';
 
 // Test data that matches the expected API response format
 const mockScheduleData = {

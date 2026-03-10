@@ -6,6 +6,7 @@ import { resolveOrgId } from "../_shared/org.ts";
 import { getLogger } from "../_shared/logging.ts";
 import { errorEnvelope, getRequestId, IsoDateSchema } from "../lib/http/error.ts";
 import { persistChatMessage } from "./persistence.ts";
+import { resolveAllowedOrigin } from "../_shared/cors.ts";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -13,7 +14,7 @@ const openai = new OpenAI({
 });
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };

@@ -1,41 +1,38 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-const fetchMock = vi.fn();
-const originalFetch = globalThis.fetch;
+const invokeMock = vi.fn();
 
 vi.mock("../supabase", () => ({
   supabase: {
-    auth: {
-      getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: "token" } } }),
+    functions: {
+      invoke: invokeMock,
     },
   },
 }));
 
-describe("useDashboardData proxy", () => {
-  beforeEach(async () => {
-    fetchMock.mockReset();
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
-  });
-
+describe("useDashboardData edge invocation", () => {
   afterEach(() => {
-    globalThis.fetch = originalFetch;
+    invokeMock.mockReset();
     vi.restoreAllMocks();
   });
 
-  it("returns data when /api/dashboard is 200", async () => {
+  it("returns dashboard payload when edge invoke succeeds", async () => {
     const payload = { ok: true };
-    fetchMock.mockResolvedValue(new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } }));
+    invokeMock.mockResolvedValue({ data: { success: true, data: payload }, error: null });
     const { fetchDashboardData } = await import("../optimizedQueries");
     const result = await fetchDashboardData();
     expect(result).toEqual(payload);
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/dashboard",
-      expect.objectContaining({ method: "GET", headers: expect.any(Headers) }),
+    expect(invokeMock).toHaveBeenCalledWith(
+      "get-dashboard-data",
+      expect.objectContaining({ body: {} }),
     );
   });
 
-  it("throws error with status on 403", async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 }));
+  it("throws error with status from edge invoke failure context", async () => {
+    invokeMock.mockResolvedValue({
+      data: null,
+      error: { message: "Forbidden", context: { status: 403 } },
+    });
     const { fetchDashboardData } = await import("../optimizedQueries");
     await expect(fetchDashboardData()).rejects.toMatchObject({ status: 403 });
   });

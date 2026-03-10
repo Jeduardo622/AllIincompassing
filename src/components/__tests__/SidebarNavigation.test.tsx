@@ -2,7 +2,7 @@ import React from "react";
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { render, screen } from "@testing-library/react";
-import Sidebar from "../Sidebar";
+import { Sidebar } from "../Sidebar";
 
 const mockUseAuth = vi.fn();
 const mockUseTheme = vi.fn();
@@ -16,13 +16,11 @@ vi.mock("../../lib/theme", () => ({
 }));
 
 vi.mock("../ChatBot", () => ({
-  __esModule: true,
-  default: () => <div data-testid="chatbot-mock" />,
+  ChatBot: () => <div data-testid="chatbot-mock" />,
 }));
 
 vi.mock("../ThemeToggle", () => ({
-  __esModule: true,
-  default: () => <div data-testid="theme-toggle-mock" />,
+  ThemeToggle: () => <div data-testid="theme-toggle-mock" />,
 }));
 
 describe("Sidebar navigation active styling", () => {

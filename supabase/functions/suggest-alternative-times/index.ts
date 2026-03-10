@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.50.0";
 import { OpenAI } from "npm:openai@5.5.1";
 import { createRequestClient } from "../_shared/database.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
+import { resolveAllowedOrigin } from "../_shared/cors.ts";
 import {
   createPseudonym,
   hashIdentifier,
@@ -16,7 +17,7 @@ const openai = new OpenAI({
 });
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 

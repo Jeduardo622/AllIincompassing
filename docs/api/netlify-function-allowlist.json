@@ -1,0 +1,15 @@
+{
+  "authoritativeRuntime": "supabase-edge",
+  "bootstrapFunctions": [
+    "runtime-config.ts"
+  ],
+  "legacyCompatibilityFunctions": [
+    "assessment-checklist.ts",
+    "assessment-documents.ts",
+    "assessment-drafts.ts",
+    "assessment-plan-pdf.ts",
+    "assessment-promote.ts",
+    "book.ts"
+  ],
+  "boundaryExceptions": []
+}

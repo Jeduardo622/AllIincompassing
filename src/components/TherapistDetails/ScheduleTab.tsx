@@ -12,7 +12,7 @@ interface ScheduleTabProps {
   therapist: { id: string; availability_hours?: AvailabilityHours };
 }
 
-export default function ScheduleTab({ therapist }: ScheduleTabProps) {
+export function ScheduleTab({ therapist }: ScheduleTabProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'day' | 'week'>('week');
   

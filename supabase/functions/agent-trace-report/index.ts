@@ -1,9 +1,10 @@
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 import { getLogger } from "../_shared/logging.ts";
+import { resolveAllowedOrigin } from "../_shared/cors.ts";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-request-id, x-correlation-id, x-agent-operation-id",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",

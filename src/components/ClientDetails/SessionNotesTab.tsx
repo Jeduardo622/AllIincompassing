@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { callEdge, supabase } from '../../lib/supabase';
 import type { Therapist } from '../../types';
-import AddSessionNoteModal, { type SessionNoteFormValues } from '../AddSessionNoteModal';
+import { AddSessionNoteModal, type SessionNoteFormValues  } from '../AddSessionNoteModal';
 import { useAuth } from '../../lib/authContext';
 import { useActiveOrganizationId } from '../../lib/organization';
 import { showError, showSuccess } from '../../lib/toast';
@@ -22,7 +22,7 @@ interface SessionNotesTabProps {
   client: { id: string };
 }
 
-export default function SessionNotesTab({ client }: SessionNotesTabProps) {
+export function SessionNotesTab({ client }: SessionNotesTabProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const organizationId = useActiveOrganizationId();

@@ -566,4 +566,4 @@ const Reports = React.memo(() => {
 
 Reports.displayName = 'Reports';
 
-export default Reports;
+export { Reports };

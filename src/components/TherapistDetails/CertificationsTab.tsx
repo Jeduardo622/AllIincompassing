@@ -25,7 +25,7 @@ interface Certification {
   notes: string | null;
 }
 
-export default function CertificationsTab({ therapist }: CertificationsTabProps) {
+export function CertificationsTab({ therapist }: CertificationsTabProps) {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const queryClient = useQueryClient();
   

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import AlternativeTimes from '../AlternativeTimes';
+import { AlternativeTimes } from '../AlternativeTimes';
 import { parseISO, addHours } from 'date-fns';
 
 describe('AlternativeTimes', () => {

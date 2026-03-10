@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import AdminSettings from '../../settings/AdminSettings';
+import { AdminSettings } from '../../settings/AdminSettings';
 
 vi.mock('../../../lib/authContext', async () => {
   const actual = await vi.importActual<any>('../../../lib/authContext');

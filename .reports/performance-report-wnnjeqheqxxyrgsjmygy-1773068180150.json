@@ -1,0 +1,791 @@
+{
+  "branch_id": "wnnjeqheqxxyrgsjmygy",
+  "timestamp": "2026-03-09T14:56:20.148Z",
+  "summary": {
+    "total_issues": 70,
+    "slow_queries": 10,
+    "index_issues": 70,
+    "largest_tables": [],
+    "total_connections": 11,
+    "missing_required_indexes": 0
+  },
+  "advisors": [],
+  "slow_queries": [
+    {
+      "query": "SELECT wal->>$5 as type,\n       wal->>$6 as schema,\n       wal->>$7 as table,\n       COALESCE(wal->>$8, $9) as columns,\n       COALESCE(wal->>$10, $11) as record,\n       COALESCE(wal->>$12, $13) as old_record,\n       wal->>$14 as commit_timestamp,\n       subscription_ids,\n       errors\nFROM realtime.list_changes($1, $2, $3, $4)",
+      "calls": "2840286",
+      "total_time": "10396377.19",
+      "mean_time": "3.66",
+      "min_time": "1.70",
+      "max_time": "5401.92",
+      "stddev_time": "5.13",
+      "rows": "0",
+      "avg_time_ms": "3.66"
+    },
+    {
+      "query": "SELECT wal->>$5 as type,\n       wal->>$6 as schema,\n       wal->>$7 as table,\n       wal->>$8 as columns,\n       wal->>$9 as record,\n       wal->>$10 as old_record,\n       wal->>$11 as commit_timestamp,\n       subscription_ids,\n       errors\nFROM realtime.list_changes($1, $2, $3, $4)",
+      "calls": "1174558",
+      "total_time": "4004935.74",
+      "mean_time": "3.41",
+      "min_time": "3.15",
+      "max_time": "1192.58",
+      "stddev_time": "2.12",
+      "rows": "0",
+      "avg_time_ms": "3.41"
+    },
+    {
+      "query": "select * from realtime.list_changes($1, $2, $3, $4)",
+      "calls": "185302",
+      "total_time": "628803.67",
+      "mean_time": "3.39",
+      "min_time": "3.06",
+      "max_time": "4169.35",
+      "stddev_time": "9.76",
+      "rows": "0",
+      "avg_time_ms": "3.39"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"therapists\".\"id\", \"public\".\"therapists\".\"email\", \"public\".\"therapists\".\"full_name\", \"public\".\"therapists\".\"first_name\", \"public\".\"therapists\".\"middle_name\", \"public\".\"therapists\".\"last_name\", \"public\".\"therapists\".\"title\", \"public\".\"therapists\".\"facility\", \"public\".\"therapists\".\"employee_type\", \"public\".\"therapists\".\"staff_id\", \"public\".\"therapists\".\"supervisor\", \"public\".\"therapists\".\"status\", \"public\".\"therapists\".\"specialties\", \"public\".\"therapists\".\"service_type\", \"public\".\"therapists\".\"npi_number\", \"public\".\"therapists\".\"medicaid_id\", \"public\".\"therapists\".\"practitioner_id\", \"public\".\"therapists\".\"taxonomy_code\", \"public\".\"therapists\".\"time_zone\", \"public\".\"therapists\".\"phone\", \"public\".\"therapists\".\"street\", \"public\".\"therapists\".\"city\", \"public\".\"therapists\".\"state\", \"public\".\"therapists\".\"zip_code\", \"public\".\"therapists\".\"latitude\", \"public\".\"therapists\".\"longitude\", \"public\".\"therapists\".\"service_radius_km\", \"public\".\"therapists\".\"max_daily_travel_minutes\", \"public\".\"therapists\".\"preferred_areas\", \"public\".\"therapists\".\"avoid_rush_hour\", \"public\".\"therapists\".\"rbt_number\", \"public\".\"therapists\".\"bcba_number\", \"public\".\"therapists\".\"weekly_hours_min\", \"public\".\"therapists\".\"weekly_hours_max\", \"public\".\"therapists\".\"availability_hours\", \"public\".\"therapists\".\"max_clients\", \"public\".\"therapists\".\"created_at\", \"public\".\"therapists\".\"deleted_at\" FROM \"public\".\"therapists\"  ORDER BY \"public\".\"therapists\".\"full_name\" ASC  LIMIT $1 OFFSET $2 )  SELECT $3::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $4) AS body, nullif(current_setting($5, $6), $7) AS response_headers, nullif(current_setting($8, $9), $10) AS response_status, $11 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "1904",
+      "total_time": "134438.16",
+      "mean_time": "70.61",
+      "min_time": "2.32",
+      "max_time": "142.70",
+      "stddev_time": "13.79",
+      "rows": "1904",
+      "avg_time_ms": "70.61"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"clients\".\"id\", \"public\".\"clients\".\"full_name\", \"public\".\"clients\".\"email\", \"public\".\"clients\".\"therapist_id\", row_to_json(\"clients_therapist_1\".*)::jsonb AS \"therapist\" FROM \"public\".\"clients\" LEFT JOIN LATERAL ( SELECT \"therapists_1\".\"full_name\" FROM \"public\".\"therapists\" AS \"therapists_1\" WHERE \"therapists_1\".\"id\" = \"public\".\"clients\".\"therapist_id\"   LIMIT $1 OFFSET $2 ) AS \"clients_therapist_1\" ON $5  ORDER BY \"public\".\"clients\".\"full_name\" ASC  LIMIT $3 OFFSET $4 )  SELECT $6::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $7) AS body, nullif(current_setting($8, $9), $10) AS response_headers, nullif(current_setting($11, $12), $13) AS response_status, $14 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "1212",
+      "total_time": "133080.08",
+      "mean_time": "109.80",
+      "min_time": "8.22",
+      "max_time": "257.45",
+      "stddev_time": "18.67",
+      "rows": "1212",
+      "avg_time_ms": "109.80"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"client_therapist_links\".\"client_id\", \"public\".\"client_therapist_links\".\"therapist_id\", row_to_json(\"client_therapist_links_therapist_1\".*)::jsonb AS \"therapist\" FROM \"public\".\"client_therapist_links\" LEFT JOIN LATERAL ( SELECT \"therapists_1\".\"full_name\" FROM \"public\".\"therapists\" AS \"therapists_1\" WHERE \"therapists_1\".\"id\" = \"public\".\"client_therapist_links\".\"therapist_id\"   LIMIT $1 OFFSET $2 ) AS \"client_therapist_links_therapist_1\" ON $5   LIMIT $3 OFFSET $4 )  SELECT $6::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $7) AS body, nullif(current_setting($8, $9), $10) AS response_headers, nullif(current_setting($11, $12), $13) AS response_status, $14 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "1153",
+      "total_time": "70168.96",
+      "mean_time": "60.86",
+      "min_time": "4.16",
+      "max_time": "170.42",
+      "stddev_time": "26.36",
+      "rows": "1153",
+      "avg_time_ms": "60.86"
+    },
+    {
+      "query": "SELECT name FROM pg_timezone_names",
+      "calls": "594",
+      "total_time": "57175.52",
+      "mean_time": "96.26",
+      "min_time": "52.63",
+      "max_time": "534.42",
+      "stddev_time": "122.43",
+      "rows": "709236",
+      "avg_time_ms": "96.26"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"clients\".\"id\", \"public\".\"clients\".\"client_id\", \"public\".\"clients\".\"full_name\", \"public\".\"clients\".\"first_name\", \"public\".\"clients\".\"middle_name\", \"public\".\"clients\".\"last_name\", \"public\".\"clients\".\"email\", \"public\".\"clients\".\"gender\", \"public\".\"clients\".\"date_of_birth\", \"public\".\"clients\".\"service_preference\", \"public\".\"clients\".\"availability_hours\", \"public\".\"clients\".\"insurance_info\", \"public\".\"clients\".\"phone\", \"public\".\"clients\".\"cin_number\", \"public\".\"clients\".\"address_line1\", \"public\".\"clients\".\"address_line2\", \"public\".\"clients\".\"city\", \"public\".\"clients\".\"state\", \"public\".\"clients\".\"zip_code\", \"public\".\"clients\".\"parent1_first_name\", \"public\".\"clients\".\"parent1_last_name\", \"public\".\"clients\".\"parent1_phone\", \"public\".\"clients\".\"parent1_email\", \"public\".\"clients\".\"parent1_relationship\", \"public\".\"clients\".\"parent2_first_name\", \"public\".\"clients\".\"parent2_last_name\", \"public\".\"clients\".\"parent2_phone\", \"public\".\"clients\".\"parent2_email\", \"public\".\"clients\".\"parent2_relationship\", \"public\".\"clients\".\"one_to_one_units\", \"public\".\"clients\".\"supervision_units\", \"public\".\"clients\".\"parent_consult_units\", \"public\".\"clients\".\"assessment_units\", \"public\".\"clients\".\"authorized_hours_per_month\", \"public\".\"clients\".\"therapist_id\", \"public\".\"clients\".\"therapist_assigned_at\", \"public\".\"clients\".\"created_at\", \"public\".\"clients\".\"created_by\", \"public\".\"clients\".\"updated_at\", \"public\".\"clients\".\"updated_by\", \"public\".\"clients\".\"deleted_at\", \"public\".\"clients\".\"deleted_by\", \"public\".\"clients\".\"organization_id\", \"public\".\"clients\".\"status\" FROM \"public\".\"clients\" WHERE  \"public\".\"clients\".\"organization_id\" = $1  ORDER BY \"public\".\"clients\".\"full_name\" ASC  LIMIT $2 OFFSET $3 )  SELECT $4::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $5) AS body, nullif(current_setting($6, $7), $8) AS response_headers, nullif(current_setting($9, $10), $11) AS response_status, $12 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "616",
+      "total_time": "33263.32",
+      "mean_time": "54.00",
+      "min_time": "2.41",
+      "max_time": "147.60",
+      "stddev_time": "37.86",
+      "rows": "616",
+      "avg_time_ms": "54.00"
+    },
+    {
+      "query": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"get_dashboard_data\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_scalar)->$5, $6) AS body, nullif(current_setting($7, $8), $9) AS response_headers, nullif(current_setting($10, $11), $12) AS response_status, $13 AS response_inserted FROM (SELECT \"get_dashboard_data\".* FROM \"pgrst_source\" AS \"get_dashboard_data\"   LIMIT $1 OFFSET $2) _postgrest_t",
+      "calls": "339",
+      "total_time": "30279.68",
+      "mean_time": "89.32",
+      "min_time": "37.64",
+      "max_time": "338.24",
+      "stddev_time": "60.85",
+      "rows": "339",
+      "avg_time_ms": "89.32"
+    },
+    {
+      "query": "WITH\n-- Recursively get the base types of domains\nbase_types AS (\n  WITH RECURSIVE\n  recurse AS (\n    SELECT\n      oid,\n      typbasetype,\n      typnamespace AS base_namespace,\n      COALESCE(NULLIF(typbasetype, $2), oid) AS base_type\n    FROM pg_type\n    UNION\n    SELECT\n      t.oid,\n      b.typbasetype,\n      b.typnamespace AS base_namespace,\n      COALESCE(NULLIF(b.typbasetype, $3), b.oid) AS base_type\n    FROM recurse t\n    JOIN pg_type b ON t.typbasetype = b.oid\n  )\n  SELECT\n    oid,\n    base_namespace,\n    base_type\n  FROM recurse\n  WHERE typbasetype = $4\n),\ncolumns AS (\n    SELECT\n        c.oid AS relid,\n        a.attname::name AS column_name,\n        d.description AS description,\n        -- typbasetype and typdefaultbin handles `CREATE DOMAIN .. DEFAULT val`,  attidentity/attgenerated handles generated columns, pg_get_expr gets the default of a column\n        CASE\n          WHEN (t.typbasetype != $5) AND (ad.adbin IS NULL) THEN pg_get_expr(t.typdefaultbin, $6)\n          WHEN a.attidentity  = $7 THEN format($8, seq.objid::regclass)\n          WHEN a.attgenerated = $9 THEN $10\n          ELSE pg_get_expr(ad.adbin, ad.adrelid)::text\n        END AS column_default,\n        not (a.attnotnull OR t.typtype = $11 AND t.typnotnull) AS is_nullable,\n        CASE\n            WHEN t.typtype = $12 THEN\n            CASE\n                WHEN bt.base_namespace = $13::regnamespace THEN format_type(bt.base_type, $14::integer)\n                ELSE format_type(a.atttypid, a.atttypmod)\n            END\n            ELSE\n            CASE\n                WHEN t.typnamespace = $15::regnamespace THEN format_type(a.atttypid, $16::integer)\n                ELSE format_type(a.atttypid, a.atttypmod)\n            END\n        END::text AS data_type,\n        format_type(a.atttypid, a.atttypmod)::text AS nominal_data_type,\n        information_schema._pg_char_max_length(\n            information_schema._pg_truetypid(a.*, t.*),\n            information_schema._pg_truetypmod(a.*, t.*)\n        )::integer AS character_maximum_length,\n        bt.base_type,\n        a.attnum::integer AS position\n    FROM pg_attribute a\n        LEFT JOIN pg_description AS d\n            ON d.objoid = a.attrelid and d.objsubid = a.attnum and d.classoid = $17::regclass\n        LEFT JOIN pg_attrdef ad\n            ON a.attrelid = ad.adrelid AND a.attnum = ad.adnum\n        JOIN pg_class c\n            ON a.attrelid = c.oid\n        JOIN pg_type t\n            ON a.atttypid = t.oid\n        LEFT JOIN base_types bt\n            ON t.oid = bt.oid\n        LEFT JOIN pg_depend seq\n            ON seq.refobjid = a.attrelid and seq.refobjsubid = a.attnum and seq.deptype = $18\n    WHERE\n        NOT pg_is_other_temp_schema(c.relnamespace)\n        AND a.attnum > $19\n        AND NOT a.attisdropped\n        AND c.relkind in ($20, $21, $22, $23, $24)\n        AND c.relnamespace = ANY($1::regnamespace[])\n),\ncolumns_agg AS (\n  SELECT\n    relid,\n    array_agg(row(\n      column_name,\n      description,\n      is_nullable::boolean,\n      data_type,\n      nominal_data_type,\n      character_maximum_length,\n      column_default,\n      coalesce(\n        (SELECT array_agg(enumlabel ORDER BY enumsortorder) FROM pg_enum WHERE enumtypid = base_type),\n        $25\n      )\n    ) order by position) as columns\n  FROM columns\n  GROUP BY relid\n),\ntbl_pk_cols AS (\n  SELECT\n    r.oid AS relid,\n    array_agg(a.attname ORDER BY a.attname) AS pk_cols\n  FROM pg_class r\n  JOIN pg_constraint c\n    ON r.oid = c.conrelid\n  JOIN pg_attribute a\n    ON a.attrelid = r.oid AND a.attnum = ANY (c.conkey)\n  WHERE\n    c.contype in ($26)\n    AND r.relkind IN ($27, $28)\n    AND r.relnamespace NOT IN ($29::regnamespace, $30::regnamespace)\n    AND NOT pg_is_other_temp_schema(r.relnamespace)\n    AND NOT a.attisdropped\n  GROUP BY r.oid\n)\nSELECT\n  n.nspname AS table_schema,\n  c.relname AS table_name,\n  d.description AS table_description,\n  c.relkind IN ($31,$32) as is_view,\n  (\n    c.relkind IN ($33,$34)\n    OR (\n      c.relkind in ($35,$36)\n      -- The function `pg_relation_is_updateable` returns a bitmask where 8\n      -- corresponds to `1 << CMD_INSERT` in the PostgreSQL source code, i.e.\n      -- it's possible to insert into the relation.\n      AND (pg_relation_is_updatable(c.oid::regclass, $37) & $38) = $39\n    )\n  ) AS insertable,\n  (\n    c.relkind IN ($40,$41)\n    OR (\n      c.relkind in ($42,$43)\n      -- CMD_UPDATE\n      AND (pg_relation_is_updatable(c.oid::regclass, $44) & $45) = $46\n    )\n  ) AS updatable,\n  (\n    c.relkind IN ($47,$48)\n    OR (\n      c.relkind in ($49,$50)\n      -- CMD_DELETE\n      AND (pg_relation_is_updatable(c.oid::regclass, $51) & $52) = $53\n    )\n  ) AS deletable,\n  coalesce(tpks.pk_cols, $54) as pk_cols,\n  coalesce(cols_agg.columns, $55) as columns\nFROM pg_class c\nJOIN pg_namespace n ON n.oid = c.relnamespace\nLEFT JOIN pg_description d on d.objoid = c.oid and d.objsubid = $56 and d.classoid = $57::regclass\nLEFT JOIN tbl_pk_cols tpks ON c.oid = tpks.relid\nLEFT JOIN columns_agg cols_agg ON c.oid = cols_agg.relid\nWHERE c.relkind IN ($58,$59,$60,$61,$62)\nAND c.relnamespace NOT IN ($63::regnamespace, $64::regnamespace)\nAND not c.relispartition\nORDER BY table_schema, table_name",
+      "calls": "594",
+      "total_time": "24329.26",
+      "mean_time": "40.96",
+      "min_time": "30.77",
+      "max_time": "210.39",
+      "stddev_time": "13.53",
+      "rows": "67803",
+      "avg_time_ms": "40.96"
+    }
+  ],
+  "index_issues": [
+    {
+      "schemaname": "public",
+      "tablename": "user_roles",
+      "seq_scan": "3850687",
+      "seq_tup_read": "112885555",
+      "idx_scan": "366",
+      "idx_tup_fetch": "316",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "roles",
+      "seq_scan": "7416082",
+      "seq_tup_read": "42775643",
+      "idx_scan": "121334",
+      "idx_tup_fetch": "121333",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "user_therapist_links",
+      "seq_scan": "710832",
+      "seq_tup_read": "1420649",
+      "idx_scan": "3",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "error_logs",
+      "seq_scan": "193",
+      "seq_tup_read": "24535",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "sessions",
+      "seq_scan": "6540",
+      "seq_tup_read": "11641",
+      "idx_scan": "2",
+      "idx_tup_fetch": "2",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_history",
+      "seq_scan": "189",
+      "seq_tup_read": "6909",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "organizations",
+      "seq_scan": "4520",
+      "seq_tup_read": "4514",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "behavioral_patterns",
+      "seq_scan": "190",
+      "seq_tup_read": "4301",
+      "idx_scan": "4",
+      "idx_tup_fetch": "4",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "cpt_codes",
+      "seq_scan": "374",
+      "seq_tup_read": "3775",
+      "idx_scan": "18",
+      "idx_tup_fetch": "4",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "user_profiles",
+      "seq_scan": "510",
+      "seq_tup_read": "3040",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "assessment_draft_goals",
+      "seq_scan": "165",
+      "seq_tup_read": "1111",
+      "idx_scan": "114",
+      "idx_tup_fetch": "29",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "insurance_providers",
+      "seq_scan": "213",
+      "seq_tup_read": "1055",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "cpt_modifier_mappings",
+      "seq_scan": "116",
+      "seq_tup_read": "999",
+      "idx_scan": "13",
+      "idx_tup_fetch": "3",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "file_cabinet_settings",
+      "seq_scan": "192",
+      "seq_tup_read": "950",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "service_lines",
+      "seq_scan": "192",
+      "seq_tup_read": "760",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_note_templates",
+      "seq_scan": "190",
+      "seq_tup_read": "748",
+      "idx_scan": "4",
+      "idx_tup_fetch": "4",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "client_guardians",
+      "seq_scan": "761",
+      "seq_tup_read": "747",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "service_areas",
+      "seq_scan": "186",
+      "seq_tup_read": "740",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "locations",
+      "seq_scan": "291",
+      "seq_tup_read": "578",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "admin_actions",
+      "seq_scan": "195",
+      "seq_tup_read": "561",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "plans",
+      "seq_scan": "186",
+      "seq_tup_read": "555",
+      "idx_scan": "3",
+      "idx_tup_fetch": "3",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "billing_modifiers",
+      "seq_scan": "203",
+      "seq_tup_read": "480",
+      "idx_scan": "5",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "assessment_review_events",
+      "seq_scan": "43",
+      "seq_tup_read": "383",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "company_settings",
+      "seq_scan": "192",
+      "seq_tup_read": "376",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "assessment_draft_programs",
+      "seq_scan": "275",
+      "seq_tup_read": "341",
+      "idx_scan": "124",
+      "idx_tup_fetch": "124",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "conversations",
+      "seq_scan": "188",
+      "seq_tup_read": "185",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_holds",
+      "seq_scan": "308",
+      "seq_tup_read": "26",
+      "idx_scan": "8",
+      "idx_tup_fetch": "8",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "therapist_availability",
+      "seq_scan": "197",
+      "seq_tup_read": "20",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_goals",
+      "seq_scan": "8",
+      "seq_tup_read": "10",
+      "idx_scan": "3",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "ai_response_cache",
+      "seq_scan": "196",
+      "seq_tup_read": "8",
+      "idx_scan": "1",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "client_session_notes",
+      "seq_scan": "121",
+      "seq_tup_read": "0",
+      "idx_scan": "112",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "function_idempotency_keys",
+      "seq_scan": "114",
+      "seq_tup_read": "0",
+      "idx_scan": "19",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "feature_flag_plan_history",
+      "seq_scan": "117",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "guardian_link_queue",
+      "seq_scan": "118",
+      "seq_tup_read": "0",
+      "idx_scan": "3",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "therapist_documents",
+      "seq_scan": "63",
+      "seq_tup_read": "0",
+      "idx_scan": "9",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "ai_performance_metrics",
+      "seq_scan": "192",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "agent_execution_traces",
+      "seq_scan": "4",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "agent_prompt_tool_versions",
+      "seq_scan": "4",
+      "seq_tup_read": "0",
+      "idx_scan": "2",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "scheduling_orchestration_runs",
+      "seq_scan": "4",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "goal_versions",
+      "seq_scan": "8",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "service_contract_versions",
+      "seq_scan": "4",
+      "seq_tup_read": "0",
+      "idx_scan": "3",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "db_performance_metrics",
+      "seq_scan": "187",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "system_performance_metrics",
+      "seq_scan": "186",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "performance_alerts",
+      "seq_scan": "186",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "billing_records",
+      "seq_scan": "536",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "referring_providers",
+      "seq_scan": "191",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "client_availability",
+      "seq_scan": "233",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "authorizations",
+      "seq_scan": "360",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "authorization_services",
+      "seq_scan": "192",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "scheduling_preferences",
+      "seq_scan": "186",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "therapist_certifications",
+      "seq_scan": "206",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "function_performance_logs",
+      "seq_scan": "188",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "user_sessions",
+      "seq_scan": "188",
+      "seq_tup_read": "0",
+      "idx_scan": "1",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_transcripts",
+      "seq_scan": "190",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_transcript_segments",
+      "seq_scan": "190",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "ai_session_notes",
+      "seq_scan": "248",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "ai_processing_logs",
+      "seq_scan": "188",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "performance_baselines",
+      "seq_scan": "186",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "ai_cache",
+      "seq_scan": "191",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_cpt_entries",
+      "seq_scan": "201",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_cpt_modifiers",
+      "seq_scan": "201",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "feature_flags",
+      "seq_scan": "191",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "organization_plans",
+      "seq_scan": "191",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "organization_feature_flags",
+      "seq_scan": "195",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "feature_flag_audit_logs",
+      "seq_scan": "200",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "impersonation_audit",
+      "seq_scan": "203",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "impersonation_revocation_queue",
+      "seq_scan": "189",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "admin_invite_tokens",
+      "seq_scan": "190",
+      "seq_tup_read": "0",
+      "idx_scan": "1",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_audit_logs",
+      "seq_scan": "164",
+      "seq_tup_read": "0",
+      "idx_scan": "3",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "client_notes",
+      "seq_scan": "408",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    }
+  ],
+  "table_sizes": [],
+  "connections": [
+    {
+      "state": null,
+      "connection_count": "8",
+      "percentage": "72.7272727272727273"
+    },
+    {
+      "state": "idle",
+      "connection_count": "3",
+      "percentage": "27.2727272727272727"
+    }
+  ],
+  "errors": [],
+  "recommendations": [
+    {
+      "type": "slow_queries",
+      "priority": "high",
+      "message": "Optimize 10 slow queries",
+      "action": "Review query execution plans and add missing indexes"
+    },
+    {
+      "type": "indexes",
+      "priority": "medium",
+      "message": "Add indexes to 70 tables",
+      "action": "CREATE INDEX ON table_name (column_name);"
+    }
+  ],
+  "required_indexes": {
+    "billing_records_org_status_created_idx": "CREATE INDEX billing_records_org_status_created_idx ON public.billing_records USING btree (organization_id, status, created_at DESC)",
+    "clients_org_status_active_idx": "CREATE INDEX clients_org_status_active_idx ON public.clients USING btree (organization_id, status, full_name) WHERE (deleted_at IS NULL)",
+    "session_cpt_entries_org_session_line_idx": "CREATE INDEX session_cpt_entries_org_session_line_idx ON public.session_cpt_entries USING btree (organization_id, session_id, line_number)",
+    "sessions_org_therapist_start_time_idx": "CREATE INDEX sessions_org_therapist_start_time_idx ON public.sessions USING btree (organization_id, therapist_id, start_time)"
+  }
+}

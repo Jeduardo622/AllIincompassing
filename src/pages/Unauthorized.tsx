@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ShieldX, ArrowLeft, Home } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 
-export default function Unauthorized() {
+export function Unauthorized() {
   const navigate = useNavigate();
   const { profile } = useAuth();
 

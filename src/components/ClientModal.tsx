@@ -3,7 +3,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { X } from 'lucide-react';
 import type { Client } from '../types';
-import AvailabilityEditor from './AvailabilityEditor';
+import { AvailabilityEditor } from './AvailabilityEditor';
 // import { showError } from '../lib/toast';
 import { clientSchema, type ClientFormData } from '../lib/validationSchemas';
 import { prepareFormData } from '../lib/validation';
@@ -251,7 +251,7 @@ const buildDefaultValues = (client?: Client): ClientFormData => ({
   documents_consent: true,
 });
 
-export default function ClientModal({
+export function ClientModal({
   isOpen,
   onClose,
   onSubmit,

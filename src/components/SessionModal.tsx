@@ -13,10 +13,10 @@ import {
 import type { Session, Therapist, Client, Goal, Program } from '../types';
 import { checkSchedulingConflicts, suggestAlternativeTimes, type Conflict, type AlternativeTime } from '../lib/conflicts';
 import { logger } from '../lib/logger/logger';
-import AlternativeTimes from './AlternativeTimes';
+import { AlternativeTimes } from './AlternativeTimes';
 import { supabase } from '../lib/supabase';
 import { useActiveOrganizationId } from '../lib/organization';
-import { callApi } from '../lib/api';
+import { callEdgeFunctionHttp } from '../lib/api';
 import { showError, showSuccess } from '../lib/toast';
 
 interface SessionModalProps {
@@ -36,7 +36,7 @@ interface SessionModalProps {
   onRetryHintDismiss?: () => void;
 }
 
-export default function SessionModal({
+export function SessionModal({
   isOpen,
   onClose,
   onSubmit,
@@ -509,7 +509,7 @@ export default function SessionModal({
       return;
     }
     try {
-      const response = await callApi("/api/sessions-start", {
+      const response = await callEdgeFunctionHttp("sessions-start", {
         method: "POST",
         body: JSON.stringify({
           session_id: session.id,

@@ -1,8 +1,9 @@
 import { supabaseAdmin } from "../_shared/database.ts";
 import { errorEnvelope, getRequestId } from "../ai-transcription/lib/http/error.ts";
+import { resolveAllowedOrigin } from "../_shared/cors.ts";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };

@@ -1,15 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import OrganizationSettings from '../components/settings/OrganizationSettings';
+import { OrganizationSettings } from '../components/settings/OrganizationSettings';
 import { Building, Users, FileText, Briefcase, Settings as SettingsIcon, Shield, User, Flag, UserCog } from 'lucide-react';
-import CompanySettings from '../components/settings/CompanySettings';
-import LocationSettings from '../components/settings/LocationSettings';
-import ServiceLineSettings from '../components/settings/ServiceLineSettings';
-import ReferringProviderSettings from '../components/settings/ReferringProviderSettings';
-import FileCabinetSettings from '../components/settings/FileCabinetSettings';
-import AdminSettings from '../components/settings/AdminSettings';
-import UserSettings from '../components/settings/UserSettings';
+import { CompanySettings } from '../components/settings/CompanySettings';
+import { LocationSettings } from '../components/settings/LocationSettings';
+import { ServiceLineSettings } from '../components/settings/ServiceLineSettings';
+import { ReferringProviderSettings } from '../components/settings/ReferringProviderSettings';
+import { FileCabinetSettings } from '../components/settings/FileCabinetSettings';
+import { AdminSettings } from '../components/settings/AdminSettings';
+import { UserSettings } from '../components/settings/UserSettings';
 import { SuperAdminFeatureFlags } from './SuperAdminFeatureFlags';
 import { SuperAdminImpersonation } from './SuperAdminImpersonation';
 import { useAuth } from '../lib/authContext';
@@ -26,7 +26,7 @@ type Tab =
   | 'feature-flags'
   | 'impersonation';
 
-export default function Settings() {
+export function Settings() {
   const location = useLocation();
   const navigate = useNavigate();
   const { isSuperAdmin } = useAuth();

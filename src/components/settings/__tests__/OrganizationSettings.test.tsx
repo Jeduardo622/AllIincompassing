@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import OrganizationSettings from '../../settings/OrganizationSettings';
+import { OrganizationSettings } from '../../settings/OrganizationSettings';
 
 vi.mock('../../../lib/authContext', async () => {
   const actual = await vi.importActual<any>('../../../lib/authContext');

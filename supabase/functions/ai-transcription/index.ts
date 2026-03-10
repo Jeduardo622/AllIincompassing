@@ -4,8 +4,9 @@ import { getUserOrThrow } from "../_shared/auth.ts";
 import { z } from "npm:zod@3.23.8";
 import { errorEnvelope, getRequestId, rateLimit } from "./lib/http/error.ts";
 import { withRetry } from "../_shared/retry.ts";
+import { resolveAllowedOrigin } from "../_shared/cors.ts";
 
-const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization" };
+const corsHeaders = { "Access-Control-Allow-Origin": resolveAllowedOrigin(), "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization" };
 const openai = new OpenAI({ apiKey: Deno.env.get("OPENAI_API_KEY") });
 
 const TranscriptionSchema = z.object({

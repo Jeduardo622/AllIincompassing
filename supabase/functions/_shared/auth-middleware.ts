@@ -56,11 +56,25 @@ export class AuthenticationError extends Error {
   }
 }
 
+const resolveAllowedOrigin = (): string => {
+  const configuredOrigins = Deno.env.get("CORS_ALLOWED_ORIGINS");
+  if (configuredOrigins && configuredOrigins.trim().length > 0) {
+    return configuredOrigins.split(",")[0].trim();
+  }
+
+  const appEnv = (Deno.env.get("APP_ENV") ?? Deno.env.get("DENO_ENV") ?? "production").toLowerCase();
+  if (appEnv === "development" || appEnv === "local") {
+    return "http://localhost:5173";
+  }
+
+  return "https://velvety-cendol-dae4d6.netlify.app";
+};
+
 /**
  * CORS headers for all API responses
  */
 export const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Client-Info, apikey",
   "Access-Control-Max-Age": "86400",

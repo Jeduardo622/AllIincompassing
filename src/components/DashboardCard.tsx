@@ -8,7 +8,7 @@ interface DashboardCardProps {
   trendUp: boolean;
 }
 
-export default function DashboardCard({ 
+export function DashboardCard({ 
   icon: Icon, 
   title, 
   value, 

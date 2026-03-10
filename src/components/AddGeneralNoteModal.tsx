@@ -9,7 +9,7 @@ interface AddGeneralNoteModalProps {
   currentUser?: string;
 }
 
-export default function AddGeneralNoteModal({
+export function AddGeneralNoteModal({
   isOpen,
   onClose,
   onSubmit,

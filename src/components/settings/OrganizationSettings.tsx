@@ -3,7 +3,7 @@ import { Building2, Lock } from 'lucide-react';
 import { useAuth } from '../../lib/authContext';
 import { getDefaultOrganizationId } from '../../lib/runtimeConfig';
 
-export default function OrganizationSettings() {
+export function OrganizationSettings() {
   const { effectiveRole, profile } = useAuth();
   const isSuperAdmin = effectiveRole === 'super_admin';
   const isAdmin = effectiveRole === 'admin';

@@ -1,7 +1,7 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { fireEvent } from '@testing-library/react';
-import SessionModal from '../SessionModal';
+import { SessionModal } from '../SessionModal';
 import { supabase } from '../../lib/supabase';
 
 describe('SessionModal', () => {

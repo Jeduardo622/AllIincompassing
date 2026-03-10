@@ -4,7 +4,7 @@ import { render, screen } from '@testing-library/react';
 import { DashboardView } from '../Dashboard';
 
 vi.mock('../../components/Dashboard/ReportsSummary', () => ({
-  default: () => <div data-testid="reports-summary" />,
+  ReportsSummary: () => <div data-testid="reports-summary" />,
 }));
 
 const baseProps = {

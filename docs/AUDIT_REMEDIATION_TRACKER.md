@@ -3,6 +3,36 @@
 ## Scope
 Track remediation work from the executive audit report to close production-readiness gaps without expanding scope.
 
+## Program status snapshot (2026-03-09)
+| Horizon | Scope | Status | Evidence |
+| --- | --- | --- | --- |
+| Immediate (0-7 days) | Dependency patching, JWT hardening, Vite FS strict mode, red test stabilization | Completed | `docs/short-term-remediation-closure.md`, CI baseline clean |
+| Short-term (1-4 weeks) | Component decomposition, phased CORS restriction, dependency cleanup, named-export normalization (`src/**`) | Completed | `docs/short-term-remediation-closure.md`, `npm run ci:verify-coverage` |
+| Long-term (1-2 quarters) | API authority policy, migration governance, architecture pack, reliability SLO enforcement | In progress (Q1 foundations complete) | `docs/long-term-platform-simplification.md` |
+
+## Long-term foundation deliverables (implemented)
+| Workstream | Deliverable | Status |
+| --- | --- | --- |
+| Service boundary simplification | `docs/api/API_AUTHORITY_CONTRACT.md` | Implemented |
+| Service boundary simplification | `docs/api/ENDPOINT_OWNERSHIP_MATRIX.md` | Implemented |
+| Service boundary simplification | `scripts/ci/check-api-boundary.mjs` | Implemented |
+| Service boundary simplification | `docs/api/endpoint-convergence-status.json` + `scripts/ci/check-api-convergence.mjs` | Implemented |
+| Migration hygiene | `docs/migrations/MIGRATION_GOVERNANCE.md` | Implemented |
+| Migration hygiene | `scripts/ci/check-migration-governance.mjs` | Implemented |
+| Migration hygiene | `scripts/ci/generate-migration-catalog.mjs` + `scripts/ci/generate-migration-health-report.mjs` | Implemented |
+| Architecture reference | `docs/architecture/NEW_ENGINEER_PACK.md` | Implemented |
+| Architecture reference | `docs/architecture/pack-metadata.json` + `scripts/ci/check-architecture-pack-freshness.mjs` | Implemented |
+| Reliability SLO | `tests/reliability/policy.json` + `tests/reliability/quarantine.json` | Implemented |
+| Reliability SLO | `scripts/ci/check-test-reliability.mjs` + `scripts/ci/report-test-reliability.mjs` | Implemented |
+
+## Remaining long-term execution (next milestones)
+| Milestone | Owner | Target window | Exit criteria |
+| --- | --- | --- | --- |
+| Endpoint convergence waves B/C | Backend Platform | Q2 | No new business endpoints on non-authoritative runtime without approved exception |
+| Migration metadata adoption for all new SQL | Backend / DB | Ongoing | All new migrations pass governance header checks |
+| Quarantine governance operations | QA / Eng | Q2 | Quarantine entries carry owner/TTL and no expired active entries in CI |
+| Architecture pack change control | Platform / DevEx | Ongoing | Pack updated on boundary/schema/deployment changes |
+
 ## Must-have gaps (pre-launch)
 | Area | Gap | Owner | Status |
 | --- | --- | --- | --- |

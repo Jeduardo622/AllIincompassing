@@ -11,7 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { processMessage, AssistantGuardrailError } from "../lib/ai";
 import { supabase } from "../lib/supabase";
-import { callApi } from "../lib/api";
+import { callEdgeFunctionHttp } from "../lib/api";
 import {
   createAgentOperationContext,
   withAgentRetry,
@@ -36,7 +36,7 @@ interface Message {
     | "action_failed";
 }
 
-export default function ChatBot() {
+export function ChatBot() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -341,7 +341,7 @@ export default function ChatBot() {
               ]);
 
               const startOutcome = await withAgentRetry(operation, async () => {
-                const startResponse = await callApi("/api/sessions-start", {
+                const startResponse = await callEdgeFunctionHttp("sessions-start", {
                   method: "POST",
                   headers: {
                     "Idempotency-Key": operation.idempotencyKey,

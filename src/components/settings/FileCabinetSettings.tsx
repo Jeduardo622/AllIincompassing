@@ -28,7 +28,7 @@ interface FileCabinetFormData {
 
 const DEFAULT_FILE_TYPES = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png'];
 
-export default function FileCabinetSettings() {
+export function FileCabinetSettings() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<FileCabinetSetting | null>(null);
   const [formData, setFormData] = useState<FileCabinetFormData>({

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../test/setup';
-import Schedule from '../../pages/Schedule';
+import { Schedule } from '../../pages/Schedule';
 import { supabase } from '../../lib/supabase';
 
 // Simplified mock data for integration testing
@@ -362,3 +362,4 @@ describe('Scheduling Integration - End-to-End Flow', () => {
     expect(clientFilter).toHaveValue('client-1');
   });
 }); 
+

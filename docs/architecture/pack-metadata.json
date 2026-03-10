@@ -1,0 +1,11 @@
+{
+  "ownerGroup": "Platform Engineering",
+  "lastReviewedAt": "2026-03-10",
+  "maxReviewAgeDays": 45,
+  "requiredReferences": [
+    "docs/api/API_AUTHORITY_CONTRACT.md",
+    "docs/api/ENDPOINT_OWNERSHIP_MATRIX.md",
+    "docs/migrations/MIGRATION_GOVERNANCE.md",
+    "docs/TESTING.md"
+  ]
+}

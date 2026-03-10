@@ -763,9 +763,9 @@ export const createQueryPerformanceTable = async () => {
 // EXPORTS
 // ============================================================================
 
-export default {
+export const queryPerformanceTracker = {
   QueryPerformanceTracker,
   useQueryPerformanceTracking,
   createQueryPerformanceTable,
   DEFAULT_PERFORMANCE_CONFIG,
-}; 
+};

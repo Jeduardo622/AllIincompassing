@@ -684,9 +684,9 @@ export function useCacheCleanup(
 // EXPORTS
 // ============================================================================
 
-export default {
+export const cacheCleanup = {
   CacheCleanupManager,
   useCacheCleanup,
   estimateMemoryUsage,
   DEFAULT_CLEANUP_CONFIG,
-}; 
+};

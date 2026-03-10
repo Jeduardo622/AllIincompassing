@@ -8,8 +8,8 @@ import {
 import { supabase } from '../../lib/supabase';
 import { updateClientRecord } from '../../lib/clientPayload';
 import { showSuccess, showError } from '../../lib/toast';
-import ClientModal from '../ClientModal';
-import AddGeneralNoteModal from '../AddGeneralNoteModal';
+import { ClientModal } from '../ClientModal';
+import { AddGeneralNoteModal } from '../AddGeneralNoteModal';
 import type { Note, Issue } from '../../types';
 import { useClientIssues, useClientNotes } from '../../lib/clients/hooks';
 import { useAuth } from '../../lib/authContext';
@@ -34,7 +34,7 @@ interface ProfileTabProps {
   viewerRole?: 'client' | 'therapist' | 'admin' | 'super_admin';
 }
 
-export default function ProfileTab({ client, viewerRole }: ProfileTabProps) {
+export function ProfileTab({ client, viewerRole }: ProfileTabProps) {
   const { profile, user } = useAuth();
   const organizationId = useActiveOrganizationId();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);

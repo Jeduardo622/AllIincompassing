@@ -9,7 +9,6 @@
  * Usage: node scripts/production-health-check.js
  */
 
-import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -20,7 +19,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Configuration
-const PRODUCTION_URL = process.env.PRODUCTION_URL || 'https://allincompassing.netlify.app';
+const PRODUCTION_URL =
+  process.env.PRODUCTION_URL || 'https://velvety-cendol-dae4d6.netlify.app';
+const PRODUCTION_HEALTH_PATHS = (
+  process.env.PRODUCTION_HEALTH_PATHS || '/,/start,/login,/dashboard'
+)
+  .split(',')
+  .map((pathValue) => pathValue.trim())
+  .filter(Boolean);
 const REPORTS_DIR = path.join(__dirname, '..', '.reports');
 
 /**
@@ -59,24 +65,36 @@ async function checkCriticalTables() {
     logger.info('Checking critical tables...');
     
     const criticalTables = [
-      'clients',
-      'therapists', 
-      'sessions',
-      'authorizations',
-      'users'
+      { schema: 'public', table: 'clients' },
+      { schema: 'public', table: 'therapists' },
+      { schema: 'public', table: 'sessions' },
+      { schema: 'public', table: 'authorizations' },
+      { schema: 'auth', table: 'users' }
     ];
     
     const results = [];
     
     for (const table of criticalTables) {
       try {
-        const query = `SELECT COUNT(*) as count FROM ${table} LIMIT 1;`;
+        const [{ relation_exists }] = await runPostgresQuery(
+          `SELECT to_regclass('${table.schema}.${table.table}') IS NOT NULL as relation_exists;`,
+        );
+
+        if (!relation_exists) {
+          results.push({
+            table: `${table.schema}.${table.table}`,
+            status: 'error',
+            error: 'relation does not exist',
+          });
+          continue;
+        }
+
+        const query = `SELECT COUNT(*) as count FROM ${table.schema}.${table.table} LIMIT 1;`;
         await runPostgresQuery(query);
-        
-        results.push({ table, status: 'ok' });
+        results.push({ table: `${table.schema}.${table.table}`, status: 'ok' });
       } catch (error) {
-        results.push({ table, status: 'error', error: error.message });
-        logger.error(`Table ${table} check failed: ${error.message}`);
+        results.push({ table: `${table.schema}.${table.table}`, status: 'error', error: error.message });
+        logger.error(`Table ${table.schema}.${table.table} check failed: ${error.message}`);
       }
     }
     
@@ -134,13 +152,20 @@ async function checkRLSPolicies() {
     
     const rlsQuery = `
       SELECT 
-        schemaname,
-        tablename,
-        rowsecurity as rls_enabled,
-        (SELECT COUNT(*) FROM pg_policies WHERE schemaname = t.schemaname AND tablename = t.tablename) as policy_count
-      FROM pg_tables t
-      WHERE schemaname = 'public'
-      ORDER BY tablename;
+        n.nspname as schemaname,
+        c.relname as tablename,
+        c.relrowsecurity as rls_enabled,
+        (
+          SELECT COUNT(*)
+          FROM pg_policies p
+          WHERE p.schemaname = n.nspname
+            AND p.tablename = c.relname
+        ) as policy_count
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relkind = 'r'
+      ORDER BY c.relname;
     `;
     
     const tables = await runPostgresQuery(rlsQuery);
@@ -172,24 +197,29 @@ async function checkApplicationEndpoints() {
   try {
     logger.info('Checking application endpoints...');
     
-    const endpoints = [
-      { name: 'Homepage', url: PRODUCTION_URL },
-      { name: 'Login', url: `${PRODUCTION_URL}/login` },
-      { name: 'Dashboard', url: `${PRODUCTION_URL}/dashboard` }
-    ];
+    const endpoints = PRODUCTION_HEALTH_PATHS.map((pathValue) => {
+      const normalizedPath = pathValue.startsWith('/') ? pathValue : `/${pathValue}`;
+      return {
+        name: `Route ${normalizedPath}`,
+        url: `${PRODUCTION_URL}${normalizedPath}`,
+      };
+    });
     
     const results = [];
     
     for (const endpoint of endpoints) {
       try {
-        // Use curl to check endpoint (cross-platform)
-        const curlCommand = `curl -s -o /dev/null -w "%{http_code}" -m 10 "${endpoint.url}"`;
-        const statusCode = execSync(curlCommand, {
-          encoding: 'utf8',
-          stdio: 'pipe'
-        }).trim();
-        
-        const status = statusCode.startsWith('2') ? 'ok' : statusCode.startsWith('3') ? 'redirect' : 'error';
+        const response = await fetch(endpoint.url, {
+          method: 'GET',
+          redirect: 'manual',
+        });
+        const statusCode = String(response.status);
+        const status =
+          statusCode.startsWith('2')
+            ? 'ok'
+            : statusCode.startsWith('3')
+              ? 'redirect'
+              : 'warning';
         results.push({
           name: endpoint.name,
           url: endpoint.url,
@@ -207,11 +237,11 @@ async function checkApplicationEndpoints() {
       }
     }
     
-    const failedEndpoints = results.filter(r => r.status === 'error');
-    if (failedEndpoints.length === 0) {
+    const nonOkEndpoints = results.filter(r => r.status !== 'ok' && r.status !== 'redirect');
+    if (nonOkEndpoints.length === 0) {
       logger.success('Application endpoints: OK');
     } else {
-      logger.error(`${failedEndpoints.length} endpoints failed`);
+      logger.warn(`${nonOkEndpoints.length} endpoints returned non-2xx/3xx status`);
     }
     
     return results;

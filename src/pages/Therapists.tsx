@@ -17,7 +17,7 @@ import {
 import { supabase } from '../lib/supabase';
 import type { Therapist } from '../types';
 import { TherapistModal } from '../components/TherapistModal';
-import CSVImport from '../components/CSVImport';
+import { CSVImport } from '../components/CSVImport';
 import { prepareFormData } from '../lib/validation';
 import { showSuccess, showError } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
@@ -599,4 +599,4 @@ const Therapists = () => {
   );
 };
 
-export default Therapists;
+export { Therapists };

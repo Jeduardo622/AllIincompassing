@@ -7,7 +7,7 @@ import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { useDashboardLiveRefresh } from '../../lib/dashboardLiveRefresh';
 import { fetchClients } from '../../lib/clients/fetchers';
 
-export default function ReportsSummary() {
+export function ReportsSummary() {
   // Get current month date range
   const startDate = format(startOfMonth(new Date()), 'yyyy-MM-dd');
   const endDate = format(endOfMonth(new Date()), 'yyyy-MM-dd');

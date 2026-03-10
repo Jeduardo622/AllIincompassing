@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { renderWithProviders, userEvent } from '../../test/utils';
-import ClientDetails from '../ClientDetails';
+import { ClientDetails } from '../ClientDetails';
 import { supabase } from '../../lib/supabase';
 
 vi.mock('react-router-dom', async () => {
@@ -23,28 +23,24 @@ vi.mock('../../lib/clients/fetchers', () => ({
 }));
 
 vi.mock('../../components/ClientDetails/ProfileTab', () => ({
-  __esModule: true,
-  default: () => <div>ProfileTabContent</div>,
+  ProfileTab: () => <div>ProfileTabContent</div>,
 }));
 
 vi.mock('../../components/ClientDetails/SessionNotesTab', () => ({
-  __esModule: true,
-  default: () => <div>SessionNotesTabContent</div>,
+  SessionNotesTab: () => <div>SessionNotesTabContent</div>,
 }));
 
 vi.mock('../../components/ClientDetails/ProgramsGoalsTab', () => ({
   __esModule: true,
-  default: () => <div>ProgramsGoalsTabContent</div>,
+  ProgramsGoalsTab: () => <div>ProgramsGoalsTabContent</div>,
 }));
 
 vi.mock('../../components/ClientDetails/PreAuthTab', () => ({
-  __esModule: true,
-  default: () => <div>PreAuthTabContent</div>,
+  PreAuthTab: () => <div>PreAuthTabContent</div>,
 }));
 
 vi.mock('../../components/ClientDetails/ServiceContractsTab', () => ({
-  __esModule: true,
-  default: () => <div>ServiceContractsTabContent</div>,
+  ServiceContractsTab: () => <div>ServiceContractsTabContent</div>,
 }));
 
 const createSessionsBuilder = () => {
@@ -98,3 +94,4 @@ describe('ClientDetails page', () => {
     expect(screen.getByText('ServiceContractsTabContent')).toBeInTheDocument();
   }, 15000);
 });
+

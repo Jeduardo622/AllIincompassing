@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
-import ProgramsGoalsTab from "../ClientDetails/ProgramsGoalsTab";
+import { ProgramsGoalsTab } from "../ClientDetails/ProgramsGoalsTab";
 import { generateProgramGoalDraft } from "../../lib/ai";
 import { showError, showInfo, showSuccess } from "../../lib/toast";
-import { callApi } from "../../lib/api";
+import { callApi, callEdgeFunctionHttp } from "../../lib/api";
 
 const ORG_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
 const ASSESSMENT_ID = "11111111-1111-4111-8111-111111111111";
@@ -45,6 +45,7 @@ vi.mock("../../lib/toast", () => ({
 
 vi.mock("../../lib/api", () => ({
   callApi: vi.fn(),
+  callEdgeFunctionHttp: vi.fn(),
 }));
 
 vi.mock("../../lib/supabase", () => ({
@@ -149,6 +150,14 @@ describe("ProgramsGoalsTab", () => {
       }
 
       return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+    vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string, init?: RequestInit) => {
+      const apiPath = path.startsWith("/api/") ? path : `/api/${path}`;
+      const callApiImpl = vi.mocked(callApi).getMockImplementation();
+      if (!callApiImpl) {
+        return new Response(JSON.stringify({ error: "API mock missing" }), { status: 500 });
+      }
+      return callApiImpl(apiPath, init);
     });
 
     vi.mocked(generateProgramGoalDraft).mockResolvedValue({
@@ -895,3 +904,4 @@ describe("ProgramsGoalsTab", () => {
     confirmSpy.mockRestore();
   });
 });
+

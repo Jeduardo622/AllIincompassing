@@ -30,7 +30,7 @@ interface ServiceLineFormData {
   is_active: boolean;
 }
 
-export default function ServiceLineSettings() {
+export function ServiceLineSettings() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingServiceLine, setEditingServiceLine] = useState<ServiceLine | null>(null);
   const [formData, setFormData] = useState<ServiceLineFormData>({

@@ -78,3 +78,45 @@ Dry-run (no network) to validate payload construction:
 ```bash
 npx tsx scripts/agent-eval-smoke.ts --dry-run
 ```
+
+## Test Reliability SLO Policy
+
+Source files:
+- `tests/reliability/policy.json`
+- `tests/reliability/quarantine.json`
+
+Standards:
+- Rolling 14-day suite pass-rate target: `99.5%`.
+- Flaky failure-rate budget: `<= 0.5%`.
+- Default timeouts:
+  - unit: `10000ms`
+  - integration: `30000ms`
+  - e2e: `90000ms`
+- Active quarantine budget: max `5` tests at any time.
+
+Quarantine requirements for each entry:
+- `id`, `testPath`, `reason`, `issue`, `owner`, `createdAt`, `expiresAt`, `exitCriteria`, `status`.
+- Expired active entries fail CI.
+- `issue` must be a real ticket id (`ABC-123`) or URL.
+- Current active quarantine registry is tracked in `tests/reliability/quarantine.json` and must be reviewed each release candidate.
+- Use `status: "retired"` when exit criteria are met; do not delete historical entries.
+
+CI enforcement:
+- `npm run ci:check-focused` now includes:
+  - focused/skip test guard,
+  - API boundary guard,
+  - API convergence tracker guard,
+  - migration governance guard,
+  - test reliability policy guard,
+  - architecture pack freshness guard.
+- `npm run test:ci` emits `reports/test-reliability-latest.json` each run.
+
+## RC documentation hygiene
+
+At each release candidate, refresh architecture-pack review metadata before CI:
+
+```bash
+npm run ci:touch:architecture-pack
+```
+
+This updates `docs/architecture/pack-metadata.json` (`lastReviewedAt`) to prevent stale-pack failures.

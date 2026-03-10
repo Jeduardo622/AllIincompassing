@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { TherapistOnboarding } from '../components/TherapistOnboarding';
 
-export default function TherapistOnboardingPage() {
+export function TherapistOnboardingPage() {
   const navigate = useNavigate();
 
   const handleComplete = () => {

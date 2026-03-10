@@ -1,4 +1,5 @@
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
+import { resolveAllowedOrigin } from "../_shared/cors.ts";
 import {
   createSupabaseIdempotencyService,
   IdempotencyConflictError,
@@ -14,7 +15,7 @@ import { resolveSchedulingRetryAfter } from "../_shared/retry-after.ts";
 import { orchestrateScheduling } from "../_shared/scheduling-orchestrator.ts";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };

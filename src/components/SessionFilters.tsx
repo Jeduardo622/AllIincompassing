@@ -13,7 +13,7 @@ interface SessionFiltersProps {
   scopedClientId?: string | null;
 }
 
-export default function SessionFilters({
+export function SessionFilters({
   therapists,
   clients,
   selectedTherapist,

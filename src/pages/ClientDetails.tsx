@@ -4,17 +4,17 @@ import { useQuery } from '@tanstack/react-query';
 import { User, FileText, ClipboardCheck, Contact as FileContract, ArrowLeft, Calendar, AlertCircle, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fetchClientById } from '../lib/clients/fetchers';
-import ProfileTab from '../components/ClientDetails/ProfileTab';
-import SessionNotesTab from '../components/ClientDetails/SessionNotesTab';
-import PreAuthTab from '../components/ClientDetails/PreAuthTab';
-import ServiceContractsTab from '../components/ClientDetails/ServiceContractsTab';
-import ProgramsGoalsTab from '../components/ClientDetails/ProgramsGoalsTab';
+import { ProfileTab } from '../components/ClientDetails/ProfileTab';
+import { SessionNotesTab } from '../components/ClientDetails/SessionNotesTab';
+import { PreAuthTab } from '../components/ClientDetails/PreAuthTab';
+import { ServiceContractsTab } from '../components/ClientDetails/ServiceContractsTab';
+import { ProgramsGoalsTab } from '../components/ClientDetails/ProgramsGoalsTab';
 import { useAuth } from '../lib/authContext';
 import { useActiveOrganizationId } from '../lib/organization';
 
 type TabType = 'profile' | 'session-notes' | 'pre-auth' | 'contracts' | 'programs-goals';
 
-export default function ClientDetails() {
+export function ClientDetails() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('profile');

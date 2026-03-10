@@ -1,9 +1,9 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import ClientOnboarding from '../components/ClientOnboarding';
+import { ClientOnboarding } from '../components/ClientOnboarding';
 
-export default function ClientOnboardingPage() {
+export function ClientOnboardingPage() {
   const navigate = useNavigate();
 
   const handleComplete = () => {

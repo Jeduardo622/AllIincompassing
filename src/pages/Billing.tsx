@@ -7,7 +7,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 
-export default function Billing() {
+export function Billing() {
   const [activeTab, setActiveTab] = useState('plans');
 
   return (

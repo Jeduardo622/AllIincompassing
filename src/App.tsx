@@ -5,29 +5,37 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './lib/authContext';
 import { useTheme } from './lib/theme';
 import { useAuth } from './lib/authContext';
-import ErrorBoundary from './components/ErrorBoundary';
-import PrivateRoute from './components/PrivateRoute';
-import RoleGuard from './components/RoleGuard';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { PrivateRoute } from './components/PrivateRoute';
+import { RoleGuard } from './components/RoleGuard';
 
 // Lazy load components
-const Login = React.lazy(() => import('./pages/Login'));
-const Signup = React.lazy(() => import('./pages/Signup'));
-const Layout = React.lazy(() => import('./components/Layout'));
-const Dashboard = React.lazy(() => import('./pages/Dashboard'));
-const Schedule = React.lazy(() => import('./pages/Schedule'));
-const Clients = React.lazy(() => import('./pages/Clients'));
-const ClientDetails = React.lazy(() => import('./pages/ClientDetails'));
-const ClientOnboardingPage = React.lazy(() => import('./pages/ClientOnboardingPage'));
-const Therapists = React.lazy(() => import('./pages/Therapists'));
-const TherapistOnboardingPage = React.lazy(() => import('./pages/TherapistOnboardingPage'));
-const TherapistDetails = React.lazy(() => import('./pages/TherapistDetails'));
-const MonitoringDashboard = React.lazy(() => import('./pages/MonitoringDashboard'));
+const Login = React.lazy(() => import('./pages/Login').then(module => ({ default: module.Login })));
+const Signup = React.lazy(() => import('./pages/Signup').then(module => ({ default: module.Signup })));
+const Layout = React.lazy(() => import('./components/Layout').then(module => ({ default: module.Layout })));
+const Dashboard = React.lazy(() => import('./pages/Dashboard').then(module => ({ default: module.Dashboard })));
+const Schedule = React.lazy(() => import('./pages/Schedule').then(module => ({ default: module.Schedule })));
+const Clients = React.lazy(() => import('./pages/Clients').then(module => ({ default: module.Clients })));
+const ClientDetails = React.lazy(() => import('./pages/ClientDetails').then(module => ({ default: module.ClientDetails })));
+const ClientOnboardingPage = React.lazy(() =>
+  import('./pages/ClientOnboardingPage').then(module => ({ default: module.ClientOnboardingPage })),
+);
+const Therapists = React.lazy(() => import('./pages/Therapists').then(module => ({ default: module.Therapists })));
+const TherapistOnboardingPage = React.lazy(() =>
+  import('./pages/TherapistOnboardingPage').then(module => ({ default: module.TherapistOnboardingPage })),
+);
+const TherapistDetails = React.lazy(() =>
+  import('./pages/TherapistDetails').then(module => ({ default: module.TherapistDetails })),
+);
+const MonitoringDashboard = React.lazy(() =>
+  import('./pages/MonitoringDashboard').then(module => ({ default: module.MonitoringDashboard })),
+);
 const Documentation = React.lazy(() =>
   import('./pages/Documentation').then(module => ({ default: module.Documentation })),
 );
-const FillDocs = React.lazy(() => import('./pages/FillDocs'));
-const Billing = React.lazy(() => import('./pages/Billing'));
-const Settings = React.lazy(() => import('./pages/Settings'));
+const FillDocs = React.lazy(() => import('./pages/FillDocs').then(module => ({ default: module.FillDocs })));
+const Billing = React.lazy(() => import('./pages/Billing').then(module => ({ default: module.Billing })));
+const Settings = React.lazy(() => import('./pages/Settings').then(module => ({ default: module.Settings })));
 const SuperAdminFeatureFlags = React.lazy(() =>
   import('./pages/SuperAdminFeatureFlags').then(module => ({ default: module.SuperAdminFeatureFlags })),
 );
@@ -37,10 +45,16 @@ const SuperAdminImpersonation = React.lazy(() =>
 const SuperAdminPrompts = React.lazy(() =>
   import('./pages/SuperAdminPrompts').then(module => ({ default: module.SuperAdminPrompts })),
 );
-const Unauthorized = React.lazy(() => import('./pages/Unauthorized'));
-const Authorizations = React.lazy(() => import('./pages/Authorizations'));
-const Reports = React.lazy(() => import('./pages/Reports'));
-const FamilyDashboard = React.lazy(() => import('./pages/FamilyDashboard'));
+const Unauthorized = React.lazy(() =>
+  import('./pages/Unauthorized').then(module => ({ default: module.Unauthorized })),
+);
+const Authorizations = React.lazy(() =>
+  import('./pages/Authorizations').then(module => ({ default: module.Authorizations })),
+);
+const Reports = React.lazy(() => import('./pages/Reports').then(module => ({ default: module.Reports })));
+const FamilyDashboard = React.lazy(() =>
+  import('./pages/FamilyDashboard').then(module => ({ default: module.FamilyDashboard })),
+);
 
 // Loading component
 const LoadingSpinner = () => (
@@ -274,4 +288,5 @@ function App() {
   );
 }
 
-export default App;
+export { App };
+

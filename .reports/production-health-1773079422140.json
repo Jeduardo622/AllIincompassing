@@ -1,0 +1,1319 @@
+{
+  "timestamp": "2026-03-09T18:03:42.138Z",
+  "environment": "production",
+  "overall_status": "warning",
+  "checks": {
+    "database": {
+      "status": "ok",
+      "response_time": 1773079419783
+    },
+    "tables": [
+      {
+        "table": "public.clients",
+        "status": "ok"
+      },
+      {
+        "table": "public.therapists",
+        "status": "ok"
+      },
+      {
+        "table": "public.sessions",
+        "status": "ok"
+      },
+      {
+        "table": "public.authorizations",
+        "status": "ok"
+      },
+      {
+        "table": "auth.users",
+        "status": "ok"
+      }
+    ],
+    "functions": {
+      "status": "ok",
+      "count": 143,
+      "functions": [
+        {
+          "schema_name": "public",
+          "function_name": "_is_admin",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "_is_therapist",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "acquire_session_hold",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "acquire_session_hold",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "admin_reset_user_password",
+          "return_type": "json"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "analyze_therapist_workload",
+          "return_type": "TABLE(therapist_id uuid, therapist_name text, utilization_rate numeric, total_hours numeric, target_hours numeric, efficiency_score numeric, recommendations jsonb, workload_distribution jsonb)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "assign_admin_role",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "assign_role_on_signup",
+          "return_type": "trigger"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "assign_therapist_role",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "assign_therapist_role",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "assign_user_role",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "block_role_change_non_admin",
+          "return_type": "trigger"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "cache_ai_response",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "calculate_efficiency_score",
+          "return_type": "numeric"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "calculate_therapist_client_compatibility",
+          "return_type": "numeric"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "calculate_time_slot_score",
+          "return_type": "numeric"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "can_access_client_documents",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "check_migration_status",
+          "return_type": "TABLE(migration_name text, is_applied boolean, applied_at timestamp with time zone)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "check_performance_thresholds",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "cleanup_ai_cache",
+          "return_type": "integer"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "cleanup_expired_ai_cache",
+          "return_type": "integer"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "cleanup_performance_data",
+          "return_type": "integer"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "client_email_exists",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "confirm_session_hold",
+          "return_type": "uuid"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "confirm_session_hold",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "count_admin_users",
+          "return_type": "integer"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "create_admin_invite",
+          "return_type": "text"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "create_authorization_with_services",
+          "return_type": "authorizations"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "create_client",
+          "return_type": "clients"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "create_super_admin",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "create_user_profile",
+          "return_type": "trigger"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "current_org_id",
+          "return_type": "uuid"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "current_user_is_super_admin",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "current_user_organization_id",
+          "return_type": "uuid"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "detect_scheduling_conflicts",
+          "return_type": "TABLE(conflict_id uuid, conflict_type text, severity integer, affected_sessions jsonb, suggested_resolutions jsonb)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "enqueue_impersonation_revocation",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "enqueue_impersonation_revocation",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "ensure_admin_role",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "ensure_admin_role",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "ensure_all_users_admin",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "ensure_user_has_admin_role",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "ensure_user_has_admin_role",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "generate_semantic_cache_key",
+          "return_type": "text"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "generate_slot_reasoning",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "generate_workload_recommendations",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_admin_users",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_admin_users",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_admin_users_paged",
+          "return_type": "SETOF admin_users"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_ai_cache_metrics",
+          "return_type": "TABLE(hit_rate numeric, cache_size_mb numeric, total_entries integer, expired_entries integer)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_alternative_therapists",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_alternative_times",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_authorization_metrics",
+          "return_type": "TABLE(total_authorizations bigint, approved_authorizations bigint, pending_authorizations bigint, denied_authorizations bigint, expired_authorizations bigint, total_requested_units bigint, total_approved_units bigint, units_by_service_code jsonb)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_authorization_metrics",
+          "return_type": "TABLE(total_authorizations integer, approved_authorizations integer, pending_authorizations integer, denied_authorizations integer, expired_authorizations integer, approval_rate numeric, total_requested_units integer, total_approved_units integer, approval_ratio numeric)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_billing_metrics",
+          "return_type": "TABLE(total_billed numeric, paid_amount numeric, pending_amount numeric, rejected_amount numeric, amount_by_status jsonb, amount_by_client jsonb)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_billing_metrics",
+          "return_type": "TABLE(total_billed numeric, paid_amount numeric, pending_amount numeric, rejected_amount numeric, collection_rate numeric, records_by_status jsonb, amount_by_client jsonb)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_cached_ai_response",
+          "return_type": "TABLE(response_text text, metadata jsonb)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_client_documents",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_client_metrics",
+          "return_type": "TABLE(total_clients bigint, active_clients bigint, new_clients_this_month bigint)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_client_metrics",
+          "return_type": "TABLE(total_clients integer, active_clients integer, inactive_clients integer, activity_rate numeric, clients_by_service_preference jsonb, clients_by_gender jsonb, clients_by_age jsonb)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_client_metrics",
+          "return_type": "TABLE(total_clients bigint, active_clients bigint, inactive_clients bigint, new_clients bigint, service_preferences jsonb, sessions_per_client jsonb)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_client_preference_factor",
+          "return_type": "numeric"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_dashboard_data",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_db_version",
+          "return_type": "text"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_dropdown_data",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_guardian_client_portal",
+          "return_type": "TABLE(client_id uuid, client_full_name text, client_date_of_birth date, client_email text, client_phone text, client_status text, guardian_relationship text, guardian_is_primary boolean, upcoming_sessions jsonb, guardian_notes jsonb)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_historical_success_rate",
+          "return_type": "numeric"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_optimal_time_slots",
+          "return_type": "TABLE(suggested_time timestamp with time zone, optimality_score numeric, reasoning jsonb, availability_data jsonb)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_organization_id_from_metadata",
+          "return_type": "uuid"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_performance_metrics",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_performance_recommendations",
+          "return_type": "TABLE(category text, recommendation text, impact text, difficulty text, estimated_improvement text)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_recent_chat_history",
+          "return_type": "TABLE(id uuid, conversation_id uuid, role text, content text, context jsonb, action_type text, action_data jsonb, created_at timestamp with time zone)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_recent_chat_history",
+          "return_type": "TABLE(id uuid, conversation_id uuid, role text, content text, context jsonb, action_type text, action_data jsonb, created_at timestamp with time zone)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_schedule_data_batch",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_scheduling_efficiency_factor",
+          "return_type": "numeric"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_session_metrics",
+          "return_type": "TABLE(total_sessions bigint, completed_sessions bigint, cancelled_sessions bigint, no_show_sessions bigint, sessions_by_therapist jsonb, sessions_by_client jsonb, sessions_by_day jsonb)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_session_metrics",
+          "return_type": "TABLE(total_sessions bigint, completed_sessions bigint, cancelled_sessions bigint, no_show_sessions bigint, sessions_by_therapist jsonb, sessions_by_client jsonb, sessions_by_day jsonb)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_session_notes_with_compliance",
+          "return_type": "TABLE(note_id uuid, session_date date, therapist_name text, ai_confidence_score numeric, california_compliant boolean, insurance_ready boolean, signed_at timestamp with time zone, created_at timestamp with time zone)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_sessions_optimized",
+          "return_type": "TABLE(session_data jsonb)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_sessions_report",
+          "return_type": "TABLE(session_id uuid, client_name text, therapist_name text, session_day date, session_type text, status text)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_sessions_report",
+          "return_type": "TABLE(session_id uuid, client_name text, therapist_name text, session_day date, session_type text, status text)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_sessions_report",
+          "return_type": "TABLE(session_id uuid, client_name text, therapist_name text, session_day date, session_type text, status text)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_slot_availability_context",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_system_alerts",
+          "return_type": "TABLE(id uuid, alert_type text, metric_name text, current_value numeric, threshold_value numeric, message text, created_at timestamp with time zone, resolved boolean)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_therapist_availability",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_therapist_metrics",
+          "return_type": "TABLE(total_therapists bigint, active_therapists bigint, inactive_therapists bigint, specialties jsonb, service_types jsonb, sessions_per_therapist jsonb)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_therapist_metrics",
+          "return_type": "TABLE(total_therapists bigint, active_therapists bigint, inactive_therapists bigint, specialties jsonb, service_types jsonb, sessions_per_therapist jsonb)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_therapist_workload_factor",
+          "return_type": "numeric"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_user_role_from_junction",
+          "return_type": "role_type"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_user_roles",
+          "return_type": "json"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "get_user_therapist_id",
+          "return_type": "uuid"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "guardian_contact_metadata",
+          "return_type": "TABLE(client_id uuid, metadata jsonb)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "guardian_link_queue_admin_view",
+          "return_type": "TABLE(id uuid, guardian_id uuid, guardian_email text, status text, organization_id uuid, invite_token text, metadata jsonb, requested_client_ids uuid[], approved_client_ids uuid[], created_at timestamp with time zone, updated_at timestamp with time zone, processed_at timestamp with time zone, processed_by uuid)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "handle_new_user",
+          "return_type": "trigger"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "has_care_role",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "has_role",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "insert_session_with_billing",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "is_admin",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "is_super_admin",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "is_valid_email",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "is_valid_url",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "log_ai_performance",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "log_ai_performance",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "log_ai_performance",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "log_db_performance",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "log_db_performance",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "log_error_event",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "log_error_event",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "log_function_performance",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "log_function_performance",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "log_organization_flag_history",
+          "return_type": "trigger"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "log_organization_plan_history",
+          "return_type": "trigger"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "manage_admin_users",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "manage_admin_users",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "prevent_feature_flag_plan_history_mutations",
+          "return_type": "trigger"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "process_client_document",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "prune_admin_actions",
+          "return_type": "integer"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "prune_admin_invite_tokens",
+          "return_type": "integer"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "prune_session_transcripts",
+          "return_type": "TABLE(deleted_transcripts integer, deleted_segments integer)"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "record_session_audit",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "remove_user_role",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "resolve_performance_alert",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "set_sessions_audit_fields",
+          "return_type": "trigger"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "set_updated_at",
+          "return_type": "trigger"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "sync_admin_roles_from_auth_metadata",
+          "return_type": "trigger"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "sync_profile_role",
+          "return_type": "trigger"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "sync_user_profile",
+          "return_type": "trigger"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "temp_validate_time",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "trigger_set_timestamp",
+          "return_type": "trigger"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "update_ai_session_note_timestamp",
+          "return_type": "trigger"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "update_authorization_documents",
+          "return_type": "authorizations"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "update_authorization_with_services",
+          "return_type": "authorizations"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "update_client_documents",
+          "return_type": "void"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "update_last_login",
+          "return_type": "trigger"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "update_updated_at_column",
+          "return_type": "trigger"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "user_has_any_role",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "user_has_role",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "user_has_role",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "user_has_role_for_org",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "validate_feature_flag_metadata",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "validate_organization_metadata",
+          "return_type": "boolean"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "validate_performance_improvements",
+          "return_type": "json"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "validate_session_note_compliance",
+          "return_type": "jsonb"
+        },
+        {
+          "schema_name": "public",
+          "function_name": "validate_time_interval_new",
+          "return_type": "boolean"
+        }
+      ]
+    },
+    "rls": {
+      "status": "ok",
+      "total_tables": 86,
+      "tables_without_rls": 0,
+      "tables": [
+        {
+          "schemaname": "public",
+          "tablename": "admin_actions",
+          "rls_enabled": true,
+          "policy_count": "7"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "admin_invite_tokens",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "agent_execution_traces",
+          "rls_enabled": true,
+          "policy_count": "1"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "agent_prompt_tool_versions",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "agent_runtime_config",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "ai_cache",
+          "rls_enabled": true,
+          "policy_count": "6"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "ai_guidance_documents",
+          "rls_enabled": true,
+          "policy_count": "0"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "ai_performance_metrics",
+          "rls_enabled": true,
+          "policy_count": "4"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "ai_processing_logs",
+          "rls_enabled": true,
+          "policy_count": "4"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "ai_response_cache",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "ai_session_notes",
+          "rls_enabled": true,
+          "policy_count": "6"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "assessment_checklist_items",
+          "rls_enabled": true,
+          "policy_count": "1"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "assessment_documents",
+          "rls_enabled": true,
+          "policy_count": "1"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "assessment_draft_goals",
+          "rls_enabled": true,
+          "policy_count": "1"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "assessment_draft_programs",
+          "rls_enabled": true,
+          "policy_count": "1"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "assessment_extractions",
+          "rls_enabled": true,
+          "policy_count": "1"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "assessment_review_events",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "authorization_services",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "authorizations",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "behavioral_patterns",
+          "rls_enabled": true,
+          "policy_count": "4"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "billing_modifiers",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "billing_records",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "chat_history",
+          "rls_enabled": true,
+          "policy_count": "4"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "client_availability",
+          "rls_enabled": true,
+          "policy_count": "1"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "client_guardians",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "client_issues",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "client_notes",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "client_session_notes",
+          "rls_enabled": true,
+          "policy_count": "4"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "client_therapist_links",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "clients",
+          "rls_enabled": true,
+          "policy_count": "4"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "company_settings",
+          "rls_enabled": true,
+          "policy_count": "4"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "conversations",
+          "rls_enabled": true,
+          "policy_count": "4"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "cpt_codes",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "cpt_modifier_mappings",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "db_performance_metrics",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "error_logs",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "error_taxonomy",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "feature_flag_audit_logs",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "feature_flag_plan_history",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "feature_flags",
+          "rls_enabled": true,
+          "policy_count": "1"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "file_cabinet_settings",
+          "rls_enabled": true,
+          "policy_count": "1"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "function_idempotency_keys",
+          "rls_enabled": true,
+          "policy_count": "1"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "function_performance_logs",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "goal_versions",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "goals",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "guardian_link_queue",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "impersonation_audit",
+          "rls_enabled": true,
+          "policy_count": "4"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "impersonation_revocation_queue",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "insurance_providers",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "locations",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "organization_feature_flags",
+          "rls_enabled": true,
+          "policy_count": "1"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "organization_plans",
+          "rls_enabled": true,
+          "policy_count": "1"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "organizations",
+          "rls_enabled": true,
+          "policy_count": "1"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "performance_alerts",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "performance_baselines",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "plans",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "profiles",
+          "rls_enabled": true,
+          "policy_count": "6"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "program_notes",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "programs",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "referring_providers",
+          "rls_enabled": true,
+          "policy_count": "1"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "roles",
+          "rls_enabled": true,
+          "policy_count": "4"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "scheduling_orchestration_runs",
+          "rls_enabled": true,
+          "policy_count": "1"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "scheduling_preferences",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "service_areas",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "service_contract_rates",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "service_contract_versions",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "service_contracts",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "service_lines",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "session_audit_logs",
+          "rls_enabled": true,
+          "policy_count": "1"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "session_cpt_entries",
+          "rls_enabled": true,
+          "policy_count": "5"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "session_cpt_modifiers",
+          "rls_enabled": true,
+          "policy_count": "6"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "session_goals",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "session_holds",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "session_note_templates",
+          "rls_enabled": true,
+          "policy_count": "4"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "session_transcript_segments",
+          "rls_enabled": true,
+          "policy_count": "6"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "session_transcripts",
+          "rls_enabled": true,
+          "policy_count": "6"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "sessions",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "system_performance_metrics",
+          "rls_enabled": true,
+          "policy_count": "2"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "therapist_availability",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "therapist_certifications",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "therapist_documents",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "therapists",
+          "rls_enabled": true,
+          "policy_count": "4"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "user_profiles",
+          "rls_enabled": true,
+          "policy_count": "6"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "user_roles",
+          "rls_enabled": true,
+          "policy_count": "4"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "user_sessions",
+          "rls_enabled": true,
+          "policy_count": "3"
+        },
+        {
+          "schemaname": "public",
+          "tablename": "user_therapist_links",
+          "rls_enabled": true,
+          "policy_count": "2"
+        }
+      ]
+    },
+    "endpoints": [
+      {
+        "name": "Homepage",
+        "url": "https://allincompassing.netlify.app",
+        "status_code": "404",
+        "status": "warning"
+      },
+      {
+        "name": "Login",
+        "url": "https://allincompassing.netlify.app/login",
+        "status_code": "404",
+        "status": "warning"
+      },
+      {
+        "name": "Dashboard",
+        "url": "https://allincompassing.netlify.app/dashboard",
+        "status_code": "404",
+        "status": "warning"
+      }
+    ],
+    "performance": {
+      "status": "ok",
+      "metrics": {
+        "datname": "postgres",
+        "active_connections": 10,
+        "committed_transactions": "9729102",
+        "rolled_back_transactions": "95045",
+        "blks_read": "6394",
+        "blks_hit": "6527598245",
+        "tup_returned": "5037889718",
+        "tup_fetched": "4070514280",
+        "tup_inserted": "488264",
+        "tup_updated": "23892",
+        "tup_deleted": "452479"
+      }
+    }
+  },
+  "summary": {
+    "total_checks": 6,
+    "passed_checks": 9,
+    "failed_checks": 0,
+    "warning_checks": 3
+  }
+}

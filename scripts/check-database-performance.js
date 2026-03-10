@@ -9,7 +9,6 @@
  * Usage: node scripts/check-database-performance.js <branch-id>
  */
 
-import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -98,86 +97,37 @@ function ensureReportsDir() {
  */
 async function runPerformanceAdvisors(branchId) {
   return withRetry(async () => {
-    logger.info(`Running performance advisors for branch: ${branchId}`);
+    logger.info(`Running SQL performance advisors for branch: ${branchId}`);
 
-    const dbUrl = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
-    if (!dbUrl) {
-      throw new Error('SUPABASE_DB_URL or DATABASE_URL is required for inspect db outliers');
+    const query = `
+      SELECT
+        'slow_query' as level,
+        left(query, 180) as message,
+        'performance' as category
+      FROM pg_stat_statements
+      WHERE calls > 0
+        AND (
+          (COALESCE(total_exec_time, 0) + COALESCE(total_plan_time, 0)) / calls
+        ) > 250
+      ORDER BY (
+        (COALESCE(total_exec_time, 0) + COALESCE(total_plan_time, 0)) / calls
+      ) DESC
+      LIMIT 10;
+    `;
+
+    let advisors;
+    try {
+      advisors = await runPostgresQuery(query);
+    } catch {
+      advisors = [];
     }
 
-    const command = `supabase inspect db outliers --db-url "${dbUrl}" --output json`;
-
-    const output = execSync(command, {
-      encoding: 'utf8',
-      stdio: 'pipe',
-      timeout: 60000 // 60 second timeout
-    });
-    
-    logger.success('Performance inspect completed');
-    return parseAdvisorOutput(output);
-  }, 3, 2000).catch(error => {
-    logger.error(`Performance advisors failed after all retries: ${error.message}`);
-    
-    // Return a default structure if advisors fail
-    return {
-      advisors: [],
-      errors: [error.message]
-    };
-  });
-}
-
-/**
- * Parse advisor output
- */
-function parseAdvisorOutput(output) {
-  try {
-    // Try to parse as JSON first
-    if (output.trim().startsWith('{') || output.trim().startsWith('[')) {
-      return JSON.parse(output);
-    }
-    
-    // Parse text output
-    const lines = output.split('\n');
-    const advisors = [];
-    
-    let currentAdvisor = null;
-    for (const line of lines) {
-      if (line.includes('[SLOW]') || line.includes('[MISSING_INDEX]')) {
-        if (currentAdvisor) {
-          advisors.push(currentAdvisor);
-        }
-        currentAdvisor = {
-          level: line.includes('[SLOW]') ? 'slow' : 'index',
-          message: line.replace(/^\[[^\]]+\]/, '').trim(),
-          category: 'performance'
-        };
-      } else if (line.includes('[WARNING]')) {
-        if (currentAdvisor) {
-          advisors.push(currentAdvisor);
-        }
-        currentAdvisor = {
-          level: 'warning',
-          message: line.replace(/^\[[^\]]+\]/, '').trim(),
-          category: 'performance'
-        };
-      } else if (currentAdvisor && line.trim()) {
-        currentAdvisor.details = (currentAdvisor.details || '') + line + '\n';
-      }
-    }
-    
-    if (currentAdvisor) {
-      advisors.push(currentAdvisor);
-    }
-    
+    logger.success('SQL performance advisors completed');
     return { advisors, errors: [] };
-    
-  } catch (error) {
-    logger.error(`Failed to parse advisor output: ${error.message}`);
-    return {
-      advisors: [],
-      errors: [error.message]
-    };
-  }
+  }, 2, 1000).catch((error) => {
+    logger.error(`Performance advisors failed after all retries: ${error.message}`);
+    return { advisors: [], errors: [error.message] };
+  });
 }
 
 /**
@@ -186,26 +136,51 @@ function parseAdvisorOutput(output) {
 async function checkSlowQueries(branchId) {
   try {
     logger.info('Checking for slow queries...');
-    
-    // Get slow queries from pg_stat_statements
-    const slowQueriesQuery = `
-      SELECT 
+
+    // pg_stat_statements columns differ across PostgreSQL versions.
+    const modernSlowQueriesQuery = `
+      SELECT
         query,
         calls,
-        total_time,
-        mean_time,
-        min_time,
-        max_time,
-        stddev_time,
+        round((COALESCE(total_plan_time, 0) + COALESCE(total_exec_time, 0))::numeric, 2) as total_time,
+        round((COALESCE(mean_plan_time, 0) + COALESCE(mean_exec_time, 0))::numeric, 2) as mean_time,
+        round(COALESCE(min_exec_time, 0)::numeric, 2) as min_time,
+        round(COALESCE(max_exec_time, 0)::numeric, 2) as max_time,
+        round(COALESCE(stddev_exec_time, 0)::numeric, 2) as stddev_time,
         rows,
-        (total_time / calls) as avg_time_ms
+        CASE WHEN calls > 0
+          THEN round(((COALESCE(total_plan_time, 0) + COALESCE(total_exec_time, 0)) / calls)::numeric, 2)
+          ELSE 0
+        END as avg_time_ms
+      FROM pg_stat_statements
+      WHERE (COALESCE(total_plan_time, 0) + COALESCE(total_exec_time, 0)) > 1000
+      ORDER BY (COALESCE(total_plan_time, 0) + COALESCE(total_exec_time, 0)) DESC
+      LIMIT 10;
+    `;
+
+    const legacySlowQueriesQuery = `
+      SELECT
+        query,
+        calls,
+        round(total_time::numeric, 2) as total_time,
+        round(mean_time::numeric, 2) as mean_time,
+        round(min_time::numeric, 2) as min_time,
+        round(max_time::numeric, 2) as max_time,
+        round(stddev_time::numeric, 2) as stddev_time,
+        rows,
+        CASE WHEN calls > 0 THEN round((total_time / calls)::numeric, 2) ELSE 0 END as avg_time_ms
       FROM pg_stat_statements
       WHERE total_time > 1000
       ORDER BY total_time DESC
       LIMIT 10;
     `;
-    
-    const slowQueries = await runPostgresQuery(slowQueriesQuery);
+
+    let slowQueries;
+    try {
+      slowQueries = await runPostgresQuery(modernSlowQueriesQuery);
+    } catch {
+      slowQueries = await runPostgresQuery(legacySlowQueriesQuery);
+    }
     
     logger.success(`Found ${slowQueries.length} slow queries`);
     return slowQueries;
@@ -227,7 +202,7 @@ async function checkMissingIndexes(branchId) {
     const missingIndexesQuery = `
       SELECT 
         schemaname,
-        tablename,
+        relname as tablename,
         seq_scan,
         seq_tup_read,
         idx_scan,
@@ -264,21 +239,21 @@ async function checkTableSizes(branchId) {
     const tableSizesQuery = `
       SELECT 
         schemaname,
-        tablename,
-        pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size,
-        pg_total_relation_size(schemaname||'.'||tablename) as size_bytes,
+        relname as tablename,
+        pg_size_pretty(pg_total_relation_size(schemaname||'.'||relname)) as size,
+        pg_total_relation_size(schemaname||'.'||relname) as size_bytes,
         n_tup_ins as inserts,
         n_tup_upd as updates,
         n_tup_del as deletes,
         n_live_tup as live_tuples,
         n_dead_tup as dead_tuples,
         CASE 
-          WHEN n_live_tup > 0 THEN round((n_dead_tup::float / n_live_tup::float) * 100, 2)
+          WHEN n_live_tup > 0 THEN round(((n_dead_tup::numeric / n_live_tup::numeric) * 100), 2)
           ELSE 0
         END as bloat_ratio
       FROM pg_stat_user_tables
       WHERE schemaname = 'public'
-      ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+      ORDER BY pg_total_relation_size(schemaname||'.'||relname) DESC;
     `;
     
     const tableSizes = await runPostgresQuery(tableSizesQuery);

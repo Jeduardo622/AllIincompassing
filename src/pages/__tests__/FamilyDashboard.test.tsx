@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent } from '../../test/utils';
-import FamilyDashboard from '../FamilyDashboard';
+import { FamilyDashboard } from '../FamilyDashboard';
 
 const mockGuardianClients = [
   {

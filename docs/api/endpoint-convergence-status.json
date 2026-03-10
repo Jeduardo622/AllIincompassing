@@ -1,0 +1,103 @@
+{
+  "targetAuthority": "supabase-edge",
+  "quarter": "2026-Q2",
+  "ownerGroup": "Platform Engineering",
+  "entries": [
+    {
+      "functionFile": "assessment-checklist.ts",
+      "publicApiPath": "/api/assessment-checklist",
+      "edgeTarget": "extract-assessment-fields",
+      "wave": "A",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "assessment-documents.ts",
+      "publicApiPath": "/api/assessment-documents",
+      "edgeTarget": "extract-assessment-fields",
+      "wave": "A",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "assessment-drafts.ts",
+      "publicApiPath": "/api/assessment-drafts",
+      "edgeTarget": "generate-program-goals",
+      "wave": "A",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "assessment-plan-pdf.ts",
+      "publicApiPath": "/api/assessment-plan-pdf",
+      "edgeTarget": "generate-assessment-plan-pdf",
+      "wave": "A",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "assessment-promote.ts",
+      "publicApiPath": "/api/assessment-promote",
+      "edgeTarget": "generate-assessment-plan-pdf",
+      "wave": "B",
+      "status": "legacy_shim",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "dashboard.ts",
+      "publicApiPath": "/api/dashboard",
+      "edgeTarget": "get-dashboard-data",
+      "wave": "A",
+      "status": "retired",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "book.ts",
+      "publicApiPath": "/api/book",
+      "edgeTarget": "sessions-hold + sessions-confirm",
+      "wave": "B",
+      "status": "legacy_shim",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "sessions-start.ts",
+      "publicApiPath": "/api/sessions-start",
+      "edgeTarget": "sessions-confirm",
+      "wave": "B",
+      "status": "retired",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "programs.ts",
+      "publicApiPath": "/api/programs",
+      "edgeTarget": "generate-program-goals",
+      "wave": "B",
+      "status": "retired",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "goals.ts",
+      "publicApiPath": "/api/goals",
+      "edgeTarget": "generate-program-goals",
+      "wave": "B",
+      "status": "retired",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "goal-data-points.ts",
+      "publicApiPath": "/api/goal-data-points",
+      "edgeTarget": "generate-program-goals",
+      "wave": "B",
+      "status": "retired",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "program-notes.ts",
+      "publicApiPath": "/api/program-notes",
+      "edgeTarget": "generate-session-notes-pdf",
+      "wave": "B",
+      "status": "retired",
+      "owner": "Backend Platform"
+    }
+  ]
+}

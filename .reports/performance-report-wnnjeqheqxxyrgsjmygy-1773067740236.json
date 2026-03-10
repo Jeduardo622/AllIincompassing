@@ -1,0 +1,36 @@
+{
+  "branch_id": "wnnjeqheqxxyrgsjmygy",
+  "timestamp": "2026-03-09T14:49:00.234Z",
+  "summary": {
+    "total_issues": 0,
+    "slow_queries": 0,
+    "index_issues": 0,
+    "largest_tables": [],
+    "total_connections": 13,
+    "missing_required_indexes": 0
+  },
+  "advisors": [],
+  "slow_queries": [],
+  "index_issues": [],
+  "table_sizes": [],
+  "connections": [
+    {
+      "state": null,
+      "connection_count": "8",
+      "percentage": "61.5384615384615385"
+    },
+    {
+      "state": "idle",
+      "connection_count": "5",
+      "percentage": "38.4615384615384615"
+    }
+  ],
+  "errors": [],
+  "recommendations": [],
+  "required_indexes": {
+    "billing_records_org_status_created_idx": "CREATE INDEX billing_records_org_status_created_idx ON public.billing_records USING btree (organization_id, status, created_at DESC)",
+    "clients_org_status_active_idx": "CREATE INDEX clients_org_status_active_idx ON public.clients USING btree (organization_id, status, full_name) WHERE (deleted_at IS NULL)",
+    "session_cpt_entries_org_session_line_idx": "CREATE INDEX session_cpt_entries_org_session_line_idx ON public.session_cpt_entries USING btree (organization_id, session_id, line_number)",
+    "sessions_org_therapist_start_time_idx": "CREATE INDEX sessions_org_therapist_start_time_idx ON public.sessions USING btree (organization_id, therapist_id, start_time)"
+  }
+}

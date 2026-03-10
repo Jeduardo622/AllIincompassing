@@ -15,7 +15,7 @@ interface SchedulingMatrixProps {
 const CELL_HEIGHT = 40; // Height of each time slot cell
 const CONTAINER_HEIGHT = 600; // Max height of the scrollable area
 
-export default function SchedulingMatrix({
+export function SchedulingMatrix({
   therapists,
   clients,
   selectedDate,

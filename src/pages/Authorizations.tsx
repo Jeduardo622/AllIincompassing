@@ -11,13 +11,13 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Authorization, AuthorizationService } from '../types';
-import AuthorizationModal from '../components/AuthorizationModal';
+import { AuthorizationModal } from '../components/AuthorizationModal';
 import { showSuccess, showError } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
 import { fetchClients } from '../lib/clients/fetchers';
 import { createAuthorizationWithServices, updateAuthorizationWithServices } from '../lib/authorizations/mutations';
 
-export default function Authorizations() {
+export function Authorizations() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);

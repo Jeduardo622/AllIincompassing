@@ -4,6 +4,7 @@ import { errorEnvelope, getRequestId, rateLimit } from "./lib/http/error.ts";
 import { withRetry } from "../_shared/retry.ts";
 import { createRequestClient } from "../_shared/database.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
+import { resolveAllowedOrigin } from "../_shared/cors.ts";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -11,7 +12,7 @@ const openai = new OpenAI({
 });
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };

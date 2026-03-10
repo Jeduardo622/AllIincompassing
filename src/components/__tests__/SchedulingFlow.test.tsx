@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../test/setup';
-import Schedule from '../../pages/Schedule';
-import SessionModal from '../SessionModal';
+import { Schedule } from '../../pages/Schedule';
+import { SessionModal } from '../SessionModal';
 import { format, addDays, addHours } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 
@@ -625,3 +625,4 @@ describe('Scheduling Flow - Client with Therapist', () => {
     });
   });
 }); 
+

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderWithProviders, screen, userEvent } from "../../test/utils";
-import ChatBot from "../ChatBot";
+import { ChatBot } from "../ChatBot";
 import { processMessage } from "../../lib/ai";
 import { cancelSessions } from "../../lib/sessionCancellation";
 import { useAuth } from "../../lib/authContext";

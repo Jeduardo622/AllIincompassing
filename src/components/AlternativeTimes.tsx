@@ -9,7 +9,7 @@ interface AlternativeTimesProps {
   onSelectTime: (startTime: string, endTime: string) => void;
 }
 
-export default function AlternativeTimes({
+export function AlternativeTimes({
   alternatives,
   isLoading,
   onSelectTime

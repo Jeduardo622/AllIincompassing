@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { showSuccess, showError } from '../lib/toast';
-import AvailabilityEditor from './AvailabilityEditor';
+import { AvailabilityEditor } from './AvailabilityEditor';
 import { OnboardingSteps } from './OnboardingSteps';
 import type { Client } from '../types';
 import { prepareFormData } from '../lib/validation';
@@ -27,41 +27,20 @@ import {
 import { SERVICE_PREFERENCE_OPTIONS } from '../lib/constants/servicePreferences';
 import { useActiveOrganizationId } from '../lib/organization';
 import { useAuth } from '../lib/authContext';
+import {
+  DEFAULT_AVAILABILITY,
+  SERVICE_CONTRACT_PROVIDER_OPTIONS,
+  STEP_FIELDS,
+  type ServiceContractProvider,
+  isCodeAllowedForProvider,
+} from './clientOnboarding.constants';
+import { buildAvailableCodesByProvider } from "./clientOnboarding.domain";
 
 interface ClientOnboardingProps {
   onComplete?: () => void;
 }
 
-const DEFAULT_AVAILABILITY = {
-  monday: { start: "06:00", end: "21:00" },
-  tuesday: { start: "06:00", end: "21:00" },
-  wednesday: { start: "06:00", end: "21:00" },
-  thursday: { start: "06:00", end: "21:00" },
-  friday: { start: "06:00", end: "21:00" },
-  saturday: { start: "06:00", end: "21:00" },
-};
-
-const SERVICE_CONTRACT_PROVIDER_OPTIONS = ['Private', 'IEHP', 'CalOptima'] as const;
-type ServiceContractProvider = typeof SERVICE_CONTRACT_PROVIDER_OPTIONS[number];
-const UNIVERSAL_CPT_CODE = 'S5110';
-const UNIVERSAL_CPT_DESCRIPTION = 'Parent consultation';
-
-const getCodePrefixForProvider = (provider: ServiceContractProvider): '9' | 'H' => (
-  provider === 'Private' ? '9' : 'H'
-);
-
-const isCodeAllowedForProvider = (provider: ServiceContractProvider, code: unknown): boolean => {
-  const normalizedCode = String(code ?? '').trim().toUpperCase();
-  if (!normalizedCode) {
-    return false;
-  }
-  if (normalizedCode === UNIVERSAL_CPT_CODE) {
-    return true;
-  }
-  return normalizedCode.startsWith(getCodePrefixForProvider(provider));
-};
-
-export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
+export function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, File>>({});
@@ -122,35 +101,6 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
     }
   }, [currentStep, setValue]);
 
-  const STEP_FIELDS: Record<number, Array<keyof ClientFormData>> = {
-    1: ['first_name', 'last_name', 'date_of_birth', 'email', 'gender', 'phone', 'client_id', 'cin_number'],
-    2: [
-      'parent1_first_name',
-      'parent1_last_name',
-      'parent1_phone',
-      'parent1_email',
-      'parent1_relationship',
-      'parent2_first_name',
-      'parent2_last_name',
-      'parent2_phone',
-      'parent2_email',
-      'parent2_relationship',
-    ],
-    3: ['address_line1', 'address_line2', 'city', 'state', 'zip_code'],
-    4: [
-      'service_preference',
-      'one_to_one_units',
-      'supervision_units',
-      'parent_consult_units',
-      'assessment_units',
-      'auth_units',
-      'auth_start_date',
-      'auth_end_date',
-      'service_contracts',
-      'insurance_info',
-    ],
-  };
-
   const { data: cptCatalog = [] } = useQuery({
     queryKey: ['cpt-codes-onboarding'],
     queryFn: async () => {
@@ -209,44 +159,7 @@ export default function ClientOnboarding({ onComplete }: ClientOnboardingProps) 
 
   const serviceContracts = watch('service_contracts') ?? [];
   const availableCodesByProvider = useMemo(() => {
-    const grouped: Record<ServiceContractProvider, Array<{ code: string; description: string }>> = {
-      Private: [],
-      IEHP: [],
-      CalOptima: [],
-    };
-    const pushIfMissing = (
-      provider: ServiceContractProvider,
-      code: string,
-      description: string
-    ) => {
-      if (!grouped[provider].some((entry) => entry.code === code)) {
-        grouped[provider].push({ code, description });
-      }
-    };
-
-    for (const code of cptCatalog) {
-      const normalizedCode = String(code.code ?? '').toUpperCase();
-      const description = String(code.short_description ?? '');
-      if (!normalizedCode) {
-        continue;
-      }
-      if (normalizedCode === UNIVERSAL_CPT_CODE) {
-        pushIfMissing('Private', normalizedCode, description || UNIVERSAL_CPT_DESCRIPTION);
-        pushIfMissing('IEHP', normalizedCode, description || UNIVERSAL_CPT_DESCRIPTION);
-        pushIfMissing('CalOptima', normalizedCode, description || UNIVERSAL_CPT_DESCRIPTION);
-      } else if (normalizedCode.startsWith('9')) {
-        pushIfMissing('Private', normalizedCode, description);
-      } else if (normalizedCode.startsWith('H')) {
-        pushIfMissing('IEHP', normalizedCode, description);
-        pushIfMissing('CalOptima', normalizedCode, description);
-      }
-    }
-
-    pushIfMissing('Private', UNIVERSAL_CPT_CODE, UNIVERSAL_CPT_DESCRIPTION);
-    pushIfMissing('IEHP', UNIVERSAL_CPT_CODE, UNIVERSAL_CPT_DESCRIPTION);
-    pushIfMissing('CalOptima', UNIVERSAL_CPT_CODE, UNIVERSAL_CPT_DESCRIPTION);
-
-    return grouped;
+    return buildAvailableCodesByProvider(cptCatalog);
   }, [cptCatalog]);
 
   const createClientMutation = useMutation({

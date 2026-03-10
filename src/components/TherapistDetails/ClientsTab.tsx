@@ -42,7 +42,7 @@ export const isAlreadyLinkedToTherapist = (
   client.linked_therapist_ids.includes(therapistId) || client.primary_therapist_id === therapistId
 );
 
-export default function ClientsTab({ therapist }: ClientsTabProps) {
+export function ClientsTab({ therapist }: ClientsTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [linkSearchQuery, setLinkSearchQuery] = useState('');

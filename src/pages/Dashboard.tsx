@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Users, Calendar, Clock, AlertCircle } from 'lucide-react';
-import DashboardCard from '../components/DashboardCard';
-import ReportsSummary from '../components/Dashboard/ReportsSummary';
+import { DashboardCard } from '../components/DashboardCard';
+import { ReportsSummary } from '../components/Dashboard/ReportsSummary';
 import { useDashboardData } from '../lib/optimizedQueries';
 import { useDashboardLiveRefresh } from '../lib/dashboardLiveRefresh';
  
@@ -360,4 +360,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard;
+export { Dashboard };

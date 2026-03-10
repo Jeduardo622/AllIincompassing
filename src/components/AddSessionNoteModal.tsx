@@ -30,7 +30,7 @@ export interface SessionNoteFormValues {
   is_locked: boolean;
 }
 
-export default function AddSessionNoteModal({
+export function AddSessionNoteModal({
   isOpen,
   onClose,
   onSubmit,

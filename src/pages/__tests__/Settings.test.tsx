@@ -1,6 +1,6 @@
 import { describe, expect, it, afterEach, vi } from 'vitest';
 import { renderWithProviders, screen } from '../../test/utils';
-import Settings from '../Settings';
+import { Settings } from '../Settings';
 import * as authContext from '../../lib/authContext';
 
 describe('Settings', () => {

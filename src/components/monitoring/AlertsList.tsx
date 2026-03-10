@@ -7,7 +7,7 @@ interface AlertsListProps {
   onResolve?: (alertId: string) => void;
 }
 
-export default function AlertsList({ alerts, onResolve }: AlertsListProps) {
+export function AlertsList({ alerts, onResolve }: AlertsListProps) {
   // Function to get status icon
   const getStatusIcon = (alert: Alert) => {
     if (alert.resolved) {

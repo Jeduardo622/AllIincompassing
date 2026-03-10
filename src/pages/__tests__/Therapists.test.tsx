@@ -6,7 +6,7 @@ import {
   waitFor,
   within,
 } from '../../test/utils';
-import Therapists, { matchesStatusFilter } from '../Therapists';
+import { Therapists, matchesStatusFilter  } from '../Therapists';
 
 const invalidateQueries = vi.fn();
 const useQueryMock = vi.fn();

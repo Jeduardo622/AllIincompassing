@@ -65,7 +65,7 @@ const DEFAULT_SERVICES = [
   }
 ];
 
-export default function AuthorizationModal({
+export function AuthorizationModal({
   isOpen,
   onClose,
   onSubmit,

@@ -10,7 +10,7 @@ interface AvailabilityOverlayProps {
   timeSlots: string[];
 }
 
-export default function AvailabilityOverlay({ 
+export function AvailabilityOverlay({ 
   therapists, 
   clients, 
   selectedDate,

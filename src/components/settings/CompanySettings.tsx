@@ -59,7 +59,7 @@ const DEFAULT_SETTINGS = {
   session_duration_default: 60,
 };
 
-export default function CompanySettings() {
+export function CompanySettings() {
   const queryClient = useQueryClient();
   const { hasRole, loading: authLoading } = useAuth();
   const canManageConfig = hasRole('admin');

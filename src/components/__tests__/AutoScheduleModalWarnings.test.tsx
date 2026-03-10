@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import AutoScheduleModal from '../AutoScheduleModal';
+import { AutoScheduleModal } from '../AutoScheduleModal';
 import type { Therapist, Client, Session } from '../../types';
 import { generateOptimalSchedule } from '../../lib/autoSchedule';
 

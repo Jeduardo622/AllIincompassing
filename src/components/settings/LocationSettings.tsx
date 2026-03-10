@@ -55,7 +55,7 @@ const DEFAULT_OPERATING_HOURS = {
   friday: { start: '09:00', end: '17:00' },
 };
 
-export default function LocationSettings() {
+export function LocationSettings() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [formData, setFormData] = useState<LocationFormData>({

@@ -3,11 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { useActiveOrganizationId } from '../../lib/organization';
 import { Clock, Zap, Server, BarChart3 } from 'lucide-react';
-import MetricCard from './MetricCard';
-import TimeSeriesChart from './TimeSeriesChart';
-import AlertsList from './AlertsList';
+import { MetricCard } from './MetricCard';
+import { TimeSeriesChart } from './TimeSeriesChart';
+import { AlertsList } from './AlertsList';
 
-export default function AIPerformance() {
+export function AIPerformance() {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
 

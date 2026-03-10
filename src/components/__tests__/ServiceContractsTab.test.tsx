@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
-import ServiceContractsTab from '../ClientDetails/ServiceContractsTab';
+import { ServiceContractsTab } from '../ClientDetails/ServiceContractsTab';
 import { supabase } from '../../lib/supabase';
 import { showError } from '../../lib/toast';
 

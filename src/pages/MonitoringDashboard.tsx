@@ -17,9 +17,9 @@ import {
   BarChart3,
   Search
 } from 'lucide-react';
-import AIPerformance from '../components/monitoring/AIPerformance';
-import DatabasePerformance from '../components/monitoring/DatabasePerformance';
-import SystemPerformance from '../components/monitoring/SystemPerformance';
+import { AIPerformance } from '../components/monitoring/AIPerformance';
+import { DatabasePerformance } from '../components/monitoring/DatabasePerformance';
+import { SystemPerformance } from '../components/monitoring/SystemPerformance';
 import {
   useRealtimePerformanceMonitoring,
   usePerformanceAnalytics
@@ -34,7 +34,7 @@ import { fetchAgentTraceReport, type AgentTraceReportData } from '../lib/agentTr
 type TabType = 'ai' | 'database' | 'system' | 'overview' | 'cache' | 'queries' | 'trace_replay';
 type TraceSelectorMode = 'correlationId' | 'requestId' | 'agentOperationId';
 
-export default function MonitoringDashboard() {
+export function MonitoringDashboard() {
   const { loading: authLoading, isAdmin, session } = useAuth();
   const hasAdminAccess = isAdmin();
   const monitoringEnabled = !authLoading && hasAdminAccess;

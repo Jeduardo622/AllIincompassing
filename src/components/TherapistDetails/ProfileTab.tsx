@@ -34,7 +34,7 @@ interface Issue {
   last_action: string;
 }
 
-export default function ProfileTab({ therapist }: ProfileTabProps) {
+export function ProfileTab({ therapist }: ProfileTabProps) {
   const { hasRole, profile } = useAuth();
   const isOwnProfile = Boolean(
     profile?.role === 'therapist' &&

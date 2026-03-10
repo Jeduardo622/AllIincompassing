@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderWithProviders, screen, waitFor, userEvent, within } from '../../../test/utils';
-import AdminSettings from '../AdminSettings';
+import { AdminSettings } from '../AdminSettings';
 import { supabase } from '../../../lib/supabase';
 import { logger } from '../../../lib/logger/logger';
 import { useAuth } from '../../../lib/authContext';

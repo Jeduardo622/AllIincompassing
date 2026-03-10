@@ -363,7 +363,7 @@ export const createOptimizedQueryClient = (existingClient?: QueryClient) => {
 // EXPORTS
 // ============================================================================
 
-export default {
+export const cacheStrategy = {
   CACHE_STRATEGIES,
   generateCacheKey,
   useSmartInvalidation,

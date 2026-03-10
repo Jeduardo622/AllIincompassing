@@ -1,0 +1,76 @@
+{
+  "timestamp": "2026-03-09T14:25:58.504Z",
+  "environment": "production",
+  "overall_status": "failed",
+  "checks": {
+    "database": {
+      "status": "error",
+      "error": "getaddrinfo ENOTFOUND base"
+    },
+    "tables": [
+      {
+        "table": "clients",
+        "status": "error",
+        "error": "getaddrinfo ENOTFOUND base"
+      },
+      {
+        "table": "therapists",
+        "status": "error",
+        "error": "getaddrinfo ENOTFOUND base"
+      },
+      {
+        "table": "sessions",
+        "status": "error",
+        "error": "getaddrinfo ENOTFOUND base"
+      },
+      {
+        "table": "authorizations",
+        "status": "error",
+        "error": "getaddrinfo ENOTFOUND base"
+      },
+      {
+        "table": "users",
+        "status": "error",
+        "error": "getaddrinfo ENOTFOUND base"
+      }
+    ],
+    "functions": {
+      "status": "error",
+      "error": "getaddrinfo ENOTFOUND base"
+    },
+    "rls": {
+      "status": "error",
+      "error": "getaddrinfo ENOTFOUND base"
+    },
+    "endpoints": [
+      {
+        "name": "Homepage",
+        "url": "https://allincompassing.netlify.app",
+        "status": "error",
+        "error": "Command failed: curl -s -o /dev/null -w \"%{http_code}\" -m 10 \"https://allincompassing.netlify.app\""
+      },
+      {
+        "name": "Login",
+        "url": "https://allincompassing.netlify.app/login",
+        "status": "error",
+        "error": "Command failed: curl -s -o /dev/null -w \"%{http_code}\" -m 10 \"https://allincompassing.netlify.app/login\""
+      },
+      {
+        "name": "Dashboard",
+        "url": "https://allincompassing.netlify.app/dashboard",
+        "status": "error",
+        "error": "Command failed: curl -s -o /dev/null -w \"%{http_code}\" -m 10 \"https://allincompassing.netlify.app/dashboard\""
+      }
+    ],
+    "performance": {
+      "status": "error",
+      "error": "getaddrinfo ENOTFOUND base"
+    }
+  },
+  "summary": {
+    "total_checks": 6,
+    "passed_checks": 0,
+    "failed_checks": 12,
+    "warning_checks": 0
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "exceptions": [
+    {
+      "functionFile": "assessment-checklist.ts",
+      "publicApiPath": "/api/assessment-checklist",
+      "reason": "Server-side checklist workflow logic has not yet been ported to a dedicated edge endpoint.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-04-30"
+    },
+    {
+      "functionFile": "assessment-documents.ts",
+      "publicApiPath": "/api/assessment-documents",
+      "reason": "Document registration/extraction orchestration still runs through server API handler.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-04-30"
+    },
+    {
+      "functionFile": "assessment-drafts.ts",
+      "publicApiPath": "/api/assessment-drafts",
+      "reason": "Draft CRUD and promotion-prep logic requires edge parity implementation.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-04-30"
+    },
+    {
+      "functionFile": "assessment-promote.ts",
+      "publicApiPath": "/api/assessment-promote",
+      "reason": "Promotion transaction semantics are not yet migrated to an authoritative edge endpoint.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-04-30"
+    },
+    {
+      "functionFile": "assessment-plan-pdf.ts",
+      "publicApiPath": "/api/assessment-plan-pdf",
+      "reason": "PDF generation flow depends on template/runtime behavior pending edge-native migration.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-04-30"
+    },
+    {
+      "functionFile": "book.ts",
+      "publicApiPath": "/api/book",
+      "reason": "Booking orchestration endpoint still relies on server-side API semantics pending edge cutover.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-04-30"
+    }
+  ]
+}

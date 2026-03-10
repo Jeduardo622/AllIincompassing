@@ -665,4 +665,4 @@ const CSVImport: React.FC<CSVImportProps> = ({ onClose, entityType = 'client' })
   );
 };
 
-export default CSVImport;
+export { CSVImport };

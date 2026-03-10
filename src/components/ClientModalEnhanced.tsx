@@ -6,7 +6,7 @@ import { clientSchema, type ClientFormData } from '../lib/validationSchemas';
 import { useValidatedForm, useValidatedSubmission, useValidationSummary } from '../lib/validationHooks';
 import { ValidatedInput, ValidatedSelect } from './forms/ValidatedInput';
 import { ValidationSummary } from './forms/ValidationSummary';
-import AvailabilityEditor from './AvailabilityEditor';
+import { AvailabilityEditor } from './AvailabilityEditor';
 import { prepareFormData } from '../lib/validation';
 import { isValidEmail, isValidPhone } from '../lib/validation';
 
@@ -61,7 +61,7 @@ const buildDefaultValues = (client?: Client): ClientFormData => ({
   cin_number: client?.cin_number || '',
 });
 
-export default function ClientModalEnhanced({
+export function ClientModalEnhanced({
   isOpen,
   onClose,
   onSubmit,

@@ -15,7 +15,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { showSuccess, showError } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
-import AvailabilityEditor from './AvailabilityEditor';
+import { AvailabilityEditor } from './AvailabilityEditor';
 import { OnboardingSteps } from './OnboardingSteps';
 import type { Therapist, AvailabilityHours } from '../types';
 import { prepareFormData } from '../lib/validation';

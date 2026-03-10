@@ -4,7 +4,7 @@ import { fireEvent, screen, waitFor } from '../../test/utils';
 import { renderWithProviders } from '../../test/utils';
 import { SCHOOL_DAYCARE_LABEL } from '../../lib/constants/servicePreferences';
 import type { Client } from '../../types';
-import ClientModal from '../ClientModal';
+import { ClientModal } from '../ClientModal';
 
 const getInputByName = (name: string) => {
   const input = document.querySelector<HTMLInputElement>(`input[name="${name}"]`);

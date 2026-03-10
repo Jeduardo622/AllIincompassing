@@ -26,8 +26,8 @@ vi.mock('../lib/authContext', async () => {
   };
 });
 
-import Login from '../pages/Login';
-import Signup from '../pages/Signup';
+import { Login } from '../pages/Login';
+import { Signup } from '../pages/Signup';
 
 expect.extend(toHaveNoViolations);
 

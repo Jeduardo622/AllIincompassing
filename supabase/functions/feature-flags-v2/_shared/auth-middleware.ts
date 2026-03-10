@@ -1,3 +1,4 @@
+import { resolveAllowedOrigin } from "./cors.ts";
 // deno-lint-ignore-file no-import-prefix
 type SupabaseModule = typeof import("npm:@supabase/supabase-js@2.50.0");
 
@@ -32,7 +33,7 @@ export class AuthenticationError extends Error {
 }
 
 export const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Client-Info, apikey",
   "Access-Control-Max-Age": "86400",

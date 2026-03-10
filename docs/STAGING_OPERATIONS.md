@@ -32,17 +32,16 @@ This playbook captures the operational steps required to stand up and maintain t
 - **Emergency disable**: set `AGENT_ACTIONS_DISABLED=true` in Netlify to override the runtime config.
 - **Verification**: check `agent_execution_traces` for `execution.gate.denied` steps with `killSwitchEnabled=true`.
 
-## GitHub Actions staging deployment job
+## GitHub Actions quality gate (current state)
 
-The GitHub Actions workflow (`.github/workflows/ci.yml`) now includes an automated `deploy-staging` job with the following behavior:
+The active workflow (`.github/workflows/ci.yml`) currently runs a single `quality` job on `main` and `develop`:
 
-1. **Trigger** – runs on pushes to `develop` after the primary `build` job succeeds.
-2. **Build** – executes `npm ci` and `npm run build` in a fresh runner to keep parity with production outputs.
-3. **Deploy** – calls `npx netlify-cli deploy --context=staging` using `NETLIFY_AUTH_TOKEN` and `NETLIFY_STAGING_SITE_ID`, capturing the resulting `deploy_url` as a job output and environment URL.
-4. **Smoke** – runs `npm run preview:smoke` with the staging URL to verify `/api/runtime-config` and the SPA root document. Failures bubble up as job failures.
-5. **Status checks** – require the `deploy-staging` job for `develop` merges so staging stays healthy.
+1. **Trigger** – runs on pull requests and pushes to `main`/`develop`.
+2. **Build parity** – executes `npm ci`, lint, typecheck, tests, and `npm run build`.
+3. **Policy checks** – runs `npm run ci:check-focused` (including startup canary and governance guards).
+4. **Failure alerting** – `ci:check-focused` sends a Slack alert when running in CI with `SLACK_WEBHOOK_URL` configured.
 
-If secrets are missing, the job fails early with an actionable error. Update Netlify secrets and re-run the workflow to recover.
+Staging deploys are currently executed from Netlify (or manual CLI), not via a dedicated `deploy-staging` GitHub job.
 
 ## Smoke test expectations
 
@@ -51,22 +50,8 @@ If secrets are missing, the job fails early with an actionable error. Update Net
 
 ### Alerting on staging failures
 
-**Automatic alerting** (recommended for CI):
-Add to `.github/workflows/ci.yml` in the `deploy-staging` job:
-
-```yaml
-- name: Alert on staging smoke failure
-  if: failure() && github.ref == 'refs/heads/develop'
-  env:
-    SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-  run: |
-    npm run alert:slack -- \
-      --title "Staging smoke test failed" \
-      --text "Staging deployment smoke test failed. Deploy URL: ${{ steps.deploy.outputs.staging_url }}. Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-      --severity medium \
-      --source "ci:staging:smoke" \
-      --runbook docs/STAGING_OPERATIONS.md
-```
+**Automatic alerting**:
+- CI policy-check failures automatically route through `npm run ci:check-focused` and send Slack notifications when `SLACK_WEBHOOK_URL` is present.
 
 **Manual alerting**:
 ```bash

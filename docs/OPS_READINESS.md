@@ -7,7 +7,7 @@ Document the minimum monitoring, alerting, and incident response requirements fo
 - **Source of truth**: `docs/OBSERVABILITY_RUNBOOK.md`
 - **Signals**: API latency, API error rate, auth failures, DB performance.
 - **Alerting**: Slack webhook notifications via `npm run alert:slack`.
-- **Verification**: `npm run alert:slack:test` and `npm run preview:smoke`.
+- **Verification**: `npm run alert:slack:test`, `npm run ci:check-focused`, and `npm run preview:smoke`.
 
 ## Incident response
 - **Runbook**: `docs/INCIDENT_RESPONSE.md`
@@ -18,6 +18,7 @@ Document the minimum monitoring, alerting, and incident response requirements fo
 - [ ] `npm run preview:smoke` passes
 - [ ] `npm run db:check:security` reports no critical issues
 - [ ] `npm run db:check:performance` reports no critical advisories
+- [ ] `npm run ci:check-focused` passes (startup canary + policy guards)
 - [ ] Alerts are verified against `docs/OBSERVABILITY_RUNBOOK.md`
 - [ ] Incident response checklist reviewed
 

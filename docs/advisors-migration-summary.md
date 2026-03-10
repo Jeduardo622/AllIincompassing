@@ -138,3 +138,55 @@ psql $DATABASE_URL -f scripts/investigate-advisor-warnings.sql
 - [PostgreSQL search_path Security](https://www.postgresql.org/docs/current/ddl-schemas.html#DDL-SCHEMAS-PATH)
 - [Engineering Rules: DB rules](.cursor/rules/engineering.mdc)
 
+## 2026-03-10 follow-up batch (assessment domain)
+
+### Migration
+- `supabase/migrations/20260310170000_assessment_fk_index_batch1.sql`
+
+### Objective
+- Reduce the current unindexed-foreign-key advisor backlog by prioritizing high-traffic assessment tables first.
+
+### Indexes included in this batch
+- `assessment_checklist_items`: `client_id`, `organization_id`
+- `assessment_documents`: `client_id`
+- `assessment_draft_goals`: `client_id`, `draft_program_id`, `organization_id`
+- `assessment_draft_programs`: `assessment_document_id`, `client_id`, `organization_id`
+- `assessment_extractions`: `client_id`, `organization_id`
+
+### Governance and safety
+- Migration is idempotent (`create index if not exists`).
+- Column existence checks guard against branch drift.
+- CI now runs `scripts/ci/check-rls-policy-coverage.mjs` to fail new migrations that enable RLS without defining policies in the same file.
+
+## 2026-03-10 focused hardening pass (policy + index noise reduction)
+
+### Migrations
+- `supabase/migrations/20260310182500_policy_consolidation_batch1.sql`
+- `supabase/migrations/20260310184500_unused_index_drop_batch1.sql`
+
+### Objective
+- Reduce noisy advisor backlog safely while preserving access control and FK/index safety guarantees.
+
+### Policy consolidation applied
+- Dropped redundant overlap on `ai_cache`: `consolidated_select_700633`.
+- Dropped redundant overlap on `ai_processing_logs`: `Users can view AI processing logs for their sessions`.
+- Dropped broad overlap on `ai_response_cache`: `consolidated_all_4c9184`.
+
+### Unused-index drop batch applied (low-risk lookup tables)
+- `billing_modifiers_code_idx`
+- `billing_modifiers_active_idx`
+- `cpt_codes_code_idx`
+- `cpt_codes_active_idx`
+- `locations_name_idx`
+- `service_lines_name_idx`
+- `file_cabinet_settings_category_idx`
+
+### Advisor delta (performance)
+- Before pass: `279` findings (`173` `unused_index`, `105` `multiple_permissive_policies`, `1` `auth_db_connections_absolute`).
+- After pass: `272` findings (`166` `unused_index`, `105` `multiple_permissive_policies`, `1` `auth_db_connections_absolute`).
+- Net change: `-7` findings (from conservative unused-index removals).
+
+### Safety notes
+- Policy batch removed redundant permissive overlap only; no new broad access predicates were introduced.
+- Index-drop batch excluded PK/unique/FK-supporting indexes and targeted only low-traffic lookup-oriented indexes.
+

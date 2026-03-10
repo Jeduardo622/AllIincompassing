@@ -37,6 +37,7 @@ Track remediation work from the executive audit report to close production-readi
 | Area | Gap | Owner | Status |
 | --- | --- | --- | --- |
 | Security / Tenant Safety | Org-scoped validation missing in critical edge endpoints | Backend | In progress |
+| Security / Data Safety | `ai_guidance_documents` RLS-without-policy exposure fixed via `20260310162000_harden_ai_guidance_documents_rls.sql` | Backend / DB | Completed |
 | Data Integrity | Soft-delete audit triggers for client/therapist archives | Backend / DB | In progress |
 | Reliability | Documented test failures | QA / Eng | In progress |
 | Reliability | Schedule data batch RPC 400s (aggregation ORDER BY) | Backend / DB | Applied migration (verify in prod) |
@@ -47,6 +48,8 @@ Track remediation work from the executive audit report to close production-readi
 | Area | Gap | Owner | Status |
 | --- | --- | --- | --- |
 | Operations | Production monitoring + incident response runbooks | Platform / DevOps | In progress |
+| CI Governance | Startup import/export canary + CI policy failure Slack hook (`scripts/ci/run-policy-checks.mjs`) | Platform / DevEx | Completed |
+| DB Governance | New migration guard to prevent `ENABLE RLS` without same-file `CREATE POLICY` (`scripts/ci/check-rls-policy-coverage.mjs`) | Backend / DB | Completed |
 | UX / Accessibility | Known a11y gaps in roster pages and modals | Frontend | In progress |
 | Performance | API throttling and rate limits for schedule endpoints | Backend | In progress |
 
@@ -56,3 +59,16 @@ Track remediation work from the executive audit report to close production-readi
 | Performance | Load/perf benchmarks and scalability plan | Platform / DevOps | In progress |
 | Compliance | Formal compliance documentation or certifications | Security / Compliance | In progress |
 | Integrations | Integration catalog and partner readiness | Product / Eng | In progress |
+
+## Advisor backlog tracking (2026-03-10)
+- Early baseline: `283` findings (`29` `unindexed_foreign_keys`, `144` `unused_index`, `109` `multiple_permissive_policies`, `1` auth connection advisory).
+- FK remediation complete via:
+  - `20260310170000_assessment_fk_index_batch1.sql`
+  - `20260310174500_fk_index_batch2_remaining.sql`
+- Focused hardening pass applied via:
+  - `20260310182500_policy_consolidation_batch1.sql`
+  - `20260310184500_unused_index_drop_batch1.sql`
+- Current advisor state: `272` findings (`166` `unused_index`, `105` `multiple_permissive_policies`, `1` `auth_db_connections_absolute`).
+- Remaining backlog plan:
+  1. Continue table-by-table permissive-policy consolidation with role-safety validation.
+  2. Continue conservative unused-index retirement in small reversible batches.

@@ -81,25 +81,16 @@ Map alert severity to incident severity tiers (see `docs/INCIDENT_RESPONSE.md`):
 
 ## CI and smoke alerts
 
-### Automatic alerting (recommended)
-Add Slack alert steps to CI workflows using `if: failure()` conditions. Example:
-
-```yaml
-- name: Alert on smoke failure
-  if: failure() && github.ref == 'refs/heads/main'
-  env:
-    SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-  run: |
-    npm run alert:slack -- \
-      --title "Production smoke test failed" \
-      --text "Preview smoke test failed on ${{ github.ref }}. Check workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-      --severity high \
-      --source "ci:preview:smoke" \
-      --runbook docs/INCIDENT_RESPONSE.md
-```
+### Automatic alerting (implemented)
+- The CI policy entrypoint `npm run ci:check-focused` now runs via `scripts/ci/run-policy-checks.mjs`.
+- On first policy-check failure in CI, the wrapper sends a Slack alert (when `SLACK_WEBHOOK_URL` is configured) with:
+  - source: `ci:check-focused`
+  - severity: `medium`
+  - runbook: `docs/INCIDENT_RESPONSE.md`
+- The same pipeline includes a startup canary (`scripts/ci/check-startup-canary.mjs`) to catch bootstrap import/export regressions early.
 
 ### Manual alerting
-When CI or smoke failures occur, use the Slack notifier to route alerts to `#deployments`. This is designed to be called from CI workflows or manual triage sessions.
+When CI or smoke failures occur outside the automated policy-check path, use the Slack notifier to route alerts to `#deployments`.
 
 ### Alert frequency and throttling
 - **Production failures** (main branch): Always alert immediately

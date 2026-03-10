@@ -102,5 +102,3 @@ export function AlertsList({ alerts, onResolve }: AlertsListProps) {
     </div>
   );
 }
-
-export { AlertsList }

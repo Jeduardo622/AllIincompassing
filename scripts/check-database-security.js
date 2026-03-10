@@ -142,6 +142,45 @@ async function checkRLSPolicies(branchId) {
 }
 
 /**
+ * Check for public tables that have RLS enabled but zero policies.
+ * This is treated as a launch-blocking misconfiguration.
+ */
+async function checkRlsTablesWithoutPolicies(branchId) {
+  return withRetry(async () => {
+    logger.info('Checking for RLS-enabled tables without policies...');
+
+    const rlsNoPolicyQuery = `
+      SELECT
+        n.nspname AS schemaname,
+        c.relname AS tablename
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relkind = 'r'
+        AND c.relrowsecurity = true
+        AND NOT EXISTS (
+          SELECT 1
+          FROM pg_policies p
+          WHERE p.schemaname = n.nspname
+            AND p.tablename = c.relname
+        )
+      ORDER BY c.relname;
+    `;
+
+    const offenders = await runPostgresQuery(rlsNoPolicyQuery);
+    logger.success(`RLS no-policy check completed. Found ${offenders.length} issue(s)`);
+    return offenders.map((row) => ({
+      table: row.tablename,
+      issue: 'RLS enabled but no policies defined',
+      severity: 'critical',
+    }));
+  }, 3, 1500).catch((error) => {
+    logger.error(`RLS no-policy check failed after all retries: ${error.message}`);
+    return [];
+  });
+}
+
+/**
  * Check for exposed functions
  */
 async function checkExposedFunctions(branchId) {
@@ -184,22 +223,23 @@ async function checkExposedFunctions(branchId) {
 /**
  * Generate security report
  */
-function generateSecurityReport(branchId, advisors, rlsIssues, exposedFunctions) {
+function generateSecurityReport(branchId, advisors, rlsIssues, exposedFunctions, rlsNoPolicyIssues) {
   const report = {
     branch_id: branchId,
     timestamp: new Date().toISOString(),
     summary: {
-      total_issues: advisors.advisors.length + rlsIssues.length + exposedFunctions.length,
-      critical_issues: advisors.advisors.filter(a => a.level === 'critical').length,
+      total_issues: advisors.advisors.length + rlsIssues.length + exposedFunctions.length + rlsNoPolicyIssues.length,
+      critical_issues: advisors.advisors.filter(a => a.level === 'critical').length + rlsNoPolicyIssues.length,
       high_issues: rlsIssues.filter(i => i.severity === 'high').length,
       medium_issues: exposedFunctions.filter(f => f.severity === 'medium').length,
       low_issues: advisors.advisors.filter(a => a.level === 'warning').length
     },
     advisors: advisors.advisors,
     rls_issues: rlsIssues,
+    rls_no_policy_issues: rlsNoPolicyIssues,
     exposed_functions: exposedFunctions,
     errors: advisors.errors,
-    recommendations: generateRecommendations(advisors, rlsIssues, exposedFunctions)
+    recommendations: generateRecommendations(advisors, rlsIssues, exposedFunctions, rlsNoPolicyIssues)
   };
   
   return report;
@@ -208,8 +248,17 @@ function generateSecurityReport(branchId, advisors, rlsIssues, exposedFunctions)
 /**
  * Generate security recommendations
  */
-function generateRecommendations(advisors, rlsIssues, exposedFunctions) {
+function generateRecommendations(advisors, rlsIssues, exposedFunctions, rlsNoPolicyIssues) {
   const recommendations = [];
+  if (rlsNoPolicyIssues.length > 0) {
+    recommendations.push({
+      type: 'rls_policies',
+      priority: 'critical',
+      message: `Add RLS policies for ${rlsNoPolicyIssues.length} RLS-enabled table(s) with no policies`,
+      action: 'Create least-privilege policies and tighten grants before release'
+    });
+  }
+
   
   if (rlsIssues.length > 0) {
     recommendations.push({
@@ -267,25 +316,28 @@ function saveSecurityReport(report) {
  */
 async function main() {
   try {
-    const branchId = process.argv[2];
-    
-    if (!branchId) {
-      logger.error('Branch ID is required');
-      logger.info('Usage: node scripts/check-database-security.js <branch-id>');
+    const branchId = process.argv[2] || process.env.SUPABASE_BRANCH_ID || 'local';
+    const hasDatabaseUrl = Boolean(
+      process.env.SUPABASE_DB_URL || process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL,
+    );
+
+    if (!hasDatabaseUrl) {
+      logger.error('Missing database connection string. Set SUPABASE_DB_URL or DATABASE_URL.');
       process.exit(1);
     }
     
     logger.info(`Starting security check for branch: ${branchId}`);
     
     // Run all security checks
-    const [advisors, rlsIssues, exposedFunctions] = await Promise.all([
+    const [advisors, rlsIssues, exposedFunctions, rlsNoPolicyIssues] = await Promise.all([
       runSecurityAdvisors(branchId),
       checkRLSPolicies(branchId),
-      checkExposedFunctions(branchId)
+      checkExposedFunctions(branchId),
+      checkRlsTablesWithoutPolicies(branchId)
     ]);
     
     // Generate report
-    const report = generateSecurityReport(branchId, advisors, rlsIssues, exposedFunctions);
+    const report = generateSecurityReport(branchId, advisors, rlsIssues, exposedFunctions, rlsNoPolicyIssues);
     
     // Save report
     const reportPath = saveSecurityReport(report);
@@ -298,7 +350,7 @@ async function main() {
     logger.info(`- Medium: ${report.summary.medium_issues}`);
     logger.info(`- Low: ${report.summary.low_issues}`);
     
-    if (report.summary.critical_issues > 0) {
+    if (report.summary.critical_issues > 0 || report.errors.length > 0) {
       logger.error(`Critical security issues found!`);
       process.exit(1);
     }
@@ -320,6 +372,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
 export {
   runSecurityAdvisors,
   checkRLSPolicies,
+  checkRlsTablesWithoutPolicies,
   checkExposedFunctions,
   generateSecurityReport,
   saveSecurityReport

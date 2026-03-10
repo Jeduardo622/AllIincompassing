@@ -1,8 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
-import BootDiagnostics from './dev/BootDiagnostics';
-import DevErrorBoundary from './dev/ErrorBoundary';
+import { BootDiagnostics } from './dev/BootDiagnostics';
+import { DevErrorBoundary } from './dev/ErrorBoundary';
 import { ensureRuntimeSupabaseConfig } from './lib/runtimeConfig';
 import { registerServiceWorker } from './registerServiceWorker';
 

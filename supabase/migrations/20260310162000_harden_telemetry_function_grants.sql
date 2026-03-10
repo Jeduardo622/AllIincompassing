@@ -35,6 +35,13 @@ begin
     );
 
     execute format(
+      'revoke execute on function %I.%I(%s) from public',
+      fn.schema_name,
+      fn.function_name,
+      fn.function_args
+    );
+
+    execute format(
       'grant execute on function %I.%I(%s) to authenticated',
       fn.schema_name,
       fn.function_name,

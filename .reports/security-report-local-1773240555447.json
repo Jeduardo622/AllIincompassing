@@ -1,0 +1,208 @@
+{
+  "branch_id": "local",
+  "timestamp": "2026-03-11T14:49:15.446Z",
+  "summary": {
+    "total_issues": 35,
+    "critical_issues": 0,
+    "high_issues": 3,
+    "medium_issues": 27,
+    "low_issues": 2
+  },
+  "advisors": [
+    {
+      "level": "warning",
+      "message": "Role supabase_admin: superuser=t bypassrls=t canlogin=t",
+      "category": "security"
+    },
+    {
+      "level": "warning",
+      "message": "Role postgres: superuser=f bypassrls=t canlogin=t",
+      "category": "security"
+    },
+    {
+      "level": "high",
+      "message": "Role service_role: superuser=f bypassrls=t canlogin=f",
+      "category": "security"
+    },
+    {
+      "level": "high",
+      "message": "Role supabase_etl_admin: superuser=f bypassrls=t canlogin=t",
+      "category": "security"
+    },
+    {
+      "level": "high",
+      "message": "Role supabase_read_only_user: superuser=f bypassrls=t canlogin=t",
+      "category": "security"
+    }
+  ],
+  "rls_issues": [
+    {
+      "table": "edi_claim_denials",
+      "issue": "RLS not enabled",
+      "severity": "high"
+    },
+    {
+      "table": "edi_claim_statuses",
+      "issue": "RLS not enabled",
+      "severity": "high"
+    },
+    {
+      "table": "edi_export_files",
+      "issue": "RLS not enabled",
+      "severity": "high"
+    }
+  ],
+  "rls_no_policy_issues": [],
+  "exposed_functions": [
+    {
+      "function": "create_authorization_with_services",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "update_authorization_documents",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "current_org_id",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "has_care_role",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "update_authorization_with_services",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "_is_admin",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "has_role",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "enforce_session_status_transition",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "enforce_authorization_status_transition",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "get_ai_cache_metrics",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "prevent_feature_flag_plan_history_mutations",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "log_organization_flag_history",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "log_organization_plan_history",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "get_dashboard_data",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "_is_therapist",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "get_db_version",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "enqueue_impersonation_revocation",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "enqueue_impersonation_revocation",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "validate_feature_flag_metadata",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "get_organization_id_from_metadata",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "trigger_set_timestamp",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "is_super_admin",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "set_updated_at",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "temp_validate_time",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "update_updated_at_column",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "validate_organization_metadata",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    },
+    {
+      "function": "validate_time_interval_new",
+      "issue": "Function is not SECURITY DEFINER",
+      "severity": "medium"
+    }
+  ],
+  "errors": [],
+  "recommendations": [
+    {
+      "type": "rls",
+      "priority": "high",
+      "message": "Enable RLS on 3 tables",
+      "action": "ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;"
+    },
+    {
+      "type": "functions",
+      "priority": "medium",
+      "message": "Review 27 functions for security",
+      "action": "Add SECURITY DEFINER to sensitive functions"
+    }
+  ]
+}

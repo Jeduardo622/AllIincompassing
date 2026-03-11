@@ -47,8 +47,8 @@ const assertSupabaseAnonKey = (value: string): void => {
     throw new Error('SUPABASE_ANON_KEY appears invalid (contains unregistered marker)');
   }
 
-  // Supabase anon keys should not be trivially short.
-  if (trimmed.length < 24) {
+  // Keep production strict while allowing short fixture keys in local/test.
+  if (!shouldAllowFallbacks() && trimmed.length < 24) {
     throw new Error('SUPABASE_ANON_KEY appears invalid (too short)');
   }
 };

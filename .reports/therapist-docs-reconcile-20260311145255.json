@@ -1,0 +1,25 @@
+{
+  "mode": "apply",
+  "bucketId": "therapist-documents",
+  "organizationId": null,
+  "totalManifestRows": 6,
+  "totalStorageObjects": 7,
+  "orphanStorageCount": 1,
+  "orphanManifestCount": 0,
+  "orphanStorageSample": [
+    "therapists/225a9f4e-1c93-4a43-8ff8-19823e10a5eb/license/AVOR approval.pdf"
+  ],
+  "orphanManifestSample": [],
+  "apply": {
+    "enabled": true,
+    "fixStorage": true,
+    "fixManifest": false,
+    "maxActions": 1,
+    "storageRemoved": 0,
+    "storageApplyError": "Direct deletion from storage tables is not allowed. Use the Storage API instead.",
+    "manifestRemoved": 0,
+    "storageCleanupCandidates": 1,
+    "manifestCleanupCandidates": 0
+  },
+  "generatedAt": "2026-03-11T14:52:55.426Z"
+}

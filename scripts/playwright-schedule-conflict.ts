@@ -6,6 +6,17 @@ import { loadPlaywrightEnv } from './lib/load-playwright-env';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+const hasSupabaseAuthToken = async (page: Page): Promise<boolean> => {
+  return page.evaluate(() => {
+    const regex = /auth.*token|sb-.*-auth-token|supabase.*auth/i;
+    const localKeys = Object.keys(window.localStorage);
+    const sessionKeys = Object.keys(window.sessionStorage);
+    const localHasToken = localKeys.some((key) => regex.test(key) && Boolean(window.localStorage.getItem(key)));
+    const sessionHasToken = sessionKeys.some((key) => regex.test(key) && Boolean(window.sessionStorage.getItem(key)));
+    return localHasToken || sessionHasToken;
+  });
+};
+
 const getEnv = (key: string, fallback?: string): string => {
   const value = process.env[key] ?? fallback;
   if (!value) {
@@ -75,15 +86,15 @@ async function run() {
   const base = getEnv('PW_BASE_URL', 'https://app.allincompassing.ai');
   const email =
     process.env.PW_EMAIL ??
-    process.env.PW_SUPERADMIN_EMAIL ??
     process.env.PW_ADMIN_EMAIL ??
+    process.env.PW_SUPERADMIN_EMAIL ??
     process.env.PLAYWRIGHT_ADMIN_EMAIL ??
     process.env.ADMIN_EMAIL ??
     process.env.ONBOARD_ADMIN_EMAIL;
   const password =
     process.env.PW_PASSWORD ??
-    process.env.PW_SUPERADMIN_PASSWORD ??
     process.env.PW_ADMIN_PASSWORD ??
+    process.env.PW_SUPERADMIN_PASSWORD ??
     process.env.PLAYWRIGHT_ADMIN_PASSWORD ??
     process.env.ADMIN_PASSWORD ??
     process.env.ONBOARD_ADMIN_PASSWORD;
@@ -120,12 +131,7 @@ async function run() {
     const authTimeout = Date.now() + 20000;
     let authenticated = false;
     while (Date.now() < authTimeout) {
-      const tokenDetected = await page.evaluate(() => {
-        const tokens = Object.keys(localStorage).filter(key =>
-          /auth.*token|sb-.*-auth-token|supabase.*auth/i.test(key)
-        );
-        return tokens.some(k => localStorage.getItem(k));
-      });
+      const tokenDetected = await hasSupabaseAuthToken(page);
       if (tokenDetected) {
         authenticated = true;
         break;

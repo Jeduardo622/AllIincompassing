@@ -4,6 +4,18 @@ import path from 'node:path';
 
 import { loadPlaywrightEnv } from './lib/load-playwright-env';
 
+const hasSupabaseAuthToken = async (page: import('playwright').Page): Promise<boolean> => {
+  return page.evaluate(() => {
+    const regex = /auth.*token|sb-.*-auth-token|supabase.*auth/i;
+    const localKeys = Object.keys(window.localStorage);
+    const sessionKeys = Object.keys(window.sessionStorage);
+
+    const localHasToken = localKeys.some((key) => regex.test(key) && Boolean(window.localStorage.getItem(key)));
+    const sessionHasToken = sessionKeys.some((key) => regex.test(key) && Boolean(window.sessionStorage.getItem(key)));
+    return localHasToken || sessionHasToken;
+  });
+};
+
 async function run() {
   loadPlaywrightEnv();
   const headless = process.env.HEADLESS !== 'false';
@@ -14,15 +26,15 @@ async function run() {
   const base = process.env.PW_BASE_URL ?? 'https://app.allincompassing.ai';
   const email =
     process.env.PW_EMAIL ??
-    process.env.PW_SUPERADMIN_EMAIL ??
     process.env.PW_ADMIN_EMAIL ??
+    process.env.PW_SUPERADMIN_EMAIL ??
     process.env.PLAYWRIGHT_ADMIN_EMAIL ??
     process.env.ADMIN_EMAIL ??
     process.env.ONBOARD_ADMIN_EMAIL;
   const password =
     process.env.PW_PASSWORD ??
-    process.env.PW_SUPERADMIN_PASSWORD ??
     process.env.PW_ADMIN_PASSWORD ??
+    process.env.PW_SUPERADMIN_PASSWORD ??
     process.env.PLAYWRIGHT_ADMIN_PASSWORD ??
     process.env.ADMIN_PASSWORD ??
     process.env.ONBOARD_ADMIN_PASSWORD;
@@ -131,23 +143,28 @@ async function run() {
       }
     } catch {}
 
-    // Probe localStorage for supabase tokens
-    hasToken = await page.evaluate(() => {
-      const keys = Object.keys(localStorage);
-      // Supabase v2 tokens typically contain '-auth-token' or 'sb-<ref>-auth-token'
-      return keys.some(k => /auth.*token|sb-.*-auth-token|supabase.*auth/i.test(k) && localStorage.getItem(k));
-    });
+    // Probe both localStorage and sessionStorage for supabase tokens.
+    hasToken = await hasSupabaseAuthToken(page);
 
     if (hasToken || sawDashboard) break;
     await sleep(500);
   }
 
   if (!hasToken && !sawDashboard) {
+    const currentUrl = page.url();
+    const errorText = await page
+      .locator('[role="alert"], .error, .toast, [data-testid*="error"], [class*="error"]')
+      .allInnerTexts()
+      .catch(() => []);
     // Capture failure screenshot
     const outDir = path.join(process.cwd(), 'artifacts', 'latest');
     fs.mkdirSync(outDir, { recursive: true });
     const shotPath = path.join(outDir, 'playwright-auth-smoke-failure.png');
     await page.screenshot({ path: shotPath, fullPage: true });
+    console.error('Auth failure URL:', currentUrl);
+    if (errorText.length > 0) {
+      console.error('Auth failure UI errors:', errorText.join(' | '));
+    }
     console.error('Auth not verified after login. Saved screenshot to:', shotPath);
     await browser.close();
     process.exit(1);

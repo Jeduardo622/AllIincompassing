@@ -1,0 +1,24 @@
+{
+  "mode": "dry-run",
+  "bucketId": "therapist-documents",
+  "organizationId": null,
+  "totalManifestRows": 6,
+  "totalStorageObjects": 7,
+  "orphanStorageCount": 1,
+  "orphanManifestCount": 0,
+  "orphanStorageSample": [
+    "therapists/225a9f4e-1c93-4a43-8ff8-19823e10a5eb/license/AVOR approval.pdf"
+  ],
+  "orphanManifestSample": [],
+  "apply": {
+    "enabled": false,
+    "fixStorage": false,
+    "fixManifest": false,
+    "maxActions": 50,
+    "storageRemoved": 0,
+    "manifestRemoved": 0,
+    "storageCleanupCandidates": 1,
+    "manifestCleanupCandidates": 0
+  },
+  "generatedAt": "2026-03-11T14:52:26.375Z"
+}

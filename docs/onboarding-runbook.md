@@ -66,6 +66,47 @@
      ```
    - See `docs/OBSERVABILITY_RUNBOOK.md` for severity mapping (onboarding failures typically map to SEV2/`medium`).
 
+6. **Storage-vs-Manifest Reconciliation**
+   - Run a dry-run report:
+     ```bash
+     npm run reconcile:therapist-docs
+     ```
+   - Run controlled apply mode (bounded to one action for first rollout):
+     ```bash
+     npm run reconcile:therapist-docs -- --apply --fix-storage --max-actions 1
+     ```
+   - Reports are written to `.reports/therapist-docs-reconcile-*.json` and include:
+     - `orphanStorageCount`
+     - `orphanManifestCount`
+     - sample paths for both classes
+     - apply-mode action results and blocked operations
+   - Current safety behavior:
+     - `manifest` cleanup can be applied directly.
+     - `storage` cleanup requires Storage API credentials; if unavailable, the report records `storageApplyError` and leaves objects untouched.
+
+7. **Recurring Schedule (Operations)**
+   - Scheduler target command:
+     ```bash
+     npm run reconcile:therapist-docs:scheduled
+     ```
+   - Recommended cadence:
+     - Every 6 hours in production
+     - Daily in non-production
+   - Recommended scheduler wiring:
+     - External cron runner or CI scheduled job executes the command above.
+     - Treat non-zero exit (`--fail-on-orphans`) as an alert condition and attach the newest `.reports/therapist-docs-reconcile-*.json`.
+
+8. **Alert Thresholds for Reconciliation**
+   - `SEV3` (`low`): `orphanManifestCount > 0` and `<= 5`
+   - `SEV2` (`medium`): `orphanStorageCount > 0` and `<= 5`, or repeated blocked cleanup (`storageApplyError`) for 2+ consecutive runs
+   - `SEV1` (`high`): `orphanStorageCount > 5`, or trend growth for 3 consecutive scheduled runs
+   - Alert payload should include:
+     - environment
+     - report path
+     - counts
+     - top sample paths
+     - last successful apply timestamp
+
 ## Communication Aids
 - Use `docs/tone.md` for stakeholder messaging templates.
 - UI copy / style updates should follow `docs/style.md`.

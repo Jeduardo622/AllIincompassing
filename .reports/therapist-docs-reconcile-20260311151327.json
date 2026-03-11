@@ -1,0 +1,23 @@
+{
+  "mode": "dry-run",
+  "bucketId": "therapist-documents",
+  "organizationId": null,
+  "totalManifestRows": 6,
+  "totalStorageObjects": 6,
+  "orphanStorageCount": 0,
+  "orphanManifestCount": 0,
+  "orphanStorageSample": [],
+  "orphanManifestSample": [],
+  "apply": {
+    "enabled": false,
+    "fixStorage": false,
+    "fixManifest": false,
+    "maxActions": 50,
+    "storageRemoved": 0,
+    "storageApplyError": null,
+    "manifestRemoved": 0,
+    "storageCleanupCandidates": 0,
+    "manifestCleanupCandidates": 0
+  },
+  "generatedAt": "2026-03-11T15:13:27.971Z"
+}

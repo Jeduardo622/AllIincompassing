@@ -1,0 +1,1945 @@
+{
+  "branch_id": "local",
+  "timestamp": "2026-03-11T14:49:24.627Z",
+  "summary": {
+    "total_issues": 78,
+    "slow_queries": 10,
+    "index_issues": 73,
+    "largest_tables": [
+      {
+        "name": "clients",
+        "size": "840 kB"
+      },
+      {
+        "name": "error_logs",
+        "size": "632 kB"
+      },
+      {
+        "name": "client_therapist_links",
+        "size": "368 kB"
+      },
+      {
+        "name": "therapists",
+        "size": "344 kB"
+      },
+      {
+        "name": "assessment_checklist_items",
+        "size": "336 kB"
+      }
+    ],
+    "total_connections": 15,
+    "missing_required_indexes": 0
+  },
+  "advisors": [
+    {
+      "level": "slow_query",
+      "message": "with\n      tables as (SELECT\n  c.oid :: int8 AS id,\n  nc.nspname AS schema,\n  c.relname AS name,\n  c.relrowsecurity AS rls_enabled,\n  c.relforcerowsecurity AS rls_forced,\n  CASE\n  ",
+      "category": "performance"
+    },
+    {
+      "level": "slow_query",
+      "message": "with\n      tables as (SELECT\n  c.oid :: int8 AS id,\n  nc.nspname AS schema,\n  c.relname AS name,\n  c.relrowsecurity AS rls_enabled,\n  c.relforcerowsecurity AS rls_forced,\n  CASE\n  ",
+      "category": "performance"
+    },
+    {
+      "level": "slow_query",
+      "message": "with\n      tables as (SELECT\n  c.oid :: int8 AS id,\n  nc.nspname AS schema,\n  c.relname AS name,\n  c.relrowsecurity AS rls_enabled,\n  c.relforcerowsecurity AS rls_forced,\n  CASE\n  ",
+      "category": "performance"
+    },
+    {
+      "level": "slow_query",
+      "message": "with tables as (\nSELECT\n  c.oid :: int8 AS id,\n  nc.nspname AS schema,\n  c.relname AS name,\n  c.relrowsecurity AS rls_enabled,\n  c.relforcerowsecurity AS rls_forced,\n  CASE\n    WHE",
+      "category": "performance"
+    },
+    {
+      "level": "slow_query",
+      "message": "DO $$\nBEGIN\n    IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pg_graphql') THEN\n        CREATE EXTENSION IF NOT EXISTS pg_graphql CASCADE;\n    END IF;\nEND;\n$$",
+      "category": "performance"
+    }
+  ],
+  "slow_queries": [
+    {
+      "query": "SELECT wal->>$5 as type,\n       wal->>$6 as schema,\n       wal->>$7 as table,\n       COALESCE(wal->>$8, $9) as columns,\n       COALESCE(wal->>$10, $11) as record,\n       COALESCE(wal->>$12, $13) as old_record,\n       wal->>$14 as commit_timestamp,\n       subscription_ids,\n       errors\nFROM realtime.list_changes($1, $2, $3, $4)",
+      "calls": "2882196",
+      "total_time": "10553023.36",
+      "mean_time": "3.66",
+      "min_time": "1.70",
+      "max_time": "5401.92",
+      "stddev_time": "5.10",
+      "rows": "0",
+      "avg_time_ms": "3.66"
+    },
+    {
+      "query": "SELECT wal->>$5 as type,\n       wal->>$6 as schema,\n       wal->>$7 as table,\n       wal->>$8 as columns,\n       wal->>$9 as record,\n       wal->>$10 as old_record,\n       wal->>$11 as commit_timestamp,\n       subscription_ids,\n       errors\nFROM realtime.list_changes($1, $2, $3, $4)",
+      "calls": "1174558",
+      "total_time": "4004935.74",
+      "mean_time": "3.41",
+      "min_time": "3.15",
+      "max_time": "1192.58",
+      "stddev_time": "2.12",
+      "rows": "0",
+      "avg_time_ms": "3.41"
+    },
+    {
+      "query": "select * from realtime.list_changes($1, $2, $3, $4)",
+      "calls": "185302",
+      "total_time": "628803.67",
+      "mean_time": "3.39",
+      "min_time": "3.06",
+      "max_time": "4169.35",
+      "stddev_time": "9.76",
+      "rows": "0",
+      "avg_time_ms": "3.39"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"therapists\".\"id\", \"public\".\"therapists\".\"email\", \"public\".\"therapists\".\"full_name\", \"public\".\"therapists\".\"first_name\", \"public\".\"therapists\".\"middle_name\", \"public\".\"therapists\".\"last_name\", \"public\".\"therapists\".\"title\", \"public\".\"therapists\".\"facility\", \"public\".\"therapists\".\"employee_type\", \"public\".\"therapists\".\"staff_id\", \"public\".\"therapists\".\"supervisor\", \"public\".\"therapists\".\"status\", \"public\".\"therapists\".\"specialties\", \"public\".\"therapists\".\"service_type\", \"public\".\"therapists\".\"npi_number\", \"public\".\"therapists\".\"medicaid_id\", \"public\".\"therapists\".\"practitioner_id\", \"public\".\"therapists\".\"taxonomy_code\", \"public\".\"therapists\".\"time_zone\", \"public\".\"therapists\".\"phone\", \"public\".\"therapists\".\"street\", \"public\".\"therapists\".\"city\", \"public\".\"therapists\".\"state\", \"public\".\"therapists\".\"zip_code\", \"public\".\"therapists\".\"latitude\", \"public\".\"therapists\".\"longitude\", \"public\".\"therapists\".\"service_radius_km\", \"public\".\"therapists\".\"max_daily_travel_minutes\", \"public\".\"therapists\".\"preferred_areas\", \"public\".\"therapists\".\"avoid_rush_hour\", \"public\".\"therapists\".\"rbt_number\", \"public\".\"therapists\".\"bcba_number\", \"public\".\"therapists\".\"weekly_hours_min\", \"public\".\"therapists\".\"weekly_hours_max\", \"public\".\"therapists\".\"availability_hours\", \"public\".\"therapists\".\"max_clients\", \"public\".\"therapists\".\"created_at\", \"public\".\"therapists\".\"deleted_at\" FROM \"public\".\"therapists\"  ORDER BY \"public\".\"therapists\".\"full_name\" ASC  LIMIT $1 OFFSET $2 )  SELECT $3::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $4) AS body, nullif(current_setting($5, $6), $7) AS response_headers, nullif(current_setting($8, $9), $10) AS response_status, $11 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "1908",
+      "total_time": "134730.51",
+      "mean_time": "70.61",
+      "min_time": "2.32",
+      "max_time": "142.70",
+      "stddev_time": "13.78",
+      "rows": "1908",
+      "avg_time_ms": "70.61"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"clients\".\"id\", \"public\".\"clients\".\"full_name\", \"public\".\"clients\".\"email\", \"public\".\"clients\".\"therapist_id\", row_to_json(\"clients_therapist_1\".*)::jsonb AS \"therapist\" FROM \"public\".\"clients\" LEFT JOIN LATERAL ( SELECT \"therapists_1\".\"full_name\" FROM \"public\".\"therapists\" AS \"therapists_1\" WHERE \"therapists_1\".\"id\" = \"public\".\"clients\".\"therapist_id\"   LIMIT $1 OFFSET $2 ) AS \"clients_therapist_1\" ON $5  ORDER BY \"public\".\"clients\".\"full_name\" ASC  LIMIT $3 OFFSET $4 )  SELECT $6::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $7) AS body, nullif(current_setting($8, $9), $10) AS response_headers, nullif(current_setting($11, $12), $13) AS response_status, $14 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "1212",
+      "total_time": "133080.08",
+      "mean_time": "109.80",
+      "min_time": "8.22",
+      "max_time": "257.45",
+      "stddev_time": "18.67",
+      "rows": "1212",
+      "avg_time_ms": "109.80"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"client_therapist_links\".\"client_id\", \"public\".\"client_therapist_links\".\"therapist_id\", row_to_json(\"client_therapist_links_therapist_1\".*)::jsonb AS \"therapist\" FROM \"public\".\"client_therapist_links\" LEFT JOIN LATERAL ( SELECT \"therapists_1\".\"full_name\" FROM \"public\".\"therapists\" AS \"therapists_1\" WHERE \"therapists_1\".\"id\" = \"public\".\"client_therapist_links\".\"therapist_id\"   LIMIT $1 OFFSET $2 ) AS \"client_therapist_links_therapist_1\" ON $5   LIMIT $3 OFFSET $4 )  SELECT $6::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $7) AS body, nullif(current_setting($8, $9), $10) AS response_headers, nullif(current_setting($11, $12), $13) AS response_status, $14 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "1153",
+      "total_time": "70168.96",
+      "mean_time": "60.86",
+      "min_time": "4.16",
+      "max_time": "170.42",
+      "stddev_time": "26.36",
+      "rows": "1153",
+      "avg_time_ms": "60.86"
+    },
+    {
+      "query": "SELECT name FROM pg_timezone_names",
+      "calls": "619",
+      "total_time": "59043.24",
+      "mean_time": "95.38",
+      "min_time": "52.63",
+      "max_time": "534.42",
+      "stddev_time": "121.40",
+      "rows": "739086",
+      "avg_time_ms": "95.38"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"clients\".\"id\", \"public\".\"clients\".\"client_id\", \"public\".\"clients\".\"full_name\", \"public\".\"clients\".\"first_name\", \"public\".\"clients\".\"middle_name\", \"public\".\"clients\".\"last_name\", \"public\".\"clients\".\"email\", \"public\".\"clients\".\"gender\", \"public\".\"clients\".\"date_of_birth\", \"public\".\"clients\".\"service_preference\", \"public\".\"clients\".\"availability_hours\", \"public\".\"clients\".\"insurance_info\", \"public\".\"clients\".\"phone\", \"public\".\"clients\".\"cin_number\", \"public\".\"clients\".\"address_line1\", \"public\".\"clients\".\"address_line2\", \"public\".\"clients\".\"city\", \"public\".\"clients\".\"state\", \"public\".\"clients\".\"zip_code\", \"public\".\"clients\".\"parent1_first_name\", \"public\".\"clients\".\"parent1_last_name\", \"public\".\"clients\".\"parent1_phone\", \"public\".\"clients\".\"parent1_email\", \"public\".\"clients\".\"parent1_relationship\", \"public\".\"clients\".\"parent2_first_name\", \"public\".\"clients\".\"parent2_last_name\", \"public\".\"clients\".\"parent2_phone\", \"public\".\"clients\".\"parent2_email\", \"public\".\"clients\".\"parent2_relationship\", \"public\".\"clients\".\"one_to_one_units\", \"public\".\"clients\".\"supervision_units\", \"public\".\"clients\".\"parent_consult_units\", \"public\".\"clients\".\"assessment_units\", \"public\".\"clients\".\"authorized_hours_per_month\", \"public\".\"clients\".\"therapist_id\", \"public\".\"clients\".\"therapist_assigned_at\", \"public\".\"clients\".\"created_at\", \"public\".\"clients\".\"created_by\", \"public\".\"clients\".\"updated_at\", \"public\".\"clients\".\"updated_by\", \"public\".\"clients\".\"deleted_at\", \"public\".\"clients\".\"deleted_by\", \"public\".\"clients\".\"organization_id\", \"public\".\"clients\".\"status\" FROM \"public\".\"clients\" WHERE  \"public\".\"clients\".\"organization_id\" = $1  ORDER BY \"public\".\"clients\".\"full_name\" ASC  LIMIT $2 OFFSET $3 )  SELECT $4::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $5) AS body, nullif(current_setting($6, $7), $8) AS response_headers, nullif(current_setting($9, $10), $11) AS response_status, $12 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "616",
+      "total_time": "33263.32",
+      "mean_time": "54.00",
+      "min_time": "2.41",
+      "max_time": "147.60",
+      "stddev_time": "37.86",
+      "rows": "616",
+      "avg_time_ms": "54.00"
+    },
+    {
+      "query": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"get_dashboard_data\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_scalar)->$5, $6) AS body, nullif(current_setting($7, $8), $9) AS response_headers, nullif(current_setting($10, $11), $12) AS response_status, $13 AS response_inserted FROM (SELECT \"get_dashboard_data\".* FROM \"pgrst_source\" AS \"get_dashboard_data\"   LIMIT $1 OFFSET $2) _postgrest_t",
+      "calls": "339",
+      "total_time": "30279.68",
+      "mean_time": "89.32",
+      "min_time": "37.64",
+      "max_time": "338.24",
+      "stddev_time": "60.85",
+      "rows": "339",
+      "avg_time_ms": "89.32"
+    },
+    {
+      "query": "with\n      tables as (SELECT\n  c.oid :: int8 AS id,\n  nc.nspname AS schema,\n  c.relname AS name,\n  c.relrowsecurity AS rls_enabled,\n  c.relforcerowsecurity AS rls_forced,\n  CASE\n    WHEN c.relreplident = $2 THEN $3\n    WHEN c.relreplident = $4 THEN $5\n    WHEN c.relreplident = $6 THEN $7\n    ELSE $8\n  END AS replica_identity,\n  pg_total_relation_size(format($9, nc.nspname, c.relname)) :: int8 AS bytes,\n  pg_size_pretty(\n    pg_total_relation_size(format($10, nc.nspname, c.relname))\n  ) AS size,\n  pg_stat_get_live_tuples(c.oid) AS live_rows_estimate,\n  pg_stat_get_dead_tuples(c.oid) AS dead_rows_estimate,\n  obj_description(c.oid) AS comment,\n  coalesce(pk.primary_keys, $11) as primary_keys,\n  coalesce(\n    jsonb_agg(relationships) filter (where relationships is not null),\n    $12\n  ) as relationships\nFROM\n  pg_namespace nc\n  JOIN pg_class c ON nc.oid = c.relnamespace\n  left join (\n    select\n      table_id,\n      jsonb_agg(_pk.*) as primary_keys\n    from (\n      select\n        n.nspname as schema,\n        c.relname as table_name,\n        a.attname as name,\n        c.oid :: int8 as table_id\n      from\n        pg_index i,\n        pg_class c,\n        pg_attribute a,\n        pg_namespace n\n      where\n        i.indrelid = c.oid\n        and c.relnamespace = n.oid\n        and a.attrelid = c.oid\n        and a.attnum = any (i.indkey)\n        and i.indisprimary\n    ) as _pk\n    group by table_id\n  ) as pk\n  on pk.table_id = c.oid\n  left join (\n    select\n      c.oid :: int8 as id,\n      c.conname as constraint_name,\n      nsa.nspname as source_schema,\n      csa.relname as source_table_name,\n      sa.attname as source_column_name,\n      nta.nspname as target_table_schema,\n      cta.relname as target_table_name,\n      ta.attname as target_column_name\n    from\n      pg_constraint c\n    join (\n      pg_attribute sa\n      join pg_class csa on sa.attrelid = csa.oid\n      join pg_namespace nsa on csa.relnamespace = nsa.oid\n    ) on sa.attrelid = c.conrelid and sa.attnum = any (c.conkey)\n    join (\n      pg_attribute ta\n      join pg_class cta on ta.attrelid = cta.oid\n      join pg_namespace nta on cta.relnamespace = nta.oid\n    ) on ta.attrelid = c.confrelid and ta.attnum = any (c.confkey)\n    where\n      c.contype = $13\n  ) as relationships\n  on (relationships.source_schema = nc.nspname and relationships.source_table_name = c.relname)\n  or (relationships.target_table_schema = nc.nspname and relationships.target_table_name = c.relname)\nWHERE\n  c.relkind IN ($14, $15)\n  AND NOT pg_is_other_temp_schema(nc.oid)\n  AND (\n    pg_has_role(c.relowner, $16)\n    OR has_table_privilege(\n      c.oid,\n      $17\n    )\n    OR has_any_column_privilege(c.oid, $18)\n  )\ngroup by\n  c.oid,\n  c.relname,\n  c.relrowsecurity,\n  c.relforcerowsecurity,\n  c.relreplident,\n  nc.nspname,\n  pk.primary_keys\n),\n      columns as (-- Adapted from information_schema.columns\n\nSELECT\n  c.oid :: int8 AS table_id,\n  nc.nspname AS schema,\n  c.relname AS table,\n  (c.oid || $19 || a.attnum) AS id,\n  a.attnum AS ordinal_position,\n  a.attname AS name,\n  CASE\n    WHEN a.atthasdef THEN pg_get_expr(ad.adbin, ad.adrelid)\n    ELSE $20\n  END AS default_value,\n  CASE\n    WHEN t.typtype = $21 THEN CASE\n      WHEN bt.typelem <> $22 :: oid\n      AND bt.typlen = $23 THEN $24\n      WHEN nbt.nspname = $25 THEN format_type(t.typbasetype, $26)\n      ELSE $27\n    END\n    ELSE CASE\n      WHEN t.typelem <> $28 :: oid\n      AND t.typlen = $29 THEN $30\n      WHEN nt.nspname = $31 THEN format_type(a.atttypid, $32)\n      ELSE $33\n    END\n  END AS data_type,\n  COALESCE(bt.typname, t.typname) AS format,\n  a.attidentity IN ($34, $35) AS is_identity,\n  CASE\n    a.attidentity\n    WHEN $36 THEN $37\n    WHEN $38 THEN $39\n    ELSE $40\n  END AS identity_generation,\n  a.attgenerated IN ($41) AS is_generated,\n  NOT (\n    a.attnotnull\n    OR t.typtype = $42 AND t.typnotnull\n  ) AS is_nullable,\n  (\n    c.relkind IN ($43, $44)\n    OR c.relkind IN ($45, $46) AND pg_column_is_updatable(c.oid, a.attnum, $47)\n  ) AS is_updatable,\n  uniques.table_id IS NOT NULL AS is_unique,\n  check_constraints.definition AS \"check\",\n  array_to_json(\n    array(\n      SELECT\n        enumlabel\n      FROM\n        pg_catalog.pg_enum enums\n      WHERE\n        enums.enumtypid = coalesce(bt.oid, t.oid)\n        OR enums.enumtypid = coalesce(bt.typelem, t.typelem)\n      ORDER BY\n        enums.enumsortorder\n    )\n  ) AS enums,\n  col_description(c.oid, a.attnum) AS comment\nFROM\n  pg_attribute a\n  LEFT JOIN pg_attrdef ad ON a.attrelid = ad.adrelid\n  AND a.attnum = ad.adnum\n  JOIN (\n    pg_class c\n    JOIN pg_namespace nc ON c.relnamespace = nc.oid\n  ) ON a.attrelid = c.oid\n  JOIN (\n    pg_type t\n    JOIN pg_namespace nt ON t.typnamespace = nt.oid\n  ) ON a.atttypid = t.oid\n  LEFT JOIN (\n    pg_type bt\n    JOIN pg_namespace nbt ON bt.typnamespace = nbt.oid\n  ) ON t.typtype = $48\n  AND t.typbasetype = bt.oid\n  LEFT JOIN (\n    SELECT DISTINCT ON (table_id, ordinal_position)\n      conrelid AS table_id,\n      conkey[$49] AS ordinal_position\n    FROM pg_catalog.pg_constraint\n    WHERE contype = $50 AND cardinality(conkey) = $51\n  ) AS uniques ON uniques.table_id = c.oid AND uniques.ordinal_position = a.attnum\n  LEFT JOIN (\n    -- We only select the first column check\n    SELECT DISTINCT ON (table_id, ordinal_position)\n      conrelid AS table_id,\n      conkey[$52] AS ordinal_position,\n      substring(\n        pg_get_constraintdef(pg_constraint.oid, $53),\n        $54,\n        length(pg_get_constraintdef(pg_constraint.oid, $55)) - $56\n      ) AS \"definition\"\n    FROM pg_constraint\n    WHERE contype = $57 AND cardinality(conkey) = $58\n    ORDER BY table_id, ordinal_position, oid asc\n  ) AS check_constraints ON check_constraints.table_id = c.oid AND check_constraints.ordinal_position = a.attnum\nWHERE\n  NOT pg_is_other_temp_schema(nc.oid)\n  AND a.attnum > $59\n  AND NOT a.attisdropped\n  AND (c.relkind IN ($60, $61, $62, $63, $64))\n  AND (\n    pg_has_role(c.relowner, $65)\n    OR has_column_privilege(\n      c.oid,\n      a.attnum,\n      $66\n    )\n  )\n)\n    select\n      *,\n      COALESCE(\n  (\n    SELECT\n      array_agg(row_to_json(columns)) FILTER (WHERE columns.table_id = tables.id)\n    FROM\n      columns\n  ),\n  $67\n) AS columns\n    from tables\nwhere schema in ($1)\n\n-- source: api\n-- user: ddbd4dea-9633-4114-aced-6817eabb0e82\n-- date: 2025-10-29T17:18:02.443Z",
+      "calls": "26",
+      "total_time": "26447.11",
+      "mean_time": "1017.20",
+      "min_time": "645.95",
+      "max_time": "1333.48",
+      "stddev_time": "224.59",
+      "rows": "1888",
+      "avg_time_ms": "1017.20"
+    }
+  ],
+  "index_issues": [
+    {
+      "schemaname": "public",
+      "tablename": "user_roles",
+      "seq_scan": "3897612",
+      "seq_tup_read": "113680700",
+      "idx_scan": "400",
+      "idx_tup_fetch": "346",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "roles",
+      "seq_scan": "7509907",
+      "seq_tup_read": "43334748",
+      "idx_scan": "122776",
+      "idx_tup_fetch": "122775",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "user_therapist_links",
+      "seq_scan": "722548",
+      "seq_tup_read": "1444081",
+      "idx_scan": "3",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "error_logs",
+      "seq_scan": "193",
+      "seq_tup_read": "24535",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "sessions",
+      "seq_scan": "6560",
+      "seq_tup_read": "11719",
+      "idx_scan": "102",
+      "idx_tup_fetch": "96",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_history",
+      "seq_scan": "189",
+      "seq_tup_read": "6909",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "organizations",
+      "seq_scan": "4520",
+      "seq_tup_read": "4514",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "behavioral_patterns",
+      "seq_scan": "190",
+      "seq_tup_read": "4301",
+      "idx_scan": "4",
+      "idx_tup_fetch": "4",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "cpt_codes",
+      "seq_scan": "376",
+      "seq_tup_read": "3811",
+      "idx_scan": "18",
+      "idx_tup_fetch": "4",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "user_profiles",
+      "seq_scan": "519",
+      "seq_tup_read": "3094",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "assessment_draft_goals",
+      "seq_scan": "168",
+      "seq_tup_read": "1267",
+      "idx_scan": "116",
+      "idx_tup_fetch": "29",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "insurance_providers",
+      "seq_scan": "214",
+      "seq_tup_read": "1060",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "cpt_modifier_mappings",
+      "seq_scan": "116",
+      "seq_tup_read": "999",
+      "idx_scan": "13",
+      "idx_tup_fetch": "3",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "file_cabinet_settings",
+      "seq_scan": "192",
+      "seq_tup_read": "950",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "service_lines",
+      "seq_scan": "192",
+      "seq_tup_read": "760",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "client_guardians",
+      "seq_scan": "767",
+      "seq_tup_read": "753",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_note_templates",
+      "seq_scan": "190",
+      "seq_tup_read": "748",
+      "idx_scan": "4",
+      "idx_tup_fetch": "4",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "service_areas",
+      "seq_scan": "186",
+      "seq_tup_read": "740",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "locations",
+      "seq_scan": "294",
+      "seq_tup_read": "584",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "admin_actions",
+      "seq_scan": "195",
+      "seq_tup_read": "561",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "plans",
+      "seq_scan": "186",
+      "seq_tup_read": "555",
+      "idx_scan": "3",
+      "idx_tup_fetch": "3",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "billing_modifiers",
+      "seq_scan": "203",
+      "seq_tup_read": "480",
+      "idx_scan": "5",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "assessment_review_events",
+      "seq_scan": "46",
+      "seq_tup_read": "470",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "company_settings",
+      "seq_scan": "192",
+      "seq_tup_read": "376",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "assessment_draft_programs",
+      "seq_scan": "280",
+      "seq_tup_read": "360",
+      "idx_scan": "124",
+      "idx_tup_fetch": "124",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "conversations",
+      "seq_scan": "188",
+      "seq_tup_read": "185",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_holds",
+      "seq_scan": "308",
+      "seq_tup_read": "26",
+      "idx_scan": "8",
+      "idx_tup_fetch": "8",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "therapist_availability",
+      "seq_scan": "197",
+      "seq_tup_read": "20",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_goals",
+      "seq_scan": "10",
+      "seq_tup_read": "14",
+      "idx_scan": "3",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "ai_response_cache",
+      "seq_scan": "196",
+      "seq_tup_read": "8",
+      "idx_scan": "1",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "client_session_notes",
+      "seq_scan": "121",
+      "seq_tup_read": "0",
+      "idx_scan": "114",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "function_idempotency_keys",
+      "seq_scan": "114",
+      "seq_tup_read": "0",
+      "idx_scan": "19",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "feature_flag_plan_history",
+      "seq_scan": "117",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "guardian_link_queue",
+      "seq_scan": "118",
+      "seq_tup_read": "0",
+      "idx_scan": "3",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "therapist_documents",
+      "seq_scan": "63",
+      "seq_tup_read": "0",
+      "idx_scan": "9",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "service_contract_versions",
+      "seq_scan": "6",
+      "seq_tup_read": "0",
+      "idx_scan": "3",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "agent_execution_traces",
+      "seq_scan": "4",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "agent_prompt_tool_versions",
+      "seq_scan": "4",
+      "seq_tup_read": "0",
+      "idx_scan": "2",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "scheduling_orchestration_runs",
+      "seq_scan": "4",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "goal_versions",
+      "seq_scan": "10",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "edi_export_files",
+      "seq_scan": "2",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "edi_claim_statuses",
+      "seq_scan": "3",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "ai_performance_metrics",
+      "seq_scan": "192",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "edi_claim_denials",
+      "seq_scan": "3",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "db_performance_metrics",
+      "seq_scan": "187",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "system_performance_metrics",
+      "seq_scan": "186",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "performance_alerts",
+      "seq_scan": "186",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "billing_records",
+      "seq_scan": "536",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "referring_providers",
+      "seq_scan": "191",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "client_availability",
+      "seq_scan": "233",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "authorizations",
+      "seq_scan": "370",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "authorization_services",
+      "seq_scan": "192",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "scheduling_preferences",
+      "seq_scan": "186",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "therapist_certifications",
+      "seq_scan": "206",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "function_performance_logs",
+      "seq_scan": "188",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "user_sessions",
+      "seq_scan": "188",
+      "seq_tup_read": "0",
+      "idx_scan": "1",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_transcripts",
+      "seq_scan": "190",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_transcript_segments",
+      "seq_scan": "190",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "ai_session_notes",
+      "seq_scan": "248",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "ai_processing_logs",
+      "seq_scan": "188",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "performance_baselines",
+      "seq_scan": "186",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "ai_cache",
+      "seq_scan": "191",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_cpt_entries",
+      "seq_scan": "201",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_cpt_modifiers",
+      "seq_scan": "201",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "feature_flags",
+      "seq_scan": "191",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "organization_plans",
+      "seq_scan": "191",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "organization_feature_flags",
+      "seq_scan": "195",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "feature_flag_audit_logs",
+      "seq_scan": "200",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "impersonation_audit",
+      "seq_scan": "203",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "impersonation_revocation_queue",
+      "seq_scan": "189",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "admin_invite_tokens",
+      "seq_scan": "190",
+      "seq_tup_read": "0",
+      "idx_scan": "1",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_audit_logs",
+      "seq_scan": "164",
+      "seq_tup_read": "0",
+      "idx_scan": "3",
+      "idx_tup_fetch": "0",
+      "index_health": "More sequential than index scans"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "client_notes",
+      "seq_scan": "414",
+      "seq_tup_read": "0",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "index_health": "No index usage"
+    }
+  ],
+  "table_sizes": [
+    {
+      "schemaname": "public",
+      "tablename": "clients",
+      "size": "840 kB",
+      "size_bytes": "860160",
+      "inserts": "410",
+      "updates": "2050",
+      "deletes": "45",
+      "live_tuples": "397",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "error_logs",
+      "size": "632 kB",
+      "size_bytes": "647168",
+      "inserts": "484",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "491",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "client_therapist_links",
+      "size": "368 kB",
+      "size_bytes": "376832",
+      "inserts": "561",
+      "updates": "0",
+      "deletes": "2",
+      "live_tuples": "560",
+      "dead_tuples": "2",
+      "bloat_ratio": "0.36"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "therapists",
+      "size": "344 kB",
+      "size_bytes": "352256",
+      "inserts": "199",
+      "updates": "352",
+      "deletes": "5",
+      "live_tuples": "220",
+      "dead_tuples": "28",
+      "bloat_ratio": "12.73"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "assessment_checklist_items",
+      "size": "336 kB",
+      "size_bytes": "344064",
+      "inserts": "1716",
+      "updates": "1331",
+      "deletes": "1584",
+      "live_tuples": "132",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "assessment_extractions",
+      "size": "328 kB",
+      "size_bytes": "335872",
+      "inserts": "1716",
+      "updates": "1329",
+      "deletes": "1584",
+      "live_tuples": "132",
+      "dead_tuples": "72",
+      "bloat_ratio": "54.55"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "assessment_draft_goals",
+      "size": "296 kB",
+      "size_bytes": "303104",
+      "inserts": "116",
+      "updates": "1",
+      "deletes": "64",
+      "live_tuples": "52",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "profiles",
+      "size": "152 kB",
+      "size_bytes": "155648",
+      "inserts": "14",
+      "updates": "947",
+      "deletes": "0",
+      "live_tuples": "31",
+      "dead_tuples": "33",
+      "bloat_ratio": "106.45"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "sessions",
+      "size": "152 kB",
+      "size_bytes": "155648",
+      "inserts": "2",
+      "updates": "8",
+      "deletes": "0",
+      "live_tuples": "3",
+      "dead_tuples": "10",
+      "bloat_ratio": "333.33"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_holds",
+      "size": "144 kB",
+      "size_bytes": "147456",
+      "inserts": "3",
+      "updates": "0",
+      "deletes": "3",
+      "live_tuples": "0",
+      "dead_tuples": "3",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "client_guardians",
+      "size": "144 kB",
+      "size_bytes": "147456",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "1",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "service_contracts",
+      "size": "144 kB",
+      "size_bytes": "147456",
+      "inserts": "11",
+      "updates": "0",
+      "deletes": "3",
+      "live_tuples": "9",
+      "dead_tuples": "3",
+      "bloat_ratio": "33.33"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "assessment_review_events",
+      "size": "128 kB",
+      "size_bytes": "131072",
+      "inserts": "91",
+      "updates": "0",
+      "deletes": "81",
+      "live_tuples": "10",
+      "dead_tuples": "29",
+      "bloat_ratio": "290.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "user_roles",
+      "size": "120 kB",
+      "size_bytes": "122880",
+      "inserts": "54",
+      "updates": "71",
+      "deletes": "1",
+      "live_tuples": "33",
+      "dead_tuples": "33",
+      "bloat_ratio": "100.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "service_contract_rates",
+      "size": "112 kB",
+      "size_bytes": "114688",
+      "inserts": "9",
+      "updates": "0",
+      "deletes": "2",
+      "live_tuples": "7",
+      "dead_tuples": "2",
+      "bloat_ratio": "28.57"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "scheduling_orchestration_runs",
+      "size": "112 kB",
+      "size_bytes": "114688",
+      "inserts": "8",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "8",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_history",
+      "size": "104 kB",
+      "size_bytes": "106496",
+      "inserts": "27",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "64",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "function_idempotency_keys",
+      "size": "104 kB",
+      "size_bytes": "106496",
+      "inserts": "17",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "17",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_audit_logs",
+      "size": "96 kB",
+      "size_bytes": "98304",
+      "inserts": "1",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "1",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "goals",
+      "size": "96 kB",
+      "size_bytes": "98304",
+      "inserts": "7",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "7",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_goals",
+      "size": "88 kB",
+      "size_bytes": "90112",
+      "inserts": "2",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "2",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "therapist_availability",
+      "size": "88 kB",
+      "size_bytes": "90112",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "27",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "cpt_modifier_mappings",
+      "size": "88 kB",
+      "size_bytes": "90112",
+      "inserts": "12",
+      "updates": "0",
+      "deletes": "3",
+      "live_tuples": "9",
+      "dead_tuples": "3",
+      "bloat_ratio": "33.33"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "therapist_documents",
+      "size": "80 kB",
+      "size_bytes": "81920",
+      "inserts": "6",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "6",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "programs",
+      "size": "80 kB",
+      "size_bytes": "81920",
+      "inserts": "4",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "4",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "agent_prompt_tool_versions",
+      "size": "80 kB",
+      "size_bytes": "81920",
+      "inserts": "1",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "1",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "user_profiles",
+      "size": "80 kB",
+      "size_bytes": "81920",
+      "inserts": "0",
+      "updates": "117",
+      "deletes": "0",
+      "live_tuples": "6",
+      "dead_tuples": "25",
+      "bloat_ratio": "416.67"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "assessment_documents",
+      "size": "80 kB",
+      "size_bytes": "81920",
+      "inserts": "40",
+      "updates": "84",
+      "deletes": "37",
+      "live_tuples": "3",
+      "dead_tuples": "39",
+      "bloat_ratio": "1300.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_note_templates",
+      "size": "80 kB",
+      "size_bytes": "81920",
+      "inserts": "0",
+      "updates": "4",
+      "deletes": "0",
+      "live_tuples": "4",
+      "dead_tuples": "3",
+      "bloat_ratio": "75.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "behavioral_patterns",
+      "size": "80 kB",
+      "size_bytes": "81920",
+      "inserts": "0",
+      "updates": "23",
+      "deletes": "0",
+      "live_tuples": "23",
+      "dead_tuples": "2",
+      "bloat_ratio": "8.70"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "assessment_draft_programs",
+      "size": "80 kB",
+      "size_bytes": "81920",
+      "inserts": "12",
+      "updates": "4",
+      "deletes": "10",
+      "live_tuples": "2",
+      "dead_tuples": "11",
+      "bloat_ratio": "550.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "admin_actions",
+      "size": "80 kB",
+      "size_bytes": "81920",
+      "inserts": "1",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "4",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "organizations",
+      "size": "80 kB",
+      "size_bytes": "81920",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "1",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "authorizations",
+      "size": "72 kB",
+      "size_bytes": "73728",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "client_session_notes",
+      "size": "72 kB",
+      "size_bytes": "73728",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "user_therapist_links",
+      "size": "72 kB",
+      "size_bytes": "73728",
+      "inserts": "2",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "2",
+      "dead_tuples": "1",
+      "bloat_ratio": "50.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "client_availability",
+      "size": "72 kB",
+      "size_bytes": "73728",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "22",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "program_notes",
+      "size": "64 kB",
+      "size_bytes": "65536",
+      "inserts": "2",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "2",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_cpt_entries",
+      "size": "64 kB",
+      "size_bytes": "65536",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "impersonation_audit",
+      "size": "64 kB",
+      "size_bytes": "65536",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "feature_flag_audit_logs",
+      "size": "56 kB",
+      "size_bytes": "57344",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "guardian_link_queue",
+      "size": "56 kB",
+      "size_bytes": "57344",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "feature_flag_plan_history",
+      "size": "56 kB",
+      "size_bytes": "57344",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "ai_cache",
+      "size": "56 kB",
+      "size_bytes": "57344",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "service_contract_versions",
+      "size": "48 kB",
+      "size_bytes": "49152",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "insurance_providers",
+      "size": "48 kB",
+      "size_bytes": "49152",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "5",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "ai_response_cache",
+      "size": "48 kB",
+      "size_bytes": "49152",
+      "inserts": "1",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "1",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "roles",
+      "size": "48 kB",
+      "size_bytes": "49152",
+      "inserts": "1",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "7",
+      "dead_tuples": "5",
+      "bloat_ratio": "71.43"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "conversations",
+      "size": "48 kB",
+      "size_bytes": "49152",
+      "inserts": "9",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "10",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "cpt_codes",
+      "size": "48 kB",
+      "size_bytes": "49152",
+      "inserts": "14",
+      "updates": "4",
+      "deletes": "0",
+      "live_tuples": "18",
+      "dead_tuples": "4",
+      "bloat_ratio": "22.22"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "billing_modifiers",
+      "size": "48 kB",
+      "size_bytes": "49152",
+      "inserts": "5",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "5",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "organization_feature_flags",
+      "size": "48 kB",
+      "size_bytes": "49152",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "admin_invite_tokens",
+      "size": "48 kB",
+      "size_bytes": "49152",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "client_issues",
+      "size": "48 kB",
+      "size_bytes": "49152",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "goal_versions",
+      "size": "48 kB",
+      "size_bytes": "49152",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "ai_guidance_documents",
+      "size": "48 kB",
+      "size_bytes": "49152",
+      "inserts": "1",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "1",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "ai_performance_metrics",
+      "size": "40 kB",
+      "size_bytes": "40960",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "feature_flags",
+      "size": "40 kB",
+      "size_bytes": "40960",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_cpt_modifiers",
+      "size": "40 kB",
+      "size_bytes": "40960",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "authorization_services",
+      "size": "40 kB",
+      "size_bytes": "40960",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "agent_execution_traces",
+      "size": "40 kB",
+      "size_bytes": "40960",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "ai_session_notes",
+      "size": "40 kB",
+      "size_bytes": "40960",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "plans",
+      "size": "32 kB",
+      "size_bytes": "32768",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "3",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "therapist_certifications",
+      "size": "32 kB",
+      "size_bytes": "32768",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "error_taxonomy",
+      "size": "32 kB",
+      "size_bytes": "32768",
+      "inserts": "9",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "9",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "service_areas",
+      "size": "32 kB",
+      "size_bytes": "32768",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "4",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "edi_claim_statuses",
+      "size": "32 kB",
+      "size_bytes": "32768",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "file_cabinet_settings",
+      "size": "32 kB",
+      "size_bytes": "32768",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "5",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "service_lines",
+      "size": "32 kB",
+      "size_bytes": "32768",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "4",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "locations",
+      "size": "32 kB",
+      "size_bytes": "32768",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "2",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "company_settings",
+      "size": "32 kB",
+      "size_bytes": "32768",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "2",
+      "dead_tuples": "1",
+      "bloat_ratio": "50.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "billing_records",
+      "size": "32 kB",
+      "size_bytes": "32768",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "edi_claim_denials",
+      "size": "32 kB",
+      "size_bytes": "32768",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "organization_plans",
+      "size": "32 kB",
+      "size_bytes": "32768",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "impersonation_revocation_queue",
+      "size": "32 kB",
+      "size_bytes": "32768",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "user_sessions",
+      "size": "32 kB",
+      "size_bytes": "32768",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "agent_runtime_config",
+      "size": "32 kB",
+      "size_bytes": "32768",
+      "inserts": "1",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "1",
+      "dead_tuples": "0",
+      "bloat_ratio": "0.00"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "edi_export_files",
+      "size": "24 kB",
+      "size_bytes": "24576",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_transcripts",
+      "size": "24 kB",
+      "size_bytes": "24576",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "session_transcript_segments",
+      "size": "24 kB",
+      "size_bytes": "24576",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "function_performance_logs",
+      "size": "24 kB",
+      "size_bytes": "24576",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "ai_processing_logs",
+      "size": "24 kB",
+      "size_bytes": "24576",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "db_performance_metrics",
+      "size": "24 kB",
+      "size_bytes": "24576",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "performance_baselines",
+      "size": "16 kB",
+      "size_bytes": "16384",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "referring_providers",
+      "size": "16 kB",
+      "size_bytes": "16384",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "client_notes",
+      "size": "16 kB",
+      "size_bytes": "16384",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "performance_alerts",
+      "size": "16 kB",
+      "size_bytes": "16384",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "scheduling_preferences",
+      "size": "16 kB",
+      "size_bytes": "16384",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "system_performance_metrics",
+      "size": "16 kB",
+      "size_bytes": "16384",
+      "inserts": "0",
+      "updates": "0",
+      "deletes": "0",
+      "live_tuples": "0",
+      "dead_tuples": "0",
+      "bloat_ratio": "0"
+    }
+  ],
+  "connections": [
+    {
+      "state": null,
+      "connection_count": "8",
+      "percentage": "53.3333333333333333"
+    },
+    {
+      "state": "idle",
+      "connection_count": "6",
+      "percentage": "40.0000000000000000"
+    },
+    {
+      "state": "active",
+      "connection_count": "1",
+      "percentage": "6.6666666666666667"
+    }
+  ],
+  "errors": [],
+  "recommendations": [
+    {
+      "type": "slow_queries",
+      "priority": "high",
+      "message": "Optimize 10 slow queries",
+      "action": "Review query execution plans and add missing indexes"
+    },
+    {
+      "type": "indexes",
+      "priority": "medium",
+      "message": "Add indexes to 73 tables",
+      "action": "CREATE INDEX ON table_name (column_name);"
+    },
+    {
+      "type": "bloat",
+      "priority": "medium",
+      "message": "VACUUM ANALYZE 16 bloated tables",
+      "action": "Run VACUUM ANALYZE on tables with high bloat ratio"
+    }
+  ],
+  "required_indexes": {
+    "billing_records_org_status_created_idx": "CREATE INDEX billing_records_org_status_created_idx ON public.billing_records USING btree (organization_id, status, created_at DESC)",
+    "clients_org_status_active_idx": "CREATE INDEX clients_org_status_active_idx ON public.clients USING btree (organization_id, status, full_name) WHERE (deleted_at IS NULL)",
+    "session_cpt_entries_org_session_line_idx": "CREATE INDEX session_cpt_entries_org_session_line_idx ON public.session_cpt_entries USING btree (organization_id, session_id, line_number)",
+    "sessions_org_therapist_start_time_idx": "CREATE INDEX sessions_org_therapist_start_time_idx ON public.sessions USING btree (organization_id, therapist_id, start_time)"
+  }
+}

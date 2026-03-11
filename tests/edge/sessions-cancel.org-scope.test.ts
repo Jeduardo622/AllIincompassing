@@ -135,6 +135,7 @@ describe("sessions-cancel org scoping", () => {
     const updateBuilder = makeUpdateBuilder();
     const mockDb: any = {
       from: vi.fn(() => updateBuilder),
+      rpc: vi.fn(async () => ({ error: null })),
     };
 
     const logger = createStubLogger();

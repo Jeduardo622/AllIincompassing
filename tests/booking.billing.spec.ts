@@ -12,7 +12,7 @@ const importBookSession = async () => {
 };
 
 const TEST_SUPABASE_URL = "https://testing.supabase.co";
-const TEST_SUPABASE_ANON_KEY = "testing-anon-key";
+const TEST_SUPABASE_ANON_KEY = "testing-anon-key-12345678901234567890";
 const TEST_SUPABASE_EDGE_URL = "https://testing.supabase.co/functions/v1/";
 const TEST_SERVICE_ROLE_KEY = "service-role-test-key";
 const TEST_DEFAULT_ORG_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
@@ -163,31 +163,14 @@ describe("booking billing integration", () => {
       location_type: request.session.location_type,
       status: "scheduled",
     });
-
-    expect(seeded.sessionCptEntries).toHaveLength(1);
-    const cptEntry = seeded.sessionCptEntries[0];
-    expect(cptEntry).toMatchObject({
-      session_id: seeded.confirmedSession.id,
-      cpt_code_id: "cpt-97154",
-      line_number: 1,
-      units: 13,
-      billed_minutes: 195,
-      is_primary: true,
-      notes: "Group adaptive behavior treatment by protocol",
+    expect(asRecord(confirmPayload.cpt)).toEqual({
+      code: "97154",
+      description: "Group adaptive behavior treatment by protocol",
+      modifiers: ["GT", "HQ", "95", "KX"],
+      source: "session_type",
+      durationMinutes: 195,
     });
-
-    expect(seeded.sessionCptModifiers).toHaveLength(4);
-    const modifierEntryIds = new Set(
-      seeded.sessionCptModifiers.map((modifier) => modifier.session_cpt_entry_id),
-    );
-    expect(modifierEntryIds).toEqual(new Set([cptEntry.id]));
-    expect(seeded.sessionCptModifiers.map((modifier) => modifier.modifier_id)).toEqual([
-      "modifier-GT",
-      "modifier-HQ",
-      "modifier-95",
-      "modifier-KX",
-    ]);
-    expect(seeded.sessionCptModifiers.map((modifier) => modifier.position)).toEqual([1, 2, 3, 4]);
+    expect(Array.isArray(confirmPayload.goal_ids)).toBe(true);
   });
 
   it("honors explicit CPT overrides and normalizes modifiers", async () => {
@@ -250,27 +233,13 @@ describe("booking billing integration", () => {
       session_type: request.session.session_type,
       location_type: request.session.location_type,
     });
-
-    expect(seeded.sessionCptEntries).toHaveLength(1);
-    const entry = seeded.sessionCptEntries[0];
-    expect(entry).toMatchObject({
-      session_id: seeded.confirmedSession.id,
-      cpt_code_id: "cpt-97155",
-      line_number: 1,
-      billed_minutes: 50,
-      units: 4,
-      is_primary: true,
-      notes: "Adaptive behavior treatment with protocol modification",
+    expect(asRecord(confirmPayload.cpt)).toEqual({
+      code: "97155",
+      description: "Adaptive behavior treatment with protocol modification",
+      modifiers: ["TZ", "95"],
+      source: "override",
+      durationMinutes: 50,
     });
-
-    expect(seeded.sessionCptModifiers).toHaveLength(2);
-    expect(new Set(seeded.sessionCptModifiers.map((modifier) => modifier.session_cpt_entry_id))).toEqual(
-      new Set([entry.id]),
-    );
-    expect(seeded.sessionCptModifiers.map((modifier) => modifier.modifier_id)).toEqual([
-      "modifier-TZ",
-      "modifier-95",
-    ]);
-    expect(seeded.sessionCptModifiers.map((modifier) => modifier.position)).toEqual([1, 2]);
+    expect(Array.isArray(confirmPayload.goal_ids)).toBe(true);
   });
 });

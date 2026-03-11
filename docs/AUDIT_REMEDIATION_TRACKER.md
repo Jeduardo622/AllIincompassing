@@ -89,3 +89,16 @@ Track remediation work from the executive audit report to close production-readi
   - Completion evidence for RLS hardening and CI guardrails.
   - Current advisor backlog after FK and focused hardening batches.
   - Remaining conservative backlog strategy (policy consolidation + unused index retirement).
+
+## Documentation change log (2026-03-11)
+- Completed UX/accessibility + observability remediation implementation across:
+  - `src/lib/authContext.tsx` (profile fetch fallback for schema drift)
+  - `src/components/SessionModal.tsx` (focus trap, escape handling, focus restore, accessible labeling)
+  - `src/pages/Login.tsx`, `src/pages/Signup.tsx` (validation recovery focus + live error announcements)
+  - `src/App.tsx` and `src/lib/api.ts` (route telemetry + request/correlation header propagation)
+- Added migration `supabase/migrations/20260311195000_auth_profile_and_query_metrics_contract.sql` and applied it to hosted Supabase:
+  - Adds `public.profiles.organization_id`
+  - Creates `public.query_performance_metrics` with indexes and RLS policies
+- Added regression coverage:
+  - `src/components/__tests__/SessionModal.test.tsx` for keyboard/focus behavior
+  - `scripts/playwright-mobile-role-smoke.ts` + `npm run playwright:mobile-role-smoke`

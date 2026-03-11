@@ -23,6 +23,14 @@ This runbook defines production monitoring signals, initial SLO thresholds, and 
    - Signal: `npm run db:check:performance` advisory output.
    - Threshold (initial): no critical advisories; slow query warnings tracked weekly.
 
+## Route telemetry and request correlation (2026-03)
+- **Client route telemetry**: `src/App.tsx` emits `Route navigation event` logs on path/search/hash/navigation-type changes with user/role context.
+- **Request correlation headers**: `src/lib/api.ts` attaches:
+  - `x-request-id` (generated UUID when absent)
+  - `x-correlation-id` (defaults to request id when absent)
+- **Edge compatibility**: headers align with `_shared/logging.ts` correlation fields and can be joined with trace/report utilities in `/monitoring`.
+- **Operational expectation**: route transitions and edge calls for critical flows should now share a diagnosable request/correlation chain.
+
 ## Agent trace pipeline
 - **Trace store**: `public.agent_execution_traces` (admin/monitoring read-only via RLS).
 - **Correlation IDs**: edge functions emit `x-request-id` and `x-correlation-id`; use these to join step-level traces across retries or fallbacks.

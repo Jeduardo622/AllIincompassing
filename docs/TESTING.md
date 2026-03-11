@@ -79,6 +79,23 @@ Dry-run (no network) to validate payload construction:
 npx tsx scripts/agent-eval-smoke.ts --dry-run
 ```
 
+## Mobile role smoke (Playwright)
+
+Run mobile role-based access smoke coverage (iPhone 13 emulation):
+
+```bash
+npm run playwright:mobile-role-smoke
+```
+
+This script validates:
+- Admin user can authenticate and access `/monitoring` on a mobile viewport.
+- Therapist user can authenticate, access `/schedule`, and is blocked from `/monitoring` (redirect to `/unauthorized`).
+
+Required environment variables:
+- `PW_BASE_URL` (optional; defaults to `https://app.allincompassing.ai`)
+- `PW_ADMIN_EMAIL` / `PW_ADMIN_PASSWORD` (or existing `PW_EMAIL` / `PW_PASSWORD`)
+- `PW_THERAPIST_EMAIL` / `PW_THERAPIST_PASSWORD`
+
 ## Test Reliability SLO Policy
 
 Source files:

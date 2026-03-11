@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'npm:zod@3.23.8'
 import { errorEnvelope, getRequestId, rateLimit, IsoDateSchema } from '../lib/http/error.ts'
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
 import { createRequestClient } from "../_shared/database.ts";

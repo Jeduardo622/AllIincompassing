@@ -76,7 +76,7 @@ const resolveAllowedOrigin = (): string => {
 export const corsHeaders = {
   "Access-Control-Allow-Origin": resolveAllowedOrigin(),
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Client-Info, apikey",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Client-Info, x-client-info, apikey",
   "Access-Control-Max-Age": "86400",
 };
 

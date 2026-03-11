@@ -53,6 +53,24 @@ const assertSupabaseAnonKey = (value: string): void => {
   }
 };
 
+const resolveSupabaseClientKey = (): string => {
+  const preferredPublishableKeys = [
+    'SUPABASE_PUBLISHABLE_KEY',
+    'VITE_SUPABASE_PUBLISHABLE_KEY',
+  ];
+  for (const key of preferredPublishableKeys) {
+    const value = getOptionalServerEnv(key);
+    if (value) {
+      logger.warn('Using publishable key override for runtime Supabase config', {
+        overrideKey: key,
+      });
+      return value;
+    }
+  }
+
+  return resolveRequiredEnv('SUPABASE_ANON_KEY', ['VITE_SUPABASE_ANON_KEY']);
+};
+
 const resolveRequiredEnv = (primaryKey: string, fallbackKeys: string[]): string => {
   const primary = getOptionalServerEnv(primaryKey);
   if (primary) {
@@ -109,7 +127,7 @@ const resolveDefaultOrganizationId = (): string => {
 
 export const getRuntimeSupabaseConfig = (): RuntimeSupabaseConfig => {
   const supabaseUrl = resolveRequiredEnv('SUPABASE_URL', ['VITE_SUPABASE_URL']);
-  const supabaseAnonKey = resolveRequiredEnv('SUPABASE_ANON_KEY', ['VITE_SUPABASE_ANON_KEY']);
+  const supabaseAnonKey = resolveSupabaseClientKey();
   const supabaseEdgeUrl = getOptionalServerEnv('SUPABASE_EDGE_URL') ?? getOptionalServerEnv('VITE_SUPABASE_EDGE_URL');
   const defaultOrganizationId = resolveDefaultOrganizationId();
   assertSupabaseUrl(supabaseUrl);

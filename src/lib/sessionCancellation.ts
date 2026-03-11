@@ -109,12 +109,12 @@ export async function cancelSessions(payload: CancelSessionsPayload): Promise<Ca
   const alreadyCancelledCount = typeof data.alreadyCancelledCount === "number"
     ? data.alreadyCancelledCount
     : Number(data.already_cancelled_count ?? 0);
-  const totalCount = typeof data.totalCount === "number"
-    ? data.totalCount
-    : Number(data.total_count ?? cancelledCount + alreadyCancelledCount);
   const nonCancellableCount = typeof data.nonCancellableCount === "number"
     ? data.nonCancellableCount
     : Number(data.non_cancellable_count ?? 0);
+  const totalCount = typeof data.totalCount === "number"
+    ? data.totalCount
+    : Number(data.total_count ?? cancelledCount + alreadyCancelledCount + nonCancellableCount);
 
   const cancelledSessionIds = normalizeStringArray(
     data.cancelledSessionIds ?? data.cancelled_session_ids,

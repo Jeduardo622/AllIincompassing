@@ -88,7 +88,7 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
     Authorization: `Bearer ${accessToken}`,
   };
 
-  const sessionUrl = `${supabaseUrl}/rest/v1/sessions?select=id,client_id,organization_id,program_id,goal_id,therapist_id,started_at&organization_id=eq.${organizationId}&id=eq.${session_id}`;
+  const sessionUrl = `${supabaseUrl}/rest/v1/sessions?select=id,client_id,organization_id,program_id,goal_id,therapist_id,status,started_at&organization_id=eq.${organizationId}&id=eq.${session_id}`;
   const sessionResult = await fetchJson<Array<{
     id: string;
     client_id: string;

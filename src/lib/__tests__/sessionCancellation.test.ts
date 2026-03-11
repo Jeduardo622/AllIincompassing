@@ -31,9 +31,11 @@ describe("cancelSessions", () => {
           data: {
             cancelledCount: 2,
             alreadyCancelledCount: 1,
+            nonCancellableCount: 1,
             totalCount: 3,
             cancelledSessionIds: ["s1", "s2"],
             alreadyCancelledSessionIds: ["s3"],
+            nonCancellableSessionIds: ["s4"],
           },
         },
         200,
@@ -49,9 +51,11 @@ describe("cancelSessions", () => {
     expect(result).toEqual({
       cancelledCount: 2,
       alreadyCancelledCount: 1,
+      nonCancellableCount: 1,
       totalCount: 3,
       cancelledSessionIds: ["s1", "s2"],
       alreadyCancelledSessionIds: ["s3"],
+      nonCancellableSessionIds: ["s4"],
       idempotencyKey: "custom-key",
     });
 
@@ -76,9 +80,11 @@ describe("cancelSessions", () => {
           data: {
             cancelledCount: 0,
             alreadyCancelledCount: 0,
+            nonCancellableCount: 0,
             totalCount: 0,
             cancelledSessionIds: [],
             alreadyCancelledSessionIds: [],
+            nonCancellableSessionIds: [],
           },
         },
         200,
@@ -103,6 +109,39 @@ describe("cancelSessions", () => {
     await expect(cancelSessions({ sessionIds: ["s1"] })).rejects.toThrow(
       /bad request/i,
     );
+  });
+
+  it("parses non-cancellable session metadata from snake_case payloads", async () => {
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          success: true,
+          data: {
+            cancelled_count: 1,
+            already_cancelled_count: 1,
+            non_cancellable_count: 2,
+            total_count: 4,
+            cancelled_session_ids: ["s1"],
+            already_cancelled_session_ids: ["s2"],
+            non_cancellable_session_ids: ["s3", "s4"],
+          },
+        },
+        200,
+      ),
+    );
+
+    const result = await cancelSessions({ sessionIds: ["s1", "s2", "s3", "s4"] });
+
+    expect(result).toEqual({
+      cancelledCount: 1,
+      alreadyCancelledCount: 1,
+      nonCancellableCount: 2,
+      totalCount: 4,
+      cancelledSessionIds: ["s1"],
+      alreadyCancelledSessionIds: ["s2"],
+      nonCancellableSessionIds: ["s3", "s4"],
+      idempotencyKey: expect.any(String),
+    });
   });
 
   it("throws when cancellation is forbidden", async () => {

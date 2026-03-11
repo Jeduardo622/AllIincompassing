@@ -43,6 +43,7 @@ Track remediation work from the executive audit report to close production-readi
 | Reliability | Schedule data batch RPC 400s (aggregation ORDER BY) | Backend / DB | Applied migration (verify in prod) |
 | Admin Governance | Admin users + guardian queue RPC access broken | Backend / DB | Applied migrations (verify in prod) |
 | Reliability | Dashboard 403 for therapist role | Backend | Code fix pending deploy |
+| Business Logic Correctness | Scheduling RPC least-privilege + lifecycle transition enforcement (sessions/authorizations) | Backend / DB | Completed (`20260310190000_business_logic_lifecycle_hardening.sql`) |
 
 ## Strongly recommended
 | Area | Gap | Owner | Status |
@@ -74,6 +75,12 @@ Track remediation work from the executive audit report to close production-readi
   2. Continue conservative unused-index retirement in small reversible batches.
 
 ## Documentation change log (2026-03-10)
+- Added `docs/BUSINESS_LOGIC_REMEDIATION_2026_03_10.md` with:
+  - P0-P2 remediation scope, migration details, runtime guard updates, and validation evidence.
+  - Hosted migration application outcome and post-apply verification results.
+  - Remaining condition for authenticated Playwright conflict-flow smoke.
+- Updated `docs/SESSION_HOLD_CONTRACT.md` with 2026-03 RPC privilege hardening notes.
+- Updated `docs/SESSION_START_NOTES_UPDATES_2026_02.md` with stricter start-state gating and linkage to the 2026-03 hardening migration.
 - Updated `docs/advisors-migration-summary.md` with the focused hardening pass details:
   - Added applied migrations for policy consolidation and unused-index cleanup.
   - Added before/after advisor counts and net delta.

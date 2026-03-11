@@ -28,3 +28,9 @@
 - [x] Add an idempotent cancel path keyed by hold identifiers to remove the residual race during cleanup.
 - Persist hold acquisition attempts (holdKey, holdId, idempotency key, and timestamps) so support teams can correlate retries and diagnose collisions.
 - [x] Extend the booking API to surface retry-after hints when conflicts arise so the client can schedule deterministic retries instead of busy looping.
+
+## 2026-03 hardening update
+- The legacy scheduling RPC overload (`acquire_session_hold` without actor context) has been locked down and is no longer callable by API roles.
+- The actor-validated hold acquisition path is service-role only, aligning execution with trusted edge pipelines.
+- Confirm overload access is explicitly constrained to prevent direct invocation of legacy function signatures.
+- Source of truth migration: `supabase/migrations/20260310190000_business_logic_lifecycle_hardening.sql`.

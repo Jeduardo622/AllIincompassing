@@ -26,6 +26,7 @@
 
 ### API / Data Layer
 - `sessionsStartHandler` now returns 409 when `started_at` is already set.
+- `sessionsStartHandler` now also requires `sessions.status = 'scheduled'` before start and returns 409 for non-scheduled sessions.
 - `createClientSessionNote` accepts and writes `goal_ids` and optional `session_id`.
 - `SessionNote` type and mapping include `goal_ids` and `session_id`.
 
@@ -35,6 +36,8 @@
   - `client_session_notes.goal_ids`
   - `client_session_notes.session_id`
 - Updated edge function config to enforce JWT on `admin-create-user`.
+- Follow-up hardening migration now enforces session status constraints and transition guards:
+  - `supabase/migrations/20260310190000_business_logic_lifecycle_hardening.sql`
 
 ### Acceptance Criteria Added
 - Manual notes require at least one goals bank entry and persist `goal_ids`.

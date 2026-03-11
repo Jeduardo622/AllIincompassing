@@ -14,9 +14,11 @@ export interface CancelSessionsPayload {
 export interface CancelSessionsResult {
   cancelledCount: number;
   alreadyCancelledCount: number;
+  nonCancellableCount: number;
   totalCount: number;
   cancelledSessionIds: string[];
   alreadyCancelledSessionIds: string[];
+  nonCancellableSessionIds: string[];
   idempotencyKey: string;
 }
 
@@ -110,6 +112,9 @@ export async function cancelSessions(payload: CancelSessionsPayload): Promise<Ca
   const totalCount = typeof data.totalCount === "number"
     ? data.totalCount
     : Number(data.total_count ?? cancelledCount + alreadyCancelledCount);
+  const nonCancellableCount = typeof data.nonCancellableCount === "number"
+    ? data.nonCancellableCount
+    : Number(data.non_cancellable_count ?? 0);
 
   const cancelledSessionIds = normalizeStringArray(
     data.cancelledSessionIds ?? data.cancelled_session_ids,
@@ -117,15 +122,22 @@ export async function cancelSessions(payload: CancelSessionsPayload): Promise<Ca
   const alreadyCancelledSessionIds = normalizeStringArray(
     data.alreadyCancelledSessionIds ?? data.already_cancelled_session_ids,
   );
+  const nonCancellableSessionIds = normalizeStringArray(
+    data.nonCancellableSessionIds ?? data.non_cancellable_session_ids,
+  );
 
   const usedKey = response.headers.get("Idempotency-Key")?.trim() || idempotencyKey;
 
   return {
     cancelledCount: Number.isNaN(cancelledCount) ? 0 : cancelledCount,
     alreadyCancelledCount: Number.isNaN(alreadyCancelledCount) ? 0 : alreadyCancelledCount,
-    totalCount: Number.isNaN(totalCount) ? cancelledCount + alreadyCancelledCount : totalCount,
+    nonCancellableCount: Number.isNaN(nonCancellableCount) ? 0 : nonCancellableCount,
+    totalCount: Number.isNaN(totalCount)
+      ? cancelledCount + alreadyCancelledCount + nonCancellableCount
+      : totalCount,
     cancelledSessionIds,
     alreadyCancelledSessionIds,
+    nonCancellableSessionIds,
     idempotencyKey: usedKey,
   };
 }

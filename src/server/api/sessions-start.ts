@@ -94,6 +94,7 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
     client_id: string;
     organization_id: string;
     therapist_id: string;
+    status: string;
     started_at: string | null;
   }>>(sessionUrl, {
     method: "GET",
@@ -110,6 +111,10 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
 
   if (sessionRow.started_at) {
     return respond({ error: "Session already started" }, 409);
+  }
+
+  if (sessionRow.status !== "scheduled") {
+    return respond({ error: "Only scheduled sessions can be started" }, 409);
   }
   const goalUrl = `${supabaseUrl}/rest/v1/goals?select=id,program_id,client_id,organization_id&organization_id=eq.${organizationId}&id=eq.${goal_id}&program_id=eq.${program_id}&client_id=eq.${sessionRow.client_id}`;
   const goalResult = await fetchJson<Array<{ id: string }>>(goalUrl, { method: "GET", headers });
@@ -130,7 +135,7 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
     goal_id,
     started_at: started_at ?? new Date().toISOString(),
   };
-  const updateUrl = `${supabaseUrl}/rest/v1/sessions?id=eq.${session_id}&organization_id=eq.${organizationId}&started_at=is.null`;
+  const updateUrl = `${supabaseUrl}/rest/v1/sessions?id=eq.${session_id}&organization_id=eq.${organizationId}&started_at=is.null&status=eq.scheduled`;
   const updateResult = await fetchJson<Array<{ id: string; started_at: string }>>(updateUrl, {
     method: "PATCH",
     headers: { ...headers, Prefer: "return=representation" },

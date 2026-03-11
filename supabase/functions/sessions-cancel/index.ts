@@ -43,9 +43,11 @@ interface SessionRecord {
 interface SessionCancellationSummary {
   cancelledCount: number;
   alreadyCancelledCount: number;
+  nonCancellableCount: number;
   totalCount: number;
   cancelledSessionIds: string[];
   alreadyCancelledSessionIds: string[];
+  nonCancellableSessionIds: string[];
 }
 
 interface TraceMeta {
@@ -53,6 +55,8 @@ interface TraceMeta {
   correlationId: string | null;
   agentOperationId: string | null;
 }
+
+const CANCELLABLE_STATUSES = new Set(["scheduled"]);
 
 class BadRequestError extends Error {
   status = 400;
@@ -377,15 +381,17 @@ async function handleSessionCancellation(
       summary: {
         cancelledCount: 0,
         alreadyCancelledCount: 0,
+        nonCancellableCount: 0,
         totalCount: 0,
         cancelledSessionIds: [],
         alreadyCancelledSessionIds: [],
+        nonCancellableSessionIds: [],
       } satisfies SessionCancellationSummary,
     });
   }
 
   const cancellableIds = sessions
-    .filter(session => session.status !== "cancelled")
+    .filter((session) => CANCELLABLE_STATUSES.has(session.status))
     .map(session => session.id);
 
   if (cancellableIds.length > 0) {
@@ -432,13 +438,22 @@ async function handleSessionCancellation(
   const alreadyCancelledIds = sessions
     .filter(session => session.status === "cancelled")
     .map(session => session.id);
+  const nonCancellableSessionIds = sessions
+    .filter(
+      (session) =>
+        session.status !== "cancelled" &&
+        !CANCELLABLE_STATUSES.has(session.status),
+    )
+    .map((session) => session.id);
 
   const summary: SessionCancellationSummary = {
     cancelledCount: cancellableIds.length,
     alreadyCancelledCount: alreadyCancelledIds.length,
+    nonCancellableCount: nonCancellableSessionIds.length,
     totalCount: sessions.length,
     cancelledSessionIds: cancellableIds,
     alreadyCancelledSessionIds: alreadyCancelledIds,
+    nonCancellableSessionIds,
   };
 
   logger.info("session.cancel.completed", {

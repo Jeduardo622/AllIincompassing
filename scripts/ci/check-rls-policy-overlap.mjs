@@ -16,6 +16,13 @@ const run = async () => {
     process.env.SUPABASE_DATABASE_URL,
   );
   if (!hasDbUrl) {
+    if (process.env.CI === "true") {
+      console.error(
+        "Sensitive-table RLS overlap check failed: no database connection string configured in CI. Set SUPABASE_DB_URL or DATABASE_URL.",
+      );
+      process.exitCode = 1;
+      return;
+    }
     console.log("Sensitive-table RLS overlap check skipped (no database connection string configured).");
     return;
   }

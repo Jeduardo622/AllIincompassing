@@ -8,8 +8,9 @@ import { resolveAllowedOrigin } from "../_shared/cors.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': resolveAllowedOrigin(),
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id',
+  // `supabase.functions.invoke()` sends POST plus auth/client headers.
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, X-Client-Info, apikey, content-type, x-request-id',
 }
 
 interface DashboardData {
@@ -51,6 +52,12 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
 
   try {
     const requestId = getRequestId(req)
@@ -61,7 +68,13 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
     const ip = req.headers.get('x-forwarded-for') || 'unknown'
     const rl = rateLimit(`dashboard:${ip}`, 60, 60_000)
     if (!rl.allowed) {
-      return errorEnvelope({ requestId, code: 'rate_limited', message: 'Too many requests', status: 429, headers: { 'Retry-After': String(rl.retryAfter ?? 60) } })
+      return errorEnvelope({
+        requestId,
+        code: 'rate_limited',
+        message: 'Too many requests',
+        status: 429,
+        headers: { ...corsHeaders, 'Retry-After': String(rl.retryAfter ?? 60) },
+      })
     }
 
     const url = new URL(req.url)
@@ -71,7 +84,13 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
       end_date: url.searchParams.get('p_end_date') || url.searchParams.get('end_date') || undefined,
     })
     if (!parsed.success) {
-      return errorEnvelope({ requestId, code: 'invalid_params', message: 'Invalid query parameters', status: 400 })
+      return errorEnvelope({
+        requestId,
+        code: 'invalid_params',
+        message: 'Invalid query parameters',
+        status: 400,
+        headers: corsHeaders,
+      })
     }
 
     const { start_date: startDate, end_date: endDate } = parsed.data
@@ -173,11 +192,11 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
   } catch (error) {
     if (error instanceof MissingOrgContextError) {
       const requestId = getRequestId(new Request('http://local'))
-      return errorEnvelope({ requestId, code: 'missing_org', message: error.message, status: 403 })
+      return errorEnvelope({ requestId, code: 'missing_org', message: error.message, status: 403, headers: corsHeaders })
     }
     const requestId = getRequestId(new Request('http://local'))
     console.error('Dashboard data error:', error)
-    return errorEnvelope({ requestId, code: 'internal_error', message: 'Unexpected error', status: 500 })
+    return errorEnvelope({ requestId, code: 'internal_error', message: 'Unexpected error', status: 500, headers: corsHeaders })
   }
 }
 

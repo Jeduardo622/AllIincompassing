@@ -15,25 +15,24 @@ export function Login() {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const errorAlertRef = useRef<HTMLDivElement | null>(null);
+  const errorFocusFieldRef = useRef<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { signIn, resetPassword, user } = useAuth();
 
-  const focusFieldById = (fieldId: string) => {
-    window.setTimeout(() => {
-      const input = document.getElementById(fieldId) as HTMLInputElement | null;
-      input?.focus();
-    }, 0);
+  const focusFieldById = (fieldId: string): boolean => {
+    const input = document.getElementById(fieldId) as HTMLInputElement | null;
+    if (!input) {
+      return false;
+    }
+    input.focus();
+    return true;
   };
 
   const setFormError = (message: string, focusFieldId?: string) => {
+    errorFocusFieldRef.current = focusFieldId ?? null;
     setError(message);
     showError(message);
-    if (focusFieldId) {
-      focusFieldById(focusFieldId);
-    } else {
-      window.setTimeout(() => errorAlertRef.current?.focus(), 0);
-    }
   };
 
   useEffect(() => {
@@ -56,6 +55,11 @@ export function Login() {
 
   useEffect(() => {
     if (!error) {
+      return;
+    }
+    const focusFieldId = errorFocusFieldRef.current;
+    errorFocusFieldRef.current = null;
+    if (focusFieldId && focusFieldById(focusFieldId)) {
       return;
     }
     errorAlertRef.current?.focus();

@@ -623,6 +623,17 @@ export function SessionModal({
       const firstElement = focusableElements[0];
       const lastElement = focusableElements[focusableElements.length - 1];
       const activeElement = document.activeElement as HTMLElement | null;
+      const dialogElement = dialogRef.current;
+
+      if (!dialogElement?.contains(activeElement)) {
+        event.preventDefault();
+        if (event.shiftKey) {
+          lastElement.focus();
+        } else {
+          firstElement.focus();
+        }
+        return;
+      }
 
       if (event.shiftKey && activeElement === firstElement) {
         event.preventDefault();
@@ -634,7 +645,7 @@ export function SessionModal({
     };
 
     document.addEventListener('keydown', handleKeyDown);
-    window.setTimeout(focusDialog, 0);
+    focusDialog();
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);

@@ -20,6 +20,7 @@ export function Signup() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const errorAlertRef = useRef<HTMLDivElement | null>(null);
+  const errorFocusFieldRef = useRef<string | null>(null);
   const navigate = useNavigate();
   const { signUp, user } = useAuth();
 
@@ -59,24 +60,27 @@ export function Signup() {
     if (!error) {
       return;
     }
+    const focusFieldId = errorFocusFieldRef.current;
+    errorFocusFieldRef.current = null;
+    if (focusFieldId && focusFieldById(focusFieldId)) {
+      return;
+    }
     errorAlertRef.current?.focus();
   }, [error]);
 
-  const focusFieldById = (fieldId: string) => {
-    window.setTimeout(() => {
-      const input = document.getElementById(fieldId) as HTMLElement | null;
-      input?.focus();
-    }, 0);
+  const focusFieldById = (fieldId: string): boolean => {
+    const input = document.getElementById(fieldId) as HTMLElement | null;
+    if (!input) {
+      return false;
+    }
+    input.focus();
+    return true;
   };
 
   const setFormError = (message: string, focusFieldId?: string) => {
+    errorFocusFieldRef.current = focusFieldId ?? null;
     setError(message);
     showError(message);
-    if (focusFieldId) {
-      focusFieldById(focusFieldId);
-    } else {
-      window.setTimeout(() => errorAlertRef.current?.focus(), 0);
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

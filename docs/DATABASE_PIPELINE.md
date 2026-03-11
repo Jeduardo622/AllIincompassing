@@ -23,6 +23,7 @@ The current implementation does **not** create per-PR Supabase branches automati
 - ✅ **Migration linting on PRs** – `supabase-validate.yml` runs `supabase db lint` whenever a PR touches `supabase/migrations/**`.【.github/workflows/supabase-validate.yml†L4-L26】
 - ✅ **Hosted-integration tests on push** – the same workflow runs `npm test` with `RUN_DB_IT=1` for pushes to `main`, guaranteeing RLS-aware suites execute against real Supabase credentials.【.github/workflows/supabase-validate.yml†L27-L46】
 - ✅ **Full project CI** – `.github/workflows/ci.yml` adds linting, coverage, Netlify deploys, and smoke tests so schema changes are exercised together with the app code.【.github/workflows/ci.yml†1-L215】
+- ✅ **Release gate policy check** – `npm run ci:check-focused` includes `check-main-branch-protection.mjs`, which validates protected `main` branch status and required checks in CI.
 - ✅ **On-demand previews** – `supabase-preview.yml` provides a manual workflow for rapidly bringing up an ephemeral Supabase stack when deeper QA is needed.【.github/workflows/supabase-preview.yml†1-L37】
 - ✅ **Branch utilities** – `npm run db:branch:create|cleanup` wrap the Supabase CLI so engineers can create, reuse, and destroy database branches without crafting CLI commands by hand.
 
@@ -122,6 +123,9 @@ CI currently surfaces schema issues through tests and linting; deeper health che
 - `npm run db:health:report <branch-id>` – produces a consolidated Markdown report using the outputs above.
 - `npm run db:health:production` – shortcuts to the production reference (`wnnjeqheqxxyrgsjmygy`) for release audits.
 - `npm run pipeline:health <branch-id>` – convenience script that runs security + performance + report in one go.
+- Application readiness endpoint:
+  - `GET /api/health` returns `200` with `readiness: "ready"` when runtime config is valid.
+  - Returns `503` with `readiness: "not_ready"` when runtime config/env prerequisites fail.
 
 ### Security Checks
 

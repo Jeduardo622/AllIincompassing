@@ -1,12 +1,12 @@
 # Migration Catalog
 
-Generated: 2026-03-09T22:31:49.033Z
+Generated: 2026-03-11T22:06:56.986Z
 
 ## Classification Summary
 
-- canonical: 38
-- duplicate/backfill: 32
-- corrective: 30
+- canonical: 48
+- duplicate/backfill: 37
+- corrective: 31
 - legacy-only: 226
 
 ## Detailed Index
@@ -339,3 +339,19 @@ Generated: 2026-03-09T22:31:49.033Z
 | 20260302120000_client_therapist_links.sql | canonical |
 | 20260304103000_goal_type_minimums.sql | canonical |
 | 20260305133000_add_goal_criteria_columns.sql | canonical |
+| 20260310162000_harden_ai_guidance_documents_rls.sql | canonical |
+| 20260310162000_harden_telemetry_function_grants.sql | canonical |
+| 20260310170000_assessment_fk_index_batch1.sql | duplicate/backfill |
+| 20260310174500_fk_index_batch2_remaining.sql | duplicate/backfill |
+| 20260310182500_policy_consolidation_batch1.sql | duplicate/backfill |
+| 20260310184500_unused_index_drop_batch1.sql | duplicate/backfill |
+| 20260310190000_auth_access_hardening.sql | canonical |
+| 20260310190000_business_logic_lifecycle_hardening.sql | canonical |
+| 20260311102000_confirm_session_hold_with_enrichment.sql | canonical |
+| 20260311104500_start_session_with_goals.sql | canonical |
+| 20260311111000_create_edi_persistence_tables.sql | canonical |
+| 20260311153000_lint_and_edi_rls_hardening.sql | canonical |
+| 20260311154500_fix_optimal_time_slot_timestamptz.sql | corrective |
+| 20260311173000_rls_surface_tightening_batch2.sql | duplicate/backfill |
+| 20260311195000_auth_profile_and_query_metrics_contract.sql | canonical |
+| 20260311210000_harden_privileged_function_grants.sql | canonical |

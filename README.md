@@ -9,6 +9,7 @@ AllIncompassing delivers therapist scheduling, billing, and operational telemetr
 - **Role-aware access** – Row Level Security (RLS) and the RBAC roles in Supabase ensure clients, therapists, admins, and super admins can only reach the data they are permitted to view or mutate.
 - **User documentation hub** – Centralized Documentation page with search, categorized sections (AI session notes, therapist uploads, client documents, authorization files), and download capabilities for all authenticated users.
 - **Operational diagnostics** – Health reports, route audits, and automated security checks keep migrations, RPCs, and edge functions aligned with production expectations.
+- **Readiness endpoint** – `/api/health` exposes runtime readiness (`ready`/`not_ready`) so operators can quickly validate env + runtime config health.
 
 ## Architecture overview
 
@@ -160,6 +161,7 @@ The main CI workflow (`.github/workflows/ci.yml`) runs the following stages in o
 ### Runtime configuration bootstrap
 
 - Confirm `/api/runtime-config` returns JSON with `supabaseUrl` and `supabaseAnonKey`. Missing keys trigger the red error state rendered by `RuntimeConfigError` in `src/main.tsx`.
+- Confirm `/api/health` returns `200` with `readiness: "ready"` in healthy environments. A `503` response indicates runtime configuration or env drift that must be fixed before release.
 - Validate that `ensureRuntimeSupabaseConfig` is called before attempting to construct clients (e.g., `src/lib/supabaseClient.ts`, `src/lib/ai.ts`). Accessing Supabase helpers before the promise resolves will throw `Supabase runtime configuration has not been initialised`.
 - If the client cached an outdated config, run `npm run dev:clean` and restart the dev server to clear local storage and cached runtime settings.
 

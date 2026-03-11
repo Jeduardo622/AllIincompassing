@@ -210,5 +210,18 @@ describe('runtimeConfigHandler', () => {
     const response = await runtimeConfigHandler(new Request('http://localhost/api/runtime-config', { method: 'OPTIONS' }));
     expect(response.status).toBe(200);
   });
+
+  it('rejects disallowed origins', async () => {
+    process.env.SUPABASE_URL = 'https://example.supabase.co';
+    process.env.SUPABASE_ANON_KEY = VALID_ANON_KEY;
+    process.env.DEFAULT_ORGANIZATION_ID = '5238e88b-6198-4862-80a2-dbe15bbeabdd';
+
+    const response = await runtimeConfigHandler(
+      new Request('http://localhost/api/runtime-config', {
+        headers: { Origin: 'https://evil.example.com' },
+      }),
+    );
+    expect(response.status).toBe(403);
+  });
 });
 

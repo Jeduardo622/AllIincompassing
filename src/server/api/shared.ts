@@ -4,10 +4,32 @@ const JSON_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
 };
 
-export const CORS_HEADERS: Record<string, string> = {
-  "Access-Control-Allow-Origin": "*",
+const STATIC_ALLOWED_ORIGINS = [
+  "https://app.allincompassing.ai",
+  "https://preview.allincompassing.ai",
+  "https://staging.allincompassing.ai",
+  "http://localhost:3000",
+  "http://localhost:5173",
+];
+
+const parseAllowedOrigins = () =>
+  (getOptionalServerEnv("API_ALLOWED_ORIGINS") ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+const allowedOrigins = new Set([...STATIC_ALLOWED_ORIGINS, ...parseAllowedOrigins()]);
+const defaultAllowedOrigin = STATIC_ALLOWED_ORIGINS[0] ?? "https://app.allincompassing.ai";
+
+const baseCorsHeaders: Record<string, string> = {
   "Access-Control-Allow-Headers": "authorization, content-type, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+  Vary: "Origin",
+};
+
+export const CORS_HEADERS: Record<string, string> = {
+  ...baseCorsHeaders,
+  "Access-Control-Allow-Origin": defaultAllowedOrigin,
 };
 
 type FetchResult<T> = { status: number; ok: boolean; data: T | null };
@@ -47,6 +69,40 @@ export function json(body: unknown, status = 200, extra: Record<string, string> 
   });
 }
 
+export function resolveAllowedOrigin(request: Request): string | null {
+  const origin = request.headers.get("origin");
+  if (!origin) {
+    return defaultAllowedOrigin;
+  }
+
+  return allowedOrigins.has(origin) ? origin : null;
+}
+
+export function isDisallowedOriginRequest(request: Request): boolean {
+  const origin = request.headers.get("origin");
+  return Boolean(origin) && !allowedOrigins.has(origin);
+}
+
+export function corsHeadersForRequest(request: Request): Record<string, string> {
+  const resolvedOrigin = resolveAllowedOrigin(request);
+  return {
+    ...baseCorsHeaders,
+    "Access-Control-Allow-Origin": resolvedOrigin ?? defaultAllowedOrigin,
+  };
+}
+
+export function jsonForRequest(
+  request: Request,
+  body: unknown,
+  status = 200,
+  extra: Record<string, string> = {},
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...JSON_HEADERS, ...corsHeadersForRequest(request), ...extra },
+  });
+}
+
 export function getRequestId(request: Request): string {
   return request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
 }
@@ -68,7 +124,7 @@ export function errorResponse(
     classification,
     ...(options.extra ?? {}),
   };
-  return json(body, status, options.headers ?? {});
+  return jsonForRequest(request, body, status, options.headers ?? {});
 }
 
 export function getAccessToken(request: Request): string | null {

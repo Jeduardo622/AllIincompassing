@@ -12,6 +12,10 @@ const REQUIRED_FUNCTIONS = [
     slug: 'feature-flags-v2',
     configPath: path.join(ROOT, 'supabase', 'functions', 'feature-flags-v2', 'function.toml'),
   },
+  {
+    slug: 'admin-create-user',
+    configPath: path.join(ROOT, 'supabase', 'functions', 'admin-create-user', 'function.toml'),
+  },
 ];
 
 const parseProjectRef = (supabaseUrl) => {

@@ -2,11 +2,13 @@ import { spawnSync } from 'node:child_process';
 
 const checks = [
   ['node', ['scripts/ci/check-focused-tests.mjs']],
+  ['node', ['scripts/ci/check-main-branch-protection.mjs']],
   ['node', ['scripts/ci/check-startup-canary.mjs']],
   ['node', ['scripts/ci/check-api-boundary.mjs']],
   ['node', ['scripts/ci/check-api-contract-smoke.mjs']],
   ['node', ['scripts/ci/check-api-convergence.mjs']],
   ['node', ['scripts/ci/check-auth-invariants.mjs']],
+  ['node', ['scripts/ci/check-privileged-function-grants.mjs']],
   ['node', ['scripts/ci/check-supabase-function-auth-parity.mjs']],
   ['node', ['scripts/ci/check-rls-policy-coverage.mjs']],
   ['node', ['scripts/ci/check-rls-policy-overlap.mjs']],

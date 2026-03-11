@@ -1,7 +1,8 @@
 {
   "authoritativeRuntime": "supabase-edge",
   "bootstrapFunctions": [
-    "runtime-config.ts"
+    "runtime-config.ts",
+    "health.ts"
   ],
   "legacyCompatibilityFunctions": [
     "assessment-checklist.ts",

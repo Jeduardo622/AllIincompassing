@@ -9,10 +9,17 @@ vi.mock("../api/shared", async () => {
     resolveOrgAndRole: vi.fn(),
     getSupabaseConfig: vi.fn(),
     fetchJson: vi.fn(),
+    fetchAuthenticatedUserId: vi.fn(),
   };
 });
 
-import { fetchJson, getAccessToken, getSupabaseConfig, resolveOrgAndRole } from "../api/shared";
+import {
+  fetchAuthenticatedUserId,
+  fetchJson,
+  getAccessToken,
+  getSupabaseConfig,
+  resolveOrgAndRole,
+} from "../api/shared";
 
 const createAuthToken = (subject = "therapist-1") => {
   const payload = Buffer.from(JSON.stringify({ sub: subject }), "utf8").toString("base64url");
@@ -22,6 +29,7 @@ const createAuthToken = (subject = "therapist-1") => {
 describe("sessionsStartHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(fetchAuthenticatedUserId).mockResolvedValue("therapist-1");
   });
 
   it("returns 405 for non-POST requests", async () => {
@@ -38,6 +46,18 @@ describe("sessionsStartHandler", () => {
     );
 
     expect(response.status).toBe(401);
+  });
+
+  it("rejects disallowed origins before auth checks", async () => {
+    const response = await sessionsStartHandler(
+      new Request("http://localhost/api/sessions-start", {
+        method: "POST",
+        headers: { Origin: "https://evil.example.com" },
+        body: "{}",
+      }),
+    );
+
+    expect(response.status).toBe(403);
   });
 
   it("returns 409 when RPC reports already started", async () => {
@@ -386,6 +406,7 @@ describe("sessionsStartHandler", () => {
 
   it("allows admins to start sessions not assigned to their user id", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("admin-actor"));
+    vi.mocked(fetchAuthenticatedUserId).mockResolvedValue("admin-actor");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
       isTherapist: false,

@@ -1,12 +1,13 @@
 import { z } from "zod";
 import {
-  CORS_HEADERS,
+  corsHeadersForRequest,
   errorResponse,
   fetchAuthenticatedUserId,
   fetchJson,
   getAccessToken,
   getSupabaseConfig,
-  json,
+  isDisallowedOriginRequest,
+  jsonForRequest,
   resolveOrgAndRole,
 } from "./shared";
 
@@ -33,10 +34,17 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
     traceHeaders["x-agent-operation-id"] = agentOperationId;
   }
   const respond = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
-    json(body, status, { ...traceHeaders, ...extra });
+    jsonForRequest(request, body, status, { ...traceHeaders, ...extra });
+
+  if (isDisallowedOriginRequest(request)) {
+    return errorResponse(request, "forbidden", "Origin not allowed", {
+      status: 403,
+      headers: traceHeaders,
+    });
+  }
 
   if (request.method === "OPTIONS") {
-    return new Response("ok", { status: 200, headers: { ...CORS_HEADERS, ...traceHeaders } });
+    return new Response("ok", { status: 200, headers: { ...corsHeadersForRequest(request), ...traceHeaders } });
   }
 
   if (request.method !== "POST") {

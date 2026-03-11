@@ -5,10 +5,14 @@ const rpcMock = vi.fn<
   Promise<{ data: unknown; error: null }>,
   [string, Record<string, unknown> | undefined]
 >();
+const getSessionMock = vi.fn<Promise<{ data: { session: { access_token: string } | null } }>, []>();
 
 vi.mock('../supabase', () => ({
   supabase: {
-    rpc: rpcMock
+    rpc: rpcMock,
+    auth: {
+      getSession: getSessionMock
+    }
   }
 }));
 
@@ -39,6 +43,8 @@ const loadTracker = async () => {
 beforeEach(() => {
   rpcMock.mockReset();
   rpcMock.mockResolvedValue({ data: null, error: null });
+  getSessionMock.mockReset();
+  getSessionMock.mockResolvedValue({ data: { session: { access_token: 'test-token' } } });
   Object.defineProperty(window.navigator, 'onLine', {
     configurable: true,
     value: true

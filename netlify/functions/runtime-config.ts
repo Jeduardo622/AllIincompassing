@@ -6,6 +6,35 @@ const normalize = (value?: string | null): string | undefined => {
 
 const DEFAULT_ORG_FALLBACK = '5238e88b-6198-4862-80a2-dbe15bbeabdd';
 
+const resolveSupabaseClientKey = (): string | undefined => {
+  const preferredPublishableKeys = [
+    process.env.SUPABASE_PUBLISHABLE_KEY,
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+    process.env.SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,
+  ];
+
+  for (const key of preferredPublishableKeys) {
+    const normalized = normalize(key);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  const generatedPublishableKey = Object.entries(process.env).find(([key, value]) => {
+    const normalized = normalize(value);
+    if (!normalized) {
+      return false;
+    }
+    return key.includes('PUBLISHABLE') && key.endsWith('_SUPABASE_ANON_KEY');
+  });
+  if (generatedPublishableKey) {
+    return normalize(generatedPublishableKey[1]);
+  }
+
+  return normalize(process.env.SUPABASE_ANON_KEY) || normalize(process.env.VITE_SUPABASE_ANON_KEY);
+};
+
 export const handler = async () => {
   const environment = process.env.NETLIFY_CONTEXT || process.env.APP_ENV || process.env.NODE_ENV || 'development';
   const allowFallbacks = environment !== 'production';
@@ -16,9 +45,7 @@ export const handler = async () => {
     process.env.SUPABASE_DATABASE_URL ||
     process.env.VITE_SUPABASE_URL;
 
-  const supabaseAnonKey =
-    process.env.SUPABASE_ANON_KEY ||
-    process.env.VITE_SUPABASE_ANON_KEY;
+  const supabaseAnonKey = resolveSupabaseClientKey();
 
   const supabaseEdgeUrl =
     process.env.SUPABASE_EDGE_URL ||

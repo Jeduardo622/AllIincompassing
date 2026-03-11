@@ -90,7 +90,7 @@ type RouteAuditReport = {
   readonly reportPath: string;
 };
 
-const ROUTES: readonly RouteDefinition[] = [
+export const ROUTES: readonly RouteDefinition[] = [
   // Public routes
   { path: '/login', component: 'Login', roles: ['public'], permissions: [] },
   { path: '/signup', component: 'Signup', roles: ['public'], permissions: [] },
@@ -98,7 +98,7 @@ const ROUTES: readonly RouteDefinition[] = [
 
   // Protected routes
   { path: '/', component: 'Dashboard', roles: ['client', 'therapist', 'admin', 'super_admin'], permissions: [] },
-  { path: '/schedule', component: 'Schedule', roles: ['client', 'therapist', 'admin', 'super_admin'], permissions: [] },
+  { path: '/schedule', component: 'Schedule', roles: ['therapist', 'admin', 'super_admin'], permissions: [] },
   { path: '/clients', component: 'Clients', roles: ['therapist', 'admin', 'super_admin'], permissions: ['view_clients'] },
   {
     path: '/clients/:clientId',
@@ -116,11 +116,17 @@ const ROUTES: readonly RouteDefinition[] = [
   },
   { path: '/therapists/new', component: 'TherapistOnboarding', roles: ['admin', 'super_admin'], permissions: [] },
   { path: '/documentation', component: 'Documentation', roles: ['client', 'therapist', 'admin', 'super_admin'], permissions: [] },
+  { path: '/fill-docs', component: 'FillDocs', roles: ['therapist', 'admin', 'super_admin'], permissions: [] },
   { path: '/authorizations', component: 'Authorizations', roles: ['therapist', 'admin', 'super_admin'], permissions: [] },
   { path: '/billing', component: 'Billing', roles: ['admin', 'super_admin'], permissions: [] },
   { path: '/monitoring', component: 'MonitoringDashboard', roles: ['admin', 'super_admin'], permissions: [] },
   { path: '/reports', component: 'Reports', roles: ['admin', 'super_admin'], permissions: [] },
+  { path: '/family', component: 'FamilyDashboard', roles: ['client'], permissions: [] },
   { path: '/settings', component: 'Settings', roles: ['admin', 'super_admin'], permissions: [] },
+  { path: '/settings/:tabId', component: 'Settings', roles: ['admin', 'super_admin'], permissions: [] },
+  { path: '/super-admin/feature-flags', component: 'SuperAdminFeatureFlags', roles: ['super_admin'], permissions: [] },
+  { path: '/super-admin/impersonation', component: 'SuperAdminImpersonation', roles: ['super_admin'], permissions: [] },
+  { path: '/super-admin/prompts', component: 'SuperAdminPrompts', roles: ['super_admin'], permissions: [] },
 ];
 
 const TEST_ROLES: readonly Role[] = ['client', 'therapist', 'admin', 'super_admin'];

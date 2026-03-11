@@ -93,13 +93,13 @@ describe('ClientOnboarding step progression', () => {
     const nextButton = () => screen.getByRole('button', { name: 'Next' });
 
     await user.click(nextButton());
-    expect(screen.getByText('Parent/Guardian Information')).toBeInTheDocument();
+    await screen.findByText('Parent/Guardian Information');
 
     await user.click(nextButton());
-    expect(screen.getByText('Address & Contact Information')).toBeInTheDocument();
+    await screen.findByText('Address & Contact Information');
 
     await user.click(nextButton());
-    expect(screen.getByText('Service Information')).toBeInTheDocument();
+    await screen.findByText('Service Information');
   };
 
   it('blocks advancing from service step when insurance contracts are missing', async () => {
@@ -109,8 +109,8 @@ describe('ClientOnboarding step progression', () => {
 
     await user.click(screen.getByRole('button', { name: 'Next' }));
 
-    expect(screen.getByText('Service Information')).toBeInTheDocument();
-    expect(screen.getByText('Add at least one insurance contract')).toBeInTheDocument();
+    await screen.findByText('Service Information');
+    await screen.findByText('Add at least one insurance contract');
     expect(createClientMock).not.toHaveBeenCalled();
     expect(onComplete).not.toHaveBeenCalled();
   }, 15000);
@@ -124,7 +124,7 @@ describe('ClientOnboarding step progression', () => {
     expect(form).not.toBeNull();
     fireEvent.submit(form!);
 
-    expect(screen.getByText('Service Information')).toBeInTheDocument();
+    await screen.findByText('Service Information');
     expect(createClientMock).not.toHaveBeenCalled();
     expect(onComplete).not.toHaveBeenCalled();
   }, 15000);
@@ -138,8 +138,8 @@ describe('ClientOnboarding step progression', () => {
 
     await user.click(nextButton);
     await user.click(nextButton);
-    expect(screen.getByText('Service Information')).toBeInTheDocument();
-    expect(screen.getByText('Add at least one insurance contract')).toBeInTheDocument();
+    await screen.findByText('Service Information');
+    await screen.findByText('Add at least one insurance contract');
     expect(createClientMock).not.toHaveBeenCalled();
     expect(onComplete).not.toHaveBeenCalled();
   }, 15000);

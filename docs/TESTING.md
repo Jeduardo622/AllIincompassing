@@ -58,6 +58,7 @@ npx vitest run \
 ```
 
 This covers:
+
 - API precondition gating for `/api/assessment-plan-pdf`
 - checklist-to-render-map parity validation
 - UI trigger behavior for `Generate Completed CalOptima PDF`
@@ -88,21 +89,43 @@ npm run playwright:mobile-role-smoke
 ```
 
 This script validates:
+
 - Admin user can authenticate and access `/monitoring` on a mobile viewport.
 - Therapist user can authenticate, access `/schedule`, and is blocked from `/monitoring` (redirect to `/unauthorized`).
 
 Required environment variables:
+
 - `PW_BASE_URL` (optional; defaults to `https://app.allincompassing.ai`)
 - `PW_ADMIN_EMAIL` / `PW_ADMIN_PASSWORD` (or existing `PW_EMAIL` / `PW_PASSWORD`)
 - `PW_THERAPIST_EMAIL` / `PW_THERAPIST_PASSWORD`
 
+## Tier-0 browser regression gate
+
+Tier-0 route protection is enforced in CI with a browser-level Cypress gate:
+
+```bash
+npm run test:routes:tier0
+```
+
+What it runs:
+
+- `cypress/e2e/routes_integrity.cy.ts`
+- `cypress/e2e/role_access.cy.ts`
+
+Local notes:
+
+- The script spins up a preview server from build artifacts; set `PREVIEW_OUTPUT_DIR=dist` when reusing `npm run build` output.
+- By default, `npm run test:routes` also runs these two specs unless you override `--spec`.
+
 ## Test Reliability SLO Policy
 
 Source files:
+
 - `tests/reliability/policy.json`
 - `tests/reliability/quarantine.json`
 
 Standards:
+
 - Rolling 14-day suite pass-rate target: `99.5%`.
 - Flaky failure-rate budget: `<= 0.5%`.
 - Default timeouts:
@@ -112,6 +135,7 @@ Standards:
 - Active quarantine budget: max `5` tests at any time.
 
 Quarantine requirements for each entry:
+
 - `id`, `testPath`, `reason`, `issue`, `owner`, `createdAt`, `expiresAt`, `exitCriteria`, `status`.
 - Expired active entries fail CI.
 - `issue` must be a real ticket id (`ABC-123`) or URL.
@@ -119,15 +143,25 @@ Quarantine requirements for each entry:
 - Use `status: "retired"` when exit criteria are met; do not delete historical entries.
 
 CI enforcement:
+
 - `npm run ci:check-focused` now includes:
   - focused/skip test guard,
   - API boundary guard,
   - API convergence tracker guard,
+  - Supabase edge-function auth parity guard (`verify_jwt`),
   - migration governance guard,
   - test reliability policy guard,
   - architecture pack freshness guard,
   - repo hygiene guard (blocks tracked `*.backup` and `src/*.zip` artifacts).
 - `npm run test:ci` emits `reports/test-reliability-latest.json` each run.
+
+Supabase auth parity guard details:
+
+- Command: `node scripts/ci/check-supabase-function-auth-parity.mjs`
+- Compares `verify_jwt` in repo `function.toml` against deployed metadata for:
+  - `feature-flags`
+  - `feature-flags-v2`
+- Fails in CI on mismatch so auth posture drift cannot pass silently.
 
 ## Cypress typing policy
 

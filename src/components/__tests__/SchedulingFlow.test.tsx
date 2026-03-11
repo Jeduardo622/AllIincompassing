@@ -4,7 +4,6 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../../test/setup';
 import { Schedule } from '../../pages/Schedule';
 import { SessionModal } from '../SessionModal';
-import { format, addDays, addHours } from 'date-fns';
 import { supabase } from '../../lib/supabase';
 
 // Mock data for testing
@@ -598,8 +597,14 @@ describe('Scheduling Flow - Client with Therapist', () => {
       // Tab through form elements
       const therapistSelect = screen.getByRole('combobox', { name: /therapist/i });
       therapistSelect.focus();
-      
-      await userEvent.tab();
+
+      // Keep tabbing until we hit the next client field to avoid DOM-order coupling.
+      for (let index = 0; index < 4; index += 1) {
+        if (screen.getByRole('combobox', { name: /client/i }) === document.activeElement) {
+          break;
+        }
+        await userEvent.tab();
+      }
       const clientSelect = screen.getByRole('combobox', { name: /client/i });
       expect(clientSelect).toHaveFocus();
     });

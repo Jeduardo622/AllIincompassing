@@ -67,13 +67,17 @@ AllIncompassing delivers therapist scheduling, billing, and operational telemetr
 | UI test runner | `npm run test:ui` |
 | Cypress end-to-end suite | `npm run test:e2e` or `npm run test:e2e:open` |
 | Route integrity tests | `npm run test:routes` or `npm run test:routes:open` |
+| Tier-0 browser gate (CI parity) | `npm run test:routes:tier0` |
+| Supabase function auth parity check | `node scripts/ci/check-supabase-function-auth-parity.mjs` |
 
 > CI fails if `.only`/`.skip` usages slip outside `tests/utils/testControls.ts` or if line coverage drops below 90% in
 > `coverage/coverage-summary.json`. Run the focus guard and coverage verification commands locally before opening a PR.
 
 Long-term policy guardrails are now enforced through `npm run ci:check-focused`:
+
 - Authoritative API boundary check (Supabase Edge-first policy).
 - API convergence tracker consistency check for legacy Netlify compatibility shims.
+- Supabase edge-function auth parity check (`verify_jwt` in repo vs deployed metadata).
 - Migration governance and duplicate detection for new migration files.
 - Test reliability/quarantine policy budget and TTL checks.
 - Architecture pack freshness and required-reference check.
@@ -86,9 +90,7 @@ The main CI workflow (`.github/workflows/ci.yml`) runs the following stages in o
 1. Secrets validation, service-role audit, conditional Supabase type generation, lint, and type-check.
 2. Unit tests with coverage enforcement and an RLS guard to ensure the Supabase environment executed correctly.
 3. **Build canary** – `npm run build` compiles the production bundle so build regressions are caught before deploy previews.
-4. **Preview smoke** – when a deploy-preview URL is exposed (`PREVIEW_URL`, `DEPLOY_PRIME_URL`, or `URL`), CI runs `npm run preview:smoke -- --url "$PREVIEW_URL"` to verify `/api/runtime-config` responds with Supabase credentials, Supabase auth is healthy, and the root HTML renders. The job fails automatically on non-200 responses or missing runtime config keys.
-
-If the smoke test fails, re-run it locally with the preview URL shown in the workflow logs. Use `npm run preview:smoke -- --url <deploy-preview>` to reproduce the failure, and inspect the masked runtime-config output to confirm Supabase values are wired correctly.
+4. **Tier-0 browser regression gate** – `npm run test:routes:tier0` executes Cypress route integrity + role-access suites against a local preview server and blocks merges on failures across auth-critical and scheduling/client-management routes.
 
 ### Supabase connection diagnostics
 
@@ -190,4 +192,3 @@ With these workflows and references, contributors can confidently extend AllInco
 ### Route canonicalization
 
 - Monitoring route canonicalized to `/monitoring` (was `/monitoringdashboard`). Update links accordingly.
-

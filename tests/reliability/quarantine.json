@@ -9,7 +9,7 @@
       "createdAt": "2026-03-09",
       "expiresAt": "2026-03-23",
       "exitCriteria": "Stabilize synchronization points and observe 10 consecutive CI runs without retry/timeout symptom.",
-      "status": "active"
+      "status": "retired"
     },
     {
       "id": "QTN-2026-03-09-client-onboarding-timeout",
@@ -20,7 +20,7 @@
       "createdAt": "2026-03-09",
       "expiresAt": "2026-03-23",
       "exitCriteria": "Convert remaining timing-coupled checks to deterministic state assertions and pass 10 straight CI runs.",
-      "status": "active"
+      "status": "retired"
     }
   ]
 }

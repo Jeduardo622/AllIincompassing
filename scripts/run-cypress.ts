@@ -26,7 +26,12 @@ const run = async (): Promise<void> => {
   console.log(`[cypress] Preview server ready at ${previewConfig.url}`);
 
   const cypressBin = resolveCypressBin();
-  const cypressArgs = ['run', '--spec', 'cypress/e2e/routes_integrity.cy.ts', ...process.argv.slice(2)];
+  const userArgs = process.argv.slice(2);
+  const hasExplicitSpec = userArgs.includes('--spec');
+  const defaultSpec = 'cypress/e2e/routes_integrity.cy.ts,cypress/e2e/role_access.cy.ts';
+  const cypressArgs = hasExplicitSpec
+    ? ['run', ...userArgs]
+    : ['run', '--spec', defaultSpec, ...userArgs];
 
   const env = {
     ...process.env,

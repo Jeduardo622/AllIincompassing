@@ -7,6 +7,7 @@ const checks = [
   ['node', ['scripts/ci/check-api-contract-smoke.mjs']],
   ['node', ['scripts/ci/check-api-convergence.mjs']],
   ['node', ['scripts/ci/check-auth-invariants.mjs']],
+  ['node', ['scripts/ci/check-supabase-function-auth-parity.mjs']],
   ['node', ['scripts/ci/check-rls-policy-coverage.mjs']],
   ['node', ['scripts/ci/check-rls-policy-overlap.mjs']],
   ['node', ['scripts/ci/check-migration-governance.mjs']],

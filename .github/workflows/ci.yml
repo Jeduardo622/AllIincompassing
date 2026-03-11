@@ -70,3 +70,8 @@ jobs:
 
       - name: Build canary
         run: npm run build
+
+      - name: Tier-0 browser regression gate
+        run: npm run test:routes:tier0
+        env:
+          PREVIEW_OUTPUT_DIR: dist

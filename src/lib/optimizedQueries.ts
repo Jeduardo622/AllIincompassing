@@ -154,8 +154,23 @@ export const useSessionMetrics = (
  * Reduces 5+ separate queries to 1 optimized RPC call
  */
 export const fetchDashboardData = async () => {
-  const { data, error } = await supabase.functions.invoke('get-dashboard-data', {
+  const DASHBOARD_REQUEST_TIMEOUT_MS = 12000;
+  const invokePromise = supabase.functions.invoke('get-dashboard-data', {
     body: {},
+  });
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const timeoutError = new Error('Dashboard request timed out') as Error & { status?: number };
+      timeoutError.status = 504;
+      reject(timeoutError);
+    }, DASHBOARD_REQUEST_TIMEOUT_MS);
+  });
+
+  const { data, error } = await Promise.race([invokePromise, timeoutPromise]).finally(() => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   });
 
   if (error) {

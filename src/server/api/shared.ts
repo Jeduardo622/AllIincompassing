@@ -12,11 +12,63 @@ export const CORS_HEADERS: Record<string, string> = {
 
 type FetchResult<T> = { status: number; ok: boolean; data: T | null };
 
+type ApiErrorCode =
+  | "validation_error"
+  | "unauthorized"
+  | "forbidden"
+  | "not_found"
+  | "conflict"
+  | "rate_limited"
+  | "internal_error"
+  | "upstream_error";
+
+type ApiErrorClassification = {
+  category: string;
+  severity: "low" | "medium" | "high" | "critical";
+  retryable: boolean;
+  httpStatus: number;
+};
+
+const API_ERROR_TAXONOMY: Record<ApiErrorCode, ApiErrorClassification> = {
+  validation_error: { category: "validation", severity: "low", retryable: false, httpStatus: 400 },
+  unauthorized: { category: "auth", severity: "medium", retryable: false, httpStatus: 401 },
+  forbidden: { category: "auth", severity: "medium", retryable: false, httpStatus: 403 },
+  not_found: { category: "request", severity: "low", retryable: false, httpStatus: 404 },
+  conflict: { category: "request", severity: "medium", retryable: false, httpStatus: 409 },
+  rate_limited: { category: "rate_limit", severity: "high", retryable: true, httpStatus: 429 },
+  internal_error: { category: "internal", severity: "critical", retryable: false, httpStatus: 500 },
+  upstream_error: { category: "upstream", severity: "high", retryable: true, httpStatus: 502 },
+};
+
 export function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...JSON_HEADERS, ...CORS_HEADERS, ...extra },
   });
+}
+
+export function getRequestId(request: Request): string {
+  return request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
+}
+
+export function errorResponse(
+  request: Request,
+  code: ApiErrorCode,
+  message: string,
+  options: { status?: number; headers?: Record<string, string>; extra?: Record<string, unknown> } = {},
+): Response {
+  const classification = API_ERROR_TAXONOMY[code] ?? API_ERROR_TAXONOMY.internal_error;
+  const status = options.status ?? classification.httpStatus;
+  const body: Record<string, unknown> = {
+    success: false,
+    error: message,
+    requestId: getRequestId(request),
+    code,
+    message,
+    classification,
+    ...(options.extra ?? {}),
+  };
+  return json(body, status, options.headers ?? {});
 }
 
 export function getAccessToken(request: Request): string | null {
@@ -58,6 +110,25 @@ export function getSupabaseConfig(): { supabaseUrl: string; anonKey: string } {
     getRequiredServerEnv("VITE_SUPABASE_ANON_KEY");
 
   return { supabaseUrl: supabaseUrl.replace(/\/$/, ""), anonKey };
+}
+
+export async function fetchAuthenticatedUserId(accessToken: string): Promise<string | null> {
+  const { supabaseUrl, anonKey } = getSupabaseConfig();
+  const response = await fetchJson<{ id?: unknown }>(`${supabaseUrl}/auth/v1/user`, {
+    method: "GET",
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok || !response.data) {
+    return null;
+  }
+
+  return typeof response.data.id === "string" && response.data.id.length > 0
+    ? response.data.id
+    : null;
 }
 
 export async function fetchJson<T = unknown>(url: string, init: RequestInit): Promise<FetchResult<T>> {

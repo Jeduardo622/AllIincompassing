@@ -10,6 +10,7 @@ import {
 } from "../_shared/timezone.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 import { evaluateTherapistAuthorization } from "../_shared/authorization.ts";
+import { MissingOrgContextError, requireOrg } from "../_shared/org.ts";
 import { recordSessionAuditEvent } from "../_shared/audit.ts";
 import { resolveSchedulingRetryAfter } from "../_shared/retry-after.ts";
 import { orchestrateScheduling } from "../_shared/scheduling-orchestrator.ts";
@@ -87,6 +88,7 @@ Deno.serve(async (req) => {
   try {
     const requestClient = createRequestClient(req);
     const user = await getUserOrThrow(requestClient);
+    const orgId = await requireOrg(requestClient);
     const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
     const normalizedKey = idempotencyKey.length > 0 ? idempotencyKey : null;
     const traceMeta = {
@@ -178,6 +180,7 @@ Deno.serve(async (req) => {
           await supabaseAdmin
             .from("session_holds")
             .delete()
+            .eq("organization_id", orgId)
             .in("hold_key", createdHolds.map((hold) => hold.hold_key));
         }
         return respond({ success: false, error: error.message ?? "Failed to create hold" }, 500);
@@ -199,6 +202,7 @@ Deno.serve(async (req) => {
           await supabaseAdmin
             .from("session_holds")
             .delete()
+            .eq("organization_id", orgId)
             .in("hold_key", createdHolds.map((hold) => hold.hold_key));
         }
 
@@ -257,6 +261,7 @@ Deno.serve(async (req) => {
           await supabaseAdmin
             .from("session_holds")
             .delete()
+            .eq("organization_id", orgId)
             .in("hold_key", createdHolds.map((created) => created.hold_key));
         }
         return respond({ success: false, error: "Hold response missing" }, 500);
@@ -313,6 +318,9 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     if (error instanceof Response) return error;
+    if (error instanceof MissingOrgContextError) {
+      return jsonResponse({ success: false, error: error.message }, 403);
+    }
     console.error("sessions-hold error", error);
     const message = error instanceof Error ? error.message : "Internal server error";
     return jsonResponse({ success: false, error: message }, 500);

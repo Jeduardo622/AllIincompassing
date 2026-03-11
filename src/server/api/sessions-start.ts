@@ -1,29 +1,22 @@
 import { z } from "zod";
-import { CORS_HEADERS, fetchJson, getAccessToken, getSupabaseConfig, json, resolveOrgAndRole } from "./shared";
+import {
+  CORS_HEADERS,
+  errorResponse,
+  fetchAuthenticatedUserId,
+  fetchJson,
+  getAccessToken,
+  getSupabaseConfig,
+  json,
+  resolveOrgAndRole,
+} from "./shared";
 
-const startSessionSchema = z.object({
+export const startSessionSchema = z.object({
   session_id: z.string().uuid(),
   program_id: z.string().uuid(),
   goal_id: z.string().uuid(),
   goal_ids: z.array(z.string().uuid()).optional(),
   started_at: z.string().optional(),
 });
-
-function decodeJwtSubject(accessToken: string): string | null {
-  const [, payload] = accessToken.split(".");
-  if (!payload) {
-    return null;
-  }
-
-  try {
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-    const parsed = JSON.parse(atob(padded)) as { sub?: unknown };
-    return typeof parsed.sub === "string" && parsed.sub.length > 0 ? parsed.sub : null;
-  } catch {
-    return null;
-  }
-}
 
 export async function sessionsStartHandler(request: Request): Promise<Response> {
   const traceHeaders: Record<string, string> = {};
@@ -47,34 +40,36 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
   }
 
   if (request.method !== "POST") {
-    return respond({ error: "Method not allowed" }, 405);
+    return errorResponse(request, "validation_error", "Method not allowed", { status: 405 });
   }
 
   const accessToken = getAccessToken(request);
   if (!accessToken) {
-    return respond({ error: "Missing authorization token" }, 401, { "WWW-Authenticate": "Bearer" });
+    return errorResponse(request, "unauthorized", "Missing authorization token", {
+      headers: { "WWW-Authenticate": "Bearer", ...traceHeaders },
+    });
   }
 
   const { organizationId, isTherapist, isAdmin, isSuperAdmin } = await resolveOrgAndRole(accessToken);
   if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
-    return respond({ error: "Forbidden" }, 403);
+    return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
   }
 
-  const currentUserId = decodeJwtSubject(accessToken);
+  const currentUserId = await fetchAuthenticatedUserId(accessToken);
   if (!currentUserId) {
-    return respond({ error: "Forbidden" }, 403);
+    return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
   }
 
   let payload: unknown;
   try {
     payload = await request.json();
   } catch {
-    return respond({ error: "Invalid JSON body" }, 400);
+    return errorResponse(request, "validation_error", "Invalid JSON body", { headers: traceHeaders });
   }
 
   const parsed = startSessionSchema.safeParse(payload);
   if (!parsed.success) {
-    return respond({ error: "Invalid request body" }, 400);
+    return errorResponse(request, "validation_error", "Invalid request body", { headers: traceHeaders });
   }
 
   const { session_id, program_id, goal_id, goal_ids, started_at } = parsed.data;
@@ -101,12 +96,12 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
     headers,
   });
   if (!sessionResult.ok || !sessionResult.data || sessionResult.data.length === 0) {
-    return respond({ error: "Session not found" }, 404);
+    return errorResponse(request, "not_found", "Session not found", { headers: traceHeaders });
   }
 
   const sessionRow = sessionResult.data[0];
   if (isTherapist && sessionRow.therapist_id !== currentUserId) {
-    return respond({ error: "Forbidden" }, 403);
+    return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
   }
 
   const rpcUrl = `${supabaseUrl}/rest/v1/rpc/start_session_with_goals`;
@@ -129,7 +124,10 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
   });
 
   if (!rpcResult.ok || !rpcResult.data) {
-    return respond({ error: "Failed to start session" }, rpcResult.status || 500);
+    return errorResponse(request, "upstream_error", "Failed to start session", {
+      status: rpcResult.status || 500,
+      headers: traceHeaders,
+    });
   }
 
   if (!rpcResult.data.success) {
@@ -142,14 +140,23 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
       INVALID_GOALS: 400,
     };
     const errorCode = rpcResult.data.error_code ?? "FAILED";
-    return respond(
-      { error: rpcResult.data.error_message ?? "Failed to start session", code: errorCode },
-      statusMap[errorCode] ?? 409,
+    const resolvedStatus = statusMap[errorCode] ?? 409;
+    return errorResponse(
+      request,
+      resolvedStatus === 404 ? "not_found" : resolvedStatus === 400 ? "validation_error" : "conflict",
+      rpcResult.data.error_message ?? "Failed to start session",
+      {
+        status: resolvedStatus,
+        headers: traceHeaders,
+        extra: { rpcCode: errorCode },
+      },
     );
   }
 
   if (!rpcResult.data.session) {
-    return respond({ error: "Session start response missing session payload" }, 500);
+    return errorResponse(request, "internal_error", "Session start response missing session payload", {
+      headers: traceHeaders,
+    });
   }
 
   return respond(rpcResult.data.session);

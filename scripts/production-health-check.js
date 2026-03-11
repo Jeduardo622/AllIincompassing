@@ -288,6 +288,44 @@ async function checkPerformanceMetrics() {
 }
 
 /**
+ * Check telemetry canary permissions
+ */
+async function checkTelemetryCanary() {
+  try {
+    logger.info('Checking telemetry canary...');
+
+    const query = `
+      SELECT
+        has_function_privilege('authenticated', 'public.log_error_event(jsonb)', 'EXECUTE') AS authenticated_can_log_error,
+        has_function_privilege('service_role', 'public.log_error_event(jsonb)', 'EXECUTE') AS service_role_can_log_error,
+        has_function_privilege('anon', 'public.log_error_event(jsonb)', 'EXECUTE') AS anon_can_log_error;
+    `;
+
+    const [result] = await runPostgresQuery(query);
+    const authenticatedOk = result?.authenticated_can_log_error === true;
+    const serviceRoleOk = result?.service_role_can_log_error === true;
+    const anonBlocked = result?.anon_can_log_error === false;
+    const status = authenticatedOk && serviceRoleOk && anonBlocked ? 'ok' : 'warning';
+
+    if (status === 'ok') {
+      logger.success('Telemetry canary: OK');
+    } else {
+      logger.warn('Telemetry canary: execute grants are not in expected state');
+    }
+
+    return {
+      status,
+      authenticated_can_log_error: result?.authenticated_can_log_error ?? null,
+      service_role_can_log_error: result?.service_role_can_log_error ?? null,
+      anon_can_log_error: result?.anon_can_log_error ?? null,
+    };
+  } catch (error) {
+    logger.error(`Telemetry canary failed: ${error.message}`);
+    return { status: 'error', error: error.message };
+  }
+}
+
+/**
  * Generate production health report
  */
 function generateProductionReport(checks) {
@@ -414,6 +452,15 @@ function formatReportAsMarkdown(report) {
   } else {
     markdown += `❌ Performance metrics failed: ${report.checks.performance?.error}\n\n`;
   }
+
+  markdown += '### 🧪 Telemetry Canary\n';
+  if (report.checks.telemetry?.status === 'ok') {
+    markdown += '✅ Telemetry RPC execute grants are correctly scoped (authenticated/service_role allowed, anon denied)\n\n';
+  } else if (report.checks.telemetry?.status === 'warning') {
+    markdown += `⚠️ Telemetry RPC execute grants are not in expected state: authenticated=${report.checks.telemetry?.authenticated_can_log_error}, service_role=${report.checks.telemetry?.service_role_can_log_error}, anon=${report.checks.telemetry?.anon_can_log_error}\n\n`;
+  } else {
+    markdown += `❌ Telemetry canary failed: ${report.checks.telemetry?.error}\n\n`;
+  }
   
   // Recommendations
   markdown += '---\n\n## 💡 Recommendations\n\n';
@@ -467,13 +514,14 @@ async function main() {
     logger.info('Starting production health check...');
     
     // Run all health checks
-    const [database, tables, functions, rls, endpoints, performance] = await Promise.all([
+    const [database, tables, functions, rls, endpoints, performance, telemetry] = await Promise.all([
       checkDatabaseConnectivity(),
       checkCriticalTables(),
       checkDatabaseFunctions(),
       checkRLSPolicies(),
       checkApplicationEndpoints(),
-      checkPerformanceMetrics()
+      checkPerformanceMetrics(),
+      checkTelemetryCanary()
     ]);
     
     const checks = {
@@ -482,7 +530,8 @@ async function main() {
       functions,
       rls,
       endpoints,
-      performance
+      performance,
+      telemetry
     };
     
     // Generate report
@@ -532,6 +581,7 @@ export {
   checkRLSPolicies,
   checkApplicationEndpoints,
   checkPerformanceMetrics,
+  checkTelemetryCanary,
   generateProductionReport,
   formatReportAsMarkdown
 }; 

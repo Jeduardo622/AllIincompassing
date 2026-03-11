@@ -408,6 +408,9 @@ class ErrorTracker {
     }
 
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const hasAuthenticatedSession = Boolean(sessionData.session?.access_token);
+
       // Log to Supabase
       const failedErrors: Array<any> = [];
       for (const error of errorsToFlush) {
@@ -429,6 +432,11 @@ class ErrorTracker {
 
         const enableRemoteLogging = (import.meta as any)?.env?.VITE_ENABLE_REMOTE_ERROR_LOGGING ?? '1';
         if (String(enableRemoteLogging) !== '1') {
+          continue;
+        }
+
+        if (!hasAuthenticatedSession) {
+          failedErrors.push(sanitizedErrorData);
           continue;
         }
 

@@ -48,7 +48,7 @@
       "publicApiPath": "/api/dashboard",
       "edgeTarget": "get-dashboard-data",
       "wave": "A",
-      "status": "retired",
+      "status": "legacy_shim",
       "owner": "Backend Platform"
     },
     {
@@ -64,7 +64,7 @@
       "publicApiPath": "/api/sessions-start",
       "edgeTarget": "sessions-confirm",
       "wave": "B",
-      "status": "retired",
+      "status": "legacy_shim",
       "owner": "Backend Platform"
     },
     {

@@ -10,6 +10,7 @@ import {
 } from "../_shared/timezone.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 import { evaluateTherapistAuthorization } from "../_shared/authorization.ts";
+import { MissingOrgContextError, requireOrg } from "../_shared/org.ts";
 import { recordSessionAuditEvent } from "../_shared/audit.ts";
 import { resolveSchedulingRetryAfter } from "../_shared/retry-after.ts";
 import { orchestrateScheduling } from "../_shared/scheduling-orchestrator.ts";
@@ -71,6 +72,7 @@ Deno.serve(async (req) => {
   try {
     const requestClient = createRequestClient(req);
     const user = await getUserOrThrow(requestClient);
+    const orgId = await requireOrg(requestClient);
     const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
     const normalizedKey = idempotencyKey.length > 0 ? idempotencyKey : null;
     const traceMeta = {
@@ -170,6 +172,7 @@ Deno.serve(async (req) => {
     const { data: holdRecords, error: holdFetchError } = await supabaseAdmin
       .from("session_holds")
       .select("hold_key, therapist_id, client_id, start_time, end_time")
+      .eq("organization_id", orgId)
       .in("hold_key", uniqueHoldKeys);
 
     if (holdFetchError) {
@@ -200,7 +203,7 @@ Deno.serve(async (req) => {
     for (const holdKey of uniqueHoldKeys) {
       const target = holdAuthorizationMap.get(holdKey);
       if (!target) {
-        continue;
+        return respond({ success: false, error: "Hold not found or scope denied" }, 403);
       }
 
       if (checkedTherapists.has(target.therapist_id)) {
@@ -371,6 +374,9 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     if (error instanceof Response) return error;
+    if (error instanceof MissingOrgContextError) {
+      return jsonResponse({ success: false, error: error.message }, 403);
+    }
     console.error("sessions-confirm error", error);
     const message = error instanceof Error ? error.message : "Internal server error";
     return jsonResponse({ success: false, error: message }, 500);

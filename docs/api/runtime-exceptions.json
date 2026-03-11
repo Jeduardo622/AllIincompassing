@@ -41,6 +41,20 @@
       "reason": "Booking orchestration endpoint still relies on server-side API semantics pending edge cutover.",
       "owner": "Backend Platform",
       "expiresAt": "2026-04-30"
+    },
+    {
+      "functionFile": "dashboard.ts",
+      "publicApiPath": "/api/dashboard",
+      "reason": "Dashboard route remains a compatibility shim while edge parity and frontend cutover sequencing complete.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-04-30"
+    },
+    {
+      "functionFile": "sessions-start.ts",
+      "publicApiPath": "/api/sessions-start",
+      "reason": "Session-start route remains a compatibility shim to preserve JSON contract during scheduling edge hardening.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-04-30"
     }
   ]
 }

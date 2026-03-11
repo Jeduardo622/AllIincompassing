@@ -9,7 +9,9 @@
     "assessment-drafts.ts",
     "assessment-plan-pdf.ts",
     "assessment-promote.ts",
-    "book.ts"
+    "book.ts",
+    "dashboard.ts",
+    "sessions-start.ts"
   ],
   "boundaryExceptions": []
 }

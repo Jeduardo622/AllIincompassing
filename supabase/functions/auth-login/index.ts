@@ -12,20 +12,20 @@ interface LoginRequest {
   password: string;
 }
 
-export default createPublicRoute(async (req: Request, userContext) => {
+export default createPublicRoute(async (req: Request) => {
+  const requestId = getRequestId(req);
   if (req.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ error: 'Method not allowed' }),
-      {
-        status: 405,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    return errorEnvelope({
+      requestId,
+      code: "validation_error",
+      message: "Method not allowed",
+      status: 405,
+      headers: corsHeaders,
+    });
   }
 
   try {
     const { email, password }: LoginRequest = await req.json();
-    const requestId = getRequestId(req);
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
     const emailKey = typeof email === "string" ? email.trim().toLowerCase() : "unknown";
 
@@ -55,13 +55,12 @@ export default createPublicRoute(async (req: Request, userContext) => {
 
     // Validate required fields
     if (!email || !password) {
-      return new Response(
-        JSON.stringify({ error: 'Email and password are required' }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return errorEnvelope({
+        requestId,
+        code: "validation_error",
+        message: "Email and password are required",
+        headers: corsHeaders,
+      });
     }
 
     // Authenticate user
@@ -73,14 +72,13 @@ export default createPublicRoute(async (req: Request, userContext) => {
     if (error) {
       console.error('Login error:', error);
       logApiAccess('POST', '/auth/login', null, 401);
-      
-      return new Response(
-        JSON.stringify({ error: 'Invalid credentials' }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+
+      return errorEnvelope({
+        requestId,
+        code: "unauthorized",
+        message: "Invalid credentials",
+        headers: corsHeaders,
+      });
     }
 
     // Get user profile
@@ -93,27 +91,25 @@ export default createPublicRoute(async (req: Request, userContext) => {
     if (profileError || !profile) {
       console.error('Profile lookup error:', profileError);
       logApiAccess('POST', '/auth/login', null, 500);
-      
-      return new Response(
-        JSON.stringify({ error: 'User profile not found' }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+
+      return errorEnvelope({
+        requestId,
+        code: "internal_error",
+        message: "User profile not found",
+        headers: corsHeaders,
+      });
     }
 
     // Check if user is active
     if (!profile.is_active) {
       logApiAccess('POST', '/auth/login', null, 403);
-      
-      return new Response(
-        JSON.stringify({ error: 'Account is inactive' }),
-        {
-          status: 403,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+
+      return errorEnvelope({
+        requestId,
+        code: "forbidden",
+        message: "Account is inactive",
+        headers: corsHeaders,
+      });
     }
 
     // Update last login timestamp
@@ -156,13 +152,12 @@ export default createPublicRoute(async (req: Request, userContext) => {
   } catch (error) {
     console.error('Login error:', error);
     logApiAccess('POST', '/auth/login', null, 500);
-    
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+
+    return errorEnvelope({
+      requestId,
+      code: "internal_error",
+      message: "Internal server error",
+      headers: corsHeaders,
+    });
   }
 });

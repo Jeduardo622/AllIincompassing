@@ -2,6 +2,7 @@ import { getOptionalServerEnv, getRequiredServerEnv } from "../env";
 import { getDefaultOrganizationId } from "../runtimeConfig";
 import { serverLogger as logger } from "../../lib/logger/server";
 import { toError } from "../../lib/logger/normalizeError";
+import { errorResponse } from "./shared";
 
 const JSON_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
@@ -22,13 +23,6 @@ const isProductionEnvironment = (): boolean => {
     "development";
   return environment === "production";
 };
-
-function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...JSON_HEADERS, ...CORS_HEADERS, ...extra },
-  });
-}
 
 async function fetchJson<T = unknown>(url: string, init: RequestInit): Promise<{ status: number; ok: boolean; data: T | null }>
 {
@@ -52,13 +46,15 @@ export async function dashboardHandler(request: Request): Promise<Response> {
   }
 
   if (request.method !== "GET") {
-    return json({ error: "Method not allowed" }, 405);
+    return errorResponse(request, "validation_error", "Method not allowed", { status: 405 });
   }
 
   const authHeader = request.headers.get("Authorization");
   const accessToken = typeof authHeader === "string" ? authHeader.replace(/^Bearer\s+/i, "").trim() : "";
   if (!authHeader || accessToken.length === 0) {
-    return json({ error: "Missing authorization token" }, 401, { "WWW-Authenticate": "Bearer" });
+    return errorResponse(request, "unauthorized", "Missing authorization token", {
+      headers: { "WWW-Authenticate": "Bearer" },
+    });
   }
 
   const supabaseUrl =
@@ -100,7 +96,7 @@ export async function dashboardHandler(request: Request): Promise<Response> {
         : fallbackOrgId;
 
     if (!resolvedOrganizationId) {
-      return json({ error: "Access denied" }, 403);
+      return errorResponse(request, "forbidden", "Access denied");
     }
 
     if ((!orgResult.ok || !orgResult.data) && fallbackOrgId) {
@@ -160,7 +156,7 @@ export async function dashboardHandler(request: Request): Promise<Response> {
     });
 
     if (!isOrgAdmin && !isTherapist && !isSuperAdmin) {
-      return json({ error: "Forbidden" }, 403);
+      return errorResponse(request, "forbidden", "Forbidden");
     }
 
     // Call the hardened dashboard RPC with the caller's JWT to enforce RLS/org scoping.
@@ -177,7 +173,9 @@ export async function dashboardHandler(request: Request): Promise<Response> {
 
     if (!rpcResult.ok) {
       const status = rpcResult.status === 42501 ? 403 : rpcResult.status;
-      return json({ error: "Dashboard RPC failed" }, status > 0 ? status : 500);
+      return errorResponse(request, "upstream_error", "Dashboard RPC failed", {
+        status: status > 0 ? status : 500,
+      });
     }
 
     // Return the raw payload expected by the client hook
@@ -187,7 +185,7 @@ export async function dashboardHandler(request: Request): Promise<Response> {
     });
   } catch (error) {
     logger.error("/api/dashboard failed", { error: toError(error, "dashboard proxy error") });
-    return json({ error: "Internal Server Error" }, 500);
+    return errorResponse(request, "internal_error", "Internal Server Error");
   }
 }
 

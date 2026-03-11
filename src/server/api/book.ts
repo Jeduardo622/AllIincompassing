@@ -1,5 +1,6 @@
 import "../bootstrapSupabase";
 import { bookSession } from "../bookSession";
+import { errorResponse } from "./shared";
 import {
   bookSessionApiRequestBodySchema,
   type BookSessionApiRequestBody,
@@ -66,7 +67,7 @@ export async function bookHandler(request: Request): Promise<Response> {
   }
 
   if (request.method !== "POST") {
-    return jsonResponse({ success: false, error: "Method not allowed" }, 405);
+    return errorResponse(request, "validation_error", "Method not allowed", { status: 405 });
   }
 
   const authHeader = request.headers.get("Authorization");
@@ -75,11 +76,9 @@ export async function bookHandler(request: Request): Promise<Response> {
     : "";
 
   if (!authHeader || accessToken.length === 0) {
-    return jsonResponse(
-      { success: false, error: "Missing authorization token" },
-      401,
-      { "WWW-Authenticate": "Bearer" },
-    );
+    return errorResponse(request, "unauthorized", "Missing authorization token", {
+      headers: { "WWW-Authenticate": "Bearer" },
+    });
   }
 
   let rawBody: unknown;
@@ -87,7 +86,7 @@ export async function bookHandler(request: Request): Promise<Response> {
     rawBody = await request.json();
   } catch (error) {
     logger.warn("Failed to parse booking payload", { error: toError(error), context: { handler: "bookHandler" } });
-    return jsonResponse({ success: false, error: "Invalid JSON body" }, 400);
+    return errorResponse(request, "validation_error", "Invalid JSON body");
   }
 
   const parseResult = bookSessionApiRequestBodySchema.safeParse(rawBody);
@@ -101,10 +100,9 @@ export async function bookHandler(request: Request): Promise<Response> {
       })),
       context: { handler: "bookHandler" },
     });
-    return jsonResponse(
-      { success: false, error: "Invalid request body", code: "invalid_request" },
-      400,
-    );
+    return errorResponse(request, "validation_error", "Invalid request body", {
+      extra: { code: "invalid_request" },
+    });
   }
 
   const body: BookSessionApiRequestBody = parseResult.data;
@@ -167,6 +165,14 @@ export async function bookHandler(request: Request): Promise<Response> {
       );
     }
 
-    return jsonResponse({ success: false, error: "Booking failed", code: conflictCode }, status);
+    return errorResponse(
+      request,
+      status === 401 ? "unauthorized" : status === 403 ? "forbidden" : status === 409 ? "conflict" : "internal_error",
+      "Booking failed",
+      {
+        status,
+        extra: { conflictCode: conflictCode ?? null },
+      },
+    );
   }
 }

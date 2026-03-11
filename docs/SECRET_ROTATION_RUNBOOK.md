@@ -9,15 +9,21 @@ This runbook documents where critical secrets are stored, who owns each system, 
 - **Secrets covered:**
   - `SUPABASE_URL`
   - `SUPABASE_EDGE_URL`
+  - `SUPABASE_PUBLISHABLE_KEY` *(preferred client key for runtime config)*
   - `SUPABASE_ANON_KEY`
   - `SUPABASE_SERVICE_ROLE_KEY`
   - `SUPABASE_ACCESS_TOKEN`
   - `DEFAULT_ORGANIZATION_ID`
 - **Rotation steps:**
-  1. Generate fresh anon/service-role keys in the Supabase dashboard. Immediately update the 1Password record so there is a single source of truth.
+  1. Generate fresh publishable/service-role keys in the Supabase dashboard. Immediately update the 1Password record so there is a single source of truth.
   2. Update GitHub Actions secrets (`Settings → Secrets and variables → Actions`) and Netlify environment variables (production + staging contexts). Mask values as `****` in screenshots/logs.
-  3. Run `supabase secrets set` for the hosted project so Edge Functions pick up the rotated keys.
-  4. Ping the team to refresh local `.env.local` files and run `npm run ci:secrets` to verify their environment (the CI workflow calls the same script before builds).
+  3. In Netlify, prefer setting `SUPABASE_PUBLISHABLE_KEY` as a custom variable even when Supabase integration is enabled. Some integration-managed `SUPABASE_ANON_KEY` values can remain on a legacy JWT key and cause login failures (`Legacy API keys are disabled`).
+  4. Verify the deployed runtime key via:
+     - `GET /api/runtime-config` (must return `supabaseAnonKey` beginning with `sb_publishable_`)
+     - `npm run playwright:auth` (must pass)
+  5. If `Build plugins/extensions` fail with `Failed retrieving extensions ... 504`, treat this as a transient Netlify platform failure and retry deployment; no repo config change is required if `netlify.toml` has no `[[plugins]]` entries.
+  6. Run `supabase secrets set` for the hosted project so Edge Functions pick up the rotated keys.
+  7. Ping the team to refresh local `.env.local` files and run `npm run ci:secrets` to verify their environment (the CI workflow calls the same script before builds).
 
 ## OpenAI
 

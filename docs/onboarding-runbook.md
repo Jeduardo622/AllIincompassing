@@ -38,6 +38,14 @@
      - Screenshots/JSON under `artifacts/latest/playwright-therapist-onboarding-<timestamp>.*`.
    - CI integration: `npm run ci:playwright` chains auth, schedule-conflict, and therapist-onboarding smokes; failures should block the deploy.
 
+   - **Credential recovery for smoke accounts (if auth smoke fails with `Invalid email or password`)**:
+     - Verify `.env.codex` values for:
+       - `PW_ADMIN_EMAIL` / `PW_ADMIN_PASSWORD`
+       - `PW_SUPERADMIN_EMAIL` / `PW_SUPERADMIN_PASSWORD`
+       - `PW_THERAPIST_EMAIL` / `PW_THERAPIST_PASSWORD`
+     - Validate login directly against Supabase Auth (`/auth/v1/token?grant_type=password`) using the current publishable key.
+     - If admin/superadmin credentials drift, reset the affected `auth.users.encrypted_password` values and re-run `npm run playwright:auth`.
+
 5. **Observability & Alerting**
    - `npm run contract:runtime-config` already runs in CI; treat any missing key as a stop-ship.
    - **Automatic alerting** (recommended for CI):
@@ -106,6 +114,18 @@
      - counts
      - top sample paths
      - last successful apply timestamp
+
+9. **Netlify + Supabase Key Drift Troubleshooting**
+   - Symptom: `/api/runtime-config` returns legacy JWT anon key (`eyJ...`) and login fails with `Legacy API keys are disabled` or `Unregistered API key`.
+   - Required state:
+     - Runtime config must expose a publishable key (`sb_publishable_...`).
+     - Production auth smoke (`npm run playwright:auth`) must pass.
+   - Resolution checklist:
+     - Confirm Netlify production deploy includes latest `runtime-config` function changes.
+     - Set `SUPABASE_PUBLISHABLE_KEY` in Netlify env vars for production context.
+     - Redeploy and verify `GET /api/runtime-config` is now publishable.
+     - Re-run auth smoke.
+   - If deploy fails during config parse with extension fetch `504`, retry deploy (transient platform issue).
 
 ## Communication Aids
 - Use `docs/tone.md` for stakeholder messaging templates.

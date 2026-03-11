@@ -1,3 +1,7 @@
+-- @migration-intent: Add transactional session confirmation RPC that atomically persists session confirmation, CPT enrichment, goal links, and audit event.
+-- @migration-dependencies: 20250711090000_session_holds.sql,20251111130000_therapist_sessions_enforcement.sql,20260310190000_business_logic_lifecycle_hardening.sql
+-- @migration-rollback: Drop confirm_session_hold_with_enrichment and revert sessions-confirm to confirm_session_hold if rollback is required.
+
 set search_path = public;
 
 create or replace function public.confirm_session_hold_with_enrichment(

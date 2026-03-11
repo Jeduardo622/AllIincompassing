@@ -1,3 +1,7 @@
+-- @migration-intent: Add transactional start_session_with_goals RPC to atomically validate and persist session start state, goal linkage, and audit logging.
+-- @migration-dependencies: 20260310190000_business_logic_lifecycle_hardening.sql,20251111130000_therapist_sessions_enforcement.sql
+-- @migration-rollback: Drop start_session_with_goals and restore legacy two-step session start mutation flow if rollback is required.
+
 set search_path = public;
 
 create or replace function public.start_session_with_goals(

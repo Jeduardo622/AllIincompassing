@@ -1,3 +1,7 @@
+-- @migration-intent: Create missing EDI persistence tables and triggers so claim export/status/denial writes are durable and billing status updates are transaction-coupled.
+-- @migration-dependencies: 20260310190000_business_logic_lifecycle_hardening.sql
+-- @migration-rollback: Drop EDI tables/triggers/functions and restore prior repository-level billing status updates if rollback is required.
+
 set search_path = public;
 
 create table if not exists public.edi_export_files (

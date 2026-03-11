@@ -31,6 +31,8 @@ describe('runtimeConfigHandler', () => {
     delete process.env.VITE_SUPABASE_URL;
     delete process.env.VITE_SUPABASE_ANON_KEY;
     delete process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    delete process.env.SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY;
+    delete process.env.VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY;
     delete process.env.VITE_SUPABASE_EDGE_URL;
     delete process.env.DEFAULT_ORGANIZATION_ID;
     resetEnvCacheForTests();
@@ -179,6 +181,18 @@ describe('runtimeConfigHandler', () => {
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.supabaseAnonKey).toBe('sb_publishable_override_key_1234567890');
+  });
+
+  it('uses generated Netlify integration publishable key override', async () => {
+    process.env.SUPABASE_URL = 'https://example.supabase.co';
+    process.env.SUPABASE_ANON_KEY = 'eyJlegacy-managed-anon-key';
+    process.env.SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY = 'sb_publishable_generated_key_1234567890';
+    process.env.DEFAULT_ORGANIZATION_ID = '5238e88b-6198-4862-80a2-dbe15bbeabdd';
+
+    const response = await runtimeConfigHandler(new Request('http://localhost/api/runtime-config'));
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.supabaseAnonKey).toBe('sb_publishable_generated_key_1234567890');
   });
 
   it('rejects unsupported methods', async () => {

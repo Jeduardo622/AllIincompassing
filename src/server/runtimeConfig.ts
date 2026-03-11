@@ -57,6 +57,8 @@ const resolveSupabaseClientKey = (): string => {
   const preferredPublishableKeys = [
     'SUPABASE_PUBLISHABLE_KEY',
     'VITE_SUPABASE_PUBLISHABLE_KEY',
+    'SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY',
+    'VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY',
   ];
   for (const key of preferredPublishableKeys) {
     const value = getOptionalServerEnv(key);
@@ -66,6 +68,21 @@ const resolveSupabaseClientKey = (): string => {
       });
       return value;
     }
+  }
+
+  // Netlify Supabase integration can emit prefixed keys like
+  // "<PREFIX>_SUPABASE_ANON_KEY". Prefer publishable-tagged variants.
+  const generatedPublishableKey = Object.entries(process.env).find(([key, value]) => {
+    if (!value) {
+      return false;
+    }
+    return key.includes('PUBLISHABLE') && key.endsWith('_SUPABASE_ANON_KEY');
+  });
+  if (generatedPublishableKey && generatedPublishableKey[1]) {
+    logger.warn('Using generated publishable anon-key override for runtime Supabase config', {
+      overrideKey: generatedPublishableKey[0],
+    });
+    return generatedPublishableKey[1];
   }
 
   return resolveRequiredEnv('SUPABASE_ANON_KEY', ['VITE_SUPABASE_ANON_KEY']);

@@ -81,6 +81,27 @@ const PROFILE_SELECT_COLUMNS = [
   'updated_at',
 ].join(', ');
 
+const PROFILE_SELECT_COLUMNS_FALLBACK = PROFILE_SELECT_COLUMNS
+  .split(',')
+  .map((column) => column.trim())
+  .filter((column) => column !== 'organization_id')
+  .join(', ');
+
+const isMissingOrganizationIdColumnError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const maybeCode = 'code' in error ? (error as { code?: unknown }).code : null;
+  const maybeMessage = 'message' in error ? (error as { message?: unknown }).message : null;
+
+  return (
+    maybeCode === '42703' &&
+    typeof maybeMessage === 'string' &&
+    maybeMessage.includes('profiles.organization_id')
+  );
+};
+
 interface AuthContextType {
   user: User | null;
   profile: UserProfile | null;
@@ -152,11 +173,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchProfile = useCallback(async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      const primaryQuery = supabase
         .from('profiles')
         .select(PROFILE_SELECT_COLUMNS)
         .eq('id', userId)
         .maybeSingle();
+
+      const { data, error } = await primaryQuery;
+
+      if (error && isMissingOrganizationIdColumnError(error)) {
+        logger.warn('Profiles table is missing organization_id; retrying profile fetch without it', {
+          metadata: {
+            scope: 'authContext.fetchProfile',
+            userId,
+          },
+        });
+
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('profiles')
+          .select(PROFILE_SELECT_COLUMNS_FALLBACK)
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (fallbackError) {
+          logger.error('Failed to fetch profile record after fallback select', {
+            error: toError(fallbackError, 'Profile fetch fallback failed'),
+            metadata: {
+              scope: 'authContext.fetchProfile',
+              userId,
+            },
+          });
+          return null;
+        }
+
+        return fallbackData as UserProfile | null;
+      }
 
       if (error) {
         logger.error('Failed to fetch profile record', {

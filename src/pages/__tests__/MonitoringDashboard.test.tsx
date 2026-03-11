@@ -157,6 +157,9 @@ describe('MonitoringDashboard', () => {
 
     try {
       render(<MonitoringDashboard />);
+      expect(
+        screen.getByRole('button', { name: /open monitoring settings/i }),
+      ).toBeInTheDocument();
       const cacheTab = screen.getByRole('button', { name: /cache management/i });
       await userEvent.click(cacheTab);
 

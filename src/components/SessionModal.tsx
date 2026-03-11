@@ -55,7 +55,13 @@ export function SessionModal({
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [alternativeTimes, setAlternativeTimes] = useState<AlternativeTime[]>([]);
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const previousActiveElementRef = useRef<HTMLElement | null>(null);
   const activeOrganizationId = useActiveOrganizationId();
+  const dialogTitleId = 'session-modal-title';
+  const dialogDescriptionId = 'session-modal-description';
 
   const resolvedTimeZone = useMemo(() => {
     if (timeZone && timeZone.length > 0) {
@@ -570,19 +576,104 @@ export function SessionModal({
 
   const canStartSession = Boolean(session?.id && !session?.started_at && programId && goalId);
 
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    previousActiveElementRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
+    const focusDialog = () => {
+      const fallbackTarget = closeButtonRef.current ?? dialogRef.current;
+      fallbackTarget?.focus();
+    };
+
+    const getFocusableElements = () => {
+      if (!dialogRef.current) {
+        return [] as HTMLElement[];
+      }
+
+      return Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((element) => !element.hasAttribute('aria-hidden'));
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== 'Tab') {
+        return;
+      }
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        focusDialog();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement as HTMLElement | null;
+
+      if (event.shiftKey && activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    window.setTimeout(focusDialog, 0);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      previousActiveElementRef.current?.focus();
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
-      <div className="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+    <div
+      ref={overlayRef}
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === overlayRef.current) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        ref={dialogRef}
+        className="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={dialogTitleId}
+        aria-describedby={dialogDescriptionId}
+        tabIndex={-1}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
+          <h2 id={dialogTitleId} className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
             <Calendar className="w-6 h-6 mr-2 text-blue-600" />
             {session ? 'Edit Session' : 'New Session'}
           </h2>
           <button
+            ref={closeButtonRef}
             onClick={onClose}
+            aria-label="Close session modal"
             className="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             <X className="w-5 h-5" />
@@ -591,6 +682,9 @@ export function SessionModal({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4">
+          <p id={dialogDescriptionId} className="sr-only">
+            Use this form to create or update a therapy session.
+          </p>
           <form id="session-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
             {retryHint && (
               <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/40 dark:bg-blue-900/20">

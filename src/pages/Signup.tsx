@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Calendar, Shield, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
@@ -19,6 +19,7 @@ export function Signup() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const errorAlertRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
   const { signUp, user } = useAuth();
 
@@ -54,42 +55,68 @@ export function Signup() {
     }
   }, [isGuardianSignup]);
 
+  useEffect(() => {
+    if (!error) {
+      return;
+    }
+    errorAlertRef.current?.focus();
+  }, [error]);
+
+  const focusFieldById = (fieldId: string) => {
+    window.setTimeout(() => {
+      const input = document.getElementById(fieldId) as HTMLElement | null;
+      input?.focus();
+    }, 0);
+  };
+
+  const setFormError = (message: string, focusFieldId?: string) => {
+    setError(message);
+    showError(message);
+    if (focusFieldId) {
+      focusFieldById(focusFieldId);
+    } else {
+      window.setTimeout(() => errorAlertRef.current?.focus(), 0);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
     // Validation
     if (!email || !password || !firstName || !lastName) {
-      setError('Please fill in all required fields');
-      showError('Please fill in all required fields');
+      const firstMissingField = !firstName
+        ? 'firstName'
+        : !lastName
+          ? 'lastName'
+          : !email
+            ? 'email'
+            : 'password';
+      setFormError('Please fill in all required fields', firstMissingField);
       return;
     }
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
-      showError('Passwords do not match');
+      setFormError('Passwords do not match', 'confirm-password');
       return;
     }
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters long');
-      showError('Password must be at least 8 characters long');
+      setFormError('Password must be at least 8 characters long', 'password');
       return;
     }
 
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      setError('Please enter a valid email address');
-      showError('Please enter a valid email address');
+      setFormError('Please enter a valid email address', 'email');
       return;
     }
 
     if (isGuardianSignup && !normalizedGuardianInputs.organizationHint && !normalizedGuardianInputs.inviteToken) {
       const guardianError =
         'Please enter either your organization ID or the invite code you received from your provider.';
-      setError(guardianError);
-      showError(guardianError);
+      setFormError(guardianError, 'guardian-organization');
       return;
     }
 
@@ -136,8 +163,7 @@ export function Signup() {
             hasGuardianInviteToken: Boolean(normalizedGuardianInputs.inviteToken),
           },
         });
-        setError(error.message);
-        showError(error.message);
+        setFormError(error.message);
         return;
       }
 
@@ -162,8 +188,7 @@ export function Signup() {
         },
       });
       const message = err instanceof Error ? err.message : 'Failed to create account';
-      setError(message);
-      showError(message);
+      setFormError(message);
     } finally {
       setLoading(false);
     }
@@ -190,7 +215,13 @@ export function Signup() {
         <div className="bg-white dark:bg-dark-lighter py-8 px-4 shadow sm:rounded-lg sm:px-10 transition-colors">
           <form className="space-y-6" onSubmit={handleSubmit}>
             {error && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg flex items-start" role="alert">
+              <div
+                ref={errorAlertRef}
+                className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg flex items-start"
+                role="alert"
+                aria-live="assertive"
+                tabIndex={-1}
+              >
                 <AlertCircle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
                 <span className="block">{error}</span>
               </div>

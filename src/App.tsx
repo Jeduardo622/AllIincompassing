@@ -1,5 +1,5 @@
 import React, { useEffect, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigationType } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './lib/authContext';
@@ -8,6 +8,7 @@ import { useAuth } from './lib/authContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PrivateRoute } from './components/PrivateRoute';
 import { RoleGuard } from './components/RoleGuard';
+import { logger } from './lib/logger/logger';
 
 // Lazy load components
 const Login = React.lazy(() => import('./pages/Login').then(module => ({ default: module.Login })));
@@ -98,6 +99,35 @@ const DashboardLanding: React.FC = () => {
   return <Dashboard />;
 };
 
+const RouteTelemetry: React.FC = () => {
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const { user, profile } = useAuth();
+
+  useEffect(() => {
+    logger.info('Route navigation event', {
+      metadata: {
+        scope: 'routeTelemetry.navigation',
+        route: location.pathname,
+        search: location.search,
+        hash: location.hash,
+        navigationType,
+        userId: user?.id ?? null,
+        role: profile?.role ?? null,
+      },
+    });
+  }, [
+    location.pathname,
+    location.search,
+    location.hash,
+    navigationType,
+    user?.id,
+    profile?.role,
+  ]);
+
+  return null;
+};
+
 function App() {
   const { isDark } = useTheme();
 
@@ -116,6 +146,7 @@ function App() {
         <AuthProvider>
           <div className="min-h-screen bg-gray-50 dark:bg-dark text-gray-900 dark:text-gray-100 transition-colors">
             <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+              <RouteTelemetry />
               <Suspense fallback={<LoadingSpinner />}>
                 <Routes>
                   {/* Public Routes */}

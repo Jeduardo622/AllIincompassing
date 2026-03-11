@@ -778,6 +778,7 @@ export function MonitoringDashboard() {
           <div className="flex items-center space-x-2">
             <button
               onClick={() => setShowSettings(!showSettings)}
+              aria-label={showSettings ? 'Close monitoring settings' : 'Open monitoring settings'}
               className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             >
               <Settings className="w-5 h-5" />

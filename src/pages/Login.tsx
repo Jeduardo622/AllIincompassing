@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Calendar, AlertCircle, Eye, EyeOff, CheckCircle } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
@@ -14,9 +14,27 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const errorAlertRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { signIn, resetPassword, user } = useAuth();
+
+  const focusFieldById = (fieldId: string) => {
+    window.setTimeout(() => {
+      const input = document.getElementById(fieldId) as HTMLInputElement | null;
+      input?.focus();
+    }, 0);
+  };
+
+  const setFormError = (message: string, focusFieldId?: string) => {
+    setError(message);
+    showError(message);
+    if (focusFieldId) {
+      focusFieldById(focusFieldId);
+    } else {
+      window.setTimeout(() => errorAlertRef.current?.focus(), 0);
+    }
+  };
 
   useEffect(() => {
     // Check for success message from signup
@@ -36,6 +54,13 @@ export function Login() {
     }
   }, [user, navigate, location]);
 
+  useEffect(() => {
+    if (!error) {
+      return;
+    }
+    errorAlertRef.current?.focus();
+  }, [error]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -44,8 +69,8 @@ export function Login() {
 
     // Validation
     if (!email || !password) {
-      setError('Please enter both email and password');
-      showError('Please enter both email and password');
+      const missingField = !email ? 'email' : 'password';
+      setFormError('Please enter both email and password', missingField);
       setLoading(false);
       return;
     }
@@ -74,8 +99,7 @@ export function Login() {
           errorMessage = 'Too many login attempts. Please wait a moment and try again.';
         }
         
-        setError(errorMessage);
-        showError(errorMessage);
+        setFormError(errorMessage, 'email');
         return;
       }
 
@@ -92,8 +116,7 @@ export function Login() {
         },
       });
       const message = err instanceof Error ? err.message : 'An unexpected error occurred';
-      setError(message);
-      showError(message);
+      setFormError(message);
     } finally {
       setLoading(false);
     }
@@ -105,8 +128,7 @@ export function Login() {
     setSuccessMessage('');
     
     if (!email) {
-      setError('Please enter your email address');
-      showError('Please enter your email address');
+      setFormError('Please enter your email address', 'email');
       return;
     }
 
@@ -124,8 +146,7 @@ export function Login() {
             attemptedEmail: email,
           },
         });
-        setError(error.message);
-        showError(error.message);
+        setFormError(error.message, 'email');
         return;
       }
 
@@ -143,8 +164,7 @@ export function Login() {
         },
       });
       const message = err instanceof Error ? err.message : 'An error occurred';
-      setError(message);
-      showError(message);
+      setFormError(message);
     } finally {
       setLoading(false);
     }
@@ -183,7 +203,13 @@ export function Login() {
             )}
             
             {error && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg flex items-start" role="alert">
+              <div
+                ref={errorAlertRef}
+                className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg flex items-start"
+                role="alert"
+                aria-live="assertive"
+                tabIndex={-1}
+              >
                 <AlertCircle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
                 <span className="block">{error}</span>
               </div>

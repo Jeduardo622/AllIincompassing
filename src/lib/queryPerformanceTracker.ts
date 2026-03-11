@@ -146,6 +146,8 @@ export class QueryPerformanceTracker {
   private flushInterval: NodeJS.Timeout | null = null;
   private sessionId: string;
   private isEnabled = true;
+  private canPersistRemotely = true;
+  private warnedAboutRemotePersistence = false;
 
   constructor(config: QueryPerformanceConfig = DEFAULT_PERFORMANCE_CONFIG) {
     this.config = { ...config };
@@ -366,6 +368,11 @@ export class QueryPerformanceTracker {
     const metricsToFlush = [...this.metricsBuffer];
     this.metricsBuffer = [];
 
+    if (!this.canPersistRemotely) {
+      this.storeMetricsLocally(metricsToFlush);
+      return;
+    }
+
     try {
       // Store in database for persistence
       const { error } = await supabase
@@ -386,14 +393,13 @@ export class QueryPerformanceTracker {
         })));
 
       if (error) {
-        logger.error('Failed to flush query metrics', {
-          error: toError(error, 'Query metrics flush failed'),
-          metadata: {
-            scope: 'queryPerformance.flush',
-          },
-        });
-        // Re-add metrics to buffer for retry
-        this.metricsBuffer.unshift(...metricsToFlush);
+        this.handlePersistenceError(error, 'queryPerformance.flush');
+        // Re-add metrics to buffer for retry unless we intentionally disabled remote persistence.
+        if (this.canPersistRemotely) {
+          this.metricsBuffer.unshift(...metricsToFlush);
+        } else {
+          this.storeMetricsLocally(metricsToFlush);
+        }
       }
 
     } catch (error) {
@@ -410,6 +416,10 @@ export class QueryPerformanceTracker {
 
   // Store metrics locally as fallback
   private storeMetricsLocally(metrics: QueryPerformanceMetric[]): void {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     try {
       const stored = JSON.parse(localStorage.getItem('queryMetrics') || '[]');
       const combined = [...stored, ...metrics].slice(-100); // Keep last 100
@@ -434,25 +444,52 @@ export class QueryPerformanceTracker {
     );
 
     // Fetch from database
-    const { data: dbMetrics, error } = await supabase
-      .from('query_performance_metrics')
-      .select('*')
-      .gte('timestamp', cutoffTime.toISOString())
-      .order('timestamp', { ascending: false })
-      .limit(1000);
+    let dbMetrics: Record<string, unknown>[] = [];
+    if (this.canPersistRemotely) {
+      const { data, error } = await supabase
+        .from('query_performance_metrics')
+        .select('*')
+        .gte('timestamp', cutoffTime.toISOString())
+        .order('timestamp', { ascending: false })
+        .limit(1000);
 
-    if (error) {
-      logger.error('Failed to fetch performance metrics', {
-        error: toError(error, 'Performance metrics fetch failed'),
-        metadata: {
-          scope: 'queryPerformance.analysis',
-        },
-      });
+      if (error) {
+        this.handlePersistenceError(error, 'queryPerformance.analysis');
+      } else {
+        dbMetrics = data ?? [];
+      }
     }
 
-    const allMetrics = [...recentMetrics, ...(dbMetrics || [])];
+    const allMetrics = [...recentMetrics, ...dbMetrics];
     
     return this.analyzeMetrics(allMetrics);
+  }
+
+  private handlePersistenceError(error: unknown, scope: string): void {
+    const normalizedError = toError(error, 'Query performance persistence failed');
+    const missingTable = normalizedError.message.includes('relation "query_performance_metrics" does not exist')
+      || normalizedError.message.includes('Could not find the table');
+
+    if (missingTable) {
+      this.canPersistRemotely = false;
+
+      if (!this.warnedAboutRemotePersistence) {
+        logger.warn('Query performance table missing; switching to local metric buffering', {
+          metadata: {
+            scope,
+          },
+        });
+        this.warnedAboutRemotePersistence = true;
+      }
+      return;
+    }
+
+    logger.error('Query performance persistence error', {
+      error: normalizedError,
+      metadata: {
+        scope,
+      },
+    });
   }
 
   // Analyze metrics to generate insights

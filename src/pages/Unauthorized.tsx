@@ -21,10 +21,14 @@ export function Unauthorized() {
         <p className="text-lg text-gray-600 dark:text-gray-300 mb-2">
           You don't have permission to access this page.
         </p>
-        
-        {profile && (
+
+        {profile ? (
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">
             Current role: <span className="font-semibold capitalize">{profile.role}</span>
+          </p>
+        ) : (
+          <p className="text-sm text-amber-700 dark:text-amber-300 mb-8" role="status" aria-live="polite">
+            Your profile details could not be loaded. Please try refreshing, or contact support if this persists.
           </p>
         )}
         

@@ -1,8 +1,24 @@
 import { supabase } from "./supabase";
 import { buildSupabaseEdgeUrl } from "./runtimeConfig";
 
+const generateRequestId = (): string => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const withTraceHeaders = (headers: Headers): Headers => {
+  const requestId = headers.get("x-request-id") ?? generateRequestId();
+  const correlationId = headers.get("x-correlation-id") ?? requestId;
+
+  headers.set("x-request-id", requestId);
+  headers.set("x-correlation-id", correlationId);
+  return headers;
+};
+
 export async function callApi(path: string, init: RequestInit = {}): Promise<Response> {
-  const headers = new Headers(init.headers);
+  const headers = withTraceHeaders(new Headers(init.headers));
   if (!headers.has("Content-Type") && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
@@ -21,7 +37,7 @@ export async function callApi(path: string, init: RequestInit = {}): Promise<Res
 }
 
 export async function callEdgeFunctionHttp(functionName: string, init: RequestInit = {}): Promise<Response> {
-  const headers = new Headers(init.headers);
+  const headers = withTraceHeaders(new Headers(init.headers));
   if (!headers.has("Content-Type") && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }

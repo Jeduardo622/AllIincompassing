@@ -214,4 +214,49 @@ describe('SessionModal', () => {
 
     expect(defaultProps.onClose).toHaveBeenCalled();
   });
+
+  it('uses an accessible close button label and closes on Escape', async () => {
+    renderWithProviders(<SessionModal {...defaultProps} />);
+
+    const closeButton = screen.getByRole('button', { name: /close session modal/i });
+    expect(closeButton).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(defaultProps.onClose).toHaveBeenCalled();
+  });
+
+  it('traps focus within the modal when tabbing', async () => {
+    renderWithProviders(<SessionModal {...defaultProps} />);
+
+    const closeButton = screen.getByRole('button', { name: /close session modal/i });
+    const createButton = screen.getByRole('button', { name: /create session/i });
+
+    closeButton.focus();
+    expect(closeButton).toHaveFocus();
+
+    createButton.focus();
+    expect(createButton).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(closeButton).toHaveFocus();
+  });
+
+  it('restores prior focus when modal closes', async () => {
+    const outsideButton = document.createElement('button');
+    outsideButton.textContent = 'Outside button';
+    document.body.appendChild(outsideButton);
+    outsideButton.focus();
+
+    const { rerender } = renderWithProviders(
+      <SessionModal {...defaultProps} isOpen />
+    );
+
+    rerender(<SessionModal {...defaultProps} isOpen={false} />);
+
+    await waitFor(() => {
+      expect(outsideButton).toHaveFocus();
+    });
+
+    outsideButton.remove();
+  });
 });

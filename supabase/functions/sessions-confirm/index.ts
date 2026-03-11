@@ -24,12 +24,16 @@ interface ConfirmOccurrencePayload
   extends Pick<TimezoneValidationPayload, "start_time_offset_minutes" | "end_time_offset_minutes" | "time_zone"> {
   hold_key: string;
   session: Record<string, unknown>;
+  cpt?: Record<string, unknown>;
+  goal_ids?: string[];
 }
 
 interface ConfirmPayload
   extends Pick<TimezoneValidationPayload, "start_time_offset_minutes" | "end_time_offset_minutes" | "time_zone"> {
   hold_key: string;
   session: Record<string, unknown>;
+  cpt?: Record<string, unknown>;
+  goal_ids?: string[];
   occurrences?: ConfirmOccurrencePayload[];
 }
 
@@ -126,6 +130,8 @@ Deno.serve(async (req) => {
       : [{
           hold_key: payload.hold_key,
           session: payload.session,
+          cpt: payload.cpt,
+          goal_ids: payload.goal_ids,
           start_time_offset_minutes: payload.start_time_offset_minutes,
           end_time_offset_minutes: payload.end_time_offset_minutes,
           time_zone: payload.time_zone,
@@ -212,9 +218,11 @@ Deno.serve(async (req) => {
     const confirmedSessions: Record<string, unknown>[] = [];
 
     for (const occurrence of occurrencePayloads) {
-      const { data, error } = await supabaseAdmin.rpc("confirm_session_hold", {
+      const { data, error } = await supabaseAdmin.rpc("confirm_session_hold_with_enrichment", {
         p_hold_key: occurrence.hold_key,
         p_session: occurrence.session,
+        p_cpt: occurrence.cpt ?? null,
+        p_goal_ids: Array.isArray(occurrence.goal_ids) ? occurrence.goal_ids : [],
         p_actor_id: user.id,
       });
 
@@ -339,6 +347,7 @@ Deno.serve(async (req) => {
         sessionId,
         eventType: "session_confirmed",
         actorId: user.id,
+        required: true,
         payload: {
           holdKey: occurrence?.hold_key,
           startTime: session?.start_time,

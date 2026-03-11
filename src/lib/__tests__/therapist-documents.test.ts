@@ -1,18 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
-import { uploadTherapistDocumentAndRecordManifest } from '../therapist-documents';
+import {
+  reconcileTherapistDocumentPathSets,
+  uploadTherapistDocumentAndRecordManifest,
+} from '../therapist-documents';
 
 const buildSupabaseMock = () => {
   const upload = vi.fn();
+  const remove = vi.fn();
   const insert = vi.fn();
 
   const supabase = {
     storage: {
-      from: vi.fn(() => ({ upload })),
+      from: vi.fn(() => ({ upload, remove })),
     },
     from: vi.fn(() => ({ insert })),
   };
 
-  return { supabase, upload, insert };
+  return { supabase, upload, remove, insert };
 };
 
 describe('uploadTherapistDocumentAndRecordManifest', () => {
@@ -64,9 +68,10 @@ describe('uploadTherapistDocumentAndRecordManifest', () => {
   });
 
   it('throws when manifest insert fails', async () => {
-    const { supabase, upload, insert } = buildSupabaseMock();
+    const { supabase, upload, remove, insert } = buildSupabaseMock();
     const insertError = new Error('insert failed');
     upload.mockResolvedValue({ error: null });
+    remove.mockResolvedValue({ error: null });
     insert.mockResolvedValue({ error: insertError });
 
     const file = new File(['hello'], 'license.pdf', { type: 'application/pdf' });
@@ -79,6 +84,25 @@ describe('uploadTherapistDocumentAndRecordManifest', () => {
         file,
       }),
     ).rejects.toBe(insertError);
+    expect(remove).toHaveBeenCalledWith(['therapists/therapist-1/license/license.pdf']);
+  });
+
+  it('detects orphaned storage and manifest paths', () => {
+    expect(
+      reconcileTherapistDocumentPathSets({
+        storagePaths: [
+          'therapists/therapist-1/license/license.pdf',
+          'therapists/therapist-1/license/extra.pdf',
+        ],
+        manifestPaths: [
+          'therapists/therapist-1/license/license.pdf',
+          'therapists/therapist-1/resume/resume.pdf',
+        ],
+      }),
+    ).toEqual({
+      orphanStoragePaths: ['therapists/therapist-1/license/extra.pdf'],
+      orphanManifestPaths: ['therapists/therapist-1/resume/resume.pdf'],
+    });
   });
 });
 

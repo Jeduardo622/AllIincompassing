@@ -264,6 +264,7 @@ async function handleHoldRelease(
       sessionId: releasedHold.session_id,
       eventType: "hold_released",
       actorId: userId,
+      required: true,
       payload: {
         holdKey,
         startTime: releasedHold.start_time,
@@ -424,6 +425,7 @@ async function handleSessionCancellation(
         sessionId: session.id,
         eventType: "session_cancelled",
         actorId: userId,
+        required: true,
         payload: {
           reason: payload.reason,
           startTime: session.start_time,

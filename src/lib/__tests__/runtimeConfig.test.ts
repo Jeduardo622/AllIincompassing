@@ -56,5 +56,20 @@ describe('runtimeConfig', () => {
     await expect(ensureRuntimeSupabaseConfig()).rejects.toThrow(/Failed to load Supabase runtime config/i);
     await expect(async () => getRuntimeSupabaseConfig()).rejects.toThrow(/has not been initialised/i);
   });
+
+  it('rejects placeholder runtime config values from API', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          ...mockConfig,
+          supabaseAnonKey: '****',
+        }),
+    } satisfies Partial<Response>);
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(ensureRuntimeSupabaseConfig()).rejects.toThrow(/placeholder/i);
+    await expect(async () => getRuntimeSupabaseConfig()).rejects.toThrow(/has not been initialised/i);
+  });
 });
 

@@ -7,8 +7,6 @@ import {
   requestSessionHold,
 } from "../lib/sessionHolds";
 import { deriveCptMetadata } from "./deriveCpt";
-import { persistSessionCptMetadata } from "./sessionCptPersistence";
-import { persistSessionGoals } from "./sessionGoalsPersistence";
 import type {
   BookSessionRequest,
   BookSessionResult,
@@ -388,12 +386,19 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
     ...payload.session,
     status: payload.session.status ?? "scheduled",
   };
+  const primaryGoalId = typeof payload.session.goal_id === "string" ? payload.session.goal_id : "";
+  const supplementalGoalIds = Array.isArray(payload.session.goal_ids) ? payload.session.goal_ids : [];
+  const mergedGoalIds = Array.from(
+    new Set([primaryGoalId, ...supplementalGoalIds].filter((goalId) => typeof goalId === "string" && goalId.length > 0)),
+  );
 
   let confirmed;
   try {
     confirmed = await confirmSessionBooking({
       holdKey: hold.holdKey,
       session: sessionPayload,
+      cpt,
+      goalIds: mergedGoalIds,
       idempotencyKey: payload.idempotencyKey,
       startTimeOffsetMinutes: primaryOccurrence.startOffsetMinutes,
       endTimeOffsetMinutes: primaryOccurrence.endOffsetMinutes,
@@ -407,6 +412,8 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
           start_time: occurrences[index]?.startTime ?? heldOccurrence.startTime,
           end_time: occurrences[index]?.endTime ?? heldOccurrence.endTime,
         },
+        cpt,
+        goalIds: mergedGoalIds,
         startTimeOffsetMinutes:
           occurrences[index]?.startOffsetMinutes ?? deriveOffsetMinutes(
             recurrence?.timeZone ?? payload.timeZone,
@@ -441,65 +448,9 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
     throw new Error("Session confirmation missing session payload");
   }
 
-  const sessionsToPersist = Array.isArray(confirmed.sessions) && confirmed.sessions.length > 0
-    ? confirmed.sessions
-    : [confirmed.session];
-
-  const uniqueSessionsMap = new Map<string, typeof sessionsToPersist[number]>();
-  for (const session of sessionsToPersist) {
-    if (!session || typeof session !== "object") {
-      continue;
-    }
-
-    const identifier = typeof session.id === "string" ? session.id : null;
-    if (!identifier) {
-      continue;
-    }
-
-    if (!uniqueSessionsMap.has(identifier)) {
-      uniqueSessionsMap.set(identifier, session);
-    }
-  }
-
-  const uniqueSessions = uniqueSessionsMap.size > 0
-    ? Array.from(uniqueSessionsMap.values())
-    : sessionsToPersist;
-
-  const primaryGoalId = typeof payload.session.goal_id === "string" ? payload.session.goal_id : "";
-  const supplementalGoalIds = Array.isArray(payload.session.goal_ids) ? payload.session.goal_ids : [];
-  const mergedGoalIds = Array.from(
-    new Set([primaryGoalId, ...supplementalGoalIds].filter((goalId) => typeof goalId === "string" && goalId.length > 0)),
-  );
-
-  try {
-    await Promise.all(
-      uniqueSessions.map(async (session) => {
-        const billedMinutes = typeof session.duration_minutes === "number" && Number.isFinite(session.duration_minutes)
-          ? session.duration_minutes
-          : cpt.durationMinutes;
-
-        await persistSessionCptMetadata({
-          sessionId: session.id,
-          cpt,
-          billedMinutes,
-        });
-
-        if (mergedGoalIds.length > 0) {
-          await persistSessionGoals({
-            sessionId: session.id,
-            goalIds: mergedGoalIds,
-          });
-        }
-      }),
-    );
-  } catch (error) {
-    console.error("Failed to persist CPT metadata for session", error);
-    throw error;
-  }
-
   return {
     session: confirmed.session,
-    sessions: sessionsToPersist,
+    sessions: confirmed.sessions,
     hold,
     cpt,
   };

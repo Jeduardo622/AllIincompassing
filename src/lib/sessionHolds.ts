@@ -2,6 +2,13 @@ import type { Session } from "../types";
 import { callEdge } from "./supabase";
 import type { CallEdgeOptions } from "./supabase";
 
+export interface ConfirmCptPayload {
+  code: string;
+  description?: string;
+  modifiers?: string[];
+  durationMinutes?: number;
+}
+
 export interface HoldRequest {
   therapistId: string;
   clientId: string;
@@ -71,6 +78,8 @@ type ConfirmEdgeResponse = EdgeSuccess<{
 export interface ConfirmOccurrenceRequest {
   holdKey: string;
   session: Partial<Session>;
+  cpt?: ConfirmCptPayload;
+  goalIds?: string[];
   startTimeOffsetMinutes: number;
   endTimeOffsetMinutes: number;
   timeZone?: string;
@@ -216,6 +225,8 @@ export async function requestSessionHold(payload: HoldRequest): Promise<HoldResp
 export interface ConfirmRequest {
   holdKey: string;
   session: Partial<Session>;
+  cpt?: ConfirmCptPayload;
+  goalIds?: string[];
   idempotencyKey?: string;
   startTimeOffsetMinutes: number;
   endTimeOffsetMinutes: number;
@@ -241,12 +252,16 @@ export async function confirmSessionBooking(payload: ConfirmRequest): Promise<Co
       body: JSON.stringify({
         hold_key: payload.holdKey,
         session: payload.session,
+        cpt: payload.cpt,
+        goal_ids: payload.goalIds,
         start_time_offset_minutes: payload.startTimeOffsetMinutes,
         end_time_offset_minutes: payload.endTimeOffsetMinutes,
         time_zone: payload.timeZone,
         occurrences: payload.occurrences?.map((occurrence) => ({
           hold_key: occurrence.holdKey,
           session: occurrence.session,
+          cpt: occurrence.cpt ?? payload.cpt,
+          goal_ids: occurrence.goalIds ?? payload.goalIds,
           start_time_offset_minutes: occurrence.startTimeOffsetMinutes,
           end_time_offset_minutes: occurrence.endTimeOffsetMinutes,
           time_zone: occurrence.timeZone ?? payload.timeZone,

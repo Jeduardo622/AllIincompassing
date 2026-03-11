@@ -4,8 +4,6 @@ import {
   confirmSessionBooking,
   requestSessionHold,
 } from "../../lib/sessionHolds";
-import { persistSessionCptMetadata } from "../sessionCptPersistence";
-import { persistSessionGoals } from "../sessionGoalsPersistence";
 import type { BookSessionResult } from "../types";
 import type { Session } from "../../types";
 
@@ -15,19 +13,9 @@ vi.mock("../../lib/sessionHolds", () => ({
   cancelSessionHold: vi.fn(),
 }));
 
-vi.mock("../sessionCptPersistence", () => ({
-  persistSessionCptMetadata: vi.fn(),
-}));
-
-vi.mock("../sessionGoalsPersistence", () => ({
-  persistSessionGoals: vi.fn(),
-}));
-
 const mockedRequestSessionHold = vi.mocked(requestSessionHold);
 const mockedConfirmSessionBooking = vi.mocked(confirmSessionBooking);
 const mockedCancelSessionHold = vi.mocked(cancelSessionHold);
-const mockedPersistSessionCptMetadata = vi.mocked(persistSessionCptMetadata);
-const mockedPersistSessionGoals = vi.mocked(persistSessionGoals);
 
 const importBookSession = async () => {
   const module = await import("../bookSession");
@@ -35,7 +23,7 @@ const importBookSession = async () => {
 };
 
 const TEST_SUPABASE_URL = "https://testing.supabase.co";
-const TEST_SUPABASE_ANON_KEY = "testing-anon-key";
+const TEST_SUPABASE_ANON_KEY = "testing-anon-key-12345678901234567890";
 const TEST_SUPABASE_EDGE_URL = "https://testing.supabase.co/functions/v1/";
 
 const ORIGINAL_ENV = {
@@ -63,8 +51,6 @@ const basePayload = {
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  mockedPersistSessionCptMetadata.mockResolvedValue({ entryId: "entry-id", modifierIds: [] });
-  mockedPersistSessionGoals.mockResolvedValue(undefined);
 
   const runtimeConfig = await import("../../lib/runtimeConfig");
   runtimeConfig.resetRuntimeSupabaseConfigForTests();
@@ -152,6 +138,8 @@ describe("bookSession", () => {
         therapist_id: basePayload.session.therapist_id,
         status: "scheduled",
       }),
+      cpt: expect.objectContaining({ code: "97153" }),
+      goalIds: ["goal-1"],
       idempotencyKey: undefined,
       startTimeOffsetMinutes: 0,
       endTimeOffsetMinutes: 0,
@@ -165,15 +153,9 @@ describe("bookSession", () => {
         }),
       ]),
     });
-
-    expect(mockedPersistSessionCptMetadata).toHaveBeenCalledWith({
-      sessionId: confirmedSession.id,
-      cpt: expect.objectContaining({ code: "97153" }),
-      billedMinutes: confirmedSession.duration_minutes,
-    });
   });
 
-  it("persists payer-specific CPT metadata bundles", async () => {
+  it("passes payer-specific CPT metadata bundles to confirmation", async () => {
     const bookSession = await importBookSession();
     mockedRequestSessionHold.mockResolvedValueOnce({
       holdKey: "hold-key",
@@ -227,15 +209,14 @@ describe("bookSession", () => {
 
     await bookSession(payload);
 
-    expect(mockedPersistSessionCptMetadata).toHaveBeenCalledTimes(1);
-    expect(mockedPersistSessionCptMetadata).toHaveBeenCalledWith({
-      sessionId: confirmedSession.id,
-      cpt: expect.objectContaining({
+    expect(mockedConfirmSessionBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cpt: expect.objectContaining({
         code: "97153",
         modifiers: expect.arrayContaining(["U7", "U8"]),
+        }),
       }),
-      billedMinutes: confirmedSession.duration_minutes,
-    });
+    );
   });
 
   it("releases the hold when confirmation fails", async () => {
@@ -265,7 +246,6 @@ describe("bookSession", () => {
       idempotencyKey: "cancel:hold-key",
       accessToken: basePayload.accessToken,
     });
-    expect(mockedPersistSessionCptMetadata).not.toHaveBeenCalled();
   });
 
   it("throws when required session fields are missing", async () => {
@@ -279,53 +259,6 @@ describe("bookSession", () => {
         },
       }),
     ).rejects.toThrow(/therapist_id/);
-  });
-
-  it("bubbles persistence failures", async () => {
-    const bookSession = await importBookSession();
-    mockedRequestSessionHold.mockResolvedValueOnce({
-      holdKey: "hold-key",
-      holdId: "hold-id",
-      startTime: basePayload.session.start_time,
-      endTime: basePayload.session.end_time,
-      expiresAt: "2025-01-01T00:05:00Z",
-      holds: [
-        {
-          holdKey: "hold-key",
-          holdId: "hold-id",
-          startTime: basePayload.session.start_time,
-          endTime: basePayload.session.end_time,
-          expiresAt: "2025-01-01T00:05:00Z",
-        },
-      ],
-    });
-
-    const confirmedSession: Session = {
-      id: "session-1",
-      client_id: basePayload.session.client_id,
-      therapist_id: basePayload.session.therapist_id,
-      program_id: basePayload.session.program_id,
-      goal_id: basePayload.session.goal_id,
-      start_time: basePayload.session.start_time,
-      end_time: basePayload.session.end_time,
-      status: "scheduled",
-      notes: "",
-      created_at: "2025-01-01T09:00:00Z",
-      created_by: "user-1",
-      updated_at: "2025-01-01T09:00:00Z",
-      updated_by: "user-1",
-      duration_minutes: 60,
-    };
-
-    mockedConfirmSessionBooking.mockResolvedValueOnce({
-      session: confirmedSession,
-      sessions: [confirmedSession],
-      roundedDurationMinutes: confirmedSession.duration_minutes ?? null,
-    });
-    mockedPersistSessionCptMetadata.mockRejectedValueOnce(new Error("persist failure"));
-
-    await expect(bookSession(basePayload)).rejects.toThrow("persist failure");
-    expect(mockedCancelSessionHold).not.toHaveBeenCalled();
   });
 
   it("forwards idempotency metadata to hold and confirm requests", async () => {
@@ -526,15 +459,10 @@ describe("bookSession", () => {
       });
     }
 
-    expect(mockedPersistSessionCptMetadata).toHaveBeenCalledTimes(1);
-    expect(mockedPersistSessionCptMetadata).toHaveBeenCalledWith({
-      sessionId: fulfilled[0]?.value.session.id,
-      cpt: expect.objectContaining({ code: expect.any(String) }),
-      billedMinutes: expect.any(Number),
-    });
+    expect(mockedConfirmSessionBooking).toHaveBeenCalledTimes(2);
   });
 
-  it("persists CPT metadata once per unique session id", async () => {
+  it("returns all confirmed sessions from the confirmation response", async () => {
     const bookSession = await importBookSession();
     mockedRequestSessionHold.mockResolvedValueOnce({
       holdKey: "hold-key",
@@ -580,7 +508,7 @@ describe("bookSession", () => {
       roundedDurationMinutes: confirmedSession.duration_minutes ?? null,
     });
 
-    await bookSession({
+    const result = await bookSession({
       ...basePayload,
       session: {
         ...basePayload.session,
@@ -588,12 +516,7 @@ describe("bookSession", () => {
       },
     });
 
-    expect(mockedPersistSessionCptMetadata).toHaveBeenCalledTimes(1);
-    expect(mockedPersistSessionCptMetadata).toHaveBeenCalledWith({
-      sessionId: confirmedSession.id,
-      cpt: expect.objectContaining({ code: "97153" }),
-      billedMinutes: confirmedSession.duration_minutes,
-    });
+    expect(result.sessions).toHaveLength(3);
   });
 });
 

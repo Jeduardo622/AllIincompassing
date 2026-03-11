@@ -20,8 +20,17 @@ vi.mock('../../lib/logger/server', () => ({
 const originalEnv = { ...process.env };
 
 describe('runtimeConfigHandler', () => {
+  const VALID_ANON_KEY = 'anon-key-12345678901234567890';
+
   beforeEach(() => {
     process.env = { ...originalEnv } as NodeJS.ProcessEnv;
+    delete process.env.CODEX_ENV_PATH;
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_ANON_KEY;
+    delete process.env.VITE_SUPABASE_URL;
+    delete process.env.VITE_SUPABASE_ANON_KEY;
+    delete process.env.VITE_SUPABASE_EDGE_URL;
+    delete process.env.DEFAULT_ORGANIZATION_ID;
     resetEnvCacheForTests();
     loggerMock.info.mockReset();
     loggerMock.warn.mockReset();
@@ -35,25 +44,25 @@ describe('runtimeConfigHandler', () => {
 
   it('returns runtime config when env vars are present', async () => {
     process.env.SUPABASE_URL = 'https://example.supabase.co';
-    process.env.SUPABASE_ANON_KEY = 'anon-key';
+    process.env.SUPABASE_ANON_KEY = VALID_ANON_KEY;
     process.env.DEFAULT_ORGANIZATION_ID = '5238e88b-6198-4862-80a2-dbe15bbeabdd';
 
     const response = await runtimeConfigHandler(new Request('http://localhost/api/runtime-config'));
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.supabaseUrl).toBe('https://example.supabase.co');
-    expect(payload.supabaseAnonKey).toBe('anon-key');
+    expect(payload.supabaseAnonKey).toBe(VALID_ANON_KEY);
     expect(payload.defaultOrganizationId).toBe('5238e88b-6198-4862-80a2-dbe15bbeabdd');
   });
 
   it('falls back to baked-in org id when DEFAULT_ORGANIZATION_ID is missing', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'runtime-config-fallback-'));
     const envPath = join(tempDir, '.env.codex');
-    writeFileSync(envPath, ['SUPABASE_URL=https://example.supabase.co', 'SUPABASE_ANON_KEY=anon-key'].join('\n'));
+    writeFileSync(envPath, ['SUPABASE_URL=https://example.supabase.co', `SUPABASE_ANON_KEY=${VALID_ANON_KEY}`].join('\n'));
 
     delete process.env.DEFAULT_ORGANIZATION_ID;
     process.env.SUPABASE_URL = 'https://example.supabase.co';
-    process.env.SUPABASE_ANON_KEY = 'anon-key';
+    process.env.SUPABASE_ANON_KEY = VALID_ANON_KEY;
     process.env.CODEX_ENV_PATH = envPath;
     resetEnvCacheForTests();
 
@@ -79,7 +88,7 @@ describe('runtimeConfigHandler', () => {
     const envPath = join(tempDir, '.env.codex');
     writeFileSync(envPath, [
       'SUPABASE_URL=https://file.supabase.co',
-      'SUPABASE_ANON_KEY=file-anon',
+      'SUPABASE_ANON_KEY=file-anon-key-12345678901234567890',
       'DEFAULT_ORGANIZATION_ID=org-default-file',
     ].join('\n'));
 
@@ -94,7 +103,7 @@ describe('runtimeConfigHandler', () => {
       expect(response.status).toBe(200);
       const payload = await response.json();
       expect(payload.supabaseUrl).toBe('https://file.supabase.co');
-      expect(payload.supabaseAnonKey).toBe('file-anon');
+      expect(payload.supabaseAnonKey).toBe('file-anon-key-12345678901234567890');
       expect(payload.defaultOrganizationId).toBe('org-default-file');
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
@@ -107,6 +116,8 @@ describe('runtimeConfigHandler', () => {
     const missingEnvPath = join(tempDir, '.env.does-not-exist');
     delete process.env.SUPABASE_URL;
     delete process.env.SUPABASE_ANON_KEY;
+    delete process.env.VITE_SUPABASE_URL;
+    delete process.env.VITE_SUPABASE_ANON_KEY;
     delete process.env.DEFAULT_ORGANIZATION_ID;
     process.env.CODEX_ENV_PATH = missingEnvPath;
     resetEnvCacheForTests();
@@ -122,9 +133,43 @@ describe('runtimeConfigHandler', () => {
     }
   });
 
+  it('fails with 500 when anon key is a placeholder', async () => {
+    process.env.SUPABASE_URL = 'https://example.supabase.co';
+    process.env.SUPABASE_ANON_KEY = '****';
+    process.env.DEFAULT_ORGANIZATION_ID = '5238e88b-6198-4862-80a2-dbe15bbeabdd';
+
+    const response = await runtimeConfigHandler(new Request('http://localhost/api/runtime-config'));
+    expect(response.status).toBe(500);
+    const payload = await response.json();
+    expect(payload.error).toMatch(/placeholder/i);
+  });
+
+  it('uses VITE fallbacks when server keys are absent', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'runtime-config-vite-fallback-'));
+    const missingEnvPath = join(tempDir, '.env.does-not-exist');
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_ANON_KEY;
+    process.env.VITE_SUPABASE_URL = 'https://fallback.supabase.co';
+    process.env.VITE_SUPABASE_ANON_KEY = 'fallback-anon-key-12345678901234567890';
+    process.env.DEFAULT_ORGANIZATION_ID = '5238e88b-6198-4862-80a2-dbe15bbeabdd';
+    process.env.CODEX_ENV_PATH = missingEnvPath;
+    resetEnvCacheForTests();
+
+    try {
+      const response = await runtimeConfigHandler(new Request('http://localhost/api/runtime-config'));
+      expect(response.status).toBe(200);
+      const payload = await response.json();
+      expect(payload.supabaseUrl).toBe('https://fallback.supabase.co');
+      expect(payload.supabaseAnonKey).toBe('fallback-anon-key-12345678901234567890');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+      delete process.env.CODEX_ENV_PATH;
+    }
+  });
+
   it('rejects unsupported methods', async () => {
     process.env.SUPABASE_URL = 'https://example.supabase.co';
-    process.env.SUPABASE_ANON_KEY = 'anon-key';
+    process.env.SUPABASE_ANON_KEY = VALID_ANON_KEY;
     process.env.DEFAULT_ORGANIZATION_ID = '5238e88b-6198-4862-80a2-dbe15bbeabdd';
 
     const response = await runtimeConfigHandler(new Request('http://localhost/api/runtime-config', { method: 'POST' }));

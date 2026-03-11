@@ -283,6 +283,7 @@ Deno.serve(async (req) => {
         sessionId: hold.session_id as string,
         eventType: "hold_acquired",
         actorId: user.id,
+        required: true,
         payload: {
           holdKey: hold.hold_key,
           startTime: hold.start_time,

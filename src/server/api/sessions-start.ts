@@ -109,64 +109,48 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
     return respond({ error: "Forbidden" }, 403);
   }
 
-  if (sessionRow.started_at) {
-    return respond({ error: "Session already started" }, 409);
-  }
-
-  if (sessionRow.status !== "scheduled") {
-    return respond({ error: "Only scheduled sessions can be started" }, 409);
-  }
-  const goalUrl = `${supabaseUrl}/rest/v1/goals?select=id,program_id,client_id,organization_id&organization_id=eq.${organizationId}&id=eq.${goal_id}&program_id=eq.${program_id}&client_id=eq.${sessionRow.client_id}`;
-  const goalResult = await fetchJson<Array<{ id: string }>>(goalUrl, { method: "GET", headers });
-  if (!goalResult.ok || !goalResult.data || goalResult.data.length === 0) {
-    return respond({ error: "Goal not found for this program" }, 404);
-  }
-
-  if (mergedGoalIds.length > 0) {
-    const goalsUrl = `${supabaseUrl}/rest/v1/goals?select=id,program_id,client_id,organization_id&organization_id=eq.${organizationId}&program_id=eq.${program_id}&client_id=eq.${sessionRow.client_id}&id=in.(${mergedGoalIds.join(",")})`;
-    const goalsResult = await fetchJson<Array<{ id: string }>>(goalsUrl, { method: "GET", headers });
-    if (!goalsResult.ok || !goalsResult.data || goalsResult.data.length !== mergedGoalIds.length) {
-      return respond({ error: "One or more goals are invalid for this session" }, 400);
-    }
-  }
-
-  const updatePayload = {
-    program_id,
-    goal_id,
-    started_at: started_at ?? new Date().toISOString(),
-  };
-  const updateUrl = `${supabaseUrl}/rest/v1/sessions?id=eq.${session_id}&organization_id=eq.${organizationId}&started_at=is.null&status=eq.scheduled`;
-  const updateResult = await fetchJson<Array<{ id: string; started_at: string }>>(updateUrl, {
-    method: "PATCH",
-    headers: { ...headers, Prefer: "return=representation" },
-    body: JSON.stringify(updatePayload),
+  const rpcUrl = `${supabaseUrl}/rest/v1/rpc/start_session_with_goals`;
+  const rpcResult = await fetchJson<{
+    success?: boolean;
+    error_code?: string;
+    error_message?: string;
+    session?: { id: string; started_at: string };
+  }>(rpcUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      p_session_id: session_id,
+      p_program_id: program_id,
+      p_goal_id: goal_id,
+      p_goal_ids: mergedGoalIds,
+      p_started_at: started_at ?? null,
+      p_actor_id: currentUserId,
+    }),
   });
 
-  if (!updateResult.ok) {
-    return respond({ error: "Failed to start session" }, updateResult.status || 500);
-  }
-  if (!Array.isArray(updateResult.data) || updateResult.data.length === 0) {
-    return respond({ error: "Session already started" }, 409);
+  if (!rpcResult.ok || !rpcResult.data) {
+    return respond({ error: "Failed to start session" }, rpcResult.status || 500);
   }
 
-  if (mergedGoalIds.length > 0) {
-    const goalsPayload = mergedGoalIds.map((goal) => ({
-      session_id,
-      goal_id: goal,
-      organization_id: organizationId,
-      client_id: sessionRow.client_id,
-      program_id,
-    }));
-    const sessionGoalsUrl = `${supabaseUrl}/rest/v1/session_goals?on_conflict=session_id,goal_id`;
-    const goalsInsert = await fetchJson(sessionGoalsUrl, {
-      method: "POST",
-      headers: { ...headers, Prefer: "resolution=merge-duplicates" },
-      body: JSON.stringify(goalsPayload),
-    });
-    if (!goalsInsert.ok) {
-      return respond({ error: "Failed to attach goals to session" }, goalsInsert.status || 500);
-    }
+  if (!rpcResult.data.success) {
+    const statusMap: Record<string, number> = {
+      MISSING_FIELDS: 400,
+      SESSION_NOT_FOUND: 404,
+      ALREADY_STARTED: 409,
+      INVALID_STATUS: 409,
+      GOAL_NOT_FOUND: 404,
+      INVALID_GOALS: 400,
+    };
+    const errorCode = rpcResult.data.error_code ?? "FAILED";
+    return respond(
+      { error: rpcResult.data.error_message ?? "Failed to start session", code: errorCode },
+      statusMap[errorCode] ?? 409,
+    );
   }
 
-  return respond(updateResult.data[0]);
+  if (!rpcResult.data.session) {
+    return respond({ error: "Session start response missing session payload" }, 500);
+  }
+
+  return respond(rpcResult.data.session);
 }

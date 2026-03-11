@@ -16,6 +16,9 @@ interface StorageBucketClient {
     path: string,
     file: File,
   ) => Promise<{ error: unknown | null | undefined }>;
+  remove?: (
+    paths: string[],
+  ) => Promise<{ error: unknown | null | undefined }>;
 }
 
 interface StorageClient {
@@ -40,6 +43,31 @@ export interface UploadTherapistDocumentParams {
   bucketId?: string;
 }
 
+export interface TherapistDocumentReconciliationInput {
+  manifestPaths: string[];
+  storagePaths: string[];
+}
+
+export interface TherapistDocumentReconciliationResult {
+  orphanStoragePaths: string[];
+  orphanManifestPaths: string[];
+}
+
+const normalizePath = (path: string): string => path.trim();
+
+export const reconcileTherapistDocumentPathSets = ({
+  manifestPaths,
+  storagePaths,
+}: TherapistDocumentReconciliationInput): TherapistDocumentReconciliationResult => {
+  const manifestSet = new Set(manifestPaths.map(normalizePath).filter((path) => path.length > 0));
+  const storageSet = new Set(storagePaths.map(normalizePath).filter((path) => path.length > 0));
+
+  return {
+    orphanStoragePaths: Array.from(storageSet).filter((path) => !manifestSet.has(path)),
+    orphanManifestPaths: Array.from(manifestSet).filter((path) => !storageSet.has(path)),
+  };
+};
+
 export async function uploadTherapistDocumentAndRecordManifest({
   supabase,
   therapistId,
@@ -48,9 +76,11 @@ export async function uploadTherapistDocumentAndRecordManifest({
   file,
   bucketId = 'therapist-documents',
 }: UploadTherapistDocumentParams): Promise<TherapistDocumentUploadResult> {
-  const objectPath = `therapists/${therapistId}/${documentKey}/${file.name}`;
+  const sanitizedFileName = file.name.replace(/[\\/]+/g, "_");
+  const objectPath = `therapists/${therapistId}/${documentKey}/${sanitizedFileName}`;
+  const bucket = supabase.storage.from(bucketId);
 
-  const { error: uploadError } = await supabase.storage.from(bucketId).upload(objectPath, file);
+  const { error: uploadError } = await bucket.upload(objectPath, file);
   if (uploadError) {
     throw uploadError;
   }
@@ -64,6 +94,14 @@ export async function uploadTherapistDocumentAndRecordManifest({
   });
 
   if (manifestError) {
+    const { error: cleanupError } = await bucket.remove?.([objectPath]) ?? { error: null };
+    if (cleanupError) {
+      console.error("Failed to cleanup therapist document after manifest insert failure", {
+        bucketId,
+        objectPath,
+        cleanupError,
+      });
+    }
     throw manifestError;
   }
 

@@ -6,6 +6,7 @@ export interface RuntimeSupabaseConfig {
 }
 
 const RUNTIME_CONFIG_SYMBOL = '__SUPABASE_RUNTIME_CONFIG__';
+const PLACEHOLDER_VALUE_PATTERNS = [/^\*+$/, /^changeme$/i, /^replace[-_ ]?me$/i, /^your[-_ ]/i];
 
 type RuntimeConfigContainer = typeof globalThis & {
   [RUNTIME_CONFIG_SYMBOL]?: RuntimeSupabaseConfig;
@@ -25,6 +26,15 @@ const validateConfig = (config: RuntimeSupabaseConfig): void => {
   }
   if (!config.defaultOrganizationId) {
     throw new Error('Supabase runtime config missing `defaultOrganizationId`');
+  }
+
+  const trimmedUrl = config.supabaseUrl.trim();
+  const trimmedAnonKey = config.supabaseAnonKey.trim();
+  if (PLACEHOLDER_VALUE_PATTERNS.some((pattern) => pattern.test(trimmedUrl))) {
+    throw new Error('Supabase runtime config has placeholder `supabaseUrl`');
+  }
+  if (PLACEHOLDER_VALUE_PATTERNS.some((pattern) => pattern.test(trimmedAnonKey))) {
+    throw new Error('Supabase runtime config has placeholder `supabaseAnonKey`');
   }
 };
 

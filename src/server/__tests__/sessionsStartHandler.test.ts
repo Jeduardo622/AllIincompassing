@@ -40,7 +40,7 @@ describe("sessionsStartHandler", () => {
     expect(response.status).toBe(401);
   });
 
-  it("returns 409 when session is already started", async () => {
+  it("returns 409 when RPC reports already started", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken());
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
@@ -52,20 +52,30 @@ describe("sessionsStartHandler", () => {
       supabaseUrl: "https://example.supabase.co",
       anonKey: "anon",
     });
-    vi.mocked(fetchJson).mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      data: [
-        {
-          id: "session-1",
-          client_id: "client-1",
-          organization_id: "org-1",
-          therapist_id: "therapist-1",
-          status: "scheduled",
-          started_at: "2026-01-01T10:00:00Z",
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "session-1",
+            client_id: "client-1",
+            organization_id: "org-1",
+            therapist_id: "therapist-1",
+            status: "scheduled",
+            started_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: {
+          success: false,
+          error_code: "ALREADY_STARTED",
+          error_message: "Session already started",
         },
-      ],
-    });
+      });
 
     const response = await sessionsStartHandler(
       new Request("http://localhost/api/sessions-start", {
@@ -124,49 +134,7 @@ describe("sessionsStartHandler", () => {
     expect(response.status).toBe(403);
   });
 
-  it("returns 409 when session status is not scheduled", async () => {
-    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
-      organizationId: "org-1",
-      isTherapist: true,
-      isAdmin: false,
-      isSuperAdmin: false,
-    });
-    vi.mocked(getSupabaseConfig).mockReturnValue({
-      supabaseUrl: "https://example.supabase.co",
-      anonKey: "anon",
-    });
-    vi.mocked(fetchJson).mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      data: [
-        {
-          id: "session-1",
-          client_id: "client-1",
-          organization_id: "org-1",
-          therapist_id: "therapist-1",
-          status: "cancelled",
-          started_at: null,
-        },
-      ],
-    });
-
-    const response = await sessionsStartHandler(
-      new Request("http://localhost/api/sessions-start", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${createAuthToken("therapist-1")}` },
-        body: JSON.stringify({
-          session_id: "11111111-1111-1111-1111-111111111111",
-          program_id: "22222222-2222-2222-2222-222222222222",
-          goal_id: "33333333-3333-3333-3333-333333333333",
-        }),
-      }),
-    );
-
-    expect(response.status).toBe(409);
-  });
-
-  it("returns 409 when atomic update affects no rows", async () => {
+  it("returns 409 when RPC reports invalid status", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
@@ -196,17 +164,11 @@ describe("sessionsStartHandler", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        data: [{ id: "33333333-3333-3333-3333-333333333333" }],
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        data: [{ id: "33333333-3333-3333-3333-333333333333" }],
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        data: [],
+        data: {
+          success: false,
+          error_code: "INVALID_STATUS",
+          error_message: "Only scheduled sessions can be started",
+        },
       });
 
     const response = await sessionsStartHandler(
@@ -224,7 +186,7 @@ describe("sessionsStartHandler", () => {
     expect(response.status).toBe(409);
   });
 
-  it("starts a session and links goals on the success path", async () => {
+  it("returns 404 when RPC reports missing goal", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
@@ -254,30 +216,65 @@ describe("sessionsStartHandler", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        data: [{ id: "33333333-3333-3333-3333-333333333333" }],
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        data: [
-          { id: "33333333-3333-3333-3333-333333333333" },
-          { id: "44444444-4444-4444-4444-444444444444" },
-        ],
-      })
+        data: {
+          success: false,
+          error_code: "GOAL_NOT_FOUND",
+          error_message: "Goal not found for this program",
+        },
+      });
+
+    const response = await sessionsStartHandler(
+      new Request("http://localhost/api/sessions-start", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken("therapist-1")}` },
+        body: JSON.stringify({
+          session_id: "11111111-1111-1111-1111-111111111111",
+          program_id: "22222222-2222-2222-2222-222222222222",
+          goal_id: "33333333-3333-3333-3333-333333333333",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it("starts a session through atomic RPC on success", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
         data: [
           {
             id: "session-1",
-            started_at: "2026-02-10T15:00:00.000Z",
+            client_id: "client-1",
+            organization_id: "org-1",
+            therapist_id: "therapist-1",
+            status: "scheduled",
+            started_at: null,
           },
         ],
       })
       .mockResolvedValueOnce({
         ok: true,
-        status: 201,
-        data: [{ session_id: "session-1", goal_id: "33333333-3333-3333-3333-333333333333" }],
+        status: 200,
+        data: {
+          success: true,
+          session: {
+            id: "session-1",
+            started_at: "2026-02-10T15:00:00.000Z",
+          },
+        },
       });
 
     const response = await sessionsStartHandler(
@@ -297,6 +294,8 @@ describe("sessionsStartHandler", () => {
     const payload = await response.json() as { id: string; started_at: string };
     expect(payload.id).toBe("session-1");
     expect(payload.started_at).toBe("2026-02-10T15:00:00.000Z");
+    const rpcCall = vi.mocked(fetchJson).mock.calls[1];
+    expect(rpcCall?.[0]).toContain("/rpc/start_session_with_goals");
   });
 
   it("returns 404 when the session is outside caller org scope", async () => {
@@ -332,7 +331,7 @@ describe("sessionsStartHandler", () => {
     expect(response.status).toBe(404);
   });
 
-  it("returns 400 when one or more merged goals are invalid", async () => {
+  it("returns 400 when RPC reports invalid goal set", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
@@ -362,12 +361,11 @@ describe("sessionsStartHandler", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        data: [{ id: "33333333-3333-3333-3333-333333333333" }],
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        data: [{ id: "33333333-3333-3333-3333-333333333333" }],
+        data: {
+          success: false,
+          error_code: "INVALID_GOALS",
+          error_message: "One or more goals are invalid for this session",
+        },
       });
 
     const response = await sessionsStartHandler(
@@ -416,22 +414,13 @@ describe("sessionsStartHandler", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        data: [{ id: "33333333-3333-3333-3333-333333333333" }],
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        data: [{ id: "33333333-3333-3333-3333-333333333333" }],
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        data: [{ id: "session-1", started_at: "2026-02-10T15:00:00.000Z" }],
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 201,
-        data: [{ session_id: "session-1", goal_id: "33333333-3333-3333-3333-333333333333" }],
+        data: {
+          success: true,
+          session: {
+            id: "session-1",
+            started_at: "2026-02-10T15:00:00.000Z",
+          },
+        },
       });
 
     const response = await sessionsStartHandler(

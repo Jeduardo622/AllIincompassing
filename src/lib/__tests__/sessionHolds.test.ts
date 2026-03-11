@@ -563,6 +563,59 @@ describe("session holds API helpers", () => {
     );
   });
 
+  it("forwards CPT and goal payload for atomic confirmation", async () => {
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          session: {
+            id: "session-1",
+            therapist_id: "therapist",
+            client_id: "client",
+            start_time: "2025-01-01T00:00:00Z",
+            end_time: "2025-01-01T01:00:00Z",
+            status: "scheduled",
+            notes: null,
+            created_at: "2025-01-01T00:00:00Z",
+            created_by: "user-3",
+            updated_at: "2025-01-01T00:00:00Z",
+            updated_by: "user-3",
+            duration_minutes: 60,
+          },
+        },
+      }),
+    );
+
+    await confirmSessionBooking({
+      holdKey: "hold-key",
+      session: { id: "session-1" },
+      cpt: { code: "97153", modifiers: ["U7"] },
+      goalIds: ["goal-1", "goal-2"],
+      startTimeOffsetMinutes: 0,
+      endTimeOffsetMinutes: 0,
+      timeZone: "UTC",
+      accessToken: ACCESS_TOKEN,
+    });
+
+    expect(mockedCallEdge).toHaveBeenCalledWith(
+      "sessions-confirm",
+      expect.objectContaining({ method: "POST" }),
+      { accessToken: ACCESS_TOKEN },
+    );
+    const requestInit = mockedCallEdge.mock.calls.at(-1)?.[1];
+    expect(requestInit).toBeDefined();
+    const body = JSON.parse(String(requestInit?.body)) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      hold_key: "hold-key",
+      session: { id: "session-1" },
+      cpt: { code: "97153", modifiers: ["U7"] },
+      goal_ids: ["goal-1", "goal-2"],
+      start_time_offset_minutes: 0,
+      end_time_offset_minutes: 0,
+      time_zone: "UTC",
+    });
+  });
+
   it("cancels a hold and returns hold metadata", async () => {
     mockedCallEdge.mockResolvedValueOnce(
       jsonResponse({

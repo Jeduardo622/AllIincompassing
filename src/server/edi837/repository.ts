@@ -395,25 +395,6 @@ export const createSupabaseEdi837Repository = (
     if (error) {
       throw new Error(`Failed to record claim statuses: ${error.message}`);
     }
-
-    for (const update of updates) {
-      const payload: Record<string, unknown> = {
-        status: update.status,
-      };
-      if (update.claimControlNumber) {
-        payload.claim_number = update.claimControlNumber;
-      }
-      if (update.status === "submitted") {
-        payload.submitted_at = update.effectiveAt;
-      }
-      const { error: updateError } = await client
-        .from("billing_records")
-        .update(payload)
-        .eq("id", update.billingRecordId);
-      if (updateError) {
-        throw new Error(`Failed to update billing record ${update.billingRecordId}: ${updateError.message}`);
-      }
-    }
   };
 
   const ingestClaimDenials = async (denials: ClaimDenialInput[]): Promise<ClaimDenialRecord[]> => {
@@ -449,16 +430,6 @@ export const createSupabaseEdi837Repository = (
       receivedAt: row.received_at,
       recordedAt: row.recorded_at,
     }));
-
-    if (records.length > 0) {
-      await client
-        .from("billing_records")
-        .update({ status: "rejected" })
-        .in(
-          "id",
-          records.map((record) => record.billingRecordId),
-        );
-    }
 
     return records;
   };

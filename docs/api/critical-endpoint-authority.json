@@ -1,0 +1,110 @@
+{
+  "updatedAt": "2026-03-12",
+  "ownerGroup": "Platform Engineering",
+  "criticalEndpoints": [
+    {
+      "publicApiPath": "/api/runtime-config",
+      "functionFile": "runtime-config.ts",
+      "status": "bootstrap",
+      "owner": "Platform",
+      "wave": "N/A",
+      "authoritativeTarget": "netlify-bootstrap"
+    },
+    {
+      "publicApiPath": "/api/dashboard",
+      "functionFile": "dashboard.ts",
+      "status": "legacy_shim",
+      "owner": "Backend Platform",
+      "wave": "A",
+      "authoritativeTarget": "get-dashboard-data"
+    },
+    {
+      "publicApiPath": "/api/book",
+      "functionFile": "book.ts",
+      "status": "legacy_shim",
+      "owner": "Backend Platform",
+      "wave": "B",
+      "authoritativeTarget": "sessions-hold + sessions-confirm"
+    },
+    {
+      "publicApiPath": "/api/sessions-start",
+      "functionFile": "sessions-start.ts",
+      "status": "legacy_shim",
+      "owner": "Backend Platform",
+      "wave": "B",
+      "authoritativeTarget": "sessions-confirm"
+    },
+    {
+      "publicApiPath": "/api/assessment-checklist",
+      "functionFile": "assessment-checklist.ts",
+      "status": "migrating",
+      "owner": "Backend Platform",
+      "wave": "A",
+      "authoritativeTarget": "extract-assessment-fields"
+    },
+    {
+      "publicApiPath": "/api/assessment-documents",
+      "functionFile": "assessment-documents.ts",
+      "status": "migrating",
+      "owner": "Backend Platform",
+      "wave": "A",
+      "authoritativeTarget": "extract-assessment-fields"
+    },
+    {
+      "publicApiPath": "/api/assessment-drafts",
+      "functionFile": "assessment-drafts.ts",
+      "status": "migrating",
+      "owner": "Backend Platform",
+      "wave": "A",
+      "authoritativeTarget": "generate-program-goals"
+    },
+    {
+      "publicApiPath": "/api/assessment-plan-pdf",
+      "functionFile": "assessment-plan-pdf.ts",
+      "status": "migrating",
+      "owner": "Backend Platform",
+      "wave": "A",
+      "authoritativeTarget": "generate-assessment-plan-pdf"
+    },
+    {
+      "publicApiPath": "/api/assessment-promote",
+      "functionFile": "assessment-promote.ts",
+      "status": "legacy_shim",
+      "owner": "Backend Platform",
+      "wave": "B",
+      "authoritativeTarget": "generate-assessment-plan-pdf"
+    },
+    {
+      "publicApiPath": "/api/programs",
+      "functionFile": "programs.ts",
+      "status": "retired",
+      "owner": "Backend Platform",
+      "wave": "B",
+      "authoritativeTarget": "generate-program-goals"
+    },
+    {
+      "publicApiPath": "/api/goals",
+      "functionFile": "goals.ts",
+      "status": "retired",
+      "owner": "Backend Platform",
+      "wave": "B",
+      "authoritativeTarget": "generate-program-goals"
+    },
+    {
+      "publicApiPath": "/api/goal-data-points",
+      "functionFile": "goal-data-points.ts",
+      "status": "retired",
+      "owner": "Backend Platform",
+      "wave": "B",
+      "authoritativeTarget": "generate-program-goals"
+    },
+    {
+      "publicApiPath": "/api/program-notes",
+      "functionFile": "program-notes.ts",
+      "status": "retired",
+      "owner": "Backend Platform",
+      "wave": "B",
+      "authoritativeTarget": "generate-session-notes-pdf"
+    }
+  ]
+}

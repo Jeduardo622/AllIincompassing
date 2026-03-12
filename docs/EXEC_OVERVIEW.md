@@ -22,7 +22,7 @@ This document gives leaders and future contributors a concise snapshot of what w
 |------------------|-------------------------------------------------------------------------|
 | Frontend         | React + Vite, TypeScript, Tailwind; hosted on Netlify (preview/staging/prod). |
 | Backend API      | Supabase Edge Functions (`sessions-hold`, `generate-report`, `admin-*`). |
-| Database         | Supabase (Postgres) with preview branching per PR; shared hosted project `wnnjeqheqxxyrgsjmygy`. |
+| Database         | Supabase (Postgres) on shared hosted project `wnnjeqheqxxyrgsjmygy`; optional on-demand branch workflow for isolated QA. |
 | Auth & Roles     | Supabase Auth; roles (`client`, `therapist`, `admin`, `super_admin`, `dashboard_consumer`). |
 | AI Services      | OpenAI (transcription + LLM note generation) via Supabase Edge Functions. |
 | Observability    | Structured JSON logging (`getLogger`), metrics (`org_scoped_query_total`, `tenant_denial_total`), GitHub Action artifacts, MCP browser/Lighthouse tooling. |
@@ -30,8 +30,9 @@ This document gives leaders and future contributors a concise snapshot of what w
 ## Release & Environment Flow
 
 1. **Per-PR previews**
-   - Supabase auto-provisions a preview DB for each branch (limit 50).
-   - Netlify deploy previews run `npm run preview:smoke:remote`.
+   - Netlify deploy previews run for pull requests.
+   - Supabase branch previews are currently created on demand (manual workflow), not auto-provisioned for every PR.
+   - Preview validation command: `npm run preview:smoke:remote`.
 2. **Staging (`develop`)**
    - Deploys to Netlify staging context automatically.
    - Migrations applied to the shared Supabase project via branch promotion or `supabase db push`.
@@ -83,6 +84,6 @@ This document gives leaders and future contributors a concise snapshot of what w
 - `docs/STAGING_OPERATIONS.md` – Netlify & Supabase staging playbook
 - `docs/security/tenant-isolation.md` – multi-tenant access model
 - `docs/onboarding-runbook.md` & `docs/onboarding-status.md` – therapist onboarding remediation
-- `AGENTS.md` – hands-on agent workflow & MCP tooling
+- `docs/MCP_ROUTING_TROUBLESHOOTING.md` – MCP setup and routing guidance
 
 Keep this overview updated whenever architecture, release practices, or compliance expectations shift so leadership and on-call engineers share the same source of truth.***

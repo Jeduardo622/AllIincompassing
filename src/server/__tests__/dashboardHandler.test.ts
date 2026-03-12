@@ -10,6 +10,7 @@ describe("dashboardHandler", () => {
     process.env.SUPABASE_URL = "https://example.supabase.co";
     process.env.SUPABASE_ANON_KEY = "anon";
     process.env.DEFAULT_ORGANIZATION_ID = "org-default";
+    delete process.env.DASHBOARD_ALLOW_DEFAULT_ORG_FALLBACK;
     vi.resetModules();
   });
 
@@ -54,7 +55,28 @@ describe("dashboardHandler", () => {
     expect(response.status).toBe(401);
   });
 
+  it("accepts lowercase bearer prefix", async () => {
+    const fetchSpy = mockFetch();
+    fetchSpy.mockResolvedValueOnce(new Response("\"org-1\"", { status: 200, headers: { "content-type": "application/json" } }));
+    fetchSpy.mockResolvedValueOnce(new Response("true", { status: 200, headers: { "content-type": "application/json" } }));
+    fetchSpy.mockResolvedValueOnce(new Response("false", { status: 200, headers: { "content-type": "application/json" } }));
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } }));
+
+    const { dashboardHandler } = await import("../api/dashboard");
+    const response = await dashboardHandler(new Request("http://localhost/api/dashboard", {
+      method: "GET",
+      headers: {
+        Authorization: "bearer token-lower",
+        Origin: "http://localhost:3000",
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+  });
+
   it("falls back to the default organization when org resolution fails", async () => {
+    process.env.DASHBOARD_ALLOW_DEFAULT_ORG_FALLBACK = "true";
     const body = { sessions: [] };
     const fetchSpy = mockFetch();
     fetchSpy.mockResolvedValueOnce(new Response("null", { status: 200, headers: { "content-type": "application/json" } })); // org
@@ -126,6 +148,19 @@ describe("dashboardHandler", () => {
     expect(response.status).toBe(200);
     const json = await response.json();
     expect(json).toMatchObject(body);
+  });
+
+  it("denies therapist-only access to dashboard endpoint", async () => {
+    const fetchSpy = mockFetch();
+    fetchSpy.mockResolvedValueOnce(new Response("\"org-1\"", { status: 200, headers: { "content-type": "application/json" } }));
+    fetchSpy.mockResolvedValueOnce(new Response("false", { status: 200, headers: { "content-type": "application/json" } }));
+    fetchSpy.mockResolvedValueOnce(new Response("false", { status: 200, headers: { "content-type": "application/json" } }));
+
+    const { dashboardHandler } = await import("../api/dashboard");
+    const response = await dashboardHandler(createRequest("GET", "therapist-token"));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(response.status).toBe(403);
   });
 
   it("calls get_dashboard_data using caller JWT (anon apikey + bearer token)", async () => {

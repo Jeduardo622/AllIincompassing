@@ -15,6 +15,7 @@ const checks = [
   ['node', ['scripts/ci/check-migration-governance.mjs']],
   ['node', ['scripts/ci/check-test-reliability.mjs']],
   ['node', ['scripts/ci/check-architecture-pack-freshness.mjs']],
+  ['node', ['scripts/ci/check-runbook-ci-alignment.mjs']],
   ['node', ['scripts/ci/check-repo-hygiene.mjs']],
 ];
 

@@ -338,7 +338,8 @@ describe('Routes Integrity', () => {
       
       protectedRoutes.forEach(route => {
         cy.visit(route.path);
-        cy.wait(1000); // Wait for any async calls
+        cy.get('body').should('be.visible');
+        cy.location('pathname').should('not.equal', '');
         
         cy.then(() => {
           const authFailures = interceptedRequests.filter(req => 
@@ -369,7 +370,8 @@ describe('Routes Integrity', () => {
       ];
 
       cy.visit('/');
-      cy.wait(2000); // Wait for page to fully load
+      cy.get('body').should('be.visible');
+      cy.location('pathname').should('not.equal', '');
 
       cy.then(() => {
         const apiCalls = interceptedRequests.filter(req => 
@@ -431,7 +433,7 @@ describe('Routes Integrity', () => {
       routes.forEach(route => {
         if (route.roles.includes('public')) {
           cy.visit(route.path);
-          cy.wait(500);
+          cy.get('body').should('be.visible');
         }
       });
 

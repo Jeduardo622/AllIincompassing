@@ -4,6 +4,7 @@ import path from "node:path";
 const ROOT = process.cwd();
 const POLICY_PATH = path.join(ROOT, "docs", "api", "netlify-function-allowlist.json");
 const STATUS_PATH = path.join(ROOT, "docs", "api", "endpoint-convergence-status.json");
+const AUTHORITY_PATH = path.join(ROOT, "docs", "api", "critical-endpoint-authority.json");
 const EXCEPTIONS_PATH = path.join(ROOT, "docs", "api", "runtime-exceptions.json");
 const NETLIFY_TOML = path.join(ROOT, "netlify.toml");
 const NETLIFY_FUNCTIONS_DIR = path.join(ROOT, "netlify", "functions");
@@ -78,6 +79,7 @@ const run = async () => {
     readdir(NETLIFY_FUNCTIONS_DIR, { withFileTypes: true }),
     loadJson(EXCEPTIONS_PATH),
   ]);
+  const authority = await loadJson(AUTHORITY_PATH);
   const clientRuntimeFiles = srcFiles.filter((file) => isClientRuntimeSource(file));
   const redirects = parseRedirects(netlifyTomlText);
   const srcText = (await Promise.all(clientRuntimeFiles.map((f) => readFile(f, "utf8")))).join("\n");
@@ -93,6 +95,7 @@ const run = async () => {
       .map((entry) => [entry.functionFile, entry]),
   );
   const entries = Array.isArray(status.entries) ? status.entries : [];
+  const authorityEntries = Array.isArray(authority.criticalEndpoints) ? authority.criticalEndpoints : [];
   const errors = [];
   const now = new Date();
 
@@ -113,6 +116,19 @@ const run = async () => {
       errors.push(`Duplicate convergence entry for ${entry.functionFile}.`);
     }
     byFile.set(entry.functionFile, entry);
+  }
+
+  const authorityByFile = new Map();
+  for (const entry of authorityEntries) {
+    if (!entry || typeof entry.functionFile !== "string") {
+      errors.push("Authority inventory contains an entry without a valid functionFile.");
+      continue;
+    }
+    if (authorityByFile.has(entry.functionFile)) {
+      errors.push(`Duplicate authority inventory entry for ${entry.functionFile}.`);
+      continue;
+    }
+    authorityByFile.set(entry.functionFile, entry);
   }
 
   for (const fileName of legacy) {
@@ -178,6 +194,36 @@ const run = async () => {
           }
         }
       }
+    }
+
+    const authorityEntry = authorityByFile.get(fileName);
+    if (!authorityEntry) {
+      errors.push(`Missing authority inventory entry for ${fileName}.`);
+    } else {
+      if (authorityEntry.status !== entry.status) {
+        errors.push(
+          `Authority status mismatch for ${fileName}: convergence=${entry.status}, authority=${authorityEntry.status}.`,
+        );
+      }
+      if (authorityEntry.publicApiPath !== entry.publicApiPath) {
+        errors.push(
+          `Authority path mismatch for ${fileName}: convergence=${entry.publicApiPath}, authority=${authorityEntry.publicApiPath}.`,
+        );
+      }
+      if (authorityEntry.wave !== entry.wave) {
+        errors.push(`Authority wave mismatch for ${fileName}: convergence=${entry.wave}, authority=${authorityEntry.wave}.`);
+      }
+      if (authorityEntry.owner !== entry.owner) {
+        errors.push(
+          `Authority owner mismatch for ${fileName}: convergence=${entry.owner}, authority=${authorityEntry.owner}.`,
+        );
+      }
+    }
+  }
+
+  for (const fileName of authorityByFile.keys()) {
+    if (!byFile.has(fileName) && fileName !== "runtime-config.ts") {
+      errors.push(`Authority inventory includes ${fileName}, but no convergence entry exists.`);
     }
   }
 

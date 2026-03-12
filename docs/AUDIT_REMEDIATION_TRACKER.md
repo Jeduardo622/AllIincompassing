@@ -42,7 +42,7 @@ Track remediation work from the executive audit report to close production-readi
 | Reliability | Documented test failures | QA / Eng | In progress |
 | Reliability | Schedule data batch RPC 400s (aggregation ORDER BY) | Backend / DB | Applied migration (verify in prod) |
 | Admin Governance | Admin users + guardian queue RPC access broken | Backend / DB | Applied migrations (verify in prod) |
-| Reliability | Dashboard 403 for therapist role | Backend | Code fix pending deploy |
+| Reliability | Dashboard 403 for therapist role | Backend | Completed (admin/super-admin-only contract enforced + tests updated) |
 | Business Logic Correctness | Scheduling RPC least-privilege + lifecycle transition enforcement (sessions/authorizations) | Backend / DB | Completed (`20260310190000_business_logic_lifecycle_hardening.sql`) |
 
 ## Strongly recommended
@@ -122,3 +122,21 @@ Track remediation work from the executive audit report to close production-readi
   - Corrected therapist-authorization env IDs in `.env.codex` to real foreign entities.
   - Hardened `scripts/playwright-therapist-authorization.ts` login and guard detection to reduce flaky failures.
   - Verified `npm run playwright:auth` and `npm run playwright:therapist-authorization` both pass.
+
+## Documentation change log (2026-03-12, Phase 1 execution)
+- Added `docs/PHASE1_EXECUTION_STATUS_2026_03_12.md` with:
+  - Phase 1 workstream execution status (authority convergence, role consistency, test reliability, release/docs alignment).
+  - Validation evidence for policy checks, handler tests, Playwright smokes, and tier-0 Cypress.
+  - Exit-criteria sign-off mapping.
+- Authority and boundary artifacts updated:
+  - `docs/api/critical-endpoint-authority.json`
+  - `docs/api/ENDPOINT_OWNERSHIP_MATRIX.md`
+  - `scripts/ci/check-api-convergence.mjs` (inventory parity validation)
+- Role and reliability hardening updates:
+  - `src/server/api/dashboard.ts` (default-org fallback now explicit opt-in via `DASHBOARD_ALLOW_DEFAULT_ORG_FALLBACK`)
+  - `src/server/api/shared.ts` (local preview/Cypress origins allowlisted)
+  - `src/server/__tests__/dashboardHandler.test.ts`, `src/server/__tests__/bookHandler.test.ts`
+  - `cypress/e2e/routes_integrity.cy.ts`, `cypress/e2e/role_access.cy.ts`
+- Release contract alignment + guardrails:
+  - `docs/PREVIEW_SMOKE.md`, `docs/ENVIRONMENT_MATRIX.md`, `docs/EXEC_OVERVIEW.md`
+  - `scripts/ci/check-runbook-ci-alignment.mjs` integrated into `scripts/ci/run-policy-checks.mjs`

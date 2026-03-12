@@ -8,6 +8,8 @@ const STATIC_ALLOWED_ORIGINS = [
   "https://app.allincompassing.ai",
   "https://preview.allincompassing.ai",
   "https://staging.allincompassing.ai",
+  "http://127.0.0.1:4173",
+  "http://localhost:4173",
   "http://localhost:3000",
   "http://localhost:5173",
 ];

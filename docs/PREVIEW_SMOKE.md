@@ -1,7 +1,7 @@
-Preview smoke test
+# Preview Smoke Test
 
 Run a fast check against a build artefact to ensure the app boots and the Supabase runtime config is wired.
-The CI workflow now builds preview assets, serves them locally, and executes the smoke suite automatically after the canary build completes.
+The CI workflow builds a production bundle (`npm run build`) and runs the tier-0 browser regression gate. Preview smoke commands remain the local/manual baseline for staging and deploy-preview checks.
 
 Usage
 
@@ -27,11 +27,13 @@ npm run preview:smoke:remote -- --url https://deploy-preview-123--<yoursite>.net
 - Anonymous Supabase auth flow returns no active session (guardrails intact)
 
 4) CI integration & debugging
-- `.github/workflows/ci.yml` runs `npm run preview:build` followed by `npm run preview:smoke` and archives `preview-smoke.log` / `preview-smoke-junit.log` artifacts for downstream reviewers.
-- The dedicated `preview` job exposes a local preview URL via job outputs, while the `audit` job enforces the regression checks described in [Production Readiness Runbook §CI/CD Expectations](./PRODUCTION_READINESS_RUNBOOK.md#cicd-expectations).
-- The job fails on non-200 responses or missing runtime-config keys; rerun the same command locally with the URL surfaced in the workflow logs (or the attached artifacts) to debug.
-- `.github/workflows/ci.yml` runs `npm run preview:build` followed by `npm run preview:smoke`. Deploy preview URLs still trigger `npm run preview:smoke:remote`.
-- The job fails on non-200 responses or missing runtime-config keys; rerun the same command locally with the URL surfaced in the workflow logs to debug.
+- `.github/workflows/ci.yml` currently runs:
+  - `npm run build`
+  - `npm run test:routes:tier0`
+- Use local smoke commands to troubleshoot runtime config and Supabase boot:
+  - `npm run preview:build && npm run preview:smoke`
+  - `npm run preview:smoke:remote -- --url <deploy-preview-url>`
+- The smoke command fails on non-200 responses or missing runtime-config keys.
 - Secrets printed by the script remain masked (anon keys are redacted), so it is safe to copy relevant output into incident reports.
 
 Exit codes

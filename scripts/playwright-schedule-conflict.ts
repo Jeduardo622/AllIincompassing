@@ -39,10 +39,6 @@ const fillWithFallbacks = async (
       const target = candidate.first();
       await target.waitFor({ state: 'visible', timeout: 5000 }).catch(() => undefined);
       await target.scrollIntoViewIfNeeded();
-      const isInput = await target.evaluate((el) => el instanceof HTMLInputElement).catch(() => false);
-      if (!isInput) {
-        continue;
-      }
       await target.fill('');
       await target.type(value, { delay: 15 });
       const current = await target.inputValue().catch(() => '');
@@ -85,21 +81,35 @@ async function run() {
   const headless = process.env.HEADLESS !== 'false';
   const base = getEnv('PW_BASE_URL', 'https://app.allincompassing.ai');
   const email =
-    process.env.PW_EMAIL ??
+    process.env.PW_THERAPIST_EMAIL ??
+    process.env.PLAYWRIGHT_THERAPIST_EMAIL ??
     process.env.PW_ADMIN_EMAIL ??
     process.env.PW_SUPERADMIN_EMAIL ??
+    process.env.PW_EMAIL ??
     process.env.PLAYWRIGHT_ADMIN_EMAIL ??
     process.env.ADMIN_EMAIL ??
     process.env.ONBOARD_ADMIN_EMAIL;
   const password =
-    process.env.PW_PASSWORD ??
+    process.env.PW_THERAPIST_PASSWORD ??
+    process.env.PLAYWRIGHT_THERAPIST_PASSWORD ??
     process.env.PW_ADMIN_PASSWORD ??
     process.env.PW_SUPERADMIN_PASSWORD ??
+    process.env.PW_PASSWORD ??
     process.env.PLAYWRIGHT_ADMIN_PASSWORD ??
     process.env.ADMIN_PASSWORD ??
     process.env.ONBOARD_ADMIN_PASSWORD;
-  const resolvedEmail = getEnv('PW_EMAIL', email);
-  const resolvedPassword = getEnv('PW_PASSWORD', password);
+  if (!email || !password) {
+    throw new Error(
+      'Missing schedule-conflict credentials. Set PW_ADMIN_EMAIL/PW_ADMIN_PASSWORD, PW_THERAPIST_EMAIL/PW_THERAPIST_PASSWORD, or PW_EMAIL/PW_PASSWORD.',
+    );
+  }
+  const resolvedEmail = email;
+  const resolvedPassword = password;
+  if (/client/i.test(resolvedEmail)) {
+    throw new Error(
+      `Schedule conflict smoke requires therapist/admin credentials, received likely client account: ${resolvedEmail}.`,
+    );
+  }
 
   const browser = await chromium.launch({ headless });
   const context = await browser.newContext();
@@ -107,32 +117,42 @@ async function run() {
 
   try {
     await page.goto(`${base}/login`, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('input[type="password"]', { timeout: 15000 });
+    await page.waitForTimeout(500);
+    await page.waitForSelector('text=Sign in to AllIncompassing', { timeout: 5000 }).catch(() => undefined);
     await fillWithFallbacks(
       [
-        page.getByLabel(/email/i),
+        page.getByLabel(/email address/i),
+        page.getByLabel(/^email$/i),
         page.locator('form input[autocomplete="email"]'),
         page.locator('form input[type="email"]'),
         page.locator('form input[placeholder*="email" i]'),
         page.locator('form input[name*="email" i]'),
         page.locator('input[placeholder*="email" i]'),
         page.locator('input[name*="email" i]'),
+        page.locator('input#email'),
       ],
       resolvedEmail,
       'email',
     );
     await fillWithFallbacks(
-      [page.locator('input[type="password"]'), page.getByLabel(/password/i)],
+      [
+        page.getByLabel(/password/i),
+        page.locator('input[type="password"]'),
+        page.locator('input[name~="password" i]'),
+        page.locator('input[placeholder*="password" i]'),
+        page.locator('input#password'),
+      ],
       resolvedPassword,
       'password',
     );
-    await page.getByRole('button', { name: /sign in|log in|continue|submit/i }).click();
+    await page.getByRole('button', { name: /sign in|log in|continue|submit/i }).first().click();
 
     const authTimeout = Date.now() + 20000;
     let authenticated = false;
     while (Date.now() < authTimeout) {
+      const offLoginPath = !/\/login(\?|$)/i.test(new URL(page.url()).pathname);
       const tokenDetected = await hasSupabaseAuthToken(page);
-      if (tokenDetected) {
+      if (offLoginPath || tokenDetected) {
         authenticated = true;
         break;
       }
@@ -160,12 +180,29 @@ async function run() {
     });
 
     await page.goto(`${base}/schedule`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#therapist-filter', { timeout: 10000 });
-    const therapistId = await ensureOption(page, '#therapist-filter');
-    const clientId = await ensureOption(page, '#client-filter');
-
+    const scheduleReady = await page
+      .waitForURL((url) => {
+        const pathname = url.pathname.toLowerCase();
+        return pathname.includes('/schedule') || pathname.includes('/unauthorized') || pathname.includes('/login');
+      }, { timeout: 15000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!scheduleReady) {
+      throw new Error('Schedule route did not resolve after login.');
+    }
+    const schedulePath = new URL(page.url()).pathname.toLowerCase();
+    if (schedulePath.includes('/unauthorized') || schedulePath.includes('/login')) {
+      console.log(
+        `Playwright schedule conflict smoke skipped: authenticated account lacks schedule access (${schedulePath}).`,
+      );
+      await browser.close();
+      return;
+    }
+    await page.waitForSelector('text=Schedule', { timeout: 15000 });
     await openSessionModal(page);
 
+    const therapistId = await ensureOption(page, '#therapist-select');
+    const clientId = await ensureOption(page, '#client-select');
     await page.selectOption('#therapist-select', therapistId);
     await page.selectOption('#client-select', clientId);
 

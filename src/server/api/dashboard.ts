@@ -24,6 +24,9 @@ const isProductionEnvironment = (): boolean => {
   return environment === "production";
 };
 
+const allowDashboardFallbackOrg = (): boolean =>
+  getOptionalServerEnv("DASHBOARD_ALLOW_DEFAULT_ORG_FALLBACK") === "true";
+
 async function fetchJson<T = unknown>(url: string, init: RequestInit): Promise<{ status: number; ok: boolean; data: T | null }>
 {
   const response = await fetch(url, init);
@@ -95,7 +98,7 @@ export async function dashboardHandler(request: Request): Promise<Response> {
     });
 
     const fallbackOrgId = (() => {
-      if (isProductionEnvironment()) {
+      if (isProductionEnvironment() || !allowDashboardFallbackOrg()) {
         return null;
       }
       try {

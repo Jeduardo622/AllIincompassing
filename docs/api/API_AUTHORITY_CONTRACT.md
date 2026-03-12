@@ -23,6 +23,7 @@
 
 ## Required Verification per Wave
 - Route-to-runtime matrix updated.
+- Critical authority inventory updated (`docs/api/critical-endpoint-authority.json`).
 - Auth/org-scope parity tests pass.
 - Client contract unchanged (`/api/*` paths and payload contracts preserved unless approved).
 - Rollback note documented for each migrated endpoint.

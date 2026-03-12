@@ -140,3 +140,23 @@ Track remediation work from the executive audit report to close production-readi
 - Release contract alignment + guardrails:
   - `docs/PREVIEW_SMOKE.md`, `docs/ENVIRONMENT_MATRIX.md`, `docs/EXEC_OVERVIEW.md`
   - `scripts/ci/check-runbook-ci-alignment.mjs` integrated into `scripts/ci/run-policy-checks.mjs`
+
+## Documentation change log (2026-03-12, Phase 2 execution)
+- Added `docs/PHASE2_EXECUTION_STATUS_2026_03_12.md` with:
+  - workstream-by-workstream execution evidence
+  - KPI outcomes for schedule latency proxy, payload reduction, and request-discipline checks
+  - policy/non-regression validation summary
+- Added Phase 2 metrics artifacts and checks:
+  - `scripts/perf/capture-p2-baseline.mjs` -> `reports/p2-baseline-metrics.json`
+  - `scripts/ci/check-p2-performance.mjs` -> `reports/p2-performance-metrics.json`
+  - Integrated into policy gate via `scripts/ci/run-policy-checks.mjs`
+- Implemented performance/data-path hardening:
+  - `src/pages/Schedule.tsx`, `src/pages/schedule-utils.ts` (slot index + bounded auto-schedule concurrency)
+  - `src/lib/useRouteQueryRefetch.ts` (route-scoped invalidation)
+  - `src/components/Dashboard/ReportsSummary.tsx`, `src/pages/Reports.tsx` (aggregate/projection-driven report metrics)
+  - `supabase/functions/get-sessions-optimized/index.ts` (cursor pagination + SQL summary aggregation via `get_session_metrics`)
+- Added regression tests for P2 contracts:
+  - `src/pages/__tests__/schedule-utils.test.ts`
+  - `src/lib/__tests__/useRouteQueryRefetch.test.ts`
+  - `src/pages/__tests__/Reports.metrics.test.ts`
+  - `src/components/Dashboard/__tests__/ReportsSummary.metrics.test.ts`

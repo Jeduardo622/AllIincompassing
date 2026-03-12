@@ -1,0 +1,26 @@
+{
+  "capturedAt": "2026-03-12T18:56:40.144Z",
+  "baseline": {
+    "schedule": {
+      "syntheticSessions": 1320,
+      "slotsPerDay": 40,
+      "days": 6,
+      "legacySlotFilter": {
+        "durationMs": 12.73,
+        "totalMatches": 1320,
+        "comparisons": 316800
+      }
+    },
+    "queries": {
+      "globalRouteInvalidationEnabled": true
+    },
+    "payload": {
+      "wildcardSelectCountInDashboardReportsPaths": 1,
+      "riskSignals": {
+        "reportsRawDataExport": true,
+        "reportsSummaryWildcardSessionFetch": true,
+        "reportsSummaryWildcardTherapistFetch": true
+      }
+    }
+  }
+}

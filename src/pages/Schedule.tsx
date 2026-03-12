@@ -36,6 +36,9 @@ import type {
   BookSessionResult,
 } from "../server/types";
 import {
+  buildSessionSlotIndex,
+  createSessionSlotKey,
+  mapWithConcurrency,
   normalizeRecurrencePayload,
   toPendingScheduleDetail,
   type PendingScheduleDetail,
@@ -44,19 +47,20 @@ import {
 import { useCapturePendingScheduleEvent } from "./schedule-state";
 
 const SESSION_HOLD_SECONDS = 5 * 60; // 5 minutes
+const AUTO_SCHEDULE_CONCURRENCY = 3;
 
 // Memoized time slot component
 const TimeSlot = React.memo(
   ({
     time,
     day,
-    sessions,
+    slotSessions,
     onCreateSession,
     onEditSession,
   }: {
     time: string;
     day: Date;
-    sessions: Session[];
+    slotSessions: Session[];
     onCreateSession: (timeSlot: { date: Date; time: string }) => void;
     onEditSession: (session: Session) => void;
   }) => {
@@ -72,22 +76,6 @@ const TimeSlot = React.memo(
       [onEditSession],
     );
 
-    // Filter sessions for this time slot
-    const daySessions = useMemo(() => {
-      const dayStr = format(day, "yyyy-MM-dd");
-      return sessions.filter((session) => {
-        const startIso = session.start_time;
-        const localDate = format(parseISO(startIso), "yyyy-MM-dd");
-        const localHHmm = format(parseISO(startIso), "HH:mm");
-        const rawDate = typeof startIso === "string" && startIso.length >= 10 ? startIso.slice(0, 10) : undefined;
-        const rawHHmm = typeof startIso === "string" && startIso.length >= 16 ? startIso.slice(11, 16) : undefined;
-
-        const sameDay = localDate === dayStr || rawDate === dayStr;
-        const sameTime = localHHmm === time || rawHHmm === time;
-        return sameDay && sameTime;
-      });
-    }, [sessions, day, time]);
-
     return (
       <div
         className="h-10 border-b dark:border-gray-700 border-r dark:border-gray-700 p-2 relative group cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
@@ -102,7 +90,7 @@ const TimeSlot = React.memo(
           <Plus className="w-4 h-4 text-gray-500 dark:text-gray-400" />
         </button>
 
-        {daySessions.map((session) => (
+        {slotSessions.map((session) => (
           <div
             key={session.id}
             className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 rounded p-1 text-xs mb-1 group/session relative cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
@@ -291,7 +279,7 @@ const DayColumn = React.memo(
   ({
     day,
     timeSlots,
-    sessions,
+    sessionSlotIndex,
     onCreateSession,
     onEditSession,
     showAvailability,
@@ -300,13 +288,15 @@ const DayColumn = React.memo(
   }: {
     day: Date;
     timeSlots: string[];
-    sessions: Session[];
+    sessionSlotIndex: Map<string, Session[]>;
     onCreateSession: (timeSlot: { date: Date; time: string }) => void;
     onEditSession: (session: Session) => void;
     showAvailability: boolean;
     therapists: Therapist[];
     clients: Client[];
   }) => {
+    const dayKey = useMemo(() => format(day, "yyyy-MM-dd"), [day]);
+
     return (
       <div className="relative">
         {showAvailability && (
@@ -323,7 +313,7 @@ const DayColumn = React.memo(
             key={time}
             time={time}
             day={day}
-            sessions={sessions}
+            slotSessions={sessionSlotIndex.get(createSessionSlotKey(dayKey, time)) ?? []}
             onCreateSession={onCreateSession}
             onEditSession={onEditSession}
           />
@@ -340,7 +330,7 @@ const WeekView = React.memo(
   ({
     weekDays,
     timeSlots,
-    sessions,
+    sessionSlotIndex,
     onCreateSession,
     onEditSession,
     showAvailability,
@@ -349,7 +339,7 @@ const WeekView = React.memo(
   }: {
     weekDays: Date[];
     timeSlots: string[];
-    sessions: Session[];
+    sessionSlotIndex: Map<string, Session[]>;
     onCreateSession: (timeSlot: { date: Date; time: string }) => void;
     onEditSession: (session: Session) => void;
     showAvailability: boolean;
@@ -389,7 +379,7 @@ const WeekView = React.memo(
               key={day.toISOString()}
               day={day}
               timeSlots={timeSlots}
-              sessions={sessions}
+              sessionSlotIndex={sessionSlotIndex}
               onCreateSession={onCreateSession}
               onEditSession={onEditSession}
               showAvailability={showAvailability}
@@ -410,7 +400,7 @@ const DayView = React.memo(
   ({
     selectedDate,
     timeSlots,
-    sessions,
+    sessionSlotIndex,
     onCreateSession,
     onEditSession,
     showAvailability,
@@ -419,13 +409,15 @@ const DayView = React.memo(
   }: {
     selectedDate: Date;
     timeSlots: string[];
-    sessions: Session[];
+    sessionSlotIndex: Map<string, Session[]>;
     onCreateSession: (timeSlot: { date: Date; time: string }) => void;
     onEditSession: (session: Session) => void;
     showAvailability: boolean;
     therapists: Therapist[];
     clients: Client[];
   }) => {
+    const selectedDateKey = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
+
     return (
       <div
         className="bg-white dark:bg-dark-lighter rounded-lg shadow overflow-x-auto"
@@ -467,7 +459,7 @@ const DayView = React.memo(
                 key={time}
                 time={time}
                 day={selectedDate}
-                sessions={sessions}
+                slotSessions={sessionSlotIndex.get(createSessionSlotKey(selectedDateKey, time)) ?? []}
                 onCreateSession={onCreateSession}
                 onEditSession={onEditSession}
               />
@@ -879,38 +871,37 @@ export const Schedule = React.memo(() => {
 
   const createMultipleSessionsMutation = useMutation({
     mutationFn: async (newSessions: Partial<Session>[]) => {
-      const createdSessions: Session[] = [];
-
-      for (const session of newSessions) {
-        if (
-          !session.therapist_id ||
-          !session.client_id ||
-          !session.program_id ||
-          !session.goal_id ||
-          !session.start_time ||
-          !session.end_time
-        ) {
-          throw new Error("Missing required session details");
-        }
-
-        const { startOffsetMinutes, endOffsetMinutes, timeZone } =
-          computeTimeMetadata(session);
-
-        const bookingResult = await callBookSessionApi(
-          {
-            ...buildBookingPayload(session, {
-              startOffsetMinutes,
-              endOffsetMinutes,
-              timeZone,
-            }),
-            overrides: undefined,
+      return mapWithConcurrency(
+        newSessions,
+        async (session) => {
+          if (
+            !session.therapist_id ||
+            !session.client_id ||
+            !session.program_id ||
+            !session.goal_id ||
+            !session.start_time ||
+            !session.end_time
+          ) {
+            throw new Error("Missing required session details");
           }
-        );
 
-        createdSessions.push(bookingResult.session);
-      }
+          const { startOffsetMinutes, endOffsetMinutes, timeZone } =
+            computeTimeMetadata(session);
 
-      return createdSessions;
+          const bookingResult = await callBookSessionApi(
+            {
+              ...buildBookingPayload(session, {
+                startOffsetMinutes,
+                endOffsetMinutes,
+                timeZone,
+              }),
+              overrides: undefined,
+            }
+          );
+          return bookingResult.session;
+        },
+        AUTO_SCHEDULE_CONCURRENCY,
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
@@ -1157,6 +1148,11 @@ export const Schedule = React.memo(() => {
       ) => addDays(weekStart, i),
     );
   }, [weekStart]);
+
+  const sessionSlotIndex = useMemo(
+    () => buildSessionSlotIndex(displayData.sessions),
+    [displayData.sessions],
+  );
 
   // Memoized date range display
   const dateRangeDisplay = useMemo(() => {
@@ -1455,14 +1451,7 @@ export const Schedule = React.memo(() => {
         <DayView
           selectedDate={selectedDate}
           timeSlots={timeSlots}
-          sessions={displayData.sessions.filter((session) => {
-            const localDate = format(parseISO(session.start_time), "yyyy-MM-dd");
-            const rawDate = typeof session.start_time === "string" && session.start_time.length >= 10
-              ? session.start_time.slice(0, 10)
-              : undefined;
-            const selectedStr = format(selectedDate, "yyyy-MM-dd");
-            return localDate === selectedStr || rawDate === selectedStr;
-          })}
+          sessionSlotIndex={sessionSlotIndex}
           onCreateSession={handleCreateSession}
           onEditSession={handleEditSession}
           showAvailability={showAvailability}
@@ -1473,7 +1462,7 @@ export const Schedule = React.memo(() => {
         <WeekView
           weekDays={weekDays}
           timeSlots={timeSlots}
-          sessions={displayData.sessions}
+          sessionSlotIndex={sessionSlotIndex}
           onCreateSession={handleCreateSession}
           onEditSession={handleEditSession}
           showAvailability={showAvailability}

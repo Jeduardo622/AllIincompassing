@@ -52,6 +52,56 @@ interface ReportData {
   rawData?: SessionData[];
 }
 
+const toNumber = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : 0;
+
+const toCountMap = (value: unknown): Record<string, number> => {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+  const input = value as Record<string, unknown>;
+  const normalized: Record<string, number> = {};
+  for (const [rawKey, rawValue] of Object.entries(input)) {
+    const key = rawKey.trim();
+    const count = toNumber(rawValue);
+    if (key.length > 0 && count > 0) {
+      normalized[key] = count;
+    }
+  }
+  return normalized;
+};
+
+const normalizeSessionMetricsData = (value: unknown): ReportData | null => {
+  const row = Array.isArray(value) ? value[0] : value;
+  if (!row || typeof row !== 'object') {
+    return null;
+  }
+
+  const record = row as Record<string, unknown>;
+  const totalSessions = toNumber(record.total_sessions ?? record.totalSessions);
+  const completedSessions = toNumber(record.completed_sessions ?? record.completedSessions);
+  const cancelledSessions = toNumber(record.cancelled_sessions ?? record.cancelledSessions);
+  const noShowSessions = toNumber(record.no_show_sessions ?? record.noShowSessions);
+
+  return {
+    totalSessions,
+    completedSessions,
+    cancelledSessions,
+    noShowSessions,
+    completionRate: totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 0,
+    sessionsByTherapist: toCountMap(record.sessions_by_therapist ?? record.sessionsByTherapist),
+    sessionsByClient: toCountMap(record.sessions_by_client ?? record.sessionsByClient),
+    sessionsByDayOfWeek: toCountMap(record.sessions_by_day ?? record.sessionsByDayOfWeek),
+    rawData: [],
+  };
+};
+
+export const __TESTING__ = {
+  toNumber,
+  toCountMap,
+  normalizeSessionMetricsData,
+};
+
 // Memoized report sections
 const ReportMetrics = React.memo(({ 
   totalSessions = 0, 
@@ -124,7 +174,9 @@ const Reports = React.memo(() => {
     let query = supabase
       .from('sessions')
       .select(`
-        *,
+        id,
+        start_time,
+        status,
         therapist:therapists(id, full_name),
         client:clients(id, full_name)
       `)
@@ -200,7 +252,7 @@ const Reports = React.memo(() => {
         case 'sessions':
           // Use optimized session metrics if available
           if (sessionMetricsData) {
-            data = sessionMetricsData;
+            data = normalizeSessionMetricsData(sessionMetricsData) ?? await generateSessionsReport();
           } else {
             data = await generateSessionsReport();
           }

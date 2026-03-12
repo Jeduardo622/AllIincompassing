@@ -65,6 +65,7 @@
     "ci:check:migrations": "node scripts/ci/check-migration-governance.mjs",
     "ci:check:test-reliability": "node scripts/ci/check-test-reliability.mjs",
     "ci:check:architecture-pack": "node scripts/ci/check-architecture-pack-freshness.mjs",
+    "ci:check:p2-performance": "node scripts/ci/check-p2-performance.mjs",
     "ci:touch:architecture-pack": "node scripts/ci/touch-architecture-pack-review-date.mjs",
     "ci:report:test-reliability": "node scripts/ci/report-test-reliability.mjs",
     "ci:report:api-cutover": "node scripts/ci/report-api-cutover-status.mjs",
@@ -72,6 +73,8 @@
     "ci:verify-coverage": "node scripts/ci/verify-coverage.mjs",
     "migration:new": "node scripts/migrations/new-migration-with-header.mjs",
     "validate:tenant": "npx tsx scripts/check-tenant-safety.ts",
+    "perf:p2:baseline": "node scripts/perf/capture-p2-baseline.mjs",
+    "perf:p2:check": "node scripts/ci/check-p2-performance.mjs",
     "prepare": "husky"
   },
   "dependencies": {

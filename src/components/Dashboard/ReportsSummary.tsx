@@ -1,11 +1,53 @@
-import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { BarChart, TrendingUp, ArrowRight } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
-import { useDashboardLiveRefresh } from '../../lib/dashboardLiveRefresh';
-import { fetchClients } from '../../lib/clients/fetchers';
+import { useDropdownData, useSessionMetrics } from '../../lib/optimizedQueries';
+
+type SessionMetricsRow = {
+  total_sessions?: number;
+  completed_sessions?: number;
+  cancelled_sessions?: number;
+  no_show_sessions?: number;
+  sessions_by_therapist?: Record<string, number> | null;
+  sessions_by_client?: Record<string, number> | null;
+  sessions_by_day?: Record<string, number> | null;
+};
+
+const coerceMetricsRow = (value: unknown): SessionMetricsRow => {
+  if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'object' && value[0] !== null) {
+    return value[0] as SessionMetricsRow;
+  }
+  if (value && typeof value === 'object') {
+    return value as SessionMetricsRow;
+  }
+  return {};
+};
+
+const toNumber = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+
+const toCountMap = (value: unknown): Record<string, number> => {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+
+  const input = value as Record<string, unknown>;
+  const normalized: Record<string, number> = {};
+  for (const [rawKey, rawValue] of Object.entries(input)) {
+    const key = rawKey.trim();
+    const count = toNumber(rawValue);
+    if (key.length > 0 && count > 0) {
+      normalized[key] = count;
+    }
+  }
+  return normalized;
+};
+
+export const __TESTING__ = {
+  coerceMetricsRow,
+  toNumber,
+  toCountMap,
+};
 
 export function ReportsSummary() {
   // Get current month date range
@@ -16,91 +58,54 @@ export function ReportsSummary() {
   const lastMonthStart = format(startOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd');
   const lastMonthEnd = format(endOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd');
 
-  const { isLiveRole, intervalMs } = useDashboardLiveRefresh();
-  const liveQueryOptions = isLiveRole
-    ? {
-        refetchInterval: intervalMs,
-        refetchIntervalInBackground: true,
-      }
-    : {};
+  const { data: dropdownData } = useDropdownData();
+  const { data: currentMonthMetricsData } = useSessionMetrics(startDate, endDate);
+  const { data: lastMonthMetricsData } = useSessionMetrics(lastMonthStart, lastMonthEnd);
 
-  // Fetch current month sessions
-  const { data: currentSessions = [] } = useQuery({
-    queryKey: ['sessions', 'current-month'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('sessions')
-        .select('*')
-        .gte('start_time', `${startDate}T00:00:00`)
-        .lte('start_time', `${endDate}T23:59:59`);
-      
-      if (error) throw error;
-      return data || [];
-    },
-    ...(liveQueryOptions ?? {}),
-  });
+  const clients = dropdownData?.clients ?? [];
+  const therapists = dropdownData?.therapists ?? [];
+  const currentMetrics = coerceMetricsRow(currentMonthMetricsData);
+  const lastMetrics = coerceMetricsRow(lastMonthMetricsData);
 
-  // Fetch last month sessions for comparison
-  const { data: lastSessions = [] } = useQuery({
-    queryKey: ['sessions', 'last-month'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('sessions')
-        .select('*')
-        .gte('start_time', `${lastMonthStart}T00:00:00`)
-        .lte('start_time', `${lastMonthEnd}T23:59:59`);
-      
-      if (error) throw error;
-      return data || [];
-    },
-    ...(liveQueryOptions ?? {}),
-  });
-
-  // Fetch clients
-  const { data: clients = [] } = useQuery({
-    queryKey: ['clients', 'dashboard-summary'],
-    queryFn: () => fetchClients({ allowAll: true }),
-    ...(liveQueryOptions ?? {}),
-  });
-
-  // Fetch therapists
-  const { data: therapists = [] } = useQuery({
-    queryKey: ['therapists'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('therapists')
-        .select('*');
-      
-      if (error) throw error;
-      return data || [];
-    },
-    ...(liveQueryOptions ?? {}),
-  });
-
-  // Calculate metrics
-  const totalSessions = currentSessions.length;
-  const lastMonthSessions = lastSessions.length;
+  // Calculate metrics from aggregated rows
+  const totalSessions = toNumber(currentMetrics.total_sessions);
+  const lastMonthSessions = toNumber(lastMetrics.total_sessions);
   const sessionChange = lastMonthSessions > 0 
     ? ((totalSessions - lastMonthSessions) / lastMonthSessions) * 100 
     : 100;
   
-  const completedSessions = currentSessions.filter(s => s.status === 'completed').length;
-  const lastMonthCompleted = lastSessions.filter(s => s.status === 'completed').length;
+  const completedSessions = toNumber(currentMetrics.completed_sessions);
+  const cancelledSessions = toNumber(currentMetrics.cancelled_sessions);
+  const noShowSessions = toNumber(currentMetrics.no_show_sessions);
+  const scheduledSessions = Math.max(0, totalSessions - completedSessions - cancelledSessions - noShowSessions);
+
+  const lastMonthCompleted = toNumber(lastMetrics.completed_sessions);
   const completionChange = lastMonthCompleted > 0 
     ? ((completedSessions - lastMonthCompleted) / lastMonthCompleted) * 100 
     : 100;
   
-  const activeClients = new Set(currentSessions.map(s => s.client_id)).size;
-  const lastMonthActiveClients = new Set(lastSessions.map(s => s.client_id)).size;
+  const currentByClient = toCountMap(currentMetrics.sessions_by_client);
+  const lastByClient = toCountMap(lastMetrics.sessions_by_client);
+  const activeClients = Object.keys(currentByClient).length;
+  const lastMonthActiveClients = Object.keys(lastByClient).length;
   const clientChange = lastMonthActiveClients > 0 
     ? ((activeClients - lastMonthActiveClients) / lastMonthActiveClients) * 100 
     : 100;
   
-  const activeTherapists = new Set(currentSessions.map(s => s.therapist_id)).size;
-  const lastMonthActiveTherapists = new Set(lastSessions.map(s => s.therapist_id)).size;
+  const currentByTherapist = toCountMap(currentMetrics.sessions_by_therapist);
+  const lastByTherapist = toCountMap(lastMetrics.sessions_by_therapist);
+  const activeTherapists = Object.keys(currentByTherapist).length;
+  const lastMonthActiveTherapists = Object.keys(lastByTherapist).length;
   const therapistChange = lastMonthActiveTherapists > 0 
     ? ((activeTherapists - lastMonthActiveTherapists) / lastMonthActiveTherapists) * 100 
     : 100;
+
+  const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const sessionsByDay = useMemo(() => {
+    const source = toCountMap(currentMetrics.sessions_by_day);
+    return dayOrder.map((day) => ({ day, count: source[day] ?? 0 }));
+  }, [currentMetrics.sessions_by_day]);
+  const maxDayCount = Math.max(1, ...sessionsByDay.map((entry) => entry.count));
 
   return (
     <div className="bg-white dark:bg-dark-lighter rounded-lg shadow p-6">
@@ -198,23 +203,23 @@ export function ReportsSummary() {
           <div className="flex h-4 rounded-full overflow-hidden">
             <div 
               className="bg-green-500" 
-              style={{ width: `${(completedSessions / totalSessions) * 100}%` }}
+              style={{ width: `${totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 0}%` }}
               title={`Completed: ${completedSessions}`}
             ></div>
             <div 
               className="bg-yellow-500" 
-              style={{ width: `${(currentSessions.filter(s => s.status === 'scheduled').length / totalSessions) * 100}%` }}
-              title={`Scheduled: ${currentSessions.filter(s => s.status === 'scheduled').length}`}
+              style={{ width: `${totalSessions > 0 ? (scheduledSessions / totalSessions) * 100 : 0}%` }}
+              title={`Scheduled: ${scheduledSessions}`}
             ></div>
             <div 
               className="bg-red-500" 
-              style={{ width: `${(currentSessions.filter(s => s.status === 'cancelled').length / totalSessions) * 100}%` }}
-              title={`Cancelled: ${currentSessions.filter(s => s.status === 'cancelled').length}`}
+              style={{ width: `${totalSessions > 0 ? (cancelledSessions / totalSessions) * 100 : 0}%` }}
+              title={`Cancelled: ${cancelledSessions}`}
             ></div>
             <div 
               className="bg-gray-500" 
-              style={{ width: `${(currentSessions.filter(s => s.status === 'no-show').length / totalSessions) * 100}%` }}
-              title={`No-show: ${currentSessions.filter(s => s.status === 'no-show').length}`}
+              style={{ width: `${totalSessions > 0 ? (noShowSessions / totalSessions) * 100 : 0}%` }}
+              title={`No-show: ${noShowSessions}`}
             ></div>
           </div>
           <div className="flex justify-between mt-2 text-xs text-gray-500 dark:text-gray-400">
@@ -240,12 +245,7 @@ export function ReportsSummary() {
         <div>
           <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Sessions by Day of Week</h3>
           <div className="space-y-2">
-            {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map(day => {
-              const count = currentSessions.filter(s => {
-                const sessionDate = new Date(s.start_time);
-                return format(sessionDate, 'EEEE') === day;
-              }).length;
-              
+            {sessionsByDay.map(({ day, count }) => {
               return (
                 <div key={day} className="flex items-center">
                   <span className="text-xs text-gray-500 dark:text-gray-400 w-20">{day}</span>
@@ -253,9 +253,7 @@ export function ReportsSummary() {
                     <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                       <div 
                         className="bg-blue-600 h-2 rounded-full" 
-                        style={{ width: `${(count / Math.max(...['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map(d => 
-                          currentSessions.filter(s => format(new Date(s.start_time), 'EEEE') === d).length
-                        ))) * 100}%` }}
+                        style={{ width: `${(count / maxDayCount) * 100}%` }}
                       ></div>
                     </div>
                   </div>

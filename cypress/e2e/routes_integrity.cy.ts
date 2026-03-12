@@ -75,13 +75,14 @@ describe('Routes Integrity', () => {
         return;
       }
 
-      req.continue((res) => {
+      req.on('response', (res) => {
         interceptedRequests.push({
           url: req.url,
           method: req.method,
           status: res.statusCode,
         });
       });
+      req.continue();
     });
 
     cy.intercept('GET', '**/__supabase/rest/v1/clients**', (req) => {

@@ -1,6 +1,7 @@
 import { fromZonedTime as zonedTimeToUtc } from "date-fns-tz";
 import { logger } from "../lib/logger/logger";
 import { toError } from "../lib/logger/normalizeError";
+import type { Session } from "../types";
 import type { SessionRecurrence } from "../server/types";
 
 export interface RecurrenceFormState {
@@ -122,4 +123,79 @@ export function normalizeRecurrencePayload(
   }
 
   return recurrence;
+}
+
+export function createSessionSlotKey(dateKey: string, timeKey: string): string {
+  return `${dateKey}|${timeKey}`;
+}
+
+function parseSessionStartTime(startTime: string): { dateKey: string; timeKey: string } | null {
+  const rawDate = startTime.length >= 10 ? startTime.slice(0, 10) : "";
+  const rawTime = startTime.length >= 16 ? startTime.slice(11, 16) : "";
+
+  if (rawDate.length === 10 && rawTime.length === 5) {
+    return { dateKey: rawDate, timeKey: rawTime };
+  }
+
+  const parsed = new Date(startTime);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const hours = String(parsed.getHours()).padStart(2, "0");
+  const minutes = String(parsed.getMinutes()).padStart(2, "0");
+
+  return {
+    dateKey: `${parsed.getFullYear()}-${month}-${day}`,
+    timeKey: `${hours}:${minutes}`,
+  };
+}
+
+export function buildSessionSlotIndex(sessions: Session[]): Map<string, Session[]> {
+  const index = new Map<string, Session[]>();
+
+  for (const session of sessions) {
+    if (typeof session.start_time !== "string") {
+      continue;
+    }
+
+    const start = parseSessionStartTime(session.start_time);
+    if (!start) {
+      continue;
+    }
+
+    const key = createSessionSlotKey(start.dateKey, start.timeKey);
+    const existing = index.get(key);
+    if (existing) {
+      existing.push(session);
+    } else {
+      index.set(key, [session]);
+    }
+  }
+
+  return index;
+}
+
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  worker: (item: T, index: number) => Promise<R>,
+  concurrency: number,
+): Promise<R[]> {
+  const normalizedConcurrency = Math.max(1, Math.floor(concurrency));
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+
+  const runWorker = async () => {
+    while (cursor < items.length) {
+      const currentIndex = cursor;
+      cursor += 1;
+      results[currentIndex] = await worker(items[currentIndex], currentIndex);
+    }
+  };
+
+  const workers = Array.from({ length: Math.min(normalizedConcurrency, items.length) }, () => runWorker());
+  await Promise.all(workers);
+  return results;
 }

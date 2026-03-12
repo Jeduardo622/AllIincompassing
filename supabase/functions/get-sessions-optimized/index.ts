@@ -13,6 +13,7 @@ interface SessionFilters {
   client_id?: string;
   page?: number;
   limit?: number;
+  cursor?: string;
 }
 interface OptimizedSessionResponse {
   sessions: Array<{
@@ -40,6 +41,7 @@ interface OptimizedSessionResponse {
     totalPages: number;
     hasNextPage: boolean;
     hasPreviousPage: boolean;
+    nextCursor?: string | null;
   };
   summary: {
     totalSessions: number;
@@ -121,6 +123,7 @@ Deno.serve(async (req: Request) => {
       client_id: requestedClientId,
       page: parseInt(url.searchParams.get("page") || "1", 10),
       limit: Math.min(parseInt(url.searchParams.get("limit") || "50", 10), MAX_LIMIT),
+      cursor: url.searchParams.get("cursor") || undefined,
     };
 
     const { data: roleRows } = await db.rpc("get_user_roles");
@@ -188,6 +191,7 @@ Deno.serve(async (req: Request) => {
       : effectiveTherapistId ?? undefined;
     const clientIdFilter = requestedClientId ?? undefined;
 
+    const limit = filters.limit || 50;
     let query = buildSessionBaseQuery(db, orgId);
 
     if (therapistIdFilter) query = query.eq("therapist_id", therapistIdFilter);
@@ -197,28 +201,60 @@ Deno.serve(async (req: Request) => {
     if (filters.start_date) query = query.gte("start_time", `${filters.start_date}T00:00:00`);
     if (filters.end_date) query = query.lte("start_time", `${filters.end_date}T23:59:59`);
 
-    const offset = ((filters.page || 1) - 1) * (filters.limit || 50);
-    query = query.range(offset, offset + (filters.limit || 50) - 1);
-    query = query.order("start_time", { ascending: false });
+    query = query.order("start_time", { ascending: false }).order("id", { ascending: false });
+    if (filters.cursor) {
+      query = query.lt("start_time", filters.cursor);
+      query = query.limit(limit + 1);
+    } else {
+      const offset = ((filters.page || 1) - 1) * limit;
+      query = query.range(offset, offset + limit);
+    }
 
     const { data: sessions, error, count } = await query;
     if (error) throw error;
 
-    let summaryQuery = buildSessionSummaryQuery(db, orgId);
-    if (therapistIdFilter) summaryQuery = summaryQuery.eq("therapist_id", therapistIdFilter);
-    if (clientIdFilter) summaryQuery = summaryQuery.eq("client_id", clientIdFilter);
-    if (filters.start_date) summaryQuery = summaryQuery.gte("start_time", `${filters.start_date}T00:00:00`);
-    if (filters.end_date) summaryQuery = summaryQuery.lte("start_time", `${filters.end_date}T23:59:59`);
-
-    const { data: allFilteredSessions, error: summaryError } = await summaryQuery;
+    const summaryStartDate = filters.start_date ?? "1970-01-01";
+    const summaryEndDate = filters.end_date ?? "2100-01-01";
+    const { data: sessionMetricsRows, error: summaryError } = await db.rpc("get_session_metrics", {
+      p_start_date: summaryStartDate,
+      p_end_date: summaryEndDate,
+      p_therapist_id: therapistIdFilter ?? null,
+      p_client_id: clientIdFilter ?? null,
+    });
     if (summaryError) throw summaryError;
 
-    const totalSessions = count || 0;
-    const completedSessions = allFilteredSessions?.filter((s: { status?: string }) => s.status === "completed").length || 0;
-    const upcomingSessions = allFilteredSessions?.filter((s: { status?: string }) => s.status === "scheduled").length || 0;
-    const cancelledSessions = allFilteredSessions?.filter((s: { status?: string }) => s.status === "cancelled").length || 0;
+    const summaryRow =
+      Array.isArray(sessionMetricsRows) && sessionMetricsRows.length > 0
+        ? sessionMetricsRows[0] as {
+            total_sessions?: number | null;
+            completed_sessions?: number | null;
+            cancelled_sessions?: number | null;
+            no_show_sessions?: number | null;
+          }
+        : {};
 
-    const formattedSessions = sessions?.map((session) => ({
+    const rawSessions = sessions ?? [];
+    const hasExtraCursorRow = Boolean(filters.cursor) && rawSessions.length > limit;
+    const visibleSessions = hasExtraCursorRow ? rawSessions.slice(0, limit) : rawSessions;
+    const nextCursor = hasExtraCursorRow
+      ? visibleSessions[visibleSessions.length - 1]?.start_time ?? null
+      : null;
+
+    const totalSessions = typeof summaryRow.total_sessions === "number"
+      ? summaryRow.total_sessions
+      : (count || 0);
+    const completedSessions = typeof summaryRow.completed_sessions === "number"
+      ? summaryRow.completed_sessions
+      : 0;
+    const cancelledSessions = typeof summaryRow.cancelled_sessions === "number"
+      ? summaryRow.cancelled_sessions
+      : 0;
+    const noShowSessions = typeof summaryRow.no_show_sessions === "number"
+      ? summaryRow.no_show_sessions
+      : 0;
+    const upcomingSessions = Math.max(0, totalSessions - completedSessions - cancelledSessions - noShowSessions);
+
+    const formattedSessions = visibleSessions.map((session) => ({
       id: session.id,
       start_time: session.start_time,
       end_time: session.end_time,
@@ -242,18 +278,19 @@ Deno.serve(async (req: Request) => {
         : undefined,
     })) || [];
 
-    const totalPages = Math.ceil(totalSessions / (filters.limit || 50));
+    const totalPages = Math.ceil(totalSessions / limit);
     const currentPage = filters.page || 1;
 
     const response: OptimizedSessionResponse = {
       sessions: formattedSessions,
       pagination: {
         page: currentPage,
-        limit: filters.limit || 50,
+        limit,
         total: totalSessions,
         totalPages,
-        hasNextPage: currentPage < totalPages,
+        hasNextPage: filters.cursor ? Boolean(nextCursor) : currentPage < totalPages,
         hasPreviousPage: currentPage > 1,
+        nextCursor,
       },
       summary: { totalSessions, completedSessions, upcomingSessions, cancelledSessions },
     };

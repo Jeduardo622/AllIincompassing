@@ -1,6 +1,12 @@
 import "../bootstrapSupabase";
 import { bookSession } from "../bookSession";
-import { errorResponse } from "./shared";
+import {
+  consumeRateLimit,
+  corsHeadersForRequest,
+  errorResponse,
+  isDisallowedOriginRequest,
+  jsonForRequest,
+} from "./shared";
 import {
   bookSessionApiRequestBodySchema,
   type BookSessionApiRequestBody,
@@ -10,26 +16,9 @@ import {
 import { logger } from "../../lib/logger/logger";
 import { toError } from "../../lib/logger/normalizeError";
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+const JSON_CONTENT_TYPE_HEADER: Record<string, string> = {
+  "Content-Type": "application/json",
 };
-
-function jsonResponse(
-  body: BookSessionApiResponse,
-  status = 200,
-  extraHeaders: Record<string, string> = {},
-) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      ...CORS_HEADERS,
-      ...extraHeaders,
-    },
-  });
-}
 
 function normalizePayload(
   body: BookSessionApiRequestBody,
@@ -62,12 +51,30 @@ function deriveRetryAfterSeconds(retryAfter: string | null | undefined): number 
 }
 
 export async function bookHandler(request: Request): Promise<Response> {
+  if (isDisallowedOriginRequest(request)) {
+    return errorResponse(request, "forbidden", "Origin not allowed", { status: 403 });
+  }
+
   if (request.method === "OPTIONS") {
-    return new Response("ok", { status: 200, headers: CORS_HEADERS });
+    return new Response("ok", {
+      status: 200,
+      headers: { ...JSON_CONTENT_TYPE_HEADER, ...corsHeadersForRequest(request) },
+    });
   }
 
   if (request.method !== "POST") {
     return errorResponse(request, "validation_error", "Method not allowed", { status: 405 });
+  }
+
+  const rateLimit = consumeRateLimit(request, {
+    keyPrefix: "api:book",
+    maxRequests: 30,
+    windowMs: 60_000,
+  });
+  if (rateLimit.limited) {
+    return errorResponse(request, "rate_limited", "Too many booking requests", {
+      headers: { "Retry-After": String(rateLimit.retryAfterSeconds) },
+    });
   }
 
   const authHeader = request.headers.get("Authorization");
@@ -116,9 +123,9 @@ export async function bookHandler(request: Request): Promise<Response> {
     };
     const result = await bookSession(normalizePayload(body, idempotencyKey, accessToken, trace));
     const headers = idempotencyKey
-      ? { "Idempotency-Key": idempotencyKey }
-      : {};
-    return jsonResponse({ success: true, data: result }, 200, headers);
+      ? { ...JSON_CONTENT_TYPE_HEADER, "Idempotency-Key": idempotencyKey }
+      : { ...JSON_CONTENT_TYPE_HEADER };
+    return jsonForRequest(request, { success: true, data: result } satisfies BookSessionApiResponse, 200, headers);
   } catch (error) {
     const status = typeof (error as { status?: number })?.status === "number"
       ? (error as { status: number }).status
@@ -148,7 +155,8 @@ export async function bookHandler(request: Request): Promise<Response> {
         ? `The selected slot is unavailable. Retry after about ${retryAfterSeconds} seconds or choose a different time.`
         : "The selected slot is unavailable. Refresh the schedule or choose a different time.";
       const headers = retryAfterSeconds !== null ? { "Retry-After": String(retryAfterSeconds) } : {};
-      return jsonResponse(
+      return jsonForRequest(
+        request,
         {
           success: false,
           error: "Booking failed",

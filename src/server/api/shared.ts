@@ -62,6 +62,66 @@ const API_ERROR_TAXONOMY: Record<ApiErrorCode, ApiErrorClassification> = {
   upstream_error: { category: "upstream", severity: "high", retryable: true, httpStatus: 502 },
 };
 
+type RateLimitOptions = {
+  keyPrefix: string;
+  maxRequests: number;
+  windowMs: number;
+};
+
+type RateLimitResult =
+  | { limited: false; retryAfterSeconds: null }
+  | { limited: true; retryAfterSeconds: number };
+
+type RateLimitState = {
+  count: number;
+  resetAtMs: number;
+};
+
+const requestRateState = new Map<string, RateLimitState>();
+
+function extractClientKey(request: Request): string {
+  const token = getAccessToken(request);
+  const tokenSubject = token ? getAccessTokenSubject(token) : null;
+  if (tokenSubject) {
+    return `sub:${tokenSubject}`;
+  }
+
+  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  if (forwardedFor) {
+    return `ip:${forwardedFor}`;
+  }
+
+  return "anonymous";
+}
+
+export function consumeRateLimit(request: Request, options: RateLimitOptions): RateLimitResult {
+  const now = Date.now();
+  const identityKey = `${options.keyPrefix}:${extractClientKey(request)}`;
+  const existing = requestRateState.get(identityKey);
+
+  if (!existing || existing.resetAtMs <= now) {
+    requestRateState.set(identityKey, {
+      count: 1,
+      resetAtMs: now + options.windowMs,
+    });
+    return { limited: false, retryAfterSeconds: null };
+  }
+
+  existing.count += 1;
+  requestRateState.set(identityKey, existing);
+
+  if (existing.count > options.maxRequests) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((existing.resetAtMs - now) / 1000));
+    return { limited: true, retryAfterSeconds };
+  }
+
+  return { limited: false, retryAfterSeconds: null };
+}
+
+export function resetRateLimitsForTests(): void {
+  requestRateState.clear();
+}
+
 export function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,

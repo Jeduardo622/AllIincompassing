@@ -102,3 +102,23 @@ Track remediation work from the executive audit report to close production-readi
 - Added regression coverage:
   - `src/components/__tests__/SessionModal.test.tsx` for keyboard/focus behavior
   - `scripts/playwright-mobile-role-smoke.ts` + `npm run playwright:mobile-role-smoke`
+
+## Documentation change log (2026-03-12)
+- Added `docs/PHASE0_EXECUTION_STATUS_2026_03_12.md` with:
+  - Phase 0 security hardening scope executed for API CORS and MCP edge authentication.
+  - Validation evidence (`targeted tests`, `typecheck`, `lint`, `ci:check-focused`, `preview smoke`).
+  - MCP baseline evidence from GitHub + Supabase advisor checks.
+  - Explicit remaining blockers and release gate status.
+- Implemented and validated code hardening for:
+  - `src/server/api/book.ts` (strict origin checks + shared CORS response path)
+  - `src/server/api/dashboard.ts` (strict origin checks + admin/super-admin authorization only)
+  - `supabase/functions/mcp/function.toml` (`verify_jwt = true`)
+  - `supabase/functions/mcp/index.ts` (JWT-only auth validation + allowlist CORS)
+- Updated server handler regression tests:
+  - `src/server/__tests__/bookHandler.test.ts`
+  - `src/server/__tests__/dashboardHandler.test.ts`
+  - Added CORS allow/deny coverage and adjusted dashboard auth expectations.
+- Updated Playwright authorization smoke reliability:
+  - Corrected therapist-authorization env IDs in `.env.codex` to real foreign entities.
+  - Hardened `scripts/playwright-therapist-authorization.ts` login and guard detection to reduce flaky failures.
+  - Verified `npm run playwright:auth` and `npm run playwright:therapist-authorization` both pass.

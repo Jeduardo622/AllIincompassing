@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetRateLimitsForTests } from "../api/shared";
 
 const bookSessionMock = vi.hoisted(() => vi.fn());
 const loggerMock = vi.hoisted(() => ({
@@ -80,6 +81,7 @@ const ORIGINAL_ENV = {
 };
 
 beforeEach(async () => {
+  resetRateLimitsForTests();
   vi.clearAllMocks();
   bookSessionMock.mockReset();
   loggerMock.error.mockReset();
@@ -122,9 +124,28 @@ afterAll(() => {
 describe("bookHandler", () => {
   it("returns CORS headers for OPTIONS requests", async () => {
     const bookHandler = await importBookHandler();
-    const response = await bookHandler(new Request("http://localhost/api/book", { method: "OPTIONS" }));
+    const response = await bookHandler(new Request("http://localhost/api/book", {
+      method: "OPTIONS",
+      headers: { Origin: "http://localhost:3000" },
+    }));
     expect(response.status).toBe(200);
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:3000");
+  });
+
+  it("rejects disallowed origins", async () => {
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(new Request("http://localhost/api/book", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer valid-token",
+        Origin: "https://attacker.example.com",
+      },
+      body: JSON.stringify(validPayload),
+    }));
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error).toBe("Origin not allowed");
   });
 
   it("rejects non-POST methods", async () => {
@@ -289,6 +310,49 @@ describe("bookHandler", () => {
         metadata: expect.objectContaining({ status: 500 }),
       }),
     );
+  });
+
+  it("returns 429 when booking rate limit is exceeded", async () => {
+    bookSessionMock.mockResolvedValue({
+      session: {
+        id: "session-1",
+        client_id: "client-1",
+        therapist_id: "therapist-1",
+        start_time: "2025-01-01T10:00:00Z",
+        end_time: "2025-01-01T11:00:00Z",
+        status: "scheduled",
+        notes: "",
+        created_at: "2025-01-01T09:00:00Z",
+        created_by: "user-1",
+        updated_at: "2025-01-01T09:00:00Z",
+        updated_by: "user-1",
+        duration_minutes: 60,
+      },
+      sessions: [],
+      hold: {
+        holdKey: "hold",
+        holdId: "1",
+        startTime: "2025-01-01T10:00:00Z",
+        endTime: "2025-01-01T11:00:00Z",
+        expiresAt: "2025-01-01T10:05:00Z",
+        holds: [],
+      },
+      cpt: {
+        code: "97153",
+        description: "Adaptive behavior treatment by protocol",
+        modifiers: [],
+        source: "fallback",
+        durationMinutes: 60,
+      },
+    });
+    const bookHandler = await importBookHandler();
+    let lastResponse: Response | null = null;
+    for (let index = 0; index < 31; index += 1) {
+      lastResponse = await bookHandler(createRequest(validPayload));
+    }
+    expect(lastResponse).not.toBeNull();
+    expect(lastResponse?.status).toBe(429);
+    expect(lastResponse?.headers.get("Retry-After")).toBeTruthy();
   });
 
   it("returns conflict retry metadata for 409 scheduling errors", async () => {

@@ -2,16 +2,16 @@ import { getOptionalServerEnv, getRequiredServerEnv } from "../env";
 import { getDefaultOrganizationId } from "../runtimeConfig";
 import { serverLogger as logger } from "../../lib/logger/server";
 import { toError } from "../../lib/logger/normalizeError";
-import { errorResponse } from "./shared";
+import {
+  consumeRateLimit,
+  corsHeadersForRequest,
+  errorResponse,
+  isDisallowedOriginRequest,
+  jsonForRequest,
+} from "./shared";
 
 const JSON_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
-};
-
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
 };
 
 const isProductionEnvironment = (): boolean => {
@@ -41,12 +41,27 @@ async function fetchJson<T = unknown>(url: string, init: RequestInit): Promise<{
 }
 
 export async function dashboardHandler(request: Request): Promise<Response> {
+  if (isDisallowedOriginRequest(request)) {
+    return errorResponse(request, "forbidden", "Origin not allowed", { status: 403 });
+  }
+
   if (request.method === "OPTIONS") {
-    return new Response("ok", { status: 200, headers: { ...CORS_HEADERS } });
+    return new Response("ok", { status: 200, headers: { ...JSON_HEADERS, ...corsHeadersForRequest(request) } });
   }
 
   if (request.method !== "GET") {
     return errorResponse(request, "validation_error", "Method not allowed", { status: 405 });
+  }
+
+  const rateLimit = consumeRateLimit(request, {
+    keyPrefix: "api:dashboard",
+    maxRequests: 120,
+    windowMs: 60_000,
+  });
+  if (rateLimit.limited) {
+    return errorResponse(request, "rate_limited", "Too many dashboard requests", {
+      headers: { "Retry-After": String(rateLimit.retryAfterSeconds) },
+    });
   }
 
   const authHeader = request.headers.get("Authorization");
@@ -116,20 +131,6 @@ export async function dashboardHandler(request: Request): Promise<Response> {
       body: JSON.stringify(rolePayload),
     });
 
-    const therapistRolePayload = {
-      role_name: "therapist",
-      target_organization_id: resolvedOrganizationId,
-    } as Record<string, unknown>;
-    const therapistRoleResult = await fetchJson<boolean>(roleUrl, {
-      method: "POST",
-      headers: {
-        ...JSON_HEADERS,
-        apikey: anonKey,
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify(therapistRolePayload),
-    });
-
     const superAdminUrl = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/rpc/current_user_is_super_admin`;
     const superAdminResult = await fetchJson<boolean>(superAdminUrl, {
       method: "POST",
@@ -142,20 +143,17 @@ export async function dashboardHandler(request: Request): Promise<Response> {
     });
 
     const isOrgAdmin = roleResult.ok && roleResult.data === true;
-    const isTherapist = therapistRoleResult.ok && therapistRoleResult.data === true;
     const isSuperAdmin = superAdminResult.ok && superAdminResult.data === true;
 
     logger.info("Dashboard auth check", {
       resolvedOrganizationId,
       isOrgAdmin,
-      isTherapist,
       isSuperAdmin,
       roleStatus: roleResult.status,
-      therapistRoleStatus: therapistRoleResult.status,
       superAdminStatus: superAdminResult.status,
     });
 
-    if (!isOrgAdmin && !isTherapist && !isSuperAdmin) {
+    if (!isOrgAdmin && !isSuperAdmin) {
       return errorResponse(request, "forbidden", "Forbidden");
     }
 
@@ -179,10 +177,7 @@ export async function dashboardHandler(request: Request): Promise<Response> {
     }
 
     // Return the raw payload expected by the client hook
-    return new Response(JSON.stringify(rpcResult.data ?? {}), {
-      status: 200,
-      headers: { ...JSON_HEADERS, ...CORS_HEADERS },
-    });
+    return jsonForRequest(request, rpcResult.data ?? {}, 200);
   } catch (error) {
     logger.error("/api/dashboard failed", { error: toError(error, "dashboard proxy error") });
     return errorResponse(request, "internal_error", "Internal Server Error");

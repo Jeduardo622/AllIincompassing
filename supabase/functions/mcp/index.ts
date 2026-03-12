@@ -2,7 +2,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
-const MCP_TOKEN = Deno.env.get('MCP_TOKEN') ?? '';
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   throw new Error('Missing SUPABASE_URL or SUPABASE_ANON_KEY');
@@ -18,24 +17,59 @@ const json = (body: unknown, init: ResponseInit & { headers?: Record<string, str
     status: init.status ?? 200,
   });
 
-const corsHeaders = {
-  'access-control-allow-origin': '*',
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://app.allincompassing.ai',
+  'https://preview.allincompassing.ai',
+  'https://staging.allincompassing.ai',
+  'http://localhost:3000',
+  'http://localhost:5173',
+] as const;
+
+const parseAllowedOrigins = () =>
+  (Deno.env.get('MCP_ALLOWED_ORIGINS') ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+const allowedOrigins = new Set<string>([...DEFAULT_ALLOWED_ORIGINS, ...parseAllowedOrigins()]);
+const fallbackAllowedOrigin = DEFAULT_ALLOWED_ORIGINS[0] ?? 'https://app.allincompassing.ai';
+
+const baseCorsHeaders = {
   'access-control-allow-methods': 'GET,POST,OPTIONS',
-  'access-control-allow-headers': 'authorization,content-type,x-mcp-token',
+  'access-control-allow-headers': 'authorization,content-type',
+  vary: 'origin',
 };
 
-const isAuthorized = (req: Request) => {
-  // Only allow explicit MCP token via Authorization: Bearer <MCP_TOKEN> or X-MCP-Token header.
+const resolveAllowedOrigin = (req: Request): string | null => {
+  const origin = req.headers.get('origin');
+  if (!origin) {
+    return fallbackAllowedOrigin;
+  }
+  return allowedOrigins.has(origin) ? origin : null;
+};
+
+const corsHeadersForRequest = (req: Request): Record<string, string> => {
+  const resolvedOrigin = resolveAllowedOrigin(req);
+  return {
+    ...baseCorsHeaders,
+    'access-control-allow-origin': resolvedOrigin ?? fallbackAllowedOrigin,
+  };
+};
+
+const isDisallowedOriginRequest = (req: Request): boolean => {
+  const origin = req.headers.get('origin');
+  return Boolean(origin) && !allowedOrigins.has(origin);
+};
+
+const getBearerToken = (req: Request): string | null => {
   const auth = req.headers.get('authorization') || '';
-  const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-  const headerToken = req.headers.get('x-mcp-token') || '';
-  if (MCP_TOKEN && (bearer === MCP_TOKEN || headerToken === MCP_TOKEN)) return true;
-  return false;
+  const token = auth.replace(/^Bearer\s+/i, '').trim();
+  if (token.length === auth.trim().length) return null;
+  return token.length > 0 ? token : null;
 };
 
-const unauthorized = () => json({ error: 'unauthorized' }, { status: 401, headers: corsHeaders });
-
-const sanitizeTable = (t: unknown) => (typeof t === 'string' && /^[a-zA-Z0-9_.]+$/.test(t) ? t : null);
+const unauthorized = (req: Request) =>
+  json({ error: 'unauthorized' }, { status: 401, headers: corsHeadersForRequest(req) });
 
 const RPC_ALLOWLIST = new Set<string>([
   // Read-only or safe diagnostics RPCs only
@@ -54,36 +88,57 @@ function audit(event: string, details: Record<string, unknown>) {
   console.log(JSON.stringify(payload));
 }
 
-async function handleRpc(req: Request) {
+const createRequestSupabaseClient = (token: string) =>
+  createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+
+async function handleRpc(req: Request, token: string) {
   const body = await req.json().catch(() => ({}));
   const { name, args } = body as { name?: string; args?: Record<string, unknown> };
-  if (!name || typeof name !== 'string') return json({ error: 'invalid function name' }, { status: 400, headers: corsHeaders });
+  if (!name || typeof name !== 'string') {
+    return json({ error: 'invalid function name' }, { status: 400, headers: corsHeadersForRequest(req) });
+  }
   if (!RPC_ALLOWLIST.has(name)) {
     audit('mcp.rpc.blocked', { name });
-    return json({ error: 'rpc_not_allowed' }, { status: 403, headers: corsHeaders });
+    return json({ error: 'rpc_not_allowed' }, { status: 403, headers: corsHeadersForRequest(req) });
   }
-  const { data, error } = await supabase.rpc(name, args ?? {});
-  if (error) return json({ error: error.message }, { status: 400, headers: corsHeaders });
+  const requestSupabase = createRequestSupabaseClient(token);
+  const { data, error } = await requestSupabase.rpc(name, args ?? {});
+  if (error) return json({ error: error.message }, { status: 400, headers: corsHeadersForRequest(req) });
   audit('mcp.rpc.success', { name });
-  return json({ data }, { headers: corsHeaders });
+  return json({ data }, { headers: corsHeadersForRequest(req) });
 }
 
 // Disable generic table surface: all table access is blocked
-async function handleTable(): Promise<Response> {
+async function handleTable(req: Request): Promise<Response> {
   audit('mcp.table.blocked', {});
-  return json({ error: 'table_access_blocked' }, { status: 403, headers: corsHeaders });
+  return json({ error: 'table_access_blocked' }, { status: 403, headers: corsHeadersForRequest(req) });
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
+  if (isDisallowedOriginRequest(req)) {
+    return json({ error: 'origin_not_allowed' }, { status: 403, headers: corsHeadersForRequest(req) });
+  }
+
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeadersForRequest(req) });
   const url = new URL(req.url);
   if (req.method === 'GET' && url.pathname === '/health') {
-    return json({ ok: true, project: SUPABASE_URL }, { headers: corsHeaders });
+    return json({ ok: true, project: SUPABASE_URL }, { headers: corsHeadersForRequest(req) });
   }
-  if (!isAuthorized(req)) return unauthorized();
-  if (req.method === 'POST' && url.pathname === '/rpc') return handleRpc(req);
-  if (req.method === 'POST' && url.pathname.startsWith('/table/')) return handleTable();
-  return json({ error: 'not_found' }, { status: 404, headers: corsHeaders });
+
+  const token = getBearerToken(req);
+  if (!token) return unauthorized(req);
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data?.user) {
+    audit('mcp.auth.denied', { reason: error?.message ?? 'user_not_found' });
+    return unauthorized(req);
+  }
+
+  if (req.method === 'POST' && url.pathname === '/rpc') return handleRpc(req, token);
+  if (req.method === 'POST' && url.pathname.startsWith('/table/')) return handleTable(req);
+  return json({ error: 'not_found' }, { status: 404, headers: corsHeadersForRequest(req) });
 });
 
 

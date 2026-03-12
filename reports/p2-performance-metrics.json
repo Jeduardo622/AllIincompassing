@@ -1,14 +1,14 @@
 {
-  "capturedAt": "2026-03-12T19:22:00.561Z",
+  "capturedAt": "2026-03-12T19:22:26.489Z",
   "baseline": {
     "scheduleDurationMs": 12.73,
     "wildcardSelectCount": 1
   },
   "current": {
-    "syntheticLegacyDurationMs": 9.1,
-    "syntheticIndexedDurationMs": 0.08,
-    "indexedImprovementPercent": 99.12,
-    "baselineToCurrentScheduleImprovementPercent": 99.37,
+    "syntheticLegacyDurationMs": 11.54,
+    "syntheticIndexedDurationMs": 0.1,
+    "indexedImprovementPercent": 99.13,
+    "baselineToCurrentScheduleImprovementPercent": 99.21,
     "wildcardSelectCount": 0,
     "wildcardReduction": 1,
     "globalRouteInvalidationEnabled": false,

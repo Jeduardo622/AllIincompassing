@@ -1,33 +1,55 @@
-import { createClient } from "npm:@supabase/supabase-js@2.50.0";
-import { createPublicRoute, corsHeaders, logApiAccess } from "../_shared/auth-middleware.ts";
+import { z } from "npm:zod@3.23.8";
+import {
+  createPublicRoute,
+  corsHeadersForRequest,
+  createSupabaseClientForRequest,
+  logApiAccess,
+  tokenResponseCacheHeaders,
+} from "../_shared/auth-middleware.ts";
 import { errorEnvelope, getRequestId, rateLimit } from "../lib/http/error.ts";
 
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL") ?? "",
-  Deno.env.get("SUPABASE_ANON_KEY") ?? ""
-);
-
-interface LoginRequest {
-  email: string;
-  password: string;
-}
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
 
 export default createPublicRoute(async (req: Request) => {
   const requestId = getRequestId(req);
+  const responseHeaders = corsHeadersForRequest(req);
   if (req.method !== 'POST') {
     return errorEnvelope({
       requestId,
       code: "validation_error",
       message: "Method not allowed",
       status: 405,
-      headers: corsHeaders,
+      headers: responseHeaders,
     });
   }
 
   try {
-    const { email, password }: LoginRequest = await req.json();
+    let payload: unknown;
+    try {
+      payload = await req.json();
+    } catch {
+      return errorEnvelope({
+        requestId,
+        code: "validation_error",
+        message: "Invalid JSON body",
+        headers: responseHeaders,
+      });
+    }
+    const parsed = loginSchema.safeParse(payload);
+    if (!parsed.success) {
+      return errorEnvelope({
+        requestId,
+        code: "validation_error",
+        message: "Email and password are required",
+        headers: responseHeaders,
+      });
+    }
+    const { email, password } = parsed.data;
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-    const emailKey = typeof email === "string" ? email.trim().toLowerCase() : "unknown";
+    const emailKey = email.trim().toLowerCase();
 
     const ipGuard = rateLimit(`auth-login:ip:${ip}`, 20, 60_000);
     if (!ipGuard.allowed) {
@@ -37,7 +59,7 @@ export default createPublicRoute(async (req: Request) => {
         code: "rate_limited",
         message: "Too many login attempts. Please try again shortly.",
         status: 429,
-        headers: { ...corsHeaders, "Retry-After": String(ipGuard.retryAfter ?? 60) },
+        headers: { ...responseHeaders, "Retry-After": String(ipGuard.retryAfter ?? 60) },
       });
     }
 
@@ -49,21 +71,12 @@ export default createPublicRoute(async (req: Request) => {
         code: "rate_limited",
         message: "Too many login attempts for this account. Please try again shortly.",
         status: 429,
-        headers: { ...corsHeaders, "Retry-After": String(identityGuard.retryAfter ?? 60) },
-      });
-    }
-
-    // Validate required fields
-    if (!email || !password) {
-      return errorEnvelope({
-        requestId,
-        code: "validation_error",
-        message: "Email and password are required",
-        headers: corsHeaders,
+        headers: { ...responseHeaders, "Retry-After": String(identityGuard.retryAfter ?? 60) },
       });
     }
 
     // Authenticate user
+    const { supabase } = await createSupabaseClientForRequest(req);
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -77,7 +90,16 @@ export default createPublicRoute(async (req: Request) => {
         requestId,
         code: "unauthorized",
         message: "Invalid credentials",
-        headers: corsHeaders,
+        headers: responseHeaders,
+      });
+    }
+
+    if (!data.user || !data.session) {
+      return errorEnvelope({
+        requestId,
+        code: "unauthorized",
+        message: "Authentication incomplete",
+        headers: responseHeaders,
       });
     }
 
@@ -96,7 +118,7 @@ export default createPublicRoute(async (req: Request) => {
         requestId,
         code: "internal_error",
         message: "User profile not found",
-        headers: corsHeaders,
+        headers: responseHeaders,
       });
     }
 
@@ -108,7 +130,7 @@ export default createPublicRoute(async (req: Request) => {
         requestId,
         code: "forbidden",
         message: "Account is inactive",
-        headers: corsHeaders,
+        headers: responseHeaders,
       });
     }
 
@@ -146,7 +168,11 @@ export default createPublicRoute(async (req: Request) => {
       }),
       {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: {
+          ...responseHeaders,
+          ...tokenResponseCacheHeaders,
+          'Content-Type': 'application/json',
+        },
       }
     );
   } catch (error) {
@@ -157,7 +183,7 @@ export default createPublicRoute(async (req: Request) => {
       requestId,
       code: "internal_error",
       message: "Internal server error",
-      headers: corsHeaders,
+      headers: responseHeaders,
     });
   }
 });

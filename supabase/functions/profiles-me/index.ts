@@ -1,10 +1,12 @@
-import { createClient } from "npm:@supabase/supabase-js@2.50.0";
-import { createProtectedRoute, corsHeaders, logApiAccess, RouteOptions } from "../_shared/auth-middleware.ts";
-
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL") ?? "",
-  Deno.env.get("SUPABASE_ANON_KEY") ?? ""
-);
+import {
+  createProtectedRoute,
+  corsHeadersForRequest,
+  createSupabaseClientForRequest,
+  extractBearerToken,
+  logApiAccess,
+  RouteOptions,
+} from "../_shared/auth-middleware.ts";
+import { errorEnvelope, getRequestId } from "../lib/http/error.ts";
 
 interface ProfileUpdateRequest {
   first_name?: string;
@@ -17,6 +19,18 @@ interface ProfileUpdateRequest {
 
 export default createProtectedRoute(async (req: Request, userContext) => {
   const method = req.method;
+  const requestId = getRequestId(req);
+  const responseHeaders = corsHeadersForRequest(req);
+  const token = extractBearerToken(req);
+  if (!token) {
+    return errorEnvelope({
+      requestId,
+      code: "unauthorized",
+      message: "Authentication required",
+      headers: responseHeaders,
+    });
+  }
+  const { supabase } = await createSupabaseClientForRequest(req);
   
   // GET /profiles/me - Get current user profile
   if (method === 'GET') {
@@ -29,13 +43,12 @@ export default createProtectedRoute(async (req: Request, userContext) => {
 
       if (error || !profile) {
         console.error('Profile fetch error:', error);
-        return new Response(
-          JSON.stringify({ error: 'Profile not found' }),
-          {
-            status: 404,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
+        return errorEnvelope({
+          requestId,
+          code: "not_found",
+          message: "Profile not found",
+          headers: responseHeaders,
+        });
       }
 
       logApiAccess('GET', '/profiles/me', userContext, 200);
@@ -61,27 +74,36 @@ export default createProtectedRoute(async (req: Request, userContext) => {
         }),
         {
           status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...responseHeaders, 'Content-Type': 'application/json' },
         }
       );
     } catch (error) {
       console.error('Profile fetch error:', error);
       logApiAccess('GET', '/profiles/me', userContext, 500);
-      
-      return new Response(
-        JSON.stringify({ error: 'Internal server error' }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+
+      return errorEnvelope({
+        requestId,
+        code: "internal_error",
+        message: "Internal server error",
+        headers: responseHeaders,
+      });
     }
   }
 
   // PUT /profiles/me - Update current user profile
   if (method === 'PUT') {
     try {
-      const updateData: ProfileUpdateRequest = await req.json();
+      let updateData: ProfileUpdateRequest;
+      try {
+        updateData = await req.json();
+      } catch {
+        return errorEnvelope({
+          requestId,
+          code: "validation_error",
+          message: "Invalid JSON body",
+          headers: responseHeaders,
+        });
+      }
 
       // Validate update data
       const allowedFields = ['first_name', 'last_name', 'phone', 'avatar_url', 'time_zone', 'preferences'];
@@ -93,26 +115,24 @@ export default createProtectedRoute(async (req: Request, userContext) => {
         }, {} as any);
 
       if (Object.keys(filteredData).length === 0) {
-        return new Response(
-          JSON.stringify({ error: 'No valid fields to update' }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
+        return errorEnvelope({
+          requestId,
+          code: "validation_error",
+          message: "No valid fields to update",
+          headers: responseHeaders,
+        });
       }
 
       // Validate phone number format if provided
       if (filteredData.phone) {
         const phoneRegex = /^\+?[\d\s\-()]+$/;
         if (!phoneRegex.test(filteredData.phone)) {
-          return new Response(
-            JSON.stringify({ error: 'Invalid phone number format' }),
-            {
-              status: 400,
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            }
-          );
+          return errorEnvelope({
+            requestId,
+            code: "validation_error",
+            message: "Invalid phone number format",
+            headers: responseHeaders,
+          });
         }
       }
 
@@ -120,14 +140,13 @@ export default createProtectedRoute(async (req: Request, userContext) => {
       if (filteredData.time_zone) {
         try {
           Intl.DateTimeFormat(undefined, { timeZone: filteredData.time_zone });
-        } catch (error) {
-          return new Response(
-            JSON.stringify({ error: 'Invalid time zone' }),
-            {
-              status: 400,
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            }
-          );
+        } catch {
+          return errorEnvelope({
+            requestId,
+            code: "validation_error",
+            message: "Invalid time zone",
+            headers: responseHeaders,
+          });
         }
       }
 
@@ -141,13 +160,12 @@ export default createProtectedRoute(async (req: Request, userContext) => {
 
       if (error || !updatedProfile) {
         console.error('Profile update error:', error);
-        return new Response(
-          JSON.stringify({ error: 'Failed to update profile' }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
+        return errorEnvelope({
+          requestId,
+          code: "internal_error",
+          message: "Failed to update profile",
+          headers: responseHeaders,
+        });
       }
 
       logApiAccess('PUT', '/profiles/me', userContext, 200);
@@ -174,29 +192,28 @@ export default createProtectedRoute(async (req: Request, userContext) => {
         }),
         {
           status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...responseHeaders, 'Content-Type': 'application/json' },
         }
       );
     } catch (error) {
       console.error('Profile update error:', error);
       logApiAccess('PUT', '/profiles/me', userContext, 500);
-      
-      return new Response(
-        JSON.stringify({ error: 'Internal server error' }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+
+      return errorEnvelope({
+        requestId,
+        code: "internal_error",
+        message: "Internal server error",
+        headers: responseHeaders,
+      });
     }
   }
 
   // Method not allowed
-  return new Response(
-    JSON.stringify({ error: 'Method not allowed' }),
-    {
-      status: 405,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    }
-  );
+  return errorEnvelope({
+    requestId,
+    code: "validation_error",
+    message: "Method not allowed",
+    status: 405,
+    headers: responseHeaders,
+  });
 }, RouteOptions.authenticated);

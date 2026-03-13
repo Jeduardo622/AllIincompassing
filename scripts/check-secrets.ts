@@ -111,12 +111,14 @@ export const REQUIRED_ENV_GROUPS: readonly EnvGroup[] = [
   {
     name: 'Clearinghouse Sandbox',
     keys: ['CLEARINGHOUSE_SANDBOX_API_KEY', 'CLEARINGHOUSE_SANDBOX_CLIENT_ID'],
-    requiredInCi: true,
+    // Gate once clearinghouse integration is production-ready.
+    requiredInCi: false,
   },
   {
     name: 'Telemetry',
     keys: ['TELEMETRY_WRITE_KEY'],
-    requiredInCi: true,
+    // Gate once telemetry ingestion is fully implemented.
+    requiredInCi: false,
   },
 ];
 

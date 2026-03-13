@@ -35,12 +35,12 @@ describe('day-0 hotfix verification', () => {
       'NETLIFY_STAGING_SITE_ID',
       'NETLIFY_PRODUCTION_SITE_ID',
     ]);
-    expect(clearinghouseGroup?.requiredInCi).toBe(true);
+    expect(clearinghouseGroup?.requiredInCi).toBe(false);
     expect(clearinghouseGroup?.keys).toEqual([
       'CLEARINGHOUSE_SANDBOX_API_KEY',
       'CLEARINGHOUSE_SANDBOX_CLIENT_ID',
     ]);
-    expect(telemetryGroup?.requiredInCi).toBe(true);
+    expect(telemetryGroup?.requiredInCi).toBe(false);
     expect(telemetryGroup?.keys).toEqual(['TELEMETRY_WRITE_KEY']);
   });
 });

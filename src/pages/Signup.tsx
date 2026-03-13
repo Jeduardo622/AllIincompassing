@@ -83,6 +83,25 @@ export function Signup() {
     showError(message);
   };
 
+  const mapSignupErrorToUserMessage = (error: unknown): string => {
+    const rawMessage = error instanceof Error ? error.message : '';
+    const normalizedMessage = rawMessage.trim().toLowerCase();
+
+    if (normalizedMessage.includes('network') || normalizedMessage.includes('fetch')) {
+      return 'Unable to create your account right now. Check your connection and try again.';
+    }
+
+    if (normalizedMessage.includes('password')) {
+      return 'Unable to create your account. Please review your password and try again.';
+    }
+
+    if (normalizedMessage.includes('email')) {
+      return 'Unable to create your account. Please review your email address and try again.';
+    }
+
+    return 'Unable to create your account right now. Please try again in a moment.';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -167,7 +186,7 @@ export function Signup() {
             hasGuardianInviteToken: Boolean(normalizedGuardianInputs.inviteToken),
           },
         });
-        setFormError(error.message);
+        setFormError(mapSignupErrorToUserMessage(error));
         return;
       }
 
@@ -191,8 +210,7 @@ export function Signup() {
           hasGuardianInviteToken: Boolean(normalizedGuardianInputs.inviteToken),
         },
       });
-      const message = err instanceof Error ? err.message : 'Failed to create account';
-      setFormError(message);
+      setFormError(mapSignupErrorToUserMessage(err));
     } finally {
       setLoading(false);
     }

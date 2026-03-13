@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/authContext';
@@ -7,16 +7,52 @@ import { showSuccess } from '../lib/toast';
 
 export function PasswordRecovery() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { authFlow, user, loading: authLoading } = useAuth();
   const isRecoverySessionValid = Boolean(user) && authFlow === 'password_recovery';
+  const [recoveryRedirectReady, setRecoveryRedirectReady] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const recoveryCallbackDetected = useMemo(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const hashParams = new URLSearchParams(location.hash.startsWith('#') ? location.hash.slice(1) : location.hash);
+    const callbackType = (searchParams.get('type') ?? hashParams.get('type') ?? '').toLowerCase();
+    const hasToken = Boolean(
+      searchParams.get('access_token') ||
+      searchParams.get('refresh_token') ||
+      hashParams.get('access_token') ||
+      hashParams.get('refresh_token')
+    );
+    return callbackType === 'recovery' || hasToken;
+  }, [location.hash, location.search]);
+
+  const shouldDelayInvalidRedirect = recoveryCallbackDetected && !isRecoverySessionValid;
+
+  useEffect(() => {
+    if (!shouldDelayInvalidRedirect) {
+      setRecoveryRedirectReady(true);
+      return;
+    }
+
+    setRecoveryRedirectReady(false);
+    const timerId = window.setTimeout(() => {
+      setRecoveryRedirectReady(true);
+    }, 1500);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [shouldDelayInvalidRedirect]);
+
   useEffect(() => {
     if (authLoading) {
+      return;
+    }
+    if (shouldDelayInvalidRedirect && !recoveryRedirectReady) {
       return;
     }
     if (!isRecoverySessionValid) {
@@ -27,7 +63,7 @@ export function PasswordRecovery() {
         },
       });
     }
-  }, [authLoading, isRecoverySessionValid, navigate]);
+  }, [authLoading, isRecoverySessionValid, navigate, recoveryRedirectReady, shouldDelayInvalidRedirect]);
 
   if (authLoading || !isRecoverySessionValid) {
     return null;

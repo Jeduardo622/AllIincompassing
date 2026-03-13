@@ -336,13 +336,13 @@ export async function withAuth(
     if (userContext && requireActiveUser && !userContext.profile.is_active) {
       return {
         userContext: null,
-        error: new Response(
-          JSON.stringify({ error: 'User account is inactive' }),
-          {
-            status: 403,
-            headers: { ...responseHeaders, 'Content-Type': 'application/json' },
-          }
-        ),
+        error: errorEnvelope({
+          requestId,
+          code: "forbidden",
+          message: "User account is inactive",
+          status: 403,
+          headers: responseHeaders,
+        }),
       };
     }
 
@@ -351,17 +351,13 @@ export async function withAuth(
       if (!hasRequiredRole(userContext.profile.role, allowedRoles)) {
         return {
           userContext,
-          error: new Response(
-            JSON.stringify({ 
-              error: 'Insufficient permissions',
-              required_roles: allowedRoles,
-              user_role: userContext.profile.role,
-            }),
-            {
-              status: 403,
-              headers: { ...responseHeaders, 'Content-Type': 'application/json' },
-            }
-          ),
+          error: errorEnvelope({
+            requestId,
+            code: "forbidden",
+            message: "Insufficient permissions",
+            status: 403,
+            headers: responseHeaders,
+          }),
         };
       }
     }
@@ -419,34 +415,36 @@ export function createProtectedRoute(
       return await handler(req, userContext);
     } catch (error) {
       console.error('Protected route error:', error);
+      const requestId = getRequestId(req);
+      const responseHeaders = corsHeadersForRequest(req);
       
       if (error instanceof AuthenticationError) {
-        return new Response(
-          JSON.stringify({ error: error.message }),
-          {
-            status: error.statusCode,
-            headers: { ...corsHeadersForRequest(req), 'Content-Type': 'application/json' },
-          }
-        );
+        return errorEnvelope({
+          requestId,
+          code: "unauthorized",
+          message: error.message,
+          status: error.statusCode,
+          headers: responseHeaders,
+        });
       }
 
       if (error instanceof AuthorizationError) {
-        return new Response(
-          JSON.stringify({ error: error.message }),
-          {
-            status: error.statusCode,
-            headers: { ...corsHeadersForRequest(req), 'Content-Type': 'application/json' },
-          }
-        );
+        return errorEnvelope({
+          requestId,
+          code: "forbidden",
+          message: error.message,
+          status: error.statusCode,
+          headers: responseHeaders,
+        });
       }
 
-      return new Response(
-        JSON.stringify({ error: 'Internal server error' }),
-        {
-          status: 500,
-          headers: { ...corsHeadersForRequest(req), 'Content-Type': 'application/json' },
-        }
-      );
+      return errorEnvelope({
+        requestId,
+        code: "internal_error",
+        message: "Internal server error",
+        status: 500,
+        headers: responseHeaders,
+      });
     }
   };
 }

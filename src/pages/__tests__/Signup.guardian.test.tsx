@@ -109,4 +109,27 @@ describe('Signup guardian flow', () => {
     expect(metadata).not.toHaveProperty('guardian_organization_hint');
     expect(showSuccess).toHaveBeenCalled();
   }, 15000);
+
+  it('sanitizes provider-specific signup errors before showing them to users', async () => {
+    const signUp = vi
+      .fn()
+      .mockResolvedValue({ error: new Error('User already registered in auth provider goTrue') });
+    mockedUseAuth.mockReturnValue(buildAuthContext({ signUp }));
+
+    renderWithProviders(<Signup />);
+
+    await userEvent.type(screen.getByLabelText(/First Name/i), 'Taylor');
+    await userEvent.type(screen.getByLabelText(/Last Name/i), 'Lane');
+    await userEvent.type(screen.getByLabelText(/Email address/i), 'taylor.lane@example.com');
+    await userEvent.type(screen.getByLabelText(/^Password/i), 'SomePass123!');
+    await userEvent.type(screen.getByLabelText(/Confirm Password/i), 'SomePass123!');
+
+    await userEvent.click(screen.getByRole('button', { name: /Create account/i }));
+
+    await waitFor(() => {
+      expect(showError).toHaveBeenCalledWith(
+        'Unable to create your account right now. Please try again in a moment.'
+      );
+    });
+  });
 });

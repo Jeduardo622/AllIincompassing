@@ -138,3 +138,25 @@
 - **Alerting gaps addressed**: Slack alerting is now documented. PagerDuty integration remains optional and should be configured separately if needed for on-call escalation.
 
 
+## 2026-03-13 Onboarding Hardening Updates
+
+- **Client onboarding prefill flow moved to one-time tokens**
+  - `initiate-client-onboarding` now issues `/clients/new?prefill_token=<uuid>` instead of embedding client details in URL params.
+  - Prefill payload is stored server-side in `public.client_onboarding_prefills` and consumed once.
+  - Token consume path enforces org scope and role checks, then atomically marks token as consumed.
+
+- **New migration and storage contract**
+  - Added migration `supabase/migrations/20260313103000_client_onboarding_prefills.sql`.
+  - Table includes expiry and consume integrity checks (`expires_at > created_at`, `consumed_at >= created_at`), RLS enabled, and deny policies for direct `anon`/`authenticated` access.
+  - Indexed for active-token lookups by org and expiry.
+
+- **Frontend onboarding route hardening**
+  - `ChatBot` now calls the edge function to generate onboarding links and opens links with `noopener,noreferrer`.
+  - `ClientOnboarding` consumes `prefill_token` from backend, hydrates form values from secure payload, and strips query params from browser history via `replace`.
+  - `TherapistOnboarding` now uses guarded wizard submission so Enter cannot bypass steps and trigger early submit.
+
+- **Validation and regression safety**
+  - Email uniqueness check in `ClientOnboarding` now fails closed when lookup is unavailable.
+  - Added regression tests for onboarding route guard behavior, wizard Enter-key submit prevention, and token-hash helper determinism.
+  - Fixed prefill sanitizer to preserve `+` in email aliases (for example, `john+filter@example.com`), with dedicated unit coverage.
+

@@ -20,4 +20,26 @@
 
 Refer to `docs/tone.md` & `docs/style.md` for stakeholder comms/UI messaging guidance.
 
-
+## Playwright MCP confirmation (2026-03-13)
+- Live browser verification executed against `https://app.allincompassing.ai` using Playwright MCP.
+- Confirmed admin access renders both onboarding routes:
+  - `/clients/new` shows `New Client Onboarding` + step wizard.
+  - `/therapists/new` shows `New Therapist Onboarding` + step wizard.
+- Confirmed super admin access renders both onboarding routes:
+  - `/clients/new` shows `New Client Onboarding` + step wizard.
+  - `/therapists/new` shows `New Therapist Onboarding` + step wizard.
+- Confirmed therapist route behavior:
+  - `/clients/new` is allowed and renders `New Client Onboarding`.
+  - `/therapists/new` is blocked and redirects to `/unauthorized` with `Access Denied`.
+- Confirmed unauthenticated guard behavior:
+  - `/clients/new` redirects to `/login`.
+  - `/therapists/new` redirects to `/login`.
+- Evidence screenshots captured:
+  - `onboarding-admin-clients-new-verified-all-routes.png`
+  - `onboarding-admin-therapists-new-verified-all-routes.png`
+  - `onboarding-superadmin-clients-new-verified.png`
+  - `onboarding-superadmin-therapists-new-verified.png`
+  - `onboarding-therapist-clients-new-allowed.png`
+  - `onboarding-therapist-therapists-new-blocked.png`
+  - `onboarding-unauthenticated-clients-new-redirect-2.png`
+  - `onboarding-unauthenticated-therapists-new-redirect.png`

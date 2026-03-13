@@ -182,3 +182,27 @@
   - Added `app.cleanup_client_onboarding_prefills(p_retention_days integer default 7)` for scheduled deletion of stale consumed/expired prefill rows.
   - Recommended ops cadence: run at least daily via scheduler/cron and alert on consecutive failures.
 
+## 2026-03-13 Playwright MCP Production Verification
+
+- Executed a live route verification in production via Playwright MCP (`https://app.allincompassing.ai`).
+- Confirmed admin route access:
+  - `/clients/new` renders the client onboarding wizard.
+  - `/therapists/new` renders the therapist onboarding wizard.
+- Confirmed super_admin route access:
+  - `/clients/new` renders the client onboarding wizard.
+  - `/therapists/new` renders the therapist onboarding wizard.
+- Confirmed therapist route behavior:
+  - `/clients/new` is allowed and renders the client onboarding wizard.
+  - `/therapists/new` is blocked and redirects to `/unauthorized` with an `Access Denied` screen.
+- Confirmed unauthenticated guard behavior:
+  - direct visit to `/clients/new` redirects to `/login`.
+  - direct visit to `/therapists/new` redirects to `/login`.
+- Captured evidence artifacts:
+  - `onboarding-admin-clients-new-verified-all-routes.png`
+  - `onboarding-admin-therapists-new-verified-all-routes.png`
+  - `onboarding-superadmin-clients-new-verified.png`
+  - `onboarding-superadmin-therapists-new-verified.png`
+  - `onboarding-therapist-clients-new-allowed.png`
+  - `onboarding-therapist-therapists-new-blocked.png`
+  - `onboarding-unauthenticated-clients-new-redirect-2.png`
+  - `onboarding-unauthenticated-therapists-new-redirect.png`

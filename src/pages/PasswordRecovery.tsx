@@ -53,6 +53,37 @@ export function PasswordRecovery() {
     return callbackType === 'recovery' || hasToken;
   }, [location.hash, location.search]);
 
+  useEffect(() => {
+    if (!recoveryCallbackDetected) {
+      return;
+    }
+
+    const searchParams = new URLSearchParams(location.search);
+    const hashParams = new URLSearchParams(location.hash.startsWith('#') ? location.hash.slice(1) : location.hash);
+    const sensitiveKeys = ['access_token', 'refresh_token', 'token', 'type', 'expires_in', 'expires_at'];
+    let shouldReplaceUrl = false;
+
+    for (const key of sensitiveKeys) {
+      if (searchParams.has(key)) {
+        shouldReplaceUrl = true;
+        searchParams.delete(key);
+      }
+      if (hashParams.has(key)) {
+        shouldReplaceUrl = true;
+        hashParams.delete(key);
+      }
+    }
+
+    if (!shouldReplaceUrl) {
+      return;
+    }
+
+    const nextSearch = searchParams.toString();
+    const nextHash = hashParams.toString();
+    const nextUrl = `${location.pathname}${nextSearch ? `?${nextSearch}` : ''}${nextHash ? `#${nextHash}` : ''}`;
+    window.history.replaceState(window.history.state, document.title, nextUrl);
+  }, [location.hash, location.pathname, location.search, recoveryCallbackDetected]);
+
   const shouldDelayInvalidRedirect = recoveryCallbackDetected && !isRecoverySessionValid;
 
   useEffect(() => {

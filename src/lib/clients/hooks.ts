@@ -34,8 +34,7 @@ const buildClientNotesKey = (
 ];
 
 export const useGuardianClients = () => {
-  const { profile } = useAuth();
-  const isGuardian = profile?.role === 'client';
+  const { isGuardian } = useAuth();
 
   return useQuery<GuardianPortalClient[], Error>({
     queryKey: ['guardian', 'clients'] satisfies GuardianClientsQueryKey,
@@ -126,8 +125,7 @@ export const useConfirmGuardianContact = () => {
 };
 
 export const useGuardianContactMetadata = () => {
-  const { user, profile } = useAuth();
-  const isGuardian = profile?.role === 'client';
+  const { user, isGuardian } = useAuth();
 
   return useQuery<GuardianContactMetadataEntry[], Error>({
     queryKey: ['guardian', 'contact', user?.id ?? 'anonymous'] satisfies GuardianContactMetadataKey,

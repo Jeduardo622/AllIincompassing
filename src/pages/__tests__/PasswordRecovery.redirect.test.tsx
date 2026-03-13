@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { PasswordRecovery } from '../PasswordRecovery';
 import { useAuth } from '../../lib/authContext';
@@ -36,14 +36,20 @@ vi.mock('react-router-dom', async () => {
 
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedSupabase = vi.mocked(supabase);
+let replaceStateSpy: ReturnType<typeof vi.spyOn>;
 
 describe('PasswordRecovery redirect guard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    replaceStateSpy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
     mockLocation.search = '';
     mockLocation.hash = '';
     mockedSupabase.auth.updateUser.mockResolvedValue({ error: null } as never);
     mockedSupabase.auth.signOut.mockResolvedValue({ error: null } as never);
+  });
+
+  afterEach(() => {
+    replaceStateSpy.mockRestore();
   });
 
   it('does not render recovery form while auth is loading', () => {
@@ -138,6 +144,12 @@ describe('PasswordRecovery redirect guard', () => {
     });
 
     renderWithProviders(<PasswordRecovery />, { auth: false });
+
+    expect(replaceStateSpy).toHaveBeenCalledWith(
+      window.history.state,
+      document.title,
+      '/auth/recovery'
+    );
 
     expect(screen.getByText('Validating reset link')).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();

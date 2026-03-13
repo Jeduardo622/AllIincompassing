@@ -1,8 +1,9 @@
 import React, { useEffect, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigationType } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './lib/authContext';
+import { appQueryClient } from './lib/queryClient';
 import { useTheme } from './lib/theme';
 import { useAuth } from './lib/authContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -67,29 +68,6 @@ const LoadingSpinner = () => (
   </div>
 );
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: (failureCount, error: unknown) => {
-        // Don't retry on 4xx errors
-        const errorWithStatus = error as { status?: number };
-        if (errorWithStatus?.status && errorWithStatus.status >= 400 && errorWithStatus.status < 500) {
-          return false;
-        }
-        return failureCount < 2;
-      },
-      refetchOnWindowFocus: true,
-      refetchOnReconnect: 'always',
-      staleTime: 1 * 60 * 1000, // 1 minute
-      gcTime: 30 * 60 * 1000, // 30 minutes (renamed from cacheTime)
-      networkMode: 'online',
-    },
-    mutations: {
-      networkMode: 'online',
-    },
-  },
-});
-
 const DashboardLanding: React.FC = () => {
   const { user, profile, loading, profileLoading, isGuardian } = useAuth();
 
@@ -114,8 +92,6 @@ const RouteTelemetry: React.FC = () => {
       metadata: {
         scope: 'routeTelemetry.navigation',
         route: location.pathname,
-        search: location.search,
-        hash: location.hash,
         navigationType,
         userId: user?.id ?? null,
         role: profile?.role ?? null,
@@ -123,8 +99,6 @@ const RouteTelemetry: React.FC = () => {
     });
   }, [
     location.pathname,
-    location.search,
-    location.hash,
     navigationType,
     user?.id,
     profile?.role,
@@ -147,7 +121,7 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
+      <QueryClientProvider client={appQueryClient}>
         <AuthProvider>
           <div className="min-h-screen bg-gray-50 dark:bg-dark text-gray-900 dark:text-gray-100 transition-colors">
             <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -267,7 +241,7 @@ function App() {
                     <Route
                       path="family"
                       element={
-                        <RoleGuard roles={['client']}>
+                        <RoleGuard roles={['client']} requireGuardian>
                           <FamilyDashboard />
                         </RoleGuard>
                       }

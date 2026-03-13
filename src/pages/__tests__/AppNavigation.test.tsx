@@ -7,14 +7,27 @@ import { App } from '../../App';
 
 let authRole: 'client' | 'therapist' | 'admin' | 'super_admin' = 'client';
 let authIsGuardian = false;
+const { mockLoggerInfo } = vi.hoisted(() => ({
+  mockLoggerInfo: vi.fn(),
+}));
+
+vi.mock('../../lib/logger/logger', () => ({
+  logger: {
+    info: mockLoggerInfo,
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
 
 vi.mock('../../lib/authContext', () => {
   const signOut = vi.fn();
   return {
     useAuth: () => ({
-      profile: { role: authRole },
+      profile: { role: authRole, is_active: true },
       user: { id: 'user-1', email: 'user@example.com' },
       loading: false,
+      profileLoading: false,
       isGuardian: authIsGuardian,
       hasRole: (role: 'client' | 'therapist' | 'admin' | 'super_admin') => authRole === role,
       hasAnyRole: (roles: ('client' | 'therapist' | 'admin' | 'super_admin')[]) => roles.includes(authRole),
@@ -65,6 +78,7 @@ describe('App navigation landing', () => {
   beforeEach(() => {
     authRole = 'client';
     authIsGuardian = false;
+    mockLoggerInfo.mockReset();
   });
 
   it('keeps plain clients on the dashboard', async () => {
@@ -85,6 +99,16 @@ describe('App navigation landing', () => {
     expect(await screen.findByText('FamilyDashboardPage')).toBeInTheDocument();
   });
 
+  it('blocks non-guardian clients from family route', async () => {
+    authIsGuardian = false;
+    window.history.pushState({}, '', '/family');
+    renderApp();
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/unauthorized');
+    });
+  });
+
   it('keeps therapists on the dashboard', async () => {
     authRole = 'therapist';
     window.history.pushState({}, '', '/');
@@ -99,5 +123,21 @@ describe('App navigation landing', () => {
     renderApp();
 
     expect(await screen.findByText('DashboardPage')).toBeInTheDocument();
+  });
+
+  it('does not log raw search/hash in route telemetry', async () => {
+    window.history.pushState({}, '', '/?access_token=sensitive#refresh_token=secret');
+    renderApp();
+
+    await waitFor(() => {
+      expect(mockLoggerInfo).toHaveBeenCalled();
+    });
+
+    const telemetryCall = mockLoggerInfo.mock.calls.find(([message]) => message === 'Route navigation event');
+    expect(telemetryCall).toBeTruthy();
+    const payload = telemetryCall?.[1] as { metadata?: Record<string, unknown> };
+    expect(payload.metadata?.route).toBe('/');
+    expect(payload.metadata).not.toHaveProperty('search');
+    expect(payload.metadata).not.toHaveProperty('hash');
   });
 });

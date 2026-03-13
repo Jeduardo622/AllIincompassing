@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import type { User, Session, AuthChangeEvent } from '@supabase/supabase-js';
 import { clearSupabaseAuthStorage, supabase } from './supabaseClient'; // Use consistent client
+import { appQueryClient } from './queryClient';
 import { logger } from './logger/logger';
 import { toError } from './logger/normalizeError';
 import { readStubAuthState, STUB_AUTH_STORAGE_KEY } from './authStubSession';
@@ -335,6 +336,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     ]) as Promise<T>;
   };
 
+  const forceInactiveAccountSignOut = useCallback(async (userId: string, source: string) => {
+    logger.warn('Inactive account detected during auth runtime; forcing sign-out', {
+      metadata: {
+        scope: 'authContext.inactiveAccount',
+        userId,
+        source,
+      },
+    });
+
+    signOutInProgressRef.current = true;
+    setAuthFlow('normal');
+    setSession(null);
+    setUser(null);
+    setProfile(null);
+    setProfileLoading(false);
+
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(STUB_AUTH_STORAGE_KEY);
+        clearSupabaseAuthStorage();
+      }
+      await supabase.auth.signOut();
+    } catch (error) {
+      logger.warn('Failed to fully sign out inactive account session', {
+        error: toError(error, 'Inactive account sign-out failed'),
+        metadata: {
+          scope: 'authContext.inactiveAccount',
+          userId,
+          source,
+        },
+      });
+    } finally {
+      signOutInProgressRef.current = false;
+      clearSupabaseAuthStorage();
+      appQueryClient.clear();
+    }
+  }, []);
+
   const performInitialization = useCallback(async () => {
     const {
       data: { session: initialSession },
@@ -350,6 +389,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSession(initialSession);
       setProfileLoading(true);
       const profileData = await withTimeout(fetchProfile(initialSession.user.id), 'fetchProfile');
+      if (profileData && profileData.is_active === false) {
+        await forceInactiveAccountSignOut(initialSession.user.id, 'initializeAuth');
+        return;
+      }
       setProfile(profileData);
       setProfileLoading(false);
       return;
@@ -368,7 +411,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSession(null);
     setProfile(null);
     setProfileLoading(false);
-  }, [fetchProfile]);
+  }, [fetchProfile, forceInactiveAccountSignOut]);
 
   const initializeAuth = useCallback(async () => {
     setLoading(true);
@@ -456,6 +499,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       },
     });
 
+    if (profileData && profileData.is_active === false) {
+      await forceInactiveAccountSignOut(nextSession.user.id, `authStateChange:${event}`);
+      return;
+    }
+
     setProfile((currentProfile) => {
       if (profileData) {
         return profileData;
@@ -470,7 +518,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return null;
     });
     setProfileLoading(false);
-  }, [fetchProfile]);
+  }, [fetchProfile, forceInactiveAccountSignOut]);
 
   const waitForSignedOutEvent = useCallback((timeoutMs = 5000): Promise<void> => {
     return new Promise((resolve) => {
@@ -585,7 +633,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           filter: `id=eq.${user.id}`,
         },
         (payload) => {
-          setProfile(payload.new as UserProfile);
+          const nextProfile = payload.new as UserProfile;
+          if (nextProfile.is_active === false) {
+            void forceInactiveAccountSignOut(user.id, 'profilesRealtimeUpdate');
+            return;
+          }
+          setProfile(nextProfile);
         }
       )
       .subscribe();
@@ -593,7 +646,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, forceInactiveAccountSignOut]);
 
   const signIn = async (email: string, password: string) => {
     try {
@@ -709,6 +762,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       signOutInProgressRef.current = false;
       clearSupabaseAuthStorage();
+      appQueryClient.clear();
       setLoading(false);
     }
   };

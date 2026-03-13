@@ -9,6 +9,8 @@ type MockAuthValue = {
   readonly loading: boolean;
   readonly profileLoading?: boolean;
   readonly profile?: unknown;
+  readonly isGuardian?: boolean;
+  readonly signOut?: () => Promise<void> | void;
   readonly hasAnyRole?: (roles: readonly string[]) => boolean;
 };
 
@@ -94,5 +96,54 @@ describe('RoleGuard route guard behaviour', () => {
 
     expect(screen.queryByText('unauthorized-page')).not.toBeInTheDocument();
     expect(screen.queryByText('login-page')).not.toBeInTheDocument();
+  });
+
+  it('route guard blocks non-guardian users when guardian identity is required', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'user-1' },
+      loading: false,
+      profileLoading: false,
+      profile: { role: 'client', is_active: true },
+      isGuardian: false,
+      signOut: vi.fn(),
+      hasAnyRole: vi.fn().mockReturnValue(true),
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/protected']}>
+        <Routes>
+          <Route
+            path="/protected"
+            element={(
+              <RoleGuard roles={['client']} requireGuardian>
+                <div>guardian-protected</div>
+              </RoleGuard>
+            )}
+          />
+          <Route path="/unauthorized" element={<div>unauthorized-page</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('unauthorized-page')).toBeInTheDocument();
+  });
+
+  it('route guard signs out and redirects inactive accounts', async () => {
+    const signOut = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'user-1' },
+      loading: false,
+      profileLoading: false,
+      profile: { role: 'admin', is_active: false },
+      isGuardian: false,
+      signOut,
+      hasAnyRole: vi.fn().mockReturnValue(true),
+    });
+
+    renderProtectedRoute();
+
+    const loginStateNode = await screen.findByTestId('login-page');
+    expect(loginStateNode.textContent).toContain('Your account is inactive. Please contact support.');
+    expect(signOut).toHaveBeenCalledTimes(1);
   });
 });

@@ -13,7 +13,7 @@ import { ChatBot } from './ChatBot';
 import { logger } from '../lib/logger/logger';
 
 export function Sidebar() {
-  const { signOut, hasRole, hasAnyRole, user, profile } = useAuth();
+  const { signOut, hasRole, hasAnyRole, user, profile, isGuardian } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -82,73 +82,85 @@ export function Sidebar() {
       icon: UserCircle2,
       label: 'Family',
       path: '/family',
-      roles: ['client']
+      roles: ['client'],
+      requiresGuardian: true,
     },
     {
       icon: LayoutDashboard,
       label: 'Dashboard',
       path: '/',
-      roles: [] // accessible to all authenticated users
+      roles: [], // accessible to all authenticated users
+      requiresGuardian: false,
     },
     { 
       icon: Calendar, 
       label: 'Schedule', 
       path: '/schedule',
-      roles: ['therapist', 'admin', 'super_admin']
+      roles: ['therapist', 'admin', 'super_admin'],
+      requiresGuardian: false,
     },
     {
       icon: Users,
       label: 'Clients',
       path: '/clients',
-      roles: ['therapist', 'admin', 'super_admin']
+      roles: ['therapist', 'admin', 'super_admin'],
+      requiresGuardian: false,
     },
     {
       icon: UserCog,
       label: 'Therapists',
       path: '/therapists',
-      roles: ['admin', 'super_admin']
+      roles: ['admin', 'super_admin'],
+      requiresGuardian: false,
     },
     {
       icon: FileCheck,
       label: 'Authorizations',
       path: '/authorizations',
-      roles: ['therapist', 'admin', 'super_admin']
+      roles: ['therapist', 'admin', 'super_admin'],
+      requiresGuardian: false,
     },
     { 
       icon: FileText, 
       label: 'Documentation', 
       path: '/documentation',
-      roles: [] // accessible to all authenticated users
+      roles: [], // accessible to all authenticated users
+      requiresGuardian: false,
     },
     {
       icon: FileText,
       label: 'Fill Docs',
       path: '/fill-docs',
       roles: ['therapist', 'admin', 'super_admin'],
+      requiresGuardian: false,
     },
     {
       icon: CreditCard,
       label: 'Billing',
       path: '/billing',
-      roles: ['admin', 'super_admin']
+      roles: ['admin', 'super_admin'],
+      requiresGuardian: false,
     },
     {
       icon: BarChart,
       label: 'Reports',
       path: '/reports',
-      roles: ['admin', 'super_admin']
+      roles: ['admin', 'super_admin'],
+      requiresGuardian: false,
     },
     {
       icon: Activity,
       label: 'Monitoring',
       path: '/monitoring',
-      roles: ['admin', 'super_admin']
+      roles: ['admin', 'super_admin'],
+      requiresGuardian: false,
     },
     {
       icon: Settings,
       label: 'Settings',
       path: '/settings',
-      roles: ['admin', 'super_admin']
+      roles: ['admin', 'super_admin'],
+      requiresGuardian: false,
     },
   ];
 
@@ -234,7 +246,10 @@ export function Sidebar() {
         )}
         
         <nav className="flex-1 space-y-1 px-4 py-4">
-          {navItems.map(({ icon: Icon, label, path, roles }) => {
+          {navItems.map(({ icon: Icon, label, path, roles, requiresGuardian }) => {
+            if (requiresGuardian && !isGuardian) {
+              return null;
+            }
             // Skip if roles are specified and user doesn't have any of them
             if (roles.length > 0 && !roles.some(role => hasRole(role as 'client' | 'therapist' | 'admin' | 'super_admin'))) {
               return null;

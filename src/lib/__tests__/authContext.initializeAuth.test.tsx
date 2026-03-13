@@ -9,6 +9,7 @@ const {
   mockProfilesMaybeSingle,
   mockChannel,
   mockOnAuthStateChange,
+  mockQueryClientClear,
   authStateChangeListenerRef,
 } = vi.hoisted(() => {
   const authStateChangeListenerRef: { current: null | ((event: string, session: unknown) => Promise<void>) } = {
@@ -29,6 +30,7 @@ const {
         },
       };
     }),
+    mockQueryClientClear: vi.fn(),
     authStateChangeListenerRef,
     mockChannel: {
       on: vi.fn().mockReturnThis(),
@@ -36,6 +38,12 @@ const {
     },
   };
 });
+
+vi.mock('../queryClient', () => ({
+  appQueryClient: {
+    clear: mockQueryClientClear,
+  },
+}));
 
 vi.mock('../supabaseClient', () => {
   const removeChannel = vi.fn();
@@ -92,6 +100,41 @@ describe('AuthProvider initializeAuth resilience', () => {
       },
       error: null,
     });
+  });
+
+  it('forces sign-out when initial profile is inactive', async () => {
+    mockGetSession.mockResolvedValueOnce({
+      data: {
+        session: {
+          user: {
+            id: 'user-1',
+            email: 'user@example.com',
+          },
+        },
+      },
+      error: null,
+    });
+
+    mockProfilesMaybeSingle.mockResolvedValueOnce({
+      data: {
+        id: 'user-1',
+        email: 'user@example.com',
+        role: 'admin',
+        is_active: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      error: null,
+    });
+
+    render(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('none'));
+    expect(mockSignOut).toHaveBeenCalledTimes(1);
   });
 
   it('retries initialization after signing out when the first session fetch fails', async () => {
@@ -192,6 +235,7 @@ describe('AuthProvider initializeAuth resilience', () => {
 
     await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('none'));
     expect(mockProfilesMaybeSingle).toHaveBeenCalledTimes(1);
+    expect(mockQueryClientClear).toHaveBeenCalled();
   });
 
   it('maps recovery and non-recovery auth events to expected authFlow', async () => {

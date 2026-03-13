@@ -39,6 +39,7 @@ describe("Sidebar navigation active styling", () => {
       profile: {
         role: "therapist",
       },
+      isGuardian: false,
       hasAnyRole: vi.fn(() => true),
     });
 
@@ -81,6 +82,7 @@ describe("Sidebar navigation active styling", () => {
       profile: {
         role: "super_admin",
       },
+      isGuardian: false,
       hasAnyRole: vi.fn((roles: ("client" | "therapist" | "admin" | "super_admin")[]) =>
         roles.some(role => hasRole(role))
       ),
@@ -114,6 +116,7 @@ describe("Sidebar navigation active styling", () => {
       profile: {
         role: "client",
       },
+      isGuardian: true,
       hasAnyRole: vi.fn((roles: ("client" | "therapist" | "admin" | "super_admin")[]) =>
         roles.some(role => hasRole(role))
       ),
@@ -138,5 +141,35 @@ describe("Sidebar navigation active styling", () => {
 
     expect(screen.getByRole("button", { name: /chat assistant/i })).toBeInTheDocument();
     expect(screen.getByTestId("chatbot-mock")).toBeInTheDocument();
+  });
+
+  it("hides family navigation for non-guardian clients", () => {
+    const hasRole = vi.fn(
+      (role: "client" | "therapist" | "admin" | "super_admin") => role === "client"
+    );
+
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole,
+      user: {
+        email: "client@example.com",
+        user_metadata: {},
+      },
+      profile: {
+        role: "client",
+      },
+      isGuardian: false,
+      hasAnyRole: vi.fn((roles: ("client" | "therapist" | "admin" | "super_admin")[]) =>
+        roles.some(role => hasRole(role))
+      ),
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Sidebar />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByRole("link", { name: /family/i })).not.toBeInTheDocument();
   });
 });

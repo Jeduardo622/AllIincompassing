@@ -1,21 +1,12 @@
 import { chromium, type Page } from 'playwright';
-import fs from 'node:fs';
-import path from 'node:path';
 
 import { loadPlaywrightEnv } from './lib/load-playwright-env';
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-const hasSupabaseAuthToken = async (page: Page): Promise<boolean> => {
-  return page.evaluate(() => {
-    const regex = /auth.*token|sb-.*-auth-token|supabase.*auth/i;
-    const localKeys = Object.keys(window.localStorage);
-    const sessionKeys = Object.keys(window.sessionStorage);
-    const localHasToken = localKeys.some((key) => regex.test(key) && Boolean(window.localStorage.getItem(key)));
-    const sessionHasToken = sessionKeys.some((key) => regex.test(key) && Boolean(window.sessionStorage.getItem(key)));
-    return localHasToken || sessionHasToken;
-  });
-};
+import {
+  assertRouteAccessible,
+  captureFailureScreenshot,
+  hasSupabaseAuthToken,
+  loginAndAssertSession,
+} from './lib/playwright-smoke';
 
 const getEnv = (key: string, fallback?: string): string => {
   const value = process.env[key] ?? fallback;
@@ -23,31 +14,6 @@ const getEnv = (key: string, fallback?: string): string => {
     throw new Error(`${key} is required`);
   }
   return value;
-};
-
-const fillWithFallbacks = async (
-  candidates: Array<ReturnType<Page['locator']>>,
-  value: string,
-  label: string,
-): Promise<void> => {
-  for (const candidate of candidates) {
-    try {
-      const count = await candidate.count();
-      if (count === 0) {
-        continue;
-      }
-      const target = candidate.first();
-      await target.waitFor({ state: 'visible', timeout: 5000 }).catch(() => undefined);
-      await target.scrollIntoViewIfNeeded();
-      await target.fill('');
-      await target.type(value, { delay: 15 });
-      const current = await target.inputValue().catch(() => '');
-      if (current === value || current.length > 0) {
-        return;
-      }
-    } catch {}
-  }
-  throw new Error(`Could not locate or fill ${label} field on login page`);
 };
 
 async function ensureOption(page: Page, selector: string): Promise<string> {
@@ -80,87 +46,75 @@ async function run() {
   loadPlaywrightEnv();
   const headless = process.env.HEADLESS !== 'false';
   const base = getEnv('PW_BASE_URL', 'https://app.allincompassing.ai');
-  const email =
-    process.env.PW_THERAPIST_EMAIL ??
-    process.env.PLAYWRIGHT_THERAPIST_EMAIL ??
-    process.env.PW_ADMIN_EMAIL ??
-    process.env.PW_SUPERADMIN_EMAIL ??
-    process.env.PW_EMAIL ??
-    process.env.PLAYWRIGHT_ADMIN_EMAIL ??
-    process.env.ADMIN_EMAIL ??
-    process.env.ONBOARD_ADMIN_EMAIL;
-  const password =
-    process.env.PW_THERAPIST_PASSWORD ??
-    process.env.PLAYWRIGHT_THERAPIST_PASSWORD ??
-    process.env.PW_ADMIN_PASSWORD ??
-    process.env.PW_SUPERADMIN_PASSWORD ??
-    process.env.PW_PASSWORD ??
-    process.env.PLAYWRIGHT_ADMIN_PASSWORD ??
-    process.env.ADMIN_PASSWORD ??
-    process.env.ONBOARD_ADMIN_PASSWORD;
-  if (!email || !password) {
+  const credentialCandidates = [
+    {
+      email: process.env.PW_SCHEDULE_EMAIL,
+      password: process.env.PW_SCHEDULE_PASSWORD,
+      label: 'PW_SCHEDULE_EMAIL + PW_SCHEDULE_PASSWORD',
+    },
+    {
+      email: process.env.PW_ADMIN_EMAIL ?? process.env.PLAYWRIGHT_ADMIN_EMAIL,
+      password: process.env.PW_ADMIN_PASSWORD ?? process.env.PLAYWRIGHT_ADMIN_PASSWORD,
+      label: 'PW_ADMIN_EMAIL + PW_ADMIN_PASSWORD',
+    },
+    {
+      email: process.env.PW_SUPERADMIN_EMAIL,
+      password: process.env.PW_SUPERADMIN_PASSWORD,
+      label: 'PW_SUPERADMIN_EMAIL + PW_SUPERADMIN_PASSWORD',
+    },
+    {
+      email: process.env.PW_THERAPIST_EMAIL ?? process.env.PLAYWRIGHT_THERAPIST_EMAIL,
+      password: process.env.PW_THERAPIST_PASSWORD ?? process.env.PLAYWRIGHT_THERAPIST_PASSWORD,
+      label: 'PW_THERAPIST_EMAIL + PW_THERAPIST_PASSWORD',
+    },
+  ].filter((entry) => Boolean(entry.email && entry.password));
+
+  if (credentialCandidates.length === 0) {
     throw new Error(
-      'Missing schedule-conflict credentials. Set PW_ADMIN_EMAIL/PW_ADMIN_PASSWORD, PW_THERAPIST_EMAIL/PW_THERAPIST_PASSWORD, or PW_EMAIL/PW_PASSWORD.',
-    );
-  }
-  const resolvedEmail = email;
-  const resolvedPassword = password;
-  if (/client/i.test(resolvedEmail)) {
-    throw new Error(
-      `Schedule conflict smoke requires therapist/admin credentials, received likely client account: ${resolvedEmail}.`,
+      'Missing schedule credentials. Set PW_SCHEDULE_EMAIL/PW_SCHEDULE_PASSWORD or admin/therapist Playwright credentials.',
     );
   }
 
   const browser = await chromium.launch({ headless });
-  const context = await browser.newContext();
-  const page = await context.newPage();
+  const attemptFailures: string[] = [];
+  let authenticatedEmail: string | undefined;
+  let context: import('playwright').BrowserContext | undefined;
+  let page: Page | undefined;
 
   try {
-    await page.goto(`${base}/login`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(500);
-    await page.waitForSelector('text=Sign in to AllIncompassing', { timeout: 5000 }).catch(() => undefined);
-    await fillWithFallbacks(
-      [
-        page.getByLabel(/email address/i),
-        page.getByLabel(/^email$/i),
-        page.locator('form input[autocomplete="email"]'),
-        page.locator('form input[type="email"]'),
-        page.locator('form input[placeholder*="email" i]'),
-        page.locator('form input[name*="email" i]'),
-        page.locator('input[placeholder*="email" i]'),
-        page.locator('input[name*="email" i]'),
-        page.locator('input#email'),
-      ],
-      resolvedEmail,
-      'email',
-    );
-    await fillWithFallbacks(
-      [
-        page.getByLabel(/password/i),
-        page.locator('input[type="password"]'),
-        page.locator('input[name~="password" i]'),
-        page.locator('input[placeholder*="password" i]'),
-        page.locator('input#password'),
-      ],
-      resolvedPassword,
-      'password',
-    );
-    await page.getByRole('button', { name: /sign in|log in|continue|submit/i }).first().click();
-
-    const authTimeout = Date.now() + 20000;
-    let authenticated = false;
-    while (Date.now() < authTimeout) {
-      const offLoginPath = !/\/login(\?|$)/i.test(new URL(page.url()).pathname);
-      const tokenDetected = await hasSupabaseAuthToken(page);
-      if (offLoginPath || tokenDetected) {
-        authenticated = true;
-        break;
+    for (const candidate of credentialCandidates) {
+      if (!candidate.email || !candidate.password) {
+        continue;
       }
-      await sleep(500);
+      if (/client/i.test(candidate.email)) {
+        attemptFailures.push(`${candidate.label}: rejected because account appears to be a client persona.`);
+        continue;
+      }
+      const attemptContext = await browser.newContext();
+      const attemptPage = await attemptContext.newPage();
+      try {
+        await loginAndAssertSession(attemptPage, base, candidate.email, candidate.password);
+        await assertRouteAccessible(attemptPage, base, '/schedule');
+        const tokenDetected = await hasSupabaseAuthToken(attemptPage);
+        if (!tokenDetected) {
+          throw new Error('Supabase auth token missing after successful login.');
+        }
+        authenticatedEmail = candidate.email;
+        context = attemptContext;
+        page = attemptPage;
+        break;
+      } catch (error) {
+        attemptFailures.push(
+          `${candidate.label}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        await attemptContext.close();
+      }
     }
 
-    if (!authenticated) {
-      throw new Error('Failed to detect Supabase auth token after login');
+    if (!authenticatedEmail || !context || !page) {
+      throw new Error(
+        `No provided credential set can access /schedule. Attempts: ${attemptFailures.join(' || ')}`,
+      );
     }
 
     await page.route('**/api/book', async (route) => {
@@ -180,24 +134,6 @@ async function run() {
     });
 
     await page.goto(`${base}/schedule`, { waitUntil: 'networkidle' });
-    const scheduleReady = await page
-      .waitForURL((url) => {
-        const pathname = url.pathname.toLowerCase();
-        return pathname.includes('/schedule') || pathname.includes('/unauthorized') || pathname.includes('/login');
-      }, { timeout: 15000 })
-      .then(() => true)
-      .catch(() => false);
-    if (!scheduleReady) {
-      throw new Error('Schedule route did not resolve after login.');
-    }
-    const schedulePath = new URL(page.url()).pathname.toLowerCase();
-    if (schedulePath.includes('/unauthorized') || schedulePath.includes('/login')) {
-      console.log(
-        `Playwright schedule conflict smoke skipped: authenticated account lacks schedule access (${schedulePath}).`,
-      );
-      await browser.close();
-      return;
-    }
     await page.waitForSelector('text=Schedule', { timeout: 15000 });
     await openSessionModal(page);
 
@@ -248,15 +184,17 @@ async function run() {
     }
 
     console.log('Playwright schedule conflict retry hint verified');
-    await browser.close();
   } catch (error) {
-    const outDir = path.join(process.cwd(), 'artifacts', 'latest');
-    fs.mkdirSync(outDir, { recursive: true });
-    const shotPath = path.join(outDir, `playwright-schedule-conflict-${Date.now()}.png`);
-    await page.screenshot({ path: shotPath, fullPage: true }).catch(() => undefined);
-    await browser.close();
+    const shotPath = page
+      ? await captureFailureScreenshot(page, 'playwright-schedule-conflict-failure')
+      : 'N/A';
     console.error('Conflict retry hint regression failed. Screenshot:', shotPath);
     throw error;
+  } finally {
+    if (context) {
+      await context.close();
+    }
+    await browser.close();
   }
 }
 

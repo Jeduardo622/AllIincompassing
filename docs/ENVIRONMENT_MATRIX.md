@@ -4,7 +4,7 @@ The matrix below summarizes how we manage credentials, deployments, and rollback
 
 | Environment | Git Branch | Hosting Surface | Supabase Project | Auth Keys | Smoke Tests |
 |-------------|------------|-----------------|------------------|-----------|-------------|
-| Local       | feature/*  | Vite dev server | Hosted project `wnnjeqheqxxyrgsjmygy` (single clinic) | `.env` (preferred for Playwright scripts) or `.env.local` from 1Password (anon + service role + DEFAULT_ORGANIZATION_ID) | `npm run test` with `RUN_DB_IT=1` |
+| Local       | feature/*  | Vite dev server | Hosted project `wnnjeqheqxxyrgsjmygy` (single clinic) | `.env` (preferred for Playwright scripts) or `.env.local` from 1Password (anon + service role + DEFAULT_ORGANIZATION_ID); validate Playwright contract with `npm run playwright:preflight` | `npm run test` with `RUN_DB_IT=1` |
 | Preview     | Pull request | Netlify deploy previews | Same hosted project (request-scoped clients + tenant safety tooling) | GitHub Actions secrets (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DEFAULT_ORGANIZATION_ID`) | `npm run preview:smoke` against the deploy preview URL |
 | Staging     | `develop`  | Netlify staging context | Same hosted project (single-tenant) | Netlify staging env vars synced from 1Password | GitHub Actions staging smoke (`preview:smoke:remote`) |
 | Production  | `main`     | Netlify production | Same hosted project | Netlify production env vars | Manual post-deploy checks + monitoring |

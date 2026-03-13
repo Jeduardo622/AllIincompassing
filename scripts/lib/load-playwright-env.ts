@@ -14,10 +14,20 @@ export const loadPlaywrightEnv = (): void => {
     if (loaded.has(envPath)) {
       continue;
     }
-    if (!fs.existsSync(envPath)) {
+    const exists = fs.existsSync(envPath);
+    if (!exists) {
       continue;
     }
     loadEnv({ path: envPath, override: false });
     loaded.add(envPath);
+  }
+
+  if (explicitEnvFile) {
+    const explicitPath = path.resolve(explicitEnvFile);
+    if (!loaded.has(explicitPath)) {
+      throw new Error(
+        `PLAYWRIGHT_ENV_FILE is set but file was not found: ${explicitEnvFile}`,
+      );
+    }
   }
 };

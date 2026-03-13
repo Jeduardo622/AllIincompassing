@@ -14,6 +14,7 @@ const checks = [
   ['node', ['scripts/ci/check-rls-policy-overlap.mjs']],
   ['node', ['scripts/ci/check-migration-governance.mjs']],
   ['node', ['scripts/ci/check-test-reliability.mjs']],
+  ['node', ['scripts/ci/check-e2e-reliability-gates.mjs']],
   ['node', ['scripts/ci/check-architecture-pack-freshness.mjs']],
   ['node', ['scripts/ci/check-p2-performance.mjs']],
   ['node', ['scripts/ci/check-runbook-ci-alignment.mjs']],

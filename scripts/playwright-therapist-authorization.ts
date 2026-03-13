@@ -3,6 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { loadPlaywrightEnv } from './lib/load-playwright-env';
+import {
+  assertUuid,
+  captureFailureScreenshot,
+  hasSupabaseAuthToken,
+  loginAndAssertSession,
+  preflightCredentials,
+} from './lib/playwright-smoke';
 
 const artifactRoot = path.resolve(process.cwd(), 'artifacts');
 const latestDir = path.join(artifactRoot, 'latest');
@@ -11,17 +18,6 @@ const ensureDir = (dir: string) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-};
-
-const hasSupabaseAuthToken = async (page: import('playwright').Page): Promise<boolean> => {
-  return page.evaluate(() => {
-    const regex = /auth.*token|sb-.*-auth-token|supabase.*auth/i;
-    const localKeys = Object.keys(window.localStorage);
-    const sessionKeys = Object.keys(window.sessionStorage);
-    const localHasToken = localKeys.some((key) => regex.test(key) && Boolean(window.localStorage.getItem(key)));
-    const sessionHasToken = sessionKeys.some((key) => regex.test(key) && Boolean(window.sessionStorage.getItem(key)));
-    return localHasToken || sessionHasToken;
-  });
 };
 
 const AUTH_GUARD_PATTERN =
@@ -73,22 +69,21 @@ async function run(): Promise<void> {
 
   const headless = process.env.HEADLESS !== 'false';
   const baseUrl = process.env.PW_BASE_URL ?? 'https://app.allincompassing.ai';
-  const therapistEmail = process.env.PW_THERAPIST_EMAIL ?? process.env.PLAYWRIGHT_THERAPIST_EMAIL;
-  const therapistPassword =
-    process.env.PW_THERAPIST_PASSWORD ?? process.env.PLAYWRIGHT_THERAPIST_PASSWORD;
-  const foreignClientId =
-    process.env.PW_FOREIGN_CLIENT_ID ?? process.env.PLAYWRIGHT_FOREIGN_CLIENT_ID;
-  const foreignTherapistId =
-    process.env.PW_FOREIGN_THERAPIST_ID ?? process.env.PLAYWRIGHT_FOREIGN_THERAPIST_ID;
-
-  if (!therapistEmail || !therapistPassword) {
-    throw new Error('Missing therapist credentials. Set PW_THERAPIST_EMAIL/PW_THERAPIST_PASSWORD.');
-  }
-  if (!foreignClientId || !foreignTherapistId) {
-    throw new Error(
-      'Missing foreign entity ids. Set PW_FOREIGN_CLIENT_ID and PW_FOREIGN_THERAPIST_ID.',
-    );
-  }
+  const credentials = preflightCredentials([
+    {
+      email: process.env.PW_THERAPIST_EMAIL ?? process.env.PLAYWRIGHT_THERAPIST_EMAIL,
+      password: process.env.PW_THERAPIST_PASSWORD ?? process.env.PLAYWRIGHT_THERAPIST_PASSWORD,
+      label: 'PW_THERAPIST_EMAIL + PW_THERAPIST_PASSWORD',
+    },
+  ]);
+  const foreignClientId = assertUuid(
+    process.env.PW_FOREIGN_CLIENT_ID ?? process.env.PLAYWRIGHT_FOREIGN_CLIENT_ID,
+    'PW_FOREIGN_CLIENT_ID',
+  );
+  const foreignTherapistId = assertUuid(
+    process.env.PW_FOREIGN_THERAPIST_ID ?? process.env.PLAYWRIGHT_FOREIGN_THERAPIST_ID,
+    'PW_FOREIGN_THERAPIST_ID',
+  );
 
   const browser = await chromium.launch({ headless });
   const context = await browser.newContext();
@@ -98,95 +93,16 @@ async function run(): Promise<void> {
   const evidence: Record<string, unknown> = {
     executedAt: new Date().toISOString(),
     baseUrl,
-    therapistEmail,
+    therapistEmail: credentials.email,
     foreignClientId,
     foreignTherapistId,
   };
 
   try {
-    await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(500);
-    await page.waitForSelector('text=Sign in to AllIncompassing', { timeout: 5000 }).catch(() => undefined);
-    const fillWithFallbacks = async (
-      candidates: Array<ReturnType<typeof page.locator>>,
-      value: string,
-      label: string,
-    ): Promise<void> => {
-      for (const cand of candidates) {
-        try {
-          const count = await cand.count();
-          if (count === 0) {
-            continue;
-          }
-          const target = cand.first();
-          await target.waitFor({ state: 'visible', timeout: 5000 }).catch(() => undefined);
-          await target.scrollIntoViewIfNeeded();
-          await target.fill('');
-          await target.type(value, { delay: 20 });
-          const current = await target.inputValue().catch(() => '');
-          if (current === value || current.length > 0) {
-            return;
-          }
-        } catch {
-          // try next candidate
-        }
-      }
-      throw new Error(`Could not locate or fill ${label} field on login page`);
-    };
-
-    await fillWithFallbacks(
-      [
-        page.getByLabel(/email address/i),
-        page.getByLabel(/^email$/i),
-        page.locator('form input[type="email"]'),
-        page.locator('form input[name*="email" i]'),
-        page.locator('form input[placeholder*="email" i]'),
-        page.locator('form input:not([type="password"])'),
-        page.locator('input:not([type="password"])'),
-      ],
-      therapistEmail,
-      'email',
-    );
-
-    await fillWithFallbacks(
-      [
-        page.getByLabel(/password/i),
-        page.locator('input[type="password"]'),
-        page.locator('input[name~="password" i]'),
-        page.locator('input[placeholder*="password" i]'),
-      ],
-      therapistPassword,
-      'password',
-    );
-
-    await page
-      .getByRole('button', { name: /sign in|log in|continue|submit/i })
-      .or(page.locator('form button[type="submit"]'))
-      .first()
-      .click();
-
-    const waitUntil = Date.now() + 20000;
-    let loginSucceeded = false;
-    while (Date.now() < waitUntil) {
-      const currentUrl = page.url();
-      const offLoginPath = !/\/login(\?|$)/i.test(new URL(currentUrl).pathname);
-      const hasToken = await hasSupabaseAuthToken(page);
-      if (offLoginPath || hasToken) {
-        loginSucceeded = true;
-        break;
-      }
-      await page.waitForTimeout(500);
-    }
-
-    if (!loginSucceeded) {
-      const loginErrors = await page
-        .locator('[role="alert"], .error, .toast, [data-testid*="error"], [class*="error"]')
-        .allInnerTexts()
-        .catch(() => []);
-      if (loginErrors.length > 0) {
-        throw new Error(`Login failed: ${loginErrors.join(' | ')}`);
-      }
-      throw new Error('Login did not complete. Check PW_THERAPIST_EMAIL/PW_THERAPIST_PASSWORD in .env.codex.');
+    await loginAndAssertSession(page, baseUrl, credentials.email, credentials.password);
+    const hasToken = await hasSupabaseAuthToken(page);
+    if (!hasToken) {
+      throw new Error('Supabase auth token missing after therapist login.');
     }
 
     // Attempt to view another therapist's client
@@ -211,11 +127,7 @@ async function run(): Promise<void> {
   } catch (error) {
     evidence.ok = false;
     evidence.error = error instanceof Error ? error.message : String(error);
-    const failurePath = path.join(
-      latestDir,
-      `playwright-therapist-authorization-failure-${timestamp}.png`,
-    );
-    await page.screenshot({ path: failurePath, fullPage: true }).catch(() => undefined);
+    const failurePath = await captureFailureScreenshot(page, 'playwright-therapist-authorization-failure');
     evidence.failurePath = failurePath;
     fs.writeFileSync(
       path.join(latestDir, `playwright-therapist-authorization-${timestamp}.json`),

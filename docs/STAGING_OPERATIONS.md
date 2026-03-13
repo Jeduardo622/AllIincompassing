@@ -48,6 +48,16 @@ Staging deploys are currently executed from Netlify (or manual CLI), not via a d
 - Smoke tests must validate authentication flows, dashboard rendering, and at least one Supabase read/write operation.
 - Capture failures in GitHub Action artifacts and alert the team in the `#deployments` Slack channel.
 
+### Phase 3 deterministic gate contract (go / no-go)
+
+- **Go** only when all reliability gates pass:
+  - `npm run test:routes:tier0`
+  - `npm run ci:check:e2e-reliability`
+  - `npm run ci:playwright` (includes `playwright:preflight`)
+- **No-go** when any critical Playwright smoke cannot access required routes (`/schedule`, `/therapists/new`) for configured personas.
+- **No-go** when retry budget is non-zero or soft-skip fallback behavior is reintroduced.
+- Record failure artifact paths from `artifacts/latest` in the deploy ticket before retrying.
+
 ### Alerting on staging failures
 
 **Automatic alerting**:
@@ -71,6 +81,14 @@ See `docs/OBSERVABILITY_RUNBOOK.md` for severity mapping and escalation procedur
   1. Alert team via Slack (see alerting section above).
   2. Redeploy the last successful build from Netlify’s deploy history or re-run the GitHub Action once secrets are fixed.
   3. Document root cause in `#deployments`.
+- **If deterministic reliability gates fail**:
+  1. Classify as release-blocking reliability incident (SEV2 by default).
+  2. Attach command output + artifact screenshot paths from failed Playwright/Cypress checks.
+  3. Route owner assignment:
+     - auth/bootstrap failures -> Platform auth owner
+     - route authorization mismatch -> Backend/API owner
+     - Cypress network instability -> Frontend test-infra owner
+  4. Do not promote staging->production until rerun passes with no skips and no retry-budget violations.
 - **For Supabase regressions**:
   1. Alert team with severity `medium` (SEV2)
   2. Use project backups (Dashboard → **Database** → **Backups** / PITR) to restore the hosted project

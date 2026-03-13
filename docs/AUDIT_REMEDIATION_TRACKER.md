@@ -160,3 +160,25 @@ Track remediation work from the executive audit report to close production-readi
   - `src/lib/__tests__/useRouteQueryRefetch.test.ts`
   - `src/pages/__tests__/Reports.metrics.test.ts`
   - `src/components/Dashboard/__tests__/ReportsSummary.metrics.test.ts`
+
+## Documentation change log (2026-03-12, Phase 3 execution)
+- Added deterministic Playwright reliability foundation:
+  - `scripts/lib/playwright-smoke.ts` for shared login/session/assertion helpers.
+  - Refactored `scripts/playwright-auth-smoke.ts`, `scripts/playwright-schedule-conflict.ts`,
+    `scripts/playwright-therapist-onboarding.ts`, `scripts/playwright-therapist-authorization.ts`
+    to remove skip-style exits and enforce explicit pass/fail contracts.
+- Added strict Playwright env/data preflight contract:
+  - `scripts/playwright-preflight.ts`
+  - `scripts/lib/load-playwright-env.ts` now errors when `PLAYWRIGHT_ENV_FILE` is set to a missing file.
+  - `.env.example` updated with required Phase 3 Playwright contract vars.
+- Expanded reliability gates and CI policy coverage:
+  - `tests/reliability/policy.json` includes explicit E2E pass-rate/retry/skip budgets.
+  - `scripts/ci/check-e2e-reliability-gates.mjs` added and wired into:
+    - `scripts/ci/run-policy-checks.mjs`
+    - `package.json` (`ci:check:e2e-reliability`)
+  - `cypress/e2e/role_access.cy.ts` now tracks and asserts route-level network stability (`0/5xx` guard).
+- Ops/release contract updates:
+  - `docs/PREVIEW_SMOKE.md`
+  - `docs/STAGING_OPERATIONS.md`
+  - `docs/ENVIRONMENT_MATRIX.md`
+  - Added `docs/PHASE3_EXECUTION_STATUS_2026_03_12.md` for execution evidence and residual risks.

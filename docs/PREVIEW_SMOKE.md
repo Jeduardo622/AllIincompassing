@@ -30,6 +30,10 @@ npm run preview:smoke:remote -- --url https://deploy-preview-123--<yoursite>.net
 - `.github/workflows/ci.yml` currently runs:
   - `npm run build`
   - `npm run test:routes:tier0`
+  - `npm run ci:check-focused` (includes `check-e2e-reliability-gates`)
+- Reliability-first Playwright contract:
+  - `npm run playwright:preflight` validates required personas/foreign IDs before critical Playwright smokes.
+  - `npm run ci:playwright` now starts with preflight and fails fast on missing/placeholder credentials.
 - Use local smoke commands to troubleshoot runtime config and Supabase boot:
   - `npm run preview:build && npm run preview:smoke`
   - `npm run preview:smoke:remote -- --url <deploy-preview-url>`

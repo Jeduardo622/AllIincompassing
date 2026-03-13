@@ -3,6 +3,14 @@
     "suitePassRatePctTarget": 99.5,
     "rollingWindowDays": 14
   },
+  "e2e": {
+    "tier0PassRatePctFloor": 99,
+    "retryBudget": {
+      "cypressRunMode": 0,
+      "playwright": 0
+    },
+    "maxSkippedCriticalFlows": 0
+  },
   "maxFlakyFailureRatePct": 0.5,
   "maxActiveQuarantinedTests": 5,
   "defaultTimeoutMs": {

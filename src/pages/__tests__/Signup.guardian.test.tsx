@@ -50,6 +50,17 @@ describe('Signup guardian flow', () => {
     expect(screen.getByLabelText(/Invite code/i)).toBeInTheDocument();
   });
 
+  it('does not present admin as a self-serve account type', () => {
+    mockedUseAuth.mockReturnValue(buildAuthContext());
+
+    renderWithProviders(<Signup />);
+
+    expect(
+      screen.getByText(/Admin accounts require an invite and approval\./i)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /^Admin/i })).not.toBeInTheDocument();
+  });
+
   it('requires at least one guardian routing field before submission', async () => {
     const signUp = vi.fn().mockResolvedValue({ error: null });
     mockedUseAuth.mockReturnValue(buildAuthContext({ signUp }));

@@ -1,9 +1,32 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/authContext';
 import { showSuccess } from '../lib/toast';
+import { logger } from '../lib/logger/logger';
+import { toError } from '../lib/logger/normalizeError';
+
+const INVALID_RECOVERY_MESSAGE = 'Password recovery session is invalid or expired. Request a new reset email.';
+
+const mapPasswordRecoveryErrorToUserMessage = (error: unknown): string => {
+  const rawMessage = error instanceof Error ? error.message : '';
+  const normalizedMessage = rawMessage.trim().toLowerCase();
+
+  if (normalizedMessage.includes('password')) {
+    return 'Unable to update your password. Please review the requirements and try again.';
+  }
+
+  if (normalizedMessage.includes('too many requests') || normalizedMessage.includes('rate limit')) {
+    return 'Too many attempts. Please wait a moment and try again.';
+  }
+
+  if (normalizedMessage.includes('network') || normalizedMessage.includes('fetch')) {
+    return 'Unable to update your password right now. Check your connection and try again.';
+  }
+
+  return 'Unable to update your password right now. Please try again in a moment.';
+};
 
 export function PasswordRecovery() {
   const navigate = useNavigate();
@@ -59,14 +82,48 @@ export function PasswordRecovery() {
       navigate('/login', {
         replace: true,
         state: {
-          message: 'Password recovery session is invalid or expired. Request a new reset email.',
+          message: INVALID_RECOVERY_MESSAGE,
+          messageType: 'error',
         },
       });
     }
   }, [authLoading, isRecoverySessionValid, navigate, recoveryRedirectReady, shouldDelayInvalidRedirect]);
 
   if (authLoading || !isRecoverySessionValid) {
-    return null;
+    const isValidatingLink = shouldDelayInvalidRedirect && !recoveryRedirectReady;
+    const title = isValidatingLink ? 'Validating reset link' : 'Reset link expired';
+    const description = isValidatingLink
+      ? 'We are verifying your password reset session now.'
+      : 'This password reset link is invalid or has expired. Please request a new one.';
+
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-dark flex flex-col justify-center py-12 sm:px-6 lg:px-8 transition-colors">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="bg-white dark:bg-dark-lighter py-8 px-4 shadow sm:rounded-lg sm:px-10 transition-colors text-center space-y-4">
+            <div className="flex justify-center" aria-hidden="true">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600 dark:border-blue-900 dark:border-t-blue-400" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{title}</h2>
+            <p className="text-sm text-gray-600 dark:text-gray-300">{description}</p>
+            <div className="flex flex-col gap-2 pt-2">
+              <Link
+                to="/login"
+                className="inline-flex justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 transition-colors"
+              >
+                Go to login
+              </Link>
+              <Link
+                to="/login"
+                state={{ message: INVALID_RECOVERY_MESSAGE, messageType: 'error' }}
+                className="inline-flex justify-center rounded-md border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-900/20 transition-colors"
+              >
+                Request a new reset email
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -75,7 +132,7 @@ export function PasswordRecovery() {
     setSuccessMessage('');
 
     if (!isRecoverySessionValid) {
-      setError('Password recovery session is invalid or expired. Request a new reset email.');
+      setError(INVALID_RECOVERY_MESSAGE);
       return;
     }
 
@@ -96,7 +153,13 @@ export function PasswordRecovery() {
     try {
       const { error: updateError } = await supabase.auth.updateUser({ password });
       if (updateError) {
-        setError(updateError.message || 'Unable to update password.');
+        logger.error('Password update returned an error', {
+          error: toError(updateError, 'Password update failed'),
+          metadata: {
+            flow: 'passwordRecovery',
+          },
+        });
+        setError(mapPasswordRecoveryErrorToUserMessage(updateError));
         return;
       }
 
@@ -107,7 +170,13 @@ export function PasswordRecovery() {
         navigate('/login', { replace: true });
       }, 1200);
     } catch (exception) {
-      setError(exception instanceof Error ? exception.message : 'Unable to update password.');
+      logger.error('Password update threw an exception', {
+        error: toError(exception, 'Password update failed'),
+        metadata: {
+          flow: 'passwordRecovery',
+        },
+      });
+      setError(mapPasswordRecoveryErrorToUserMessage(exception));
     } finally {
       setLoading(false);
     }

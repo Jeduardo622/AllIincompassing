@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderWithProviders, screen, waitFor } from '../../test/utils';
+import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { PasswordRecovery } from '../PasswordRecovery';
 import { useAuth } from '../../lib/authContext';
+import { supabase } from '../../lib/supabaseClient';
 
 const mockNavigate = vi.fn();
 const mockLocation = {
@@ -34,12 +35,15 @@ vi.mock('react-router-dom', async () => {
 });
 
 const mockedUseAuth = vi.mocked(useAuth);
+const mockedSupabase = vi.mocked(supabase);
 
 describe('PasswordRecovery redirect guard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLocation.search = '';
     mockLocation.hash = '';
+    mockedSupabase.auth.updateUser.mockResolvedValue({ error: null } as never);
+    mockedSupabase.auth.signOut.mockResolvedValue({ error: null } as never);
   });
 
   it('does not render recovery form while auth is loading', () => {
@@ -95,11 +99,15 @@ describe('PasswordRecovery redirect guard', () => {
     renderWithProviders(<PasswordRecovery />, { auth: false });
 
     expect(screen.queryByText('Set a new password')).not.toBeInTheDocument();
+    expect(screen.getByText('Reset link expired')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Go to login/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Request a new reset email/i })).toBeInTheDocument();
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/login', {
         replace: true,
         state: {
           message: 'Password recovery session is invalid or expired. Request a new reset email.',
+          messageType: 'error',
         },
       });
     });
@@ -131,6 +139,7 @@ describe('PasswordRecovery redirect guard', () => {
 
     renderWithProviders(<PasswordRecovery />, { auth: false });
 
+    expect(screen.getByText('Validating reset link')).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
     await new Promise((resolve) => setTimeout(resolve, 500));
     expect(mockNavigate).not.toHaveBeenCalled();
@@ -140,9 +149,50 @@ describe('PasswordRecovery redirect guard', () => {
         replace: true,
         state: {
           message: 'Password recovery session is invalid or expired. Request a new reset email.',
+          messageType: 'error',
         },
       });
     }, { timeout: 2500 });
+  });
+
+  it('shows sanitized password update errors', async () => {
+    mockedSupabase.auth.updateUser.mockResolvedValue({
+      error: new Error('GoTrue failed: unexpected provider response from auth backend'),
+    } as never);
+
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'user-1', email: 'user@example.com' } as never,
+      profile: null,
+      session: null,
+      loading: false,
+      profileLoading: false,
+      metadataRole: null,
+      effectiveRole: 'client',
+      roleMismatch: false,
+      isGuardian: false,
+      authFlow: 'password_recovery',
+      signIn: vi.fn(),
+      signUp: vi.fn(),
+      signOut: vi.fn(),
+      resetPassword: vi.fn(),
+      updateProfile: vi.fn(),
+      hasRole: vi.fn().mockReturnValue(false),
+      hasAnyRole: vi.fn().mockReturnValue(false),
+      isAdmin: vi.fn().mockReturnValue(false),
+      isSuperAdmin: vi.fn().mockReturnValue(false),
+    });
+
+    renderWithProviders(<PasswordRecovery />, { auth: false });
+
+    await userEvent.type(screen.getByLabelText(/^New password$/i), 'NewPass123!');
+    await userEvent.type(screen.getByLabelText(/^Confirm new password$/i), 'NewPass123!');
+    await userEvent.click(screen.getByRole('button', { name: /Update password/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Unable to update your password right now. Please try again in a moment.')
+      ).toBeInTheDocument();
+    });
   });
 
   it('renders recovery form for valid recovery sessions without redirecting', async () => {

@@ -91,13 +91,11 @@ const queryClient = new QueryClient({
 });
 
 const DashboardLanding: React.FC = () => {
-  const { user, profile, loading, profileLoading, hasRole, hasAnyRole } = useAuth();
+  const { user, profile, loading, profileLoading, isGuardian } = useAuth();
 
   if (loading || (user && profileLoading && !profile)) {
     return <LoadingSpinner />;
   }
-
-  const isGuardian = hasRole('client') && !hasAnyRole(['therapist', 'admin', 'super_admin']);
 
   if (isGuardian) {
     return <Navigate to="/family" replace />;

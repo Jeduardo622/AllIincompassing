@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 import { RoleGuard } from '../RoleGuard';
 
@@ -19,6 +19,11 @@ vi.mock('../../lib/authContext', () => ({
 import { useAuth } from '../../lib/authContext';
 
 const renderProtectedRoute = (): void => {
+  const LoginRoute = () => {
+    const location = useLocation();
+    return <div data-testid="login-page">{JSON.stringify(location.state ?? null)}</div>;
+  };
+
   render(
     <MemoryRouter initialEntries={['/protected']}>
       <Routes>
@@ -30,7 +35,7 @@ const renderProtectedRoute = (): void => {
             </RoleGuard>
           )}
         />
-        <Route path="/login" element={<div>login-page</div>} />
+        <Route path="/login" element={<LoginRoute />} />
         <Route path="/unauthorized" element={<div>unauthorized-page</div>} />
       </Routes>
     </MemoryRouter>,
@@ -43,7 +48,9 @@ describe('RoleGuard route guard behaviour', () => {
 
     renderProtectedRoute();
 
-    expect(await screen.findByText('login-page')).toBeInTheDocument();
+    const loginStateNode = await screen.findByTestId('login-page');
+    expect(loginStateNode).toBeInTheDocument();
+    expect(loginStateNode.textContent).toContain('"pathname":"/protected"');
   });
 
   it('route guard denies access when role requirement not satisfied', async () => {

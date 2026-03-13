@@ -19,6 +19,12 @@ export function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const { signIn, resetPassword, user, authFlow } = useAuth();
+  type LoginLocationState = {
+    from?: { pathname?: unknown; search?: unknown; hash?: unknown };
+    message?: unknown;
+    email?: unknown;
+    messageType?: unknown;
+  };
 
   const focusFieldById = (fieldId: string): boolean => {
     const input = document.getElementById(fieldId) as HTMLInputElement | null;
@@ -35,15 +41,61 @@ export function Login() {
     showError(message);
   };
 
+  const mapLoginErrorToUserMessage = (err: unknown): string => {
+    const rawMessage = err instanceof Error ? err.message : '';
+    const normalizedMessage = rawMessage.trim().toLowerCase();
+
+    if (normalizedMessage.includes('invalid login credentials')) {
+      return 'Invalid email or password. Please check your credentials and try again.';
+    }
+
+    if (normalizedMessage.includes('email not confirmed')) {
+      return 'Please check your email and click the confirmation link before signing in.';
+    }
+
+    if (normalizedMessage.includes('too many requests') || normalizedMessage.includes('rate limit')) {
+      return 'Too many login attempts. Please wait a moment and try again.';
+    }
+
+    if (normalizedMessage.includes('network') || normalizedMessage.includes('fetch')) {
+      return 'Unable to sign in right now. Check your connection and try again.';
+    }
+
+    return 'Unable to sign in right now. Please try again in a moment.';
+  };
+
+  const mapResetPasswordErrorToUserMessage = (err: unknown): string => {
+    const rawMessage = err instanceof Error ? err.message : '';
+    const normalizedMessage = rawMessage.trim().toLowerCase();
+
+    if (normalizedMessage.includes('too many requests') || normalizedMessage.includes('rate limit')) {
+      return 'Too many reset requests. Please wait a moment and try again.';
+    }
+
+    if (normalizedMessage.includes('network') || normalizedMessage.includes('fetch')) {
+      return 'Unable to send a reset email right now. Check your connection and try again.';
+    }
+
+    return 'Unable to send a reset email right now. Please try again in a moment.';
+  };
+
   useEffect(() => {
-    // Check for success message from signup
-    const stateMessage = location.state?.message;
+    const stateValue = location.state as LoginLocationState | null;
+    const stateMessage = typeof stateValue?.message === 'string' ? stateValue.message : null;
+    const stateMessageType = stateValue?.messageType === 'error' ? 'error' : 'success';
+
     if (stateMessage) {
-      setSuccessMessage(stateMessage);
-      // Set email from signup if provided
-      if (location.state?.email) {
-        setEmail(location.state.email);
+      if (stateMessageType === 'error') {
+        setError(stateMessage);
+        setSuccessMessage('');
+      } else {
+        setSuccessMessage(stateMessage);
+        setError('');
       }
+    }
+
+    if (typeof stateValue?.email === 'string' && stateValue.email.trim().length > 0) {
+      setEmail(stateValue.email);
     }
     
     // Keep password-recovery sessions in the dedicated reset route.
@@ -54,8 +106,14 @@ export function Login() {
 
     // Redirect if user is already logged in
     if (user) {
-      const from = location.state?.from?.pathname || '/';
-      navigate(from, { replace: true });
+      const fromCandidate = stateValue?.from ?? null;
+      const fromPathname =
+        fromCandidate && typeof fromCandidate.pathname === 'string' ? fromCandidate.pathname : null;
+      const fromSearch =
+        fromCandidate && typeof fromCandidate.search === 'string' ? fromCandidate.search : '';
+      const fromHash = fromCandidate && typeof fromCandidate.hash === 'string' ? fromCandidate.hash : '';
+
+      navigate(fromPathname ? `${fromPathname}${fromSearch}${fromHash}` : '/', { replace: true });
     }
   }, [user, navigate, location, authFlow]);
 
@@ -99,17 +157,7 @@ export function Login() {
           },
         });
 
-        // Provide more specific error messages
-        let errorMessage = error.message;
-        if (error.message.includes('Invalid login credentials')) {
-          errorMessage = 'Invalid email or password. Please check your credentials and try again.';
-        } else if (error.message.includes('Email not confirmed')) {
-          errorMessage = 'Please check your email and click the confirmation link before signing in.';
-        } else if (error.message.includes('Too many requests')) {
-          errorMessage = 'Too many login attempts. Please wait a moment and try again.';
-        }
-        
-        setFormError(errorMessage, 'email');
+        setFormError(mapLoginErrorToUserMessage(error), 'email');
         return;
       }
 
@@ -125,8 +173,7 @@ export function Login() {
           attemptedEmail: email,
         },
       });
-      const message = err instanceof Error ? err.message : 'An unexpected error occurred';
-      setFormError(message);
+      setFormError(mapLoginErrorToUserMessage(err));
     } finally {
       setLoading(false);
     }
@@ -156,7 +203,7 @@ export function Login() {
             attemptedEmail: email,
           },
         });
-        setFormError(error.message, 'email');
+        setFormError(mapResetPasswordErrorToUserMessage(error), 'email');
         return;
       }
 
@@ -173,8 +220,7 @@ export function Login() {
           attemptedEmail: email,
         },
       });
-      const message = err instanceof Error ? err.message : 'An error occurred';
-      setFormError(message);
+      setFormError(mapResetPasswordErrorToUserMessage(err));
     } finally {
       setLoading(false);
     }

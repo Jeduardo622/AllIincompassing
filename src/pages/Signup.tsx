@@ -194,7 +194,8 @@ export function Signup() {
       navigate('/login', { 
         state: { 
           message: 'Please check your email to confirm your account before signing in.',
-          email: email 
+          email: email,
+          messageType: 'success',
         }
       });
     } catch (err) {
@@ -477,7 +478,7 @@ export function Signup() {
               <p><strong>Client:</strong> Book sessions, view schedules, access your records</p>
               <p><strong>Guardian:</strong> Request access to dependents and view approved updates</p>
               <p><strong>Therapist:</strong> Manage clients, create session notes, view schedules</p>
-              <p><strong>Admin:</strong> Full system access, user management, reporting</p>
+              <p><strong>Admin:</strong> Assigned by organization invite and approval only</p>
             </div>
           </div>
         </div>

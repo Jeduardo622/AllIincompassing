@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from '../../App';
 
 let authRole: 'client' | 'therapist' | 'admin' | 'super_admin' = 'client';
+let authIsGuardian = false;
 
 vi.mock('../../lib/authContext', () => {
   const signOut = vi.fn();
@@ -14,6 +15,7 @@ vi.mock('../../lib/authContext', () => {
       profile: { role: authRole },
       user: { id: 'user-1', email: 'user@example.com' },
       loading: false,
+      isGuardian: authIsGuardian,
       hasRole: (role: 'client' | 'therapist' | 'admin' | 'super_admin') => authRole === role,
       hasAnyRole: (roles: ('client' | 'therapist' | 'admin' | 'super_admin')[]) => roles.includes(authRole),
       signOut,
@@ -62,9 +64,18 @@ const renderApp = () => {
 describe('App navigation landing', () => {
   beforeEach(() => {
     authRole = 'client';
+    authIsGuardian = false;
   });
 
-  it('redirects client role to the family dashboard', async () => {
+  it('keeps plain clients on the dashboard', async () => {
+    window.history.pushState({}, '', '/');
+    renderApp();
+
+    expect(await screen.findByText('DashboardPage')).toBeInTheDocument();
+  });
+
+  it('redirects guardians to the family dashboard', async () => {
+    authIsGuardian = true;
     window.history.pushState({}, '', '/');
     renderApp();
 

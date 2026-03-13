@@ -82,6 +82,33 @@ const sanitizeSignupRoleMetadata = (value: unknown): 'client' | 'therapist' => {
   return normalized === 'therapist' ? 'therapist' : 'client';
 };
 
+const toLowerCaseString = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const isExplicitTrue = (value: unknown): boolean => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return value === 1;
+  }
+  const normalized = toLowerCaseString(value);
+  if (!normalized) {
+    return false;
+  }
+  return ['true', '1', 'yes', 'y'].includes(normalized);
+};
+
+const isGuardianRoleValue = (value: unknown): boolean => {
+  const normalized = toLowerCaseString(value);
+  return normalized === 'guardian';
+};
+
 const PROFILE_SELECT_COLUMNS = [
   'id',
   'email',
@@ -130,6 +157,7 @@ interface AuthContextType {
   metadataRole: Role | null;
   effectiveRole: Role;
   roleMismatch: boolean;
+  isGuardian?: boolean;
   authFlow: 'normal' | 'password_recovery';
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, metadata?: Record<string, unknown>) => Promise<{ error: Error | null }>;
@@ -193,6 +221,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     () => Boolean(profileRole && metadataRole && profileRole !== metadataRole),
     [profileRole, metadataRole],
   );
+
+  const isGuardian = useMemo(() => {
+    if (!user) {
+      return false;
+    }
+
+    const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+    const profilePreferences =
+      profile && typeof profile.preferences === 'object' && profile.preferences !== null
+        ? (profile.preferences as Record<string, unknown>)
+        : null;
+
+    const guardianFlagCandidates = [
+      userMetadata.guardian_signup,
+      userMetadata.is_guardian,
+      userMetadata.isGuardian,
+      userMetadata.guardian,
+      profilePreferences?.guardian_signup,
+      profilePreferences?.is_guardian,
+      profilePreferences?.isGuardian,
+      profilePreferences?.guardian,
+    ];
+
+    if (guardianFlagCandidates.some(isExplicitTrue)) {
+      return true;
+    }
+
+    const guardianRoleCandidates = [
+      userMetadata.signup_role,
+      userMetadata.signupRole,
+      userMetadata.account_type,
+      userMetadata.accountType,
+      userMetadata.user_type,
+      userMetadata.userType,
+      userMetadata.role,
+      profilePreferences?.account_type,
+      profilePreferences?.accountType,
+      profilePreferences?.user_type,
+      profilePreferences?.userType,
+      profilePreferences?.role,
+    ];
+
+    return guardianRoleCandidates.some(isGuardianRoleValue);
+  }, [profile, user]);
 
   const fetchProfile = useCallback(async (userId: string) => {
     try {
@@ -744,6 +816,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     metadataRole,
     effectiveRole,
     roleMismatch,
+    isGuardian,
     authFlow,
     signIn,
     signUp,

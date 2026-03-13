@@ -38,7 +38,7 @@
     "audit:routes": "node scripts/route-audit.cjs",
     "fix:routes": "node scripts/fix-route-mismatches.js",
     "test:routes": "tsx scripts/run-cypress.ts",
-    "test:routes:tier0": "tsx scripts/run-cypress.ts --spec cypress/e2e/routes_integrity.cy.ts,cypress/e2e/role_access.cy.ts",
+    "test:routes:tier0": "tsx scripts/run-cypress.ts --spec cypress/e2e/routes_integrity.cy.ts,cypress/e2e/role_access.cy.ts,cypress/e2e/auth-roles.cy.ts",
     "test:routes:open": "cypress open --spec cypress/e2e/routes_integrity.cy.ts",
     "bolt:sync:create": "node scripts/bolt-new-sync.js create",
     "bolt:sync:from": "node scripts/bolt-new-sync.js sync",

@@ -11,7 +11,7 @@ export type PreviewConfig = {
 const DEFAULT_PREVIEW_HOST = '127.0.0.1';
 const DEFAULT_PREVIEW_PORT = 4173;
 const DEFAULT_PREVIEW_PROTOCOL: PreviewConfig['protocol'] = 'http';
-const DEFAULT_OUTPUT_DIR = 'out';
+const DEFAULT_OUTPUT_DIR = 'dist';
 
 const sanitizeHost = (value: string | undefined): string => {
   const trimmed = value?.trim();

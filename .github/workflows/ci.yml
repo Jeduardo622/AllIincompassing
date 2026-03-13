@@ -75,3 +75,6 @@ jobs:
         run: npm run test:routes:tier0
         env:
           PREVIEW_OUTPUT_DIR: dist
+
+      - name: Auth browser smoke gate
+        run: npm run playwright:preflight && npm run playwright:auth

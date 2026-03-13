@@ -43,3 +43,7 @@ cypress/screenshots
 
 # Large local reference documents
 WHITE BIBLE.pdf
+
+# Generated local analysis/security artifacts (may include sensitive output)
+.reports/*.json
+.reports/*.md

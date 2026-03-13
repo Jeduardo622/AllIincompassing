@@ -72,3 +72,20 @@ This runbook documents where critical secrets are stored, who owns each system, 
 ## Local validation
 
 Developers can run `npm run ci:secrets` to confirm their environment has all required secrets before pushing changes. The CI workflow calls the same script before running linting or tests, ensuring missing secrets fail fast.
+
+## Repository hygiene safeguards
+
+- `scripts/check-secrets.ts` now scans tracked code/docs/config/report artifacts for:
+  - Supabase access/secret keys,
+  - credentialed Postgres URLs,
+  - Slack webhook URLs,
+  - JWT literals and private key blocks.
+- Generated local report artifacts under `.reports/*.json` and `.reports/*.md` are ignored to avoid accidental credential leakage from command output.
+- `.cursor/mcp.json` must never contain live tokens; keep placeholder values in git and source the token from local environment only.
+
+## Incident response (credential exposure)
+
+1. Revoke/rotate exposed credentials immediately in source systems (Supabase, DB, Slack, etc.).
+2. Remove secret material from tracked files and force regeneration of affected runtime tokens.
+3. Re-run `npm run ci:secrets` and `npm run ci:check-focused` before merge.
+4. Record incident summary and rotation completion in the release/change log.

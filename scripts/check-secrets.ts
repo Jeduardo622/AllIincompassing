@@ -56,7 +56,7 @@ const shouldCheckGroup = (group: EnvGroup, filter: Set<string> | undefined, envN
 
   const hasEnvironmentGate = Boolean(group.environments && group.environments.length > 0);
   const environmentMatch = group.environments?.includes(envName ?? '') ?? false;
-  const isCi = process.env.CI === 'true';
+  const isCi = /^(1|true|yes)$/i.test(process.env.CI ?? '');
 
   if (isCi) {
     if (hasEnvironmentGate) {
@@ -202,9 +202,11 @@ const COMMITTED_SECRET_PATTERNS: ReadonlyArray<{ readonly label: string; readonl
   { label: 'Supabase access token', regex: /\bsbp_[A-Za-z0-9]{20,}\b/g },
   { label: 'Supabase secret key', regex: /\bsb_secret_[A-Za-z0-9_-]{12,}\b/g },
   { label: 'JWT token literal', regex: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
+  { label: 'Credentialed Postgres URL', regex: /\bpostgres(?:ql)?:\/\/[^:\s"'`]+:[^@\s"'`]+@[^/\s"'`]+/g },
+  { label: 'Slack webhook URL', regex: /\bhttps:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]{20,}\b/g },
+  { label: 'Private key block', regex: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g },
 ];
 
-const SCAN_DIRECTORIES = ['src/', 'scripts/', 'supabase/', 'public/', 'artifacts/'] as const;
 const SCAN_FILE_EXTENSIONS = new Set([
   '.ts',
   '.tsx',
@@ -216,7 +218,20 @@ const SCAN_FILE_EXTENSIONS = new Set([
   '.yml',
   '.yaml',
   '.env',
+  '.md',
+  '.toml',
+  '.pem',
+  '.key',
+  '.p12',
+  '.crt',
+  '.tfvars',
 ]);
+const SCAN_EXCLUDED_PATH_PREFIXES = [
+  'node_modules/',
+  'dist/',
+  'coverage/',
+  '.git/',
+] as const;
 
 const listTrackedFiles = (): string[] => {
   try {
@@ -231,8 +246,13 @@ const listTrackedFiles = (): string[] => {
 };
 
 const isScannableFile = (filePath: string): boolean => {
-  if (!SCAN_DIRECTORIES.some((prefix) => filePath.startsWith(prefix))) {
+  if (SCAN_EXCLUDED_PATH_PREFIXES.some((prefix) => filePath.startsWith(prefix))) {
     return false;
+  }
+
+  const baseName = path.basename(filePath).toLowerCase();
+  if (baseName.startsWith('.env')) {
+    return true;
   }
 
   const extension = path.extname(filePath);

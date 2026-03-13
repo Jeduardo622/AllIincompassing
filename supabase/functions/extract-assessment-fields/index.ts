@@ -100,6 +100,7 @@ const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
 const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
 const AI_EXTRACTION_TIMEOUT_MS = 4500;
 const MAX_AI_DOCUMENT_CHARS = 12000;
+const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 
 const json = (payload: unknown, status = 200): Response =>
   new Response(JSON.stringify(payload), {
@@ -575,13 +576,40 @@ Deno.serve(async (req) => {
     }
 
     const { data } = parsed;
+    const { data: scopedAssessment, error: scopedAssessmentError } = await requestClient
+      .from("assessment_documents")
+      .select("id, client_id, organization_id, bucket_id, object_path")
+      .eq("id", data.assessment_document_id)
+      .maybeSingle();
+
+    if (scopedAssessmentError || !scopedAssessment) {
+      return json({ error: "Assessment document is not accessible for this user context." }, 403);
+    }
+
+    if (scopedAssessment.bucket_id !== data.bucket_id || scopedAssessment.object_path !== data.object_path) {
+      return json({ error: "Assessment document storage location mismatch." }, 403);
+    }
+
+    const expectedClientPrefix = `clients/${scopedAssessment.client_id}/`;
+    if (!data.object_path.startsWith(expectedClientPrefix)) {
+      return json({ error: "Assessment document path is outside the allowed client scope." }, 403);
+    }
+
     const download = await adminClient.storage.from(data.bucket_id).download(data.object_path);
     if (download.error || !download.data) {
       return json({ error: "Unable to download uploaded assessment document." }, 502);
     }
 
-    const fileBytes = new Uint8Array(await download.data.arrayBuffer());
     const objectPathLower = data.object_path.toLowerCase();
+    if (!objectPathLower.endsWith(".pdf") && !objectPathLower.endsWith(".docx")) {
+      return json({ error: "Unsupported assessment document type." }, 415);
+    }
+
+    if (download.data.size > MAX_DOCUMENT_BYTES) {
+      return json({ error: "Assessment document exceeds maximum supported size." }, 413);
+    }
+
+    const fileBytes = new Uint8Array(await download.data.arrayBuffer());
     const documentText = objectPathLower.endsWith(".docx")
       ? await decodeDocxText(fileBytes)
       : await decodePdfText(fileBytes);

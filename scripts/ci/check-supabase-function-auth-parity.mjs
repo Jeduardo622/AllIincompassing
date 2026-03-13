@@ -1,22 +1,10 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 const ROOT = process.cwd();
-const REQUIRED_FUNCTIONS = [
-  {
-    slug: 'feature-flags',
-    configPath: path.join(ROOT, 'supabase', 'functions', 'feature-flags', 'function.toml'),
-  },
-  {
-    slug: 'feature-flags-v2',
-    configPath: path.join(ROOT, 'supabase', 'functions', 'feature-flags-v2', 'function.toml'),
-  },
-  {
-    slug: 'admin-create-user',
-    configPath: path.join(ROOT, 'supabase', 'functions', 'admin-create-user', 'function.toml'),
-  },
-];
+const FUNCTIONS_DIR = path.join(ROOT, 'supabase', 'functions');
+const SKIPPED_DIRECTORY_NAMES = new Set(['_shared']);
 
 const parseProjectRef = (supabaseUrl) => {
   if (typeof supabaseUrl !== 'string' || supabaseUrl.trim().length === 0) {
@@ -38,6 +26,22 @@ const parseVerifyJwtFromToml = (source) => {
     return null;
   }
   return match[1].toLowerCase() === 'true';
+};
+
+const parseBooleanValue = (value) => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') {
+      return true;
+    }
+    if (normalized === 'false') {
+      return false;
+    }
+  }
+  return null;
 };
 
 const parseFunctionsJson = (rawOutput) => {
@@ -91,18 +95,33 @@ const ensureRuntimePrerequisites = (projectRef) => {
 
 const loadExpectedSettings = async () => {
   const expected = [];
-  for (const item of REQUIRED_FUNCTIONS) {
-    const content = await readFile(item.configPath, 'utf8');
+  const entries = await readdir(FUNCTIONS_DIR, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || SKIPPED_DIRECTORY_NAMES.has(entry.name)) {
+      continue;
+    }
+
+    const configPath = path.join(FUNCTIONS_DIR, entry.name, 'function.toml');
+    let content = null;
+    try {
+      content = await readFile(configPath, 'utf8');
+    } catch {
+      throw new Error(`Missing function.toml for function directory: ${entry.name}`);
+    }
+
     const verifyJwt = parseVerifyJwtFromToml(content);
     if (verifyJwt === null) {
-      throw new Error(`Missing verify_jwt in ${item.configPath}`);
+      throw new Error(`Missing verify_jwt in ${configPath}`);
     }
 
     expected.push({
-      slug: item.slug,
+      slug: entry.name,
       verify_jwt: verifyJwt,
     });
   }
+
+  expected.sort((a, b) => a.slug.localeCompare(b.slug));
   return expected;
 };
 
@@ -151,7 +170,13 @@ const run = async () => {
       continue;
     }
 
-    const deployedVerifyJwt = Boolean(deployedItem.verify_jwt);
+    const deployedVerifyJwt = parseBooleanValue(deployedItem.verify_jwt);
+    if (deployedVerifyJwt === null) {
+      mismatches.push(
+        `Function "${expectedItem.slug}" has non-boolean verify_jwt value in deploy output: ${String(deployedItem.verify_jwt)}.`,
+      );
+      continue;
+    }
     if (deployedVerifyJwt !== expectedItem.verify_jwt) {
       mismatches.push(
         `Function "${expectedItem.slug}" verify_jwt mismatch (repo=${expectedItem.verify_jwt}, deployed=${deployedVerifyJwt}).`,

@@ -5,7 +5,7 @@ Manual verification steps executed after restoring the scheduling SQL functions.
 ## Supabase lint
 
 ```bash
-npx supabase db lint --db-url "postgresql://postgres.wnnjeqheqxxyrgsjmygy:Allincompassing.123@aws-0-us-west-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
+npx supabase db lint --db-url "$SUPABASE_DB_URL"
 ```
 
 Only legacy “unused parameter” warnings remain.

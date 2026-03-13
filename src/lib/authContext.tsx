@@ -54,6 +54,7 @@ export interface UserProfile {
 }
 
 type Role = UserProfile['role'];
+type RoleRow = { is_active?: unknown; expires_at?: unknown; roles?: { name?: unknown } | null };
 
 const toRole = (value: unknown): Role | null => {
   if (typeof value !== 'string') {
@@ -76,6 +77,48 @@ const toRole = (value: unknown): Role | null => {
     default:
       return null;
   }
+};
+
+const roleOrder: readonly Role[] = ['super_admin', 'admin', 'therapist', 'client'];
+
+const roleRowIsActive = (isActive: unknown, expiresAt: unknown): boolean => {
+  if (isActive === false) {
+    return false;
+  }
+
+  if (typeof expiresAt !== 'string' || expiresAt.trim().length === 0) {
+    return true;
+  }
+
+  const parsed = new Date(expiresAt);
+  if (Number.isNaN(parsed.getTime())) {
+    return true;
+  }
+
+  return parsed.getTime() > Date.now();
+};
+
+const resolveRoleFromRoleRows = (rows: RoleRow[]): Role | null => {
+  const granted = new Set<Role>();
+
+  for (const row of rows) {
+    if (!roleRowIsActive(row.is_active, row.expires_at)) {
+      continue;
+    }
+
+    const parsed = toRole(row.roles?.name);
+    if (parsed) {
+      granted.add(parsed);
+    }
+  }
+
+  for (const role of roleOrder) {
+    if (granted.has(role)) {
+      return role;
+    }
+  }
+
+  return null;
 };
 
 const sanitizeSignupRoleMetadata = (value: unknown): 'client' | 'therapist' => {
@@ -187,6 +230,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [roleFromAssignments, setRoleFromAssignments] = useState<Role | null>(null);
   const [authFlow, setAuthFlow] = useState<'normal' | 'password_recovery'>('normal');
   const signOutInProgressRef = useRef(false);
 
@@ -213,14 +257,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const profileRole = profile?.role ?? null;
 
+  const rolePriority: Record<Role, number> = {
+    client: 1,
+    therapist: 2,
+    admin: 3,
+    super_admin: 4,
+  };
+
   const effectiveRole = useMemo<Role>(() => {
+    if (profileRole && roleFromAssignments) {
+      // Keep UI auth conservative when profile/user_roles drift temporarily.
+      return rolePriority[roleFromAssignments] < rolePriority[profileRole] ? roleFromAssignments : profileRole;
+    }
+    if (roleFromAssignments) return roleFromAssignments;
     if (profileRole) return profileRole;
     return 'client';
-  }, [profileRole]);
+  }, [profileRole, roleFromAssignments]);
 
   const roleMismatch = useMemo(
-    () => Boolean(profileRole && metadataRole && profileRole !== metadataRole),
-    [profileRole, metadataRole],
+    () =>
+      Boolean(
+        (profileRole && metadataRole && profileRole !== metadataRole) ||
+          (profileRole && roleFromAssignments && profileRole !== roleFromAssignments),
+      ),
+    [profileRole, metadataRole, roleFromAssignments],
   );
 
   const isGuardian = useMemo(() => {
@@ -329,6 +389,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const fetchAssignedRole = useCallback(async (userId: string): Promise<Role | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('is_active, expires_at, roles(name)')
+        .eq('user_id', userId);
+
+      if (error || !Array.isArray(data)) {
+        logger.warn('Unable to resolve role assignments; falling back to profile role', {
+          error: error ? toError(error, 'Role assignment query failed') : undefined,
+          metadata: {
+            scope: 'authContext.fetchAssignedRole',
+            userId,
+          },
+        });
+        return null;
+      }
+
+      return resolveRoleFromRoleRows(data as RoleRow[]);
+    } catch (error) {
+      logger.warn('Role assignment lookup failed unexpectedly; falling back to profile role', {
+        error: toError(error, 'Role assignment query failed'),
+        metadata: {
+          scope: 'authContext.fetchAssignedRole',
+          userId,
+        },
+      });
+      return null;
+    }
+  }, []);
+
   const withTimeout = async <T,>(p: Promise<T>, label: string, ms = 10000): Promise<T> => {
     return Promise.race([
       p,
@@ -350,6 +441,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSession(null);
     setUser(null);
     setProfile(null);
+    setRoleFromAssignments(null);
     setProfileLoading(false);
 
     try {
@@ -389,11 +481,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSession(initialSession);
       setProfileLoading(true);
       const profileData = await withTimeout(fetchProfile(initialSession.user.id), 'fetchProfile');
+      const assignedRole = await withTimeout(fetchAssignedRole(initialSession.user.id), 'fetchAssignedRole');
       if (profileData && profileData.is_active === false) {
         await forceInactiveAccountSignOut(initialSession.user.id, 'initializeAuth');
         return;
       }
       setProfile(profileData);
+      setRoleFromAssignments(assignedRole);
       setProfileLoading(false);
       return;
     }
@@ -403,6 +497,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(stubAuthState.user);
       setSession(stubAuthState.session);
       setProfile(stubAuthState.profile);
+      setRoleFromAssignments(null);
       setProfileLoading(false);
       return;
     }
@@ -410,8 +505,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setSession(null);
     setProfile(null);
+    setRoleFromAssignments(null);
     setProfileLoading(false);
-  }, [fetchProfile, forceInactiveAccountSignOut]);
+  }, [fetchAssignedRole, fetchProfile, forceInactiveAccountSignOut]);
 
   const initializeAuth = useCallback(async () => {
     setLoading(true);
@@ -456,6 +552,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(null);
         setSession(null);
         setProfile(null);
+        setRoleFromAssignments(null);
         setProfileLoading(false);
       }
       setLoading(false);
@@ -473,21 +570,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       },
     });
 
-    const profileData = await withTimeout(
-      fetchProfile(nextSession.user.id),
-      'fetchProfile in onAuthStateChange',
-      10000
-    ).catch((error) => {
-      logger.error('Failed to fetch profile in auth state change', {
-        error: toError(error, 'Profile fetch failed in listener'),
-        metadata: {
-          scope: 'authContext.onAuthStateChange',
-          userId: nextSession.user.id,
-          event,
-        },
-      });
-      return null;
-    });
+    const [profileData, assignedRole] = await Promise.all([
+      withTimeout(
+        fetchProfile(nextSession.user.id),
+        'fetchProfile in onAuthStateChange',
+        10000
+      ).catch((error) => {
+        logger.error('Failed to fetch profile in auth state change', {
+          error: toError(error, 'Profile fetch failed in listener'),
+          metadata: {
+            scope: 'authContext.onAuthStateChange',
+            userId: nextSession.user.id,
+            event,
+          },
+        });
+        return null;
+      }),
+      fetchAssignedRole(nextSession.user.id),
+    ]);
 
     logger.debug('Completed profile refresh after auth state change', {
       metadata: {
@@ -504,6 +604,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    setRoleFromAssignments(assignedRole);
     setProfile((currentProfile) => {
       if (profileData) {
         return profileData;
@@ -518,7 +619,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return null;
     });
     setProfileLoading(false);
-  }, [fetchProfile, forceInactiveAccountSignOut]);
+  }, [fetchAssignedRole, fetchProfile, forceInactiveAccountSignOut]);
 
   const waitForSignedOutEvent = useCallback((timeoutMs = 5000): Promise<void> => {
     return new Promise((resolve) => {
@@ -564,6 +665,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSession(null);
             setUser(null);
             setProfile(null);
+            setRoleFromAssignments(null);
             setProfileLoading(false);
             signOutInProgressRef.current = false;
           }
@@ -588,9 +690,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(stubAuthState.user);
             setSession(stubAuthState.session);
             setProfile(stubAuthState.profile);
+            setRoleFromAssignments(null);
             setProfileLoading(false);
           } else {
             setProfile(null);
+            setRoleFromAssignments(null);
             setProfileLoading(false);
           }
         }
@@ -600,6 +704,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(null);
           setProfile(null);
           setSession(null);
+          setRoleFromAssignments(null);
           setProfileLoading(false);
         }
       } catch (error) {
@@ -730,6 +835,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       setProfile(null);
       setSession(null);
+      setRoleFromAssignments(null);
 
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(STUB_AUTH_STORAGE_KEY);

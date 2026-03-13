@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useAuth } from './authContext';
 import { CACHE_STRATEGIES } from './cacheStrategy';
 
-export const DASHBOARD_LIVE_REFRESH_INTERVAL_MS = 30 * 1000;
+export const DASHBOARD_LIVE_REFRESH_INTERVAL_MS = 60 * 1000;
 
 export const useDashboardLiveRefresh = () => {
   const { isAdmin, isSuperAdmin } = useAuth();

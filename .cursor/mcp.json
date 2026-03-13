@@ -8,7 +8,7 @@
         "--project-ref=wnnjeqheqxxyrgsjmygy"
       ],
       "env": {
-        "SUPABASE_ACCESS_TOKEN": "sbp_a6d1e749c37e86298e3a49ec7ab93f0b8eb9e653"
+        "SUPABASE_ACCESS_TOKEN": "<set-via-local-env>"
       }
     }
   }

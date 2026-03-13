@@ -8,6 +8,7 @@ import { showSuccess } from '../lib/toast';
 export function PasswordRecovery() {
   const navigate = useNavigate();
   const { authFlow, user, loading: authLoading } = useAuth();
+  const isRecoverySessionValid = Boolean(user) && authFlow === 'password_recovery';
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -18,7 +19,7 @@ export function PasswordRecovery() {
     if (authLoading) {
       return;
     }
-    if (!user || authFlow !== 'password_recovery') {
+    if (!isRecoverySessionValid) {
       navigate('/login', {
         replace: true,
         state: {
@@ -26,14 +27,18 @@ export function PasswordRecovery() {
         },
       });
     }
-  }, [authFlow, authLoading, navigate, user]);
+  }, [authLoading, isRecoverySessionValid, navigate]);
+
+  if (authLoading || !isRecoverySessionValid) {
+    return null;
+  }
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
     setSuccessMessage('');
 
-    if (!user || authFlow !== 'password_recovery') {
+    if (!isRecoverySessionValid) {
       setError('Password recovery session is invalid or expired. Request a new reset email.');
       return;
     }

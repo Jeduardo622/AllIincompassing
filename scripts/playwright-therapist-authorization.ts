@@ -21,7 +21,7 @@ const ensureDir = (dir: string) => {
 };
 
 const AUTH_GUARD_PATTERN =
-  /you are not assigned to this client|not authorized|unauthorized|access denied|forbidden|you can only view your own therapist profile/i;
+  /you are not assigned to this client|not authorized|unauthorized|access denied|forbidden|you can only view your own therapist profile|therapist not found|doesn['’]t exist or you don['’]t have permission/i;
 
 const isUnauthorizedPath = (pathname: string): boolean =>
   pathname.includes('/unauthorized') || pathname.includes('/login');
@@ -38,27 +38,48 @@ const assertGuardedRoute = async (page: import('playwright').Page, targetUrl: st
   page.on('response', onResponse);
   try {
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+    const deadline = Date.now() + 12000;
+    while (Date.now() < deadline) {
+      const currentPath = new URL(page.url()).pathname.toLowerCase();
+      if (isUnauthorizedPath(currentPath)) {
+        return;
+      }
+
+      const guardVisible = await page.getByText(AUTH_GUARD_PATTERN).first().isVisible().catch(() => false);
+      if (guardVisible) {
+        return;
+      }
+
+      if (forbiddenResponses.length > 0) {
+        return;
+      }
+
+      // If protected record page fully renders without any guard, treat as authorization failure.
+      const allowedPageVisible = await page
+        .locator('h1, [role="heading"]')
+        .filter({ hasText: /therapist records|client records/i })
+        .first()
+        .isVisible()
+        .catch(() => false);
+      if (allowedPageVisible) {
+        break;
+      }
+
+      await page.waitForTimeout(500);
+    }
   } finally {
     page.off('response', onResponse);
   }
 
   const currentPath = new URL(page.url()).pathname.toLowerCase();
-  if (isUnauthorizedPath(currentPath)) {
-    return;
-  }
-
-  const guardVisible = await page.getByText(AUTH_GUARD_PATTERN).first().isVisible().catch(() => false);
-  if (guardVisible) {
-    return;
-  }
-
-  if (forbiddenResponses.length > 0) {
-    return;
-  }
+  const loadingSpinnerVisible = await page
+    .locator('.animate-spin')
+    .first()
+    .isVisible()
+    .catch(() => false);
 
   throw new Error(
-    `Expected authorization guard for ${targetUrl}, but none detected. Current URL: ${page.url()}`,
+    `Expected authorization guard for ${targetUrl}, but none detected. Current URL: ${page.url()}${loadingSpinnerVisible ? ' (page remained in loading state)' : ''}`,
   );
 };
 

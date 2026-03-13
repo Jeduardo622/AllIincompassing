@@ -179,6 +179,7 @@ CREATE POLICY org_read_clients
 |-------|--------|---------------|-------------|
 | `/auth/signup` | POST | Public | User registration |
 | `/auth/login` | POST | Public | User authentication |
+| `/auth/recovery` | GET | Password recovery session | Password reset callback and credential update |
 | `/profiles/me` | GET/PUT | All authenticated | User profile management |
 | `/admin/users` | GET | admin, super_admin | User management |
 | `/admin/users/:id/roles` | PATCH | super_admin | Role management |
@@ -191,6 +192,11 @@ All API routes use the `withAuth` middleware that:
 3. Enforces role-based access control
 4. Handles CORS preflight requests
 5. Logs API access for security monitoring
+
+### Canonical Auth Entrypoint
+
+- The web application uses direct Supabase client auth via `src/lib/authContext.tsx` as the canonical entrypoint.
+- Edge auth routes remain supported for API compatibility and contract tests, and are hardened with request-scoped clients and standardized error envelopes.
 
 ### Example Usage
 
@@ -335,6 +341,7 @@ The following checks are mandatory before launch:
 - Input validation and sanitization
 - CORS configuration
 - Security headers
+- Token-bearing auth responses explicitly set no-store/no-cache headers.
 
 ### Preventing over-posting
 - Prefer allowlisted RPCs (or edge functions) for sensitive multi-field or multi-row writes (e.g., authorizations + services, document metadata updates).

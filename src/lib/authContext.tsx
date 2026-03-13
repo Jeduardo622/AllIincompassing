@@ -1,3 +1,11 @@
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import type { User, Session, AuthChangeEvent } from '@supabase/supabase-js';
+import { clearSupabaseAuthStorage, supabase } from './supabaseClient'; // Use consistent client
+import { logger } from './logger/logger';
+import { toError } from './logger/normalizeError';
+import { readStubAuthState, STUB_AUTH_STORAGE_KEY } from './authStubSession';
+import { getDefaultOrganizationId } from './runtimeConfig';
+
 const normalizeOrgId = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -6,13 +14,24 @@ const normalizeOrgId = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
-import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import type { User, Session } from '@supabase/supabase-js';
-import { clearSupabaseAuthStorage, supabase } from './supabaseClient'; // Use consistent client
-import { logger } from './logger/logger';
-import { toError } from './logger/normalizeError';
-import { readStubAuthState, STUB_AUTH_STORAGE_KEY } from './authStubSession';
-import { getDefaultOrganizationId } from './runtimeConfig';
+const resolveAuthFlowForEvent = (event: AuthChangeEvent): 'normal' | 'password_recovery' => {
+  switch (event) {
+    case 'PASSWORD_RECOVERY':
+      return 'password_recovery';
+    case 'INITIAL_SESSION':
+    case 'SIGNED_IN':
+    case 'SIGNED_OUT':
+    case 'TOKEN_REFRESHED':
+    case 'USER_UPDATED':
+    case 'USER_DELETED':
+    case 'MFA_CHALLENGE_VERIFIED':
+      return 'normal';
+    default: {
+      const exhaustiveEvent: never = event;
+      return exhaustiveEvent;
+    }
+  }
+};
 
 // User profile interface - moved from legacy auth.ts
 export interface UserProfile {
@@ -111,6 +130,7 @@ interface AuthContextType {
   metadataRole: Role | null;
   effectiveRole: Role;
   roleMismatch: boolean;
+  authFlow: 'normal' | 'password_recovery';
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, metadata?: Record<string, unknown>) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -138,6 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [authFlow, setAuthFlow] = useState<'normal' | 'password_recovery'>('normal');
   const signOutInProgressRef = useRef(false);
 
   const metadataRole = useMemo<Role | null>(() => {
@@ -419,6 +440,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         if (signOutInProgressRef.current) {
           if (event === 'SIGNED_OUT' || !session?.user) {
+            setAuthFlow('normal');
             setSession(null);
             setUser(null);
             setProfile(null);
@@ -430,6 +452,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         setSession(session);
         setUser(session?.user ?? null);
+        setAuthFlow(resolveAuthFlowForEvent(event));
 
         if (session?.user) {
           setProfileLoading(true);
@@ -453,6 +476,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (event === 'SIGNED_OUT') {
+          setAuthFlow('normal');
           setUser(null);
           setProfile(null);
           setSession(null);
@@ -620,7 +644,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const resetPassword = async (email: string) => {
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/login`,
+        redirectTo: `${window.location.origin}/auth/recovery`,
       });
       
       if (error) {
@@ -720,6 +744,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     metadataRole,
     effectiveRole,
     roleMismatch,
+    authFlow,
     signIn,
     signUp,
     signOut,

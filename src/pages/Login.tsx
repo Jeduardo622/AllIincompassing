@@ -18,7 +18,7 @@ export function Login() {
   const errorFocusFieldRef = useRef<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { signIn, resetPassword, user } = useAuth();
+  const { signIn, resetPassword, user, authFlow } = useAuth();
 
   const focusFieldById = (fieldId: string): boolean => {
     const input = document.getElementById(fieldId) as HTMLInputElement | null;
@@ -46,12 +46,18 @@ export function Login() {
       }
     }
     
+    // Keep password-recovery sessions in the dedicated reset route.
+    if (user && authFlow === 'password_recovery') {
+      navigate('/auth/recovery', { replace: true });
+      return;
+    }
+
     // Redirect if user is already logged in
     if (user) {
       const from = location.state?.from?.pathname || '/';
       navigate(from, { replace: true });
     }
-  }, [user, navigate, location]);
+  }, [user, navigate, location, authFlow]);
 
   useEffect(() => {
     if (!error) {

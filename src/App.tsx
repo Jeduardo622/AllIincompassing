@@ -13,6 +13,9 @@ import { logger } from './lib/logger/logger';
 // Lazy load components
 const Login = React.lazy(() => import('./pages/Login').then(module => ({ default: module.Login })));
 const Signup = React.lazy(() => import('./pages/Signup').then(module => ({ default: module.Signup })));
+const PasswordRecovery = React.lazy(() =>
+  import('./pages/PasswordRecovery').then(module => ({ default: module.PasswordRecovery })),
+);
 const Layout = React.lazy(() => import('./components/Layout').then(module => ({ default: module.Layout })));
 const Dashboard = React.lazy(() => import('./pages/Dashboard').then(module => ({ default: module.Dashboard })));
 const Schedule = React.lazy(() => import('./pages/Schedule').then(module => ({ default: module.Schedule })));
@@ -156,6 +159,7 @@ function App() {
                   {/* Public Routes */}
                   <Route path="/login" element={<Login />} />
                   <Route path="/signup" element={<Signup />} />
+                  <Route path="/auth/recovery" element={<PasswordRecovery />} />
                   <Route path="/unauthorized" element={<Unauthorized />} />
 
                   {/* Protected Routes */}

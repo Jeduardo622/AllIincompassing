@@ -28,7 +28,7 @@ const run = async (): Promise<void> => {
   const cypressBin = resolveCypressBin();
   const userArgs = process.argv.slice(2);
   const hasExplicitSpec = userArgs.includes('--spec');
-  const defaultSpec = 'cypress/e2e/routes_integrity.cy.ts,cypress/e2e/role_access.cy.ts';
+  const defaultSpec = 'cypress/e2e/routes_integrity.cy.ts,cypress/e2e/role_access.cy.ts,cypress/e2e/auth-roles.cy.ts';
   const cypressArgs = hasExplicitSpec
     ? ['run', ...userArgs]
     : ['run', '--spec', defaultSpec, ...userArgs];

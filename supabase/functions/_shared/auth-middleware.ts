@@ -56,7 +56,7 @@ export class AuthenticationError extends Error {
   }
 }
 
-const resolveAllowedOrigin = (): string => {
+const resolveFallbackOrigin = (): string => {
   const configuredOrigins = Deno.env.get("CORS_ALLOWED_ORIGINS");
   if (configuredOrigins && configuredOrigins.trim().length > 0) {
     return configuredOrigins.split(",")[0].trim();
@@ -70,15 +70,52 @@ const resolveAllowedOrigin = (): string => {
   return "https://velvety-cendol-dae4d6.netlify.app";
 };
 
+const getConfiguredOrigins = (): string[] => {
+  const configuredOrigins = Deno.env.get("CORS_ALLOWED_ORIGINS");
+  if (!configuredOrigins || configuredOrigins.trim().length === 0) {
+    return [resolveFallbackOrigin()];
+  }
+  return configuredOrigins
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+};
+
+const resolveOriginForRequest = (req: Request): string => {
+  const requestOrigin = req.headers.get("origin");
+  const allowedOrigins = getConfiguredOrigins();
+  if (!requestOrigin) {
+    return allowedOrigins[0] ?? resolveFallbackOrigin();
+  }
+  if (allowedOrigins.includes(requestOrigin)) {
+    return requestOrigin;
+  }
+  return allowedOrigins[0] ?? resolveFallbackOrigin();
+};
+
 /**
  * CORS headers for all API responses
  */
 export const corsHeaders = {
-  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
+  "Access-Control-Allow-Origin": resolveFallbackOrigin(),
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Client-Info, x-client-info, apikey",
   "Access-Control-Max-Age": "86400",
 };
+
+export const tokenResponseCacheHeaders = {
+  "Cache-Control": "no-store, no-cache, max-age=0",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
+export function corsHeadersForRequest(req: Request): Record<string, string> {
+  return {
+    ...corsHeaders,
+    "Access-Control-Allow-Origin": resolveOriginForRequest(req),
+    Vary: "Origin",
+  };
+}
 
 /**
  * Handle CORS preflight requests
@@ -87,7 +124,7 @@ export function handleCors(req: Request): Response | null {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
-      headers: corsHeaders,
+      headers: corsHeadersForRequest(req),
     });
   }
   return null;
@@ -96,12 +133,34 @@ export function handleCors(req: Request): Response | null {
 /**
  * Extract Bearer token from Authorization header
  */
-function extractBearerToken(req: Request): string | null {
+export function extractBearerToken(req: Request): string | null {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null;
   }
   return authHeader.substring(7);
+}
+
+export async function createSupabaseClientForRequest(req: Request): Promise<{
+  supabase: ReturnType<SupabaseModule["createClient"]>;
+  token: string | null;
+}> {
+  const token = extractBearerToken(req);
+  const { createClient } = await loadSupabaseModule();
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+    token
+      ? {
+          global: {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        }
+      : undefined
+  );
+  return { supabase, token };
 }
 
 /**
@@ -112,19 +171,7 @@ export async function getUserContext(req: Request): Promise<UserContext | null> 
   if (!token) {
     return null;
   }
-
-  const { createClient } = await loadSupabaseModule();
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-    {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    }
-  );
+  const { supabase } = await createSupabaseClientForRequest(req);
 
   try {
     // Get user from token
@@ -262,6 +309,8 @@ export async function withAuth(
     requireActiveUser = true,
   } = options;
 
+  const responseHeaders = corsHeadersForRequest(req);
+
   try {
     // Get user context
     const userContext = await getUserContext(req);
@@ -274,7 +323,7 @@ export async function withAuth(
           JSON.stringify({ error: 'Authentication required' }),
           {
             status: 401,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            headers: { ...responseHeaders, 'Content-Type': 'application/json' },
           }
         ),
       };
@@ -288,7 +337,7 @@ export async function withAuth(
           JSON.stringify({ error: 'User account is inactive' }),
           {
             status: 403,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            headers: { ...responseHeaders, 'Content-Type': 'application/json' },
           }
         ),
       };
@@ -307,7 +356,7 @@ export async function withAuth(
             }),
             {
               status: 403,
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              headers: { ...responseHeaders, 'Content-Type': 'application/json' },
             }
           ),
         };
@@ -323,7 +372,7 @@ export async function withAuth(
         JSON.stringify({ error: 'Internal authentication error' }),
         {
           status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...responseHeaders, 'Content-Type': 'application/json' },
         }
       ),
     };
@@ -359,7 +408,7 @@ export function createProtectedRoute(
         JSON.stringify({ error: 'Authentication required' }),
         {
           status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...corsHeadersForRequest(req), 'Content-Type': 'application/json' },
         }
       );
     }
@@ -374,7 +423,7 @@ export function createProtectedRoute(
           JSON.stringify({ error: error.message }),
           {
             status: error.statusCode,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            headers: { ...corsHeadersForRequest(req), 'Content-Type': 'application/json' },
           }
         );
       }
@@ -384,7 +433,7 @@ export function createProtectedRoute(
           JSON.stringify({ error: error.message }),
           {
             status: error.statusCode,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            headers: { ...corsHeadersForRequest(req), 'Content-Type': 'application/json' },
           }
         );
       }
@@ -393,7 +442,7 @@ export function createProtectedRoute(
         JSON.stringify({ error: 'Internal server error' }),
         {
           status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...corsHeadersForRequest(req), 'Content-Type': 'application/json' },
         }
       );
     }
@@ -424,7 +473,7 @@ export function createPublicRoute(
         JSON.stringify({ error: 'Internal server error' }),
         {
           status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...corsHeadersForRequest(req), 'Content-Type': 'application/json' },
         }
       );
     }

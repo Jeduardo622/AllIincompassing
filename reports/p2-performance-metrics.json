@@ -5,10 +5,10 @@
     "wildcardSelectCount": 1
   },
   "current": {
-    "syntheticLegacyDurationMs": 9.21,
-    "syntheticIndexedDurationMs": 0.12,
-    "indexedImprovementPercent": 98.7,
-    "baselineToCurrentScheduleImprovementPercent": 99.06,
+    "syntheticLegacyDurationMs": 9.34,
+    "syntheticIndexedDurationMs": 0.08,
+    "indexedImprovementPercent": 99.14,
+    "baselineToCurrentScheduleImprovementPercent": 99.37,
     "wildcardSelectCount": 0,
     "wildcardReduction": 1,
     "globalRouteInvalidationEnabled": false,

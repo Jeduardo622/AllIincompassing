@@ -107,6 +107,7 @@ interface AuthContextType {
   profile: UserProfile | null;
   session: Session | null;
   loading: boolean;
+  profileLoading: boolean;
   metadataRole: Role | null;
   effectiveRole: Role;
   roleMismatch: boolean;
@@ -136,6 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
   const signOutInProgressRef = useRef(false);
 
   const metadataRole = useMemo<Role | null>(() => {
@@ -253,8 +255,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (initialSession?.user) {
       setUser(initialSession.user);
       setSession(initialSession);
+      setProfileLoading(true);
       const profileData = await withTimeout(fetchProfile(initialSession.user.id), 'fetchProfile');
       setProfile(profileData);
+      setProfileLoading(false);
       return;
     }
 
@@ -263,12 +267,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(stubAuthState.user);
       setSession(stubAuthState.session);
       setProfile(stubAuthState.profile);
+      setProfileLoading(false);
       return;
     }
 
     setUser(null);
     setSession(null);
     setProfile(null);
+    setProfileLoading(false);
   }, [fetchProfile]);
 
   const initializeAuth = useCallback(async () => {
@@ -314,12 +320,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(null);
         setSession(null);
         setProfile(null);
+        setProfileLoading(false);
       }
       setLoading(false);
     }
   }, [performInitialization]);
 
   const refreshProfileForSession = useCallback(async (nextSession: Session, event: string) => {
+    setProfileLoading(true);
     logger.debug('Refreshing profile after auth state change', {
       metadata: {
         scope: 'authContext.onAuthStateChange',
@@ -368,6 +376,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return null;
     });
+    setProfileLoading(false);
   }, [fetchProfile]);
 
   const waitForSignedOutEvent = useCallback((timeoutMs = 5000): Promise<void> => {
@@ -413,6 +422,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSession(null);
             setUser(null);
             setProfile(null);
+            setProfileLoading(false);
             signOutInProgressRef.current = false;
           }
           return;
@@ -422,6 +432,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(session?.user ?? null);
 
         if (session?.user) {
+          setProfileLoading(true);
           // Supabase warns against awaiting additional Supabase calls directly inside
           // this callback. Schedule profile refresh in a separate task to avoid
           // re-entrancy stalls that can lead to timeout errors during SIGNED_IN.
@@ -434,8 +445,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(stubAuthState.user);
             setSession(stubAuthState.session);
             setProfile(stubAuthState.profile);
+            setProfileLoading(false);
           } else {
             setProfile(null);
+            setProfileLoading(false);
           }
         }
 
@@ -443,6 +456,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(null);
           setProfile(null);
           setSession(null);
+          setProfileLoading(false);
         }
       } catch (error) {
         logger.error('Failed to process auth state change', {
@@ -702,6 +716,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     profile,
     session,
     loading,
+    profileLoading,
     metadataRole,
     effectiveRole,
     roleMismatch,

@@ -39,6 +39,8 @@ export const fillWithFallbacks = async (
   value: string,
   label: string,
 ): Promise<void> => {
+  const expected = value.trim();
+  const expectCaseInsensitive = label.toLowerCase() === "email";
   for (const candidate of candidates) {
     try {
       const count = await candidate.count();
@@ -51,7 +53,11 @@ export const fillWithFallbacks = async (
       await target.fill("");
       await target.type(value, { delay: 20 });
       const current = await target.inputValue().catch(() => "");
-      if (current === value || current.length > 0) {
+      const normalizedCurrent = current.trim();
+      const matches = expectCaseInsensitive
+        ? normalizedCurrent.toLowerCase() === expected.toLowerCase()
+        : normalizedCurrent === expected;
+      if (matches) {
         return;
       }
     } catch {
@@ -101,7 +107,6 @@ export const loginAndAssertSession = async (
       page.locator("form input[type='email']"),
       page.locator("form input[name*='email' i]"),
       page.locator("input#email"),
-      page.locator("input:not([type='password'])"),
     ],
     email,
     "email",
@@ -129,9 +134,11 @@ export const loginAndAssertSession = async (
   let authenticated = false;
   while (Date.now() < waitUntil) {
     const currentUrl = page.url();
-    const offLoginPath = !/\/login(\?|$)/i.test(new URL(currentUrl).pathname);
+    const pathname = new URL(currentUrl).pathname.toLowerCase();
+    const offLoginPath = !/\/login(\?|$)/i.test(pathname);
+    const unauthorizedPath = pathname.includes("/unauthorized");
     const hasToken = await hasSupabaseAuthToken(page);
-    if (offLoginPath || hasToken) {
+    if ((offLoginPath && !unauthorizedPath) || hasToken) {
       authenticated = true;
       break;
     }
@@ -153,10 +160,28 @@ export const assertRouteAccessible = async (
   baseUrl: string,
   routePath: string,
 ): Promise<void> => {
-  await page.goto(`${baseUrl}${routePath}`, { waitUntil: "domcontentloaded" });
-  await page.waitForLoadState("networkidle").catch(() => undefined);
-  const pathname = new URL(page.url()).pathname.toLowerCase();
-  if (pathname.includes("/login") || pathname.includes("/unauthorized")) {
-    throw new Error(`Authenticated user cannot access required route ${routePath}. Current path: ${pathname}`);
+  const maxAttempts = 3;
+  let lastPath = "";
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    await page.goto(`${baseUrl}${routePath}`, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle").catch(() => undefined);
+    const pathname = new URL(page.url()).pathname.toLowerCase();
+    lastPath = pathname;
+
+    // If we reached target route path, this actor is route-capable.
+    if (!pathname.includes("/login") && !pathname.includes("/unauthorized")) {
+      return;
+    }
+
+    // Give auth/profile hydration a bounded chance before hard-failing.
+    if (attempt < maxAttempts && pathname.includes("/unauthorized")) {
+      await page.waitForTimeout(1500);
+      continue;
+    }
+    break;
+  }
+
+  if (lastPath.includes("/login") || lastPath.includes("/unauthorized")) {
+    throw new Error(`Authenticated user cannot access required route ${routePath}. Current path: ${lastPath}`);
   }
 };

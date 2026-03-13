@@ -138,7 +138,7 @@ async function run(): Promise<void> {
     await checkByLabel(/in clinic/i);
     await checkByLabel(/telehealth/i);
     await checkByLabel(/aba therapy/i);
-    await page.check('#speech_therapy');
+    await checkByLabel(/speech therapy/i);
     await page.fill('#onboarding-hours-min', '5');
     await page.fill('#onboarding-hours-max', '25');
     await page.click('button:has-text("Next")');

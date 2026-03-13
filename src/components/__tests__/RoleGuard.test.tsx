@@ -7,6 +7,8 @@ import { RoleGuard } from '../RoleGuard';
 type MockAuthValue = {
   readonly user: unknown;
   readonly loading: boolean;
+  readonly profileLoading?: boolean;
+  readonly profile?: unknown;
   readonly hasAnyRole?: (roles: readonly string[]) => boolean;
 };
 
@@ -37,7 +39,7 @@ const renderProtectedRoute = (): void => {
 
 describe('RoleGuard route guard behaviour', () => {
   it('route guard redirects unauthenticated users to login', async () => {
-    vi.mocked(useAuth).mockReturnValue({ user: null, loading: false });
+    vi.mocked(useAuth).mockReturnValue({ user: null, loading: false, profileLoading: false, profile: null });
 
     renderProtectedRoute();
 
@@ -48,6 +50,8 @@ describe('RoleGuard route guard behaviour', () => {
     vi.mocked(useAuth).mockReturnValue({
       user: { id: 'user-1' },
       loading: false,
+      profileLoading: false,
+      profile: { role: 'client' },
       hasAnyRole: vi.fn().mockReturnValue(false),
     });
 
@@ -60,11 +64,28 @@ describe('RoleGuard route guard behaviour', () => {
     vi.mocked(useAuth).mockReturnValue({
       user: { id: 'user-1' },
       loading: false,
+      profileLoading: false,
+      profile: { role: 'admin' },
       hasAnyRole: vi.fn().mockReturnValue(true),
     });
 
     renderProtectedRoute();
 
     expect(await screen.findByText('protected')).toBeInTheDocument();
+  });
+
+  it('route guard waits for profile hydration before evaluating roles', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'user-1' },
+      loading: false,
+      profileLoading: true,
+      profile: null,
+      hasAnyRole: vi.fn().mockReturnValue(false),
+    });
+
+    renderProtectedRoute();
+
+    expect(screen.queryByText('unauthorized-page')).not.toBeInTheDocument();
+    expect(screen.queryByText('login-page')).not.toBeInTheDocument();
   });
 });

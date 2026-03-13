@@ -88,7 +88,11 @@ const queryClient = new QueryClient({
 });
 
 const DashboardLanding: React.FC = () => {
-  const { hasRole, hasAnyRole } = useAuth();
+  const { user, profile, loading, profileLoading, hasRole, hasAnyRole } = useAuth();
+
+  if (loading || (user && profileLoading && !profile)) {
+    return <LoadingSpinner />;
+  }
 
   const isGuardian = hasRole('client') && !hasAnyRole(['therapist', 'admin', 'super_admin']);
 

@@ -14,11 +14,11 @@ export const RoleGuard: React.FC<RoleGuardProps> = ({
   roles, 
   fallback 
 }) => {
-  const { user, loading, hasAnyRole, profile } = useAuth();
+  const { user, loading, profileLoading, hasAnyRole, profile } = useAuth();
   const location = useLocation();
 
   // Show loading while auth is being determined
-  if (loading) {
+  if (loading || (user && profileLoading && !profile)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>

@@ -10,7 +10,8 @@ const ROUTES = [
   { path: '/unauthorized', roles: ['public'] },
   { path: '/', roles: ['client', 'therapist', 'admin', 'super_admin'] },
   { path: '/schedule', roles: ['client', 'therapist', 'admin', 'super_admin'] },
-  { path: '/family', roles: ['client', 'therapist', 'admin', 'super_admin'] },
+  // Guardian-only route. Role-only stubs in this suite should be blocked.
+  { path: '/family', roles: [] },
   { path: '/clients', roles: ['therapist', 'admin', 'super_admin'] },
   { path: '/therapists', roles: ['admin', 'super_admin'] },
   { path: '/authorizations', roles: ['therapist', 'admin', 'super_admin'] },

@@ -1,0 +1,10 @@
+{
+  "executedAt": "2026-03-13T03:18:40.294Z",
+  "baseUrl": "https://app.allincompassing.ai",
+  "therapistEmail": "j_eduardo622@yahoo.com",
+  "foreignClientId": "cfa23a68-2122-4150-9ea2-fe1314974d80",
+  "foreignTherapistId": "a4285db6-7877-49a6-b57d-40930a3695a1",
+  "ok": false,
+  "error": "Expected authorization guard for https://app.allincompassing.ai/therapists/a4285db6-7877-49a6-b57d-40930a3695a1, but none detected. Current URL: https://app.allincompassing.ai/therapists/a4285db6-7877-49a6-b57d-40930a3695a1",
+  "failurePath": "C:\\Users\\test\\Desktop\\AllIincompassing\\artifacts\\latest\\playwright-therapist-authorization-failure-1773371926455.png"
+}

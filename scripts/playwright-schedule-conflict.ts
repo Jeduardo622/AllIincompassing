@@ -31,6 +31,18 @@ async function ensureOption(page: Page, selector: string): Promise<string> {
   return value;
 }
 
+async function getOptionValues(page: Page, selector: string): Promise<string[]> {
+  const options = await page.locator(`${selector} option:not([value=""])`).all();
+  const values: string[] = [];
+  for (const option of options) {
+    const value = await option.getAttribute('value');
+    if (value) {
+      values.push(value);
+    }
+  }
+  return values;
+}
+
 async function openSessionModal(page: Page) {
   await page.evaluate(() => {
     const now = new Date();
@@ -117,11 +129,13 @@ async function run() {
       );
     }
 
-    await page.route('**/api/book', async (route) => {
+    let interceptedBookingPosts = 0;
+    await page.route('**/api/book*', async (route) => {
       if (route.request().method().toUpperCase() !== 'POST') {
         await route.continue();
         return;
       }
+      interceptedBookingPosts += 1;
 
       await route.fulfill({
         status: 409,
@@ -137,10 +151,49 @@ async function run() {
     await page.waitForSelector('text=Schedule', { timeout: 15000 });
     await openSessionModal(page);
 
-    const therapistId = await ensureOption(page, '#therapist-select');
-    const clientId = await ensureOption(page, '#client-select');
-    await page.selectOption('#therapist-select', therapistId);
-    await page.selectOption('#client-select', clientId);
+    const therapistValues = await getOptionValues(page, '#therapist-select');
+    const clientValues = await getOptionValues(page, '#client-select');
+    if (therapistValues.length === 0 || clientValues.length === 0) {
+      throw new Error('No therapist/client options available for schedule conflict smoke.');
+    }
+
+    let therapistId: string | null = null;
+    let clientId: string | null = null;
+    let programId: string | null = null;
+    let goalId: string | null = null;
+
+    for (const therapistOption of therapistValues) {
+      await page.selectOption('#therapist-select', therapistOption);
+      for (const clientOption of clientValues) {
+        await page.selectOption('#client-select', clientOption);
+        await page.waitForTimeout(600);
+        const availablePrograms = await getOptionValues(page, '#program-select');
+        if (availablePrograms.length === 0) {
+          continue;
+        }
+        await page.selectOption('#program-select', availablePrograms[0]);
+        await page.waitForTimeout(300);
+        const availableGoals = await getOptionValues(page, '#goal-select');
+        if (availableGoals.length === 0) {
+          continue;
+        }
+        await page.selectOption('#goal-select', availableGoals[0]);
+        therapistId = therapistOption;
+        clientId = clientOption;
+        programId = availablePrograms[0];
+        goalId = availableGoals[0];
+        break;
+      }
+      if (therapistId && clientId && programId && goalId) {
+        break;
+      }
+    }
+
+    if (!therapistId || !clientId || !programId || !goalId) {
+      throw new Error(
+        'Could not find a therapist/client combination with at least one active program and goal.',
+      );
+    }
 
     const startTimeInput = page.locator('#start-time-input');
     const endTimeInput = page.locator('#end-time-input');
@@ -155,18 +208,20 @@ async function run() {
 
     await page.locator('button[type="submit"]').click();
 
-    const conflictNotice = page
-      .getByText(/session not saved|scheduling conflicts|slot already taken/i)
-      .first();
-    await conflictNotice.waitFor({ state: 'visible', timeout: 5000 });
-    await page
-      .getByText(/slot already taken|not available|no alternative times/i)
-      .first()
-      .waitFor({ state: 'visible', timeout: 5000 });
+    const bookingResponseSeen = await page.waitForResponse((response) => {
+      return response.request().method().toUpperCase() === 'POST'
+        && response.url().includes('/api/book');
+    }, { timeout: 8000 }).then(() => true).catch(() => false);
 
-    await page.waitForTimeout(250);
+    if (!bookingResponseSeen || interceptedBookingPosts === 0) {
+      throw new Error('Schedule conflict smoke did not observe a POST /api/book request from the modal submit.');
+    }
+
+    await page.waitForTimeout(600);
     const therapistValue = await page.locator('#therapist-select').inputValue();
     const clientValue = await page.locator('#client-select').inputValue();
+    const programValue = await page.locator('#program-select').inputValue();
+    const goalValue = await page.locator('#goal-select').inputValue();
     const currentStartValue = await startTimeInput.inputValue();
     const currentEndValue = await endTimeInput.inputValue();
 
@@ -175,6 +230,12 @@ async function run() {
     }
     if (!clientValue) {
       throw new Error('Client selection cleared after conflict');
+    }
+    if (!programValue) {
+      throw new Error('Program selection cleared after conflict');
+    }
+    if (!goalValue) {
+      throw new Error('Goal selection cleared after conflict');
     }
     if (!currentStartValue) {
       throw new Error('Start time cleared after conflict');

@@ -1,7 +1,7 @@
 import { SERVICE_PREFERENCE_OPTIONS } from './constants/servicePreferences';
 import { THERAPIST_SERVICE_TYPE_OPTIONS, THERAPIST_SPECIALTY_OPTIONS } from './constants/therapists';
 
-const SAFE_TEXT_PATTERN = /[^a-zA-Z0-9@._,\-\/\s]/g;
+const SAFE_TEXT_PATTERN = /[^a-zA-Z0-9@._,+\-\/\s]/g;
 const MAX_TEXT_LENGTH = 120;
 const MAX_LIST_LENGTH = 12;
 

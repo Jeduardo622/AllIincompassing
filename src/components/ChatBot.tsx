@@ -696,31 +696,28 @@ export function ChatBot() {
                 },
               ]);
 
-              // Redirect to client onboarding page with pre-filled data
-              const queryParams = new URLSearchParams();
-              if (client_name) {
-                const nameParts = client_name.split(" ");
-                if (nameParts.length > 0)
-                  queryParams.append("first_name", nameParts[0]);
-                if (nameParts.length > 1)
-                  queryParams.append("last_name", nameParts.slice(1).join(" "));
-              }
-              if (client_email) queryParams.append("email", client_email);
-              if (date_of_birth)
-                queryParams.append("date_of_birth", date_of_birth);
-              if (insurance_provider)
-                queryParams.append("insurance_provider", insurance_provider);
-              if (referral_source)
-                queryParams.append("referral_source", referral_source);
-              if (service_preference && Array.isArray(service_preference)) {
-                queryParams.append(
-                  "service_preference",
-                  service_preference.join(","),
-                );
+              const onboardingResponse = await callEdgeFunctionHttp("initiate-client-onboarding", {
+                method: "POST",
+                body: JSON.stringify({
+                  client_name,
+                  client_email,
+                  date_of_birth,
+                  insurance_provider,
+                  referral_source,
+                  service_preference,
+                }),
+              });
+
+              if (!onboardingResponse.ok) {
+                const errorBody = await onboardingResponse.json().catch(() => null) as { message?: string } | null;
+                throw new Error(errorBody?.message ?? "Failed to create secure onboarding link");
               }
 
-              // Construct the URL
-              const onboardingUrl = `/clients/new?${queryParams.toString()}`;
+              const onboardingPayload = await onboardingResponse.json() as { onboardingUrl?: string };
+              if (!onboardingPayload.onboardingUrl) {
+                throw new Error("Secure onboarding link was not returned");
+              }
+              const onboardingUrl = onboardingPayload.onboardingUrl;
 
               // Update message to show completion
               setMessages((prev) => [
@@ -735,7 +732,7 @@ export function ChatBot() {
               ]);
 
               // Open the onboarding page in a new tab
-              window.open(onboardingUrl, "_blank");
+              window.open(onboardingUrl, "_blank", "noopener,noreferrer");
               break;
             }
 

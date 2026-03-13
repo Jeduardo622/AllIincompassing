@@ -12,5 +12,13 @@ describe("initiate-client-onboarding helpers", () => {
     const cleaned = __TESTING__.sanitizeServicePreference([" ABA ", " ", "Speech"]);
     expect(cleaned).toEqual(["ABA", "Speech"]);
   });
+
+  it("hashes prefill tokens deterministically", async () => {
+    const token = "6de4a43f-7a9b-4c56-a5c6-8a4a6efd09ff";
+    const first = await __TESTING__.hashPrefillToken(token);
+    const second = await __TESTING__.hashPrefillToken(token);
+    expect(first).toHaveLength(64);
+    expect(first).toEqual(second);
+  });
 });
 

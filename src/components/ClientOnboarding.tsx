@@ -34,7 +34,9 @@ import {
   type ServiceContractProvider,
   isCodeAllowedForProvider,
 } from './clientOnboarding.constants';
-import { buildAvailableCodesByProvider } from "./clientOnboarding.domain";
+import { buildAvailableCodesByProvider } from './clientOnboarding.domain';
+import { parseClientOnboardingPrefill } from '../lib/onboardingPrefill';
+import { callEdgeFunctionHttp } from '../lib/api';
 
 interface ClientOnboardingProps {
   onComplete?: () => void;
@@ -52,9 +54,25 @@ export function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
   const organizationId = useActiveOrganizationId();
   const { user } = useAuth();
   
-  // Parse query parameters
-  const queryParams = new URLSearchParams(location.search);
-  
+  const onboardingPrefill = useMemo(() => parseClientOnboardingPrefill(location.search), [location.search]);
+  const prefillToken = useMemo(
+    () => new URLSearchParams(location.search).get('prefill_token')?.trim() ?? '',
+    [location.search],
+  );
+
+  useEffect(() => {
+    if (!location.search) {
+      return;
+    }
+    navigate(
+      {
+        pathname: location.pathname,
+        search: '',
+      },
+      { replace: true },
+    );
+  }, [location.pathname, location.search, navigate]);
+
   const {
     register,
     handleSubmit,
@@ -69,13 +87,13 @@ export function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
     resolver: zodResolver(clientSchema),
     mode: 'onChange',
     defaultValues: {
-      email: queryParams.get('email') || '',
-      first_name: queryParams.get('first_name') || '',
-      last_name: queryParams.get('last_name') || '',
-      date_of_birth: queryParams.get('date_of_birth') || '',
-      service_preference: queryParams.get('service_preference')?.split(',').filter(Boolean) || [],
-      insurance_info: { provider: queryParams.get('insurance_provider') || '' },
-      referral_source: queryParams.get('referral_source') || '',
+      email: onboardingPrefill.email,
+      first_name: onboardingPrefill.firstName,
+      last_name: onboardingPrefill.lastName,
+      date_of_birth: onboardingPrefill.dateOfBirth,
+      service_preference: onboardingPrefill.servicePreference,
+      insurance_info: { provider: onboardingPrefill.insuranceProvider },
+      referral_source: onboardingPrefill.referralSource,
       one_to_one_units: 0,
       supervision_units: 0,
       parent_consult_units: 0,
@@ -90,6 +108,69 @@ export function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
   });
 
   const documentsConsentAccepted = watch('documents_consent');
+
+  useEffect(() => {
+    if (!prefillToken) {
+      return;
+    }
+
+    let isMounted = true;
+    const loadPrefillFromToken = async () => {
+      try {
+        const response = await callEdgeFunctionHttp('initiate-client-onboarding', {
+          method: 'POST',
+          body: JSON.stringify({ prefill_token: prefillToken }),
+        });
+        if (!response.ok) {
+          throw new Error('Unable to load onboarding prefill');
+        }
+
+        const payload = await response.json() as {
+          prefill?: {
+            first_name?: string;
+            last_name?: string;
+            email?: string;
+            date_of_birth?: string;
+            insurance_provider?: string;
+            referral_source?: string;
+            service_preference?: string[];
+          };
+        };
+
+        const tokenPrefill = payload.prefill;
+        if (!isMounted || !tokenPrefill) {
+          return;
+        }
+
+        setValue('first_name', tokenPrefill.first_name ?? '', { shouldDirty: false });
+        setValue('last_name', tokenPrefill.last_name ?? '', { shouldDirty: false });
+        setValue('email', tokenPrefill.email ?? '', { shouldDirty: false });
+        setValue('date_of_birth', tokenPrefill.date_of_birth ?? '', { shouldDirty: false });
+        setValue('referral_source', tokenPrefill.referral_source ?? '', { shouldDirty: false });
+        setValue(
+          'service_preference',
+          Array.isArray(tokenPrefill.service_preference) ? tokenPrefill.service_preference : [],
+          { shouldDirty: false },
+        );
+        setValue(
+          'insurance_info',
+          { provider: tokenPrefill.insurance_provider ?? '' },
+          { shouldDirty: false },
+        );
+      } catch (error) {
+        logger.error('Client onboarding prefill token consumption failed', {
+          error,
+          context: { component: 'ClientOnboarding', operation: 'consumePrefillToken' },
+        });
+        showError('This onboarding link has expired or is invalid. Please request a new link.');
+      }
+    };
+
+    void loadPrefillFromToken();
+    return () => {
+      isMounted = false;
+    };
+  }, [prefillToken, setValue]);
 
   useEffect(() => {
     if (currentStep === 5) {
@@ -126,7 +207,7 @@ export function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
         context: { component: 'ClientOnboarding', operation: 'checkEmailExists' },
         metadata: { hasEmail: Boolean(email) }
       });
-      return false;
+      throw error;
     }
   };
 
@@ -305,11 +386,23 @@ export function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
     }
     
     // Double-check email uniqueness before submission
+    if (isValidatingEmail) {
+      showError('Email validation is still running. Please wait and try again.');
+      return;
+    }
+
     if (data.email && data.email.trim()) {
-      const emailExists = await checkEmailExists(data.email);
-      if (emailExists) {
-        setEmailValidationError('A client with this email address already exists');
-        showError('A client with this email address already exists');
+      try {
+        const emailExists = await checkEmailExists(data.email);
+        if (emailExists) {
+          setEmailValidationError('A client with this email address already exists');
+          showError('A client with this email address already exists');
+          return;
+        }
+      } catch {
+        const lookupError = 'Unable to validate email uniqueness right now. Please retry before submitting.';
+        setEmailValidationError(lookupError);
+        showError(lookupError);
         return;
       }
     }
@@ -341,7 +434,7 @@ export function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
       }
     }
 
-    if (emailValidationError) {
+    if (emailValidationError || isValidatingEmail) {
       return false;
     }
 

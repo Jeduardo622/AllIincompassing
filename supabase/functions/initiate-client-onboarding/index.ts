@@ -5,6 +5,8 @@ import { getUserOrThrow } from "../_shared/auth.ts";
 import { assertUserHasOrgRole, requireOrg } from "../_shared/org.ts";
 import { errorEnvelope, getRequestId, rateLimit } from "../lib/http/error.ts";
 
+const PREFILL_TOKEN_TTL_MINUTES = 15;
+
 const OnboardingSchema = z.object({
   client_name: z.string().trim().min(1).max(200),
   client_email: z.string().trim().email().max(320),
@@ -13,6 +15,20 @@ const OnboardingSchema = z.object({
   referral_source: z.string().trim().max(200).optional(),
   service_preference: z.array(z.string().trim().min(1).max(100)).max(25).optional(),
 });
+
+const ConsumePrefillSchema = z.object({
+  prefill_token: z.string().trim().uuid(),
+});
+
+type StoredPrefillPayload = {
+  first_name: string;
+  last_name: string;
+  email: string;
+  date_of_birth?: string;
+  insurance_provider?: string;
+  referral_source?: string;
+  service_preference?: string[];
+};
 
 const parseClientName = (rawName: string) => {
   const normalized = rawName.trim().replace(/\s+/g, " ");
@@ -29,9 +45,17 @@ const sanitizeServicePreference = (values: string[] | undefined) => (
     : []
 );
 
+const hashPrefillToken = async (prefillToken: string): Promise<string> => {
+  const encoded = new TextEncoder().encode(prefillToken);
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+  const bytes = new Uint8Array(digest);
+  return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+};
+
 export const __TESTING__ = {
   parseClientName,
   sanitizeServicePreference,
+  hashPrefillToken,
 };
 
 const handler = createProtectedRoute(async (req: Request, userContext) => {
@@ -45,6 +69,68 @@ const handler = createProtectedRoute(async (req: Request, userContext) => {
     await getUserOrThrow(db);
 
     const orgId = await requireOrg(db);
+    const payload = await req.json();
+
+    const consumeParsed = ConsumePrefillSchema.safeParse(payload);
+    if (consumeParsed.success) {
+      const roleToCheck = userContext.profile.role === "super_admin"
+        ? "super_admin"
+        : userContext.profile.role === "admin"
+        ? "admin"
+        : "therapist";
+      const hasConsumeAccess = await assertUserHasOrgRole(db, orgId, roleToCheck, {});
+      if (!hasConsumeAccess) {
+        logApiAccess("POST", "/initiate-client-onboarding", userContext, 403);
+        return errorEnvelope({ requestId, code: "forbidden", message: "Access denied", status: 403 });
+      }
+
+      const tokenHash = await hashPrefillToken(consumeParsed.data.prefill_token);
+      const nowIso = new Date().toISOString();
+      const { data: consumedPrefill, error: consumeError } = await supabaseAdmin
+        .from("client_onboarding_prefills")
+        .update({
+          consumed_at: nowIso,
+          consumed_by_user_id: userContext.user.id,
+        })
+        .eq("token_hash", tokenHash)
+        .eq("organization_id", orgId)
+        .is("consumed_at", null)
+        .gt("expires_at", nowIso)
+        .select("payload")
+        .maybeSingle<{ payload: StoredPrefillPayload }>();
+
+      if (consumeError) {
+        console.error("Failed to consume onboarding prefill token", { requestId, error: consumeError.message });
+        return errorEnvelope({ requestId, code: "internal_error", message: "Unable to load onboarding prefill", status: 500 });
+      }
+
+      if (!consumedPrefill?.payload) {
+        return errorEnvelope({
+          requestId,
+          code: "prefill_not_found",
+          message: "Prefill token is invalid, expired, or already used",
+          status: 404,
+        });
+      }
+
+      logApiAccess("POST", "/initiate-client-onboarding", userContext, 200);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          prefill: consumedPrefill.payload,
+          requestId,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const parsed = OnboardingSchema.safeParse(payload);
+    if (!parsed.success) {
+      return errorEnvelope({ requestId, code: "invalid_body", message: "Invalid request body", status: 400 });
+    }
+
     const roleToCheck = userContext.profile.role === "super_admin" ? "super_admin" : "admin";
     const hasAccess = await assertUserHasOrgRole(db, orgId, roleToCheck, {});
     if (!hasAccess) {
@@ -64,12 +150,6 @@ const handler = createProtectedRoute(async (req: Request, userContext) => {
       });
     }
 
-    const payload = await req.json();
-    const parsed = OnboardingSchema.safeParse(payload);
-    if (!parsed.success) {
-      return errorEnvelope({ requestId, code: "invalid_body", message: "Invalid request body", status: 400 });
-    }
-
     const {
       client_name,
       client_email,
@@ -82,25 +162,44 @@ const handler = createProtectedRoute(async (req: Request, userContext) => {
     const { firstName, lastName } = parseClientName(client_name);
     const cleanedServicePreference = sanitizeServicePreference(service_preference);
 
-    const queryParams = new URLSearchParams();
-    queryParams.append("first_name", firstName);
-    queryParams.append("last_name", lastName);
-    queryParams.append("email", client_email);
+    const prefillPayload: StoredPrefillPayload = {
+      first_name: firstName,
+      last_name: lastName,
+      email: client_email,
+    };
 
     if (date_of_birth) {
-      queryParams.append("date_of_birth", date_of_birth);
+      prefillPayload.date_of_birth = date_of_birth;
     }
     if (insurance_provider) {
-      queryParams.append("insurance_provider", insurance_provider);
+      prefillPayload.insurance_provider = insurance_provider;
     }
     if (referral_source) {
-      queryParams.append("referral_source", referral_source);
+      prefillPayload.referral_source = referral_source;
     }
     if (cleanedServicePreference.length > 0) {
-      queryParams.append("service_preference", cleanedServicePreference.join(","));
+      prefillPayload.service_preference = cleanedServicePreference;
     }
 
-    const onboardingUrl = `/clients/new?${queryParams.toString()}`;
+    const prefillToken = crypto.randomUUID();
+    const prefillTokenHash = await hashPrefillToken(prefillToken);
+    const expiresAt = new Date(Date.now() + PREFILL_TOKEN_TTL_MINUTES * 60_000).toISOString();
+
+    const { error: prefillError } = await supabaseAdmin
+      .from("client_onboarding_prefills")
+      .insert({
+        organization_id: orgId,
+        created_by_user_id: userContext.user.id,
+        token_hash: prefillTokenHash,
+        payload: prefillPayload,
+        expires_at: expiresAt,
+      });
+    if (prefillError) {
+      console.error("Failed to store onboarding prefill payload", { requestId, error: prefillError.message });
+      return errorEnvelope({ requestId, code: "internal_error", message: "Unable to initiate onboarding", status: 500 });
+    }
+
+    const onboardingUrl = `/clients/new?prefill_token=${encodeURIComponent(prefillToken)}`;
 
     const { error: auditError } = await supabaseAdmin.from("admin_actions").insert({
       admin_user_id: userContext.user.id,
@@ -108,8 +207,10 @@ const handler = createProtectedRoute(async (req: Request, userContext) => {
       organization_id: orgId,
       action_type: "client_onboarding_link_created",
       action_details: {
-        client_email,
+        has_client_email: true,
         has_last_name: Boolean(lastName),
+        has_referral_source: Boolean(referral_source),
+        prefill_ttl_minutes: PREFILL_TOKEN_TTL_MINUTES,
         service_preference: cleanedServicePreference,
       },
     });
@@ -122,6 +223,7 @@ const handler = createProtectedRoute(async (req: Request, userContext) => {
       JSON.stringify({
         success: true,
         onboardingUrl,
+        expiresAt,
         message: "Client onboarding initiated successfully",
         requestId,
       }),
@@ -139,7 +241,7 @@ const handler = createProtectedRoute(async (req: Request, userContext) => {
     logApiAccess("POST", "/initiate-client-onboarding", userContext, status);
     return errorEnvelope({ requestId, code, message, status });
   }
-}, RouteOptions.admin);
+}, RouteOptions.therapist);
 
 Deno.serve(handler);
 

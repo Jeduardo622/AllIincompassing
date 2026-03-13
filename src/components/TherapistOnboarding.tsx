@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -27,6 +27,7 @@ import {
   THERAPIST_SERVICE_TYPE_OPTIONS,
   THERAPIST_SPECIALTY_OPTIONS,
 } from '../lib/constants/therapists';
+import { parseTherapistOnboardingPrefill } from '../lib/onboardingPrefill';
 
 interface TherapistOnboardingProps {
   onComplete?: () => void;
@@ -110,8 +111,20 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
   const queryClient = useQueryClient();
   const activeOrganizationId = useActiveOrganizationId();
   
-  // Parse query parameters
-  const queryParams = new URLSearchParams(location.search);
+  const onboardingPrefill = useMemo(() => parseTherapistOnboardingPrefill(location.search), [location.search]);
+
+  useEffect(() => {
+    if (!location.search) {
+      return;
+    }
+    navigate(
+      {
+        pathname: location.pathname,
+        search: '',
+      },
+      { replace: true },
+    );
+  }, [location.pathname, location.search, navigate]);
 
   const {
     register,
@@ -124,12 +137,12 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
   } = useForm<OnboardingFormData>({
     resolver: zodResolver(therapistOnboardingSchema),
     defaultValues: {
-      email: queryParams.get('email') || '',
-      first_name: queryParams.get('first_name') || '',
-      last_name: queryParams.get('last_name') || '',
-      title: queryParams.get('title') || '',
-      service_type: queryParams.get('service_type')?.split(',').filter(Boolean) || [],
-      specialties: queryParams.get('specialties')?.split(',').filter(Boolean) || [],
+      email: onboardingPrefill.email,
+      first_name: onboardingPrefill.firstName,
+      last_name: onboardingPrefill.lastName,
+      title: onboardingPrefill.title,
+      service_type: onboardingPrefill.serviceType,
+      specialties: onboardingPrefill.specialties,
       weekly_hours_min: 0,
       weekly_hours_max: 40,
       availability_hours: DEFAULT_AVAILABILITY,
@@ -339,6 +352,27 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
 
   const prevStep = () => {
     setCurrentStep(prev => Math.max(prev - 1, 1));
+  };
+
+  const processStepSubmission = async () => {
+    if (currentStep < 5) {
+      await nextStep();
+      return;
+    }
+    await handleSubmit(handleFormSubmit)();
+  };
+
+  const handleWizardSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await processStepSubmission();
+  };
+
+  const handleFormKeyDown = (event: React.KeyboardEvent<HTMLFormElement>) => {
+    if (event.key !== 'Enter' || currentStep >= 5) {
+      return;
+    }
+    event.preventDefault();
+    void processStepSubmission();
   };
 
   const renderStepContent = () => {
@@ -998,13 +1032,14 @@ export function TherapistOnboarding({ onComplete }: TherapistOnboardingProps) {
           currentStep={currentStep}
         />
         
-        <form onSubmit={handleSubmit(handleFormSubmit)}>
+        <form onSubmit={handleWizardSubmit} onKeyDownCapture={handleFormKeyDown}>
           {renderStepContent()}
           
           <div className="mt-8 flex justify-between">
             <button
               type="button"
               onClick={prevStep}
+              disabled={currentStep === 1}
               className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-dark border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               aria-label="Previous"
             >

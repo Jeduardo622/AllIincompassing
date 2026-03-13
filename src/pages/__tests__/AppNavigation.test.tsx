@@ -60,6 +60,14 @@ vi.mock('../../pages/FamilyDashboard', () => ({
   FamilyDashboard: () => <div>FamilyDashboardPage</div>,
 }));
 
+vi.mock('../../pages/ClientOnboardingPage', () => ({
+  ClientOnboardingPage: () => <div>ClientOnboardingPage</div>,
+}));
+
+vi.mock('../../pages/TherapistOnboardingPage', () => ({
+  TherapistOnboardingPage: () => <div>TherapistOnboardingPage</div>,
+}));
+
 const renderApp = () => {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -139,5 +147,41 @@ describe('App navigation landing', () => {
     expect(payload.metadata?.route).toBe('/');
     expect(payload.metadata).not.toHaveProperty('search');
     expect(payload.metadata).not.toHaveProperty('hash');
+  });
+
+  it('allows therapist access to client onboarding route', async () => {
+    authRole = 'therapist';
+    window.history.pushState({}, '', '/clients/new');
+    renderApp();
+
+    expect(await screen.findByText('ClientOnboardingPage')).toBeInTheDocument();
+  });
+
+  it('blocks clients from client onboarding route', async () => {
+    authRole = 'client';
+    window.history.pushState({}, '', '/clients/new');
+    renderApp();
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/unauthorized');
+    });
+  });
+
+  it('allows admin access to therapist onboarding route', async () => {
+    authRole = 'admin';
+    window.history.pushState({}, '', '/therapists/new');
+    renderApp();
+
+    expect(await screen.findByText('TherapistOnboardingPage')).toBeInTheDocument();
+  });
+
+  it('blocks therapists from therapist onboarding route', async () => {
+    authRole = 'therapist';
+    window.history.pushState({}, '', '/therapists/new');
+    renderApp();
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/unauthorized');
+    });
   });
 });

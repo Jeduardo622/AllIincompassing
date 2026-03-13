@@ -106,4 +106,19 @@ describe('TherapistOnboarding validation', () => {
       expect(mockShowError).toHaveBeenCalledTimes(1);
     });
   }, 20000);
+
+  it('does not submit when enter is pressed before final step', async () => {
+    const { handleComplete } = renderOnboarding();
+
+    await userEvent.type(screen.getByLabelText(/first name/i), 'Taylor');
+    await userEvent.type(screen.getByLabelText(/last name/i), 'Nguyen');
+    await userEvent.type(screen.getByLabelText(/email/i), 'taylor@example.com{enter}');
+
+    await waitFor(() => {
+      expect(screen.getByText(/professional information/i)).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText(/documents & certifications/i)).not.toBeInTheDocument();
+    expect(handleComplete).not.toHaveBeenCalled();
+  });
 });

@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
 import { ClientOnboarding } from '../ClientOnboarding';
+import { showError } from '../../lib/toast';
 
 vi.mock('../../lib/authContext', () => ({
   useAuth: () => ({
@@ -143,5 +144,22 @@ describe('ClientOnboarding step progression', () => {
     expect(createClientMock).not.toHaveBeenCalled();
     expect(onComplete).not.toHaveBeenCalled();
   }, 15000);
+
+  it('fails closed when email uniqueness check is unavailable', async () => {
+    const { user, onComplete } = setup();
+    checkClientEmailExistsMock.mockRejectedValueOnce(new Error('supabase unavailable'));
+
+    await user.type(screen.getByLabelText('First Name'), 'Ada');
+    await user.type(screen.getByLabelText('Last Name'), 'Lovelace');
+    const emailInput = screen.getByLabelText('Email');
+    await user.type(emailInput, 'ada@example.com');
+    await user.tab();
+
+    await screen.findByText('Unable to validate email. Please try again.');
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    expect(createClientMock).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(vi.mocked(showError)).not.toHaveBeenCalled();
+  });
 });
 

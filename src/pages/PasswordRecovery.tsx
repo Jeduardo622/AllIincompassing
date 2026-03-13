@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
@@ -7,12 +7,26 @@ import { showSuccess } from '../lib/toast';
 
 export function PasswordRecovery() {
   const navigate = useNavigate();
-  const { authFlow, user } = useAuth();
+  const { authFlow, user, loading: authLoading } = useAuth();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+    if (!user || authFlow !== 'password_recovery') {
+      navigate('/login', {
+        replace: true,
+        state: {
+          message: 'Password recovery session is invalid or expired. Request a new reset email.',
+        },
+      });
+    }
+  }, [authFlow, authLoading, navigate, user]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();

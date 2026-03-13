@@ -1,3 +1,11 @@
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import type { User, Session, AuthChangeEvent } from '@supabase/supabase-js';
+import { clearSupabaseAuthStorage, supabase } from './supabaseClient'; // Use consistent client
+import { logger } from './logger/logger';
+import { toError } from './logger/normalizeError';
+import { readStubAuthState, STUB_AUTH_STORAGE_KEY } from './authStubSession';
+import { getDefaultOrganizationId } from './runtimeConfig';
+
 const normalizeOrgId = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -6,13 +14,24 @@ const normalizeOrgId = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
-import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import type { User, Session } from '@supabase/supabase-js';
-import { clearSupabaseAuthStorage, supabase } from './supabaseClient'; // Use consistent client
-import { logger } from './logger/logger';
-import { toError } from './logger/normalizeError';
-import { readStubAuthState, STUB_AUTH_STORAGE_KEY } from './authStubSession';
-import { getDefaultOrganizationId } from './runtimeConfig';
+const resolveAuthFlowForEvent = (event: AuthChangeEvent): 'normal' | 'password_recovery' => {
+  switch (event) {
+    case 'PASSWORD_RECOVERY':
+      return 'password_recovery';
+    case 'INITIAL_SESSION':
+    case 'SIGNED_IN':
+    case 'SIGNED_OUT':
+    case 'TOKEN_REFRESHED':
+    case 'USER_UPDATED':
+    case 'USER_DELETED':
+    case 'MFA_CHALLENGE_VERIFIED':
+      return 'normal';
+    default: {
+      const exhaustiveEvent: never = event;
+      return exhaustiveEvent;
+    }
+  }
+};
 
 // User profile interface - moved from legacy auth.ts
 export interface UserProfile {
@@ -421,6 +440,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         if (signOutInProgressRef.current) {
           if (event === 'SIGNED_OUT' || !session?.user) {
+            setAuthFlow('normal');
             setSession(null);
             setUser(null);
             setProfile(null);
@@ -432,11 +452,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         setSession(session);
         setUser(session?.user ?? null);
-        if (event === 'PASSWORD_RECOVERY') {
-          setAuthFlow('password_recovery');
-        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-          setAuthFlow('normal');
-        }
+        setAuthFlow(resolveAuthFlowForEvent(event));
 
         if (session?.user) {
           setProfileLoading(true);

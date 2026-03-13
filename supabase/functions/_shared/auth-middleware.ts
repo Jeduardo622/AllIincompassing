@@ -8,6 +8,7 @@
  * - Admin routes: /admin/users (admin, super_admin)
  * - Super admin routes: /admin/users/:id/roles (super_admin only)
  */
+import { errorEnvelope, getRequestId } from "../lib/http/error.ts";
 
 type SupabaseModule = typeof import("npm:@supabase/supabase-js@2.50.0");
 
@@ -310,6 +311,7 @@ export async function withAuth(
   } = options;
 
   const responseHeaders = corsHeadersForRequest(req);
+  const requestId = getRequestId(req);
 
   try {
     // Get user context
@@ -317,15 +319,16 @@ export async function withAuth(
 
     // Check if authentication is required
     if (requireAuth && !userContext) {
+      const token = extractBearerToken(req);
+      const message = token ? "Invalid or expired token" : "Authentication required";
       return {
         userContext: null,
-        error: new Response(
-          JSON.stringify({ error: 'Authentication required' }),
-          {
-            status: 401,
-            headers: { ...responseHeaders, 'Content-Type': 'application/json' },
-          }
-        ),
+        error: errorEnvelope({
+          requestId,
+          code: "unauthorized",
+          message,
+          headers: responseHeaders,
+        }),
       };
     }
 
@@ -404,13 +407,12 @@ export function createProtectedRoute(
     }
 
     if (!userContext) {
-      return new Response(
-        JSON.stringify({ error: 'Authentication required' }),
-        {
-          status: 401,
-          headers: { ...corsHeadersForRequest(req), 'Content-Type': 'application/json' },
-        }
-      );
+      return errorEnvelope({
+        requestId: getRequestId(req),
+        code: "unauthorized",
+        message: "Authentication required",
+        headers: corsHeadersForRequest(req),
+      });
     }
 
     try {

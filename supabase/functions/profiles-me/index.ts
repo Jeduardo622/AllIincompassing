@@ -5,6 +5,7 @@ import {
   extractBearerToken,
   logApiAccess,
   RouteOptions,
+  tokenResponseCacheHeaders,
 } from "../_shared/auth-middleware.ts";
 import { errorEnvelope, getRequestId } from "../lib/http/error.ts";
 
@@ -74,7 +75,11 @@ export default createProtectedRoute(async (req: Request, userContext) => {
         }),
         {
           status: 200,
-          headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+          headers: {
+            ...responseHeaders,
+            ...tokenResponseCacheHeaders,
+            'Content-Type': 'application/json',
+          },
         }
       );
     } catch (error) {
@@ -192,7 +197,11 @@ export default createProtectedRoute(async (req: Request, userContext) => {
         }),
         {
           status: 200,
-          headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+          headers: {
+            ...responseHeaders,
+            ...tokenResponseCacheHeaders,
+            'Content-Type': 'application/json',
+          },
         }
       );
     } catch (error) {

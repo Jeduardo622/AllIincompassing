@@ -62,12 +62,13 @@ vi.mock('../supabaseClient', () => {
 });
 
 const TestConsumer = () => {
-  const { user, loading, profile, signOut } = useAuth();
+  const { user, loading, profile, authFlow, signOut } = useAuth();
   return (
     <>
       <div data-testid="loading">{loading ? 'yes' : 'no'}</div>
       <div data-testid="user">{user?.id ?? 'none'}</div>
       <div data-testid="role">{profile?.role ?? 'none'}</div>
+      <div data-testid="auth-flow">{authFlow}</div>
       <button type="button" data-testid="signout" onClick={() => void signOut()}>
         Sign out
       </button>
@@ -191,6 +192,45 @@ describe('AuthProvider initializeAuth resilience', () => {
 
     await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('none'));
     expect(mockProfilesMaybeSingle).toHaveBeenCalledTimes(1);
+  });
+
+  it('maps recovery and non-recovery auth events to expected authFlow', async () => {
+    mockGetSession.mockResolvedValueOnce({
+      data: {
+        session: {
+          user: {
+            id: 'user-1',
+            email: 'user@example.com',
+          },
+        },
+      },
+      error: null,
+    });
+
+    render(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('auth-flow')).toHaveTextContent('normal'));
+    expect(authStateChangeListenerRef.current).toBeTypeOf('function');
+
+    await authStateChangeListenerRef.current?.('PASSWORD_RECOVERY', {
+      user: {
+        id: 'user-1',
+        email: 'user@example.com',
+      },
+    });
+    await waitFor(() => expect(screen.getByTestId('auth-flow')).toHaveTextContent('password_recovery'));
+
+    await authStateChangeListenerRef.current?.('INITIAL_SESSION', {
+      user: {
+        id: 'user-1',
+        email: 'user@example.com',
+      },
+    });
+    await waitFor(() => expect(screen.getByTestId('auth-flow')).toHaveTextContent('normal'));
   });
 });
 

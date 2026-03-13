@@ -5,6 +5,7 @@ import path from "node:path";
 const ROOT = process.cwd();
 const BASELINE_PATH = path.join(ROOT, "reports", "p2-baseline-metrics.json");
 const OUT_PATH = path.join(ROOT, "reports", "p2-performance-metrics.json");
+const SHOULD_WRITE_REPORT = process.env.CI === "true" || process.env.P2_WRITE_REPORT === "1";
 
 const SCHEDULE_PATH = path.join(ROOT, "src", "pages", "Schedule.tsx");
 const ROUTE_REFETCH_PATH = path.join(ROOT, "src", "lib", "useRouteQueryRefetch.ts");
@@ -163,8 +164,10 @@ const run = async () => {
     failures.push("Schedule hot-path optimization markers missing (slot indexing or bounded concurrency).");
   }
 
-  await mkdir(path.dirname(OUT_PATH), { recursive: true });
-  await writeFile(OUT_PATH, JSON.stringify(report, null, 2), "utf8");
+  if (SHOULD_WRITE_REPORT) {
+    await mkdir(path.dirname(OUT_PATH), { recursive: true });
+    await writeFile(OUT_PATH, JSON.stringify(report, null, 2), "utf8");
+  }
 
   if (failures.length > 0) {
     console.error("P2 performance check failed:");
@@ -175,7 +178,11 @@ const run = async () => {
     return;
   }
 
-  console.log(`P2 performance check passed. Report written to ${path.relative(ROOT, OUT_PATH)}`);
+  if (SHOULD_WRITE_REPORT) {
+    console.log(`P2 performance check passed. Report written to ${path.relative(ROOT, OUT_PATH)}`);
+  } else {
+    console.log("P2 performance check passed. Skipping report write outside CI.");
+  }
 };
 
 run().catch((error) => {

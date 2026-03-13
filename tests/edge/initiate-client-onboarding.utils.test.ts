@@ -9,8 +9,8 @@ describe("initiate-client-onboarding helpers", () => {
   });
 
   it("trims and filters service preferences", () => {
-    const cleaned = __TESTING__.sanitizeServicePreference([" ABA ", " ", "Speech"]);
-    expect(cleaned).toEqual(["ABA", "Speech"]);
+    const cleaned = __TESTING__.sanitizeServicePreference([" In home ", " ", "Unknown"]);
+    expect(cleaned).toEqual(["In home"]);
   });
 
   it("hashes prefill tokens deterministically", async () => {
@@ -19,6 +19,13 @@ describe("initiate-client-onboarding helpers", () => {
     const second = await __TESTING__.hashPrefillToken(token);
     expect(first).toHaveLength(64);
     expect(first).toEqual(second);
+  });
+
+  it("allows consume only for therapist and above", () => {
+    expect(__TESTING__.resolveConsumeRole("super_admin")).toBe("super_admin");
+    expect(__TESTING__.resolveConsumeRole("admin")).toBe("admin");
+    expect(__TESTING__.resolveConsumeRole("therapist")).toBe("therapist");
+    expect(__TESTING__.resolveConsumeRole("client")).toBeNull();
   });
 });
 

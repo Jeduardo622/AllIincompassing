@@ -3,36 +3,22 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { routeGuards } from '../../src/server/routes/guards';
+
 const ROOT = process.cwd();
 const APP_PATH = path.join(ROOT, 'src', 'App.tsx');
-const AUDIT_PATH = path.join(ROOT, 'scripts', 'route-audit.ts');
 
-const normalizeRoles = (roles: string[]): string[] =>
-  [...new Set(roles.map((role) => role.trim()).filter((role) => role.length > 0))].sort();
+const normalizeRoles = (roles: readonly string[]): string[] => {
+  return [...new Set(roles.map((role) => role.trim()).filter((role) => role.length > 0))].sort();
+};
 
 const parseRoleList = (value: string): string[] => {
   const matches = value.match(/'([^']+)'/g) ?? [];
   return normalizeRoles(matches.map((entry) => entry.replace(/'/g, '')));
 };
 
-const parseAuditRouteRoles = (source: string): Map<string, string[]> => {
+const parseGuardedRoutesFromApp = (source: string): Map<string, string[]> => {
   const routeMap = new Map<string, string[]>();
-  const routeRegex = /\{\s*path:\s*'([^']+)'.*?roles:\s*\[([^\]]+)\]/gs;
-  let match = routeRegex.exec(source);
-
-  while (match) {
-    routeMap.set(match[1], parseRoleList(match[2]));
-    match = routeRegex.exec(source);
-  }
-
-  return routeMap;
-};
-
-const parseAppRouteRoles = (source: string): Map<string, string[]> => {
-  const routeMap = new Map<string, string[]>();
-  routeMap.set('/login', ['public']);
-  routeMap.set('/signup', ['public']);
-  routeMap.set('/unauthorized', ['public']);
   routeMap.set('/', normalizeRoles(['client', 'therapist', 'admin', 'super_admin']));
 
   const routeEntries: Array<{ readonly index: number; readonly path: string }> = [];
@@ -48,7 +34,6 @@ const parseAppRouteRoles = (source: string): Map<string, string[]> => {
     if (entry.path.startsWith('/')) {
       continue;
     }
-
     const snippetEnd = routeEntries[index + 1]?.index ?? source.length;
     const snippet = source.slice(entry.index, snippetEnd);
     if (snippet.includes('<Navigate ')) {
@@ -66,17 +51,16 @@ const parseAppRouteRoles = (source: string): Map<string, string[]> => {
   return routeMap;
 };
 
-describe('route-audit role matrix parity', () => {
-  it('matches route roles defined in App routing policy', () => {
+describe('route guard parity against App routes', () => {
+  it('keeps guarded route paths and role matrices in sync', () => {
     const appSource = readFileSync(APP_PATH, 'utf8');
-    const auditSource = readFileSync(AUDIT_PATH, 'utf8');
+    const appGuardedRoutes = parseGuardedRoutesFromApp(appSource);
+    const guardMap = new Map(routeGuards.map((guard) => [guard.path, normalizeRoles(guard.allowedRoles)]));
 
-    const appRoutes = parseAppRouteRoles(appSource);
-    const auditRoutes = parseAuditRouteRoles(auditSource);
+    expect([...guardMap.keys()].sort()).toEqual([...appGuardedRoutes.keys()].sort());
 
-    for (const [routePath, appRoles] of appRoutes.entries()) {
-      expect(auditRoutes.has(routePath), `route-audit is missing route ${routePath}`).toBe(true);
-      expect(auditRoutes.get(routePath), `route role mismatch for ${routePath}`).toEqual(appRoles);
+    for (const [pathKey, appRoles] of appGuardedRoutes.entries()) {
+      expect(guardMap.get(pathKey), `role mismatch for ${pathKey}`).toEqual(appRoles);
     }
   });
 });

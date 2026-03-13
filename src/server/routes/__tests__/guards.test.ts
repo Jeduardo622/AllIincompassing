@@ -17,11 +17,17 @@ const expectedPaths = [
   '/therapists',
   '/therapists/:therapistId',
   '/therapists/new',
+  '/documentation',
+  '/fill-docs',
   '/authorizations',
   '/billing',
   '/monitoring',
   '/reports',
+  '/family',
   '/settings',
+  '/settings/:tabId',
+  '/super-admin/feature-flags',
+  '/super-admin/impersonation',
   '/super-admin/prompts',
 ] as const;
 
@@ -56,6 +62,7 @@ describe('route guard access controls', () => {
   it('route guard enforces explicit permission requirements', () => {
     expect(requiresPermission('/clients', 'view_clients')).toBe(true);
     expect(requiresPermission('/clients', 'manage_admin_users')).toBe(false);
+    expect(requiresPermission('/family', 'guardian_access')).toBe(true);
   });
 
   it('route guard enforces role hierarchy for therapist routes', () => {

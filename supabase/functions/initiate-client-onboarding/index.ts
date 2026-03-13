@@ -1,11 +1,24 @@
 import { z } from "zod";
-import { createProtectedRoute, corsHeaders, logApiAccess, RouteOptions } from "../_shared/auth-middleware.ts";
+import {
+  createProtectedRoute,
+  corsHeadersForRequest,
+  logApiAccess,
+  RouteOptions,
+  tokenResponseCacheHeaders,
+  type Role,
+} from "../_shared/auth-middleware.ts";
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 import { assertUserHasOrgRole, requireOrg } from "../_shared/org.ts";
 import { errorEnvelope, getRequestId, rateLimit } from "../lib/http/error.ts";
 
 const PREFILL_TOKEN_TTL_MINUTES = 15;
+const ALLOWED_SERVICE_PREFERENCES = new Set([
+  "In clinic",
+  "In home",
+  "Telehealth",
+  "School / Daycare / Preschool",
+]);
 
 const OnboardingSchema = z.object({
   client_name: z.string().trim().min(1).max(200),
@@ -41,7 +54,9 @@ const parseClientName = (rawName: string) => {
 
 const sanitizeServicePreference = (values: string[] | undefined) => (
   values
-    ? values.map((value) => value.trim()).filter((value) => value.length > 0)
+    ? values
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0 && ALLOWED_SERVICE_PREFERENCES.has(value))
     : []
 );
 
@@ -52,10 +67,29 @@ const hashPrefillToken = async (prefillToken: string): Promise<string> => {
   return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 };
 
+const resolveConsumeRole = (role: Role): Role | null => {
+  switch (role) {
+    case "super_admin":
+      return "super_admin";
+    case "admin":
+      return "admin";
+    case "therapist":
+      return "therapist";
+    case "client":
+      return null;
+    default: {
+      const unreachableRole: never = role;
+      console.warn("Unsupported role for onboarding consume", { role: unreachableRole });
+      return null;
+    }
+  }
+};
+
 export const __TESTING__ = {
   parseClientName,
   sanitizeServicePreference,
   hashPrefillToken,
+  resolveConsumeRole,
 };
 
 const handler = createProtectedRoute(async (req: Request, userContext) => {
@@ -64,6 +98,8 @@ const handler = createProtectedRoute(async (req: Request, userContext) => {
   }
 
   const requestId = getRequestId(req);
+  const responseHeaders = corsHeadersForRequest(req);
+  const jsonHeaders = { ...responseHeaders, ...tokenResponseCacheHeaders, "Content-Type": "application/json" };
   try {
     const db = createRequestClient(req);
     await getUserOrThrow(db);
@@ -73,15 +109,28 @@ const handler = createProtectedRoute(async (req: Request, userContext) => {
 
     const consumeParsed = ConsumePrefillSchema.safeParse(payload);
     if (consumeParsed.success) {
-      const roleToCheck = userContext.profile.role === "super_admin"
-        ? "super_admin"
-        : userContext.profile.role === "admin"
-        ? "admin"
-        : "therapist";
+      const roleToCheck = resolveConsumeRole(userContext.profile.role);
+      if (!roleToCheck) {
+        logApiAccess("POST", "/initiate-client-onboarding", userContext, 403);
+        return errorEnvelope({ requestId, code: "forbidden", message: "Access denied", status: 403, headers: responseHeaders });
+      }
+
+      const ip = req.headers.get("x-forwarded-for") || "unknown";
+      const consumeLimiter = rateLimit(`onboarding-consume:${orgId}:${ip}`, 45, 60_000);
+      if (!consumeLimiter.allowed) {
+        return errorEnvelope({
+          requestId,
+          code: "rate_limited",
+          message: "Too many requests",
+          status: 429,
+          headers: { ...responseHeaders, "Retry-After": String(consumeLimiter.retryAfter ?? 60) },
+        });
+      }
+
       const hasConsumeAccess = await assertUserHasOrgRole(db, orgId, roleToCheck, {});
       if (!hasConsumeAccess) {
         logApiAccess("POST", "/initiate-client-onboarding", userContext, 403);
-        return errorEnvelope({ requestId, code: "forbidden", message: "Access denied", status: 403 });
+        return errorEnvelope({ requestId, code: "forbidden", message: "Access denied", status: 403, headers: responseHeaders });
       }
 
       const tokenHash = await hashPrefillToken(consumeParsed.data.prefill_token);
@@ -101,7 +150,13 @@ const handler = createProtectedRoute(async (req: Request, userContext) => {
 
       if (consumeError) {
         console.error("Failed to consume onboarding prefill token", { requestId, error: consumeError.message });
-        return errorEnvelope({ requestId, code: "internal_error", message: "Unable to load onboarding prefill", status: 500 });
+        return errorEnvelope({
+          requestId,
+          code: "internal_error",
+          message: "Unable to load onboarding prefill",
+          status: 500,
+          headers: responseHeaders,
+        });
       }
 
       if (!consumedPrefill?.payload) {
@@ -110,6 +165,7 @@ const handler = createProtectedRoute(async (req: Request, userContext) => {
           code: "prefill_not_found",
           message: "Prefill token is invalid, expired, or already used",
           status: 404,
+          headers: responseHeaders,
         });
       }
 
@@ -121,21 +177,21 @@ const handler = createProtectedRoute(async (req: Request, userContext) => {
           requestId,
         }),
         {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: jsonHeaders,
         },
       );
     }
 
     const parsed = OnboardingSchema.safeParse(payload);
     if (!parsed.success) {
-      return errorEnvelope({ requestId, code: "invalid_body", message: "Invalid request body", status: 400 });
+      return errorEnvelope({ requestId, code: "invalid_body", message: "Invalid request body", status: 400, headers: responseHeaders });
     }
 
     const roleToCheck = userContext.profile.role === "super_admin" ? "super_admin" : "admin";
     const hasAccess = await assertUserHasOrgRole(db, orgId, roleToCheck, {});
     if (!hasAccess) {
       logApiAccess("POST", "/initiate-client-onboarding", userContext, 403);
-      return errorEnvelope({ requestId, code: "forbidden", message: "Access denied", status: 403 });
+      return errorEnvelope({ requestId, code: "forbidden", message: "Access denied", status: 403, headers: responseHeaders });
     }
 
     const ip = req.headers.get("x-forwarded-for") || "unknown";
@@ -146,7 +202,7 @@ const handler = createProtectedRoute(async (req: Request, userContext) => {
         code: "rate_limited",
         message: "Too many requests",
         status: 429,
-        headers: { "Retry-After": String(limiter.retryAfter ?? 60) },
+        headers: { ...responseHeaders, "Retry-After": String(limiter.retryAfter ?? 60) },
       });
     }
 
@@ -196,7 +252,13 @@ const handler = createProtectedRoute(async (req: Request, userContext) => {
       });
     if (prefillError) {
       console.error("Failed to store onboarding prefill payload", { requestId, error: prefillError.message });
-      return errorEnvelope({ requestId, code: "internal_error", message: "Unable to initiate onboarding", status: 500 });
+      return errorEnvelope({
+        requestId,
+        code: "internal_error",
+        message: "Unable to initiate onboarding",
+        status: 500,
+        headers: responseHeaders,
+      });
     }
 
     const onboardingUrl = `/clients/new?prefill_token=${encodeURIComponent(prefillToken)}`;
@@ -228,7 +290,7 @@ const handler = createProtectedRoute(async (req: Request, userContext) => {
         requestId,
       }),
       {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: jsonHeaders,
       },
     );
   } catch (error) {
@@ -239,7 +301,7 @@ const handler = createProtectedRoute(async (req: Request, userContext) => {
     const message = status === 403 ? "Access denied" : "Unexpected error";
     console.error("Error initiating client onboarding:", error);
     logApiAccess("POST", "/initiate-client-onboarding", userContext, status);
-    return errorEnvelope({ requestId, code, message, status });
+    return errorEnvelope({ requestId, code, message, status, headers: responseHeaders });
   }
 }, RouteOptions.therapist);
 

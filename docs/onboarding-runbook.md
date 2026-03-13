@@ -160,3 +160,25 @@
   - Added regression tests for onboarding route guard behavior, wizard Enter-key submit prevention, and token-hash helper determinism.
   - Fixed prefill sanitizer to preserve `+` in email aliases (for example, `john+filter@example.com`), with dedicated unit coverage.
 
+## 2026-03-13 Re-Audit Remediation Follow-up
+
+- **Tenant authorization hardening**
+  - Added migration `supabase/migrations/20260313120000_onboarding_authz_and_prefill_retention_hardening.sql`.
+  - Replaced metadata-derived org auth checks with trusted DB-backed org resolution (`app.resolve_user_organization_id`, `app.current_user_organization_id`, updated `app.user_has_role_for_org`).
+  - Maintained guardian-aware client access branch while removing metadata fallbacks from org resolution.
+  - Added follow-up migration `supabase/migrations/20260313123000_profiles_org_immutability_guard.sql` to block non-super-admin profile edits of `organization_id`, `role`, and `is_active`, and to restrict direct execution of `app.resolve_user_organization_id`.
+  - Added migration `supabase/migrations/20260313124500_profiles_insert_authz_guard.sql` so self-service profile inserts cannot set tenant/privilege-bearing fields.
+
+- **Token consume/create response hardening**
+  - `initiate-client-onboarding` now adds no-store cache headers for token create/consume responses.
+  - Added consume-path rate limiting and explicit role resolution guard (client role cannot consume tokenized prefill).
+
+- **Client onboarding route hardening**
+  - Client form prefill now defaults to token-only mode; legacy plaintext query prefill values are ignored.
+  - URL query params are stripped immediately; token is retained in component state for retry if consume fails.
+  - Added UI state for secure prefill loading/failure to improve operator visibility.
+
+- **Retention controls**
+  - Added `app.cleanup_client_onboarding_prefills(p_retention_days integer default 7)` for scheduled deletion of stale consumed/expired prefill rows.
+  - Recommended ops cadence: run at least daily via scheduler/cron and alert on consecutive failures.
+

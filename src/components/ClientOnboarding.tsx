@@ -48,30 +48,24 @@ export function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, File>>({});
   const [emailValidationError, setEmailValidationError] = useState<string>('');
   const [isValidatingEmail, setIsValidatingEmail] = useState(false);
+  const [isLoadingPrefill, setIsLoadingPrefill] = useState(false);
+  const [prefillLoadFailed, setPrefillLoadFailed] = useState(false);
+  const [prefillToken, setPrefillToken] = useState('');
+  const [prefillRequestNonce, setPrefillRequestNonce] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   const { user } = useAuth();
   
-  const onboardingPrefill = useMemo(() => parseClientOnboardingPrefill(location.search), [location.search]);
-  const prefillToken = useMemo(
+  const onboardingPrefill = useMemo(
+    () => parseClientOnboardingPrefill(location.search, { allowLegacyQueryPrefill: false }),
+    [location.search],
+  );
+  const prefillTokenFromUrl = useMemo(
     () => new URLSearchParams(location.search).get('prefill_token')?.trim() ?? '',
     [location.search],
   );
-
-  useEffect(() => {
-    if (!location.search) {
-      return;
-    }
-    navigate(
-      {
-        pathname: location.pathname,
-        search: '',
-      },
-      { replace: true },
-    );
-  }, [location.pathname, location.search, navigate]);
 
   const {
     register,
@@ -109,6 +103,32 @@ export function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
 
   const documentsConsentAccepted = watch('documents_consent');
 
+  const clearSearchParams = () => {
+    if (!location.search) {
+      return;
+    }
+
+    navigate(
+      {
+        pathname: location.pathname,
+        search: '',
+      },
+      { replace: true },
+    );
+  };
+
+  useEffect(() => {
+    if (!location.search) {
+      return;
+    }
+
+    if (prefillTokenFromUrl && !prefillToken) {
+      setPrefillToken(prefillTokenFromUrl);
+    }
+
+    clearSearchParams();
+  }, [location.pathname, location.search, navigate, prefillToken, prefillTokenFromUrl]);
+
   useEffect(() => {
     if (!prefillToken) {
       return;
@@ -116,6 +136,8 @@ export function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
 
     let isMounted = true;
     const loadPrefillFromToken = async () => {
+      setIsLoadingPrefill(true);
+      setPrefillLoadFailed(false);
       try {
         const response = await callEdgeFunctionHttp('initiate-client-onboarding', {
           method: 'POST',
@@ -157,12 +179,20 @@ export function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
           { provider: tokenPrefill.insurance_provider ?? '' },
           { shouldDirty: false },
         );
+        clearSearchParams();
       } catch (error) {
+        if (isMounted) {
+          setPrefillLoadFailed(true);
+        }
         logger.error('Client onboarding prefill token consumption failed', {
           error,
           context: { component: 'ClientOnboarding', operation: 'consumePrefillToken' },
         });
         showError('This onboarding link has expired or is invalid. Please request a new link.');
+      } finally {
+        if (isMounted) {
+          setIsLoadingPrefill(false);
+        }
       }
     };
 
@@ -170,7 +200,7 @@ export function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
     return () => {
       isMounted = false;
     };
-  }, [prefillToken, setValue]);
+  }, [location.pathname, location.search, navigate, prefillRequestNonce, prefillToken, setValue]);
 
   useEffect(() => {
     if (currentStep === 5) {
@@ -1438,6 +1468,26 @@ export function ClientOnboarding({ onComplete }: ClientOnboardingProps) {
     <div className="max-w-4xl mx-auto">
       <div className="bg-white dark:bg-dark-lighter shadow rounded-lg p-6 mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Client Onboarding</h1>
+
+        {isLoadingPrefill && (
+          <p className="mb-4 text-sm text-blue-700 dark:text-blue-300">
+            Loading secure prefill details...
+          </p>
+        )}
+        {prefillLoadFailed && (
+          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+            <p>This onboarding token could not be loaded. Please request a new onboarding link.</p>
+            {prefillToken && (
+              <button
+                type="button"
+                onClick={() => setPrefillRequestNonce((current) => current + 1)}
+                className="mt-2 inline-flex items-center rounded-md border border-amber-700 px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-300 dark:text-amber-100 dark:hover:bg-amber-800/30"
+              >
+                Retry secure prefill
+              </button>
+            )}
+          </div>
+        )}
         
         <OnboardingSteps
           labels={[

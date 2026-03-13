@@ -15,6 +15,10 @@ type ClientOnboardingPrefill = {
   readonly referralSource: string;
 };
 
+type ClientOnboardingPrefillOptions = {
+  readonly allowLegacyQueryPrefill?: boolean;
+};
+
 type TherapistOnboardingPrefill = {
   readonly email: string;
   readonly firstName: string;
@@ -70,7 +74,24 @@ const readEnumListParam = (
   return [...uniqueValues];
 };
 
-export const parseClientOnboardingPrefill = (search: string): ClientOnboardingPrefill => {
+const emptyClientOnboardingPrefill = (): ClientOnboardingPrefill => ({
+  email: '',
+  firstName: '',
+  lastName: '',
+  dateOfBirth: '',
+  servicePreference: [],
+  insuranceProvider: '',
+  referralSource: '',
+});
+
+export const parseClientOnboardingPrefill = (
+  search: string,
+  options: ClientOnboardingPrefillOptions = {},
+): ClientOnboardingPrefill => {
+  if (options.allowLegacyQueryPrefill !== true) {
+    return emptyClientOnboardingPrefill();
+  }
+
   const params = new URLSearchParams(search);
   return {
     email: readParam(params, 'email'),

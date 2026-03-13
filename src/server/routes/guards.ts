@@ -73,6 +73,18 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
     supabasePolicies: ['public.therapists: role_scoped_select'],
   }),
   createGuard({
+    path: '/documentation',
+    allowedRoles: ['client', 'therapist', 'admin', 'super_admin'],
+    requiredPermissions: [],
+    supabasePolicies: ['public.profiles: role_scoped_select'],
+  }),
+  createGuard({
+    path: '/fill-docs',
+    allowedRoles: ['therapist', 'admin', 'super_admin'],
+    requiredPermissions: [],
+    supabasePolicies: ['public.sessions: sessions_scoped_access'],
+  }),
+  createGuard({
     path: '/authorizations',
     allowedRoles: ['therapist', 'admin', 'super_admin'],
     requiredPermissions: [],
@@ -97,6 +109,12 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
     supabasePolicies: ['supabase.functions.generate_report: admin_super_admin_execute'],
   }),
   createGuard({
+    path: '/family',
+    allowedRoles: ['client'],
+    requiredPermissions: ['guardian_access'],
+    supabasePolicies: ['public.client_guardians: client_guardians_select'],
+  }),
+  createGuard({
     path: '/settings',
     allowedRoles: ['admin', 'super_admin'],
     requiredPermissions: [],
@@ -104,6 +122,27 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
       'supabase.functions.admin_users: admin_super_admin_execute',
       'public.profiles: role_scoped_update',
     ],
+  }),
+  createGuard({
+    path: '/settings/:tabId',
+    allowedRoles: ['admin', 'super_admin'],
+    requiredPermissions: [],
+    supabasePolicies: [
+      'supabase.functions.admin_users: admin_super_admin_execute',
+      'public.profiles: role_scoped_update',
+    ],
+  }),
+  createGuard({
+    path: '/super-admin/feature-flags',
+    allowedRoles: ['super_admin'],
+    requiredPermissions: [],
+    supabasePolicies: ['public.feature_flags: super_admin_manage'],
+  }),
+  createGuard({
+    path: '/super-admin/impersonation',
+    allowedRoles: ['super_admin'],
+    requiredPermissions: [],
+    supabasePolicies: ['supabase.functions.super-admin-impersonate: super_admin_execute'],
   }),
   createGuard({
     path: '/super-admin/prompts',

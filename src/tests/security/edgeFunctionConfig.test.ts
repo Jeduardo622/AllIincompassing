@@ -12,7 +12,6 @@ describe('edge function config', () => {
       'auth-signup',
       // Token-based automation endpoints (no JWT required)
       'admin-actions-retention',
-      'mcp',
     ]);
 
     const functionsRoot = join(process.cwd(), 'supabase', 'functions');
@@ -32,9 +31,8 @@ describe('edge function config', () => {
 
       const contents = readToml(tomlRelativePath);
       const shouldVerifyJwt = !publicNoJwtFunctions.has(functionName);
-      expect(contents).toMatch(
-        shouldVerifyJwt ? /verify_jwt\s*=\s*true/ : /verify_jwt\s*=\s*false/,
-      );
+      const verifyJwtMatch = contents.match(/^\s*verify_jwt\s*=\s*(true|false)\s*$/m);
+      expect(verifyJwtMatch?.[1]).toBe(shouldVerifyJwt ? 'true' : 'false');
     }
   });
 });

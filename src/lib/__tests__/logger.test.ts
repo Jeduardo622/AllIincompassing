@@ -38,7 +38,7 @@ describe('redactPhi', () => {
   });
 
   it('redacts sensitive values in freeform strings', () => {
-    const message = 'Patient Name: John Doe, Email: john@example.com, Phone: 555-987-6543, conversation_id=abc123, DOB 01/01/1990';
+    const message = 'Patient Name: John Doe, Email: john@example.com, Phone: 555-987-6543, conversation_id=abc123, DOB 01/01/1990, /auth/recovery#access_token=secret-token&token_hash=hash-token&code=callback-code';
 
     const sanitized = redactPhi(message);
 
@@ -46,6 +46,12 @@ describe('redactPhi', () => {
     const sanitizedString = sanitized as string;
     expect(sanitizedString).not.toContain('John Doe');
     expect(sanitizedString).not.toContain('john@example.com');
+    expect(sanitizedString).not.toContain('secret-token');
+    expect(sanitizedString).not.toContain('hash-token');
+    expect(sanitizedString).not.toContain('callback-code');
+    expect(sanitizedString).toContain('access_token=****');
+    expect(sanitizedString).toContain('token_hash=****');
+    expect(sanitizedString).toContain('code=****');
     const replacementCount = sanitizedString.split(REDACTED_VALUE).length - 1;
     expect(replacementCount).toBeGreaterThanOrEqual(4);
   });

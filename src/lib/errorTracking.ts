@@ -214,10 +214,10 @@ class ErrorTracker {
   */
   async trackAIError(error: Error, details: AIErrorDetails, context?: ErrorContext): Promise<void> {
     const baseContext: ErrorContext = {
-      ...(context ?? {}),
       timestamp: new Date(),
       ...(safeUserAgent() ? { userAgent: safeUserAgent() } : {}),
-      ...(safeLocationHref() ? { url: safeLocationHref() } : {})
+      ...(safeLocationHref() ? { url: safeLocationHref() } : {}),
+      ...(context ?? {}),
     };
 
     const sanitizedDetails = sanitizeRecord(details) as AIErrorDetails;
@@ -249,10 +249,10 @@ class ErrorTracker {
    */
   trackError(error: Error, context?: ErrorContext): void {
     const baseContext: ErrorContext = {
-      ...(context ?? {}),
       timestamp: new Date(),
       ...(safeUserAgent() ? { userAgent: safeUserAgent() } : {}),
-      ...(safeLocationHref() ? { url: safeLocationHref() } : {})
+      ...(safeLocationHref() ? { url: safeLocationHref() } : {}),
+      ...(context ?? {}),
     };
 
     const sanitizedContext = sanitizeRecord(baseContext) as ErrorContext;

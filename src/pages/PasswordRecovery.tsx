@@ -8,6 +8,7 @@ import { logger } from '../lib/logger/logger';
 import { toError } from '../lib/logger/normalizeError';
 
 const INVALID_RECOVERY_MESSAGE = 'Password recovery session is invalid or expired. Request a new reset email.';
+const RECOVERY_CALLBACK_GRACE_MS = 6000;
 
 const mapPasswordRecoveryErrorToUserMessage = (error: unknown): string => {
   const rawMessage = error instanceof Error ? error.message : '';
@@ -33,7 +34,6 @@ export function PasswordRecovery() {
   const location = useLocation();
   const { authFlow, user, loading: authLoading } = useAuth();
   const isRecoverySessionValid = Boolean(user) && authFlow === 'password_recovery';
-  const [recoveryRedirectReady, setRecoveryRedirectReady] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -47,11 +47,24 @@ export function PasswordRecovery() {
     const hasToken = Boolean(
       searchParams.get('access_token') ||
       searchParams.get('refresh_token') ||
+      searchParams.get('token_hash') ||
+      searchParams.get('code') ||
       hashParams.get('access_token') ||
-      hashParams.get('refresh_token')
+      hashParams.get('refresh_token') ||
+      hashParams.get('token_hash') ||
+      hashParams.get('code')
     );
     return callbackType === 'recovery' || hasToken;
   }, [location.hash, location.search]);
+  const [hasSeenRecoveryCallback, setHasSeenRecoveryCallback] = useState(recoveryCallbackDetected);
+  const [recoveryRedirectReady, setRecoveryRedirectReady] = useState(false);
+
+  useEffect(() => {
+    if (!recoveryCallbackDetected) {
+      return;
+    }
+    setHasSeenRecoveryCallback(true);
+  }, [recoveryCallbackDetected]);
 
   useEffect(() => {
     if (!recoveryCallbackDetected) {
@@ -60,7 +73,16 @@ export function PasswordRecovery() {
 
     const searchParams = new URLSearchParams(location.search);
     const hashParams = new URLSearchParams(location.hash.startsWith('#') ? location.hash.slice(1) : location.hash);
-    const sensitiveKeys = ['access_token', 'refresh_token', 'token', 'type', 'expires_in', 'expires_at'];
+    const sensitiveKeys = [
+      'access_token',
+      'refresh_token',
+      'token',
+      'token_hash',
+      'code',
+      'type',
+      'expires_in',
+      'expires_at',
+    ];
     let shouldReplaceUrl = false;
 
     for (const key of sensitiveKeys) {
@@ -84,7 +106,8 @@ export function PasswordRecovery() {
     window.history.replaceState(window.history.state, document.title, nextUrl);
   }, [location.hash, location.pathname, location.search, recoveryCallbackDetected]);
 
-  const shouldDelayInvalidRedirect = recoveryCallbackDetected && !isRecoverySessionValid;
+  const shouldDelayInvalidRedirect =
+    (recoveryCallbackDetected || hasSeenRecoveryCallback) && !isRecoverySessionValid;
 
   useEffect(() => {
     if (!shouldDelayInvalidRedirect) {
@@ -95,7 +118,7 @@ export function PasswordRecovery() {
     setRecoveryRedirectReady(false);
     const timerId = window.setTimeout(() => {
       setRecoveryRedirectReady(true);
-    }, 1500);
+    }, RECOVERY_CALLBACK_GRACE_MS);
 
     return () => {
       window.clearTimeout(timerId);
@@ -194,7 +217,15 @@ export function PasswordRecovery() {
         return;
       }
 
-      await supabase.auth.signOut();
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) {
+        logger.warn('Sign-out after password reset failed; continuing to login redirect', {
+          error: toError(signOutError, 'Post-reset sign-out failed'),
+          metadata: {
+            flow: 'passwordRecovery',
+          },
+        });
+      }
       setSuccessMessage('Password updated. Please sign in with your new password.');
       showSuccess('Password updated successfully.');
       window.setTimeout(() => {

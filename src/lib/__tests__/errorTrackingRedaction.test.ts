@@ -67,13 +67,13 @@ afterAll(async () => {
 describe('ErrorTracker PHI redaction', () => {
   it('redacts sensitive data before enqueuing general errors', async () => {
     const tracker = await loadTracker();
-    const error = new Error('Patient email patient@example.com');
+    const error = new Error('Patient email patient@example.com at /recovery#access_token=raw-access-token');
     error.stack = 'at handler (patient@example.com:1)';
 
     tracker.trackError(error, {
       component: 'PatientView',
       function: 'loadPatient',
-      url: 'https://app.local/context/patient@example.com',
+      url: 'https://app.local/recovery#access_token=raw-access-token&refresh_token=raw-refresh-token&token_hash=raw-token-hash&code=raw-auth-code',
       userAgent: 'custom-agent patient@example.com',
       sessionId: 'session patient@example.com'
     });
@@ -84,9 +84,18 @@ describe('ErrorTracker PHI redaction', () => {
 
     expect(queued.message).not.toContain('patient@example.com');
     expect(queued.message).toContain(REDACTED_VALUE);
+    expect(queued.message).not.toContain('raw-access-token');
     expect(queued.stack).toContain(REDACTED_VALUE);
     expect(queued.context.userAgent).toContain(REDACTED_VALUE);
     expect(queued.context.sessionId).toContain(REDACTED_VALUE);
+    expect(String(queued.context.url)).toContain('access_token=****');
+    expect(String(queued.context.url)).toContain('refresh_token=****');
+    expect(String(queued.context.url)).toContain('token_hash=****');
+    expect(String(queued.context.url)).toContain('code=****');
+    expect(String(queued.context.url)).not.toContain('raw-access-token');
+    expect(String(queued.context.url)).not.toContain('raw-refresh-token');
+    expect(String(queued.context.url)).not.toContain('raw-token-hash');
+    expect(String(queued.context.url)).not.toContain('raw-auth-code');
   });
 
   it('redacts AI error payloads and RPC submissions', async () => {

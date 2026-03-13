@@ -120,7 +120,7 @@ describe('PasswordRecovery redirect guard', () => {
   });
 
   it('waits briefly before redirecting when recovery callback params are present', async () => {
-    mockLocation.hash = '#type=recovery&access_token=test-access-token&refresh_token=test-refresh-token';
+    mockLocation.hash = '#type=recovery&access_token=test-access-token&refresh_token=test-refresh-token&token_hash=test-token-hash&code=test-auth-code';
 
     mockedUseAuth.mockReturnValue({
       user: null,
@@ -164,8 +164,8 @@ describe('PasswordRecovery redirect guard', () => {
           messageType: 'error',
         },
       });
-    }, { timeout: 2500 });
-  });
+    }, { timeout: 8000 });
+  }, 12000);
 
   it('shows sanitized password update errors', async () => {
     mockedSupabase.auth.updateUser.mockResolvedValue({

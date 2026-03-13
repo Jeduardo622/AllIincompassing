@@ -38,6 +38,12 @@ const EXACT_SENSITIVE_KEYS = new Set([
   'member_id',
   'authorization_id',
   'auth_id',
+  'access_token',
+  'refresh_token',
+  'id_token',
+  'token',
+  'authorization',
+  'bearer',
   'case_id',
   'record_id',
   'conversation_id',
@@ -52,7 +58,10 @@ const KEYWORD_FRAGMENTS = [
   'birth',
   'diagnosis',
   'identifier',
-  'conversation'
+  'conversation',
+  'token',
+  'auth',
+  'bearer',
 ];
 
 const SENSITIVE_SUFFIXES = [
@@ -65,7 +74,12 @@ const SENSITIVE_SUFFIXES = [
   '_identifier',
   '_conversation',
   '_conversation_id',
-  '_id'
+  '_id',
+  '_token',
+  '_access_token',
+  '_refresh_token',
+  '_id_token',
+  '_authorization',
 ];
 
 const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
@@ -92,6 +106,9 @@ const DIRECT_PATTERNS: RegExp[] = [
   US_DOB_PATTERN,
   TEXTUAL_DOB_PATTERN
 ];
+
+const URL_TOKEN_PATTERN =
+  /([?&#](?:access_token|refresh_token|id_token|token|token_hash|code|authorization|bearer)=)([^&#\s]+)/gi;
 
 type PlainObject = Record<string, unknown>;
 
@@ -159,12 +176,16 @@ const applyIdentifierRedaction = (value: string): string => value.replace(
   (_match, label, separator) => `${label}${separator}${REDACTED_VALUE}`
 );
 
+const applyUrlTokenRedaction = (value: string): string =>
+  value.replace(URL_TOKEN_PATTERN, (_match, prefix) => `${prefix}${REDACTED_VALUE}`);
+
 const redactString = (value: string): string => {
   let result = value;
   result = applyJsonRedaction(result);
   result = applyKeyValueRedaction(result);
   result = applyLabeledPatterns(result);
   result = applyIdentifierRedaction(result);
+  result = applyUrlTokenRedaction(result);
   result = applyDirectPatterns(result);
   return result;
 };

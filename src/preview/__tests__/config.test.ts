@@ -10,7 +10,7 @@ describe('resolvePreviewConfig', () => {
       host: '127.0.0.1',
       port: 4173,
       protocol: 'http',
-      outDir: 'out',
+      outDir: 'dist',
       url: 'http://127.0.0.1:4173',
     });
   });

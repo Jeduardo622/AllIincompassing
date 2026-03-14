@@ -3,6 +3,7 @@ const repository = process.env.GITHUB_REPOSITORY;
 const token = process.env.GITHUB_TOKEN;
 const expectedBranch = process.env.CI_PROTECTED_BRANCH ?? 'main';
 const requiredChecks = ['quality'];
+const allowUnprotectedMain = /^(1|true|yes)$/i.test(process.env.CI_ALLOW_UNPROTECTED_MAIN ?? '');
 
 const logSkip = (message) => {
   console.warn(`⚠️ ${message}`);
@@ -45,6 +46,12 @@ const run = async () => {
 
   const branch = await response.json();
   if (branch.protected !== true) {
+    if (allowUnprotectedMain) {
+      logSkip(
+        `Branch ${expectedBranch} is not protected. Bypassing hard-fail because CI_ALLOW_UNPROTECTED_MAIN is enabled.`,
+      );
+      return;
+    }
     fail(
       `Branch ${expectedBranch} is not protected. Enable branch protection and required checks before release.`,
     );

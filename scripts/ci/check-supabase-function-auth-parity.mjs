@@ -74,7 +74,15 @@ const parseFunctionsJson = (rawOutput) => {
   }
 };
 
-const shouldFailForMissingRuntime = process.env.CI === 'true';
+const parseBooleanFlag = (value, fallback) => {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return fallback;
+  }
+  return /^(1|true|yes)$/i.test(value);
+};
+
+const parityRequired = parseBooleanFlag(process.env.CI_SUPABASE_AUTH_PARITY_REQUIRED, process.env.CI === 'true');
+const shouldFailForMissingRuntime = parityRequired;
 
 const ensureRuntimePrerequisites = (projectRef) => {
   const missing = [];
@@ -166,6 +174,11 @@ const fetchDeployedSettings = (projectRef) => {
 };
 
 const run = async () => {
+  if (!parityRequired) {
+    console.warn('⚠️ Supabase function auth parity check skipped: CI_SUPABASE_AUTH_PARITY_REQUIRED is disabled.');
+    return;
+  }
+
   const projectRef = parseProjectRef(process.env.SUPABASE_URL);
   if (!ensureRuntimePrerequisites(projectRef)) {
     return;

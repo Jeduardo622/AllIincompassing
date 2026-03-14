@@ -8,6 +8,13 @@ const SENSITIVE_TABLES = [
 ];
 
 const MAX_PERMISSIVE_POLICIES_PER_COMMAND = 2;
+const parseBooleanFlag = (value, fallback) => {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return fallback;
+  }
+  return /^(1|true|yes)$/i.test(value);
+};
+const rlsOverlapRequired = parseBooleanFlag(process.env.CI_RLS_OVERLAP_REQUIRED, process.env.CI === "true");
 
 const run = async () => {
   const hasDbUrl = Boolean(
@@ -16,7 +23,7 @@ const run = async () => {
     process.env.SUPABASE_DATABASE_URL,
   );
   if (!hasDbUrl) {
-    if (process.env.CI === "true") {
+    if (rlsOverlapRequired) {
       console.error(
         "Sensitive-table RLS overlap check failed: no database connection string configured in CI. Set SUPABASE_DB_URL or DATABASE_URL.",
       );

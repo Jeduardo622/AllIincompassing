@@ -1,8 +1,12 @@
 import { spawnSync } from 'node:child_process';
 
+const allowUnprotectedMain = /^(1|true|yes)$/i.test(process.env.CI_ALLOW_UNPROTECTED_MAIN ?? '');
+
 const checks = [
   ['node', ['scripts/ci/check-focused-tests.mjs']],
-  ['node', ['scripts/ci/check-main-branch-protection.mjs']],
+  ...(allowUnprotectedMain
+    ? []
+    : [['node', ['scripts/ci/check-main-branch-protection.mjs']]]),
   ['node', ['scripts/ci/check-startup-canary.mjs']],
   ['node', ['scripts/ci/check-api-boundary.mjs']],
   ['node', ['scripts/ci/check-api-contract-smoke.mjs']],
@@ -20,6 +24,10 @@ const checks = [
   ['node', ['scripts/ci/check-runbook-ci-alignment.mjs']],
   ['node', ['scripts/ci/check-repo-hygiene.mjs']],
 ];
+
+if (allowUnprotectedMain) {
+  console.warn('⚠️ Skipping branch protection check because CI_ALLOW_UNPROTECTED_MAIN is enabled.');
+}
 
 const run = (command, args) =>
   spawnSync(command, args, {

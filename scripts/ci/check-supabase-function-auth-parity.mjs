@@ -5,14 +5,21 @@ import path from 'node:path';
 const ROOT = process.cwd();
 const FUNCTIONS_DIR = path.join(ROOT, 'supabase', 'functions');
 const SKIPPED_DIRECTORY_NAMES = new Set(['_shared']);
+const FUNCTION_ENTRYPOINT_CANDIDATES = new Set(['index.ts', 'index.tsx', 'index.js', 'index.mjs']);
 
 const parseProjectRef = (supabaseUrl) => {
   if (typeof supabaseUrl !== 'string' || supabaseUrl.trim().length === 0) {
     return null;
   }
 
+  const normalized = supabaseUrl.trim();
+  // Accept direct project-ref values (common CI secret format).
+  if (/^[a-z0-9]{20}$/i.test(normalized)) {
+    return normalized;
+  }
+
   try {
-    const hostname = new URL(supabaseUrl).hostname;
+    const hostname = new URL(normalized).hostname;
     const [ref] = hostname.split('.');
     return ref && ref.trim().length > 0 ? ref.trim() : null;
   } catch {
@@ -107,7 +114,15 @@ const loadExpectedSettings = async () => {
     try {
       content = await readFile(configPath, 'utf8');
     } catch {
-      throw new Error(`Missing function.toml for function directory: ${entry.name}`);
+      const childEntries = await readdir(path.join(FUNCTIONS_DIR, entry.name), { withFileTypes: true });
+      const hasFunctionEntrypoint = childEntries.some(
+        (child) => child.isFile() && FUNCTION_ENTRYPOINT_CANDIDATES.has(child.name),
+      );
+      if (hasFunctionEntrypoint) {
+        throw new Error(`Missing function.toml for function directory: ${entry.name}`);
+      }
+      // Skip support directories that are not deployable functions.
+      continue;
     }
 
     const verifyJwt = parseVerifyJwtFromToml(content);

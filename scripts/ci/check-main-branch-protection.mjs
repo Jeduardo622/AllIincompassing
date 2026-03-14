@@ -24,18 +24,33 @@ const run = async () => {
     fail('GITHUB_REPOSITORY is required for branch protection checks.');
   }
 
-  if (!token) {
+  if (!token && !allowUnprotectedMain) {
     fail('GITHUB_TOKEN is required for branch protection checks.');
   }
 
   const url = `https://api.github.com/repos/${repository}/branches/${expectedBranch}`;
-  const response = await fetch(url, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
+  const makeHeaders = (includeAuth) => ({
+    Accept: 'application/vnd.github+json',
+    ...(includeAuth && token ? { Authorization: `Bearer ${token}` } : {}),
+    'X-GitHub-Api-Version': '2022-11-28',
   });
+
+  let response = await fetch(url, {
+    headers: makeHeaders(true),
+  });
+
+  if (
+    allowUnprotectedMain &&
+    (response.status === 401 || response.status === 403) &&
+    token
+  ) {
+    logSkip(
+      `Authenticated branch metadata request was denied for ${expectedBranch}. Retrying without auth because CI_ALLOW_UNPROTECTED_MAIN is enabled.`,
+    );
+    response = await fetch(url, {
+      headers: makeHeaders(false),
+    });
+  }
 
   if (!response.ok) {
     const detail = await response.text();

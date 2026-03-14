@@ -6,8 +6,9 @@ import {
   afterEach,
   vi,
 } from 'vitest';
+import { toSupabaseBaseUrl } from '../utils/supabaseUrl';
 
-const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://example.test';
+const SUPABASE_URL = toSupabaseBaseUrl(process.env.SUPABASE_URL);
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ?? 'anon-key';
 const tokenOrgA = process.env.TEST_JWT_ORG_A ?? 'token-org-a';
 const targetAdminId = process.env.TEST_ADMIN_ID_ORG_A ?? 'admin-user-org-a';

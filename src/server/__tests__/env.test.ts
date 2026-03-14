@@ -17,6 +17,9 @@ describe('server/env', () => {
 
   beforeEach(() => {
     process.env = { ...ORIGINAL_ENV } as NodeJS.ProcessEnv;
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_ANON_KEY;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     resetEnvCacheForTests();
     tempDir = mkdtempSync(join(tmpdir(), 'env-tests-'));
     envPath = join(tempDir, '.env.codex');

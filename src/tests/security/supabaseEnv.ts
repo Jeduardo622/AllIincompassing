@@ -32,7 +32,19 @@ const readEnvValue = (
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
+const PROJECT_REF_PATTERN = /^[a-z0-9]{20}$/i;
+
+export const normalizeSupabaseUrl = (value: string | undefined): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+  return PROJECT_REF_PATTERN.test(value) ? `https://${value}.supabase.co` : value;
+};
+
 export const parseSupabaseProjectRef = (url: string): string | null => {
+  if (PROJECT_REF_PATTERN.test(url)) {
+    return url;
+  }
   try {
     const parsed = new URL(url);
     const [projectRef] = parsed.hostname.split('.');
@@ -137,9 +149,10 @@ export const resolveSupabaseTestEnv = async (
   options: ResolveSupabaseEnvOptions,
 ): Promise<ResolveSupabaseEnvResult> => {
   const { envOverrides } = options;
-  const supabaseUrl =
+  const supabaseUrl = normalizeSupabaseUrl(
     readEnvValue('SUPABASE_URL', envOverrides) ??
-    readEnvValue('VITE_SUPABASE_URL', envOverrides);
+    readEnvValue('VITE_SUPABASE_URL', envOverrides),
+  );
   const supabaseAnonKey =
     readEnvValue('SUPABASE_ANON_KEY', envOverrides) ??
     readEnvValue('VITE_SUPABASE_ANON_KEY', envOverrides);

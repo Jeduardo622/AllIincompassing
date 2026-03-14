@@ -9,8 +9,9 @@ import {
   vi,
 } from 'vitest';
 import { selectSuite } from '../utils/testControls';
+import { toSupabaseBaseUrl } from '../utils/supabaseUrl';
 
-const SUPABASE_URL = process.env.SUPABASE_URL ?? 'https://example.test';
+const SUPABASE_URL = toSupabaseBaseUrl(process.env.SUPABASE_URL);
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ?? 'anon-key';
 const tokenOrgA = process.env.TEST_JWT_ORG_A ?? 'token-org-a';
 const tokenOrgB = process.env.TEST_JWT_ORG_B ?? 'token-org-b';

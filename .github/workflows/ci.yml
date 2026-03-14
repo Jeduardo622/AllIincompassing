@@ -9,41 +9,17 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  quality:
+  policy:
+    name: policy
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       CI: "true"
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      OPENAI_ORGANIZATION: ${{ secrets.OPENAI_ORGANIZATION }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-      AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      SMTP_HOST: ${{ secrets.SMTP_HOST }}
-      SMTP_PORT: ${{ secrets.SMTP_PORT }}
-      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-      TEST_JWT_ORG_A: ${{ secrets.TEST_JWT_ORG_A }}
-      TEST_JWT_ORG_B: ${{ secrets.TEST_JWT_ORG_B }}
-      TEST_JWT_SUPER_ADMIN: ${{ secrets.TEST_JWT_SUPER_ADMIN }}
-      CLEARINGHOUSE_SANDBOX_API_KEY: ${{ secrets.CLEARINGHOUSE_SANDBOX_API_KEY }}
-      CLEARINGHOUSE_SANDBOX_CLIENT_ID: ${{ secrets.CLEARINGHOUSE_SANDBOX_CLIENT_ID }}
-      TELEMETRY_WRITE_KEY: ${{ secrets.TELEMETRY_WRITE_KEY }}
-      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-      NETLIFY_STAGING_SITE_ID: ${{ secrets.NETLIFY_STAGING_SITE_ID }}
-      NETLIFY_PRODUCTION_SITE_ID: ${{ secrets.NETLIFY_PRODUCTION_SITE_ID }}
-      GITHUB_TOKEN: ${{ github.token }}
-      # Temporary repo-state bypass: keep branch-protection check strict when this is false.
-      CI_ALLOW_UNPROTECTED_MAIN: "true"
-      # Temporary runtime bypass while Supabase auth parity credentials are standardized.
-      CI_SUPABASE_AUTH_PARITY_REQUIRED: "false"
-      # Temporary bypass until CI has direct database URL configured for overlap inspection.
-      CI_RLS_OVERLAP_REQUIRED: "false"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,9 +35,58 @@ jobs:
 
       - name: Validate secrets policy
         run: npm run ci:secrets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_ORGANIZATION: ${{ secrets.OPENAI_ORGANIZATION }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          TEST_JWT_ORG_A: ${{ secrets.TEST_JWT_ORG_A }}
+          TEST_JWT_ORG_B: ${{ secrets.TEST_JWT_ORG_B }}
+          TEST_JWT_SUPER_ADMIN: ${{ secrets.TEST_JWT_SUPER_ADMIN }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_STAGING_SITE_ID: ${{ secrets.NETLIFY_STAGING_SITE_ID }}
+          NETLIFY_PRODUCTION_SITE_ID: ${{ secrets.NETLIFY_PRODUCTION_SITE_ID }}
 
       - name: Policy checks
         run: npm run ci:check-focused
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          # Temporary repo-state bypass: keep branch-protection check strict when this is false.
+          CI_ALLOW_UNPROTECTED_MAIN: "true"
+          # Temporary runtime bypass while Supabase auth parity credentials are standardized.
+          CI_SUPABASE_AUTH_PARITY_REQUIRED: "false"
+          # Temporary bypass until CI has direct database URL configured for overlap inspection.
+          CI_RLS_OVERLAP_REQUIRED: "false"
+          CI_REQUIRED_CHECKS: "policy,lint-typecheck,unit-tests,build"
+
+  lint_typecheck:
+    name: lint-typecheck
+    runs-on: ubuntu-latest
+    needs: policy
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Lint
         run: npm run lint
@@ -69,19 +94,141 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+  unit_tests:
+    name: unit-tests
+    runs-on: ubuntu-latest
+    needs: policy
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Unit tests + coverage
         run: npm run test:ci
 
       - name: Verify coverage thresholds
         run: npm run ci:verify-coverage
 
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    needs: [lint_typecheck, unit_tests]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Build canary
         run: npm run build
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          if-no-files-found: error
+
+  tier0_browser:
+    name: tier0-browser
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
 
       - name: Tier-0 browser regression gate
         run: npm run test:routes:tier0
         env:
           PREVIEW_OUTPUT_DIR: dist
 
+      - name: Upload Cypress artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-artifacts
+          path: |
+            cypress/screenshots
+            cypress/videos
+            artifacts/latest
+          if-no-files-found: ignore
+
+  auth_browser_smoke:
+    name: auth-browser-smoke
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
       - name: Auth browser smoke gate
-        run: npm run playwright:preflight && npm run playwright:auth
+        env:
+          PREVIEW_OUTPUT_DIR: dist
+          PW_BASE_URL: ${{ secrets.PW_BASE_URL }}
+          PW_ADMIN_EMAIL: ${{ secrets.PW_ADMIN_EMAIL }}
+          PW_ADMIN_PASSWORD: ${{ secrets.PW_ADMIN_PASSWORD }}
+          PW_THERAPIST_EMAIL: ${{ secrets.PW_THERAPIST_EMAIL }}
+          PW_THERAPIST_PASSWORD: ${{ secrets.PW_THERAPIST_PASSWORD }}
+        run: |
+          if [ -z "$PW_BASE_URL" ] || [ -z "$PW_ADMIN_EMAIL" ] || [ -z "$PW_ADMIN_PASSWORD" ] || [ -z "$PW_THERAPIST_EMAIL" ] || [ -z "$PW_THERAPIST_PASSWORD" ]; then
+            echo "Skipping auth browser smoke gate: missing PW_* secrets."
+            exit 0
+          fi
+          npm run playwright:preflight && npm run playwright:auth
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: artifacts/latest
+          if-no-files-found: ignore

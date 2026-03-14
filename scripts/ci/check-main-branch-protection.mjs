@@ -2,7 +2,10 @@ const isCi = process.env.CI === 'true';
 const repository = process.env.GITHUB_REPOSITORY;
 const token = process.env.GITHUB_TOKEN;
 const expectedBranch = process.env.CI_PROTECTED_BRANCH ?? 'main';
-const requiredChecks = ['quality'];
+const requiredChecks = (process.env.CI_REQUIRED_CHECKS ?? 'quality')
+  .split(',')
+  .map((check) => check.trim())
+  .filter((check) => check.length > 0);
 const allowUnprotectedMain = /^(1|true|yes)$/i.test(process.env.CI_ALLOW_UNPROTECTED_MAIN ?? '');
 
 const logSkip = (message) => {

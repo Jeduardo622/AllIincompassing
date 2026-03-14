@@ -11,13 +11,17 @@ describe('day-0 hotfix verification', () => {
     expect(nvmrcContents).toBe('20.16.0');
   });
 
-  it('pins the quality CI job to Node 20', () => {
+  it('pins CI workflow jobs to Node 20', () => {
     const workflowPath = resolve(process.cwd(), '.github/workflows/ci.yml');
     const workflowContents = readFileSync(workflowPath, 'utf8');
-    const qualitySection = workflowContents.split('quality:')[1];
+    const nodeVersionMatches = Array.from(
+      workflowContents.matchAll(/node-version:\s*([0-9]+)/g),
+    );
 
-    expect(qualitySection, 'quality job section should exist').toBeDefined();
-    expect(qualitySection).toContain('node-version: 20');
+    expect(nodeVersionMatches.length).toBeGreaterThan(0);
+    for (const match of nodeVersionMatches) {
+      expect(match[1]).toBe('20');
+    }
   });
 
   it('requires day-0 secret groups in CI', () => {

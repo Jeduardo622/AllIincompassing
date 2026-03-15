@@ -174,7 +174,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dist
-          path: dist
+          path: .
+
+      - name: Normalize dist artifact path
+        run: |
+          if [ ! -f "dist/index.html" ] && [ -f "dist/dist/index.html" ]; then
+            mkdir -p dist
+            cp -R dist/dist/. dist/
+          fi
+          test -f "dist/index.html"
 
       - name: Tier-0 browser regression gate
         run: npm run test:routes:tier0
@@ -214,7 +222,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dist
-          path: dist
+          path: .
+
+      - name: Normalize dist artifact path
+        run: |
+          if [ ! -f "dist/index.html" ] && [ -f "dist/dist/index.html" ]; then
+            mkdir -p dist
+            cp -R dist/dist/. dist/
+          fi
+          test -f "dist/index.html"
 
       - name: Auth browser smoke gate
         env:

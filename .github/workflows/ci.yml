@@ -174,13 +174,24 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dist
-          path: .
+          path: artifact-dist
 
       - name: Normalize dist artifact path
         run: |
-          if [ ! -f "dist/index.html" ] && [ -f "dist/dist/index.html" ]; then
+          rm -rf dist
+          if [ -f "artifact-dist/index.html" ]; then
             mkdir -p dist
-            cp -R dist/dist/. dist/
+            cp -R artifact-dist/. dist/
+          elif [ -f "artifact-dist/dist/index.html" ]; then
+            mkdir -p dist
+            cp -R artifact-dist/dist/. dist/
+          else
+            echo "dist artifact layout did not contain index.html"
+            echo "artifact-dist contents:"
+            ls -la artifact-dist || true
+            echo "artifact-dist/dist contents:"
+            ls -la artifact-dist/dist || true
+            exit 1
           fi
           test -f "dist/index.html"
 
@@ -222,13 +233,24 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dist
-          path: .
+          path: artifact-dist
 
       - name: Normalize dist artifact path
         run: |
-          if [ ! -f "dist/index.html" ] && [ -f "dist/dist/index.html" ]; then
+          rm -rf dist
+          if [ -f "artifact-dist/index.html" ]; then
             mkdir -p dist
-            cp -R dist/dist/. dist/
+            cp -R artifact-dist/. dist/
+          elif [ -f "artifact-dist/dist/index.html" ]; then
+            mkdir -p dist
+            cp -R artifact-dist/dist/. dist/
+          else
+            echo "dist artifact layout did not contain index.html"
+            echo "artifact-dist contents:"
+            ls -la artifact-dist || true
+            echo "artifact-dist/dist contents:"
+            ls -la artifact-dist/dist || true
+            exit 1
           fi
           test -f "dist/index.html"
 

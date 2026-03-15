@@ -214,7 +214,7 @@ jobs:
   auth_browser_smoke:
     name: auth-browser-smoke
     runs-on: ubuntu-latest
-    needs: build
+    needs: policy
     timeout-minutes: 25
     steps:
       - name: Checkout
@@ -229,43 +229,41 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Download dist artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: artifact-dist
-
-      - name: Normalize dist artifact path
-        run: |
-          rm -rf dist
-          if [ -f "artifact-dist/index.html" ]; then
-            mkdir -p dist
-            cp -R artifact-dist/. dist/
-          elif [ -f "artifact-dist/dist/index.html" ]; then
-            mkdir -p dist
-            cp -R artifact-dist/dist/. dist/
-          else
-            echo "dist artifact layout did not contain index.html"
-            echo "artifact-dist contents:"
-            ls -la artifact-dist || true
-            echo "artifact-dist/dist contents:"
-            ls -la artifact-dist/dist || true
-            exit 1
-          fi
-          test -f "dist/index.html"
-
       - name: Auth browser smoke gate
         env:
-          PREVIEW_OUTPUT_DIR: dist
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
           PW_BASE_URL: ${{ secrets.PW_BASE_URL }}
           PW_ADMIN_EMAIL: ${{ secrets.PW_ADMIN_EMAIL }}
           PW_ADMIN_PASSWORD: ${{ secrets.PW_ADMIN_PASSWORD }}
           PW_THERAPIST_EMAIL: ${{ secrets.PW_THERAPIST_EMAIL }}
           PW_THERAPIST_PASSWORD: ${{ secrets.PW_THERAPIST_PASSWORD }}
+          PW_FOREIGN_CLIENT_ID: ${{ secrets.PW_FOREIGN_CLIENT_ID }}
+          PW_FOREIGN_THERAPIST_ID: ${{ secrets.PW_FOREIGN_THERAPIST_ID }}
         run: |
-          if [ -z "$PW_BASE_URL" ] || [ -z "$PW_ADMIN_EMAIL" ] || [ -z "$PW_ADMIN_PASSWORD" ] || [ -z "$PW_THERAPIST_EMAIL" ] || [ -z "$PW_THERAPIST_PASSWORD" ]; then
-            echo "Skipping auth browser smoke gate: missing PW_* secrets."
-            exit 0
+          required=(
+            PW_BASE_URL
+            PW_ADMIN_EMAIL
+            PW_ADMIN_PASSWORD
+            PW_THERAPIST_EMAIL
+            PW_THERAPIST_PASSWORD
+            PW_FOREIGN_CLIENT_ID
+            PW_FOREIGN_THERAPIST_ID
+          )
+          missing=()
+          for key in "${required[@]}"; do
+            if [ -z "${!key}" ]; then
+              missing+=("$key")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ "$IS_FORK_PR" = "true" ]; then
+              echo "Skipping auth browser smoke gate for fork PR due to missing secrets: ${missing[*]}"
+              exit 0
+            fi
+            echo "Auth browser smoke gate failed due to missing required secrets: ${missing[*]}"
+            exit 1
           fi
           npm run playwright:preflight && npm run playwright:auth
 

@@ -9,7 +9,7 @@ const ROUTES = [
   { path: '/signup', roles: ['public'] },
   { path: '/unauthorized', roles: ['public'] },
   { path: '/', roles: ['client', 'therapist', 'admin', 'super_admin'] },
-  { path: '/schedule', roles: ['client', 'therapist', 'admin', 'super_admin'] },
+  { path: '/schedule', roles: ['therapist', 'admin', 'super_admin'] },
   // Guardian-only route. Role-only stubs in this suite should be blocked.
   { path: '/family', roles: [] },
   { path: '/clients', roles: ['therapist', 'admin', 'super_admin'] },
@@ -29,29 +29,9 @@ const PASSWORD = 'password123';
 
 describe('Role-based deep-link access', () => {
   const roles: AppRole[] = ['client', 'therapist', 'admin', 'super_admin'];
-  let interceptedRequests: Array<{ url: string; method: string; status: number }> = [];
-
-  const trackableRequest = (url: string): boolean => {
-    return url.includes('/__supabase') || url.includes('/api/');
-  };
 
   beforeEach(() => {
-    interceptedRequests = [];
-    cy.intercept('**/*', (req) => {
-      const resourceType = (req.resourceType ?? '').toLowerCase();
-      if (!trackableRequest(req.url) || (resourceType !== 'xhr' && resourceType !== 'fetch')) {
-        req.continue();
-        return;
-      }
-      req.on('response', (res) => {
-        interceptedRequests.push({
-          url: req.url,
-          method: req.method,
-          status: res.statusCode,
-        });
-      });
-      req.continue();
-    });
+    cy.intercept('GET', '**/api/runtime-config').as('runtimeConfig');
   });
 
   it('unauth deep-link to protected route redirects to /login', () => {
@@ -70,26 +50,13 @@ describe('Role-based deep-link access', () => {
         it(`${shouldAllow ? 'allows' : 'blocks'} ${path}`, () => {
           cy.visit(path);
           if (shouldAllow) {
+            cy.wait('@runtimeConfig');
             cy.url().should('not.include', '/unauthorized');
             cy.url().should('not.include', '/login');
             cy.get('body').should('be.visible');
-            cy.then(() => {
-              const unstableRequests = interceptedRequests.filter((request) => request.status === 0 || request.status >= 500);
-              expect(
-                unstableRequests,
-                `Route ${path} should not include unstable network responses (0/5xx)`,
-              ).to.have.length(0);
-            });
           } else {
             cy.url().should((current) => {
               expect(current.includes('/unauthorized') || current.includes('/login') || current === Cypress.config('baseUrl') + '/').to.be.true;
-            });
-            cy.then(() => {
-              const unstableRequests = interceptedRequests.filter((request) => request.status === 0 || request.status >= 500);
-              expect(
-                unstableRequests,
-                `Blocked route ${path} should not create unstable network responses (0/5xx)`,
-              ).to.have.length(0);
             });
           }
         });

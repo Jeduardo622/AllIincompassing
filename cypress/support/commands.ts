@@ -61,6 +61,28 @@ const buildSupabaseUser = (params: { id: string; email: string; role: 'client' |
   };
 };
 
+type StubAuthStorageState = {
+  user?: {
+    email?: string;
+    role?: string;
+  };
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
+};
+
+const parseAuthStorageState = (value: string | null): StubAuthStorageState => {
+  if (!value) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(value) as StubAuthStorageState;
+  } catch {
+    return {};
+  }
+};
+
 Cypress.Commands.add('login', (email: string, password: string) => {
   cy.session([email, password], () => {
     const role = roleFromEmail(email);
@@ -114,6 +136,9 @@ Cypress.Commands.add('login', (email: string, password: string) => {
     }).as('profileFetch');
 
     cy.visit('/login');
+    cy.window().then((win) => {
+      win.localStorage.removeItem('auth-storage');
+    });
 
     cy.get('input[name="email"]').clear().type(email);
     cy.get('input[name="password"]').clear().type(password, { log: false });
@@ -142,6 +167,18 @@ Cypress.Commands.add('login', (email: string, password: string) => {
 
       win.localStorage.setItem('auth-storage', JSON.stringify(stubState));
     });
+  }, {
+    validate: () => {
+      const expectedRole = roleFromEmail(email);
+      cy.window().then((win) => {
+        const parsed = parseAuthStorageState(win.localStorage.getItem('auth-storage'));
+        expect(parsed.accessToken, 'session should include access token').to.be.a('string').and.not.empty;
+        expect(parsed.refreshToken, 'session should include refresh token').to.be.a('string').and.not.empty;
+        expect(parsed.expiresAt, 'session should include expiresAt').to.be.a('number');
+        expect(parsed.user?.email, 'session should store role email').to.equal(email);
+        expect(parsed.user?.role, 'session should store role').to.equal(expectedRole);
+      });
+    },
   });
 });
 

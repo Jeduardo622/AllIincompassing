@@ -62,11 +62,26 @@ const run = async () => {
     }
   }
 
-  if (!routesIntegrity.includes("interceptedRequests")) {
-    errors.push("cypress/e2e/routes_integrity.cy.ts must track interceptedRequests for network reliability assertions.");
+  const scheduleRoleContract = "roles: ['therapist', 'admin', 'super_admin']";
+  if (!routesIntegrity.includes(scheduleRoleContract)) {
+    errors.push("cypress/e2e/routes_integrity.cy.ts must align /schedule role coverage to therapist/admin/super_admin.");
   }
-  if (!roleAccess.includes("interceptedRequests")) {
-    errors.push("cypress/e2e/role_access.cy.ts must track interceptedRequests for network reliability assertions.");
+  if (!roleAccess.includes(scheduleRoleContract)) {
+    errors.push("cypress/e2e/role_access.cy.ts must align /schedule role coverage to therapist/admin/super_admin.");
+  }
+
+  if (!roleAccess.includes("cy.intercept('GET', '**/api/runtime-config').as('runtimeConfig');")) {
+    errors.push("cypress/e2e/role_access.cy.ts must alias /api/runtime-config for deterministic deep-link checks.");
+  }
+  if (!roleAccess.includes("cy.wait('@runtimeConfig');")) {
+    errors.push("cypress/e2e/role_access.cy.ts must wait for runtime config before allowed-route assertions.");
+  }
+
+  if (routesIntegrity.includes("interceptedRequests")) {
+    errors.push("cypress/e2e/routes_integrity.cy.ts should avoid shared interceptedRequests buffers in tier-0 gate.");
+  }
+  if (roleAccess.includes("interceptedRequests")) {
+    errors.push("cypress/e2e/role_access.cy.ts should avoid shared interceptedRequests buffers in tier-0 gate.");
   }
 
   if (warnings.length > 0) {

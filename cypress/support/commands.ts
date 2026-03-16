@@ -135,7 +135,10 @@ Cypress.Commands.add('login', (email: string, password: string) => {
       });
     }).as('profileFetch');
 
+    cy.intercept('GET', '**/api/runtime-config').as('runtimeConfigBootstrap');
+
     cy.visit('/login');
+    cy.wait('@runtimeConfigBootstrap');
     cy.window().then((win) => {
       win.localStorage.removeItem('auth-storage');
     });

@@ -36,6 +36,7 @@ describe('Role-based deep-link access', () => {
 
   it('unauth deep-link to protected route redirects to /login', () => {
     cy.visit('/clients');
+    cy.wait('@runtimeConfig');
     cy.url().should('include', '/login');
   });
 
@@ -55,6 +56,7 @@ describe('Role-based deep-link access', () => {
             cy.url().should('not.include', '/login');
             cy.get('body').should('be.visible');
           } else {
+            cy.wait('@runtimeConfig');
             cy.url().should((current) => {
               expect(current.includes('/unauthorized') || current.includes('/login') || current === Cypress.config('baseUrl') + '/').to.be.true;
             });

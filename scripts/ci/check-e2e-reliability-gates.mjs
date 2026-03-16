@@ -7,6 +7,7 @@ const CYPRESS_CONFIG_PATH = path.join(ROOT, "cypress.config.cjs");
 const PACKAGE_JSON_PATH = path.join(ROOT, "package.json");
 const ROUTES_INTEGRITY_PATH = path.join(ROOT, "cypress", "e2e", "routes_integrity.cy.ts");
 const ROLE_ACCESS_PATH = path.join(ROOT, "cypress", "e2e", "role_access.cy.ts");
+const CYPRESS_COMMANDS_PATH = path.join(ROOT, "cypress", "support", "commands.ts");
 const CRITICAL_PLAYWRIGHT_SCRIPTS = [
   path.join(ROOT, "scripts", "playwright-auth-smoke.ts"),
   path.join(ROOT, "scripts", "playwright-schedule-conflict.ts"),
@@ -24,6 +25,7 @@ const run = async () => {
   const cypressConfig = await readFile(CYPRESS_CONFIG_PATH, "utf8");
   const routesIntegrity = await readFile(ROUTES_INTEGRITY_PATH, "utf8");
   const roleAccess = await readFile(ROLE_ACCESS_PATH, "utf8");
+  const cypressCommands = await readFile(CYPRESS_COMMANDS_PATH, "utf8");
 
   if (!policy?.e2e) {
     errors.push("tests/reliability/policy.json is missing required e2e contract section.");
@@ -75,6 +77,18 @@ const run = async () => {
   }
   if (!roleAccess.includes("cy.wait('@runtimeConfig');")) {
     errors.push("cypress/e2e/role_access.cy.ts must wait for runtime config before allowed-route assertions.");
+  }
+  if (!routesIntegrity.includes("cy.intercept('GET', '**/api/runtime-config').as('runtimeConfig');")) {
+    errors.push("cypress/e2e/routes_integrity.cy.ts must alias /api/runtime-config for deterministic route bootstrap.");
+  }
+  if (!routesIntegrity.includes("cy.wait('@runtimeConfig');")) {
+    errors.push("cypress/e2e/routes_integrity.cy.ts must wait for runtime config before route assertions.");
+  }
+  if (!cypressCommands.includes("cy.intercept('GET', '**/api/runtime-config').as('runtimeConfigBootstrap');")) {
+    errors.push("cypress/support/commands.ts must alias /api/runtime-config during login bootstrap.");
+  }
+  if (!cypressCommands.includes("cy.wait('@runtimeConfigBootstrap');")) {
+    errors.push("cypress/support/commands.ts must wait for runtime config before login form interactions.");
   }
 
   if (routesIntegrity.includes("interceptedRequests")) {

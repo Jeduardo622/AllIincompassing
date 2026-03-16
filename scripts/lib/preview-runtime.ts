@@ -4,11 +4,14 @@ import http from 'node:http';
 import path from 'node:path';
 
 import type { PreviewConfig } from '../../src/preview/config';
+import { RUNTIME_CONFIG_FALLBACK_ORGANIZATION_ID } from '../../src/server/runtimeConfig';
 import { runtimeConfigHandler } from '../../src/server/api/runtime-config';
 
 export type PreviewServerHandle = {
   readonly close: () => Promise<void>;
 };
+
+const PREVIEW_STUB_ANON_KEY = 'sb_publishable_preview_stub_key_1234567890';
 
 export const ensureBuildArtifactsExist = (config: PreviewConfig): void => {
   const absoluteDir = path.resolve(config.outDir);
@@ -22,19 +25,22 @@ export const ensureBuildArtifactsExist = (config: PreviewConfig): void => {
 };
 
 export const ensureSupabaseEnv = (config: PreviewConfig): void => {
-  if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
-    return;
+  const hasSupabaseConfig = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY);
+  if (!hasSupabaseConfig) {
+    const stubBase = `${config.protocol}://${config.host}:${config.port}/__supabase`;
+    const stubAnonKey = process.env.SUPABASE_ANON_KEY ?? PREVIEW_STUB_ANON_KEY;
+
+    process.env.SUPABASE_URL = stubBase;
+    process.env.VITE_SUPABASE_URL = stubBase;
+    process.env.SUPABASE_EDGE_URL = process.env.SUPABASE_EDGE_URL ?? `${stubBase}/edge-functions`;
+    process.env.VITE_SUPABASE_EDGE_URL = process.env.VITE_SUPABASE_EDGE_URL ?? `${stubBase}/edge-functions`;
+    process.env.SUPABASE_ANON_KEY = stubAnonKey;
+    process.env.VITE_SUPABASE_ANON_KEY = stubAnonKey;
   }
 
-  const stubBase = `${config.protocol}://${config.host}:${config.port}/__supabase`;
-  const stubAnonKey = process.env.SUPABASE_ANON_KEY ?? 'preview-anon-key';
-
-  process.env.SUPABASE_URL = stubBase;
-  process.env.VITE_SUPABASE_URL = stubBase;
-  process.env.SUPABASE_EDGE_URL = process.env.SUPABASE_EDGE_URL ?? `${stubBase}/edge-functions`;
-  process.env.VITE_SUPABASE_EDGE_URL = process.env.VITE_SUPABASE_EDGE_URL ?? `${stubBase}/edge-functions`;
-  process.env.SUPABASE_ANON_KEY = stubAnonKey;
-  process.env.VITE_SUPABASE_ANON_KEY = stubAnonKey;
+  const defaultOrgId = process.env.DEFAULT_ORGANIZATION_ID ?? RUNTIME_CONFIG_FALLBACK_ORGANIZATION_ID;
+  process.env.DEFAULT_ORGANIZATION_ID = defaultOrgId;
+  process.env.VITE_DEFAULT_ORGANIZATION_ID = process.env.VITE_DEFAULT_ORGANIZATION_ID ?? defaultOrgId;
 };
 
 const forwardRuntimeConfig = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {

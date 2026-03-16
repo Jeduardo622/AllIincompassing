@@ -57,6 +57,8 @@ describe('Routes Integrity', () => {
   ];
 
   beforeEach(() => {
+    cy.intercept('GET', '**/api/runtime-config').as('runtimeConfig');
+
     cy.intercept('GET', '**/__supabase/rest/v1/clients**', (req) => {
       const idQuery = req.query.id as string | undefined;
       const clientId = idQuery?.split('eq.')[1];
@@ -104,6 +106,7 @@ describe('Routes Integrity', () => {
     publicRoutes.forEach(route => {
       it(`should load ${route.path} without authentication`, () => {
         cy.visit(route.path);
+        cy.wait('@runtimeConfig');
         cy.get('body').should('be.visible');
         
         // Verify no React error boundaries are triggered
@@ -127,6 +130,7 @@ describe('Routes Integrity', () => {
     allowedRoutes.forEach(route => {
       it(`should load ${route.path} for client role`, () => {
         cy.visit(route.path);
+        cy.wait('@runtimeConfig');
         cy.get('body').should('be.visible');
         
         // Verify no error boundaries
@@ -144,6 +148,7 @@ describe('Routes Integrity', () => {
     restrictedRoutes.forEach(route => {
       it(`should block access to ${route.path} for client role`, () => {
         cy.visit(route.path);
+        cy.wait('@runtimeConfig');
         
         // Should be redirected to unauthorized page or back to dashboard
         cy.url().should('satisfy', (url: string) => {
@@ -164,6 +169,7 @@ describe('Routes Integrity', () => {
     allowedRoutes.forEach(route => {
       it(`should load ${route.path} for therapist role`, () => {
         cy.visit(route.path);
+        cy.wait('@runtimeConfig');
         cy.get('body').should('be.visible');
         
         // Verify no error boundaries
@@ -187,6 +193,7 @@ describe('Routes Integrity', () => {
     allowedRoutes.forEach(route => {
       it(`should load ${route.path} for admin role`, () => {
         cy.visit(route.path);
+        cy.wait('@runtimeConfig');
         cy.get('body').should('be.visible');
         
         // Verify no error boundaries
@@ -210,6 +217,7 @@ describe('Routes Integrity', () => {
     allowedRoutes.forEach(route => {
       it(`should load ${route.path} for super_admin role`, () => {
         cy.visit(route.path);
+        cy.wait('@runtimeConfig');
         cy.get('body').should('be.visible');
         
         // Verify no error boundaries
@@ -230,6 +238,7 @@ describe('Routes Integrity', () => {
 
     it('should handle client details route with ID parameter', () => {
       cy.visit('/clients/client-1');
+      cy.wait('@runtimeConfig');
       cy.get('body').should('be.visible');
       cy.url().should('include', '/clients/client-1');
 
@@ -237,6 +246,7 @@ describe('Routes Integrity', () => {
 
     it('should handle therapist details route with ID parameter', () => {
       cy.visit('/therapists/therapist-1');
+      cy.wait('@runtimeConfig');
       cy.get('body').should('be.visible');
       cy.url().should('include', '/therapists/therapist-1');
 
@@ -245,6 +255,7 @@ describe('Routes Integrity', () => {
     it('should handle invalid route parameters gracefully', () => {
       // Test with invalid client ID
       cy.visit('/clients/invalid-id');
+      cy.wait('@runtimeConfig');
       
       // Should either show error message or redirect
       cy.get('body').should('be.visible');

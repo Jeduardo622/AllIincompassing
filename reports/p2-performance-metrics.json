@@ -1,13 +1,13 @@
 {
-  "capturedAt": "2026-03-15T21:35:19.491Z",
+  "capturedAt": "2026-03-16T01:32:12.864Z",
   "baseline": {
     "scheduleDurationMs": 12.73,
     "wildcardSelectCount": 1
   },
   "current": {
-    "syntheticLegacyDurationMs": 12.13,
+    "syntheticLegacyDurationMs": 8.99,
     "syntheticIndexedDurationMs": 0.08,
-    "indexedImprovementPercent": 99.34,
+    "indexedImprovementPercent": 99.11,
     "baselineToCurrentScheduleImprovementPercent": 99.37,
     "wildcardSelectCount": 0,
     "wildcardReduction": 1,

@@ -1,5 +1,29 @@
 -- MCP execute_sql wraps statements in a transaction, so run the covering FK indexes without CONCURRENTLY
 
+CREATE TABLE IF NOT EXISTS public.session_transcripts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id uuid NOT NULL REFERENCES public.sessions(id) ON DELETE CASCADE,
+  organization_id uuid NULL,
+  raw_transcript text NOT NULL,
+  processed_transcript text NOT NULL,
+  confidence_score numeric NULL,
+  created_at timestamptz NULL DEFAULT now(),
+  updated_at timestamptz NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.session_transcript_segments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id uuid NOT NULL REFERENCES public.sessions(id) ON DELETE CASCADE,
+  organization_id uuid NULL,
+  speaker text NOT NULL,
+  text text NOT NULL,
+  start_time numeric NOT NULL,
+  end_time numeric NOT NULL,
+  confidence numeric NULL,
+  behavioral_markers jsonb NULL,
+  created_at timestamptz NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS admin_actions_target_user_id_idx ON admin_actions(target_user_id);
 CREATE INDEX IF NOT EXISTS ai_processing_logs_session_id_idx ON ai_processing_logs(session_id);
 CREATE INDEX IF NOT EXISTS ai_session_notes_client_id_idx ON ai_session_notes(client_id);

@@ -252,3 +252,11 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
 - [x] Instrument audit logging for holds, confirmations, and note updates to satisfy compliance logging.
 - [x] Thread trace identifiers across session hold/confirm/cancel flows and provide replay reporting (`agent-trace-report` + monitoring tab).
 - [ ] Review route-specific UI components (`/schedule`, `/clients/:clientId`) to ensure they filter via the JWT’s `org_id` and therapist ID, mirroring the policy assumptions.
+
+## 2026-03 E2E validation findings
+- Added `scripts/playwright-session-lifecycle.ts` to run booking -> start -> notes -> cancel lifecycle checks with artifact output in `artifacts/latest`.
+- Session lifecycle start flow uncovered a database guard mismatch (`scheduled -> in_progress` transition blocked). This is fixed by migration `supabase/migrations/20260316153000_allow_session_in_progress_transitions.sql`.
+- Transcript entities existed in hosted environments but were missing from migration history in this repository. `supabase/migrations/20251005131500_transcription_consent_and_retention.sql` now bootstraps `session_transcripts` and `session_transcript_segments` with idempotent `CREATE TABLE IF NOT EXISTS` and indexes before consent/retention logic runs.
+- Environment gap discovered during E2E: `sessions-start` and `generate-session-notes-pdf` edge endpoints returned `404 NOT_FOUND` in the target shared environment, indicating deployment/config drift despite functions being present in source.
+- Booking via `/api/book` returned `401` in the target shared environment during browser E2E, requiring service-role fallback for fixture session creation in the lifecycle script. This indicates runtime auth/config parity issues between the deployed app API layer and expected Supabase token validation path.
+- Unit/CPT recording layer remains partially coupled to booking confirmation; when booking falls back outside hold/confirm flow, `session_cpt_entries` and `session_audit_logs` are not populated for that session. Keep this as an operational risk until booking API parity is restored in the target environment.

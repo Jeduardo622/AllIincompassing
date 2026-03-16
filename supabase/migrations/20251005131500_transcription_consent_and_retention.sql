@@ -11,6 +11,39 @@
     - Provide a retention helper for scheduled pruning
 */
 
+CREATE TABLE IF NOT EXISTS public.session_transcripts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id uuid NOT NULL REFERENCES public.sessions(id) ON DELETE CASCADE,
+  organization_id uuid NULL,
+  raw_transcript text NOT NULL,
+  processed_transcript text NOT NULL,
+  confidence_score numeric NULL,
+  created_at timestamptz NULL DEFAULT now(),
+  updated_at timestamptz NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.session_transcript_segments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id uuid NOT NULL REFERENCES public.sessions(id) ON DELETE CASCADE,
+  organization_id uuid NULL,
+  speaker text NOT NULL,
+  text text NOT NULL,
+  start_time numeric NOT NULL,
+  end_time numeric NOT NULL,
+  confidence numeric NULL,
+  behavioral_markers jsonb NULL,
+  created_at timestamptz NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_transcripts_session_id
+  ON public.session_transcripts(session_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_session_transcripts_session_unique
+  ON public.session_transcripts(session_id);
+
+CREATE INDEX IF NOT EXISTS idx_session_transcript_segments_session_id
+  ON public.session_transcript_segments(session_id);
+
 ALTER TABLE public.sessions
   ADD COLUMN IF NOT EXISTS has_transcription_consent boolean NOT NULL DEFAULT false;
 

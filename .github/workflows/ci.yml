@@ -238,6 +238,9 @@ jobs:
           PW_THERAPIST_PASSWORD: ${{ secrets.PW_THERAPIST_PASSWORD }}
           PW_FOREIGN_CLIENT_ID: ${{ secrets.PW_FOREIGN_CLIENT_ID }}
           PW_FOREIGN_THERAPIST_ID: ${{ secrets.PW_FOREIGN_THERAPIST_ID }}
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           required=(
             PW_BASE_URL
@@ -247,6 +250,9 @@ jobs:
             PW_THERAPIST_PASSWORD
             PW_FOREIGN_CLIENT_ID
             PW_FOREIGN_THERAPIST_ID
+            VITE_SUPABASE_URL
+            VITE_SUPABASE_ANON_KEY
+            SUPABASE_SERVICE_ROLE_KEY
           )
           missing=()
           for key in "${required[@]}"; do
@@ -259,7 +265,7 @@ jobs:
             echo "Skipping auth browser smoke gate: missing required secrets: ${missing[*]}"
             exit 0
           fi
-          npm run playwright:preflight && npm run playwright:auth
+          npm run playwright:preflight && npm run playwright:auth && npm run playwright:session-lifecycle
 
       - name: Upload Playwright artifacts on failure
         if: failure()

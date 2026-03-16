@@ -23,6 +23,7 @@
     "playwright:therapist-authorization": "tsx scripts/playwright-therapist-authorization.ts",
     "playwright:mobile-role-smoke": "tsx scripts/playwright-mobile-role-smoke.ts",
     "playwright:preflight": "tsx scripts/playwright-preflight.ts",
+    "playwright:session-lifecycle": "tsx scripts/playwright-session-lifecycle.ts",
     "ci:playwright": "npm run playwright:preflight && npm run playwright:auth && npm run playwright:schedule-conflict && npm run playwright:therapist-onboarding && npm run playwright:therapist-authorization",
     "contract:runtime-config": "node scripts/contracts/check-runtime-config.mjs",
     "bolt:dev": "vite --host 0.0.0.0",

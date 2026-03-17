@@ -273,3 +273,17 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
 - Shared environment edge gateway returned `Invalid JWT` for valid `/auth/v1/user` tokens. Session lifecycle functions were redeployed with runtime auth enforced in-function (`getUserOrThrow`) and gateway JWT verification disabled for the five lifecycle routes to restore parity.
 - Booking 500 regression (`program_id` null during hold confirmation) was fixed by migration `supabase/migrations/20260317043000_confirm_session_hold_program_goal_required.sql`, which updates `confirm_session_hold(uuid, jsonb)` to persist `program_id` and `goal_id`.
 - Session start remains sensitive to transient edge timeouts (`504`) in shared env; strict lifecycle checks now fail on route absence (`404`) but allow RPC fallback on gateway timeouts so end-to-end validation can complete while route health is remediated.
+
+## 2026-03 stabilization follow-up (shared env)
+- Root cause discovered during post-remediation stabilization: lifecycle edge functions can be redeployed with gateway JWT verification re-enabled (`verify_jwt=true`) unless explicitly disabled at deploy time.
+- Symptom pattern observed:
+  - strict lifecycle parity runs failed at `/api/book` with `401 unauthorized` from downstream `sessions-hold/sessions-confirm`,
+  - non-strict lifecycle run reached `sessions-start` and failed with `401 Invalid JWT` at edge gateway.
+- Operational fix applied:
+  - redeployed `sessions-hold`, `sessions-confirm`, `sessions-start`, `sessions-cancel`, and `generate-session-notes-pdf` with `--no-verify-jwt`,
+  - verified remote function metadata reports `verify_jwt=false` for all five lifecycle routes.
+- CI/deploy hardening:
+  - `scripts/ci/deploy-session-edge-bundle.mjs` now deploys lifecycle functions with `--no-verify-jwt`,
+  - the same script now fails fast if post-deploy verification finds any lifecycle function with `verify_jwt !== false`.
+- Remaining risk:
+  - strict lifecycle can still fail earlier on `/api/book` auth parity if app runtime/token context drifts in shared env; treat this as a release blocker for session route parity.

@@ -66,6 +66,7 @@ We currently run all environments (preview, staging, production) against the sam
    npm run ci:deploy:session-edge-bundle
    ```
    or deploy each function manually with `supabase functions deploy <name> --project-ref <ref>`.
+   For session lifecycle routes, ensure gateway JWT verification remains disabled (`verify_jwt=false`) by using `--no-verify-jwt` when deploying `sessions-hold`, `sessions-confirm`, `sessions-start`, `sessions-cancel`, and `generate-session-notes-pdf`.
 4. Monitor the Supabase dashboard deployment logs. If a migration fails, follow the rollback/forward-fix plan documented in the PR.
 5. Regenerate generated types (e.g., `npm run typegen`) after production deploys if schema changes affect the application code.
 

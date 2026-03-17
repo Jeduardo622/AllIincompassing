@@ -65,7 +65,7 @@ if (!process.env.SUPABASE_ACCESS_TOKEN || process.env.SUPABASE_ACCESS_TOKEN.trim
 
 console.log(`Deploying session edge bundle to project ${projectRef}...`);
 for (const fn of REQUIRED_FUNCTIONS) {
-  const status = runSupabase(["functions", "deploy", fn, "--project-ref", projectRef]);
+  const status = runSupabase(["functions", "deploy", fn, "--project-ref", projectRef, "--no-verify-jwt"]);
   if (status !== 0) {
     console.error(`❌ Failed to deploy ${fn}.`);
     process.exit(status);
@@ -91,6 +91,17 @@ const deployedSlugs = new Set(Array.isArray(deployed) ? deployed.map((item) => i
 const missing = REQUIRED_FUNCTIONS.filter((slug) => !deployedSlugs.has(slug));
 if (missing.length > 0) {
   console.error(`❌ Missing deployed functions after deploy: ${missing.join(", ")}`);
+  process.exit(1);
+}
+
+const jwtMismatches = Array.isArray(deployed)
+  ? deployed
+      .filter((item) => REQUIRED_FUNCTIONS.includes(item?.slug))
+      .filter((item) => item?.verify_jwt !== false)
+      .map((item) => item?.slug)
+  : [];
+if (jwtMismatches.length > 0) {
+  console.error(`❌ verify_jwt must be false for lifecycle functions: ${jwtMismatches.join(", ")}`);
   process.exit(1);
 }
 

@@ -27,6 +27,14 @@ const parseProjectRef = (supabaseUrl) => {
   }
 };
 
+const resolveProjectRef = () => {
+  const directProjectRef = parseProjectRef(process.env.SUPABASE_PROJECT_REF);
+  if (directProjectRef) {
+    return directProjectRef;
+  }
+  return parseProjectRef(process.env.SUPABASE_URL);
+};
+
 const parseVerifyJwtFromToml = (source) => {
   const match = source.match(/^\s*verify_jwt\s*=\s*(true|false)\s*$/im);
   if (!match) {
@@ -79,6 +87,17 @@ const parseBooleanFlag = (value, fallback) => {
     return fallback;
   }
   return /^(1|true|yes)$/i.test(value);
+};
+
+const parseScopeList = (value) => {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return null;
+  }
+  const entries = value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  return entries.length > 0 ? new Set(entries) : null;
 };
 
 const parityRequired = parseBooleanFlag(process.env.CI_SUPABASE_AUTH_PARITY_REQUIRED, process.env.CI === 'true');
@@ -179,12 +198,14 @@ const run = async () => {
     return;
   }
 
-  const projectRef = parseProjectRef(process.env.SUPABASE_URL);
+  const projectRef = resolveProjectRef();
   if (!ensureRuntimePrerequisites(projectRef)) {
     return;
   }
 
-  const expected = await loadExpectedSettings();
+  const expectedAll = await loadExpectedSettings();
+  const scope = parseScopeList(process.env.SUPABASE_FUNCTION_PARITY_SCOPE);
+  const expected = scope ? expectedAll.filter((item) => scope.has(item.slug)) : expectedAll;
   const deployed = fetchDeployedSettings(projectRef);
   const deployedBySlug = new Map(deployed.map((item) => [item.slug, item]));
   const mismatches = [];

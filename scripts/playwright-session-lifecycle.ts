@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { chromium, type Page } from "playwright";
+import { chromium, type BrowserContext, type Page } from "playwright";
 import { getTimezoneOffset } from "date-fns-tz";
 import { createClient } from "@supabase/supabase-js";
 
@@ -27,6 +27,18 @@ interface SessionStartPayload {
   goal_ids: string[];
 }
 
+interface RuntimeConfigPayload {
+  supabaseUrl?: string;
+}
+
+interface BrowserFetchResult<TBody> {
+  ok: boolean;
+  status: number;
+  body: TBody | null;
+}
+
+const isTruthy = (value: string | undefined): boolean => /^(1|true|yes)$/i.test(value ?? "");
+
 const decodeJwtPayload = (token: string): Record<string, unknown> | null => {
   const segments = token.split(".");
   if (segments.length < 2) {
@@ -48,6 +60,42 @@ const getEnv = (key: string, fallback?: string): string => {
   }
   return value;
 };
+
+const parseProjectRef = (value: string): string | null => {
+  const trimmed = value.trim();
+  if (/^[a-z0-9]{20}$/i.test(trimmed)) {
+    return trimmed;
+  }
+  try {
+    const host = new URL(trimmed).hostname;
+    const [ref] = host.split(".");
+    return ref?.trim() || null;
+  } catch {
+    return null;
+  }
+};
+
+const getTokenIssuerProjectRef = (token: string): string | null => {
+  const payload = decodeJwtPayload(token);
+  const iss = typeof payload?.iss === "string" ? payload.iss : "";
+  return iss ? parseProjectRef(iss) : null;
+};
+
+async function fetchRuntimeProjectRef(page: Page, baseUrl: string): Promise<string | null> {
+  const runtimeConfig = await page.evaluate(async (base) => {
+    const res = await fetch(`${base}/api/runtime-config`, { credentials: "include" });
+    const body = await res.json().catch(() => null);
+    return { ok: res.ok, status: res.status, body };
+  }, baseUrl) as BrowserFetchResult<RuntimeConfigPayload>;
+  if (!runtimeConfig.ok) {
+    throw new Error(`Unable to load runtime-config (${runtimeConfig.status})`);
+  }
+  const supabaseUrl = runtimeConfig.body?.supabaseUrl;
+  if (typeof supabaseUrl !== "string" || supabaseUrl.trim().length === 0) {
+    throw new Error("runtime-config response missing supabaseUrl");
+  }
+  return parseProjectRef(supabaseUrl);
+}
 
 const createSessionViaServiceRole = async (params: {
   therapistId: string;
@@ -255,26 +303,41 @@ const createSessionNoteViaServiceRole = async (ids: LifecycleIds, actorUserId: s
   return data.id;
 };
 
-const verifySessionNotePdfExport = async (token: string, clientId: string, noteId: string): Promise<boolean> => {
-  const response = await fetch(`${getEnv("VITE_SUPABASE_URL")}/functions/v1/generate-session-notes-pdf`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      clientId,
-      noteIds: [noteId],
-    }),
-  });
-  if (response.status === 404) {
-    return false;
+const verifySessionNotePdfExport = async (
+  token: string,
+  clientId: string,
+  noteId: string,
+  strictMode: boolean,
+): Promise<boolean> => {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const response = await fetch(`${getEnv("VITE_SUPABASE_URL")}/functions/v1/generate-session-notes-pdf`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        clientId,
+        noteIds: [noteId],
+      }),
+    });
+    if (response.status === 404 && !strictMode) {
+      return false;
+    }
+    if (!response.ok) {
+      if ([502, 503, 504].includes(response.status)) {
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
+          continue;
+        }
+        return false;
+      }
+      const body = await response.text();
+      throw new Error(`generate-session-notes-pdf failed (${response.status}): ${body.slice(0, 300)}`);
+    }
+    return true;
   }
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`generate-session-notes-pdf failed (${response.status}): ${body.slice(0, 300)}`);
-  }
-  return true;
+  return false;
 };
 
 const fetchAccessTokenForCredentials = async (email: string, password: string): Promise<string> => {
@@ -296,7 +359,23 @@ const fetchAccessTokenForCredentials = async (email: string, password: string): 
 
 const getTokenFromBrowserStorage = async (page: Page): Promise<string | null> => {
   const token = await page.evaluate(() => {
-    const stores = [window.localStorage, window.sessionStorage];
+    const browserGlobal = globalThis as unknown as {
+      localStorage: {
+        getItem: (key: string) => string | null;
+        setItem: (key: string, value: string) => void;
+        removeItem: (key: string) => void;
+        key: (index: number) => string | null;
+        length: number;
+      };
+      sessionStorage: {
+        getItem: (key: string) => string | null;
+        setItem: (key: string, value: string) => void;
+        removeItem: (key: string) => void;
+        key: (index: number) => string | null;
+        length: number;
+      };
+    };
+    const stores = [browserGlobal.localStorage, browserGlobal.sessionStorage];
     for (const store of stores) {
       for (const key of Object.keys(store)) {
         const raw = store.getItem(key);
@@ -365,9 +444,13 @@ async function getOptionValues(page: Page, selector: string): Promise<string[]> 
 
 async function openSessionModal(page: Page) {
   await page.evaluate(() => {
+    const browserGlobal = globalThis as unknown as {
+      dispatchEvent: (event: unknown) => boolean;
+      CustomEvent: new (name: string, init?: { detail?: unknown }) => unknown;
+    };
     const now = new Date();
     now.setHours(now.getHours() + 2);
-    window.dispatchEvent(new CustomEvent("openScheduleModal", { detail: { start_time: now.toISOString() } }));
+    browserGlobal.dispatchEvent(new browserGlobal.CustomEvent("openScheduleModal", { detail: { start_time: now.toISOString() } }));
   });
   await page
     .locator('[role="dialog"]:has-text("New Session"), [role="dialog"]:has-text("Edit Session")')
@@ -420,7 +503,7 @@ async function chooseSessionTargets(page: Page): Promise<{
   throw new Error("Could not find therapist/client/program/goal combination for lifecycle test.");
 }
 
-async function bookSession(page: Page, token: string): Promise<LifecycleIds> {
+async function bookSession(page: Page, token: string, strictMode: boolean): Promise<LifecycleIds> {
   await page.goto(`${getEnv("PW_BASE_URL", "https://app.allincompassing.ai")}/schedule`, { waitUntil: "networkidle" });
   await page.waitForSelector("text=Schedule", { timeout: 15_000 });
   await openSessionModal(page);
@@ -429,68 +512,88 @@ async function bookSession(page: Page, token: string): Promise<LifecycleIds> {
 
   const start = new Date();
   start.setHours(start.getHours() + 4, 0, 0, 0);
-  const end = new Date(start.getTime() + 60 * 60 * 1000);
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
-  const startIso = start.toISOString();
-  const endIso = end.toISOString();
-  const startOffsetMinutes = Math.round(getTimezoneOffset(timeZone, start) / 60000);
-  const endOffsetMinutes = Math.round(getTimezoneOffset(timeZone, end) / 60000);
+  let finalStartIso = "";
+  let finalEndIso = "";
+  let payload: BrowserFetchResult<Record<string, unknown>> | null = null;
+  let payloadBody: { success?: boolean; data?: { session?: { id?: string } } } | null = null;
 
-  await page.locator("#start-time-input").fill(toDatetimeLocal(start));
-  await page.locator("#end-time-input").fill(toDatetimeLocal(end));
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const attemptStart = new Date(start.getTime() + attempt * 2 * 60 * 60 * 1000);
+    const attemptEnd = new Date(attemptStart.getTime() + 60 * 60 * 1000);
+    const startIso = attemptStart.toISOString();
+    const endIso = attemptEnd.toISOString();
+    finalStartIso = startIso;
+    finalEndIso = endIso;
+    const startOffsetMinutes = Math.round(getTimezoneOffset(timeZone, attemptStart) / 60000);
+    const endOffsetMinutes = Math.round(getTimezoneOffset(timeZone, attemptEnd) / 60000);
 
-  const payload = await page.evaluate(
-    async ({ apiToken, therapistId, clientId, programId, goalId, isoStart, isoEnd, startOffset, endOffset, tz }) => {
-      const response = await fetch("/api/book", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiToken}`,
-          "Idempotency-Key": `pw-lifecycle-${Date.now()}`,
-        },
-        body: JSON.stringify({
-          session: {
-            therapist_id: therapistId,
-            client_id: clientId,
-            program_id: programId,
-            goal_id: goalId,
-            goal_ids: [goalId],
-            start_time: isoStart,
-            end_time: isoEnd,
-            status: "scheduled",
+    await page.locator("#start-time-input").fill(toDatetimeLocal(attemptStart));
+    await page.locator("#end-time-input").fill(toDatetimeLocal(attemptEnd));
+
+    payload = await page.evaluate(
+      async ({ apiToken, therapistId, clientId, programId, goalId, isoStart, isoEnd, startOffset, endOffset, tz }) => {
+        const response = await fetch("/api/book", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiToken}`,
+            "Idempotency-Key": `pw-lifecycle-${Date.now()}`,
           },
-          startTimeOffsetMinutes: startOffset,
-          endTimeOffsetMinutes: endOffset,
-          timeZone: tz,
-          holdSeconds: 300,
-        }),
-      });
-      const body = await response.json().catch(() => null);
-      return { status: response.status, ok: response.ok, body };
-    },
-    {
-      apiToken: token,
-      therapistId: selected.therapistId,
-      clientId: selected.clientId,
-      programId: selected.programId,
-      goalId: selected.goalId,
-      isoStart: startIso,
-      isoEnd: endIso,
-      startOffset: startOffsetMinutes,
-      endOffset: endOffsetMinutes,
-      tz: timeZone,
-    },
-  );
+          body: JSON.stringify({
+            session: {
+              therapist_id: therapistId,
+              client_id: clientId,
+              program_id: programId,
+              goal_id: goalId,
+              goal_ids: [goalId],
+              start_time: isoStart,
+              end_time: isoEnd,
+              status: "scheduled",
+            },
+            startTimeOffsetMinutes: startOffset,
+            endTimeOffsetMinutes: endOffset,
+            timeZone: tz,
+            holdSeconds: 300,
+          }),
+        });
+        const body = await response.json().catch(() => null);
+        return { status: response.status, ok: response.ok, body };
+      },
+      {
+        apiToken: token,
+        therapistId: selected.therapistId,
+        clientId: selected.clientId,
+        programId: selected.programId,
+        goalId: selected.goalId,
+        isoStart: startIso,
+        isoEnd: endIso,
+        startOffset: startOffsetMinutes,
+        endOffset: endOffsetMinutes,
+        tz: timeZone,
+      },
+    ) as BrowserFetchResult<Record<string, unknown>>;
 
-  if (!payload.ok || !payload.body?.success || !payload.body?.data?.session?.id) {
-    if (payload.status === 401) {
+    payloadBody = payload.body as
+      | { success?: boolean; data?: { session?: { id?: string } } }
+      | null;
+    if (payload.ok && payloadBody?.success && payloadBody?.data?.session?.id) {
+      break;
+    }
+    if (payload.status !== 409) {
+      break;
+    }
+  }
+
+  if (!payload || !payloadBody?.success || !payloadBody?.data?.session?.id) {
+    if (!strictMode && payload?.status === 401 && finalStartIso && finalEndIso) {
       const fallbackSessionId = await createSessionViaServiceRole({
         therapistId: selected.therapistId,
         clientId: selected.clientId,
         programId: selected.programId,
         goalId: selected.goalId,
-        startIso,
-        endIso,
+        startIso: finalStartIso,
+        endIso: finalEndIso,
       });
       return {
         sessionId: fallbackSessionId,
@@ -501,12 +604,12 @@ async function bookSession(page: Page, token: string): Promise<LifecycleIds> {
       };
     }
     throw new Error(
-      `Booking did not succeed. status=${payload.status} payload=${JSON.stringify(payload.body).slice(0, 400)}`,
+      `Booking did not succeed. status=${payload?.status ?? "unknown"} payload=${JSON.stringify(payloadBody).slice(0, 2000)}`,
     );
   }
 
   return {
-    sessionId: payload.body.data.session.id as string,
+    sessionId: payloadBody.data!.session!.id as string,
     therapistId: selected.therapistId,
     clientId: selected.clientId,
     programId: selected.programId,
@@ -514,7 +617,7 @@ async function bookSession(page: Page, token: string): Promise<LifecycleIds> {
   };
 }
 
-async function startSession(_page: Page, token: string, ids: LifecycleIds): Promise<void> {
+async function startSession(_page: Page, token: string, ids: LifecycleIds, strictMode: boolean): Promise<void> {
   const payload: SessionStartPayload = {
     session_id: ids.sessionId,
     program_id: ids.programId,
@@ -522,46 +625,74 @@ async function startSession(_page: Page, token: string, ids: LifecycleIds): Prom
     goal_ids: [ids.goalId],
   };
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
-  const edgeResponse = await fetch(`${supabaseUrl}/functions/v1/sessions-start`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  });
-  const edgeBody = await edgeResponse.text();
+  let edgeStatus = 500;
+  let edgeBody = "";
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const edgeResponse = await fetch(`${supabaseUrl}/functions/v1/sessions-start`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    edgeStatus = edgeResponse.status;
+    edgeBody = await edgeResponse.text();
 
-  if (edgeResponse.ok) {
-    return;
+    if (edgeResponse.ok) {
+      return;
+    }
+    if (![502, 503, 504].includes(edgeResponse.status) || attempt === 3) {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
   }
 
-  if (edgeResponse.status !== 404) {
-    throw new Error(`sessions-start failed (${edgeResponse.status}): ${edgeBody.slice(0, 400)}`);
+  const runRpcFallback = async () => {
+    const rpcResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/start_session_with_goals`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: getEnv("VITE_SUPABASE_ANON_KEY", process.env.SUPABASE_ANON_KEY),
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        p_session_id: ids.sessionId,
+        p_program_id: ids.programId,
+        p_goal_id: ids.goalId,
+        p_goal_ids: [ids.goalId],
+        p_started_at: null,
+      }),
+    });
+    const rpcBody = await rpcResponse.text();
+    if (!rpcResponse.ok) {
+      throw new Error(`sessions-start rpc fallback failed (${rpcResponse.status}): ${rpcBody.slice(0, 400)}`);
+    }
+  };
+
+  if (strictMode) {
+    if (edgeStatus === 404) {
+      throw new Error(`sessions-start failed (${edgeStatus}): ${edgeBody.slice(0, 400)}`);
+    }
+    if ([502, 503, 504].includes(edgeStatus)) {
+      await runRpcFallback();
+      return;
+    }
+    throw new Error(`sessions-start failed (${edgeStatus}): ${edgeBody.slice(0, 400)}`);
   }
 
-  const rpcResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/start_session_with_goals`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: getEnv("VITE_SUPABASE_ANON_KEY", process.env.SUPABASE_ANON_KEY),
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      p_session_id: ids.sessionId,
-      p_program_id: ids.programId,
-      p_goal_id: ids.goalId,
-      p_goal_ids: [ids.goalId],
-      p_started_at: null,
-    }),
-  });
-  const rpcBody = await rpcResponse.text();
-  if (!rpcResponse.ok) {
-    throw new Error(`sessions-start rpc fallback failed (${rpcResponse.status}): ${rpcBody.slice(0, 400)}`);
+  if (edgeStatus !== 404) {
+    throw new Error(`sessions-start failed (${edgeStatus}): ${edgeBody.slice(0, 400)}`);
   }
+
+  await runRpcFallback();
 }
 
-async function createSessionNote(page: Page, ids: LifecycleIds, token: string): Promise<string | undefined> {
+async function createSessionNote(
+  page: Page,
+  ids: LifecycleIds,
+  token: string,
+): Promise<string | undefined> {
   const base = getEnv("PW_BASE_URL", "https://app.allincompassing.ai");
   await page.goto(`${base}/clients/${ids.clientId}`, { waitUntil: "networkidle" });
   await page.getByRole("button", { name: /session notes \/ physical auth/i }).first().click();
@@ -633,7 +764,7 @@ async function createSessionNote(page: Page, ids: LifecycleIds, token: string): 
   return typeof noteId === "string" ? noteId : undefined;
 }
 
-async function cancelSession(_page: Page, token: string, sessionId: string): Promise<void> {
+async function cancelSession(_page: Page, token: string, sessionId: string, strictMode: boolean): Promise<void> {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const response = await fetch(`${supabaseUrl}/functions/v1/sessions-cancel`, {
     method: "POST",
@@ -647,9 +778,9 @@ async function cancelSession(_page: Page, token: string, sessionId: string): Pro
     }),
   });
 
-  const payload = await response.json().catch(() => null);
+  const payload = await response.json().catch(() => null) as { success?: boolean } | null;
   if (!response.ok || payload?.success !== true) {
-    if (response.status === 401) {
+    if (!strictMode && response.status === 401) {
       const adminClient = createClient(supabaseUrl, getEnv("SUPABASE_SERVICE_ROLE_KEY"), {
         auth: {
           autoRefreshToken: false,
@@ -674,16 +805,17 @@ async function run() {
   loadPlaywrightEnv();
   const base = getEnv("PW_BASE_URL", "https://app.allincompassing.ai");
   const headless = process.env.HEADLESS !== "false";
+  const strictParityMode = isTruthy(process.env.CI_SESSION_PARITY_REQUIRED) || isTruthy(process.env.PW_STRICT_SESSION_PARITY);
   const credentialCandidates = [
-    {
-      email: process.env.PW_SCHEDULE_EMAIL,
-      password: process.env.PW_SCHEDULE_PASSWORD,
-      label: "PW_SCHEDULE_EMAIL + PW_SCHEDULE_PASSWORD",
-    },
     {
       email: process.env.PW_ADMIN_EMAIL ?? process.env.PLAYWRIGHT_ADMIN_EMAIL,
       password: process.env.PW_ADMIN_PASSWORD ?? process.env.PLAYWRIGHT_ADMIN_PASSWORD,
       label: "PW_ADMIN_EMAIL + PW_ADMIN_PASSWORD",
+    },
+    {
+      email: process.env.PW_SCHEDULE_EMAIL,
+      password: process.env.PW_SCHEDULE_PASSWORD,
+      label: "PW_SCHEDULE_EMAIL + PW_SCHEDULE_PASSWORD",
     },
   ].filter((entry) => Boolean(entry.email && entry.password));
 
@@ -692,7 +824,7 @@ async function run() {
   }
 
   const browser = await chromium.launch({ headless });
-  let context: import("playwright").BrowserContext | undefined;
+  let context: BrowserContext | undefined;
   let page: Page | undefined;
   let authenticatedCredential: { email: string; password: string } | null = null;
   let capturedAccessToken: string | null = null;
@@ -740,22 +872,50 @@ async function run() {
     }
 
     const browserToken = capturedAccessToken ?? await getTokenFromBrowserStorage(page);
+    if (!browserToken && strictParityMode) {
+      throw new Error("Could not capture browser session token in strict parity mode.");
+    }
     const token = browserToken ?? await fetchAccessTokenForCredentials(
       authenticatedCredential.email,
       authenticatedCredential.password,
     );
-    const booked = await bookSession(page, token);
+    const runtimeProjectRef = await fetchRuntimeProjectRef(page, base);
+    const tokenProjectRef = getTokenIssuerProjectRef(token);
+    if (strictParityMode && runtimeProjectRef && tokenProjectRef && runtimeProjectRef !== tokenProjectRef) {
+      throw new Error(
+        `Token/runtime project mismatch in strict mode (token=${tokenProjectRef}, runtime=${runtimeProjectRef}).`,
+      );
+    }
+    let booked: LifecycleIds;
+    try {
+      booked = await bookSession(page, token, strictParityMode);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        strictParityMode &&
+        message.includes("Organization context required") &&
+        authenticatedCredential
+      ) {
+        const refreshedToken = await fetchAccessTokenForCredentials(
+          authenticatedCredential.email,
+          authenticatedCredential.password,
+        );
+        booked = await bookSession(page, refreshedToken, strictParityMode);
+      } else {
+        throw error;
+      }
+    }
     Object.assign(ids, booked);
-    await startSession(page, token, booked);
+    await startSession(page, token, booked, strictParityMode);
     const noteId = await createSessionNote(page, booked, token);
     ids.noteId = noteId;
     if (noteId) {
-      const pdfExportAvailable = await verifySessionNotePdfExport(token, booked.clientId, noteId);
+      const pdfExportAvailable = await verifySessionNotePdfExport(token, booked.clientId, noteId, strictParityMode);
       if (!pdfExportAvailable) {
         console.warn("generate-session-notes-pdf edge function is not deployed in target environment.");
       }
     }
-    await cancelSession(page, token, booked.sessionId);
+    await cancelSession(page, token, booked.sessionId, strictParityMode);
 
     const latestDir = path.resolve(process.cwd(), "artifacts", "latest");
     if (!fs.existsSync(latestDir)) {

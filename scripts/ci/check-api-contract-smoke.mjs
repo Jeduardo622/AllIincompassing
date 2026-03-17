@@ -1,7 +1,15 @@
 import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 
 const ROOT = process.cwd();
+const REQUIRED_EDGE_FUNCTIONS = [
+  "sessions-hold",
+  "sessions-confirm",
+  "sessions-start",
+  "sessions-cancel",
+  "generate-session-notes-pdf",
+];
 
 const CRITICAL_ENDPOINTS = [
   {
@@ -24,6 +32,7 @@ const CRITICAL_ENDPOINTS = [
     handlerSymbol: "bookHandler",
     expectedMethod: "POST",
     expectedContentType: "application/json",
+    requireBearerChallenge: true,
   },
   {
     route: "/api/sessions-start",
@@ -40,8 +49,36 @@ const readText = async (relativePath) => {
   return readFile(absolutePath, "utf8");
 };
 
+const parseProjectRef = (value) => {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (/^[a-z0-9]{20}$/i.test(trimmed)) {
+    return trimmed;
+  }
+  try {
+    const host = new URL(trimmed).hostname;
+    const [ref] = host.split(".");
+    return ref?.trim() || null;
+  } catch {
+    return null;
+  }
+};
+
+const parseBoolean = (value, fallback) => {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return fallback;
+  }
+  return /^(1|true|yes)$/i.test(value);
+};
+
 const run = async () => {
   const failures = [];
+  const edgeParityRequired = parseBoolean(
+    process.env.CI_EDGE_ROUTE_PARITY_REQUIRED,
+    parseBoolean(process.env.CI_SUPABASE_AUTH_PARITY_REQUIRED, process.env.CI === "true"),
+  );
 
   for (const endpoint of CRITICAL_ENDPOINTS) {
     const netlifyPath = `netlify/functions/${endpoint.netlifyFunction}`;
@@ -67,6 +104,9 @@ const run = async () => {
       ) {
         failures.push(`${endpoint.route}: source handler is missing JSON content-type response contract.`);
       }
+      if (endpoint.requireBearerChallenge && !sourceText.includes('"WWW-Authenticate": "Bearer"')) {
+        failures.push(`${endpoint.route}: source handler must return WWW-Authenticate Bearer on unauthorized path.`);
+      }
       continue;
     }
 
@@ -75,6 +115,45 @@ const run = async () => {
       !/['"]Content-Type['"]\s*:\s*['"]application\/json['"]/.test(netlifyText)
     ) {
       failures.push(`${endpoint.route}: wrapper is missing JSON content-type response contract.`);
+    }
+  }
+
+  if (edgeParityRequired) {
+    const projectRef = parseProjectRef(process.env.SUPABASE_PROJECT_REF) || parseProjectRef(process.env.SUPABASE_URL);
+    if (!projectRef) {
+      failures.push("edge parity: missing SUPABASE_PROJECT_REF or SUPABASE_URL.");
+    } else if (!process.env.SUPABASE_ACCESS_TOKEN || process.env.SUPABASE_ACCESS_TOKEN.trim().length === 0) {
+      failures.push("edge parity: missing SUPABASE_ACCESS_TOKEN.");
+    } else {
+      const listResult = spawnSync(
+        "supabase",
+        ["functions", "list", "--project-ref", projectRef, "--output", "json"],
+        {
+          cwd: ROOT,
+          env: process.env,
+          encoding: "utf8",
+          shell: process.platform === "win32",
+        },
+      );
+      if (listResult.status !== 0) {
+        const details = String(listResult.stderr || listResult.stdout || "").trim();
+        failures.push(`edge parity: failed to list functions (${details || `exit ${listResult.status}`}).`);
+      } else {
+        let parsed = [];
+        try {
+          parsed = JSON.parse(String(listResult.stdout || "[]"));
+        } catch {
+          failures.push("edge parity: could not parse JSON from `supabase functions list`.");
+        }
+        if (Array.isArray(parsed)) {
+          const deployed = new Set(parsed.map((item) => item?.slug).filter(Boolean));
+          for (const slug of REQUIRED_EDGE_FUNCTIONS) {
+            if (!deployed.has(slug)) {
+              failures.push(`edge parity: function "${slug}" missing in project ${projectRef}.`);
+            }
+          }
+        }
+      }
     }
   }
 

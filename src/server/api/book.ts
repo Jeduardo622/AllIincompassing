@@ -173,13 +173,26 @@ export async function bookHandler(request: Request): Promise<Response> {
       );
     }
 
+    const isUnauthorized = status === 401;
     return errorResponse(
       request,
-      status === 401 ? "unauthorized" : status === 403 ? "forbidden" : status === 409 ? "conflict" : "internal_error",
+      isUnauthorized ? "unauthorized" : status === 403 ? "forbidden" : status === 409 ? "conflict" : "internal_error",
       "Booking failed",
       {
         status,
-        extra: { conflictCode: conflictCode ?? null },
+        extra: {
+          conflictCode: conflictCode ?? null,
+          upstream: "sessions-hold/sessions-confirm",
+          upstreamMessage: normalizedError.message,
+          inputProgramId: (body?.session as Record<string, unknown> | undefined)?.program_id ?? null,
+          inputGoalId: (body?.session as Record<string, unknown> | undefined)?.goal_id ?? null,
+          ...(isUnauthorized
+            ? {
+                hint:
+                  "Authorization was rejected by the downstream session orchestration path. Verify runtime Supabase URL/key parity between API and edge functions.",
+              }
+            : {}),
+        },
       },
     );
   }

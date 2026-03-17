@@ -61,8 +61,13 @@ We currently run all environments (preview, staging, production) against the sam
 
 1. Resolve all review comments and ensure the preview branch tests pass.
 2. Merge the PR into `main`. Supabase automatically deploys migrations in `supabase/migrations/` to the production project because “Deploy to production” is enabled for `main`.
-3. Monitor the Supabase dashboard deployment logs. If a migration fails, follow the rollback/forward-fix plan documented in the PR.
-4. Regenerate generated types (e.g., `npm run typegen`) after production deploys if schema changes affect the application code.
+3. Deploy edge functions explicitly after migration promotion. Migration deploys do not guarantee edge function parity:
+   ```bash
+   npm run ci:deploy:session-edge-bundle
+   ```
+   or deploy each function manually with `supabase functions deploy <name> --project-ref <ref>`.
+4. Monitor the Supabase dashboard deployment logs. If a migration fails, follow the rollback/forward-fix plan documented in the PR.
+5. Regenerate generated types (e.g., `npm run typegen`) after production deploys if schema changes affect the application code.
 
 ### Migration Promotion Flow Overview
 

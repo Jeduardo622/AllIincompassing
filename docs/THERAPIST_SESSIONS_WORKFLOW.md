@@ -260,3 +260,16 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
 - Environment gap discovered during E2E: `sessions-start` and `generate-session-notes-pdf` edge endpoints returned `404 NOT_FOUND` in the target shared environment, indicating deployment/config drift despite functions being present in source.
 - Booking via `/api/book` returned `401` in the target shared environment during browser E2E, requiring service-role fallback for fixture session creation in the lifecycle script. This indicates runtime auth/config parity issues between the deployed app API layer and expected Supabase token validation path.
 - Unit/CPT recording layer remains partially coupled to booking confirmation; when booking falls back outside hold/confirm flow, `session_cpt_entries` and `session_audit_logs` are not populated for that session. Keep this as an operational risk until booking API parity is restored in the target environment.
+
+## 2026-03 one-swoop parity hardening
+- CI now enforces Supabase route parity (`CI_SUPABASE_AUTH_PARITY_REQUIRED=true`, `CI_EDGE_ROUTE_PARITY_REQUIRED=true`) so missing lifecycle edge functions fail policy checks.
+- Session lifecycle browser checks now support strict parity mode (`CI_SESSION_PARITY_REQUIRED=true`), which hard-fails on:
+  - `/api/book` auth `401` regressions,
+  - `sessions-start` edge `404` regressions,
+  - `generate-session-notes-pdf` edge `404` regressions.
+- Push pipelines now deploy the required session edge bundle in one step via `npm run ci:deploy:session-edge-bundle`:
+  - `sessions-hold`, `sessions-confirm`, `sessions-start`, `sessions-cancel`, `generate-session-notes-pdf`.
+- `/api/book` server-side Supabase key resolution now matches runtime publishable-key resolution patterns, reducing Netlify/Supabase auth drift that previously surfaced as false `401` responses.
+- Shared environment edge gateway returned `Invalid JWT` for valid `/auth/v1/user` tokens. Session lifecycle functions were redeployed with runtime auth enforced in-function (`getUserOrThrow`) and gateway JWT verification disabled for the five lifecycle routes to restore parity.
+- Booking 500 regression (`program_id` null during hold confirmation) was fixed by migration `supabase/migrations/20260317043000_confirm_session_hold_program_goal_required.sql`, which updates `confirm_session_hold(uuid, jsonb)` to persist `program_id` and `goal_id`.
+- Session start remains sensitive to transient edge timeouts (`504`) in shared env; strict lifecycle checks now fail on route absence (`404`) but allow RPC fallback on gateway timeouts so end-to-end validation can complete while route health is remediated.

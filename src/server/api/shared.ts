@@ -223,7 +223,21 @@ export function getSupabaseConfig(): { supabaseUrl: string; anonKey: string } {
     getOptionalServerEnv("SUPABASE_DATABASE_URL") ||
     getRequiredServerEnv("VITE_SUPABASE_URL");
 
-  const anonKey =
+  const preferredPublishableKeys = [
+    getOptionalServerEnv("SUPABASE_PUBLISHABLE_KEY"),
+    getOptionalServerEnv("VITE_SUPABASE_PUBLISHABLE_KEY"),
+    getOptionalServerEnv("SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY"),
+    getOptionalServerEnv("VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY"),
+  ];
+  const generatedPublishable = Object.entries(process.env).find(([key, value]) =>
+    key.includes("PUBLISHABLE") &&
+    key.endsWith("_SUPABASE_ANON_KEY") &&
+    typeof value === "string" &&
+    value.trim().length > 0
+  )?.[1];
+
+  const anonKey = preferredPublishableKeys.find((value) => typeof value === "string" && value.trim().length > 0) ||
+    generatedPublishable ||
     getOptionalServerEnv("SUPABASE_ANON_KEY") ||
     getRequiredServerEnv("VITE_SUPABASE_ANON_KEY");
 

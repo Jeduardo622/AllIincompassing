@@ -61,11 +61,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           # Temporary repo-state bypass: keep branch-protection check strict when this is false.
           CI_ALLOW_UNPROTECTED_MAIN: "true"
-          # Temporary runtime bypass while Supabase auth parity credentials are standardized.
-          CI_SUPABASE_AUTH_PARITY_REQUIRED: "false"
+          CI_SUPABASE_AUTH_PARITY_REQUIRED: "true"
+          CI_EDGE_ROUTE_PARITY_REQUIRED: "true"
+          SUPABASE_FUNCTION_PARITY_SCOPE: "sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf"
           # Temporary bypass until CI has direct database URL configured for overlap inspection.
           CI_RLS_OVERLAP_REQUIRED: "false"
           CI_REQUIRED_CHECKS: "policy,lint-typecheck,unit-tests,build"
@@ -229,6 +231,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Deploy required session edge functions (push only)
+        if: github.event_name == 'push'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: npm run ci:deploy:session-edge-bundle
+
       - name: Auth browser smoke gate
         env:
           PW_BASE_URL: ${{ secrets.PW_BASE_URL }}
@@ -262,9 +272,10 @@ jobs:
           done
 
           if [ "${#missing[@]}" -gt 0 ]; then
-            echo "Skipping auth browser smoke gate: missing required secrets: ${missing[*]}"
-            exit 0
+            echo "Missing required secrets for auth browser smoke gate: ${missing[*]}"
+            exit 1
           fi
+          export CI_SESSION_PARITY_REQUIRED=true
           npm run playwright:preflight && npm run playwright:auth && npm run playwright:session-lifecycle
 
       - name: Upload Playwright artifacts on failure

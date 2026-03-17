@@ -104,6 +104,17 @@ function buildEdgeTraceOptions(payload: {
   };
 }): CallEdgeOptions {
   const options: CallEdgeOptions = {};
+  const runtimeAnonKey = typeof process !== "undefined" && process?.env
+    ? (process.env.SUPABASE_PUBLISHABLE_KEY ||
+        process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+        process.env.SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY ||
+        process.env.VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY ||
+        process.env.SUPABASE_ANON_KEY ||
+        process.env.VITE_SUPABASE_ANON_KEY)
+    : undefined;
+  if (typeof runtimeAnonKey === "string" && runtimeAnonKey.trim().length > 0) {
+    options.anonKey = runtimeAnonKey.trim();
+  }
   if (payload.accessToken) {
     options.accessToken = payload.accessToken;
   }

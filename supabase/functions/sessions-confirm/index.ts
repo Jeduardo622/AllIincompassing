@@ -222,113 +222,101 @@ Deno.serve(async (req) => {
       checkedTherapists.add(target.therapist_id);
     }
 
-    const confirmedSessions: Record<string, unknown>[] = [];
+    const batchOccurrences = occurrencePayloads.map((occurrence) => ({
+      hold_key: occurrence.hold_key,
+      session: occurrence.session,
+      cpt: occurrence.cpt ?? null,
+      goal_ids: Array.isArray(occurrence.goal_ids) ? occurrence.goal_ids : [],
+    }));
+    const { data, error } = await supabaseAdmin.rpc("confirm_session_holds_batch_with_enrichment", {
+      p_occurrences: batchOccurrences,
+      p_actor_id: user.id,
+    });
+    if (error) {
+      console.error("confirm_session_holds_batch_with_enrichment error", error);
+      return respond({ success: false, error: error.message ?? "Failed to confirm sessions" }, 500);
+    }
 
-    for (const occurrence of occurrencePayloads) {
-      const { data, error } = await supabaseAdmin.rpc("confirm_session_hold_with_enrichment", {
-        p_hold_key: occurrence.hold_key,
-        p_session: occurrence.session,
-        p_cpt: occurrence.cpt ?? null,
-        p_goal_ids: Array.isArray(occurrence.goal_ids) ? occurrence.goal_ids : [],
-        p_actor_id: user.id,
-      });
+    if (!data?.success) {
+      const statusMap: Record<string, number> = {
+        MISSING_FIELDS: 400,
+        INVALID_RANGE: 400,
+        INVALID_FINANCIAL_VALUE: 400,
+        INVALID_FINANCIAL_TOTAL: 400,
+        HOLD_MISMATCH: 409,
+        CLIENT_MISMATCH: 409,
+        THERAPIST_CONFLICT: 409,
+        CLIENT_CONFLICT: 409,
+        SESSION_NOT_FOUND: 404,
+        HOLD_NOT_FOUND: 410,
+        HOLD_EXPIRED: 410,
+        FORBIDDEN: 403,
+      };
+      const errorCode = data?.error_code as string | undefined;
+      const status = statusMap[errorCode ?? ""] ?? 409;
+      const failedIndex = typeof data?.failed_index === "number"
+        ? Math.max(0, data.failed_index - 1)
+        : 0;
+      const failedOccurrence = occurrencePayloads[failedIndex] ?? occurrencePayloads[0];
 
-      if (error) {
-        console.error("confirm_session_hold error", error);
-        if (confirmedSessions.length > 0) {
-          return respond(
+      let headers: Record<string, string> = {};
+      let retryAfterIso: string | null = null;
+      const conflictCode = errorCode as ConflictCode | undefined;
+      if (failedOccurrence && conflictCode && conflictDimensions[conflictCode]) {
+        const holdContext = holdAuthorizationMap.get(failedOccurrence.hold_key);
+        if (holdContext) {
+          const retry = await resolveSchedulingRetryAfter(
+            supabaseAdmin,
             {
-              success: false,
-              error: error.message ?? "Failed to confirm all sessions",
-              code: "PARTIAL_CONFIRMATION",
-              partial: true,
-              confirmedSessions,
+              startTime: holdContext.start_time,
+              endTime: holdContext.end_time,
+              therapistId: holdContext.therapist_id,
+              clientId: holdContext.client_id,
             },
-            409,
+            conflictDimensions[conflictCode] as Array<"therapist" | "client">,
           );
-        }
-        return respond({ success: false, error: error.message ?? "Failed to confirm session" }, 500);
-      }
-
-      if (!data?.success) {
-        const statusMap: Record<string, number> = {
-          MISSING_FIELDS: 400,
-          INVALID_RANGE: 400,
-          HOLD_MISMATCH: 409,
-          CLIENT_MISMATCH: 409,
-          THERAPIST_CONFLICT: 409,
-          CLIENT_CONFLICT: 409,
-          HOLD_NOT_FOUND: 410,
-          HOLD_EXPIRED: 410,
-          FORBIDDEN: 403,
-        };
-        const status = statusMap[data?.error_code as string] ?? 409;
-
-        let headers: Record<string, string> = {};
-        let retryAfterIso: string | null = null;
-        const conflictCode = data?.error_code as ConflictCode | undefined;
-        if (conflictCode && conflictDimensions[conflictCode]) {
-          const holdContext = holdAuthorizationMap.get(occurrence.hold_key);
-          if (holdContext) {
-            const retry = await resolveSchedulingRetryAfter(
-              supabaseAdmin,
-              {
-                startTime: holdContext.start_time,
-                endTime: holdContext.end_time,
-                therapistId: holdContext.therapist_id,
-                clientId: holdContext.client_id,
-              },
-              conflictDimensions[conflictCode] as Array<"therapist" | "client">,
-            );
-
-            retryAfterIso = retry.retryAfterIso;
-            if (retry.retryAfterSeconds !== null) {
-              headers = { "Retry-After": retry.retryAfterSeconds.toString() };
-            }
+          retryAfterIso = retry.retryAfterIso;
+          if (retry.retryAfterSeconds !== null) {
+            headers = { "Retry-After": retry.retryAfterSeconds.toString() };
           }
         }
+      }
 
-        const holdContext = holdAuthorizationMap.get(occurrence.hold_key);
-        const orchestration = await orchestrateScheduling({
-          req,
-          workflow: "confirm",
-          actorId: user.id,
-          request: {
-            therapistId: holdContext?.therapist_id ?? null,
-            clientId: holdContext?.client_id ?? null,
-            startTime: holdContext?.start_time ?? null,
-            endTime: holdContext?.end_time ?? null,
-            holdKey: occurrence.hold_key,
-            idempotencyKey: normalizedKey,
-            agentOperationId: traceMeta.agentOperationId,
-            conflictCode: conflictCode ?? null,
-            retryAfter: retryAfterIso,
-          },
-          authorization: { ok: true },
-        });
-
-        return respond({
-          success: false,
-          error: data?.error_message ?? "Unable to confirm session",
-          code: data?.error_code,
-          ...(confirmedSessions.length > 0
-            ? {
-                partial: true,
-                partialCode: "PARTIAL_CONFIRMATION",
-                confirmedSessions,
-              }
-            : {}),
+      const holdContext = failedOccurrence
+        ? holdAuthorizationMap.get(failedOccurrence.hold_key)
+        : undefined;
+      const orchestration = await orchestrateScheduling({
+        req,
+        workflow: "confirm",
+        actorId: user.id,
+        request: {
+          therapistId: holdContext?.therapist_id ?? null,
+          clientId: holdContext?.client_id ?? null,
+          startTime: holdContext?.start_time ?? null,
+          endTime: holdContext?.end_time ?? null,
+          holdKey: failedOccurrence?.hold_key ?? null,
+          idempotencyKey: normalizedKey,
+          agentOperationId: traceMeta.agentOperationId,
+          conflictCode: conflictCode ?? null,
           retryAfter: retryAfterIso,
-          orchestration,
-        }, status, headers);
-      }
+        },
+        authorization: { ok: true },
+      });
 
-      const session = data.session as Record<string, unknown> | undefined;
-      if (!session) {
-        return respond({ success: false, error: "Session response missing" }, 500);
-      }
+      return respond({
+        success: false,
+        error: data?.error_message ?? "Unable to confirm sessions",
+        code: errorCode,
+        retryAfter: retryAfterIso,
+        orchestration,
+      }, status, headers);
+    }
 
-      confirmedSessions.push(session);
+    const confirmedSessions = Array.isArray(data.sessions)
+      ? (data.sessions as Record<string, unknown>[])
+      : [];
+    if (confirmedSessions.length === 0 && data.session && typeof data.session === "object") {
+      confirmedSessions.push(data.session as Record<string, unknown>);
     }
 
     const [primarySession] = confirmedSessions;

@@ -97,9 +97,28 @@ const sessionSchema = z
     updated_at: isoDateTime.optional(),
     updated_by: nonEmptyString.nullable().optional(),
     duration_minutes: z.number().int().positive().nullable().optional(),
+    rate_per_hour: z.number().nonnegative().nullable().optional(),
+    total_cost: z.number().nonnegative().nullable().optional(),
     recurrence: recurrenceSchema.nullable().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((session, ctx) => {
+    if (
+      typeof session.rate_per_hour === "number" &&
+      typeof session.total_cost === "number" &&
+      typeof session.duration_minutes === "number" &&
+      session.duration_minutes > 0
+    ) {
+      const expectedTotal = Number(((session.rate_per_hour * session.duration_minutes) / 60).toFixed(2));
+      if (Math.abs(session.total_cost - expectedTotal) > 0.05) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["total_cost"],
+          message: "total_cost must align with rate_per_hour and duration_minutes",
+        });
+      }
+    }
+  });
 
 export const bookSessionApiRequestBodySchema = z.object({
   session: sessionSchema,

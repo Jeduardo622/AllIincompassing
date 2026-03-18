@@ -246,7 +246,7 @@ describe("bookSession", () => {
     await expect(bookSession(basePayload)).rejects.toThrow("unable to confirm");
     expect(mockedCancelSessionHold).toHaveBeenCalledWith({
       holdKey: "hold-key",
-      idempotencyKey: "cancel:hold-key",
+      idempotencyKey: "cancel:hold-key:hold-key",
       accessToken: basePayload.accessToken,
     });
   });
@@ -292,17 +292,17 @@ describe("bookSession", () => {
     expect(mockedCancelSessionHold).toHaveBeenCalledTimes(3);
     expect(mockedCancelSessionHold).toHaveBeenCalledWith({
       holdKey: "hold-parent",
-      idempotencyKey: "cancel:hold-parent",
+      idempotencyKey: "cancel:hold-parent:hold-parent",
       accessToken: basePayload.accessToken,
     });
     expect(mockedCancelSessionHold).toHaveBeenCalledWith({
       holdKey: "hold-child-1",
-      idempotencyKey: "cancel:hold-parent",
+      idempotencyKey: "cancel:hold-parent:hold-child-1",
       accessToken: basePayload.accessToken,
     });
     expect(mockedCancelSessionHold).toHaveBeenCalledWith({
       holdKey: "hold-child-2",
-      idempotencyKey: "cancel:hold-parent",
+      idempotencyKey: "cancel:hold-parent:hold-child-2",
       accessToken: basePayload.accessToken,
     });
   });
@@ -509,11 +509,11 @@ describe("bookSession", () => {
     if (losingHold) {
       expect(cancelledHolds).toContainEqual(expect.objectContaining({
         holdKey: losingHold.holdKey,
-        idempotencyKey: `cancel:${losingHold.holdKey}`,
+        idempotencyKey: `cancel:${losingHold.holdKey}:${losingHold.holdKey}`,
       }));
       expect(mockedCancelSessionHold).toHaveBeenCalledWith({
         holdKey: losingHold.holdKey,
-        idempotencyKey: `cancel:${losingHold.holdKey}`,
+        idempotencyKey: `cancel:${losingHold.holdKey}:${losingHold.holdKey}`,
         accessToken: basePayload.accessToken,
       });
     }

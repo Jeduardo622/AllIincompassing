@@ -27,6 +27,15 @@
 - Auth/org-scope parity tests pass.
 - Client contract unchanged (`/api/*` paths and payload contracts preserved unless approved).
 - Rollback note documented for each migrated endpoint.
+
+## Session Lifecycle Canonical Contract
+- Applies to `/api/book`, `sessions-start`, `sessions-confirm`, and `sessions-cancel`.
+- Contract requirements:
+  - org-scoped authorization decisions,
+  - deterministic idempotency keys for compensating cleanup,
+  - atomic recurrence confirmation semantics,
+  - consistent transition policy and error mapping (`400` validation, `403` forbidden, `409` conflict, `410` expired/missing hold).
+- Operational source for production remediation + rollback: `docs/SESSION_LIFECYCLE_REMEDIATION_RUNBOOK.md`.
 ## Retirement Criteria for Netlify Compatibility Shims
 
 A Netlify shim can be marked `retired` only when all of the following are true:

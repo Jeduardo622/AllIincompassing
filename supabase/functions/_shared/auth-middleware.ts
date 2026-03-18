@@ -9,6 +9,7 @@
  * - Super admin routes: /admin/users/:id/roles (super_admin only)
  */
 import { errorEnvelope, getRequestId } from "../lib/http/error.ts";
+import { resolveOrgId } from "./org.ts";
 
 type SupabaseModule = typeof import("npm:@supabase/supabase-js@2.50.0");
 
@@ -201,6 +202,13 @@ export async function getUserContext(req: Request): Promise<UserContext | null> 
       return null;
     }
 
+    const orgId = await resolveOrgId(supabase);
+    const role = await resolveRoleForOrganization(
+      supabase,
+      orgId,
+      roleRows as Array<{ is_active?: unknown; expires_at?: unknown; roles?: { name?: unknown } | null }>,
+    );
+
     return {
       user: {
         id: user.id,
@@ -209,9 +217,7 @@ export async function getUserContext(req: Request): Promise<UserContext | null> 
       profile: {
         ...profile,
         email: profile.email ?? null,
-        role: resolveRoleFromRoleRows(
-          roleRows as Array<{ is_active?: unknown; expires_at?: unknown; roles?: { name?: unknown } | null }>
-        ),
+        role,
       },
     };
   } catch (error) {
@@ -295,6 +301,61 @@ function resolveRoleFromRoleRows(
   }
 
   return 'client';
+}
+
+async function rpcBoolean(
+  supabase: ReturnType<SupabaseModule["createClient"]>,
+  fn: string,
+  payload?: Record<string, unknown>,
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc(fn, payload);
+  if (error) {
+    return false;
+  }
+  return data === true;
+}
+
+async function resolveRoleForOrganization(
+  supabase: ReturnType<SupabaseModule["createClient"]>,
+  orgId: string | null,
+  roleRows: Array<{ is_active?: unknown; expires_at?: unknown; roles?: { name?: unknown } | null }>,
+): Promise<Role> {
+  if (!orgId) {
+    return resolveRoleFromRoleRows(roleRows);
+  }
+
+  if (await rpcBoolean(supabase, "current_user_is_super_admin")) {
+    return "super_admin";
+  }
+
+  if (
+    await rpcBoolean(supabase, "user_has_role_for_org", {
+      role_name: "admin",
+      target_organization_id: orgId,
+    })
+  ) {
+    return "admin";
+  }
+
+  if (
+    await rpcBoolean(supabase, "user_has_role_for_org", {
+      role_name: "therapist",
+      target_organization_id: orgId,
+    })
+  ) {
+    return "therapist";
+  }
+
+  if (
+    await rpcBoolean(supabase, "user_has_role_for_org", {
+      role_name: "client",
+      target_organization_id: orgId,
+    })
+  ) {
+    return "client";
+  }
+
+  return resolveRoleFromRoleRows(roleRows);
 }
 
 /**

@@ -451,7 +451,7 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
       })),
     });
   } catch (error) {
-    const cancelIdempotencyKey = payload.idempotencyKey
+    const cancelKeyBase = payload.idempotencyKey
       ? `cancel:${payload.idempotencyKey}`
       : `cancel:${hold.holdKey}`;
     const holdKeysToRelease = Array.from(
@@ -466,7 +466,7 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
         holdKeysToRelease.map((holdKey) =>
           cancelSessionHold({
             holdKey,
-            idempotencyKey: cancelIdempotencyKey,
+            idempotencyKey: `${cancelKeyBase}:${holdKey}`,
             accessToken: payload.accessToken,
             ...(payload.trace ? { trace: payload.trace } : {}),
           })),

@@ -61,12 +61,18 @@ const makeSelectBuilder = (result: QueryResult) => {
 const makeUpdateBuilder = () => {
   const builder: any = {};
   const chain = () => builder;
+  let idFilter: string[] = [];
   builder.update = vi.fn(() => chain());
-  builder.in = vi.fn(() => chain());
+  builder.in = vi.fn((column: string, values: unknown[]) => {
+    if (column === "id" && Array.isArray(values)) {
+      idFilter = values.filter((value): value is string => typeof value === "string");
+    }
+    return chain();
+  });
   builder.eq = vi.fn(() => chain());
   builder.select = vi.fn(() => chain());
   builder.then = (resolve: (value: { data: unknown[]; error: null }) => unknown) =>
-    resolve({ data: [], error: null });
+    resolve({ data: idFilter.map((id) => ({ id })), error: null });
   return builder;
 };
 
@@ -157,7 +163,49 @@ describe("sessions-cancel org scoping", () => {
     const payload = await response.json() as { success: boolean; data: { summary: { cancelledCount: number } } };
 
     expect(payload.success).toBe(true);
-    expect(payload.data.summary.cancelledCount).toBe(1);
+    expect(payload.data.summary.cancelledCount).toBe(0);
+  });
+
+  it("treats in_progress sessions as cancellable for lifecycle parity", async () => {
+    const selectBuilder = makeSelectBuilder({
+      data: [
+        { id: "session-progress", status: "in_progress", therapist_id: "therapist-1" },
+      ],
+      error: null,
+    });
+    vi.spyOn(orgHelpers, "orgScopedQuery").mockImplementation(
+      () => selectBuilder as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
+    );
+
+    const updateBuilder = makeUpdateBuilder();
+    const mockDb: any = {
+      from: vi.fn(() => updateBuilder),
+      rpc: vi.fn(async () => ({ error: null })),
+    };
+
+    const logger = createStubLogger();
+
+    const response = await __TESTING__.handleSessionCancellation(
+      mockDb,
+      "org-2",
+      {
+        sessionIds: ["session-progress"],
+        dateRange: null,
+        therapistId: null,
+        reason: "Lifecycle parity",
+      },
+      "therapist-1",
+      "therapist",
+      logger,
+    );
+
+    const payload = await response.json() as {
+      success: boolean;
+      data: { summary: { cancelledCount: number; nonCancellableCount: number } };
+    };
+    expect(payload.success).toBe(true);
+    expect(payload.data.summary.cancelledCount).toBe(0);
+    expect(payload.data.summary.nonCancellableCount).toBe(0);
   });
 });
 

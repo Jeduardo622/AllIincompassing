@@ -265,6 +265,7 @@ export async function bookHandler(request: Request): Promise<Response> {
 
     const isUnauthorized = status === 401;
     const isForbidden = status === 403;
+    const isValidationFailure = status === 400;
     const isUpstreamFailure = status >= 500;
     return errorResponse(
       request,
@@ -272,9 +273,11 @@ export async function bookHandler(request: Request): Promise<Response> {
         ? "unauthorized"
         : isForbidden
           ? "forbidden"
-          : isUpstreamFailure
-            ? "upstream_error"
-            : "internal_error",
+          : isValidationFailure
+            ? "validation_error"
+            : isUpstreamFailure
+              ? "upstream_error"
+              : "internal_error",
       "Booking failed",
       {
         status,

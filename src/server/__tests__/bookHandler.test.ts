@@ -380,6 +380,25 @@ describe("bookHandler", () => {
     );
   });
 
+  it("rejects negative financial booking fields", async () => {
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest({
+      ...validPayload,
+      session: {
+        ...validPayload.session,
+        duration_minutes: 60,
+        rate_per_hour: -10,
+        total_cost: 100,
+      },
+    }));
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.success).toBe(false);
+    expect(body.code).toBe("invalid_request");
+    expect(bookSessionMock).not.toHaveBeenCalled();
+  });
+
   it("sanitizes booking errors", async () => {
     bookSessionMock.mockRejectedValueOnce(new Error("conflict"));
 

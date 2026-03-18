@@ -168,7 +168,7 @@ export interface Session {
   goal_id: string;
   start_time: string;
   end_time: string;
-  status: 'scheduled' | 'completed' | 'cancelled' | 'no-show';
+  status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | 'no-show';
   notes: string;
   created_at: string;
   created_by: string | null;

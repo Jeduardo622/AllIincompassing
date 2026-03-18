@@ -57,7 +57,7 @@ interface TraceMeta {
   agentOperationId: string | null;
 }
 
-const CANCELLABLE_STATUSES = new Set(["scheduled"]);
+const CANCELLABLE_STATUSES = new Set(["scheduled", "in_progress"]);
 
 class BadRequestError extends Error {
   status = 400;
@@ -88,14 +88,6 @@ async function ensureAuthenticated(db: SupabaseClient) {
     throw jsonResponse({ success: false, error: "Unauthorized" }, 401);
   }
   return data.user;
-}
-
-function normalizeRole(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim().toLowerCase();
-  return trimmed.length > 0 ? trimmed : null;
 }
 
 function normalizeSessionIds(value: unknown): string[] {
@@ -164,32 +156,23 @@ function parseCancelPayload(input: unknown): {
   return { holdKey, sessionIds, dateRange, therapistId, reason };
 }
 
-async function ensureRoleForCancellation(
+type CancellationRole = "super_admin" | "admin" | "therapist" | null;
+
+async function resolveCancellationRole(
   db: SupabaseClient,
   orgId: string,
-  role: string | null,
   userId: string,
-): Promise<boolean> {
-  if (!role) {
-    return false;
+) : Promise<CancellationRole> {
+  if (await assertUserHasOrgRole(db, orgId, "super_admin")) {
+    return "super_admin";
   }
-
-  if (role === "super_admin") {
-    if (await assertUserHasOrgRole(db, orgId, "super_admin")) {
-      return true;
-    }
-    return assertUserHasOrgRole(db, orgId, "admin");
+  if (await assertUserHasOrgRole(db, orgId, "admin")) {
+    return "admin";
   }
-
-  if (role === "admin") {
-    return assertUserHasOrgRole(db, orgId, "admin");
+  if (await assertUserHasOrgRole(db, orgId, "therapist", { targetTherapistId: userId })) {
+    return "therapist";
   }
-
-  if (role === "therapist") {
-    return assertUserHasOrgRole(db, orgId, "therapist", { targetTherapistId: userId });
-  }
-
-  return false;
+  return null;
 }
 
 async function handleHoldRelease(
@@ -198,7 +181,7 @@ async function handleHoldRelease(
   orgId: string,
   holdKey: string,
   userId: string,
-  role: string | null,
+  role: CancellationRole,
   logger: Logger,
   traceMeta: TraceMeta = { requestId: null, correlationId: null, agentOperationId: null },
 ) {
@@ -323,7 +306,7 @@ async function handleSessionCancellation(
     reason: string | null;
   },
   userId: string,
-  role: string | null,
+  role: CancellationRole,
   logger: Logger,
   traceMeta: TraceMeta = { requestId: null, correlationId: null, agentOperationId: null },
 ) {
@@ -516,19 +499,8 @@ Deno.serve(async (req) => {
     scopedLogger = userLogger.with({ orgId });
     scopedLogger.info("request.org-scoped");
 
-    const { data: profile, error: profileError } = await db
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profileError) {
-      throw new Error(profileError.message ?? "Failed to resolve user role");
-    }
-
-    const role = normalizeRole(profile?.role);
-    const roleAllowed = await ensureRoleForCancellation(db, orgId, role, user.id);
-    if (!roleAllowed) {
+    const role = await resolveCancellationRole(db, orgId, user.id);
+    if (!role) {
       const denialLogger = scopedLogger ?? userLogger;
       denialLogger.warn("authorization.denied", { reason: "role-denied" });
       increment("tenant_denial_total", {

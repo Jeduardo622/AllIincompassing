@@ -57,6 +57,18 @@ interface ParsedRRule {
   until?: string;
 }
 
+type HeldOccurrence = {
+  holdKey: string;
+  startTime: string;
+  endTime: string;
+};
+
+function occurrenceKey(startTime: string, endTime: string): string {
+  const normalizedStart = new Date(startTime).toISOString();
+  const normalizedEnd = new Date(endTime).toISOString();
+  return `${normalizedStart}::${normalizedEnd}`;
+}
+
 function parseRRule(rule: string): ParsedRRule {
   const parsed: ParsedRRule = {
     freq: "WEEKLY",
@@ -394,6 +406,25 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
 
   let confirmed;
   try {
+    const occurrenceByWindow = new Map<string, RecurrenceOccurrence>();
+    for (const occurrence of occurrences) {
+      occurrenceByWindow.set(occurrenceKey(occurrence.startTime, occurrence.endTime), occurrence);
+    }
+
+    const matchedHeldOccurrences = hold.holds.map((heldOccurrence) => {
+      const holdWindow = occurrenceKey(heldOccurrence.startTime, heldOccurrence.endTime);
+      const match = occurrenceByWindow.get(holdWindow);
+      if (!match) {
+        const mismatchError = new Error(
+          "Hold occurrences did not align with generated recurrence windows.",
+        ) as Error & { status?: number; code?: string };
+        mismatchError.status = 409;
+        mismatchError.code = "HOLD_OCCURRENCE_MISMATCH";
+        throw mismatchError;
+      }
+      return { heldOccurrence, occurrence: match };
+    });
+
     confirmed = await confirmSessionBooking({
       holdKey: hold.holdKey,
       session: sessionPayload,
@@ -405,25 +436,17 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
       timeZone: recurrence?.timeZone ?? payload.timeZone,
       accessToken: payload.accessToken,
       ...(payload.trace ? { trace: payload.trace } : {}),
-      occurrences: hold.holds.map((heldOccurrence, index) => ({
+      occurrences: matchedHeldOccurrences.map(({ heldOccurrence, occurrence }) => ({
         holdKey: heldOccurrence.holdKey,
         session: {
           ...sessionPayload,
-          start_time: occurrences[index]?.startTime ?? heldOccurrence.startTime,
-          end_time: occurrences[index]?.endTime ?? heldOccurrence.endTime,
+          start_time: occurrence.startTime,
+          end_time: occurrence.endTime,
         },
         cpt,
         goalIds: mergedGoalIds,
-        startTimeOffsetMinutes:
-          occurrences[index]?.startOffsetMinutes ?? deriveOffsetMinutes(
-            recurrence?.timeZone ?? payload.timeZone,
-            heldOccurrence.startTime,
-          ),
-        endTimeOffsetMinutes:
-          occurrences[index]?.endOffsetMinutes ?? deriveOffsetMinutes(
-            recurrence?.timeZone ?? payload.timeZone,
-            heldOccurrence.endTime,
-          ),
+        startTimeOffsetMinutes: occurrence.startOffsetMinutes,
+        endTimeOffsetMinutes: occurrence.endOffsetMinutes,
         timeZone: recurrence?.timeZone ?? payload.timeZone,
       })),
     });

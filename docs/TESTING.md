@@ -166,6 +166,8 @@ Supabase auth parity guard details:
   - `sessions-start`
   - `sessions-cancel`
   - `generate-session-notes-pdf`
+  - `session-notes-pdf-status`
+  - `session-notes-pdf-download`
 - Use `SUPABASE_FUNCTION_PARITY_SCOPE` to pin this focused lifecycle scope in local/CI reruns.
 - Fails in CI on mismatch so auth posture drift cannot pass silently.
 
@@ -203,7 +205,7 @@ Notes and caveats:
 
 - Playwright flows run against a remote runtime (`PW_BASE_URL`, default `https://app.allincompassing.ai`), so data shape and latency are environment-dependent.
 - `playwright:schedule-conflict` now fails fast on readiness and selector issues and requires a real observed `POST /api/book` response for the submit path.
-- `playwright:session-lifecycle` can still log a non-fatal warning when `generate-session-notes-pdf` is unavailable or times out in the target environment; lifecycle validation remains green when core book/start/note/cancel steps succeed.
+- `playwright:session-lifecycle` now validates the async export branch (`generate-session-notes-pdf` enqueue -> `session-notes-pdf-status` poll -> `session-notes-pdf-download` retrieval). It can still log a non-fatal warning if this branch is unavailable in the target environment while core book/start/note/cancel checks pass.
 
 ## Prod-like conflict workflow (2026-03-18)
 

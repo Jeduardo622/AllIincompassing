@@ -54,19 +54,28 @@ export const handleSessionsStart = async (req: Request) => {
   const mergedGoalIds = Array.from(new Set([goal_id, ...(goal_ids ?? [])]));
 
   const { data: sessions, error: sessionError } = await orgScopedQuery(db, "sessions", orgId)
-    .select("id,client_id,therapist_id,started_at")
+    .select("id,client_id,therapist_id,started_at,status")
     .eq("id", session_id)
     .limit(1);
   if (sessionError || !sessions || sessions.length === 0) {
     return json({ error: "Session not found" }, 404);
   }
-  const session = sessions[0] as { id: string; client_id: string; therapist_id: string; started_at: string | null };
+  const session = sessions[0] as {
+    id: string;
+    client_id: string;
+    therapist_id: string;
+    started_at: string | null;
+    status: string | null;
+  };
 
   if (isTherapist && !isAdmin && !isSuperAdmin && session.therapist_id !== currentUserId) {
     return json({ error: "Forbidden" }, 403);
   }
   if (session.started_at) {
     return json({ error: "Session already started" }, 409);
+  }
+  if (session.status !== "scheduled") {
+    return json({ error: "Session is not in a schedulable state" }, 409);
   }
 
   const { data: goals, error: goalsError } = await orgScopedQuery(db, "goals", orgId)
@@ -86,6 +95,7 @@ export const handleSessionsStart = async (req: Request) => {
       started_at: effectiveStartedAt,
     })
     .eq("id", session_id)
+    .eq("status", "scheduled")
     .is("started_at", null)
     .select("id,program_id,goal_id,started_at")
     .limit(1);

@@ -337,10 +337,26 @@ const verifySessionNotePdfExport = async (
   noteId: string,
   strictMode: boolean,
 ): Promise<boolean> => {
+  const parseExportState = (payload: unknown): { exportId: string; status: string } | null => {
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+    const data = (payload as { data?: unknown }).data;
+    if (!data || typeof data !== "object") {
+      return null;
+    }
+    const exportId = (data as { exportId?: unknown }).exportId;
+    const status = (data as { status?: unknown }).status;
+    if (typeof exportId !== "string" || typeof status !== "string") {
+      return null;
+    }
+    return { exportId, status };
+  };
+
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    let response: Response;
+    let enqueueResponse: Response;
     try {
-      response = await fetchWithTimeout(`${getEnv("VITE_SUPABASE_URL")}/functions/v1/generate-session-notes-pdf`, {
+      enqueueResponse = await fetchWithTimeout(`${getEnv("VITE_SUPABASE_URL")}/functions/v1/generate-session-notes-pdf`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -361,21 +377,76 @@ const verifySessionNotePdfExport = async (
       }
       throw error;
     }
-    if (response.status === 404 && !strictMode) {
+    if (enqueueResponse.status === 404 && !strictMode) {
       return false;
     }
-    if (!response.ok) {
-      if ([502, 503, 504].includes(response.status)) {
+    if (!enqueueResponse.ok) {
+      if ([502, 503, 504].includes(enqueueResponse.status)) {
         if (attempt < 3) {
           await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
           continue;
         }
         return false;
       }
-      const body = await response.text();
-      throw new Error(`generate-session-notes-pdf failed (${response.status}): ${body.slice(0, 300)}`);
+      const body = await enqueueResponse.text();
+      throw new Error(`generate-session-notes-pdf failed (${enqueueResponse.status}): ${body.slice(0, 300)}`);
     }
-    return true;
+
+    const enqueuePayload = await enqueueResponse.json().catch(() => null);
+    const queued = parseExportState(enqueuePayload);
+    if (!queued) {
+      throw new Error("generate-session-notes-pdf returned invalid async contract payload.");
+    }
+
+    let currentStatus = queued.status;
+    for (let pollAttempt = 0; pollAttempt < 20; pollAttempt += 1) {
+      if (currentStatus === "ready") {
+        const downloadResponse = await fetchWithTimeout(`${getEnv("VITE_SUPABASE_URL")}/functions/v1/session-notes-pdf-download`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ exportId: queued.exportId }),
+        });
+        if (!downloadResponse.ok) {
+          const body = await downloadResponse.text();
+          throw new Error(`session-notes-pdf-download failed (${downloadResponse.status}): ${body.slice(0, 300)}`);
+        }
+        return true;
+      }
+
+      if (currentStatus === "failed" || currentStatus === "expired") {
+        throw new Error(`session-notes-pdf-status returned terminal failure status: ${currentStatus}`);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, Math.min(1000 + pollAttempt * 500, 5000)));
+      const statusResponse = await fetchWithTimeout(`${getEnv("VITE_SUPABASE_URL")}/functions/v1/session-notes-pdf-status`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ exportId: queued.exportId }),
+      });
+
+      if (!statusResponse.ok) {
+        if (!strictMode && [404, 502, 503, 504].includes(statusResponse.status)) {
+          return false;
+        }
+        const body = await statusResponse.text();
+        throw new Error(`session-notes-pdf-status failed (${statusResponse.status}): ${body.slice(0, 300)}`);
+      }
+
+      const statusPayload = await statusResponse.json().catch(() => null);
+      const parsedStatus = parseExportState(statusPayload);
+      if (!parsedStatus) {
+        throw new Error("session-notes-pdf-status returned invalid payload.");
+      }
+      currentStatus = parsedStatus.status;
+    }
+
+    return false;
   }
   return false;
 };
@@ -982,7 +1053,7 @@ async function run() {
       const pdfExportAvailable = await withStepTimeout("verify-notes-pdf", () =>
         verifySessionNotePdfExport(token, booked.clientId, noteId, strictParityMode));
       if (!pdfExportAvailable) {
-        console.warn("generate-session-notes-pdf was unavailable or timed out in target environment.");
+        console.warn("Session-notes PDF async export endpoints were unavailable or timed out in target environment.");
       }
     }
     await withStepTimeout("cancel-session", () => cancelSession(activePage, token, booked.sessionId));

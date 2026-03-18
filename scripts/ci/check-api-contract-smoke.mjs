@@ -9,6 +9,8 @@ const REQUIRED_EDGE_FUNCTIONS = [
   "sessions-start",
   "sessions-cancel",
   "generate-session-notes-pdf",
+  "session-notes-pdf-status",
+  "session-notes-pdf-download",
 ];
 
 const CRITICAL_ENDPOINTS = [

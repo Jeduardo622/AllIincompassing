@@ -211,6 +211,13 @@ export class IdempotencyService<T extends Json = Json> {
   }
 }
 
+export function buildScopedIdempotencyKey(
+  key: string,
+  scope: { organizationId: string; userId: string },
+): string {
+  return `${scope.organizationId}::${scope.userId}::${key}`;
+}
+
 export function createSupabaseIdempotencyService(client: SupabaseClient): IdempotencyService {
   return new IdempotencyService(new SupabaseIdempotencyAdapter(client));
 }

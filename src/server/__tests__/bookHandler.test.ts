@@ -226,6 +226,22 @@ describe("bookHandler", () => {
     expect(bookSessionMock).not.toHaveBeenCalled();
   });
 
+  it("returns 502 when org resolution dependency fails", async () => {
+    server.use(
+      http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/current_user_organization_id`, () =>
+        new HttpResponse(null, { status: 503 })),
+    );
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest(validPayload));
+
+    expect(response.status).toBe(502);
+    const body = await response.json();
+    expect(body.code).toBe("upstream_error");
+    expect(body.message).toMatch(/unable to validate organization access/i);
+    expect(bookSessionMock).not.toHaveBeenCalled();
+  });
+
   it("accepts lowercase bearer prefix", async () => {
     bookSessionMock.mockResolvedValueOnce({
       session: {

@@ -104,7 +104,7 @@
       "status": "retired",
       "owner": "Backend Platform",
       "wave": "B",
-      "authoritativeTarget": "generate-session-notes-pdf"
+      "authoritativeTarget": "generate-session-notes-pdf + session-notes-pdf-status + session-notes-pdf-download"
     }
   ]
 }

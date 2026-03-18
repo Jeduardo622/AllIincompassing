@@ -306,6 +306,121 @@ export async function callEdge(
   return fetch(url, { ...init, headers });
 }
 
+export type SessionNotesPdfExportStatus = 'queued' | 'processing' | 'ready' | 'failed' | 'expired';
+
+export interface SessionNotesPdfExportState {
+  exportId: string;
+  status: SessionNotesPdfExportStatus;
+  error?: string | null;
+  expiresAt?: string | null;
+  pollAfterMs?: number;
+  downloadReady?: boolean;
+  isTerminal?: boolean;
+}
+
+const parseJsonSafe = async (response: Response): Promise<Record<string, unknown> | null> => {
+  return response.json().catch(() => null) as Promise<Record<string, unknown> | null>;
+};
+
+const isExportStatus = (value: unknown): value is SessionNotesPdfExportStatus => {
+  return value === 'queued' || value === 'processing' || value === 'ready' || value === 'failed' || value === 'expired';
+};
+
+const parseExportState = (payload: Record<string, unknown> | null): SessionNotesPdfExportState | null => {
+  const data = payload?.data;
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+
+  const record = data as Record<string, unknown>;
+  const exportId = typeof record.exportId === 'string' ? record.exportId : null;
+  const status = isExportStatus(record.status) ? record.status : null;
+  if (!exportId || !status) {
+    return null;
+  }
+
+  return {
+    exportId,
+    status,
+    error: typeof record.error === 'string' ? record.error : null,
+    expiresAt: typeof record.expiresAt === 'string' ? record.expiresAt : null,
+    pollAfterMs: typeof record.pollAfterMs === 'number' ? record.pollAfterMs : undefined,
+    downloadReady: record.downloadReady === true,
+    isTerminal: record.isTerminal === true,
+  };
+};
+
+export async function enqueueSessionNotesPdfExport(clientId: string, noteIds: string[]): Promise<SessionNotesPdfExportState> {
+  const response = await callEdge('generate-session-notes-pdf', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      clientId,
+      noteIds,
+    }),
+  });
+
+  const payload = await parseJsonSafe(response);
+  if (!response.ok) {
+    const message = typeof payload?.error === 'string'
+      ? payload.error
+      : `Failed to enqueue PDF export (${response.status})`;
+    throw new Error(message);
+  }
+
+  const parsed = parseExportState(payload);
+  if (!parsed) {
+    throw new Error('Invalid enqueue response contract for session notes export.');
+  }
+  return parsed;
+}
+
+export async function getSessionNotesPdfExportStatus(exportId: string): Promise<SessionNotesPdfExportState> {
+  const response = await callEdge('session-notes-pdf-status', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ exportId }),
+  });
+
+  const payload = await parseJsonSafe(response);
+  if (!response.ok) {
+    const message = typeof payload?.error === 'string'
+      ? payload.error
+      : `Failed to check export status (${response.status})`;
+    throw new Error(message);
+  }
+
+  const parsed = parseExportState(payload);
+  if (!parsed) {
+    throw new Error('Invalid status response contract for session notes export.');
+  }
+  return parsed;
+}
+
+export async function downloadSessionNotesPdfExport(exportId: string): Promise<Blob> {
+  const response = await callEdge('session-notes-pdf-download', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ exportId }),
+  });
+
+  if (!response.ok) {
+    const payload = await parseJsonSafe(response);
+    const message = typeof payload?.error === 'string'
+      ? payload.error
+      : `Failed to download PDF export (${response.status})`;
+    throw new Error(message);
+  }
+
+  return response.blob();
+}
+
 /**
  * Testing guidance:
  * - Mock `supabase` with a chainable shape: from().select().eq().order().limit().single().maybeSingle().

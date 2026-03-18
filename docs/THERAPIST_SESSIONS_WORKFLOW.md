@@ -337,3 +337,62 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
   - `scripts/ci/check-supabase-function-auth-parity.mjs` passed for lifecycle scope.
   - `tests/edge/api-contract-envelope.test.ts` and booking/start handler tests passed.
   - strict `playwright:session-lifecycle` passed (`0ffdf752-233d-4c74-9e5a-6815995e4eaa`).
+
+## 2026-03 production readiness gate
+
+- Deployment and parity lock:
+  - `npm run ci:deploy:session-edge-bundle` executed for lifecycle functions.
+  - Lifecycle auth parity check passed for scoped set (`sessions-hold`, `sessions-confirm`, `sessions-start`, `sessions-cancel`, `generate-session-notes-pdf`).
+- Release-gate verification passed:
+  - `scripts/ci/check-api-contract-smoke.mjs` passed.
+  - `tests/edge/api-contract-envelope.test.ts` passed.
+  - Booking/start/cancel focused Vitest contracts passed.
+  - Two consecutive strict lifecycle passes completed:
+    - `470ede35-5c37-4fce-a82e-590a63f2cb94`
+    - `3447e712-f93d-45cf-8339-f2a827deccc2`
+- Operational note:
+  - `generate-session-notes-pdf` can still be intermittently unavailable in shared environment; lifecycle keeps this non-blocking while enforcing core booking/start/cancel success criteria.
+
+## 2026-03 business-logic hardening pass
+
+- Idempotency replay isolation:
+  - Lifecycle edge handlers now scope idempotency storage keys to `organization_id + user_id + endpoint + idempotency key`, preventing cross-principal replay reuse.
+  - Replay checks now execute only after authenticated user and org context are resolved in lifecycle handlers.
+- State transition enforcement:
+  - `sessions-start` now enforces `status = scheduled` in both pre-checks and write predicate.
+  - `sessions-cancel` now enforces cancellable statuses at write time (`UPDATE ... WHERE status IN (...)`) to close read/write race windows.
+- Recurrence confirmation integrity:
+  - Booking recurrence confirmation now maps hold occurrences to generated recurrence windows by stable time-window key (normalized ISO timestamps), with explicit `HOLD_OCCURRENCE_MISMATCH` conflict errors on mismatches.
+- Upstream error classification:
+  - API handlers now distinguish upstream dependency failures (`502 upstream_error`) from authorization denials (`401/403`) for org/role and authenticated-user resolution steps.
+- Multi-occurrence confirm safety semantics:
+  - `sessions-confirm` now returns explicit partial-failure semantics (`partial`, `PARTIAL_CONFIRMATION`, confirmed session payloads) if a multi-occurrence confirm fails after prior successes.
+- Verification outcomes:
+  - `node scripts/ci/check-api-contract-smoke.mjs` passed.
+  - `node scripts/ci/check-supabase-function-auth-parity.mjs` passed.
+  - `npx vitest run src/server/__tests__/bookHandler.test.ts src/server/__tests__/sessionsStartHandler.test.ts src/server/__tests__/bookSession.test.ts src/lib/__tests__/sessionCancellation.test.ts tests/edge/api-contract-envelope.test.ts` passed.
+  - Two strict lifecycle E2E passes passed:
+    - `playwright-session-lifecycle-1773870314551.json`
+    - `playwright-session-lifecycle-1773870571656.json`
+
+## 2026-03 session notes PDF async reliability migration
+
+- Replaced synchronous PDF generation contract with async lifecycle:
+  - `POST /functions/v1/generate-session-notes-pdf` now enqueues export jobs and returns `202` with `{ exportId, status }`.
+  - `POST /functions/v1/session-notes-pdf-status` returns deterministic state transitions (`queued`, `processing`, `ready`, `failed`, `expired`).
+  - `POST /functions/v1/session-notes-pdf-download` enforces org-scoped access and streams artifact bytes only when `ready`.
+- Added persistent export job model:
+  - New table: `public.session_note_pdf_exports` with status/error timestamps, org/client/requester scoping, artifact metadata, and request correlation field.
+  - New indexes on org + creation time, status + creation time, requester + creation time, and client + creation time.
+  - RLS policies enforce org-scoped reads and self-scoped inserts, with service-role processing access.
+- Added secure export artifact storage path:
+  - New private bucket: `session-note-exports`.
+  - Storage policy links `storage.objects` rows to `session_note_pdf_exports` authorization for authenticated read access.
+- Client UX now uses async polling flow:
+  - `SessionNotesTab` enqueue -> status polling with bounded retries/backoff -> download on `ready`.
+  - Prevents duplicate export submissions while an active export is already running.
+- Lifecycle verification updated for async branch:
+  - Playwright session lifecycle now polls status endpoint and validates download endpoint after enqueue.
+- Rollout controls:
+  - Gate activation with `SESSION_NOTES_PDF_ASYNC=true` in edge runtime, enable first in staging, then production after parity + soak checks.
+  - Keep `generate-session-notes-pdf` + `session-notes-pdf-status` + `session-notes-pdf-download` in parity/deploy bundle scope to avoid partial rollout drift.

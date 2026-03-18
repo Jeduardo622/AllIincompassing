@@ -278,6 +278,14 @@ export function getSupabaseConfig(): { supabaseUrl: string; anonKey: string } {
 }
 
 export async function fetchAuthenticatedUserId(accessToken: string): Promise<string | null> {
+  const result = await fetchAuthenticatedUserIdWithStatus(accessToken);
+  return result.userId;
+}
+
+export async function fetchAuthenticatedUserIdWithStatus(accessToken: string): Promise<{
+  userId: string | null;
+  upstreamError: boolean;
+}> {
   const { supabaseUrl, anonKey } = getSupabaseConfig();
   const response = await fetchJson<{ id?: unknown }>(`${supabaseUrl}/auth/v1/user`, {
     method: "GET",
@@ -288,12 +296,19 @@ export async function fetchAuthenticatedUserId(accessToken: string): Promise<str
   });
 
   if (!response.ok || !response.data) {
-    return null;
+    return {
+      userId: null,
+      upstreamError: response.status >= 500 || response.status === 0,
+    };
   }
 
-  return typeof response.data.id === "string" && response.data.id.length > 0
-    ? response.data.id
-    : null;
+  return {
+    userId:
+      typeof response.data.id === "string" && response.data.id.length > 0
+        ? response.data.id
+        : null,
+    upstreamError: false,
+  };
 }
 
 export async function fetchJson<T = unknown>(url: string, init: RequestInit): Promise<FetchResult<T>> {
@@ -317,6 +332,22 @@ export async function resolveOrgAndRole(accessToken: string): Promise<{
   isAdmin: boolean;
   isSuperAdmin: boolean;
 }> {
+  const result = await resolveOrgAndRoleWithStatus(accessToken);
+  return {
+    organizationId: result.organizationId,
+    isTherapist: result.isTherapist,
+    isAdmin: result.isAdmin,
+    isSuperAdmin: result.isSuperAdmin,
+  };
+}
+
+export async function resolveOrgAndRoleWithStatus(accessToken: string): Promise<{
+  organizationId: string | null;
+  isTherapist: boolean;
+  isAdmin: boolean;
+  isSuperAdmin: boolean;
+  upstreamError: boolean;
+}> {
   const { supabaseUrl, anonKey } = getSupabaseConfig();
   const headers = {
     ...JSON_HEADERS,
@@ -331,6 +362,7 @@ export async function resolveOrgAndRole(accessToken: string): Promise<{
     body: "{}",
   });
   const isSuperAdmin = superAdminResult.ok && superAdminResult.data === true;
+  const superAdminUpstreamError = !superAdminResult.ok && superAdminResult.status >= 500;
 
   const orgUrl = `${supabaseUrl}/rest/v1/rpc/current_user_organization_id`;
   const orgResult = await fetchJson<string>(orgUrl, {
@@ -343,6 +375,7 @@ export async function resolveOrgAndRole(accessToken: string): Promise<{
     orgResult.ok && typeof orgResult.data === "string" && orgResult.data.length > 0
       ? orgResult.data
       : null;
+  const orgUpstreamError = !orgResult.ok && orgResult.status >= 500;
 
   if (!organizationId) {
     return {
@@ -350,6 +383,7 @@ export async function resolveOrgAndRole(accessToken: string): Promise<{
       isTherapist: false,
       isAdmin: false,
       isSuperAdmin,
+      upstreamError: superAdminUpstreamError || orgUpstreamError,
     };
   }
 
@@ -364,11 +398,18 @@ export async function resolveOrgAndRole(accessToken: string): Promise<{
     headers,
     body: JSON.stringify({ role_name: "admin", target_organization_id: organizationId }),
   });
+  const therapistUpstreamError = !therapistResult.ok && therapistResult.status >= 500;
+  const adminUpstreamError = !adminResult.ok && adminResult.status >= 500;
   return {
     organizationId,
     isTherapist: therapistResult.ok && therapistResult.data === true,
     isAdmin: adminResult.ok && adminResult.data === true,
     isSuperAdmin,
+    upstreamError:
+      superAdminUpstreamError ||
+      orgUpstreamError ||
+      therapistUpstreamError ||
+      adminUpstreamError,
   };
 }
 

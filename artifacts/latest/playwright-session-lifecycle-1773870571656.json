@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "executedAt": "2026-03-18T21:52:22.358Z",
+  "baseUrl": "https://app.allincompassing.ai",
+  "ids": {
+    "sessionId": "f2f821b2-7dbe-4e30-a800-cb91aa176da1",
+    "therapistId": "8adc89be-a271-4248-aaa4-06ba6f6b5e00",
+    "clientId": "278c2333-1aa5-4227-b993-eb24fa18cfc9",
+    "programId": "a8988996-1fad-427b-8ebb-ac1ed3b8cea4",
+    "goalId": "3f08431a-512b-4bf0-b6b5-2aa01c63ee85",
+    "noteId": "f8c06f0e-5948-4521-ad8c-f2da7557dab3"
+  }
+}

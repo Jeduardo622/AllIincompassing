@@ -5,7 +5,13 @@ import {
   Calendar, Plus, Download, Inbox,
   Clock, CheckCircle, AlertTriangle, User, Search
 } from 'lucide-react';
-import { callEdge, supabase } from '../../lib/supabase';
+import {
+  downloadSessionNotesPdfExport,
+  enqueueSessionNotesPdfExport,
+  getSessionNotesPdfExportStatus,
+  supabase,
+  type SessionNotesPdfExportStatus,
+} from '../../lib/supabase';
 import type { Therapist } from '../../types';
 import { AddSessionNoteModal, type SessionNoteFormValues  } from '../AddSessionNoteModal';
 import { useAuth } from '../../lib/authContext';
@@ -31,6 +37,9 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedNotes, setSelectedNotes] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [pdfExportStatus, setPdfExportStatus] = useState<SessionNotesPdfExportStatus | null>(null);
+
+  const isPdfExportInProgress = pdfExportStatus === 'queued' || pdfExportStatus === 'processing';
   
   // Fetch authorizations
   const { data: authorizations = [], isLoading: isLoadingAuths } = useQuery({
@@ -185,25 +194,37 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
       return;
     }
 
-    try {
-      const response = await callEdge('generate-session-notes-pdf', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          noteIds: selectedNotes,
-          clientId: client.id,
-        }),
-      });
+    if (isPdfExportInProgress) {
+      showError('A PDF export is already running. Please wait for it to finish.');
+      return;
+    }
 
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        const message = payload?.error ?? `Failed to generate PDF (${response.status})`;
-        throw new Error(message);
+    try {
+      const queued = await enqueueSessionNotesPdfExport(client.id, selectedNotes);
+      setPdfExportStatus(queued.status);
+
+      let latest = queued;
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        if (latest.status === 'ready') {
+          break;
+        }
+        if (latest.status === 'failed' || latest.status === 'expired') {
+          throw new Error(latest.error ?? `PDF export ${latest.status}.`);
+        }
+
+        const delayMs = typeof latest.pollAfterMs === 'number'
+          ? latest.pollAfterMs
+          : Math.min(1500 + attempt * 500, 5000);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        latest = await getSessionNotesPdfExportStatus(latest.exportId);
+        setPdfExportStatus(latest.status);
       }
 
-      const blob = await response.blob();
+      if (latest.status !== 'ready') {
+        throw new Error('PDF export did not finish in time. Please try again.');
+      }
+
+      const blob = await downloadSessionNotesPdfExport(latest.exportId);
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -212,8 +233,11 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      showSuccess('Session notes PDF generated.');
     } catch (error) {
       showError(error instanceof Error ? error.message : 'Failed to generate PDF.');
+    } finally {
+      setPdfExportStatus(null);
     }
   };
 
@@ -304,12 +328,12 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
               
               <button
                 onClick={handleGeneratePDF}
-                disabled={selectedNotes.length === 0}
+                disabled={selectedNotes.length === 0 || isPdfExportInProgress}
                 className="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-dark border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center disabled:opacity-50"
                 type="button"
               >
                 <Download className="w-4 h-4 mr-1" />
-                Generate PDF
+                {isPdfExportInProgress ? 'Generating…' : 'Generate PDF'}
               </button>
             </div>
           </div>

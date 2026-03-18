@@ -1,6 +1,7 @@
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { resolveAllowedOrigin } from "../_shared/cors.ts";
 import {
+  buildScopedIdempotencyKey,
   createSupabaseIdempotencyService,
   IdempotencyConflictError,
 } from "../_shared/idempotency.ts";
@@ -395,6 +396,7 @@ async function handleSessionCancellation(
   const cancellableIds = sessions
     .filter((session) => CANCELLABLE_STATUSES.has(session.status))
     .map(session => session.id);
+  const updatedCancellableIds = new Set<string>();
 
   if (cancellableIds.length > 0) {
     const updates: Record<string, unknown> = {
@@ -409,6 +411,7 @@ async function handleSessionCancellation(
       .from("sessions")
       .update(updates)
       .in("id", cancellableIds)
+      .in("status", Array.from(CANCELLABLE_STATUSES))
       .eq("organization_id", orgId)
       .select("id");
 
@@ -416,13 +419,18 @@ async function handleSessionCancellation(
       updateQuery = updateQuery.eq("therapist_id", userId);
     }
 
-    const { error: updateError } = await updateQuery;
+    const { data: updatedRows, error: updateError } = await updateQuery;
     if (updateError) {
       throw new Error(updateError.message ?? "Failed to cancel sessions");
     }
+    for (const row of updatedRows ?? []) {
+      if (row && typeof row.id === "string") {
+        updatedCancellableIds.add(row.id);
+      }
+    }
 
     await Promise.all(sessions
-      .filter(session => cancellableIds.includes(session.id))
+      .filter(session => updatedCancellableIds.has(session.id))
       .map(session => recordSessionAuditEvent(db, {
         sessionId: session.id,
         eventType: "session_cancelled",
@@ -452,11 +460,11 @@ async function handleSessionCancellation(
     .map((session) => session.id);
 
   const summary: SessionCancellationSummary = {
-    cancelledCount: cancellableIds.length,
+    cancelledCount: updatedCancellableIds.size,
     alreadyCancelledCount: alreadyCancelledIds.length,
     nonCancellableCount: nonCancellableSessionIds.length,
     totalCount: sessions.length,
-    cancelledSessionIds: cancellableIds,
+    cancelledSessionIds: Array.from(updatedCancellableIds),
     alreadyCancelledSessionIds: alreadyCancelledIds,
     nonCancellableSessionIds,
   };
@@ -503,17 +511,6 @@ Deno.serve(async (req) => {
     };
     const idempotencyService = createSupabaseIdempotencyService(supabaseAdmin);
 
-    if (normalizedKey) {
-      const existing = await idempotencyService.find(normalizedKey, "sessions-cancel");
-      if (existing) {
-        return jsonResponse(
-          existing.responseBody as Record<string, unknown>,
-          existing.statusCode,
-          { "Idempotent-Replay": "true", "Idempotency-Key": normalizedKey },
-        );
-      }
-    }
-
     const orgId = await requireOrg(db);
     currentOrgId = orgId;
     scopedLogger = userLogger.with({ orgId });
@@ -540,6 +537,20 @@ Deno.serve(async (req) => {
         reason: "role-denied",
       });
       throw new ForbiddenError("Forbidden");
+    }
+
+    const storageIdempotencyKey = normalizedKey
+      ? buildScopedIdempotencyKey(normalizedKey, { organizationId: orgId, userId: user.id })
+      : null;
+    if (storageIdempotencyKey) {
+      const existing = await idempotencyService.find(storageIdempotencyKey, "sessions-cancel");
+      if (existing) {
+        return jsonResponse(
+          existing.responseBody as Record<string, unknown>,
+          existing.statusCode,
+          { "Idempotent-Replay": "true", "Idempotency-Key": normalizedKey },
+        );
+      }
     }
 
     const payload = parseCancelPayload(await req.json());
@@ -592,10 +603,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (normalizedKey) {
+    if (storageIdempotencyKey) {
       try {
         const body = (await response.clone().json()) as Record<string, unknown>;
-        await idempotencyService.persist(normalizedKey, "sessions-cancel", body, response.status);
+        await idempotencyService.persist(storageIdempotencyKey, "sessions-cancel", body, response.status);
       } catch (error) {
         if (error instanceof IdempotencyConflictError) {
           return jsonResponse({ success: false, error: error.message }, 409);

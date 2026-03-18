@@ -4,12 +4,12 @@ import {
   consumeRateLimit,
   corsHeadersForRequest,
   errorResponse,
-  fetchAuthenticatedUserId,
+  fetchAuthenticatedUserIdWithStatus,
   fetchJson,
   getSupabaseConfig,
   isDisallowedOriginRequest,
   jsonForRequest,
-  resolveOrgAndRole,
+  resolveOrgAndRoleWithStatus,
 } from "./shared";
 import {
   bookSessionApiRequestBodySchema,
@@ -59,12 +59,19 @@ async function assertBookRequestScope(
   accessToken: string,
   body: BookSessionApiRequestBody,
 ): Promise<Response | null> {
-  const { organizationId, isTherapist, isAdmin, isSuperAdmin } = await resolveOrgAndRole(accessToken);
+  const { organizationId, isTherapist, isAdmin, isSuperAdmin, upstreamError: roleUpstreamError } =
+    await resolveOrgAndRoleWithStatus(accessToken);
+  if (roleUpstreamError) {
+    return errorResponse(request, "upstream_error", "Unable to validate organization access", { status: 502 });
+  }
   if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
 
-  const currentUserId = await fetchAuthenticatedUserId(accessToken);
+  const { userId: currentUserId, upstreamError: userUpstreamError } = await fetchAuthenticatedUserIdWithStatus(accessToken);
+  if (userUpstreamError) {
+    return errorResponse(request, "upstream_error", "Unable to validate authenticated user", { status: 502 });
+  }
   if (!currentUserId) {
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }

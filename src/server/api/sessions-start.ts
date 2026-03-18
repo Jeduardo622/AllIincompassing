@@ -3,13 +3,13 @@ import {
   consumeRateLimit,
   corsHeadersForRequest,
   errorResponse,
-  fetchAuthenticatedUserId,
+  fetchAuthenticatedUserIdWithStatus,
   fetchJson,
   getAccessToken,
   getSupabaseConfig,
   isDisallowedOriginRequest,
   jsonForRequest,
-  resolveOrgAndRole,
+  resolveOrgAndRoleWithStatus,
 } from "./shared";
 
 export const startSessionSchema = z.object({
@@ -70,12 +70,25 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
       });
     }
 
-    const { organizationId, isTherapist, isAdmin, isSuperAdmin } = await resolveOrgAndRole(accessToken);
+    const { organizationId, isTherapist, isAdmin, isSuperAdmin, upstreamError: roleUpstreamError } =
+      await resolveOrgAndRoleWithStatus(accessToken);
+    if (roleUpstreamError) {
+      return errorResponse(request, "upstream_error", "Unable to validate organization access", {
+        status: 502,
+        headers: traceHeaders,
+      });
+    }
     if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
       return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
     }
 
-    const currentUserId = await fetchAuthenticatedUserId(accessToken);
+    const { userId: currentUserId, upstreamError: userUpstreamError } = await fetchAuthenticatedUserIdWithStatus(accessToken);
+    if (userUpstreamError) {
+      return errorResponse(request, "upstream_error", "Unable to validate authenticated user", {
+        status: 502,
+        headers: traceHeaders,
+      });
+    }
     if (!currentUserId) {
       return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
     }

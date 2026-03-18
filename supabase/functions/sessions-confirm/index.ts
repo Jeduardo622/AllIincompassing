@@ -1,6 +1,7 @@
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { resolveAllowedOrigin } from "../_shared/cors.ts";
 import {
+  buildScopedIdempotencyKey,
   createSupabaseIdempotencyService,
   IdempotencyConflictError,
 } from "../_shared/idempotency.ts";
@@ -75,6 +76,9 @@ Deno.serve(async (req) => {
     const orgId = await requireOrg(requestClient);
     const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
     const normalizedKey = idempotencyKey.length > 0 ? idempotencyKey : null;
+    const storageIdempotencyKey = normalizedKey
+      ? buildScopedIdempotencyKey(normalizedKey, { organizationId: orgId, userId: user.id })
+      : null;
     const traceMeta = {
       requestId: req.headers.get("x-request-id") ?? null,
       correlationId: req.headers.get("x-correlation-id") ?? null,
@@ -82,8 +86,8 @@ Deno.serve(async (req) => {
     };
     const idempotencyService = createSupabaseIdempotencyService(supabaseAdmin);
 
-    if (normalizedKey) {
-      const existing = await idempotencyService.find(normalizedKey, "sessions-confirm");
+    if (storageIdempotencyKey) {
+      const existing = await idempotencyService.find(storageIdempotencyKey, "sessions-confirm");
       if (existing) {
         return jsonResponse(
           existing.responseBody as Record<string, unknown>,
@@ -98,12 +102,12 @@ Deno.serve(async (req) => {
       status: number = 200,
       headers: Record<string, string> = {},
     ) => {
-      if (!normalizedKey) {
+      if (!storageIdempotencyKey) {
         return jsonResponse(body, status, headers);
       }
 
       try {
-        await idempotencyService.persist(normalizedKey, "sessions-confirm", body, status);
+        await idempotencyService.persist(storageIdempotencyKey, "sessions-confirm", body, status);
       } catch (error) {
         if (error instanceof IdempotencyConflictError) {
           return jsonResponse(
@@ -231,6 +235,18 @@ Deno.serve(async (req) => {
 
       if (error) {
         console.error("confirm_session_hold error", error);
+        if (confirmedSessions.length > 0) {
+          return respond(
+            {
+              success: false,
+              error: error.message ?? "Failed to confirm all sessions",
+              code: "PARTIAL_CONFIRMATION",
+              partial: true,
+              confirmedSessions,
+            },
+            409,
+          );
+        }
         return respond({ success: false, error: error.message ?? "Failed to confirm session" }, 500);
       }
 
@@ -295,6 +311,13 @@ Deno.serve(async (req) => {
           success: false,
           error: data?.error_message ?? "Unable to confirm session",
           code: data?.error_code,
+          ...(confirmedSessions.length > 0
+            ? {
+                partial: true,
+                partialCode: "PARTIAL_CONFIRMATION",
+                confirmedSessions,
+              }
+            : {}),
           retryAfter: retryAfterIso,
           orchestration,
         }, status, headers);

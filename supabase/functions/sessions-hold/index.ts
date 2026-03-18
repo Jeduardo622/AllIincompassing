@@ -1,6 +1,7 @@
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { resolveAllowedOrigin } from "../_shared/cors.ts";
 import {
+  buildScopedIdempotencyKey,
   createSupabaseIdempotencyService,
   IdempotencyConflictError,
 } from "../_shared/idempotency.ts";
@@ -91,6 +92,9 @@ Deno.serve(async (req) => {
     const orgId = await requireOrg(requestClient);
     const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
     const normalizedKey = idempotencyKey.length > 0 ? idempotencyKey : null;
+    const storageIdempotencyKey = normalizedKey
+      ? buildScopedIdempotencyKey(normalizedKey, { organizationId: orgId, userId: user.id })
+      : null;
     const traceMeta = {
       requestId: req.headers.get("x-request-id") ?? null,
       correlationId: req.headers.get("x-correlation-id") ?? null,
@@ -98,8 +102,8 @@ Deno.serve(async (req) => {
     };
     const idempotencyService = createSupabaseIdempotencyService(supabaseAdmin);
 
-    if (normalizedKey) {
-      const existing = await idempotencyService.find(normalizedKey, "sessions-hold");
+    if (storageIdempotencyKey) {
+      const existing = await idempotencyService.find(storageIdempotencyKey, "sessions-hold");
       if (existing) {
         return jsonResponse(
           existing.responseBody as Record<string, unknown>,
@@ -114,12 +118,12 @@ Deno.serve(async (req) => {
       status: number = 200,
       headers: Record<string, string> = {},
     ) => {
-      if (!normalizedKey) {
+      if (!storageIdempotencyKey) {
         return jsonResponse(body, status, headers);
       }
 
       try {
-        await idempotencyService.persist(normalizedKey, "sessions-hold", body, status);
+        await idempotencyService.persist(storageIdempotencyKey, "sessions-hold", body, status);
       } catch (error) {
         if (error instanceof IdempotencyConflictError) {
           return jsonResponse(

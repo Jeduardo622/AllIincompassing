@@ -1,57 +1,54 @@
-import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 import {
   createProtectedRoute,
   corsHeaders,
   RouteOptions,
   type UserContext,
 } from "../_shared/auth-middleware.ts";
-import { createRequestClient } from "../_shared/database.ts";
+import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
 import { MissingOrgContextError, orgScopedQuery, requireOrg } from "../_shared/org.ts";
+import { getRequestId } from "../lib/http/error.ts";
+import {
+  getSessionNotePdfExportJob,
+  SESSION_NOTE_EXPORT_BUCKET,
+  type SessionNotePdfExportStatus,
+} from "../_shared/session-note-pdf-exports.ts";
 
 interface RequestBody {
   noteIds?: string[];
   clientId?: string;
 }
 
-const FONT_SIZE = 11;
-const LINE_HEIGHT = 16;
-const PAGE_MARGIN = 48;
-
-const wrapText = (text: string, maxWidth: number, font: any, fontSize: number) => {
-  const words = text.split(/\s+/);
-  const lines: string[] = [];
-  let currentLine = "";
-
-  words.forEach((word) => {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const width = font.widthOfTextAtSize(testLine, fontSize);
-    if (width <= maxWidth) {
-      currentLine = testLine;
-    } else {
-      if (currentLine) {
-        lines.push(currentLine);
-      }
-      currentLine = word;
-    }
-  });
-
-  if (currentLine) {
-    lines.push(currentLine);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const isUuid = (value: string): boolean => UUID_RE.test(value);
+const isAsyncExportEnabled = (): boolean => {
+  const raw = Deno.env.get("SESSION_NOTES_PDF_ASYNC");
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return true;
   }
-
-  return lines;
+  return /^(1|true|yes|on)$/i.test(raw.trim());
 };
 
-const drawSection = (page: any, title: string, text: string, font: any, boldFont: any, y: number) => {
-  page.drawText(title, { x: PAGE_MARGIN, y, size: FONT_SIZE, font: boldFont, color: rgb(0.1, 0.1, 0.1) });
-  const lines = wrapText(text, page.getWidth() - PAGE_MARGIN * 2, font, FONT_SIZE);
-  let cursorY = y - LINE_HEIGHT;
-  lines.forEach((line) => {
-    page.drawText(line, { x: PAGE_MARGIN, y: cursorY, size: FONT_SIZE, font, color: rgb(0.2, 0.2, 0.2) });
-    cursorY -= LINE_HEIGHT;
-  });
-  return cursorY - LINE_HEIGHT / 2;
+const normalizeNoteIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0 && isUuid(item)),
+    ),
+  );
 };
+
+const mapAsyncResponse = (exportId: string, status: SessionNotePdfExportStatus) => ({
+  success: true,
+  data: {
+    exportId,
+    status,
+  },
+});
 
 export default createProtectedRoute(async (req: Request, userContext: UserContext) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -63,12 +60,20 @@ export default createProtectedRoute(async (req: Request, userContext: UserContex
   }
 
   try {
+    if (!isAsyncExportEnabled()) {
+      return new Response(JSON.stringify({ error: "Session notes PDF async export is disabled." }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const db = createRequestClient(req);
     const orgId = await requireOrg(db);
+    const requestId = getRequestId(req);
 
     const body = (await req.json().catch(() => ({}))) as RequestBody;
-    const noteIds = Array.isArray(body.noteIds) ? body.noteIds.filter((id) => typeof id === "string") : [];
-    const clientId = typeof body.clientId === "string" ? body.clientId : null;
+    const noteIds = normalizeNoteIds(body.noteIds);
+    const clientId = typeof body.clientId === "string" && isUuid(body.clientId) ? body.clientId : null;
 
     if (!clientId || noteIds.length === 0) {
       return new Response(JSON.stringify({ error: "clientId and noteIds are required" }), {
@@ -78,19 +83,7 @@ export default createProtectedRoute(async (req: Request, userContext: UserContex
     }
 
     const { data, error } = await orgScopedQuery(db, "client_session_notes", orgId)
-      .select(
-        `
-          id,
-          session_date,
-          start_time,
-          end_time,
-          service_code,
-          goals_addressed,
-          narrative,
-          therapists:therapist_id (full_name),
-          clients:client_id (full_name)
-        `
-      )
+      .select("id")
       .eq("client_id", clientId)
       .in("id", noteIds);
 
@@ -101,69 +94,79 @@ export default createProtectedRoute(async (req: Request, userContext: UserContex
       });
     }
 
-    const notes = data ?? [];
-    if (notes.length === 0) {
+    const notes = Array.isArray(data) ? data : [];
+    if (notes.length !== noteIds.length) {
       return new Response(JSON.stringify({ error: "No session notes found for export" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const pdfDoc = await PDFDocument.create();
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    let page = pdfDoc.addPage();
-    let y = page.getHeight() - PAGE_MARGIN;
+    const { data: existingQueued } = await supabaseAdmin
+      .from("session_note_pdf_exports")
+      .select("id,status")
+      .eq("organization_id", orgId)
+      .eq("requested_by", userContext.user.id)
+      .eq("client_id", clientId)
+      .in("status", ["queued", "processing"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    page.drawText("Session Notes Export", {
-      x: PAGE_MARGIN,
-      y,
-      size: 16,
-      font: boldFont,
-      color: rgb(0.05, 0.05, 0.05),
-    });
-    y -= LINE_HEIGHT * 2;
-
-    const clientName = notes[0]?.clients?.full_name ?? "Client";
-    page.drawText(`Client: ${clientName}`, {
-      x: PAGE_MARGIN,
-      y,
-      size: FONT_SIZE,
-      font,
-      color: rgb(0.2, 0.2, 0.2),
-    });
-    y -= LINE_HEIGHT * 2;
-
-    for (const note of notes) {
-      const meta = `${note.session_date} · ${note.start_time} - ${note.end_time} · ${note.therapists?.full_name ?? "Unknown Therapist"}`;
-      if (y < PAGE_MARGIN + LINE_HEIGHT * 8) {
-        page = pdfDoc.addPage();
-        y = page.getHeight() - PAGE_MARGIN;
-      }
-
-      page.drawText(meta, {
-        x: PAGE_MARGIN,
-        y,
-        size: FONT_SIZE,
-        font,
-        color: rgb(0.2, 0.2, 0.2),
+    if (existingQueued?.id && typeof existingQueued.id === "string") {
+      const status = typeof existingQueued.status === "string" ? existingQueued.status as SessionNotePdfExportStatus : "queued";
+      return new Response(JSON.stringify(mapAsyncResponse(existingQueued.id, status)), {
+        status: 202,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
       });
-      y -= LINE_HEIGHT;
-
-      y = drawSection(page, "Service", note.service_code ?? "Unknown", font, boldFont, y);
-      const goals = Array.isArray(note.goals_addressed) ? note.goals_addressed.join(", ") : "";
-      y = drawSection(page, "Goals Addressed", goals || "None listed", font, boldFont, y);
-      y = drawSection(page, "Narrative", note.narrative ?? "", font, boldFont, y);
-      y -= LINE_HEIGHT;
     }
 
-    const pdfBytes = await pdfDoc.save();
-    return new Response(pdfBytes, {
-      status: 200,
+    const inserted = await supabaseAdmin
+      .from("session_note_pdf_exports")
+      .insert({
+        organization_id: orgId,
+        client_id: clientId,
+        requested_by: userContext.user.id,
+        note_ids: noteIds,
+        status: "queued",
+        storage_bucket: SESSION_NOTE_EXPORT_BUCKET,
+        request_id: requestId,
+      })
+      .select("id")
+      .single();
+
+    if (inserted.error || !inserted.data?.id) {
+      return new Response(JSON.stringify({ error: "Failed to enqueue export job" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    console.info("generate-session-notes-pdf enqueued", {
+      exportId: inserted.data.id,
+      organizationId: orgId,
+      clientId,
+      requestedBy: userContext.user.id,
+      noteCount: noteIds.length,
+      requestId,
+    });
+
+    const job = await getSessionNotePdfExportJob(supabaseAdmin, orgId, inserted.data.id);
+    if (!job) {
+      return new Response(JSON.stringify({ error: "Export job not found after enqueue" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify(mapAsyncResponse(job.id, job.status)), {
+      status: 202,
       headers: {
         ...corsHeaders,
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="session-notes-${clientId}.pdf"`,
+        "Content-Type": "application/json",
       },
     });
   } catch (error) {

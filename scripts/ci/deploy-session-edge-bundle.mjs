@@ -6,6 +6,8 @@ const REQUIRED_FUNCTIONS = [
   "sessions-start",
   "sessions-cancel",
   "generate-session-notes-pdf",
+  "session-notes-pdf-status",
+  "session-notes-pdf-download",
 ];
 
 const parseProjectRef = (value) => {

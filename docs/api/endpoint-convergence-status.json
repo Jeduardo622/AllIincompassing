@@ -94,7 +94,7 @@
     {
       "functionFile": "program-notes.ts",
       "publicApiPath": "/api/program-notes",
-      "edgeTarget": "generate-session-notes-pdf",
+      "edgeTarget": "generate-session-notes-pdf + session-notes-pdf-status + session-notes-pdf-download",
       "wave": "B",
       "status": "retired",
       "owner": "Backend Platform"

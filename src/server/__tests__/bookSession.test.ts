@@ -51,6 +51,9 @@ const basePayload = {
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  mockedRequestSessionHold.mockReset();
+  mockedConfirmSessionBooking.mockReset();
+  mockedCancelSessionHold.mockReset();
 
   const runtimeConfig = await import("../../lib/runtimeConfig");
   runtimeConfig.resetRuntimeSupabaseConfigForTests();
@@ -276,7 +279,15 @@ describe("bookSession", () => {
 
     mockedConfirmSessionBooking.mockRejectedValueOnce(new Error("unable to confirm"));
 
-    await expect(bookSession(basePayload)).rejects.toThrow("unable to confirm");
+    await expect(
+      bookSession({
+        ...basePayload,
+        recurrence: {
+          rule: "FREQ=WEEKLY;COUNT=2",
+          timeZone: "UTC",
+        },
+      }),
+    ).rejects.toThrow("unable to confirm");
 
     expect(mockedCancelSessionHold).toHaveBeenCalledTimes(3);
     expect(mockedCancelSessionHold).toHaveBeenCalledWith({
@@ -565,6 +576,32 @@ describe("bookSession", () => {
     });
 
     expect(result.sessions).toHaveLength(3);
+  });
+
+  it("throws conflict when held occurrences do not align to recurrence windows", async () => {
+    const bookSession = await importBookSession();
+    mockedRequestSessionHold.mockResolvedValueOnce({
+      holdKey: "hold-key",
+      holdId: "hold-id",
+      startTime: basePayload.session.start_time,
+      endTime: basePayload.session.end_time,
+      expiresAt: "2025-01-01T00:05:00Z",
+      holds: [
+        {
+          holdKey: "hold-key",
+          holdId: "hold-id",
+          startTime: "2025-01-02T10:00:00Z",
+          endTime: "2025-01-02T11:00:00Z",
+          expiresAt: "2025-01-02T00:05:00Z",
+        },
+      ],
+    });
+
+    await expect(bookSession(basePayload)).rejects.toMatchObject({
+      code: "HOLD_OCCURRENCE_MISMATCH",
+      status: 409,
+    });
+    expect(mockedConfirmSessionBooking).not.toHaveBeenCalled();
   });
 });
 

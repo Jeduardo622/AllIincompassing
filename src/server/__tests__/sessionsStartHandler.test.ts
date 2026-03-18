@@ -6,19 +6,19 @@ vi.mock("../api/shared", async () => {
   return {
     ...actual,
     getAccessToken: vi.fn(),
-    resolveOrgAndRole: vi.fn(),
+    resolveOrgAndRoleWithStatus: vi.fn(),
     getSupabaseConfig: vi.fn(),
     fetchJson: vi.fn(),
-    fetchAuthenticatedUserId: vi.fn(),
+    fetchAuthenticatedUserIdWithStatus: vi.fn(),
   };
 });
 
 import {
-  fetchAuthenticatedUserId,
+  fetchAuthenticatedUserIdWithStatus,
   fetchJson,
   getAccessToken,
   getSupabaseConfig,
-  resolveOrgAndRole,
+  resolveOrgAndRoleWithStatus,
 } from "../api/shared";
 
 const createAuthToken = (subject = "therapist-1") => {
@@ -29,7 +29,10 @@ const createAuthToken = (subject = "therapist-1") => {
 describe("sessionsStartHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(fetchAuthenticatedUserId).mockResolvedValue("therapist-1");
+    vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
+      userId: "therapist-1",
+      upstreamError: false,
+    });
   });
 
   it("returns 405 for non-POST requests", async () => {
@@ -66,11 +69,12 @@ describe("sessionsStartHandler", () => {
 
   it("returns 409 when RPC reports already started", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken());
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
       isSuperAdmin: false,
+      upstreamError: false,
     });
     vi.mocked(getSupabaseConfig).mockReturnValue({
       supabaseUrl: "https://example.supabase.co",
@@ -120,11 +124,12 @@ describe("sessionsStartHandler", () => {
 
   it("returns 403 when therapist attempts to start another therapist session", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
       isSuperAdmin: false,
+      upstreamError: false,
     });
     vi.mocked(getSupabaseConfig).mockReturnValue({
       supabaseUrl: "https://example.supabase.co",
@@ -162,11 +167,12 @@ describe("sessionsStartHandler", () => {
 
   it("returns 409 when RPC reports invalid status", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
       isSuperAdmin: false,
+      upstreamError: false,
     });
     vi.mocked(getSupabaseConfig).mockReturnValue({
       supabaseUrl: "https://example.supabase.co",
@@ -214,11 +220,12 @@ describe("sessionsStartHandler", () => {
 
   it("returns 404 when RPC reports missing goal", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
       isSuperAdmin: false,
+      upstreamError: false,
     });
     vi.mocked(getSupabaseConfig).mockReturnValue({
       supabaseUrl: "https://example.supabase.co",
@@ -266,11 +273,12 @@ describe("sessionsStartHandler", () => {
 
   it("starts a session through atomic RPC on success", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
       isSuperAdmin: false,
+      upstreamError: false,
     });
     vi.mocked(getSupabaseConfig).mockReturnValue({
       supabaseUrl: "https://example.supabase.co",
@@ -326,11 +334,12 @@ describe("sessionsStartHandler", () => {
 
   it("returns 404 when the session is outside caller org scope", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
       isSuperAdmin: false,
+      upstreamError: false,
     });
     vi.mocked(getSupabaseConfig).mockReturnValue({
       supabaseUrl: "https://example.supabase.co",
@@ -359,11 +368,12 @@ describe("sessionsStartHandler", () => {
 
   it("returns 400 when RPC reports invalid goal set", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
       isSuperAdmin: false,
+      upstreamError: false,
     });
     vi.mocked(getSupabaseConfig).mockReturnValue({
       supabaseUrl: "https://example.supabase.co",
@@ -412,12 +422,16 @@ describe("sessionsStartHandler", () => {
 
   it("allows admins to start sessions not assigned to their user id", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("admin-actor"));
-    vi.mocked(fetchAuthenticatedUserId).mockResolvedValue("admin-actor");
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+    vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
+      userId: "admin-actor",
+      upstreamError: false,
+    });
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
       organizationId: "org-1",
       isTherapist: false,
       isAdmin: true,
       isSuperAdmin: false,
+      upstreamError: false,
     });
     vi.mocked(getSupabaseConfig).mockReturnValue({
       supabaseUrl: "https://example.supabase.co",
@@ -467,17 +481,76 @@ describe("sessionsStartHandler", () => {
 
   it("returns upstream_error when a network exception is thrown", async () => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
-    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
       isSuperAdmin: false,
+      upstreamError: false,
     });
     vi.mocked(getSupabaseConfig).mockReturnValue({
       supabaseUrl: "https://example.supabase.co",
       anonKey: "anon",
     });
     vi.mocked(fetchJson).mockRejectedValueOnce(new Error("network down"));
+
+    const response = await sessionsStartHandler(
+      new Request("http://localhost/api/sessions-start", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken("therapist-1")}` },
+        body: JSON.stringify({
+          session_id: "11111111-1111-1111-1111-111111111111",
+          program_id: "22222222-2222-2222-2222-222222222222",
+          goal_id: "33333333-3333-3333-3333-333333333333",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    const body = await response.json() as { code: string };
+    expect(body.code).toBe("upstream_error");
+  });
+
+  it("returns 502 when org/role resolution fails upstream", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: null,
+      isTherapist: false,
+      isAdmin: false,
+      isSuperAdmin: false,
+      upstreamError: true,
+    });
+
+    const response = await sessionsStartHandler(
+      new Request("http://localhost/api/sessions-start", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken("therapist-1")}` },
+        body: JSON.stringify({
+          session_id: "11111111-1111-1111-1111-111111111111",
+          program_id: "22222222-2222-2222-2222-222222222222",
+          goal_id: "33333333-3333-3333-3333-333333333333",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    const body = await response.json() as { code: string };
+    expect(body.code).toBe("upstream_error");
+  });
+
+  it("returns 502 when authenticated-user lookup fails upstream", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
+      userId: null,
+      upstreamError: true,
+    });
 
     const response = await sessionsStartHandler(
       new Request("http://localhost/api/sessions-start", {

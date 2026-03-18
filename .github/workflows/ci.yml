@@ -67,7 +67,7 @@ jobs:
           CI_ALLOW_UNPROTECTED_MAIN: "true"
           CI_SUPABASE_AUTH_PARITY_REQUIRED: "true"
           CI_EDGE_ROUTE_PARITY_REQUIRED: "true"
-          SUPABASE_FUNCTION_PARITY_SCOPE: "sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf"
+          SUPABASE_FUNCTION_PARITY_SCOPE: "sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download"
           # Temporary bypass until CI has direct database URL configured for overlap inspection.
           CI_RLS_OVERLAP_REQUIRED: "false"
           CI_REQUIRED_CHECKS: "policy,lint-typecheck,unit-tests,build"

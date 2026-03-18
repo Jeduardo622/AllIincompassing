@@ -54,3 +54,27 @@ Orchestration always returns a `rollbackPlan` with the next safe step:
 - Deploy edge functions: `sessions-hold`, `sessions-confirm`, `sessions-cancel`.
 - Apply migration: `20260202120000_scheduling_orchestration_runs.sql`.
 - Regenerate Supabase types after schema updates: `supabase gen types typescript --project-id wnnjeqheqxxyrgsjmygy --schema public > src/lib/generated/database.types.ts`.
+
+## 2026-03 hardening addendum
+
+### Backend/API behavior updates
+- `/api/book` now enforces explicit org/role scope validation for therapist/client/program/goal relationships before booking orchestration.
+- `/api/book` maps downstream throttling to `rate_limited` (`429`) and removes internal orchestration diagnostics from client envelopes.
+- `/api/sessions-start` now applies per-route rate limiting, consistent trace header propagation, URL-safe query parameter encoding, and sanitized RPC error messages.
+- Booking rollback in `bookSession` now releases all unique occurrence hold keys on confirmation failure (not only the primary hold).
+
+### UI/business-logic updates
+- `Schedule` now applies therapist/client filters consistently even when batched schedule data is used.
+- Conflict detection in `conflicts.ts` now uses strict overlap math so back-to-back sessions are allowed.
+- Session slot indexing now handles timezone-aware timestamps using local runtime slot buckets.
+- `SessionModal` now:
+  - clears dependent program/goal state only after program query completion, avoiding load-time state wipes,
+  - resets dependent fields correctly on client changes,
+  - derives start-session button state from authoritative session details (`sessionDetails.started_at`).
+
+### Security hardening migration
+- Added `supabase/migrations/20260318110000_harden_start_session_with_goals_authz.sql`:
+  - enforces `auth.uid()` actor identity for `start_session_with_goals`,
+  - blocks caller-supplied actor spoofing (`p_actor_id` mismatch),
+  - applies org/role authorization (admin/super-admin or assigned therapist),
+  - records audit events using authenticated actor identity.

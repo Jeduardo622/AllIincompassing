@@ -248,6 +248,54 @@ describe("bookSession", () => {
     });
   });
 
+  it("releases all unique occurrence hold keys when confirmation fails", async () => {
+    const bookSession = await importBookSession();
+    mockedRequestSessionHold.mockResolvedValueOnce({
+      holdKey: "hold-parent",
+      holdId: "hold-id-parent",
+      startTime: basePayload.session.start_time,
+      endTime: basePayload.session.end_time,
+      expiresAt: "2025-01-01T00:05:00Z",
+      holds: [
+        {
+          holdKey: "hold-child-1",
+          holdId: "hold-id-1",
+          startTime: basePayload.session.start_time,
+          endTime: basePayload.session.end_time,
+          expiresAt: "2025-01-01T00:05:00Z",
+        },
+        {
+          holdKey: "hold-child-2",
+          holdId: "hold-id-2",
+          startTime: "2025-01-08T10:00:00Z",
+          endTime: "2025-01-08T11:00:00Z",
+          expiresAt: "2025-01-08T00:05:00Z",
+        },
+      ],
+    });
+
+    mockedConfirmSessionBooking.mockRejectedValueOnce(new Error("unable to confirm"));
+
+    await expect(bookSession(basePayload)).rejects.toThrow("unable to confirm");
+
+    expect(mockedCancelSessionHold).toHaveBeenCalledTimes(3);
+    expect(mockedCancelSessionHold).toHaveBeenCalledWith({
+      holdKey: "hold-parent",
+      idempotencyKey: "cancel:hold-parent",
+      accessToken: basePayload.accessToken,
+    });
+    expect(mockedCancelSessionHold).toHaveBeenCalledWith({
+      holdKey: "hold-child-1",
+      idempotencyKey: "cancel:hold-parent",
+      accessToken: basePayload.accessToken,
+    });
+    expect(mockedCancelSessionHold).toHaveBeenCalledWith({
+      holdKey: "hold-child-2",
+      idempotencyKey: "cancel:hold-parent",
+      accessToken: basePayload.accessToken,
+    });
+  });
+
   it("throws when required session fields are missing", async () => {
     const bookSession = await importBookSession();
     await expect(

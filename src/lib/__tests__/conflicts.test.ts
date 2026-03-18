@@ -132,6 +132,23 @@ describe('checkSchedulingConflicts', () => {
     expect(conflicts[0].type).toBe('session_overlap');
   });
 
+  it('does not flag adjacent sessions as overlaps', async () => {
+    const startTime = '2025-05-20T14:00:00Z'; // starts exactly when existing session ends
+    const endTime = '2025-05-20T15:00:00Z';
+
+    const conflicts = await checkSchedulingConflicts(
+      startTime,
+      endTime,
+      mockTherapist.id,
+      mockClient.id,
+      mockExistingSessions,
+      mockTherapist,
+      mockClient
+    );
+
+    expect(conflicts).toHaveLength(0);
+  });
+
   it('returns no conflicts when time is valid', async () => {
     const startTime = '2025-05-20T11:00:00Z'; // Valid time
     const endTime = '2025-05-20T12:00:00Z';

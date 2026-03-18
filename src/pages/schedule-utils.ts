@@ -130,11 +130,14 @@ export function createSessionSlotKey(dateKey: string, timeKey: string): string {
 }
 
 function parseSessionStartTime(startTime: string): { dateKey: string; timeKey: string } | null {
-  const rawDate = startTime.length >= 10 ? startTime.slice(0, 10) : "";
-  const rawTime = startTime.length >= 16 ? startTime.slice(11, 16) : "";
+  const hasZoneInfo = /[zZ]|[+-]\d{2}:?\d{2}$/.test(startTime);
+  if (!hasZoneInfo) {
+    const rawDate = startTime.length >= 10 ? startTime.slice(0, 10) : "";
+    const rawTime = startTime.length >= 16 ? startTime.slice(11, 16) : "";
 
-  if (rawDate.length === 10 && rawTime.length === 5) {
-    return { dateKey: rawDate, timeKey: rawTime };
+    if (rawDate.length === 10 && rawTime.length === 5) {
+      return { dateKey: rawDate, timeKey: rawTime };
+    }
   }
 
   const parsed = new Date(startTime);

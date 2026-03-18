@@ -732,9 +732,22 @@ export const Schedule = React.memo(() => {
   const { data: dropdownData, isLoading: isLoadingDropdowns } =
     useDropdownData();
 
+  const filteredBatchedSessions = useMemo(() => {
+    const candidateSessions = Array.isArray(batchedData?.sessions) ? batchedData.sessions : null;
+    if (!candidateSessions) {
+      return null;
+    }
+
+    return candidateSessions.filter((session) => {
+      const therapistMatches = !selectedTherapist || session.therapist_id === selectedTherapist;
+      const clientMatches = !selectedClient || session.client_id === selectedClient;
+      return therapistMatches && clientMatches;
+    });
+  }, [batchedData?.sessions, selectedTherapist, selectedClient]);
+
   // Use batched data if available, otherwise use individual query results
   const displayData = {
-    sessions: batchedData?.sessions || sessions,
+    sessions: filteredBatchedSessions ?? sessions,
     therapists: batchedData?.therapists || dropdownData?.therapists || [],
     clients: batchedData?.clients || dropdownData?.clients || [],
   };
@@ -1166,7 +1179,7 @@ export const Schedule = React.memo(() => {
 
   if (isLoading) {
     const fallbackDisplay = {
-      sessions: batchedData?.sessions || sessions,
+      sessions: filteredBatchedSessions ?? sessions,
       therapists: batchedData?.therapists || dropdownData?.therapists || [],
       clients: batchedData?.clients || dropdownData?.clients || [],
     };

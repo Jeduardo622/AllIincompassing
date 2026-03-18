@@ -97,7 +97,7 @@ describe("session holds API helpers", () => {
           ],
         }),
       }),
-      { accessToken: ACCESS_TOKEN },
+      expect.objectContaining({ accessToken: ACCESS_TOKEN }),
     );
   });
 
@@ -139,7 +139,7 @@ describe("session holds API helpers", () => {
       expect.objectContaining({
         headers: expect.objectContaining({ "Idempotency-Key": "unique-key" }),
       }),
-      { accessToken: ACCESS_TOKEN },
+      expect.objectContaining({ accessToken: ACCESS_TOKEN }),
     );
   });
 
@@ -312,7 +312,7 @@ describe("session holds API helpers", () => {
     expect(mockedCallEdge).toHaveBeenCalledWith(
       "sessions-confirm",
       expect.objectContaining({ method: "POST" }),
-      { accessToken: ACCESS_TOKEN },
+      expect.objectContaining({ accessToken: ACCESS_TOKEN }),
     );
   });
 
@@ -559,7 +559,7 @@ describe("session holds API helpers", () => {
       expect.objectContaining({
         headers: expect.objectContaining({ "Idempotency-Key": "confirm-key" }),
       }),
-      { accessToken: ACCESS_TOKEN },
+      expect.objectContaining({ accessToken: ACCESS_TOKEN }),
     );
   });
 
@@ -600,7 +600,7 @@ describe("session holds API helpers", () => {
     expect(mockedCallEdge).toHaveBeenCalledWith(
       "sessions-confirm",
       expect.objectContaining({ method: "POST" }),
-      { accessToken: ACCESS_TOKEN },
+      expect.objectContaining({ accessToken: ACCESS_TOKEN }),
     );
     const requestInit = mockedCallEdge.mock.calls.at(-1)?.[1];
     expect(requestInit).toBeDefined();
@@ -652,7 +652,7 @@ describe("session holds API helpers", () => {
     expect(mockedCallEdge).toHaveBeenCalledWith(
       "sessions-cancel",
       expect.objectContaining({ method: "POST" }),
-      { accessToken: ACCESS_TOKEN },
+      expect.objectContaining({ accessToken: ACCESS_TOKEN }),
     );
   });
 
@@ -670,7 +670,7 @@ describe("session holds API helpers", () => {
       expect.objectContaining({
         headers: expect.objectContaining({ "Idempotency-Key": "cancel-key" }),
       }),
-      { accessToken: ACCESS_TOKEN },
+      expect.objectContaining({ accessToken: ACCESS_TOKEN }),
     );
   });
 

@@ -1,5 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { http, HttpResponse } from "msw";
 import { resetRateLimitsForTests } from "../api/shared";
+import { server } from "../../test/setup";
 
 const bookSessionMock = vi.hoisted(() => vi.fn());
 const loggerMock = vi.hoisted(() => ({
@@ -96,6 +98,20 @@ beforeEach(async () => {
   process.env.SUPABASE_ANON_KEY = TEST_SUPABASE_ANON_KEY;
   process.env.SUPABASE_EDGE_URL = TEST_SUPABASE_EDGE_URL;
   process.env.DEFAULT_ORGANIZATION_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
+
+  server.use(
+    http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/current_user_is_super_admin`, () => HttpResponse.json(false)),
+    http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/current_user_organization_id`, () =>
+      HttpResponse.json("5238e88b-6198-4862-80a2-dbe15bbeabdd")),
+    http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/user_has_role_for_org`, () => HttpResponse.json(true)),
+    http.get(`${TEST_SUPABASE_URL}/auth/v1/user`, () => HttpResponse.json({ id: "therapist-1" })),
+    http.get(`${TEST_SUPABASE_URL}/rest/v1/therapists`, () => HttpResponse.json([{ id: "therapist-1" }])),
+    http.get(`${TEST_SUPABASE_URL}/rest/v1/clients`, () => HttpResponse.json([{ id: "client-1" }])),
+    http.get(`${TEST_SUPABASE_URL}/rest/v1/programs`, () =>
+      HttpResponse.json([{ id: "program-1", client_id: "client-1" }])),
+    http.get(`${TEST_SUPABASE_URL}/rest/v1/goals`, () =>
+      HttpResponse.json([{ id: "goal-1", program_id: "program-1" }])),
+  );
 });
 
 afterAll(() => {
@@ -192,6 +208,21 @@ describe("bookHandler", () => {
     const body = await response.json();
     expect(body.success).toBe(false);
     expect(body.error).toMatch(/authorization/i);
+    expect(bookSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when booking entity relationships are invalid", async () => {
+    server.use(
+      http.get(`${TEST_SUPABASE_URL}/rest/v1/programs`, () =>
+        HttpResponse.json([{ id: "program-1", client_id: "different-client" }])),
+    );
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest(validPayload));
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toBe("Invalid booking relationships");
     expect(bookSessionMock).not.toHaveBeenCalled();
   });
 
@@ -345,6 +376,10 @@ describe("bookHandler", () => {
     expect(body.error).toBe("Booking failed");
     expect(body.error).not.toMatch(/conflict/i);
     expect(body.error).not.toMatch(/error/i);
+    expect(body.upstream).toBeUndefined();
+    expect(body.upstreamMessage).toBeUndefined();
+    expect(body.inputProgramId).toBeUndefined();
+    expect(body.inputGoalId).toBeUndefined();
     expect(bookSessionMock).toHaveBeenCalledWith(expect.objectContaining({ accessToken: "valid-token" }));
     expect(loggerMock.error).toHaveBeenCalledWith(
       "Session booking failed",
@@ -353,6 +388,23 @@ describe("bookHandler", () => {
         metadata: expect.objectContaining({ status: 500 }),
       }),
     );
+  });
+
+  it("maps downstream throttling to API rate_limited responses", async () => {
+    bookSessionMock.mockRejectedValueOnce({
+      message: "throttled",
+      status: 429,
+      retryAfterSeconds: 33,
+    });
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest(validPayload));
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("33");
+    const body = await response.json();
+    expect(body.code).toBe("rate_limited");
+    expect(body.retryAfterSeconds).toBe(33);
   });
 
   it("returns 429 when booking rate limit is exceeded", async () => {
@@ -423,8 +475,6 @@ describe("bookHandler", () => {
     expect(body.retryAfter).toBe("2026-02-10T12:05:00.000Z");
     expect(body.retryAfterSeconds).toBe(120);
     expect(body.hint).toContain("Retry after about 120 seconds");
-    expect(body.orchestration).toEqual({
-      rollbackPlan: { guidance: "Retry after the suggested time window." },
-    });
+    expect(body.orchestration).toBeUndefined();
   });
 });

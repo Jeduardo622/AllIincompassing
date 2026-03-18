@@ -19,6 +19,23 @@ const scheduleFixtures = {
       notes: "Initial session",
       created_at: "2025-06-01T00:00:00Z",
       updated_at: "2025-06-01T00:00:00Z",
+      therapist: { id: "therapist-1", full_name: "Dr. Myles" },
+      client: { id: "client-1", full_name: "Jamie Client" },
+    },
+    {
+      id: "session-2",
+      therapist_id: "therapist-2",
+      client_id: "client-2",
+      program_id: "program-2",
+      goal_id: "goal-2",
+      start_time: "2025-07-01T11:00:00Z",
+      end_time: "2025-07-01T12:00:00Z",
+      status: "scheduled",
+      notes: "Follow-up session",
+      created_at: "2025-06-01T00:00:00Z",
+      updated_at: "2025-06-01T00:00:00Z",
+      therapist: { id: "therapist-2", full_name: "Dr. Reyes" },
+      client: { id: "client-2", full_name: "Riley Client" },
     },
   ],
   therapists: [
@@ -26,6 +43,20 @@ const scheduleFixtures = {
       id: "therapist-1",
       full_name: "Dr. Myles",
       email: "myles@example.com",
+      availability_hours: {
+        monday: { start: "09:00", end: "17:00" },
+        tuesday: { start: "09:00", end: "17:00" },
+        wednesday: { start: "09:00", end: "17:00" },
+        thursday: { start: "09:00", end: "17:00" },
+        friday: { start: "09:00", end: "17:00" },
+        saturday: { start: null, end: null },
+        sunday: { start: null, end: null },
+      },
+    },
+    {
+      id: "therapist-2",
+      full_name: "Dr. Reyes",
+      email: "reyes@example.com",
       availability_hours: {
         monday: { start: "09:00", end: "17:00" },
         tuesday: { start: "09:00", end: "17:00" },
@@ -52,6 +83,20 @@ const scheduleFixtures = {
         sunday: { start: null, end: null },
       },
     },
+    {
+      id: "client-2",
+      full_name: "Riley Client",
+      email: "riley@example.com",
+      availability_hours: {
+        monday: { start: "10:00", end: "15:00" },
+        tuesday: { start: "10:00", end: "15:00" },
+        wednesday: { start: "10:00", end: "15:00" },
+        thursday: { start: "10:00", end: "15:00" },
+        friday: { start: "10:00", end: "15:00" },
+        saturday: { start: null, end: null },
+        sunday: { start: null, end: null },
+      },
+    },
   ],
 };
 
@@ -62,6 +107,20 @@ vi.mock("../../lib/optimizedQueries", () => ({
     data: { therapists: scheduleFixtures.therapists, clients: scheduleFixtures.clients },
     isLoading: false,
   }),
+}));
+
+vi.mock("../../components/SessionModal", () => ({
+  SessionModal: ({
+    isOpen,
+    existingSessions,
+  }: {
+    isOpen: boolean;
+    existingSessions: Array<{ id: string }>;
+  }) => (
+    isOpen
+      ? <div data-testid="session-modal-sessions">{existingSessions.map((session) => session.id).join(",")}</div>
+      : null
+  ),
 }));
 
 import { Schedule } from "../Schedule";
@@ -136,6 +195,22 @@ describe("Schedule", () => {
     if (loadingElement) {
       expect(loadingElement).toBeInTheDocument();
     }
+  });
+
+  it("applies therapist filters to batched sessions", async () => {
+    renderWithProviders(<Schedule />);
+
+    const addButtons = await screen.findAllByLabelText("Add session");
+    fireEvent.click(addButtons[0]);
+    expect(screen.getByTestId("session-modal-sessions")).toHaveTextContent("session-1");
+    expect(screen.getByTestId("session-modal-sessions")).toHaveTextContent("session-2");
+
+    await userEvent.selectOptions(screen.getByLabelText("Therapist"), "therapist-2");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("session-modal-sessions")).not.toHaveTextContent("session-1");
+      expect(screen.getByTestId("session-modal-sessions")).toHaveTextContent("session-2");
+    });
   });
 
 });

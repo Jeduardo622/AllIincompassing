@@ -431,13 +431,23 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
     const cancelIdempotencyKey = payload.idempotencyKey
       ? `cancel:${payload.idempotencyKey}`
       : `cancel:${hold.holdKey}`;
+    const holdKeysToRelease = Array.from(
+      new Set(
+        [hold.holdKey, ...hold.holds.map((heldOccurrence) => heldOccurrence.holdKey)].filter(
+          (holdKey): holdKey is string => typeof holdKey === "string" && holdKey.length > 0,
+        ),
+      ),
+    );
     try {
-      await cancelSessionHold({
-        holdKey: hold.holdKey,
-        idempotencyKey: cancelIdempotencyKey,
-        accessToken: payload.accessToken,
-        ...(payload.trace ? { trace: payload.trace } : {}),
-      });
+      await Promise.all(
+        holdKeysToRelease.map((holdKey) =>
+          cancelSessionHold({
+            holdKey,
+            idempotencyKey: cancelIdempotencyKey,
+            accessToken: payload.accessToken,
+            ...(payload.trace ? { trace: payload.trace } : {}),
+          })),
+      );
     } catch (releaseError) {
       console.warn("Failed to release session hold after confirmation error", releaseError);
     }

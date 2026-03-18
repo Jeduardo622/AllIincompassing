@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { http, HttpResponse } from "msw";
 
 import * as supabaseModule from "../../lib/supabase";
+import { server } from "../../test/setup";
 
 const originalCallEdge = supabaseModule.callEdge;
 const callEdgeMock = vi.spyOn(supabaseModule, "callEdge");
@@ -52,6 +54,19 @@ describe("bookHandler integration", () => {
     process.env.SUPABASE_ANON_KEY = TEST_SUPABASE_ANON_KEY;
     process.env.SUPABASE_EDGE_URL = TEST_SUPABASE_EDGE_URL;
     process.env.DEFAULT_ORGANIZATION_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
+    server.use(
+      http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/current_user_is_super_admin`, () => HttpResponse.json(false)),
+      http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/current_user_organization_id`, () =>
+        HttpResponse.json("5238e88b-6198-4862-80a2-dbe15bbeabdd")),
+      http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/user_has_role_for_org`, () => HttpResponse.json(true)),
+      http.get(`${TEST_SUPABASE_URL}/auth/v1/user`, () => HttpResponse.json({ id: "therapist-1" })),
+      http.get(`${TEST_SUPABASE_URL}/rest/v1/therapists`, () => HttpResponse.json([{ id: "therapist-1" }])),
+      http.get(`${TEST_SUPABASE_URL}/rest/v1/clients`, () => HttpResponse.json([{ id: "client-1" }])),
+      http.get(`${TEST_SUPABASE_URL}/rest/v1/programs`, () =>
+        HttpResponse.json([{ id: "program-1", client_id: "client-1" }])),
+      http.get(`${TEST_SUPABASE_URL}/rest/v1/goals`, () =>
+        HttpResponse.json([{ id: "goal-1", program_id: "program-1" }])),
+    );
   });
 
   it("calls edge functions with the bearer token from the request", async () => {
@@ -141,13 +156,13 @@ describe("bookHandler integration", () => {
       1,
       "sessions-hold",
       expect.any(Object),
-      { accessToken },
+      expect.objectContaining({ accessToken }),
     );
     expect(callEdgeMock).toHaveBeenNthCalledWith(
       2,
       "sessions-confirm",
       expect.any(Object),
-      { accessToken },
+      expect.objectContaining({ accessToken }),
     );
   });
 
@@ -183,6 +198,19 @@ describe("bookHandler integration", () => {
     process.env.SUPABASE_URL = supabaseUrl;
     process.env.SUPABASE_ANON_KEY = supabaseAnonKey;
     process.env.SUPABASE_EDGE_URL = supabaseEdgeUrl;
+    server.use(
+      http.post(`${supabaseUrl}/rest/v1/rpc/current_user_is_super_admin`, () => HttpResponse.json(false)),
+      http.post(`${supabaseUrl}/rest/v1/rpc/current_user_organization_id`, () =>
+        HttpResponse.json("5238e88b-6198-4862-80a2-dbe15bbeabdd")),
+      http.post(`${supabaseUrl}/rest/v1/rpc/user_has_role_for_org`, () => HttpResponse.json(true)),
+      http.get(`${supabaseUrl}/auth/v1/user`, () => HttpResponse.json({ id: "therapist-1" })),
+      http.get(`${supabaseUrl}/rest/v1/therapists`, () => HttpResponse.json([{ id: "therapist-1" }])),
+      http.get(`${supabaseUrl}/rest/v1/clients`, () => HttpResponse.json([{ id: "client-1" }])),
+      http.get(`${supabaseUrl}/rest/v1/programs`, () =>
+        HttpResponse.json([{ id: "program-1", client_id: "client-1" }])),
+      http.get(`${supabaseUrl}/rest/v1/goals`, () =>
+        HttpResponse.json([{ id: "goal-1", program_id: "program-1" }])),
+    );
 
     const holdResponsePayload = {
       success: true,

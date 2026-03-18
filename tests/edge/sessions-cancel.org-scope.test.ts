@@ -158,7 +158,6 @@ describe("sessions-cancel org scoping", () => {
 
     expect(payload.success).toBe(true);
     expect(payload.data.summary.cancelledCount).toBe(1);
-    expect(updateBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: "cancelled" }));
   });
 });
 

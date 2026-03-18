@@ -1,7 +1,8 @@
-import { parseISO, isWithinInterval, format } from 'date-fns';
+import { parseISO, format } from 'date-fns';
 import { toZonedTime as utcToZonedTime, fromZonedTime as zonedTimeToUtc } from 'date-fns-tz';
 import type { Session, Therapist, Client } from '../types';
 import type { AvailabilityWindow } from '../types';
+import { edgeInvoke } from './edgeInvoke';
 
 export interface Conflict {
   type: 'therapist_unavailable' | 'client_unavailable' | 'session_overlap';
@@ -167,12 +168,11 @@ export async function checkSchedulingConflicts(
 
     const sessionStart = parseISO(session.start_time);
     const sessionEnd = parseISO(session.end_time);
+    const hasOverlap = startUtc.getTime() < sessionEnd.getTime() && sessionStart.getTime() < endUtc.getTime();
 
     return (
       (session.therapist_id === therapistId || session.client_id === clientId) &&
-      (isWithinInterval(startUtc, { start: sessionStart, end: sessionEnd }) ||
-        isWithinInterval(endUtc, { start: sessionStart, end: sessionEnd }) ||
-        isWithinInterval(sessionStart, { start: startUtc, end: endUtc }))
+      hasOverlap
     );
   });
 
@@ -203,7 +203,6 @@ export async function suggestAlternativeTimes(
 ): Promise<AlternativeTime[]> {
   const { excludeSessionId, timeZone = 'UTC' } = options;
   try {
-    const { edgeInvoke } = await import('./edgeInvoke');
     const { data, error, status } = await edgeInvoke<{ alternatives?: AlternativeTime[] }>('suggest-alternative-times', {
       body: {
         startTime,

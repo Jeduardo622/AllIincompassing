@@ -59,6 +59,7 @@ export function SessionModal({
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
+  const previousClientIdRef = useRef<string | null>(null);
   const activeOrganizationId = useActiveOrganizationId();
   const dialogTitleId = 'session-modal-title';
   const dialogDescriptionId = 'session-modal-description';
@@ -193,7 +194,7 @@ export function SessionModal({
     enabled: Boolean(session?.id && activeOrganizationId),
   });
 
-  const { data: programs = [] } = useQuery({
+  const { data: programs = [], isFetched: isProgramsFetched } = useQuery({
     queryKey: ['client-programs', clientId, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
       if (!clientId || !activeOrganizationId) {
@@ -213,7 +214,7 @@ export function SessionModal({
     enabled: Boolean(clientId && activeOrganizationId),
   });
 
-  const { data: goals = [] } = useQuery({
+  const { data: goals = [], isFetched: isGoalsFetched } = useQuery({
     queryKey: ['program-goals', programId, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
       if (!programId || !activeOrganizationId) {
@@ -260,6 +261,19 @@ export function SessionModal({
   }, [session?.client_id, defaultClientId, setValue]);
 
   useEffect(() => {
+    const previousClientId = previousClientIdRef.current;
+    previousClientIdRef.current = clientId;
+
+    if (!previousClientId || previousClientId === clientId) {
+      return;
+    }
+
+    setValue('program_id', '');
+    setValue('goal_id', '');
+    setValue('goal_ids', []);
+  }, [clientId, setValue]);
+
+  useEffect(() => {
     if (!sessionDetails) {
       return;
     }
@@ -284,16 +298,44 @@ export function SessionModal({
   }, [sessionGoalRows, setValue]);
 
   useEffect(() => {
-    if (!programs.length || programId) {
+    if (!isProgramsFetched) {
       return;
     }
+
+    if (!programs.length) {
+      if (programId) {
+        setValue('program_id', '');
+      }
+      if (goalId) {
+        setValue('goal_id', '');
+      }
+      if (Array.isArray(goalIds) && goalIds.length > 0) {
+        setValue('goal_ids', []);
+      }
+      return;
+    }
+    const programIds = new Set(programs.map((program) => program.id));
+    if (programId && programIds.has(programId)) {
+      return;
+    }
+
     const nextProgram = programs.find((program) => program.status === 'active') ?? programs[0];
     if (nextProgram?.id) {
       setValue('program_id', nextProgram.id);
+      if (goalId) {
+        setValue('goal_id', '');
+      }
+      if (Array.isArray(goalIds) && goalIds.length > 0) {
+        setValue('goal_ids', []);
+      }
     }
-  }, [programs, programId, setValue]);
+  }, [isProgramsFetched, programs, programId, goalId, goalIds, setValue]);
 
   useEffect(() => {
+    if (!isGoalsFetched) {
+      return;
+    }
+
     if (!goals.length) {
       return;
     }
@@ -304,7 +346,7 @@ export function SessionModal({
         setValue('goal_id', nextGoal.id);
       }
     }
-  }, [goals, goalId, setValue]);
+  }, [isGoalsFetched, goals, goalId, setValue]);
 
   useEffect(() => {
     if (!programId) {
@@ -574,7 +616,8 @@ export function SessionModal({
     setValue('end_time', toLocalInput(newEndTime));
   };
 
-  const canStartSession = Boolean(session?.id && !session?.started_at && programId && goalId);
+  const hasStartedSession = Boolean(sessionDetails?.started_at ?? session?.started_at);
+  const canStartSession = Boolean(session?.id && !hasStartedSession && programId && goalId);
 
   useEffect(() => {
     if (!isOpen) {

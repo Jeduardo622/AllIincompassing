@@ -81,11 +81,43 @@ type RateLimitState = {
 
 const requestRateState = new Map<string, RateLimitState>();
 
+function pruneRateLimitState(now: number, maxEntries = 5000): void {
+  for (const [identityKey, state] of requestRateState.entries()) {
+    if (state.resetAtMs <= now) {
+      requestRateState.delete(identityKey);
+    }
+  }
+
+  if (requestRateState.size <= maxEntries) {
+    return;
+  }
+
+  const entries = Array.from(requestRateState.entries()).sort((left, right) => left[1].resetAtMs - right[1].resetAtMs);
+  const overflow = requestRateState.size - maxEntries;
+  for (let index = 0; index < overflow; index += 1) {
+    const candidate = entries[index];
+    if (!candidate) {
+      return;
+    }
+    requestRateState.delete(candidate[0]);
+  }
+}
+
 function extractClientKey(request: Request): string {
-  const token = getAccessToken(request);
-  const tokenSubject = token ? getAccessTokenSubject(token) : null;
-  if (tokenSubject) {
-    return `sub:${tokenSubject}`;
+  // Prefer CDN/provider-managed network headers over user-controlled values.
+  const cfConnectingIp = request.headers.get("cf-connecting-ip")?.trim();
+  if (cfConnectingIp) {
+    return `ip:${cfConnectingIp}`;
+  }
+
+  const flyClientIp = request.headers.get("fly-client-ip")?.trim();
+  if (flyClientIp) {
+    return `ip:${flyClientIp}`;
+  }
+
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp) {
+    return `ip:${realIp}`;
   }
 
   const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
@@ -98,6 +130,7 @@ function extractClientKey(request: Request): string {
 
 export function consumeRateLimit(request: Request, options: RateLimitOptions): RateLimitResult {
   const now = Date.now();
+  pruneRateLimitState(now);
   const identityKey = `${options.keyPrefix}:${extractClientKey(request)}`;
   const existing = requestRateState.get(identityKey);
 

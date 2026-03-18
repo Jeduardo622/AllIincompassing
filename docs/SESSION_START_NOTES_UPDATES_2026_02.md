@@ -71,3 +71,14 @@
 
 ### Validation
 - `npm test`
+
+## 2026-03 follow-up hardening
+
+- `sessions-start` API now includes:
+  - explicit route-level rate limiting (`rate_limited`, `429`),
+  - sanitized conflict/validation messages from RPC errors,
+  - encoded Supabase REST query params and top-level network error safety (`502` on upstream failures),
+  - consistent trace headers on all response branches.
+- RPC authorization hardening migration added:
+  - `supabase/migrations/20260318110000_harden_start_session_with_goals_authz.sql`
+  - validates `auth.uid()` actor identity and role/org authorization inside `start_session_with_goals`.

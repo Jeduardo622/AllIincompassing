@@ -259,4 +259,59 @@ describe('SessionModal', () => {
 
     outsideButton.remove();
   });
+
+  it('disables start session when authoritative details already show started_at', async () => {
+    const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+      const chain: any = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'sessions') {
+        return buildChain([], {
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          started_at: '2026-01-01T10:00:00.000Z',
+        });
+      }
+      if (table === 'session_goals') {
+        return buildChain([{ goal_id: 'goal-1' }]);
+      }
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        session={{
+          id: 'session-started',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-01-01T10:00:00.000Z',
+          end_time: '2026-01-01T11:00:00.000Z',
+          status: 'scheduled',
+          started_at: null,
+        } as any}
+      />
+    );
+
+    const startButton = await screen.findByRole('button', { name: /Start Session/i });
+    await waitFor(() => {
+      expect(startButton).toBeDisabled();
+    });
+  });
 });

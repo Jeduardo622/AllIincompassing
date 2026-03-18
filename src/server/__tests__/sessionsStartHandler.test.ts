@@ -34,10 +34,14 @@ describe("sessionsStartHandler", () => {
 
   it("returns 405 for non-POST requests", async () => {
     const response = await sessionsStartHandler(
-      new Request("http://localhost/api/sessions-start", { method: "GET" }),
+      new Request("http://localhost/api/sessions-start", {
+        method: "GET",
+        headers: { "x-request-id": "req-123" },
+      }),
     );
 
     expect(response.status).toBe(405);
+    expect(response.headers.get("x-request-id")).toBe("req-123");
   });
 
   it("returns 401 when authorization header is missing", async () => {
@@ -110,6 +114,8 @@ describe("sessionsStartHandler", () => {
     );
 
     expect(response.status).toBe(409);
+    const body = await response.json() as { message: string };
+    expect(body.message).toBe("Session could not be started");
   });
 
   it("returns 403 when therapist attempts to start another therapist session", async () => {
@@ -457,5 +463,36 @@ describe("sessionsStartHandler", () => {
     );
 
     expect(response.status).toBe(200);
+  });
+
+  it("returns upstream_error when a network exception is thrown", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockRejectedValueOnce(new Error("network down"));
+
+    const response = await sessionsStartHandler(
+      new Request("http://localhost/api/sessions-start", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken("therapist-1")}` },
+        body: JSON.stringify({
+          session_id: "11111111-1111-1111-1111-111111111111",
+          program_id: "22222222-2222-2222-2222-222222222222",
+          goal_id: "33333333-3333-3333-3333-333333333333",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    const body = await response.json() as { code: string };
+    expect(body.code).toBe("upstream_error");
   });
 });

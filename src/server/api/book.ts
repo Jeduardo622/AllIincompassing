@@ -4,8 +4,12 @@ import {
   consumeRateLimit,
   corsHeadersForRequest,
   errorResponse,
+  fetchAuthenticatedUserId,
+  fetchJson,
+  getSupabaseConfig,
   isDisallowedOriginRequest,
   jsonForRequest,
+  resolveOrgAndRole,
 } from "./shared";
 import {
   bookSessionApiRequestBodySchema,
@@ -48,6 +52,69 @@ function deriveRetryAfterSeconds(retryAfter: string | null | undefined): number 
   }
   const seconds = Math.ceil((retryAtMs - Date.now()) / 1000);
   return Math.max(0, seconds);
+}
+
+async function assertBookRequestScope(
+  request: Request,
+  accessToken: string,
+  body: BookSessionApiRequestBody,
+): Promise<Response | null> {
+  const { organizationId, isTherapist, isAdmin, isSuperAdmin } = await resolveOrgAndRole(accessToken);
+  if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
+    return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
+  }
+
+  const currentUserId = await fetchAuthenticatedUserId(accessToken);
+  if (!currentUserId) {
+    return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
+  }
+
+  if (isTherapist && body.session.therapist_id !== currentUserId) {
+    return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
+  }
+
+  const { supabaseUrl, anonKey } = getSupabaseConfig();
+  const headers = {
+    "Content-Type": "application/json",
+    apikey: anonKey,
+    Authorization: `Bearer ${accessToken}`,
+  };
+  const encodedOrgId = encodeURIComponent(organizationId);
+  const encodedTherapistId = encodeURIComponent(body.session.therapist_id);
+  const encodedClientId = encodeURIComponent(body.session.client_id);
+  const encodedProgramId = encodeURIComponent(body.session.program_id);
+  const encodedGoalId = encodeURIComponent(body.session.goal_id);
+
+  const therapistUrl = `${supabaseUrl}/rest/v1/therapists?select=id&organization_id=eq.${encodedOrgId}&id=eq.${encodedTherapistId}`;
+  const clientUrl = `${supabaseUrl}/rest/v1/clients?select=id&organization_id=eq.${encodedOrgId}&id=eq.${encodedClientId}`;
+  const programUrl = `${supabaseUrl}/rest/v1/programs?select=id,client_id&organization_id=eq.${encodedOrgId}&id=eq.${encodedProgramId}`;
+  const goalUrl = `${supabaseUrl}/rest/v1/goals?select=id,program_id&organization_id=eq.${encodedOrgId}&id=eq.${encodedGoalId}`;
+
+  const [therapistResult, clientResult, programResult, goalResult] = await Promise.all([
+    fetchJson<Array<{ id: string }>>(therapistUrl, { method: "GET", headers }),
+    fetchJson<Array<{ id: string }>>(clientUrl, { method: "GET", headers }),
+    fetchJson<Array<{ id: string; client_id: string }>>(programUrl, { method: "GET", headers }),
+    fetchJson<Array<{ id: string; program_id: string }>>(goalUrl, { method: "GET", headers }),
+  ]);
+
+  if (!therapistResult.ok || !clientResult.ok || !programResult.ok || !goalResult.ok) {
+    return errorResponse(request, "upstream_error", "Unable to verify booking entities", { status: 502 });
+  }
+
+  const therapistExists = therapistResult.ok && Array.isArray(therapistResult.data) && therapistResult.data.length > 0;
+  const clientExists = clientResult.ok && Array.isArray(clientResult.data) && clientResult.data.length > 0;
+  const program = Array.isArray(programResult.data) ? programResult.data[0] : null;
+  const goal = Array.isArray(goalResult.data) ? goalResult.data[0] : null;
+
+  if (!therapistExists || !clientExists || !program || !goal) {
+    return errorResponse(request, "not_found", "Booking entities not found", { status: 404 });
+  }
+
+  if (program.client_id !== body.session.client_id || goal.program_id !== body.session.program_id) {
+    return errorResponse(request, "validation_error", "Invalid booking relationships", { status: 400 });
+  }
+
+  return null;
 }
 
 export async function bookHandler(request: Request): Promise<Response> {
@@ -113,6 +180,10 @@ export async function bookHandler(request: Request): Promise<Response> {
   }
 
   const body: BookSessionApiRequestBody = parseResult.data;
+  const scopeErrorResponse = await assertBookRequestScope(request, accessToken, body);
+  if (scopeErrorResponse) {
+    return scopeErrorResponse;
+  }
 
   try {
     const idempotencyKey = request.headers.get("Idempotency-Key") ?? undefined;
@@ -140,7 +211,6 @@ export async function bookHandler(request: Request): Promise<Response> {
       ? (error as { retryAfterSeconds: number }).retryAfterSeconds
       : null;
     const retryAfterSeconds = explicitRetryAfterSeconds ?? deriveRetryAfterSeconds(retryAfter);
-    const orchestration = (error as { orchestration?: unknown })?.orchestration;
     const normalizedError = toError(error, "Booking failed");
     logger.error("Session booking failed", {
       error: normalizedError,
@@ -164,28 +234,45 @@ export async function bookHandler(request: Request): Promise<Response> {
           hint,
           retryAfter,
           retryAfterSeconds,
-          orchestration: typeof orchestration === "object" && orchestration !== null
-            ? orchestration as Record<string, unknown>
-            : null,
         },
         status,
         headers,
       );
     }
 
+    if (status === 429) {
+      const headers = retryAfterSeconds !== null ? { "Retry-After": String(retryAfterSeconds) } : {};
+      return errorResponse(
+        request,
+        "rate_limited",
+        "Booking request was rate limited",
+        {
+          status: 429,
+          headers,
+          extra: {
+            retryAfterSeconds,
+          },
+        },
+      );
+    }
+
     const isUnauthorized = status === 401;
+    const isForbidden = status === 403;
+    const isUpstreamFailure = status >= 500;
     return errorResponse(
       request,
-      isUnauthorized ? "unauthorized" : status === 403 ? "forbidden" : status === 409 ? "conflict" : "internal_error",
+      isUnauthorized
+        ? "unauthorized"
+        : isForbidden
+          ? "forbidden"
+          : isUpstreamFailure
+            ? "upstream_error"
+            : "internal_error",
       "Booking failed",
       {
         status,
         extra: {
           conflictCode: conflictCode ?? null,
-          upstream: "sessions-hold/sessions-confirm",
-          upstreamMessage: normalizedError.message,
-          inputProgramId: (body?.session as Record<string, unknown> | undefined)?.program_id ?? null,
-          inputGoalId: (body?.session as Record<string, unknown> | undefined)?.goal_id ?? null,
           ...(isUnauthorized
             ? {
                 hint:

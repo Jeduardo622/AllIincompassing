@@ -41,9 +41,9 @@ const makeSession = (id: string, start: string): Session =>
 describe("schedule-utils performance helpers", () => {
   it("indexes sessions by day+time slot key", () => {
     const sessions = [
-      makeSession("s1", "2026-03-12T09:00:00.000Z"),
-      makeSession("s2", "2026-03-12T09:00:00.000Z"),
-      makeSession("s3", "2026-03-12T10:15:00.000Z"),
+      makeSession("s1", "2026-03-12T09:00"),
+      makeSession("s2", "2026-03-12T09:00"),
+      makeSession("s3", "2026-03-12T10:15"),
     ];
 
     const index = buildSessionSlotIndex(sessions);
@@ -52,6 +52,19 @@ describe("schedule-utils performance helpers", () => {
 
     expect(slot.map((session) => session.id)).toEqual(["s1", "s2"]);
     expect(otherSlot.map((session) => session.id)).toEqual(["s3"]);
+  });
+
+  it("indexes timezone-aware timestamps using local runtime slots", () => {
+    const zonedStart = "2026-03-12T09:00:00.000Z";
+    const index = buildSessionSlotIndex([makeSession("z1", zonedStart)]);
+    const local = new Date(zonedStart);
+    const month = String(local.getMonth() + 1).padStart(2, "0");
+    const day = String(local.getDate()).padStart(2, "0");
+    const hour = String(local.getHours()).padStart(2, "0");
+    const minute = String(local.getMinutes()).padStart(2, "0");
+    const expectedKey = createSessionSlotKey(`${local.getFullYear()}-${month}-${day}`, `${hour}:${minute}`);
+
+    expect((index.get(expectedKey) ?? []).map((session) => session.id)).toEqual(["z1"]);
   });
 
   it("runs async jobs with bounded concurrency", async () => {

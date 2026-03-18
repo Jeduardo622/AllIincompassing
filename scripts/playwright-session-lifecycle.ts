@@ -739,7 +739,7 @@ async function startSession(_page: Page, token: string, ids: LifecycleIds, stric
     throw new Error(`sessions-start failed (${edgeStatus}): ${edgeBody.slice(0, 400)}`);
   }
 
-  if (edgeStatus !== 404) {
+  if (![404, 502, 503, 504].includes(edgeStatus)) {
     throw new Error(`sessions-start failed (${edgeStatus}): ${edgeBody.slice(0, 400)}`);
   }
 

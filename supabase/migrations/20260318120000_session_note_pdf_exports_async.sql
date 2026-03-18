@@ -1,3 +1,7 @@
+-- @migration-intent: Add async session-notes PDF export job state, storage bucket controls, and org-scoped access policies for deterministic export lifecycle handling.
+-- @migration-dependencies: 20251203123000_client_session_notes.sql,20260313123000_profiles_org_immutability_guard.sql
+-- @migration-rollback: Drop session_note_pdf_exports table/policies/indexes, remove session-note-exports storage policies, and remove the session-note-exports bucket if rollback is required.
+
 begin;
 
 set local search_path = public;

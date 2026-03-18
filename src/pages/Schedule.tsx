@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useLayoutEffect, useEffect } from "react";
+import React, { useState, useMemo, useCallback, useLayoutEffect, useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, startOfWeek, addDays, endOfWeek } from "date-fns";
 import { getTimezoneOffset } from "date-fns-tz";
@@ -81,14 +81,22 @@ const TimeSlot = React.memo(
         className="h-10 border-b dark:border-gray-700 border-r dark:border-gray-700 p-2 relative group cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
         role="button"
         tabIndex={0}
+        aria-label="Add session"
+        title="Add session"
         onClick={handleTimeSlotClick}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') handleTimeSlotClick(e as unknown as React.MouseEvent);
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleTimeSlotClick();
+          }
         }}
       >
-        <button aria-label="Add session" title="Add session" className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-opacity">
+        <span
+          aria-hidden="true"
+          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 rounded-full text-gray-500 dark:text-gray-400 transition-opacity"
+        >
           <Plus className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-        </button>
+        </span>
 
         {slotSessions.map((session) => (
           <div
@@ -98,7 +106,10 @@ const TimeSlot = React.memo(
             tabIndex={0}
             onClick={(e) => handleSessionClick(e, session)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') handleSessionClick(e as unknown as React.MouseEvent, session);
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onEditSession(session);
+              }
             }}
           >
             <div className="font-medium truncate">
@@ -112,18 +123,12 @@ const TimeSlot = React.memo(
               {format(parseISO(session.start_time), "h:mm a")}
             </div>
 
-            <div className="absolute top-1 right-1 opacity-0 group-hover/session:opacity-100 flex space-x-1">
-              <button
-                className="p-1 rounded hover:bg-blue-300 dark:hover:bg-blue-800"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEditSession(session);
-                }}
-                aria-label="Edit session" title="Edit session"
-              >
-                <Edit2 className="w-3 h-3" />
-              </button>
-            </div>
+            <span
+              aria-hidden="true"
+              className="absolute top-1 right-1 opacity-0 group-hover/session:opacity-100"
+            >
+              <Edit2 className="w-3 h-3" />
+            </span>
           </div>
         ))}
       </div>
@@ -497,6 +502,7 @@ export const Schedule = React.memo(() => {
   const [pendingAgentOperationId, setPendingAgentOperationId] = useState<string | null>(null);
   const [pendingTraceRequestId, setPendingTraceRequestId] = useState<string | null>(null);
   const [pendingTraceCorrelationId, setPendingTraceCorrelationId] = useState<string | null>(null);
+  const lastPendingScheduleKeyRef = useRef<string | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -605,99 +611,74 @@ export const Schedule = React.memo(() => {
     [userTimeZone],
   );
 
-  useLayoutEffect(() => {
-    const pending = localStorage.getItem("pendingSchedule");
-    if (pending) {
-      let detail: PendingScheduleDetail | null = null;
-      try {
-        detail = toPendingScheduleDetail(JSON.parse(pending));
-      } catch {
-        // ignore malformed data
-      } finally {
-        localStorage.removeItem("pendingSchedule");
-      }
-
-      if (detail) {
-        setPendingAgentIdempotencyKey(detail.idempotency_key ?? null);
-        setPendingAgentOperationId(detail.agent_operation_id ?? null);
-        setPendingTraceRequestId(detail.trace_request_id ?? null);
-        setPendingTraceCorrelationId(detail.trace_correlation_id ?? null);
-        // Defer modal open very slightly to avoid conflicting with initial filter queries in tests
-        setTimeout(() => {
-          try {
-            if (detail?.start_time) {
-              const date = parseISO(detail.start_time);
-              setSelectedDate(date);
-              setSelectedTimeSlot({ date, time: format(date, "HH:mm") });
-            }
-            setSelectedSession(undefined);
-            setIsModalOpen(true);
-          } catch {
-            // ignore
-          }
-        }, 300);
-      }
+  const openFromPendingSchedule = useCallback((detail: PendingScheduleDetail | null) => {
+    if (!detail) {
+      return;
     }
 
-    // Poll briefly after mount to catch pendingSchedule written shortly after (e.g., by gated capture)
-    let openedFromPoll = false;
-    const pollId = window.setInterval(() => {
-      if (openedFromPoll) return;
-      const next = localStorage.getItem('pendingSchedule');
-      if (next) {
-        localStorage.removeItem('pendingSchedule');
-        openedFromPoll = true;
-        setTimeout(() => {
-          try {
-            const parsed = toPendingScheduleDetail(JSON.parse(next));
-            setPendingAgentIdempotencyKey(parsed?.idempotency_key ?? null);
-            setPendingAgentOperationId(parsed?.agent_operation_id ?? null);
-            setPendingTraceRequestId(parsed?.trace_request_id ?? null);
-            setPendingTraceCorrelationId(parsed?.trace_correlation_id ?? null);
-            if (parsed?.start_time) {
-              const dt = parseISO(parsed.start_time);
-              setSelectedDate(dt);
-              setSelectedTimeSlot({ date: dt, time: format(dt, 'HH:mm') });
-            }
-            setSelectedSession(undefined);
-            setIsModalOpen(true);
-          } catch {
-            // ignore
-          }
-        }, 300);
-      }
-    }, 100);
-    const stopPoll = () => window.clearInterval(pollId);
-    const stopTimer = window.setTimeout(stopPoll, 6500);
+    const detailKey = JSON.stringify({
+      start_time: detail.start_time ?? null,
+      idempotency_key: detail.idempotency_key ?? null,
+      agent_operation_id: detail.agent_operation_id ?? null,
+      trace_request_id: detail.trace_request_id ?? null,
+      trace_correlation_id: detail.trace_correlation_id ?? null,
+    });
+    if (lastPendingScheduleKeyRef.current === detailKey) {
+      return;
+    }
+    lastPendingScheduleKeyRef.current = detailKey;
 
-    const handler = (e: Event) => {
-      const detail = toPendingScheduleDetail((e as CustomEvent).detail);
-      setPendingAgentIdempotencyKey(detail?.idempotency_key ?? null);
-      setPendingAgentOperationId(detail?.agent_operation_id ?? null);
-      setPendingTraceRequestId(detail?.trace_request_id ?? null);
-      setPendingTraceCorrelationId(detail?.trace_correlation_id ?? null);
-      if (detail?.start_time) {
-        const date = parseISO(detail.start_time);
+    setPendingAgentIdempotencyKey(detail.idempotency_key ?? null);
+    setPendingAgentOperationId(detail.agent_operation_id ?? null);
+    setPendingTraceRequestId(detail.trace_request_id ?? null);
+    setPendingTraceCorrelationId(detail.trace_correlation_id ?? null);
+
+    if (detail.start_time) {
+      const date = parseISO(detail.start_time);
+      if (!Number.isNaN(date.getTime())) {
         setSelectedDate(date);
         setSelectedTimeSlot({ date, time: format(date, "HH:mm") });
       }
-      setSelectedSession(undefined);
-      setIsModalOpen(true);
+    }
+
+    setSelectedSession(undefined);
+    setRetryHint(null);
+    setIsModalOpen(true);
+  }, []);
+
+  const consumePendingSchedule = useCallback(() => {
+    const pending = localStorage.getItem("pendingSchedule");
+    if (!pending) {
+      return;
+    }
+
+    let detail: PendingScheduleDetail | null = null;
+    try {
+      detail = toPendingScheduleDetail(JSON.parse(pending));
+    } catch {
+      detail = null;
+    } finally {
+      localStorage.removeItem("pendingSchedule");
+    }
+
+    openFromPendingSchedule(detail);
+  }, [openFromPendingSchedule]);
+
+  useLayoutEffect(() => {
+    consumePendingSchedule();
+
+    const handler = (e: Event) => {
+      const detail = toPendingScheduleDetail((e as CustomEvent).detail);
+      openFromPendingSchedule(detail);
     };
-    // Attach in both capture and bubble phases to avoid interference from other listeners
-    document.addEventListener("openScheduleModal", handler as EventListener, true);
-    window.addEventListener("openScheduleModal", handler as EventListener, true);
+
     document.addEventListener("openScheduleModal", handler as EventListener);
     window.addEventListener("openScheduleModal", handler as EventListener);
     return () => {
-      stopPoll();
-      window.clearTimeout(stopTimer);
-      document.removeEventListener("openScheduleModal", handler as EventListener, true);
-      window.removeEventListener("openScheduleModal", handler as EventListener, true);
       document.removeEventListener("openScheduleModal", handler as EventListener);
       window.removeEventListener("openScheduleModal", handler as EventListener);
     };
-  }, []);
+  }, [consumePendingSchedule, openFromPendingSchedule]);
 
   // Memoized date calculations
   const weekStart = useMemo(
@@ -1175,7 +1156,8 @@ export const Schedule = React.memo(() => {
     return `${format(weekStart, "MMM d")} - ${format(addDays(weekStart, 5), "MMM d, yyyy")}`;
   }, [weekStart, selectedDate, view]);
 
-  const isLoading = isLoadingBatch || isLoadingSessions || isLoadingDropdowns;
+  const hasBatchedData = Boolean(batchedData);
+  const isLoading = isLoadingBatch || (!hasBatchedData && (isLoadingSessions || isLoadingDropdowns));
 
   if (isLoading) {
     const fallbackDisplay = {

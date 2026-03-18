@@ -196,5 +196,53 @@ Completed validation run for Cypress + Playwright stabilization:
 Notes and caveats:
 
 - Playwright flows run against a remote runtime (`PW_BASE_URL`, default `https://app.allincompassing.ai`), so data shape and latency are environment-dependent.
-- `playwright:schedule-conflict` now fails fast on readiness and selector issues; if no eligible therapist/client/program/goal combination exists, it exits successfully with a skip warning rather than hanging.
+- `playwright:schedule-conflict` now fails fast on readiness and selector issues and requires a real observed `POST /api/book` response for the submit path.
 - `playwright:session-lifecycle` can still log a non-fatal warning when `generate-session-notes-pdf` is unavailable or times out in the target environment; lifecycle validation remains green when core book/start/note/cancel steps succeed.
+
+## Prod-like conflict workflow (2026-03-18)
+
+Use this runbook when validating conflict submit behavior against staging or prod-like environments with deterministic fixture data.
+
+Required environment variables:
+
+- `PW_BASE_URL` (target environment base URL)
+- `VITE_SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `PW_SCHEDULE_EMAIL` / `PW_SCHEDULE_PASSWORD` (or admin equivalents)
+- `PW_CONFLICT_THERAPIST_ID`
+- `PW_CONFLICT_CLIENT_ID`
+
+Optional deterministic overrides:
+
+- `PW_CONFLICT_PROGRAM_ID`
+- `PW_CONFLICT_GOAL_ID`
+
+### 1) Prepare deterministic fixtures
+
+```bash
+npm run playwright:schedule-fixtures:setup
+```
+
+This command writes `artifacts/latest/playwright-conflict-fixture.json` and ensures there is at least one active program and goal for the target client.
+
+### 2) Validate real conflict submit path
+
+```bash
+PW_CONFLICT_MODE=real npm run playwright:schedule-conflict
+```
+
+Expected result:
+
+- The script must observe an actual `POST /api/book` response.
+- In `real` mode, the expected status is `409` (conflict).
+- The form state (therapist/client/program/goal/time) remains populated after the conflict response.
+
+The script writes an artifact under `artifacts/latest/playwright-schedule-conflict-*.json`.
+
+### 3) Cleanup deterministic fixtures
+
+```bash
+npm run playwright:schedule-fixtures:cleanup
+```
+
+Cleanup deactivates fixture-created program/goal records and removes the local fixture state file.

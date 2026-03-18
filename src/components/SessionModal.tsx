@@ -60,6 +60,7 @@ export function SessionModal({
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
   const previousClientIdRef = useRef<string | null>(null);
+  const conflictCheckRequestIdRef = useRef(0);
   const activeOrganizationId = useActiveOrganizationId();
   const dialogTitleId = 'session-modal-title';
   const dialogDescriptionId = 'session-modal-description';
@@ -194,7 +195,7 @@ export function SessionModal({
     enabled: Boolean(session?.id && activeOrganizationId),
   });
 
-  const { data: programs = [], isFetched: isProgramsFetched } = useQuery({
+  const { data: programs = [], isFetched: isProgramsFetched, isFetching: isProgramsFetching } = useQuery({
     queryKey: ['client-programs', clientId, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
       if (!clientId || !activeOrganizationId) {
@@ -214,7 +215,7 @@ export function SessionModal({
     enabled: Boolean(clientId && activeOrganizationId),
   });
 
-  const { data: goals = [], isFetched: isGoalsFetched } = useQuery({
+  const { data: goals = [], isFetched: isGoalsFetched, isFetching: isGoalsFetching } = useQuery({
     queryKey: ['program-goals', programId, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
       if (!programId || !activeOrganizationId) {
@@ -422,92 +423,129 @@ export function SessionModal({
   }, [startTime, therapistId, clientId, resolvedTimeZone, setValue]);
 
   useEffect(() => {
+    const requestId = conflictCheckRequestIdRef.current + 1;
+    conflictCheckRequestIdRef.current = requestId;
+    let cancelled = false;
+
+    const shouldAbort = (): boolean =>
+      cancelled || conflictCheckRequestIdRef.current !== requestId;
+
     const checkConflicts = async () => {
-      if (startTime && endTime && therapistId && clientId) {
-        const therapist = therapists.find(t => t.id === therapistId);
-        const client = clients.find(c => c.id === clientId);
+      if (!startTime || !endTime || !therapistId || !clientId) {
+        if (!shouldAbort()) {
+          setConflicts([]);
+          setAlternativeTimes([]);
+          setIsLoadingAlternatives(false);
+        }
+        return;
+      }
 
-        if (therapist && client) {
-          const startUtcIso = toUtcIsoString(startTime);
-          const endUtcIso = toUtcIsoString(endTime);
-          let newConflicts = await checkSchedulingConflicts(
-            startUtcIso,
-            endUtcIso,
-            therapistId,
-            clientId,
-            existingSessions,
-            therapist,
-            client,
-            {
-              excludeSessionId: session?.id,
-              timeZone: resolvedTimeZone,
-            }
-          );
+      const therapist = therapists.find((t) => t.id === therapistId);
+      const client = clients.find((c) => c.id === clientId);
+      if (!therapist || !client) {
+        if (!shouldAbort()) {
+          setConflicts([]);
+          setAlternativeTimes([]);
+          setIsLoadingAlternatives(false);
+        }
+        return;
+      }
 
-          // Fallback: if no conflicts detected, perform a raw time match to catch equal-slot overlaps
-          if (newConflicts.length === 0) {
-            try {
-              const localStart = startTime; // 'yyyy-MM-ddTHH:mm'
-              const localDate = localStart?.slice(0, 10);
-              const localHHmm = localStart?.slice(11, 16);
-              const overlapping = existingSessions.find((s) => {
-                if (s.therapist_id !== therapistId && s.client_id !== clientId) return false;
-                const startIso = s.start_time ?? '';
-                const rawDate = typeof startIso === 'string' && startIso.length >= 10 ? startIso.slice(0, 10) : '';
-                const rawHHmm = typeof startIso === 'string' && startIso.length >= 16 ? startIso.slice(11, 16) : '';
-                return rawDate === localDate && rawHHmm === localHHmm;
-              });
-              if (overlapping) {
-                const overlapStart = parseISO(overlapping.start_time);
-                const overlapEnd = parseISO(overlapping.end_time);
-                newConflicts = [{
-                  type: 'session_overlap',
-                  message: `Overlaps with existing session from ${format(overlapStart, 'h:mm a')} to ${format(overlapEnd, 'h:mm a')}`,
-                }];
-              }
-            } catch {
-              // ignore fallback parsing errors
-            }
+      const startUtcIso = toUtcIsoString(startTime);
+      const endUtcIso = toUtcIsoString(endTime);
+      let newConflicts = await checkSchedulingConflicts(
+        startUtcIso,
+        endUtcIso,
+        therapistId,
+        clientId,
+        existingSessions,
+        therapist,
+        client,
+        {
+          excludeSessionId: session?.id,
+          timeZone: resolvedTimeZone,
+        }
+      );
+      if (shouldAbort()) {
+        return;
+      }
+
+      // Fallback: if no conflicts detected, perform a raw time match to catch equal-slot overlaps
+      if (newConflicts.length === 0) {
+        try {
+          const localStart = startTime; // 'yyyy-MM-ddTHH:mm'
+          const localDate = localStart?.slice(0, 10);
+          const localHHmm = localStart?.slice(11, 16);
+          const overlapping = existingSessions.find((s) => {
+            if (s.therapist_id !== therapistId && s.client_id !== clientId) return false;
+            const startIso = s.start_time ?? '';
+            const rawDate = typeof startIso === 'string' && startIso.length >= 10 ? startIso.slice(0, 10) : '';
+            const rawHHmm = typeof startIso === 'string' && startIso.length >= 16 ? startIso.slice(11, 16) : '';
+            return rawDate === localDate && rawHHmm === localHHmm;
+          });
+          if (overlapping) {
+            const overlapStart = parseISO(overlapping.start_time);
+            const overlapEnd = parseISO(overlapping.end_time);
+            newConflicts = [{
+              type: 'session_overlap',
+              message: `Overlaps with existing session from ${format(overlapStart, 'h:mm a')} to ${format(overlapEnd, 'h:mm a')}`,
+            }];
           }
+        } catch {
+          // ignore fallback parsing errors
+        }
+      }
 
-          setConflicts(newConflicts);
+      if (shouldAbort()) {
+        return;
+      }
+      setConflicts(newConflicts);
 
-          // If conflicts exist, suggest alternative times
-          if (newConflicts.length > 0) {
-            setIsLoadingAlternatives(true);
-            try {
-              const alternatives = await suggestAlternativeTimes(
-                startUtcIso,
-                endUtcIso,
-                therapistId,
-                clientId,
-                existingSessions,
-                therapist,
-                client,
-                newConflicts,
-                {
-                  excludeSessionId: session?.id,
-                  timeZone: resolvedTimeZone,
-                }
-              );
-              setAlternativeTimes(alternatives);
-            } catch (error) {
-              logger.error('Failed to suggest alternative times', {
-                error,
-                context: { component: 'SessionModal', operation: 'suggestAlternativeTimes' }
-              });
-              setAlternativeTimes([]);
-            } finally {
-              setIsLoadingAlternatives(false);
-            }
-          } else {
-            setAlternativeTimes([]);
+      if (newConflicts.length === 0) {
+        setAlternativeTimes([]);
+        setIsLoadingAlternatives(false);
+        return;
+      }
+
+      setIsLoadingAlternatives(true);
+      try {
+        const alternatives = await suggestAlternativeTimes(
+          startUtcIso,
+          endUtcIso,
+          therapistId,
+          clientId,
+          existingSessions,
+          therapist,
+          client,
+          newConflicts,
+          {
+            excludeSessionId: session?.id,
+            timeZone: resolvedTimeZone,
           }
+        );
+        if (!shouldAbort()) {
+          setAlternativeTimes(alternatives);
+        }
+      } catch (error) {
+        logger.error('Failed to suggest alternative times', {
+          error,
+          context: { component: 'SessionModal', operation: 'suggestAlternativeTimes' }
+        });
+        if (!shouldAbort()) {
+          setAlternativeTimes([]);
+        }
+      } finally {
+        if (!shouldAbort()) {
+          setIsLoadingAlternatives(false);
         }
       }
     };
-    
+
     checkConflicts();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     startTime,
     endTime,
@@ -617,6 +655,7 @@ export function SessionModal({
   };
 
   const hasStartedSession = Boolean(sessionDetails?.started_at ?? session?.started_at);
+  const isDependentDataLoading = (Boolean(clientId) && isProgramsFetching) || (Boolean(programId) && isGoalsFetching);
   const canStartSession = Boolean(session?.id && !hasStartedSession && programId && goalId);
 
   useEffect(() => {
@@ -1059,7 +1098,7 @@ export function SessionModal({
               <button
                 type="button"
                 onClick={handleStartSession}
-                disabled={!canStartSession}
+                disabled={!canStartSession || isDependentDataLoading}
                 className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-emerald-600 border border-transparent rounded-md shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Start Session
@@ -1068,7 +1107,7 @@ export function SessionModal({
             <button
               type="submit"
               form="session-form"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isDependentDataLoading || isLoadingAlternatives}
               className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             >
               {isSubmitting ? (

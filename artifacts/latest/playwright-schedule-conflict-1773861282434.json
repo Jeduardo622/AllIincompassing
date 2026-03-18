@@ -1,0 +1,14 @@
+{
+  "executedAt": "2026-03-18T19:14:42.434Z",
+  "mode": "real",
+  "baseUrl": "https://app.allincompassing.ai",
+  "authenticatedEmail": "ttran@westcoastaba.org",
+  "targets": {
+    "therapistId": "8adc89be-a271-4248-aaa4-06ba6f6b5e00",
+    "clientId": "5424758a-59f8-4bee-a2fa-1e61897e258c",
+    "programId": "0ec4ee88-7139-4850-b0b9-346b20f14eec",
+    "goalId": "55b7e6e3-1309-4f67-8b1b-89859307d598"
+  },
+  "conflictSessionId": "342f0a27-e693-4001-93d4-8837d426f94e",
+  "observedBookStatus": 409
+}

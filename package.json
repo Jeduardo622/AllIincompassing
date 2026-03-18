@@ -18,6 +18,8 @@
     "test:e2e": "cypress run",
     "test:e2e:open": "cypress open",
     "playwright:auth": "tsx scripts/playwright-auth-smoke.ts",
+    "playwright:schedule-fixtures:setup": "tsx scripts/playwright-scheduling-fixtures.ts --action=setup",
+    "playwright:schedule-fixtures:cleanup": "tsx scripts/playwright-scheduling-fixtures.ts --action=cleanup",
     "playwright:schedule-conflict": "tsx scripts/playwright-schedule-conflict.ts",
     "playwright:therapist-onboarding": "tsx scripts/playwright-therapist-onboarding.ts",
     "playwright:therapist-authorization": "tsx scripts/playwright-therapist-authorization.ts",

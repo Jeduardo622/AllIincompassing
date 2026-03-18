@@ -97,15 +97,12 @@ export function AlternativeTimes({
                   </div>
                 </div>
                 
-                <button
-                  className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-full"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSelectTime(alt.startTime, alt.endTime);
-                  }}
+                <span
+                  aria-hidden="true"
+                  className="p-2 text-blue-600 dark:text-blue-400"
                 >
                   <CheckCircle className="w-5 h-5" />
-                </button>
+                </span>
               </div>
             </div>
             

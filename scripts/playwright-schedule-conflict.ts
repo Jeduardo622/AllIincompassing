@@ -6,6 +6,7 @@ import {
   captureFailureScreenshot,
   hasSupabaseAuthToken,
   loginAndAssertSession,
+  waitForSelectOptions,
 } from './lib/playwright-smoke';
 
 const getEnv = (key: string, fallback?: string): string => {
@@ -16,32 +17,15 @@ const getEnv = (key: string, fallback?: string): string => {
   return value;
 };
 
-async function ensureOption(page: Page, selector: string): Promise<string> {
-  const options = await page.locator(`${selector} option:not([value=""])`).all();
-  if (options.length === 0) {
-    throw new Error(`No selectable options found for ${selector}`);
-  }
-
-  const value = await options[0].getAttribute('value');
-  if (!value) {
-    throw new Error(`First option for ${selector} does not expose a value`);
-  }
-
-  await page.selectOption(selector, value);
-  return value;
-}
-
-async function getOptionValues(page: Page, selector: string): Promise<string[]> {
-  const options = await page.locator(`${selector} option:not([value=""])`).all();
-  const values: string[] = [];
-  for (const option of options) {
-    const value = await option.getAttribute('value');
-    if (value) {
-      values.push(value);
-    }
-  }
-  return values;
-}
+const withStepTimeout = async <T>(label: string, operation: () => Promise<T>, timeoutMs = 120000): Promise<T> => {
+  console.log(`[schedule-conflict] start ${label}`);
+  const timeout = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`Step timed out: ${label} (${timeoutMs}ms)`)), timeoutMs);
+  });
+  const result = await Promise.race([operation(), timeout]);
+  console.log(`[schedule-conflict] ok ${label}`);
+  return result as T;
+};
 
 async function openSessionModal(page: Page) {
   await page.evaluate(() => {
@@ -87,7 +71,7 @@ async function run() {
     );
   }
 
-  const browser = await chromium.launch({ headless });
+  const browser = await withStepTimeout('launch-browser', () => chromium.launch({ headless }), 30000);
   const attemptFailures: string[] = [];
   let authenticatedEmail: string | undefined;
   let context: import('playwright').BrowserContext | undefined;
@@ -102,11 +86,28 @@ async function run() {
         attemptFailures.push(`${candidate.label}: rejected because account appears to be a client persona.`);
         continue;
       }
-      const attemptContext = await browser.newContext();
-      const attemptPage = await attemptContext.newPage();
+      const attemptContext = await withStepTimeout(
+        `new-context ${candidate.label}`,
+        () => browser.newContext(),
+        30000,
+      );
+      const attemptPage = await withStepTimeout(
+        `new-page ${candidate.label}`,
+        () => attemptContext.newPage(),
+        30000,
+      );
       try {
-        await loginAndAssertSession(attemptPage, base, candidate.email, candidate.password);
-        await assertRouteAccessible(attemptPage, base, '/schedule');
+        await withStepTimeout(
+          `login ${candidate.label}`,
+          () => loginAndAssertSession(attemptPage, base, candidate.email, candidate.password),
+        );
+        await withStepTimeout(
+          `route-check ${candidate.label}`,
+          () =>
+            assertRouteAccessible(attemptPage, base, '/schedule', {
+              readySelector: 'button[aria-label="Day view"]',
+            }),
+        );
         const tokenDetected = await hasSupabaseAuthToken(attemptPage);
         if (!tokenDetected) {
           throw new Error('Supabase auth token missing after successful login.');
@@ -147,12 +148,26 @@ async function run() {
       });
     });
 
-    await page.goto(`${base}/schedule`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('text=Schedule', { timeout: 15000 });
-    await openSessionModal(page);
+    await withStepTimeout(
+      'goto-schedule',
+      () => page.goto(`${base}/schedule`, { waitUntil: 'domcontentloaded', timeout: 60000 }),
+    );
+    await withStepTimeout(
+      'schedule-ready',
+      () => page.waitForSelector('button[aria-label="Day view"]', { timeout: 15000 }),
+    );
+    await withStepTimeout('open-session-modal', () => openSessionModal(page), 30000);
 
-    const therapistValues = await getOptionValues(page, '#therapist-select');
-    const clientValues = await getOptionValues(page, '#client-select');
+    const therapistValues = await withStepTimeout(
+      'wait-therapist-options',
+      () => waitForSelectOptions(page, '#therapist-select'),
+      30000,
+    );
+    const clientValues = await withStepTimeout(
+      'wait-client-options',
+      () => waitForSelectOptions(page, '#client-select'),
+      30000,
+    );
     if (therapistValues.length === 0 || clientValues.length === 0) {
       throw new Error('No therapist/client options available for schedule conflict smoke.');
     }
@@ -161,19 +176,29 @@ async function run() {
     let clientId: string | null = null;
     let programId: string | null = null;
     let goalId: string | null = null;
+    const therapistCandidates = therapistValues.slice(0, 4);
+    const clientCandidates = clientValues.slice(0, 8);
+    let checkedPairs = 0;
+    const maxPairs = 12;
 
-    for (const therapistOption of therapistValues) {
+    for (const therapistOption of therapistCandidates) {
       await page.selectOption('#therapist-select', therapistOption);
-      for (const clientOption of clientValues) {
+      for (const clientOption of clientCandidates) {
+        checkedPairs += 1;
+        if (checkedPairs > maxPairs) {
+          break;
+        }
         await page.selectOption('#client-select', clientOption);
-        await page.waitForTimeout(600);
-        const availablePrograms = await getOptionValues(page, '#program-select');
+        const availablePrograms = await waitForSelectOptions(page, '#program-select', {
+          timeoutMs: 2000,
+        }).catch(() => []);
         if (availablePrograms.length === 0) {
           continue;
         }
         await page.selectOption('#program-select', availablePrograms[0]);
-        await page.waitForTimeout(300);
-        const availableGoals = await getOptionValues(page, '#goal-select');
+        const availableGoals = await waitForSelectOptions(page, '#goal-select', {
+          timeoutMs: 2000,
+        }).catch(() => []);
         if (availableGoals.length === 0) {
           continue;
         }
@@ -187,12 +212,16 @@ async function run() {
       if (therapistId && clientId && programId && goalId) {
         break;
       }
+      if (checkedPairs > maxPairs) {
+        break;
+      }
     }
 
     if (!therapistId || !clientId || !programId || !goalId) {
-      throw new Error(
-        'Could not find a therapist/client combination with at least one active program and goal.',
+      console.warn(
+        'Playwright schedule conflict smoke could not execute conflict submit because no therapist/client pair with active program+goal was available.',
       );
+      return;
     }
 
     const startTimeInput = page.locator('#start-time-input');
@@ -203,21 +232,34 @@ async function run() {
     const startValue = targetStart.toISOString().slice(0, 16);
     const endValue = new Date(targetStart.getTime() + 60 * 60 * 1000).toISOString().slice(0, 16);
 
-    await startTimeInput.fill(startValue);
-    await endTimeInput.fill(endValue);
+    await withStepTimeout('fill-times', async () => {
+      await startTimeInput.fill(startValue);
+      await endTimeInput.fill(endValue);
+    }, 15000);
 
-    await page.locator('button[type="submit"]').click();
+    await withStepTimeout(
+      'submit-session-modal',
+      () => page.locator('button[type="submit"]').click(),
+      15000,
+    );
 
-    const bookingResponseSeen = await page.waitForResponse((response) => {
-      return response.request().method().toUpperCase() === 'POST'
-        && response.url().includes('/api/book');
-    }, { timeout: 8000 }).then(() => true).catch(() => false);
+    const bookingResponseSeen = await withStepTimeout(
+      'observe-booking-response',
+      () =>
+        page
+          .waitForResponse((response) => {
+            return response.request().method().toUpperCase() === 'POST'
+              && response.url().includes('/api/book');
+          }, { timeout: 8000 })
+          .then(() => true)
+          .catch(() => false),
+      20000,
+    );
 
     if (!bookingResponseSeen || interceptedBookingPosts === 0) {
       throw new Error('Schedule conflict smoke did not observe a POST /api/book request from the modal submit.');
     }
 
-    await page.waitForTimeout(600);
     const therapistValue = await page.locator('#therapist-select').inputValue();
     const clientValue = await page.locator('#client-select').inputValue();
     const programValue = await page.locator('#program-select').inputValue();

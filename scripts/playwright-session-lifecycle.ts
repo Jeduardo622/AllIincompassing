@@ -9,6 +9,7 @@ import {
   assertRouteAccessible,
   captureFailureScreenshot,
   loginAndAssertSession,
+  waitForSelectOptions,
 } from "./lib/playwright-smoke";
 
 interface LifecycleIds {
@@ -503,8 +504,8 @@ async function chooseSessionTargets(page: Page): Promise<{
   programId: string;
   goalId: string;
 }> {
-  const therapistValues = await getOptionValues(page, "#therapist-select");
-  const clientValues = await getOptionValues(page, "#client-select");
+  const therapistValues = await waitForSelectOptions(page, "#therapist-select");
+  const clientValues = await waitForSelectOptions(page, "#client-select");
   const authorizedClientIds = await fetchAuthorizedClientIds();
 
   if (therapistValues.length === 0 || clientValues.length === 0) {
@@ -518,14 +519,16 @@ async function chooseSessionTargets(page: Page): Promise<{
         continue;
       }
       await page.selectOption("#client-select", clientId);
-      await page.waitForTimeout(500);
-      const programValues = await getOptionValues(page, "#program-select");
+      const programValues = await waitForSelectOptions(page, "#program-select", {
+        timeoutMs: 8000,
+      }).catch(() => []);
       if (programValues.length === 0) {
         continue;
       }
       await page.selectOption("#program-select", programValues[0]);
-      await page.waitForTimeout(300);
-      const goalValues = await getOptionValues(page, "#goal-select");
+      const goalValues = await waitForSelectOptions(page, "#goal-select", {
+        timeoutMs: 8000,
+      }).catch(() => []);
       if (goalValues.length === 0) {
         continue;
       }
@@ -915,7 +918,9 @@ async function run() {
         await withStepTimeout(`login ${candidate.label}`, () =>
           loginAndAssertSession(attemptPage, base, candidate.email!, candidate.password!));
         await withStepTimeout(`route-check ${candidate.label}`, () =>
-          assertRouteAccessible(attemptPage, base, "/schedule"));
+          assertRouteAccessible(attemptPage, base, "/schedule", {
+            readySelector: 'button[aria-label="Day view"]',
+          }));
         context = attemptContext;
         page = attemptPage;
         authenticatedCredential = { email: candidate.email!, password: candidate.password! };

@@ -1,28 +1,23 @@
 describe('Navigation', () => {
   beforeEach(() => {
-    // Mock successful login
-    cy.visit('/login');
-    cy.get('input[type="email"]').type('test@example.com');
-    cy.get('input[type="password"]').type('password123');
-    cy.get('button[type="submit"]').click();
+    Cypress.session.clearAllSavedSessions();
+    cy.login('therapist@test.com', 'password123');
+    cy.visit('/');
   });
 
   it('shows sidebar navigation', () => {
-    cy.get('nav').should('exist');
-    cy.contains('Dashboard').should('exist');
-    cy.contains('Schedule').should('exist');
-    cy.contains('Clients').should('exist');
-    cy.contains('Therapists').should('exist');
+    cy.get('#app-sidebar').should('exist');
+    cy.get('a[href="/"]').should('contain', 'Dashboard');
+    cy.get('a[href="/schedule"]').should('contain', 'Schedule');
+    cy.get('a[href="/clients"]').should('contain', 'Clients');
+    cy.get('a[href="/documentation"]').should('contain', 'Documentation');
   });
 
   it('navigates between pages', () => {
-    cy.contains('Schedule').click();
+    cy.get('a[href="/schedule"]', { timeout: 15000 }).click({ force: true });
     cy.url().should('include', '/schedule');
 
-    cy.contains('Clients').click();
+    cy.get('a[href="/clients"]').click({ force: true });
     cy.url().should('include', '/clients');
-
-    cy.contains('Therapists').click();
-    cy.url().should('include', '/therapists');
   });
 });

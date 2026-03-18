@@ -95,7 +95,6 @@ export const loginAndAssertSession = async (
   password: string,
 ): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: "domcontentloaded", timeout: 60000 });
-  await page.waitForTimeout(500);
   await page.waitForSelector("input[type='password']", { timeout: 10000 });
   await page.getByText(LOGIN_HEADING_PATTERN).first().waitFor({ timeout: 5000 }).catch(() => undefined);
 
@@ -159,7 +158,13 @@ export const assertRouteAccessible = async (
   page: Page,
   baseUrl: string,
   routePath: string,
+  options?: {
+    readySelector?: string;
+    timeoutMs?: number;
+  },
 ): Promise<void> => {
+  const readySelector = options?.readySelector;
+  const timeoutMs = options?.timeoutMs ?? 15000;
   const maxAttempts = 3;
   let lastPath = "";
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -168,8 +173,25 @@ export const assertRouteAccessible = async (
     const pathname = new URL(page.url()).pathname.toLowerCase();
     lastPath = pathname;
 
-    // If we reached target route path, this actor is route-capable.
-    if (!pathname.includes("/login") && !pathname.includes("/unauthorized")) {
+    const routePathNormalized = routePath.toLowerCase();
+    const onExpectedRoute =
+      pathname === routePathNormalized ||
+      pathname.startsWith(`${routePathNormalized}/`) ||
+      pathname.startsWith(`${routePathNormalized}?`);
+
+    if (!pathname.includes("/login") && !pathname.includes("/unauthorized") && onExpectedRoute) {
+      if (readySelector) {
+        const ready = await page.locator(readySelector).first().isVisible().catch(() => false);
+        if (!ready && attempt < maxAttempts) {
+          await page.waitForTimeout(1000);
+          continue;
+        }
+        if (!ready) {
+          throw new Error(
+            `Route ${routePath} loaded but readiness selector was not visible: ${readySelector}`,
+          );
+        }
+      }
       return;
     }
 
@@ -184,4 +206,35 @@ export const assertRouteAccessible = async (
   if (lastPath.includes("/login") || lastPath.includes("/unauthorized")) {
     throw new Error(`Authenticated user cannot access required route ${routePath}. Current path: ${lastPath}`);
   }
+  throw new Error(`Failed to reach expected route ${routePath}. Current path: ${lastPath}`);
+};
+
+export const waitForSelectOptions = async (
+  page: Page,
+  selector: string,
+  options?: { timeoutMs?: number; minOptions?: number },
+): Promise<string[]> => {
+  const timeoutMs = options?.timeoutMs ?? 15000;
+  const minOptions = options?.minOptions ?? 1;
+  const started = Date.now();
+
+  while (Date.now() - started < timeoutMs) {
+    const values = await page.evaluate((targetSelector) => {
+      const select = document.querySelector(targetSelector) as HTMLSelectElement | null;
+      if (!select) {
+        return [] as string[];
+      }
+      return Array.from(select.options)
+        .map((option) => option.value)
+        .filter((value) => value.trim().length > 0);
+    }, selector);
+
+    if (values.length >= minOptions) {
+      return values;
+    }
+
+    await page.waitForTimeout(250);
+  }
+
+  throw new Error(`Timed out waiting for selectable options in ${selector}`);
 };

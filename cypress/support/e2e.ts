@@ -18,3 +18,18 @@ import './commands'
 
 // Alternatively you can use CommonJS syntax:
 // require('./commands') 
+
+beforeEach(() => {
+  const runtimeConfig = {
+    supabaseUrl: Cypress.env('SUPABASE_URL') ?? 'https://example.supabase.co',
+    supabaseAnonKey: Cypress.env('SUPABASE_ANON_KEY') ?? 'cypress-anon-key',
+    defaultOrganizationId:
+      Cypress.env('DEFAULT_ORGANIZATION_ID') ?? '00000000-0000-0000-0000-000000000001',
+  };
+
+  cy.intercept('GET', '**/api/runtime-config', {
+    statusCode: 200,
+    headers: { 'content-type': 'application/json' },
+    body: runtimeConfig,
+  }).as('runtimeConfig');
+});

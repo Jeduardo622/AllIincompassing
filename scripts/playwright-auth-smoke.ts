@@ -31,7 +31,9 @@ async function run() {
 
   try {
     await loginAndAssertSession(page, base, credentials.email, credentials.password);
-    await assertRouteAccessible(page, base, '/dashboard');
+    await assertRouteAccessible(page, base, '/', {
+      readySelector: 'text=Dashboard',
+    });
     console.log('Playwright auth smoke passed');
   } catch (error) {
     const screenshot = await captureFailureScreenshot(page, 'playwright-auth-smoke-failure');

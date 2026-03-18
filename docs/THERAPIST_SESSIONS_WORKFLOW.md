@@ -320,3 +320,20 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
   - `scripts/ci/check-supabase-function-auth-parity.mjs`
 - Residual risk:
   - shared-env logs still show intermittent lifecycle edge instability (`sessions-confirm`/`sessions-cancel` occasional `500`, PDF `504`); lifecycle now degrades safely and completes, but route-level reliability should continue to be monitored.
+
+## 2026-03 scheduling routes re-audit sync
+- Re-audit confirmed current authority split:
+  - `/api/book` remains Netlify shim to booking orchestration (`sessions-hold` + `sessions-confirm`).
+  - `/api/sessions-start` remains Netlify shim to RPC `start_session_with_goals`.
+  - UI lifecycle start/cancel paths continue to call Supabase edge lifecycle routes directly.
+- Route mapping sync fix:
+  - Added explicit Netlify redirect for `/api/sessions-start` to `/.netlify/functions/sessions-start` to prevent SPA catch-all drift.
+- Parity policy sync fix:
+  - Lifecycle `function.toml` values were re-synced to `verify_jwt = false` to match deployed session lifecycle behavior and keep auth parity checks green.
+- Contract sync fix:
+  - Session cancellation client parser now accepts both flat `data.*` and nested `data.summary.*` response shapes.
+- Verification rerun outcomes:
+  - `scripts/ci/check-api-contract-smoke.mjs` passed.
+  - `scripts/ci/check-supabase-function-auth-parity.mjs` passed for lifecycle scope.
+  - `tests/edge/api-contract-envelope.test.ts` and booking/start handler tests passed.
+  - strict `playwright:session-lifecycle` passed (`0ffdf752-233d-4c74-9e5a-6815995e4eaa`).

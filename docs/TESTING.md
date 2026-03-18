@@ -158,9 +158,15 @@ CI enforcement:
 Supabase auth parity guard details:
 
 - Command: `node scripts/ci/check-supabase-function-auth-parity.mjs`
-- Compares `verify_jwt` in repo `function.toml` against deployed metadata for:
-  - `feature-flags`
-  - `feature-flags-v2`
+- Compares `verify_jwt` in repo `function.toml` against deployed metadata.
+- Default scope: all Supabase edge functions with a `function.toml`.
+- Recommended lifecycle scope for scheduling/session verification:
+  - `sessions-hold`
+  - `sessions-confirm`
+  - `sessions-start`
+  - `sessions-cancel`
+  - `generate-session-notes-pdf`
+- Use `SUPABASE_FUNCTION_PARITY_SCOPE` to pin this focused lifecycle scope in local/CI reruns.
 - Fails in CI on mismatch so auth posture drift cannot pass silently.
 
 ## Cypress typing policy

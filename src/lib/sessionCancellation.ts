@@ -102,28 +102,31 @@ export async function cancelSessions(payload: CancelSessionsPayload): Promise<Ca
   }
 
   const data = (responseBody.data ?? {}) as Record<string, unknown>;
+  const summary = (typeof data.summary === "object" && data.summary !== null)
+    ? (data.summary as Record<string, unknown>)
+    : data;
 
-  const cancelledCount = typeof data.cancelledCount === "number"
-    ? data.cancelledCount
-    : Number(data.cancelled_count ?? 0);
-  const alreadyCancelledCount = typeof data.alreadyCancelledCount === "number"
-    ? data.alreadyCancelledCount
-    : Number(data.already_cancelled_count ?? 0);
-  const nonCancellableCount = typeof data.nonCancellableCount === "number"
-    ? data.nonCancellableCount
-    : Number(data.non_cancellable_count ?? 0);
-  const totalCount = typeof data.totalCount === "number"
-    ? data.totalCount
-    : Number(data.total_count ?? cancelledCount + alreadyCancelledCount + nonCancellableCount);
+  const cancelledCount = typeof summary.cancelledCount === "number"
+    ? summary.cancelledCount
+    : Number(summary.cancelled_count ?? 0);
+  const alreadyCancelledCount = typeof summary.alreadyCancelledCount === "number"
+    ? summary.alreadyCancelledCount
+    : Number(summary.already_cancelled_count ?? 0);
+  const nonCancellableCount = typeof summary.nonCancellableCount === "number"
+    ? summary.nonCancellableCount
+    : Number(summary.non_cancellable_count ?? 0);
+  const totalCount = typeof summary.totalCount === "number"
+    ? summary.totalCount
+    : Number(summary.total_count ?? cancelledCount + alreadyCancelledCount + nonCancellableCount);
 
   const cancelledSessionIds = normalizeStringArray(
-    data.cancelledSessionIds ?? data.cancelled_session_ids,
+    summary.cancelledSessionIds ?? summary.cancelled_session_ids,
   );
   const alreadyCancelledSessionIds = normalizeStringArray(
-    data.alreadyCancelledSessionIds ?? data.already_cancelled_session_ids,
+    summary.alreadyCancelledSessionIds ?? summary.already_cancelled_session_ids,
   );
   const nonCancellableSessionIds = normalizeStringArray(
-    data.nonCancellableSessionIds ?? data.non_cancellable_session_ids,
+    summary.nonCancellableSessionIds ?? summary.non_cancellable_session_ids,
   );
 
   const usedKey = response.headers.get("Idempotency-Key")?.trim() || idempotencyKey;

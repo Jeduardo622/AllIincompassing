@@ -144,6 +144,41 @@ describe("cancelSessions", () => {
     });
   });
 
+  it("parses cancellation summary nested under data.summary", async () => {
+    mockedCallEdge.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          success: true,
+          data: {
+            summary: {
+              cancelledCount: 1,
+              alreadyCancelledCount: 1,
+              nonCancellableCount: 1,
+              totalCount: 3,
+              cancelledSessionIds: ["s1"],
+              alreadyCancelledSessionIds: ["s2"],
+              nonCancellableSessionIds: ["s3"],
+            },
+          },
+        },
+        200,
+      ),
+    );
+
+    const result = await cancelSessions({ sessionIds: ["s1", "s2", "s3"] });
+
+    expect(result).toEqual({
+      cancelledCount: 1,
+      alreadyCancelledCount: 1,
+      nonCancellableCount: 1,
+      totalCount: 3,
+      cancelledSessionIds: ["s1"],
+      alreadyCancelledSessionIds: ["s2"],
+      nonCancellableSessionIds: ["s3"],
+      idempotencyKey: expect.any(String),
+    });
+  });
+
   it("throws when cancellation is forbidden", async () => {
     mockedCallEdge.mockResolvedValueOnce(
       jsonResponse({ success: false, error: "Forbidden" }, 403),

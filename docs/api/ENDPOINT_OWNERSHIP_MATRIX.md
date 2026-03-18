@@ -1,6 +1,6 @@
 # Endpoint Ownership Matrix
 
-Last verified: `2026-03-12`  
+Last verified: `2026-03-18`  
 Machine-readable source: `docs/api/endpoint-convergence-status.json`
 
 | Public API path | Current runtime | Authoritative target | Wave | Status | Owner | Exception expiry |
@@ -8,7 +8,7 @@ Machine-readable source: `docs/api/endpoint-convergence-status.json`
 | `/api/runtime-config` | Netlify `runtime-config` | Netlify (bootstrap exception) | N/A | bootstrap | Platform | N/A |
 | `/api/dashboard` | Netlify `dashboard` | Supabase edge `get-dashboard-data` | A | legacy_shim | Backend Platform | 2026-04-30 |
 | `/api/book` | Netlify `book` | Supabase edge `sessions-hold` + `sessions-confirm` orchestration | B | legacy_shim | Backend Platform | 2026-04-30 |
-| `/api/sessions-start` | Netlify `sessions-start` | Supabase edge `sessions-confirm`/start flow | B | legacy_shim | Backend Platform | 2026-04-30 |
+| `/api/sessions-start` | Netlify `sessions-start` | Supabase RPC `start_session_with_goals` via Netlify `sessions-start` shim | B | legacy_shim | Backend Platform | 2026-04-30 |
 | `/api/assessment-documents` | Netlify `assessment-documents` | Supabase edge `extract-assessment-fields` + assessment storage domain | A | migrating | Backend Platform | 2026-04-30 |
 | `/api/assessment-checklist` | Netlify `assessment-checklist` | Supabase edge `extract-assessment-fields` checklist domain | A | migrating | Backend Platform | 2026-04-30 |
 | `/api/assessment-drafts` | Netlify `assessment-drafts` | Supabase edge `generate-program-goals` drafts domain | A | migrating | Backend Platform | 2026-04-30 |

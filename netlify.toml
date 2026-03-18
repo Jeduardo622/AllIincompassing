@@ -35,6 +35,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/sessions-start"
+  to = "/.netlify/functions/sessions-start"
+  status = 200
+
+[[redirects]]
   from = "/api/assessment-documents"
   to = "/.netlify/functions/assessment-documents"
   status = 200

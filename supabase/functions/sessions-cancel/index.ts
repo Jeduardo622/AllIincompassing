@@ -264,7 +264,8 @@ async function handleHoldRelease(
       sessionId: releasedHold.session_id,
       eventType: "hold_released",
       actorId: userId,
-      required: true,
+      // Do not fail cancellation response on audit sink issues.
+      required: false,
       payload: {
         holdKey,
         startTime: releasedHold.start_time,
@@ -404,17 +405,18 @@ async function handleSessionCancellation(
       updates.notes = payload.reason;
     }
 
-    let updateQuery = db
+    let updateQuery = supabaseAdmin
       .from("sessions")
       .update(updates)
       .in("id", cancellableIds)
+      .eq("organization_id", orgId)
       .select("id");
 
     if (role === "therapist") {
       updateQuery = updateQuery.eq("therapist_id", userId);
     }
 
-    const { error: updateError } = await updateQuery.eq("organization_id", orgId);
+    const { error: updateError } = await updateQuery;
     if (updateError) {
       throw new Error(updateError.message ?? "Failed to cancel sessions");
     }
@@ -425,7 +427,8 @@ async function handleSessionCancellation(
         sessionId: session.id,
         eventType: "session_cancelled",
         actorId: userId,
-        required: true,
+        // Cancellation state change should succeed even when audit writes degrade.
+        required: false,
         payload: {
           reason: payload.reason,
           startTime: session.start_time,

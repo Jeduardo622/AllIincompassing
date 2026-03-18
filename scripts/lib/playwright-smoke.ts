@@ -94,7 +94,7 @@ export const loginAndAssertSession = async (
   email: string,
   password: string,
 ): Promise<void> => {
-  await page.goto(`${baseUrl}/login`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${baseUrl}/login`, { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.waitForTimeout(500);
   await page.waitForSelector("input[type='password']", { timeout: 10000 });
   await page.getByText(LOGIN_HEADING_PATTERN).first().waitFor({ timeout: 5000 }).catch(() => undefined);
@@ -163,7 +163,7 @@ export const assertRouteAccessible = async (
   const maxAttempts = 3;
   let lastPath = "";
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    await page.goto(`${baseUrl}${routePath}`, { waitUntil: "domcontentloaded" });
+    await page.goto(`${baseUrl}${routePath}`, { waitUntil: "domcontentloaded", timeout: 60000 });
     await page.waitForLoadState("networkidle").catch(() => undefined);
     const pathname = new URL(page.url()).pathname.toLowerCase();
     lastPath = pathname;

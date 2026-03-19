@@ -39,7 +39,7 @@ END;
 $$;
 
 -- Improve handle_new_user function to properly assign roles
-CREATE OR REPLACE FUNCTION auth.handle_new_user()
+CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
 SECURITY DEFINER
 LANGUAGE plpgsql
@@ -85,7 +85,7 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW
-  EXECUTE FUNCTION auth.handle_new_user();
+  EXECUTE FUNCTION public.handle_new_user();
 
 -- Grant execute permission to authenticated users
 GRANT EXECUTE ON FUNCTION assign_therapist_role(uuid) TO authenticated;

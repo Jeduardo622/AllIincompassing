@@ -1,5 +1,5 @@
 -- Create function to handle new user registration with proper role assignment
-CREATE OR REPLACE FUNCTION auth.handle_new_user()
+CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
 SECURITY DEFINER
 LANGUAGE plpgsql
@@ -41,10 +41,10 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW
-  EXECUTE FUNCTION auth.handle_new_user();
+  EXECUTE FUNCTION public.handle_new_user();
 
 -- Function to check user roles
-CREATE OR REPLACE FUNCTION auth.get_user_roles()
+CREATE OR REPLACE FUNCTION public.get_user_roles()
 RETURNS TABLE (roles text[]) 
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -91,4 +91,4 @@ BEGIN
 END $$;
 
 -- Grant necessary permissions
-GRANT EXECUTE ON FUNCTION auth.get_user_roles() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_user_roles() TO authenticated;

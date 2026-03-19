@@ -1,5 +1,5 @@
 -- Create function to handle new user registration
-CREATE OR REPLACE FUNCTION auth.handle_new_user()
+CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
 SECURITY DEFINER
 LANGUAGE plpgsql
@@ -38,10 +38,10 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW
-  EXECUTE FUNCTION auth.handle_new_user();
+  EXECUTE FUNCTION public.handle_new_user();
 
 -- Function to check admin status
-CREATE OR REPLACE FUNCTION auth.is_admin()
+CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -58,7 +58,7 @@ END;
 $$;
 
 -- Grant necessary permissions
-GRANT EXECUTE ON FUNCTION auth.is_admin() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
 
 -- Fix any existing admin users that might have incorrect metadata
 UPDATE auth.users u

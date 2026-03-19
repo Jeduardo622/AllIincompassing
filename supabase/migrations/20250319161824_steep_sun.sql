@@ -15,10 +15,10 @@
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 
 -- Now we can safely drop the function
-DROP FUNCTION IF EXISTS auth.handle_new_user();
+DROP FUNCTION IF EXISTS public.handle_new_user();
 
 -- Create improved handle_new_user function
-CREATE OR REPLACE FUNCTION auth.handle_new_user()
+CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
 SECURITY DEFINER
 LANGUAGE plpgsql
@@ -68,7 +68,7 @@ $$;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW
-  EXECUTE FUNCTION auth.handle_new_user();
+  EXECUTE FUNCTION public.handle_new_user();
 
 -- Add missing indexes
 CREATE INDEX IF NOT EXISTS idx_user_roles_user_id ON user_roles(user_id);

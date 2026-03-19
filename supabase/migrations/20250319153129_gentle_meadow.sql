@@ -12,7 +12,7 @@
 */
 
 -- Drop existing function if it exists in auth schema
-DROP FUNCTION IF EXISTS auth.get_user_roles;
+DROP FUNCTION IF EXISTS public.get_user_roles();
 
 -- Create function in public schema
 CREATE OR REPLACE FUNCTION public.get_user_roles()

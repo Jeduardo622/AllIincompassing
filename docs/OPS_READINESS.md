@@ -25,9 +25,11 @@ Document the minimum monitoring, alerting, and incident response requirements fo
 - [ ] `npm run ci:check-focused` passes (startup canary + policy guards)
 - [ ] `npm run test:routes:tier0` passes (browser route/role gate)
 - [ ] `npm run playwright:auth && npm run playwright:session-lifecycle` passes (auth browser smoke parity)
+- [ ] `npm run ci:rollback-drill` passes and artifact evidence is attached to the release ticket
 - [ ] `API_AUTHORITY_MODE=edge` is enabled in production so `/api/*` remains transport-only for converged routes
 - [ ] Dual-layer throttling is configured (`RATE_LIMIT_MODE=distributed` with Upstash credentials or approved `waf_only` exception)
 - [ ] CORS allowlists are aligned across runtimes (`API_ALLOWED_ORIGINS`/`CORS_ALLOWED_ORIGINS`)
+- [ ] Session lifecycle edge functions enforce `verify_jwt=true` (validated by `npm run ci:deploy:session-edge-bundle`)
 - [ ] Priority 3 wrapper migration status reviewed in `docs/architecture/P3_SDK_MIGRATION_TRACKER.md` before removing any compatibility client shim
 - [ ] Alerts are verified against `docs/OBSERVABILITY_RUNBOOK.md`
 - [ ] Incident response checklist reviewed
@@ -37,3 +39,4 @@ Document the minimum monitoring, alerting, and incident response requirements fo
 - `docs/OBSERVABILITY_RUNBOOK.md`
 - `docs/INCIDENT_RESPONSE.md`
 - `docs/STAGING_OPERATIONS.md`
+- `docs/architecture/P4_ROLLOUT_EVIDENCE.md`

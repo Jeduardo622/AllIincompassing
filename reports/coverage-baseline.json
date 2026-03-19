@@ -36,6 +36,31 @@
       "module": "src/server/api/dashboard.ts",
       "description": "Dashboard proxy authorization and routing logic should remain covered.",
       "minLineCoverage": 75
+    },
+    {
+      "module": "src/lib/sdk/client.ts",
+      "description": "Canonical API/edge request client must preserve auth/trace and origin safety behavior.",
+      "minLineCoverage": 70
+    },
+    {
+      "module": "src/lib/sdk/errors.ts",
+      "description": "Normalized API error shaping must remain predictable for UI handling.",
+      "minLineCoverage": 90
+    },
+    {
+      "module": "src/features/scheduling/domain/time.ts",
+      "description": "Scheduling timezone conversion helpers are risk-critical for booking correctness.",
+      "minLineCoverage": 80
+    },
+    {
+      "module": "src/features/scheduling/domain/sessionStart.ts",
+      "description": "Session start transport + schema validation flow must remain robust.",
+      "minLineCoverage": 80
+    },
+    {
+      "module": "src/lib/contracts/scheduling.ts",
+      "description": "Scheduling contracts must stay stable across client/edge boundaries.",
+      "minLineCoverage": 75
     }
   ]
 }

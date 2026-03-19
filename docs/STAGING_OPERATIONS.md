@@ -58,6 +58,7 @@ Branch protection must require at least:
 For CI policy strict mode, ensure the `SUPABASE_DB_URL` secret is configured so RLS overlap checks do not get skipped.
 
 For API authority convergence checks, `scripts/ci/check-api-adapter-boundary.mjs` now enforces that converged routes remain adapter-only and point to canonical edge functions.
+For session lifecycle edge contracts, `scripts/ci/deploy-session-edge-bundle.mjs` enforces `verify_jwt=true` for all lifecycle functions.
 
 For Priority 3 rollout, review `docs/architecture/P3_SDK_MIGRATION_TRACKER.md` to confirm compatibility shims and removal targets before promoting staging changes to production.
 
@@ -67,6 +68,12 @@ Staging deploys are currently executed from Netlify (or manual CLI), not via a d
 
 - Smoke tests must validate authentication flows, dashboard rendering, and at least one Supabase read/write operation.
 - Capture failures in GitHub Action artifacts and alert the team in the `#deployments` Slack channel.
+- Capture successful smoke + rollback drill evidence artifacts (`artifacts/latest/**`) for every staging promotion.
+
+### Rollback drill automation
+
+- Use `.github/workflows/rollback-drill.yml` for scheduled/manual rollback contract validation.
+- The drill must produce `artifacts/latest/rollback-drill/report.json` and CI evidence JSON under `artifacts/latest/evidence/`.
 
 ### Phase 3 deterministic gate contract (go / no-go)
 

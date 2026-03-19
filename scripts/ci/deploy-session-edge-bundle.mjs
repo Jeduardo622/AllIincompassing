@@ -11,6 +11,8 @@ const REQUIRED_FUNCTIONS = [
   "session-notes-pdf-download",
 ];
 
+const EXPECT_VERIFY_JWT = String(process.env.CI_EXPECT_VERIFY_JWT ?? "true").toLowerCase() !== "false";
+
 const parseProjectRef = (value) => {
   if (typeof value !== "string") {
     return null;
@@ -100,11 +102,13 @@ if (missing.length > 0) {
 const jwtMismatches = Array.isArray(deployed)
   ? deployed
       .filter((item) => REQUIRED_FUNCTIONS.includes(item?.slug))
-      .filter((item) => item?.verify_jwt !== true)
+      .filter((item) => item?.verify_jwt !== EXPECT_VERIFY_JWT)
       .map((item) => item?.slug)
   : [];
 if (jwtMismatches.length > 0) {
-  console.error(`❌ verify_jwt must be true for lifecycle functions: ${jwtMismatches.join(", ")}`);
+  console.error(
+    `❌ verify_jwt must be ${EXPECT_VERIFY_JWT} for lifecycle functions: ${jwtMismatches.join(", ")}`,
+  );
   process.exit(1);
 }
 

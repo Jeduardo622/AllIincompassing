@@ -149,6 +149,12 @@ Required branch checks are enforced via CI policy and should include:
 - Legacy wrappers (`src/lib/api.ts`, `src/lib/supabase.ts#callEdge`, `src/lib/edgeInvoke.ts`) remain as compatibility shims during migration.
 - Scheduling domain extractions are tracked in `docs/architecture/P3_SDK_MIGRATION_TRACKER.md`.
 
+### Priority 4 hardening status
+
+- Schedule view now uses batch query as the primary path and only enables the fallback query path when batch data is unavailable.
+- Priority 4 index tuning and plan checklist are tracked in `supabase/migrations/20260319110000_priority4_session_query_indexes.sql` and `reports/p4-query-plan-evidence.md`.
+- Rollout evidence requirements are tracked in `docs/architecture/P4_ROLLOUT_EVIDENCE.md`.
+
 ## Reference documentation
 
 - [docs/AUTH_ROLES.md](docs/AUTH_ROLES.md) – RBAC hierarchy, permissions, and RLS policies across profiles, sessions, and billing tables.
@@ -162,6 +168,7 @@ Required branch checks are enforced via CI policy and should include:
 - [docs/migrations/MIGRATION_GOVERNANCE.md](docs/migrations/MIGRATION_GOVERNANCE.md) – Migration metadata standard and forward-fix governance.
 - [docs/architecture/NEW_ENGINEER_PACK.md](docs/architecture/NEW_ENGINEER_PACK.md) – New engineer onboarding flow, system diagram, and deployment map.
 - [docs/architecture/pack-metadata.json](docs/architecture/pack-metadata.json) – Architecture pack owner, freshness threshold, and required references for CI validation.
+- [docs/architecture/P4_ROLLOUT_EVIDENCE.md](docs/architecture/P4_ROLLOUT_EVIDENCE.md) – Priority 4 rollout evidence bundle and latency/error budget contract.
 - [docs/SEEDING.md](docs/SEEDING.md) – Controlled data seeding flows for Supabase environments.
 - [docs/SESSION_HOLD_CONTRACT.md](docs/SESSION_HOLD_CONTRACT.md) & [docs/SESSION_HOLD_CONFLICT_CODES.md](docs/SESSION_HOLD_CONFLICT_CODES.md) – Session hold payload contracts, retry semantics, and conflict reason catalogues.
 - [README_SCHEDULING_TESTS.md](README_SCHEDULING_TESTS.md) – Detailed coverage of scheduling UI and server tests.

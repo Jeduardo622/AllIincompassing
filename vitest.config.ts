@@ -29,6 +29,11 @@ export default defineConfig({
         'src/lib/supabaseClient.ts',
         'src/server/api/book.ts',
         'src/server/api/dashboard.ts',
+        'src/lib/sdk/client.ts',
+        'src/lib/sdk/errors.ts',
+        'src/lib/contracts/scheduling.ts',
+        'src/features/scheduling/domain/time.ts',
+        'src/features/scheduling/domain/sessionStart.ts',
       ],
       exclude: [
         'node_modules/',

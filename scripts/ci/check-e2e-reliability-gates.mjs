@@ -8,6 +8,9 @@ const PACKAGE_JSON_PATH = path.join(ROOT, "package.json");
 const ROUTES_INTEGRITY_PATH = path.join(ROOT, "cypress", "e2e", "routes_integrity.cy.ts");
 const ROLE_ACCESS_PATH = path.join(ROOT, "cypress", "e2e", "role_access.cy.ts");
 const CYPRESS_COMMANDS_PATH = path.join(ROOT, "cypress", "support", "commands.ts");
+const CI_WORKFLOW_PATH = path.join(ROOT, ".github", "workflows", "ci.yml");
+const SUPABASE_PREVIEW_WORKFLOW_PATH = path.join(ROOT, ".github", "workflows", "supabase-preview.yml");
+const ROLLBACK_DRILL_WORKFLOW_PATH = path.join(ROOT, ".github", "workflows", "rollback-drill.yml");
 const CRITICAL_PLAYWRIGHT_SCRIPTS = [
   path.join(ROOT, "scripts", "playwright-auth-smoke.ts"),
   path.join(ROOT, "scripts", "playwright-schedule-conflict.ts"),
@@ -27,6 +30,9 @@ const run = async () => {
   const routesIntegrity = await readFile(ROUTES_INTEGRITY_PATH, "utf8");
   const roleAccess = await readFile(ROLE_ACCESS_PATH, "utf8");
   const cypressCommands = await readFile(CYPRESS_COMMANDS_PATH, "utf8");
+  const ciWorkflow = await readFile(CI_WORKFLOW_PATH, "utf8");
+  const supabasePreviewWorkflow = await readFile(SUPABASE_PREVIEW_WORKFLOW_PATH, "utf8");
+  const rollbackDrillWorkflow = await readFile(ROLLBACK_DRILL_WORKFLOW_PATH, "utf8");
 
   if (!policy?.e2e) {
     errors.push("tests/reliability/policy.json is missing required e2e contract section.");
@@ -90,6 +96,22 @@ const run = async () => {
   }
   if (!cypressCommands.includes("cy.wait('@runtimeConfigBootstrap');")) {
     errors.push("cypress/support/commands.ts must wait for runtime config before login form interactions.");
+  }
+
+  if (!ciWorkflow.includes("Record tier-0 evidence")) {
+    errors.push(".github/workflows/ci.yml must record tier-0 evidence artifacts for success/failure runs.");
+  }
+  if (!ciWorkflow.includes("Record auth smoke evidence")) {
+    errors.push(".github/workflows/ci.yml must record auth smoke evidence artifacts for success/failure runs.");
+  }
+  if (!ciWorkflow.includes("if: always()")) {
+    errors.push(".github/workflows/ci.yml must retain artifacts with if: always() for deterministic evidence collection.");
+  }
+  if (!supabasePreviewWorkflow.includes("Run preview smoke suite")) {
+    errors.push(".github/workflows/supabase-preview.yml must run preview smoke suite for staged deploy validation.");
+  }
+  if (!rollbackDrillWorkflow.includes("Run rollback drill contract checks")) {
+    errors.push(".github/workflows/rollback-drill.yml must execute rollback drill checks and publish evidence.");
   }
 
   if (routesIntegrity.includes("interceptedRequests")) {

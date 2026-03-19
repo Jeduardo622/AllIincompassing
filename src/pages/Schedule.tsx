@@ -557,6 +557,9 @@ export const Schedule = React.memo(() => {
     weekEnd,
   );
 
+  const hasBatchedSessions = Array.isArray(batchedData?.sessions);
+  const enableFallbackSessionsQuery = !isLoadingBatch && !hasBatchedSessions;
+
   // Fallback to individual queries if batched data is not available
   const { data: sessions = [], isLoading: isLoadingSessions } =
     useSessionsOptimized(
@@ -564,6 +567,7 @@ export const Schedule = React.memo(() => {
       weekEnd,
       debouncedTherapist,
       debouncedClient,
+      enableFallbackSessionsQuery,
     );
 
   // Use dropdown data hook for therapists and clients

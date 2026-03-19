@@ -76,6 +76,8 @@
     "ci:report:test-reliability": "node scripts/ci/report-test-reliability.mjs",
     "ci:report:api-cutover": "node scripts/ci/report-api-cutover-status.mjs",
     "ci:report:migration-health": "node scripts/ci/generate-migration-catalog.mjs && node scripts/ci/generate-migration-health-report.mjs",
+    "ci:write-evidence": "node scripts/ci/write-success-evidence.mjs",
+    "ci:rollback-drill": "node scripts/ci/run-rollback-drill.mjs",
     "ci:verify-coverage": "node scripts/ci/verify-coverage.mjs",
     "migration:new": "node scripts/migrations/new-migration-with-header.mjs",
     "validate:tenant": "npx tsx scripts/check-tenant-safety.ts",

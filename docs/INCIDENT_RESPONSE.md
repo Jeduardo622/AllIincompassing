@@ -37,6 +37,7 @@
 ## Rollback procedures
 - **Netlify deploys**: promote last known-good deploy in the Netlify UI.
 - **Supabase regressions**: restore from backups/PITR, then re-apply migrations once fixed.
+- **Evidence retention**: attach artifact links from CI (`artifacts/latest/evidence/*.json`, rollback drill report) to the incident timeline before closing.
 
 ## Communication template
 Use this template when posting updates to `#deployments`:

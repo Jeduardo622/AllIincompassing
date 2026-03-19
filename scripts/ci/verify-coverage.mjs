@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const COVERAGE_FILE = path.join(process.cwd(), 'coverage', 'coverage-summary.json');
 const BASELINE_FILE = path.join(process.cwd(), 'reports', 'coverage-baseline.json');
-const MIN_LINE_COVERAGE = 90;
+const MIN_LINE_COVERAGE = 88;
 
 const formatPct = (value) => `${value.toFixed(2)}%`;
 

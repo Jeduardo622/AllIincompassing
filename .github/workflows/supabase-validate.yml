@@ -21,8 +21,24 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
       - name: Run Supabase migration lint
         run: supabase db lint --linked
+      - name: Record migration lint evidence
+        if: always()
+        run: npm run ci:write-evidence -- supabase-migration-lint "${{ job.status }}"
+      - name: Upload migration lint artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: supabase-migration-lint-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/latest
+          if-no-files-found: ignore
 
   test-main:
     if: github.event_name == 'push'
@@ -43,3 +59,13 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           RUN_DB_IT: '1'
+      - name: Record Supabase validate evidence
+        if: always()
+        run: npm run ci:write-evidence -- supabase-validate-tests "${{ job.status }}"
+      - name: Upload Supabase validate artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: supabase-validate-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/latest
+          if-no-files-found: ignore

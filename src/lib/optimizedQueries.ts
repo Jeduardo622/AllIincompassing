@@ -53,7 +53,8 @@ export const useSessionsOptimized = (
   startDate: Date,
   endDate: Date,
   therapistId?: string,
-  clientId?: string
+  clientId?: string,
+  enabled = true,
 ) => {
   // Debounce filter changes to prevent excessive API calls
   const debouncedTherapistId = useDebounce(therapistId, 300);
@@ -80,7 +81,7 @@ export const useSessionsOptimized = (
       return data?.map((item: { session_data: Session }) => item.session_data) || [];
     },
     staleTime: CACHE_STRATEGIES.SESSIONS.current_week,
-    enabled: !!startDate && !!endDate,
+    enabled: !!startDate && !!endDate && enabled,
   });
 };
 

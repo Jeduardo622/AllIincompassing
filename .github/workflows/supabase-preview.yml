@@ -34,3 +34,26 @@ jobs:
         run: |
           supabase status
           echo "Preview DB ready (local run). Use with local dev only."
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build preview bundle
+        run: npm run preview:build
+      - name: Run preview smoke suite
+        run: npm run preview:smoke
+      - name: Record preview workflow evidence
+        if: always()
+        run: npm run ci:write-evidence -- supabase-preview "${{ job.status }}"
+      - name: Upload preview artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: supabase-preview-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/latest
+            reports
+          if-no-files-found: ignore

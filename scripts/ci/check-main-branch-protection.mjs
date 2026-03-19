@@ -6,7 +6,6 @@ const requiredChecks = (process.env.CI_REQUIRED_CHECKS ?? 'quality')
   .split(',')
   .map((check) => check.trim())
   .filter((check) => check.length > 0);
-const allowUnprotectedMain = /^(1|true|yes)$/i.test(process.env.CI_ALLOW_UNPROTECTED_MAIN ?? '');
 
 const logSkip = (message) => {
   console.warn(`⚠️ ${message}`);
@@ -27,33 +26,20 @@ const run = async () => {
     fail('GITHUB_REPOSITORY is required for branch protection checks.');
   }
 
-  if (!token && !allowUnprotectedMain) {
+  if (!token) {
     fail('GITHUB_TOKEN is required for branch protection checks.');
   }
 
   const url = `https://api.github.com/repos/${repository}/branches/${expectedBranch}`;
-  const makeHeaders = (includeAuth) => ({
+  const makeHeaders = () => ({
     Accept: 'application/vnd.github+json',
-    ...(includeAuth && token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     'X-GitHub-Api-Version': '2022-11-28',
   });
 
   let response = await fetch(url, {
-    headers: makeHeaders(true),
+    headers: makeHeaders(),
   });
-
-  if (
-    allowUnprotectedMain &&
-    (response.status === 401 || response.status === 403) &&
-    token
-  ) {
-    logSkip(
-      `Authenticated branch metadata request was denied for ${expectedBranch}. Retrying without auth because CI_ALLOW_UNPROTECTED_MAIN is enabled.`,
-    );
-    response = await fetch(url, {
-      headers: makeHeaders(false),
-    });
-  }
 
   if (!response.ok) {
     const detail = await response.text();
@@ -64,12 +50,6 @@ const run = async () => {
 
   const branch = await response.json();
   if (branch.protected !== true) {
-    if (allowUnprotectedMain) {
-      logSkip(
-        `Branch ${expectedBranch} is not protected. Bypassing hard-fail because CI_ALLOW_UNPROTECTED_MAIN is enabled.`,
-      );
-      return;
-    }
     fail(
       `Branch ${expectedBranch} is not protected. Enable branch protection and required checks before release.`,
     );

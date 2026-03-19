@@ -28,18 +28,30 @@ This playbook captures the operational steps required to stand up and maintain t
 - When testing schema changes, use Supabase **branches** (`npm run db:branch:create`) rather than provisioning a new project; follow the [Supabase Branching Runbook](./supabase_branching.md) for promotion.
 
 ## Agent action kill switch
+
 - **Runtime config**: `public.agent_runtime_config` (`config_key = 'global'`) controls `actions_disabled`.
 - **Emergency disable**: set `AGENT_ACTIONS_DISABLED=true` in Netlify to override the runtime config.
 - **Verification**: check `agent_execution_traces` for `execution.gate.denied` steps with `killSwitchEnabled=true`.
 
 ## GitHub Actions quality gate (current state)
 
-The active workflow (`.github/workflows/ci.yml`) currently runs a single `quality` job on `main` and `develop`:
+The active workflow (`.github/workflows/ci.yml`) runs staged jobs on pull requests and pushes to `main`/`develop`:
 
-1. **Trigger** – runs on pull requests and pushes to `main`/`develop`.
-2. **Build parity** – executes `npm ci`, lint, typecheck, tests, and `npm run build`.
-3. **Policy checks** – runs `npm run ci:check-focused` (including startup canary and governance guards).
-4. **Failure alerting** – `ci:check-focused` sends a Slack alert when running in CI with `SLACK_WEBHOOK_URL` configured.
+1. `policy` – runs `npm run ci:secrets` and `npm run ci:check-focused` (startup canary + governance guards).
+2. `lint-typecheck` and `unit-tests` – parallel code-quality and test gates after `policy`.
+3. `build` – build canary once lint + unit tests pass.
+4. `tier0-browser` and `auth-browser-smoke` – browser-critical regression gates.
+
+Branch protection must require at least:
+
+- `policy`
+- `lint-typecheck`
+- `unit-tests`
+- `build`
+- `tier0-browser`
+- `auth-browser-smoke`
+
+For CI policy strict mode, ensure the `SUPABASE_DB_URL` secret is configured so RLS overlap checks do not get skipped.
 
 Staging deploys are currently executed from Netlify (or manual CLI), not via a dedicated `deploy-staging` GitHub job.
 
@@ -61,9 +73,11 @@ Staging deploys are currently executed from Netlify (or manual CLI), not via a d
 ### Alerting on staging failures
 
 **Automatic alerting**:
+
 - CI policy-check failures automatically route through `npm run ci:check-focused` and send Slack notifications when `SLACK_WEBHOOK_URL` is present.
 
 **Manual alerting**:
+
 ```bash
 npm run alert:slack -- \
   --title "Staging deploy failure" \

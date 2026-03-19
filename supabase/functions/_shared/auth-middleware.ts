@@ -198,20 +198,15 @@ export async function getUserContext(req: Request): Promise<UserContext | null> 
       .select('is_active, expires_at, roles(name)')
       .eq('user_id', user.id);
 
-    const normalizedRoleRows =
-      Array.isArray(roleRows) && !roleRowsError
-        ? (roleRows as Array<{ is_active?: unknown; expires_at?: unknown; roles?: { name?: unknown } | null }>)
-        : [];
-
-    if (roleRowsError) {
-      console.warn('getUserContext: role assignment query failed, falling back to RPC role resolution', roleRowsError);
+    if (roleRowsError || !Array.isArray(roleRows)) {
+      return null;
     }
 
     const orgId = await resolveOrgId(supabase);
     const role = await resolveRoleForOrganization(
       supabase,
       orgId,
-      normalizedRoleRows,
+      roleRows as Array<{ is_active?: unknown; expires_at?: unknown; roles?: { name?: unknown } | null }>,
     );
 
     return {
@@ -329,12 +324,12 @@ async function resolveRoleForOrganization(
   orgId: string | null,
   roleRows: Array<{ is_active?: unknown; expires_at?: unknown; roles?: { name?: unknown } | null }>,
 ): Promise<Role> {
-  if (await rpcBoolean(supabase, "current_user_is_super_admin")) {
-    return "super_admin";
-  }
-
   if (!orgId) {
     return resolveRoleFromRoleRows(roleRows);
+  }
+
+  if (await rpcBoolean(supabase, "current_user_is_super_admin")) {
+    return "super_admin";
   }
 
   if (

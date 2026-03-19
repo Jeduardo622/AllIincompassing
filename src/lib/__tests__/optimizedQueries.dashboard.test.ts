@@ -34,23 +34,13 @@ describe("useDashboardData edge invocation", () => {
   });
 
   it("throws error with status from edge invoke failure context", async () => {
-    getSessionMock.mockResolvedValue({
-      data: { session: { access_token: "token" } },
-      error: null,
-    });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ error: { message: "Forbidden" } }), { status: 403 }),
-      ),
-    );
-
     invokeMock.mockResolvedValue({
       data: null,
       error: { message: "Forbidden", context: { status: 403 } },
     });
     const { fetchDashboardData } = await import("../optimizedQueries");
     await expect(fetchDashboardData()).rejects.toMatchObject({ status: 403 });
+    expect(getSessionMock).not.toHaveBeenCalled();
   });
 
   it("falls back to /api/dashboard when edge invoke fails", async () => {

@@ -156,6 +156,9 @@ export const useSessionMetrics = (
  */
 export const fetchDashboardData = async () => {
   const DASHBOARD_REQUEST_TIMEOUT_MS = 10000;
+  const isTransientDashboardFailure = (status?: number) =>
+    status === 429 || status === 502 || status === 503 || status === 504;
+
   const dashboardRouteFallback = async () => {
     const {
       data: { session },
@@ -237,7 +240,11 @@ export const fetchDashboardData = async () => {
     }
 
     return envelope.data;
-  } catch {
+  } catch (error) {
+    const status = (error as { status?: number } | undefined)?.status;
+    if (!isTransientDashboardFailure(status)) {
+      throw error;
+    }
     return dashboardRouteFallback();
   }
 };

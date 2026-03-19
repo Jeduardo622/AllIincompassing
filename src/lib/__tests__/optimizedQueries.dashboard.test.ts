@@ -52,7 +52,7 @@ describe("useDashboardData edge invocation", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify(payload), { status: 200 }),
+        new Response(JSON.stringify({ success: true, data: payload }), { status: 200 }),
       ),
     );
     invokeMock.mockResolvedValue({

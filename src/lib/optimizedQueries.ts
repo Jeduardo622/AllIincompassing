@@ -196,10 +196,29 @@ export const fetchDashboardData = async () => {
     const payload = await (response as Response).json().catch(() => null);
     if (!(response as Response).ok) {
       const fallbackError = new Error(
-        (payload as { error?: { message?: string } } | null)?.error?.message ?? 'Dashboard API fallback failed',
+        (
+          (payload as { error?: { message?: string } | string; message?: string; details?: string } | null)
+            ?.error as { message?: string } | string | undefined
+        )?.message ??
+          (typeof (payload as { error?: unknown } | null)?.error === 'string'
+            ? ((payload as { error?: string } | null)?.error ?? null)
+            : null) ??
+          (payload as { message?: string; details?: string } | null)?.message ??
+          (payload as { message?: string; details?: string } | null)?.details ??
+          'Dashboard API fallback failed',
       ) as Error & { status?: number };
       fallbackError.status = (response as Response).status;
       throw fallbackError;
+    }
+
+    const envelope = payload as { success?: boolean; data?: unknown; error?: string } | null;
+    if (envelope && typeof envelope === 'object' && 'success' in envelope) {
+      if (envelope.success === true) {
+        return envelope.data;
+      }
+      const envelopeError = new Error(envelope.error ?? 'Dashboard API fallback failed') as Error & { status?: number };
+      envelopeError.status = (response as Response).status;
+      throw envelopeError;
     }
 
     return payload;

@@ -33,8 +33,7 @@ jobs:
           if [ -n "$SUPABASE_PROJECT_REF" ]; then
             supabase db lint --project-ref "$SUPABASE_PROJECT_REF"
           else
-            echo "SUPABASE_PROJECT_REF is not configured; using local lint fallback."
-            supabase db lint
+            echo "SUPABASE_PROJECT_REF is not configured; skipping remote migration lint in this context."
           fi
       - name: Record migration lint evidence
         if: always()

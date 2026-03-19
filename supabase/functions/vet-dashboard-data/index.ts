@@ -2,17 +2,55 @@
  * Compatibility alias for legacy clients still invoking `vet-dashboard-data`.
  * Proxies to the canonical `get-dashboard-data` edge function.
  */
-const CORS_HEADERS: Record<string, string> = {
-  "Access-Control-Allow-Origin": "*",
+const BASE_CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "authorization, x-client-info, X-Client-Info, apikey, content-type, x-request-id",
+  Vary: "Origin",
   "Content-Type": "application/json",
 };
 
-const jsonError = (status: number, message: string): Response =>
+const resolveAllowedOrigin = (req: Request): string | null => {
+  const origin = req.headers.get("Origin");
+  if (!origin) {
+    return null;
+  }
+
+  const configured = [
+    Deno.env.get("FRONTEND_URL"),
+    Deno.env.get("APP_URL"),
+    Deno.env.get("VITE_APP_URL"),
+    Deno.env.get("VITE_FRONTEND_URL"),
+  ]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.replace(/\/+$/, ""));
+
+  if (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
+    return origin;
+  }
+  if (origin.endsWith(".netlify.app")) {
+    return origin;
+  }
+  if (configured.includes(origin.replace(/\/+$/, ""))) {
+    return origin;
+  }
+
+  return null;
+};
+
+const corsHeadersForRequest = (req: Request): Record<string, string> => {
+  const allowedOrigin = resolveAllowedOrigin(req);
+  return allowedOrigin
+    ? {
+        ...BASE_CORS_HEADERS,
+        "Access-Control-Allow-Origin": allowedOrigin,
+      }
+    : { ...BASE_CORS_HEADERS };
+};
+
+const jsonError = (req: Request, status: number, message: string): Response =>
   new Response(JSON.stringify({ success: false, error: message }), {
     status,
-    headers: CORS_HEADERS,
+    headers: corsHeadersForRequest(req),
   });
 
 const buildForwardHeaders = (req: Request): Headers => {
@@ -50,16 +88,16 @@ const buildForwardHeaders = (req: Request): Headers => {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { status: 200, headers: CORS_HEADERS });
+    return new Response("ok", { status: 200, headers: corsHeadersForRequest(req) });
   }
 
   if (req.method !== "GET" && req.method !== "POST") {
-    return jsonError(405, "Method not allowed");
+    return jsonError(req, 405, "Method not allowed");
   }
 
   const baseUrl = Deno.env.get("SUPABASE_URL");
   if (!baseUrl) {
-    return jsonError(500, "Missing SUPABASE_URL");
+    return jsonError(req, 500, "Missing SUPABASE_URL");
   }
 
   const targetUrl = `${baseUrl.replace(/\/$/, "")}/functions/v1/get-dashboard-data`;
@@ -76,11 +114,11 @@ Deno.serve(async (req: Request) => {
     return new Response(payload, {
       status: forwarded.status,
       headers: {
-        ...CORS_HEADERS,
+        ...corsHeadersForRequest(req),
         "Content-Type": forwarded.headers.get("Content-Type") ?? "application/json",
       },
     });
   } catch {
-    return jsonError(502, "Failed to proxy to get-dashboard-data");
+    return jsonError(req, 502, "Failed to proxy to get-dashboard-data");
   }
 });

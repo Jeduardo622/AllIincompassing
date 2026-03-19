@@ -180,7 +180,7 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
     const [
       { data: todaySessions, error: todayError },
       { data: todaySessionsLegacy, error: todayLegacyError },
-      { data: incompleteSessionsLegacy, error: incompleteLegacyError },
+      { data: pendingDocumentationSessionsLegacy, error: pendingDocumentationLegacyError },
       { data: billingAlertsLegacy, error: billingAlertsLegacyError },
       { data: weekSessions, error: weekError },
       { count: totalClientsCount, error: totalClientsCountError },
@@ -205,8 +205,9 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
         .returns<LegacySessionRow[]>(),
       orgScopedQuery(db, 'sessions', orgId)
         .select('id, status, start_time, end_time, therapist:therapists(id, full_name), client:clients(id, full_name)')
+        // "incompleteSessions" means completed sessions still missing required notes.
         .eq('status', 'completed')
-        .or('notes.is.null,notes.eq.')
+        .or('notes.is.null,notes.eq.\"\"')
         .order('start_time', { ascending: false })
         .limit(50)
         .returns<LegacySessionRow[]>(),
@@ -259,7 +260,7 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
 
     if (todayError) throw todayError;
     if (todayLegacyError) throw todayLegacyError;
-    if (incompleteLegacyError) throw incompleteLegacyError;
+    if (pendingDocumentationLegacyError) throw pendingDocumentationLegacyError;
     if (billingAlertsLegacyError) throw billingAlertsLegacyError;
     if (weekError) throw weekError;
     if (totalClientsCountError) throw totalClientsCountError;
@@ -318,7 +319,7 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
         therapist: session.therapist ?? null,
         client: session.client ?? null,
       })),
-      incompleteSessions: (incompleteSessionsLegacy ?? []).map((session) => ({
+      incompleteSessions: (pendingDocumentationSessionsLegacy ?? []).map((session) => ({
         id: session.id,
         status: session.status,
         start_time: session.start_time,

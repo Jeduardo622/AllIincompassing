@@ -13,12 +13,17 @@ import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'fs';
 import { basename } from 'path';
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://wnnjeqheqxxyrgsjmygy.supabase.co';
-const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_1uBddPes40Ge067ANS3NkQ_bkz5ogb7';
+const resolveRequiredEnv = (name: string): string => {
+  const value = process.env[name];
+  if (!value || value.trim().length === 0) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value.trim();
+};
 
-// These credentials should be from the logged-in user
-const TEST_USER_EMAIL = 'jorge@winningedgeai.com';
-const TEST_USER_PASSWORD = 'Nina.6225';
+const resolveSupabaseUrl = (): string => process.env.VITE_SUPABASE_URL || resolveRequiredEnv('SUPABASE_URL');
+const resolveSupabaseAnonKey = (): string =>
+  process.env.VITE_SUPABASE_ANON_KEY || resolveRequiredEnv('SUPABASE_ANON_KEY');
 
 type AssessmentTemplateType = 'caloptima_fba' | 'iehp_fba';
 
@@ -27,8 +32,16 @@ async function main() {
 
   if (!clientId || !filePath) {
     console.error('Usage: npx tsx scripts/test-assessment-upload.ts <client-id> <file-path> [template-type]');
+    console.error(
+      'Required env vars: TEST_USER_EMAIL, TEST_USER_PASSWORD and either VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY or SUPABASE_URL/SUPABASE_ANON_KEY.',
+    );
     process.exit(1);
   }
+
+  const testUserEmail = resolveRequiredEnv('TEST_USER_EMAIL');
+  const testUserPassword = resolveRequiredEnv('TEST_USER_PASSWORD');
+  const supabaseUrl = resolveSupabaseUrl();
+  const supabaseAnonKey = resolveSupabaseAnonKey();
 
   console.log('=== Assessment Upload Test ===');
   console.log(`Client ID: ${clientId}`);
@@ -37,13 +50,13 @@ async function main() {
   console.log();
 
   // Create Supabase client
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
   // Sign in
-  console.log(`[1/5] Signing in as ${TEST_USER_EMAIL}...`);
+  console.log(`[1/5] Signing in as ${testUserEmail}...`);
   const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-    email: TEST_USER_EMAIL,
-    password: TEST_USER_PASSWORD,
+    email: testUserEmail,
+    password: testUserPassword,
   });
 
   if (authError || !authData.session) {

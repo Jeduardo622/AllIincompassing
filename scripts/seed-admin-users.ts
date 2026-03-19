@@ -10,7 +10,7 @@ interface SeedAccount {
   organizationId?: string | null;
 }
 
-const DEFAULT_PASSWORD = process.env.SEED_ACCOUNT_PASSWORD ?? 'Password123!';
+const DEFAULT_PASSWORD = process.env.SEED_ACCOUNT_PASSWORD;
 const SHOULD_RESET_PASSWORD = process.env.SEED_ACCOUNT_PASSWORD_RESET === 'true';
 
 const DEFAULT_ORGANIZATION_ID = process.env.DEFAULT_ORGANIZATION_ID ?? null;
@@ -35,6 +35,16 @@ const ACCOUNTS: SeedAccount[] = [
     organizationId: null,
   },
 ];
+
+const requireSeedPassword = (): string => {
+  const password = DEFAULT_PASSWORD?.trim();
+  if (!password) {
+    throw new Error(
+      'SEED_ACCOUNT_PASSWORD environment variable is required. Refusing to seed users with a default password.',
+    );
+  }
+  return password;
+};
 
 const normalizeRole = (value: unknown): SeedRole | null => {
   if (typeof value !== 'string') return null;
@@ -132,9 +142,10 @@ const ensureAccount = async (client: SupabaseClient, account: SeedAccount) => {
   const metadata = buildSeedMetadata(account, existingUser?.user_metadata as Record<string, unknown> | undefined);
 
   if (!existingUser) {
+    const seedPassword = requireSeedPassword();
     const { data, error } = await client.auth.admin.createUser({
       email: account.email,
-      password: DEFAULT_PASSWORD,
+      password: seedPassword,
       user_metadata: metadata,
       email_confirm: true,
     });
@@ -158,7 +169,7 @@ const ensureAccount = async (client: SupabaseClient, account: SeedAccount) => {
     };
 
     if (SHOULD_RESET_PASSWORD && process.env.SEED_ACCOUNT_PASSWORD) {
-      updatePayload.password = DEFAULT_PASSWORD;
+      updatePayload.password = requireSeedPassword();
     }
 
     const { error } = await client.auth.admin.updateUserById(existingUser.id, updatePayload);
@@ -206,10 +217,7 @@ const ensureRoleMapping = async (client: SupabaseClient, user: Pick<User, 'id'>,
 
 const main = async () => {
   console.log('[seed-admin-users] Seeding diagnostic admin accounts…');
-
-  if (!process.env.SEED_ACCOUNT_PASSWORD) {
-    console.warn('[seed-admin-users] Using default password Password123!; override via SEED_ACCOUNT_PASSWORD env for production environments.');
-  }
+  requireSeedPassword();
 
   const results: Array<{ email: string; created: boolean; updated: boolean }> = [];
 

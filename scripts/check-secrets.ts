@@ -203,6 +203,14 @@ const FORBIDDEN_TRACKED_FILES = new Set([
 const COMMITTED_SECRET_PATTERNS: ReadonlyArray<{ readonly label: string; readonly regex: RegExp }> = [
   { label: 'Supabase access token', regex: /\bsbp_[A-Za-z0-9]{20,}\b/g },
   { label: 'Supabase secret key', regex: /\bsb_secret_[A-Za-z0-9_-]{12,}\b/g },
+  {
+    label: 'Hardcoded test user password assignment',
+    regex: /\b(?:const|let|var)\s+TEST_USER_PASSWORD\s*=\s*['"`][^'"`\r\n]{4,}['"`]/g,
+  },
+  {
+    label: 'Hardcoded test user email assignment',
+    regex: /\b(?:const|let|var)\s+TEST_USER_EMAIL\s*=\s*['"`][^'"`\r\n]+@[^'"`\r\n]+['"`]/g,
+  },
   { label: 'JWT token literal', regex: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
   { label: 'Credentialed Postgres URL', regex: /\bpostgres(?:ql)?:\/\/[^:\s"'`]+:[^@\s"'`]+@[^/\s"'`]+/g },
   { label: 'Slack webhook URL', regex: /\bhttps:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]{20,}\b/g },

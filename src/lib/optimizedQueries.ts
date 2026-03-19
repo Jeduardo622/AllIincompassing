@@ -156,6 +156,74 @@ export const useSessionMetrics = (
  */
 export const fetchDashboardData = async () => {
   const DASHBOARD_REQUEST_TIMEOUT_MS = 10000;
+  const isTransientDashboardFailure = (status?: number) =>
+    status === 429 || status === 502 || status === 503 || status === 504;
+
+  const dashboardRouteFallback = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const accessToken = session?.access_token;
+    if (!accessToken) {
+      const authError = new Error('Missing access token for dashboard route fallback') as Error & { status?: number };
+      authError.status = 401;
+      throw authError;
+    }
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        const timeoutError = new Error('Dashboard API fallback timed out') as Error & { status?: number };
+        timeoutError.status = 504;
+        reject(timeoutError);
+      }, DASHBOARD_REQUEST_TIMEOUT_MS);
+    });
+
+    const response = await Promise.race([
+      fetch('/api/dashboard', {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }),
+      timeoutPromise,
+    ]).finally(() => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    });
+
+    const payload = await (response as Response).json().catch(() => null);
+    if (!(response as Response).ok) {
+      const fallbackError = new Error(
+        (
+          (payload as { error?: { message?: string } | string; message?: string; details?: string } | null)
+            ?.error as { message?: string } | string | undefined
+        )?.message ??
+          (typeof (payload as { error?: unknown } | null)?.error === 'string'
+            ? ((payload as { error?: string } | null)?.error ?? null)
+            : null) ??
+          (payload as { message?: string; details?: string } | null)?.message ??
+          (payload as { message?: string; details?: string } | null)?.details ??
+          'Dashboard API fallback failed',
+      ) as Error & { status?: number };
+      fallbackError.status = (response as Response).status;
+      throw fallbackError;
+    }
+
+    const envelope = payload as { success?: boolean; data?: unknown; error?: string } | null;
+    if (envelope && typeof envelope === 'object' && 'success' in envelope) {
+      if (envelope.success === true) {
+        return envelope.data;
+      }
+      const envelopeError = new Error(envelope.error ?? 'Dashboard API fallback failed') as Error & { status?: number };
+      envelopeError.status = (response as Response).status;
+      throw envelopeError;
+    }
+
+    return payload;
+  };
+
   const invokePromise = supabase.functions.invoke('get-dashboard-data', {
     body: {},
   });
@@ -168,28 +236,36 @@ export const fetchDashboardData = async () => {
     }, DASHBOARD_REQUEST_TIMEOUT_MS);
   });
 
-  const { data, error } = await Promise.race([invokePromise, timeoutPromise]).finally(() => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
+  try {
+    const { data, error } = await Promise.race([invokePromise, timeoutPromise]).finally(() => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    });
+
+    if (error) {
+      const invokeError = error as Error & { context?: { status?: number }; status?: number };
+      const enriched = new Error(invokeError.message || 'Failed to load dashboard data') as Error & {
+        status?: number;
+      };
+      enriched.status = invokeError.status ?? invokeError.context?.status;
+      throw enriched;
     }
-  });
 
-  if (error) {
-    const invokeError = error as Error & { context?: { status?: number }; status?: number };
-    const enriched = new Error(invokeError.message || 'Failed to load dashboard data') as Error & {
-      status?: number;
-    };
-    enriched.status = invokeError.status ?? invokeError.context?.status;
-    throw enriched;
+    const envelope = data as { success?: boolean; data?: unknown; error?: string } | null;
+    if (!envelope || envelope.success !== true) {
+      const message = envelope?.error ?? 'Failed to load dashboard data';
+      throw new Error(message);
+    }
+
+    return envelope.data;
+  } catch (error) {
+    const status = (error as { status?: number } | undefined)?.status;
+    if (!isTransientDashboardFailure(status)) {
+      throw error;
+    }
+    return dashboardRouteFallback();
   }
-
-  const envelope = data as { success?: boolean; data?: unknown; error?: string } | null;
-  if (!envelope || envelope.success !== true) {
-    const message = envelope?.error ?? 'Failed to load dashboard data';
-    throw new Error(message);
-  }
-
-  return envelope.data;
 };
 
 export const useDashboardData = () => {

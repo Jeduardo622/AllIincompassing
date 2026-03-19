@@ -7,8 +7,8 @@ const SUPABASE_MODULE_SPEC = "npm:@supabase/supabase-js@2.50.0" as const;
 
 type SupabaseModule = typeof import("npm:@supabase/supabase-js@2.50.0");
 type SupabaseClient = import("npm:@supabase/supabase-js@2.50.0").SupabaseClient;
-type UserContext = import("./_shared/auth-middleware.ts").UserContext;
-type AuthMiddlewareOptions = import("./_shared/auth-middleware.ts").AuthMiddlewareOptions;
+type UserContext = import("../_shared/auth-middleware.ts").UserContext;
+type AuthMiddlewareOptions = import("../_shared/auth-middleware.ts").AuthMiddlewareOptions;
 
 type ProtectedRouteFactory = (
   handler: (req: Request, userContext: UserContext) => Promise<Response>,
@@ -73,7 +73,7 @@ const loadSupabaseModule = () => {
 let authModulePromise: Promise<AuthModule> | null = null;
 const loadAuthModule = () => {
   if (!authModulePromise) {
-    authModulePromise = import("./_shared/auth-middleware.ts").then(module => {
+    authModulePromise = import("../_shared/auth-middleware.ts").then(module => {
       const api = module as {
         createProtectedRoute: ProtectedRouteFactory;
         RouteOptions: { admin: AuthMiddlewareOptions };

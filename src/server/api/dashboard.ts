@@ -9,6 +9,7 @@ import {
   isDisallowedOriginRequest,
   jsonForRequest,
 } from "./shared";
+import { getApiAuthorityMode, proxyToEdgeAuthority } from "./edgeAuthority";
 
 const JSON_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
@@ -56,7 +57,7 @@ export async function dashboardHandler(request: Request): Promise<Response> {
     return errorResponse(request, "validation_error", "Method not allowed", { status: 405 });
   }
 
-  const rateLimit = consumeRateLimit(request, {
+  const rateLimit = await consumeRateLimit(request, {
     keyPrefix: "api:dashboard",
     maxRequests: 120,
     windowMs: 60_000,
@@ -72,6 +73,24 @@ export async function dashboardHandler(request: Request): Promise<Response> {
   if (!authHeader || accessToken.length === 0) {
     return errorResponse(request, "unauthorized", "Missing authorization token", {
       headers: { "WWW-Authenticate": "Bearer" },
+    });
+  }
+
+  if (getApiAuthorityMode() === "edge") {
+    const forwarded = await proxyToEdgeAuthority(request, {
+      functionName: "get-dashboard-data",
+      accessToken,
+      method: "GET",
+    });
+    const body = await forwarded.text();
+    const retryAfter = forwarded.headers.get("Retry-After");
+    return new Response(body, {
+      status: forwarded.status,
+      headers: {
+        ...JSON_HEADERS,
+        ...corsHeadersForRequest(request),
+        ...(retryAfter ? { "Retry-After": retryAfter } : {}),
+      },
     });
   }
 

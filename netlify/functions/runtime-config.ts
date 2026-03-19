@@ -1,88 +1,42 @@
-const normalize = (value?: string | null): string | undefined => {
-  if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+import { getRuntimeSupabaseConfig } from "../../src/server/runtimeConfig";
+import { corsHeadersForOrigin, getDefaultAllowedOrigin, resolveAllowedOriginValue } from "../../src/server/corsPolicy";
+
+const JSON_HEADERS: Record<string, string> = {
+  "Content-Type": "application/json",
+  "Cache-Control": "no-store",
 };
 
-const DEFAULT_ORG_FALLBACK = '5238e88b-6198-4862-80a2-dbe15bbeabdd';
-
-const resolveSupabaseClientKey = (): string | undefined => {
-  const preferredPublishableKeys = [
-    process.env.SUPABASE_PUBLISHABLE_KEY,
-    process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-    process.env.SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,
-    process.env.VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY,
-  ];
-
-  for (const key of preferredPublishableKeys) {
-    const normalized = normalize(key);
-    if (normalized) {
-      return normalized;
-    }
-  }
-
-  const generatedPublishableKey = Object.entries(process.env).find(([key, value]) => {
-    const normalized = normalize(value);
-    if (!normalized) {
-      return false;
-    }
-    return key.includes('PUBLISHABLE') && key.endsWith('_SUPABASE_ANON_KEY');
-  });
-  if (generatedPublishableKey) {
-    return normalize(generatedPublishableKey[1]);
-  }
-
-  return normalize(process.env.SUPABASE_ANON_KEY) || normalize(process.env.VITE_SUPABASE_ANON_KEY);
+const toCorsHeaders = (origin: string | undefined): Record<string, string> => {
+  const resolved = resolveAllowedOriginValue(origin ?? null) ?? getDefaultAllowedOrigin();
+  return corsHeadersForOrigin(resolved);
 };
 
-export const handler = async () => {
-  const environment = process.env.NETLIFY_CONTEXT || process.env.APP_ENV || process.env.NODE_ENV || 'development';
-  const allowFallbacks = environment !== 'production';
+export const handler = async (event: { headers?: Record<string, string | undefined> }) => {
+  const origin = event.headers?.origin ?? event.headers?.Origin;
+  const corsHeaders = toCorsHeaders(origin);
 
-  // Support multiple possible env var names from Netlify + Supabase integration
-  const supabaseUrl =
-    process.env.SUPABASE_URL ||
-    process.env.SUPABASE_DATABASE_URL ||
-    process.env.VITE_SUPABASE_URL;
-
-  const supabaseAnonKey = resolveSupabaseClientKey();
-
-  const supabaseEdgeUrl =
-    process.env.SUPABASE_EDGE_URL ||
-    process.env.VITE_SUPABASE_EDGE_URL;
-
-  const defaultOrganizationId =
-    normalize(process.env.DEFAULT_ORGANIZATION_ID) ||
-    normalize(process.env.SUPABASE_DEFAULT_ORGANIZATION_ID) ||
-    normalize(process.env.VITE_DEFAULT_ORGANIZATION_ID) ||
-    normalize(process.env.DEFAULT_ORG_ID) ||
-    (allowFallbacks ? DEFAULT_ORG_FALLBACK : undefined);
-
-  if (!supabaseUrl || !supabaseAnonKey || !defaultOrganizationId) {
+  try {
+    const config = getRuntimeSupabaseConfig();
+    return {
+      statusCode: 200,
+      headers: {
+        ...JSON_HEADERS,
+        ...corsHeaders,
+      },
+      body: JSON.stringify(config),
+    };
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : "Missing required environment variables for runtime config";
     return {
       statusCode: 500,
       headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store',
+        ...JSON_HEADERS,
+        ...corsHeaders,
       },
-      body: JSON.stringify({
-        error: 'Missing required environment variables: SUPABASE_URL, SUPABASE_ANON_KEY, and/or DEFAULT_ORGANIZATION_ID',
-      }),
+      body: JSON.stringify({ error: message }),
     };
   }
-
-  return {
-    statusCode: 200,
-    headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-store',
-    },
-    body: JSON.stringify({
-      supabaseUrl,
-      supabaseAnonKey,
-      supabaseEdgeUrl: supabaseEdgeUrl || undefined,
-      defaultOrganizationId,
-    }),
-  };
 };
 

@@ -13,6 +13,10 @@ This playbook captures the operational steps required to stand up and maintain t
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `SUPABASE_ACCESS_TOKEN`
    - `DEFAULT_ORGANIZATION_ID`
+   - `API_AUTHORITY_MODE` (`edge` for converged transport adapters)
+   - `RATE_LIMIT_MODE` (`distributed` recommended; `waf_only` only with explicit ops approval)
+   - `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` (required when `RATE_LIMIT_MODE=distributed`)
+   - `API_ALLOWED_ORIGINS` / `CORS_ALLOWED_ORIGINS` (must align with browser entry points)
    - `AGENT_ACTIONS_DISABLED` (optional kill-switch for agent actions)
    - Any additional runtime secrets (OpenAI, S3, etc.) required for end-to-end flows.
 5. Store raw values in 1Password (`Platform / Supabase`). Only redacted snippets (`****`) belong in PRs or chat logs.
@@ -52,6 +56,8 @@ Branch protection must require at least:
 - `auth-browser-smoke`
 
 For CI policy strict mode, ensure the `SUPABASE_DB_URL` secret is configured so RLS overlap checks do not get skipped.
+
+For API authority convergence checks, `scripts/ci/check-api-adapter-boundary.mjs` now enforces that converged routes remain adapter-only and point to canonical edge functions.
 
 Staging deploys are currently executed from Netlify (or manual CLI), not via a dedicated `deploy-staging` GitHub job.
 

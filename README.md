@@ -89,7 +89,7 @@ Long-term policy guardrails are now enforced through `npm run ci:check-focused`:
 
 The main CI workflow (`.github/workflows/ci.yml`) runs the following stages in order:
 
-1. **Policy** – `npm run ci:secrets` and `npm run ci:check-focused` (branch protection, API boundary, auth parity, and RLS policy gates).
+1. **Policy** – `npm run ci:secrets` and `npm run ci:check-focused` (branch protection, adapter-vs-authority boundary, auth parity, and RLS policy gates).
 2. **Lint/typecheck + unit tests** – parallel quality jobs after policy passes.
 3. **Build canary** – `npm run build` compiles the production bundle so build regressions are caught before deploy previews.
 4. **Tier-0 browser regression gate** – `npm run test:routes:tier0` executes Cypress route integrity + role-access suites against a local preview server.
@@ -139,6 +139,9 @@ Required branch checks are enforced via CI policy and should include:
   - `npm run verify-auth` – ensure required auth functions and policies exist.
   - `npm run auth:fix` and `npm run auth:test` – apply and validate auth repairs.
 - Bolt sync utilities (`npm run bolt:sync:create`, `npm run bolt:sync:from`) mirror Supabase state into documentation or regression tests.
+- API authority convergence knobs:
+  - `API_AUTHORITY_MODE=edge|legacy` (`edge` default) controls whether `/api/book`, `/api/dashboard`, and `/api/sessions-start` run as thin transport adapters to edge authority.
+  - `RATE_LIMIT_MODE=distributed|memory|waf_only` controls app-layer quota behavior. `distributed` uses Upstash REST (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`); `waf_only` disables app-layer limiting when upstream WAF quotas are authoritative.
 
 ## Reference documentation
 

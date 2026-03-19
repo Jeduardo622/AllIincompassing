@@ -38,23 +38,23 @@
     {
       "functionFile": "book.ts",
       "publicApiPath": "/api/book",
-      "reason": "Booking orchestration endpoint still relies on server-side API semantics pending edge cutover.",
+      "reason": "Route now delegates to edge authority (`sessions-book`) but remains a transport adapter until full legacy fallback removal.",
       "owner": "Backend Platform",
-      "expiresAt": "2026-04-30"
+      "expiresAt": "2026-05-15"
     },
     {
       "functionFile": "dashboard.ts",
       "publicApiPath": "/api/dashboard",
-      "reason": "Dashboard route remains a compatibility shim while edge parity and frontend cutover sequencing complete.",
+      "reason": "Route now delegates to `get-dashboard-data` edge authority; adapter retained for contract stability and rollback.",
       "owner": "Backend Platform",
-      "expiresAt": "2026-04-30"
+      "expiresAt": "2026-05-15"
     },
     {
       "functionFile": "sessions-start.ts",
       "publicApiPath": "/api/sessions-start",
-      "reason": "Session-start route remains a compatibility shim to preserve JSON contract during scheduling edge hardening.",
+      "reason": "Route now delegates to edge `sessions-start`; adapter retained temporarily for controlled cutover.",
       "owner": "Backend Platform",
-      "expiresAt": "2026-04-30"
+      "expiresAt": "2026-05-15"
     }
   ]
 }

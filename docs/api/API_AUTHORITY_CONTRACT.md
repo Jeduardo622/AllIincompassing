@@ -8,10 +8,15 @@
 
 ## Boundary Rules
 1. New business endpoints must be implemented under `supabase/functions/**`.
-2. New Netlify function business handlers are blocked by CI unless explicitly listed in:
+2. Netlify/`src/server/api/*` routes under `/api/*` act as **transport adapters only**:
+   - request normalization,
+   - auth/token/header forwarding,
+   - response contract mapping.
+3. Business orchestration, authorization decisions, and data mutations belong to edge authority functions.
+4. New Netlify function business handlers are blocked by CI unless explicitly listed in:
    - `docs/api/netlify-function-allowlist.json` under `boundaryExceptions`.
-3. Existing `/api/*` routes remain contract-stable during migration; routing can be remapped behind the same public path.
-4. Any exception must include:
+5. Existing `/api/*` routes remain contract-stable during migration; routing can be remapped behind the same public path.
+6. Any exception must include:
    - rationale,
    - owner,
    - removal target date in the linked issue.
@@ -24,6 +29,7 @@
 ## Required Verification per Wave
 - Route-to-runtime matrix updated.
 - Critical authority inventory updated (`docs/api/critical-endpoint-authority.json`).
+- API adapter boundary guard passes (`scripts/ci/check-api-adapter-boundary.mjs`).
 - Auth/org-scope parity tests pass.
 - Client contract unchanged (`/api/*` paths and payload contracts preserved unless approved).
 - Rollback note documented for each migrated endpoint.

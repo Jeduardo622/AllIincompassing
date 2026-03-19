@@ -11,6 +11,7 @@ import {
   jsonForRequest,
   resolveOrgAndRoleWithStatus,
 } from "./shared";
+import { getApiAuthorityMode, proxyToEdgeAuthority } from "./edgeAuthority";
 
 export const startSessionSchema = z.object({
   session_id: z.string().uuid(),
@@ -59,7 +60,7 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
         headers: { "WWW-Authenticate": "Bearer", ...traceHeaders },
       });
     }
-    const rateLimit = consumeRateLimit(request, {
+    const rateLimit = await consumeRateLimit(request, {
       keyPrefix: "api:sessions-start",
       maxRequests: 60,
       windowMs: 60_000,
@@ -91,6 +92,25 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
     }
     if (!currentUserId) {
       return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
+    }
+
+    if (getApiAuthorityMode() === "edge") {
+      const forwarded = await proxyToEdgeAuthority(request, {
+        functionName: "sessions-start",
+        accessToken,
+        method: "POST",
+      });
+      const text = await forwarded.text();
+      const retryAfter = forwarded.headers.get("Retry-After");
+      return new Response(text, {
+        status: forwarded.status,
+        headers: {
+          ...corsHeadersForRequest(request),
+          ...traceHeaders,
+          "Content-Type": "application/json",
+          ...(retryAfter ? { "Retry-After": retryAfter } : {}),
+        },
+      });
     }
 
     let payload: unknown;

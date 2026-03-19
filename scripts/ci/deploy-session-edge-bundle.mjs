@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 
 const REQUIRED_FUNCTIONS = [
+  "sessions-book",
   "sessions-hold",
   "sessions-confirm",
   "sessions-start",
@@ -67,7 +68,7 @@ if (!process.env.SUPABASE_ACCESS_TOKEN || process.env.SUPABASE_ACCESS_TOKEN.trim
 
 console.log(`Deploying session edge bundle to project ${projectRef}...`);
 for (const fn of REQUIRED_FUNCTIONS) {
-  const status = runSupabase(["functions", "deploy", fn, "--project-ref", projectRef, "--no-verify-jwt"]);
+  const status = runSupabase(["functions", "deploy", fn, "--project-ref", projectRef]);
   if (status !== 0) {
     console.error(`❌ Failed to deploy ${fn}.`);
     process.exit(status);
@@ -99,11 +100,11 @@ if (missing.length > 0) {
 const jwtMismatches = Array.isArray(deployed)
   ? deployed
       .filter((item) => REQUIRED_FUNCTIONS.includes(item?.slug))
-      .filter((item) => item?.verify_jwt !== false)
+      .filter((item) => item?.verify_jwt !== true)
       .map((item) => item?.slug)
   : [];
 if (jwtMismatches.length > 0) {
-  console.error(`❌ verify_jwt must be false for lifecycle functions: ${jwtMismatches.join(", ")}`);
+  console.error(`❌ verify_jwt must be true for lifecycle functions: ${jwtMismatches.join(", ")}`);
   process.exit(1);
 }
 

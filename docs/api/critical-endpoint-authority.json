@@ -13,7 +13,7 @@
     {
       "publicApiPath": "/api/dashboard",
       "functionFile": "dashboard.ts",
-      "status": "legacy_shim",
+      "status": "migrating",
       "owner": "Backend Platform",
       "wave": "A",
       "authoritativeTarget": "get-dashboard-data"
@@ -21,18 +21,18 @@
     {
       "publicApiPath": "/api/book",
       "functionFile": "book.ts",
-      "status": "legacy_shim",
+      "status": "migrating",
       "owner": "Backend Platform",
       "wave": "B",
-      "authoritativeTarget": "sessions-hold + sessions-confirm"
+      "authoritativeTarget": "sessions-book"
     },
     {
       "publicApiPath": "/api/sessions-start",
       "functionFile": "sessions-start.ts",
-      "status": "legacy_shim",
+      "status": "migrating",
       "owner": "Backend Platform",
       "wave": "B",
-      "authoritativeTarget": "sessions-confirm"
+      "authoritativeTarget": "sessions-start"
     },
     {
       "publicApiPath": "/api/assessment-checklist",

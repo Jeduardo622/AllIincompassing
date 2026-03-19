@@ -1,37 +1,21 @@
 import { getOptionalServerEnv, getRequiredServerEnv } from "../env";
+import { corsHeadersForOrigin, getDefaultAllowedOrigin, resolveAllowedOriginValue } from "../corsPolicy";
+import {
+  consumeRateLimit as consumeRateLimitInternal,
+  resetRateLimitsForTests as resetRateLimitsForTestsInternal,
+} from "./rateLimiter";
 
 const JSON_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
 };
 
-const STATIC_ALLOWED_ORIGINS = [
-  "https://app.allincompassing.ai",
-  "https://preview.allincompassing.ai",
-  "https://staging.allincompassing.ai",
-  "http://127.0.0.1:4173",
-  "http://localhost:4173",
-  "http://localhost:3000",
-  "http://localhost:5173",
-];
-
-const parseAllowedOrigins = () =>
-  (getOptionalServerEnv("API_ALLOWED_ORIGINS") ?? "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
-
-const allowedOrigins = new Set([...STATIC_ALLOWED_ORIGINS, ...parseAllowedOrigins()]);
-const defaultAllowedOrigin = STATIC_ALLOWED_ORIGINS[0] ?? "https://app.allincompassing.ai";
-
 const baseCorsHeaders: Record<string, string> = {
-  "Access-Control-Allow-Headers": "authorization, content-type, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id",
-  "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
-  Vary: "Origin",
+  ...corsHeadersForOrigin(getDefaultAllowedOrigin()),
 };
 
 export const CORS_HEADERS: Record<string, string> = {
   ...baseCorsHeaders,
-  "Access-Control-Allow-Origin": defaultAllowedOrigin,
+  "Access-Control-Allow-Origin": getDefaultAllowedOrigin(),
 };
 
 type FetchResult<T> = { status: number; ok: boolean; data: T | null };
@@ -71,90 +55,15 @@ type RateLimitOptions = {
 };
 
 type RateLimitResult =
-  | { limited: false; retryAfterSeconds: null }
-  | { limited: true; retryAfterSeconds: number };
+  | { limited: false; retryAfterSeconds: null; mode: "memory" | "distributed" | "waf_only" }
+  | { limited: true; retryAfterSeconds: number; mode: "memory" | "distributed" | "waf_only" };
 
-type RateLimitState = {
-  count: number;
-  resetAtMs: number;
-};
-
-const requestRateState = new Map<string, RateLimitState>();
-
-function pruneRateLimitState(now: number, maxEntries = 5000): void {
-  for (const [identityKey, state] of requestRateState.entries()) {
-    if (state.resetAtMs <= now) {
-      requestRateState.delete(identityKey);
-    }
-  }
-
-  if (requestRateState.size <= maxEntries) {
-    return;
-  }
-
-  const entries = Array.from(requestRateState.entries()).sort((left, right) => left[1].resetAtMs - right[1].resetAtMs);
-  const overflow = requestRateState.size - maxEntries;
-  for (let index = 0; index < overflow; index += 1) {
-    const candidate = entries[index];
-    if (!candidate) {
-      return;
-    }
-    requestRateState.delete(candidate[0]);
-  }
-}
-
-function extractClientKey(request: Request): string {
-  // Prefer CDN/provider-managed network headers over user-controlled values.
-  const cfConnectingIp = request.headers.get("cf-connecting-ip")?.trim();
-  if (cfConnectingIp) {
-    return `ip:${cfConnectingIp}`;
-  }
-
-  const flyClientIp = request.headers.get("fly-client-ip")?.trim();
-  if (flyClientIp) {
-    return `ip:${flyClientIp}`;
-  }
-
-  const realIp = request.headers.get("x-real-ip")?.trim();
-  if (realIp) {
-    return `ip:${realIp}`;
-  }
-
-  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  if (forwardedFor) {
-    return `ip:${forwardedFor}`;
-  }
-
-  return "anonymous";
-}
-
-export function consumeRateLimit(request: Request, options: RateLimitOptions): RateLimitResult {
-  const now = Date.now();
-  pruneRateLimitState(now);
-  const identityKey = `${options.keyPrefix}:${extractClientKey(request)}`;
-  const existing = requestRateState.get(identityKey);
-
-  if (!existing || existing.resetAtMs <= now) {
-    requestRateState.set(identityKey, {
-      count: 1,
-      resetAtMs: now + options.windowMs,
-    });
-    return { limited: false, retryAfterSeconds: null };
-  }
-
-  existing.count += 1;
-  requestRateState.set(identityKey, existing);
-
-  if (existing.count > options.maxRequests) {
-    const retryAfterSeconds = Math.max(1, Math.ceil((existing.resetAtMs - now) / 1000));
-    return { limited: true, retryAfterSeconds };
-  }
-
-  return { limited: false, retryAfterSeconds: null };
+export async function consumeRateLimit(request: Request, options: RateLimitOptions): Promise<RateLimitResult> {
+  return consumeRateLimitInternal(request, options);
 }
 
 export function resetRateLimitsForTests(): void {
-  requestRateState.clear();
+  resetRateLimitsForTestsInternal();
 }
 
 export function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
@@ -166,24 +75,16 @@ export function json(body: unknown, status = 200, extra: Record<string, string> 
 
 export function resolveAllowedOrigin(request: Request): string | null {
   const origin = request.headers.get("origin");
-  if (!origin) {
-    return defaultAllowedOrigin;
-  }
-
-  return allowedOrigins.has(origin) ? origin : null;
+  return resolveAllowedOriginValue(origin);
 }
 
 export function isDisallowedOriginRequest(request: Request): boolean {
   const origin = request.headers.get("origin");
-  return Boolean(origin) && !allowedOrigins.has(origin);
+  return Boolean(origin) && resolveAllowedOriginValue(origin) === null;
 }
 
 export function corsHeadersForRequest(request: Request): Record<string, string> {
-  const resolvedOrigin = resolveAllowedOrigin(request);
-  return {
-    ...baseCorsHeaders,
-    "Access-Control-Allow-Origin": resolvedOrigin ?? defaultAllowedOrigin,
-  };
+  return corsHeadersForOrigin(request.headers.get("origin"));
 }
 
 export function jsonForRequest(

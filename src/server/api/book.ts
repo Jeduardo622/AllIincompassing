@@ -11,6 +11,7 @@ import {
   jsonForRequest,
   resolveOrgAndRoleWithStatus,
 } from "./shared";
+import { getApiAuthorityMode, proxyToEdgeAuthority } from "./edgeAuthority";
 import {
   bookSessionApiRequestBodySchema,
   type BookSessionApiRequestBody,
@@ -140,7 +141,7 @@ export async function bookHandler(request: Request): Promise<Response> {
     return errorResponse(request, "validation_error", "Method not allowed", { status: 405 });
   }
 
-  const rateLimit = consumeRateLimit(request, {
+  const rateLimit = await consumeRateLimit(request, {
     keyPrefix: "api:book",
     maxRequests: 30,
     windowMs: 60_000,
@@ -187,6 +188,34 @@ export async function bookHandler(request: Request): Promise<Response> {
   }
 
   const body: BookSessionApiRequestBody = parseResult.data;
+
+  if (getApiAuthorityMode() === "edge") {
+    const forwarded = await proxyToEdgeAuthority(request, {
+      functionName: "sessions-book",
+      accessToken,
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    const forwardedBody = await forwarded.text();
+    const forwardedHeaders: Record<string, string> = {};
+    const retryAfter = forwarded.headers.get("Retry-After");
+    const returnedIdempotency = forwarded.headers.get("Idempotency-Key");
+    if (retryAfter) {
+      forwardedHeaders["Retry-After"] = retryAfter;
+    }
+    if (returnedIdempotency) {
+      forwardedHeaders["Idempotency-Key"] = returnedIdempotency;
+    }
+    return new Response(forwardedBody, {
+      status: forwarded.status,
+      headers: {
+        ...corsHeadersForRequest(request),
+        ...JSON_CONTENT_TYPE_HEADER,
+        ...forwardedHeaders,
+      },
+    });
+  }
+
   const scopeErrorResponse = await assertBookRequestScope(request, accessToken, body);
   if (scopeErrorResponse) {
     return scopeErrorResponse;

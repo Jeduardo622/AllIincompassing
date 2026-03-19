@@ -48,23 +48,23 @@
       "publicApiPath": "/api/dashboard",
       "edgeTarget": "get-dashboard-data",
       "wave": "A",
-      "status": "legacy_shim",
+      "status": "migrating",
       "owner": "Backend Platform"
     },
     {
       "functionFile": "book.ts",
       "publicApiPath": "/api/book",
-      "edgeTarget": "sessions-hold + sessions-confirm",
+      "edgeTarget": "sessions-book",
       "wave": "B",
-      "status": "legacy_shim",
+      "status": "migrating",
       "owner": "Backend Platform"
     },
     {
       "functionFile": "sessions-start.ts",
       "publicApiPath": "/api/sessions-start",
-      "edgeTarget": "start_session_with_goals (RPC)",
+      "edgeTarget": "sessions-start",
       "wave": "B",
-      "status": "legacy_shim",
+      "status": "migrating",
       "owner": "Backend Platform"
     },
     {

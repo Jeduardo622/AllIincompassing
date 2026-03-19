@@ -66,9 +66,11 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           CI_SUPABASE_AUTH_PARITY_REQUIRED: "true"
           CI_EDGE_ROUTE_PARITY_REQUIRED: "true"
-          SUPABASE_FUNCTION_PARITY_SCOPE: "sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download"
+          SUPABASE_FUNCTION_PARITY_SCOPE: "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download"
           CI_RLS_OVERLAP_REQUIRED: "true"
           CI_REQUIRED_CHECKS: "policy,lint-typecheck,unit-tests,build,tier0-browser,auth-browser-smoke"
+          API_AUTHORITY_MODE: "edge"
+          RATE_LIMIT_MODE: "memory"
 
   lint_typecheck:
     name: lint-typecheck

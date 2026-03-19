@@ -14,6 +14,25 @@ const corsHeaders = {
 }
 
 interface DashboardData {
+  todaySessions: Array<{
+    id: string;
+    status: string;
+    start_time: string;
+    end_time: string | null;
+    therapist: { id: string; full_name: string | null } | null;
+    client: { id: string; full_name: string | null } | null;
+  }>;
+  incompleteSessions: Array<{
+    id: string;
+    status: string;
+    start_time: string;
+    end_time: string | null;
+    therapist: { id: string; full_name: string | null } | null;
+    client: { id: string; full_name: string | null } | null;
+  }>;
+  billingAlerts: Array<{ id: string; amount: number | string | null; status: string | null; created_at: string | null }>;
+  clientMetrics: { total: number; active: number; totalUnits: number };
+  therapistMetrics: { total: number; active: number; totalHours: number };
   todaysSessions: { total: number; completed: number; pending: number; cancelled: number; };
   thisWeekStats: { totalSessions: number; totalClients: number; totalTherapists: number; utilizationRate: number; };
   upcomingAlerts: { expiring_authorizations: number; low_session_counts: number; pending_approvals: number; };
@@ -26,6 +45,32 @@ type TodaySession = {
   status: string
   start_time: string
   end_time: string | null
+}
+
+type LegacySessionRow = {
+  id: string;
+  status: string;
+  start_time: string;
+  end_time: string | null;
+  therapist?: { id: string; full_name: string | null } | null;
+  client?: { id: string; full_name: string | null } | null;
+}
+
+type BillingAlertRow = {
+  id: string;
+  amount: number | string | null;
+  status: string | null;
+  created_at: string | null;
+}
+
+type ClientUnitsRow = {
+  one_to_one_units?: number | null;
+  supervision_units?: number | null;
+  parent_consult_units?: number | null;
+}
+
+type TherapistHoursRow = {
+  weekly_hours_max?: number | null;
 }
 
 const aggregateTodaysSessions = (
@@ -134,9 +179,16 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
 
     const [
       { data: todaySessions, error: todayError },
+      { data: todaySessionsLegacy, error: todayLegacyError },
+      { data: incompleteSessionsLegacy, error: incompleteLegacyError },
+      { data: billingAlertsLegacy, error: billingAlertsLegacyError },
       { data: weekSessions, error: weekError },
+      { count: totalClientsCount, error: totalClientsCountError },
       { count: activeClientsCount, error: clientError },
+      { data: clientUnitsRows, error: clientUnitsError },
+      { count: totalTherapistsCount, error: totalTherapistsCountError },
       { count: activeTherapistsCount, error: therapistError },
+      { data: therapistHoursRows, error: therapistHoursError },
       { count: expiringAuthsCount, error: authError },
       { data: recentSessions, error: recentError },
       { data: monthlyBilling, error: billingError },
@@ -147,17 +199,49 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
         .lte('start_time', `${today}T23:59:59`)
         .returns<TodaySession[]>(),
       orgScopedQuery(db, 'sessions', orgId)
+        .select('id, status, start_time, end_time, therapist:therapists(id, full_name), client:clients(id, full_name)')
+        .gte('start_time', `${today}T00:00:00`)
+        .lte('start_time', `${today}T23:59:59`)
+        .returns<LegacySessionRow[]>(),
+      orgScopedQuery(db, 'sessions', orgId)
+        .select('id, status, start_time, end_time, therapist:therapists(id, full_name), client:clients(id, full_name)')
+        .eq('status', 'completed')
+        .or('notes.is.null,notes.eq.')
+        .order('start_time', { ascending: false })
+        .limit(50)
+        .returns<LegacySessionRow[]>(),
+      orgScopedQuery(db, 'billing_records', orgId)
+        .select('id, amount, status, created_at')
+        .in('status', ['pending', 'rejected'])
+        .order('created_at', { ascending: false })
+        .limit(50)
+        .returns<BillingAlertRow[]>(),
+      orgScopedQuery(db, 'sessions', orgId)
         .select('id, status, client_id, therapist_id')
         .gte('start_time', `${weekStartStr}T00:00:00`)
         .lte('start_time', `${(endDate ?? today)}T23:59:59`),
       orgScopedQuery(db, 'clients', orgId)
         .select('id', { count: 'planned', head: true })
+        .is('deleted_at', null),
+      orgScopedQuery(db, 'clients', orgId)
+        .select('id', { count: 'planned', head: true })
         .is('deleted_at', null)
         .eq('status', 'active'),
+      orgScopedQuery(db, 'clients', orgId)
+        .select('one_to_one_units, supervision_units, parent_consult_units')
+        .is('deleted_at', null)
+        .returns<ClientUnitsRow[]>(),
+      orgScopedQuery(db, 'therapists', orgId)
+        .select('id', { count: 'planned', head: true })
+        .is('deleted_at', null),
       orgScopedQuery(db, 'therapists', orgId)
         .select('id', { count: 'planned', head: true })
         .is('deleted_at', null)
         .eq('status', 'active'),
+      orgScopedQuery(db, 'therapists', orgId)
+        .select('weekly_hours_max')
+        .is('deleted_at', null)
+        .returns<TherapistHoursRow[]>(),
       orgScopedQuery(db, 'authorizations', orgId)
         .select('id', { count: 'planned', head: true })
         .eq('status', 'approved')
@@ -174,9 +258,16 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
     ]);
 
     if (todayError) throw todayError;
+    if (todayLegacyError) throw todayLegacyError;
+    if (incompleteLegacyError) throw incompleteLegacyError;
+    if (billingAlertsLegacyError) throw billingAlertsLegacyError;
     if (weekError) throw weekError;
+    if (totalClientsCountError) throw totalClientsCountError;
     if (clientError) throw clientError;
+    if (clientUnitsError) throw clientUnitsError;
+    if (totalTherapistsCountError) throw totalTherapistsCountError;
     if (therapistError) throw therapistError;
+    if (therapistHoursError) throw therapistHoursError;
     if (authError) throw authError;
     if (recentError) throw recentError;
     if (billingError) throw billingError;
@@ -190,6 +281,18 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
     const utilizationRate = totalWeekSessions > 0 ? (completedWeekSessions / totalWeekSessions) * 100 : 0;
 
     const thisMonthRevenue = monthlyBilling?.reduce((sum, record) => sum + (record.amount_paid || 0), 0) || 0;
+    const totalUnits = (clientUnitsRows ?? []).reduce(
+      (sum, row) =>
+        sum +
+        (row.one_to_one_units || 0) +
+        (row.supervision_units || 0) +
+        (row.parent_consult_units || 0),
+      0,
+    );
+    const therapistHours = (therapistHoursRows ?? []).reduce(
+      (sum, row) => sum + (row.weekly_hours_max || 0),
+      0,
+    );
 
     const allCompletedSessions = weekSessions?.filter(s => s.status === 'completed').length || 0;
     const allScheduledSessions = weekSessions?.filter(s => ['completed', 'no_show'].includes(s.status)).length || 0;
@@ -207,6 +310,38 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
     })) || [];
 
     const dashboardData: DashboardData = {
+      todaySessions: (todaySessionsLegacy ?? []).map((session) => ({
+        id: session.id,
+        status: session.status,
+        start_time: session.start_time,
+        end_time: session.end_time,
+        therapist: session.therapist ?? null,
+        client: session.client ?? null,
+      })),
+      incompleteSessions: (incompleteSessionsLegacy ?? []).map((session) => ({
+        id: session.id,
+        status: session.status,
+        start_time: session.start_time,
+        end_time: session.end_time,
+        therapist: session.therapist ?? null,
+        client: session.client ?? null,
+      })),
+      billingAlerts: (billingAlertsLegacy ?? []).map((record) => ({
+        id: record.id,
+        amount: record.amount,
+        status: record.status,
+        created_at: record.created_at,
+      })),
+      clientMetrics: {
+        total: totalClientsCount || 0,
+        active: activeClientsCount || 0,
+        totalUnits,
+      },
+      therapistMetrics: {
+        total: totalTherapistsCount || 0,
+        active: activeTherapistsCount || 0,
+        totalHours: therapistHours,
+      },
       todaysSessions: todaysSessionsData,
       thisWeekStats: { totalSessions: totalWeekSessions, totalClients: uniqueClients, totalTherapists: uniqueTherapists, utilizationRate: Math.round(utilizationRate * 100) / 100 },
       upcomingAlerts: { expiring_authorizations: expiringAuthsCount || 0, low_session_counts: 0, pending_approvals: 0 },

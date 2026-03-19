@@ -155,7 +155,7 @@ export const useSessionMetrics = (
  * Reduces 5+ separate queries to 1 optimized RPC call
  */
 export const fetchDashboardData = async () => {
-  const DASHBOARD_REQUEST_TIMEOUT_MS = 12000;
+  const DASHBOARD_REQUEST_TIMEOUT_MS = 10000;
   const invokePromise = supabase.functions.invoke('get-dashboard-data', {
     body: {},
   });
@@ -194,6 +194,9 @@ export const fetchDashboardData = async () => {
 
 export const useDashboardData = () => {
   const { isLiveRole, intervalMs } = useDashboardLiveRefresh();
+  const isTransientDashboardFailure = (status?: number) =>
+    status === 429 || status === 502 || status === 503 || status === 504;
+
   return useQuery({
     queryKey: generateCacheKey.dashboard(),
     queryFn: fetchDashboardData,
@@ -204,6 +207,11 @@ export const useDashboardData = () => {
     refetchOnWindowFocus: true,
     refetchInterval: intervalMs,
     refetchIntervalInBackground: isLiveRole,
+    retry: (failureCount, error: unknown) => {
+      const status = (error as { status?: number } | undefined)?.status;
+      return isTransientDashboardFailure(status) && failureCount < 1;
+    },
+    retryDelay: 1500,
   });
 };
 

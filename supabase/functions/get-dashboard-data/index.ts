@@ -3,7 +3,7 @@ import { errorEnvelope, getRequestId, rateLimit, IsoDateSchema } from '../lib/ht
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
 import { createRequestClient } from "../_shared/database.ts";
 import { createProtectedRoute, RouteOptions } from "../_shared/auth-middleware.ts";
-import { MissingOrgContextError, orgScopedQuery, requireOrg } from "../_shared/org.ts";
+import { MissingOrgContextError, orgScopedQuery, resolveOrgId } from "../_shared/org.ts";
 import { resolveAllowedOrigin } from "../_shared/cors.ts";
 
 const corsHeaders = {
@@ -48,6 +48,32 @@ interface HandlerOptions {
   db?: SupabaseClient;
 }
 
+const parseDefaultOrganizationId = (): string | null => {
+  const raw = Deno.env.get('DEFAULT_ORGANIZATION_ID');
+  if (typeof raw !== 'string') {
+    return null;
+  }
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+const resolveDashboardOrganizationId = async (db: SupabaseClient): Promise<string> => {
+  const resolvedOrg = await resolveOrgId(db);
+  if (resolvedOrg) {
+    return resolvedOrg;
+  }
+
+  const { data: isSuperAdmin } = await db.rpc('current_user_is_super_admin');
+  if (isSuperAdmin === true) {
+    const fallbackOrg = parseDefaultOrganizationId();
+    if (fallbackOrg) {
+      return fallbackOrg;
+    }
+  }
+
+  throw new MissingOrgContextError();
+}
+
 export async function handleGetDashboardData({ req, db: providedDb }: HandlerOptions) {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -63,7 +89,7 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
     const requestId = getRequestId(req)
 
     const db = providedDb ?? createRequestClient(req);
-    const orgId = await requireOrg(db);
+    const orgId = await resolveDashboardOrganizationId(db);
 
     const ip = req.headers.get('x-forwarded-for') || 'unknown'
     const rl = rateLimit(`dashboard:${ip}`, 60, 60_000)
@@ -107,7 +133,7 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
     const [
-      { data: todaySessions, error: todayError, count: todaySessionsCount },
+      { data: todaySessions, error: todayError },
       { data: weekSessions, error: weekError },
       { count: activeClientsCount, error: clientError },
       { count: activeTherapistsCount, error: therapistError },
@@ -125,15 +151,15 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
         .gte('start_time', `${weekStartStr}T00:00:00`)
         .lte('start_time', `${(endDate ?? today)}T23:59:59`),
       orgScopedQuery(db, 'clients', orgId)
-        .select('id', { count: 'exact', head: true })
+        .select('id', { count: 'planned', head: true })
         .is('deleted_at', null)
         .eq('status', 'active'),
       orgScopedQuery(db, 'therapists', orgId)
-        .select('id', { count: 'exact', head: true })
+        .select('id', { count: 'planned', head: true })
         .is('deleted_at', null)
         .eq('status', 'active'),
       orgScopedQuery(db, 'authorizations', orgId)
-        .select('id', { count: 'exact', head: true })
+        .select('id', { count: 'planned', head: true })
         .eq('status', 'approved')
         .lte('end_date', thirtyDaysFromNow.toISOString().split('T')[0]),
       orgScopedQuery(db, 'sessions', orgId)
@@ -155,7 +181,7 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
     if (recentError) throw recentError;
     if (billingError) throw billingError;
 
-    const todaysSessionsData = aggregateTodaysSessions(todaySessions, todaySessionsCount)
+    const todaysSessionsData = aggregateTodaysSessions(todaySessions)
 
     const uniqueClients = new Set(weekSessions?.map(s => s.client_id)).size;
     const uniqueTherapists = new Set(weekSessions?.map(s => s.therapist_id)).size;
@@ -202,6 +228,7 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
 
 export const __TESTING__ = {
   aggregateTodaysSessions,
+  resolveDashboardOrganizationId,
 }
 
 export default createProtectedRoute((req: Request) => handleGetDashboardData({ req }), RouteOptions.admin)

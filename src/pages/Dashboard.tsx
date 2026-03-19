@@ -29,6 +29,8 @@ type DashboardDataShape = {
   billingAlerts?: BillingAlertSummary[];
   clientMetrics?: ClientMetricsSummary;
   therapistMetrics?: { total: number; active: number; totalHours: number };
+  todaysSessions?: { total: number; completed: number; pending: number; cancelled: number };
+  quickStats?: { activeClients: number; activeTherapists: number; thisMonthRevenue: number; attendanceRate: number };
 };
 
 export interface DashboardViewProps {
@@ -72,6 +74,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       billingAlerts,
       clientMetrics,
       therapistMetrics: dashboardData?.therapistMetrics || { total: 0, active: 0, totalHours: 0 },
+      aggregateToday: dashboardData?.todaysSessions,
+      aggregateQuickStats: dashboardData?.quickStats,
     };
   }, [dashboardData]);
 
@@ -84,13 +88,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const isBillingAlertsRedacted = false;
   const isClientMetricsRedacted = false;
 
-  const activeClientsValue = isClientMetricsRedacted ? '--' : displayData.clientMetrics.active.toString();
+  const activeClientsCount =
+    displayData.clientMetrics.active > 0
+      ? displayData.clientMetrics.active
+      : (displayData.aggregateQuickStats?.activeClients ?? 0);
+  const todaySessionsCount =
+    displayData.todaySessions.length > 0
+      ? displayData.todaySessions.length
+      : (displayData.aggregateToday?.total ?? 0);
+  const remainingSessionsCount =
+    remainingSessions.length > 0
+      ? remainingSessions.length
+      : (displayData.aggregateToday?.pending ?? 0);
+
+  const activeClientsValue = isClientMetricsRedacted ? '--' : activeClientsCount.toString();
   const activeClientsTrend = isClientMetricsRedacted
     ? 'Restricted'
-    : `${displayData.clientMetrics.active} of ${displayData.clientMetrics.total} clients`;
-  const todaySessionsValue = isTodaySessionsRedacted ? '--' : displayData.todaySessions.length.toString();
-  const todaySessionsTrend = isTodaySessionsRedacted ? 'Restricted' : `${remainingSessions.length} remaining`;
-  const todaySessionsTrendUp = !isTodaySessionsRedacted && remainingSessions.length > 0;
+    : `${activeClientsCount} of ${displayData.clientMetrics.total} clients`;
+  const todaySessionsValue = isTodaySessionsRedacted ? '--' : todaySessionsCount.toString();
+  const todaySessionsTrend = isTodaySessionsRedacted ? 'Restricted' : `${remainingSessionsCount} remaining`;
+  const todaySessionsTrendUp = !isTodaySessionsRedacted && remainingSessionsCount > 0;
   const incompleteSessionsValue = isIncompleteSessionsRedacted ? '--' : displayData.incompleteSessions.length.toString();
   const incompleteSessionsTrend = isIncompleteSessionsRedacted ? 'Restricted' : 'Need notes';
   const billingAlertsValue = isBillingAlertsRedacted ? '--' : displayData.billingAlerts.length.toString();

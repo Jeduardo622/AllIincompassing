@@ -23,6 +23,7 @@ Document the minimum monitoring, alerting, and incident response requirements fo
 - [ ] `npm run db:check:security` reports no critical issues
 - [ ] `npm run db:check:performance` reports no critical advisories
 - [ ] `npm run ci:check-focused` passes (startup canary + policy guards)
+- [ ] Branch protection is enabled on `main` with required checks (`policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`) and mirrored to `develop` when that branch is active
 - [ ] `npm run test:routes:tier0` passes (browser route/role gate)
 - [ ] `npm run playwright:auth && npm run playwright:session-lifecycle` passes (auth browser smoke parity)
 - [ ] `npm run ci:rollback-drill` passes and artifact evidence is attached to the release ticket

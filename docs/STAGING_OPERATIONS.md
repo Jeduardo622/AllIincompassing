@@ -55,10 +55,13 @@ Branch protection must require at least:
 - `tier0-browser`
 - `auth-browser-smoke`
 
+CI policy checks currently validate branch protection for `main` via `CI_PROTECTED_BRANCHES=main` and should be expanded to include `develop` once that branch is present and protected.
+
 For CI policy strict mode, ensure the `SUPABASE_DB_URL` secret is configured so RLS overlap checks do not get skipped.
 
 For API authority convergence checks, `scripts/ci/check-api-adapter-boundary.mjs` now enforces that converged routes remain adapter-only and point to canonical edge functions.
 For session lifecycle edge contracts, `scripts/ci/deploy-session-edge-bundle.mjs` enforces `verify_jwt=true` for all lifecycle functions.
+The `policy` job now runs `npm run ci:deploy:session-edge-bundle` on push events before policy checks so parity is verified against freshly deployed lifecycle functions.
 
 For Priority 3 rollout, review `docs/architecture/P3_SDK_MIGRATION_TRACKER.md` to confirm compatibility shims and removal targets before promoting staging changes to production.
 

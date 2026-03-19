@@ -89,7 +89,7 @@ Long-term policy guardrails are now enforced through `npm run ci:check-focused`:
 
 The main CI workflow (`.github/workflows/ci.yml`) runs the following stages in order:
 
-1. **Policy** – `npm run ci:secrets` and `npm run ci:check-focused` (branch protection, adapter-vs-authority boundary, auth parity, and RLS policy gates).
+1. **Policy** – `npm run ci:deploy:session-edge-bundle` (push events), `npm run ci:secrets`, and `npm run ci:check-focused` (branch protection, adapter-vs-authority boundary, auth parity, and RLS policy gates).
 2. **Lint/typecheck + unit tests** – parallel quality jobs after policy passes.
 3. **Build canary** – `npm run build` compiles the production bundle so build regressions are caught before deploy previews.
 4. **Tier-0 browser regression gate** – `npm run test:routes:tier0` executes Cypress route integrity + role-access suites against a local preview server.
@@ -103,6 +103,8 @@ Required branch checks are enforced via CI policy and should include:
 - `build`
 - `tier0-browser`
 - `auth-browser-smoke`
+
+The policy gate currently validates branch protection contract on `main` and should be mirrored to `develop` when that branch is active.
 
 ### Supabase connection diagnostics
 

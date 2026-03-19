@@ -33,6 +33,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Deploy required session edge functions (push only)
+        if: github.event_name == 'push'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: npm run ci:deploy:session-edge-bundle
+
       - name: Validate secrets policy
         run: npm run ci:secrets
         env:
@@ -60,6 +68,7 @@ jobs:
         run: npm run ci:check-focused
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          CI_PROTECTED_BRANCHES: "main"
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

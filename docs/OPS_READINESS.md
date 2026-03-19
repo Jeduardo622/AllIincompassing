@@ -28,6 +28,7 @@ Document the minimum monitoring, alerting, and incident response requirements fo
 - [ ] `API_AUTHORITY_MODE=edge` is enabled in production so `/api/*` remains transport-only for converged routes
 - [ ] Dual-layer throttling is configured (`RATE_LIMIT_MODE=distributed` with Upstash credentials or approved `waf_only` exception)
 - [ ] CORS allowlists are aligned across runtimes (`API_ALLOWED_ORIGINS`/`CORS_ALLOWED_ORIGINS`)
+- [ ] Priority 3 wrapper migration status reviewed in `docs/architecture/P3_SDK_MIGRATION_TRACKER.md` before removing any compatibility client shim
 - [ ] Alerts are verified against `docs/OBSERVABILITY_RUNBOOK.md`
 - [ ] Incident response checklist reviewed
 

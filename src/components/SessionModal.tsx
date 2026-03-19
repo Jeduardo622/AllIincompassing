@@ -1,11 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
-import { format, addHours, addMinutes, parseISO } from 'date-fns';
-import {
-  toZonedTime as utcToZonedTime,
-  fromZonedTime as zonedTimeToUtc,
-} from 'date-fns-tz';
+import { format, parseISO } from 'date-fns';
 import { 
   X, AlertCircle, Calendar, Clock, User, 
   FileText, CheckCircle2, AlertTriangle 
@@ -16,8 +12,15 @@ import { logger } from '../lib/logger/logger';
 import { AlternativeTimes } from './AlternativeTimes';
 import { supabase } from '../lib/supabase';
 import { useActiveOrganizationId } from '../lib/organization';
-import { callEdgeFunctionHttp } from '../lib/api';
 import { showError, showSuccess } from '../lib/toast';
+import {
+  formatSessionLocalInput,
+  getDefaultSessionEndTime,
+  normalizeQuarterHourLocalInput,
+  resolveSchedulingTimeZone,
+  toUtcSessionIsoString,
+} from "../features/scheduling/domain/time";
+import { startSessionFromModal } from "../features/scheduling/domain/sessionStart";
 
 interface SessionModalProps {
   isOpen: boolean;
@@ -65,59 +68,7 @@ export function SessionModal({
   const dialogTitleId = 'session-modal-title';
   const dialogDescriptionId = 'session-modal-description';
 
-  const resolvedTimeZone = useMemo(() => {
-    if (timeZone && timeZone.length > 0) {
-      return timeZone;
-    }
-    try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC';
-    } catch (error) {
-      logger.warn('Unable to resolve user timezone', {
-        error,
-        context: { component: 'SessionModal', operation: 'resolveTimeZone' }
-      });
-      return 'UTC';
-    }
-  }, [timeZone]);
-
-  const formatLocalInput = (isoString?: string | null) => {
-    if (!isoString) return '';
-    try {
-      const date = typeof isoString === 'string' ? parseISO(isoString) : new Date(isoString);
-      if (Number.isNaN(date.getTime())) return '';
-      const zoned = utcToZonedTime(date, resolvedTimeZone);
-      return format(zoned, "yyyy-MM-dd'T'HH:mm");
-    } catch (error) {
-      logger.error('Failed to format local input', {
-        error,
-        context: { component: 'SessionModal', operation: 'formatLocalInput' }
-      });
-      return '';
-    }
-  };
-
-  const toUtcIsoString = (localValue?: string) => {
-    if (!localValue) return '';
-    try {
-      return zonedTimeToUtc(localValue, resolvedTimeZone).toISOString();
-    } catch (error) {
-      logger.error('Failed to convert local time to UTC', {
-        error,
-        context: { component: 'SessionModal', operation: 'toUtcIsoString' }
-      });
-      return '';
-    }
-  };
-
-  // Calculate default end time (15-minute intervals)
-  const getDefaultEndTime = (startTimeStr: string) => {
-    if (!startTimeStr) return '';
-
-    const startTime = parseISO(startTimeStr);
-    // Default to 1 hour session
-    const endTime = addMinutes(startTime, 60);
-    return format(endTime, "yyyy-MM-dd'T'HH:mm");
-  };
+  const resolvedTimeZone = useMemo(() => resolveSchedulingTimeZone(timeZone), [timeZone]);
 
   // Prepare default start time from selectedDate and selectedTime
   const getDefaultStartTime = () => {
@@ -125,7 +76,7 @@ export function SessionModal({
       return `${format(selectedDate, 'yyyy-MM-dd')}T${selectedTime}`;
     }
     if (session?.start_time) {
-      return formatLocalInput(session.start_time);
+      return formatSessionLocalInput(session.start_time, resolvedTimeZone);
     }
     return '';
   };
@@ -139,9 +90,9 @@ export function SessionModal({
       goal_ids: session?.goal_ids || [],
       start_time: getDefaultStartTime(),
       end_time: session?.end_time
-        ? formatLocalInput(session.end_time)
+        ? formatSessionLocalInput(session.end_time, resolvedTimeZone)
         : (selectedDate && selectedTime
-            ? getDefaultEndTime(`${format(selectedDate, 'yyyy-MM-dd')}T${selectedTime}`)
+            ? getDefaultSessionEndTime(`${format(selectedDate, 'yyyy-MM-dd')}T${selectedTime}`)
             : ''),
       notes: session?.notes || '',
       status: session?.status || 'scheduled',
@@ -413,14 +364,9 @@ export function SessionModal({
 
   useEffect(() => {
     if (startTime && therapistId && clientId) {
-      // When start time changes, set end time to be 1 hour later by default
-      // but ensure it's on a 15-minute interval
-      const startUtc = zonedTimeToUtc(startTime, resolvedTimeZone);
-      const endUtc = addHours(startUtc, 1);
-      const endZoned = utcToZonedTime(endUtc, resolvedTimeZone);
-      setValue('end_time', format(endZoned, "yyyy-MM-dd'T'HH:mm"));
+      setValue('end_time', getDefaultSessionEndTime(startTime));
     }
-  }, [startTime, therapistId, clientId, resolvedTimeZone, setValue]);
+  }, [startTime, therapistId, clientId, setValue]);
 
   useEffect(() => {
     const requestId = conflictCheckRequestIdRef.current + 1;
@@ -451,8 +397,8 @@ export function SessionModal({
         return;
       }
 
-      const startUtcIso = toUtcIsoString(startTime);
-      const endUtcIso = toUtcIsoString(endTime);
+      const startUtcIso = toUtcSessionIsoString(startTime, resolvedTimeZone);
+      const endUtcIso = toUtcSessionIsoString(endTime, resolvedTimeZone);
       let newConflicts = await checkSchedulingConflicts(
         startUtcIso,
         endUtcIso,
@@ -478,10 +424,10 @@ export function SessionModal({
           const localHHmm = localStart?.slice(11, 16);
           const overlapping = existingSessions.find((s) => {
             if (s.therapist_id !== therapistId && s.client_id !== clientId) return false;
-            const startIso = s.start_time ?? '';
-            const rawDate = typeof startIso === 'string' && startIso.length >= 10 ? startIso.slice(0, 10) : '';
-            const rawHHmm = typeof startIso === 'string' && startIso.length >= 16 ? startIso.slice(11, 16) : '';
-            return rawDate === localDate && rawHHmm === localHHmm;
+            const localIso = formatSessionLocalInput(s.start_time, resolvedTimeZone);
+            const localSessionDate = localIso.slice(0, 10);
+            const localSessionHHmm = localIso.slice(11, 16);
+            return localSessionDate === localDate && localSessionHHmm === localHHmm;
           });
           if (overlapping) {
             const overlapStart = parseISO(overlapping.start_time);
@@ -573,8 +519,8 @@ export function SessionModal({
         ...data,
         goal_ids: mergedGoalIds,
         // If a timezone prop is provided, normalize to UTC for consumers expecting Z times
-        start_time: timeZone ? toUtcIsoString(data.start_time) : data.start_time,
-        end_time: timeZone ? toUtcIsoString(data.end_time) : data.end_time,
+        start_time: timeZone ? toUtcSessionIsoString(data.start_time, resolvedTimeZone) : data.start_time,
+        end_time: timeZone ? toUtcSessionIsoString(data.end_time, resolvedTimeZone) : data.end_time,
       };
       await onSubmit(transformed);
     } catch (error) {
@@ -595,19 +541,12 @@ export function SessionModal({
       return;
     }
     try {
-      const response = await callEdgeFunctionHttp("sessions-start", {
-        method: "POST",
-        body: JSON.stringify({
-          session_id: session.id,
-          program_id: programId,
-          goal_id: goalId,
-          goal_ids: goalIds ?? [],
-        }),
+      await startSessionFromModal({
+        sessionId: session.id,
+        programId,
+        goalId,
+        goalIds: goalIds ?? [],
       });
-      if (!response.ok) {
-        showError("Failed to start session");
-        return;
-      }
       showSuccess("Session started");
       onClose();
     } catch (error) {
@@ -627,29 +566,17 @@ export function SessionModal({
       return;
     }
 
-    const utcDate = zonedTimeToUtc(value, resolvedTimeZone);
-    const minutes = utcDate.getUTCMinutes();
-    const roundedMinutes = Math.round(minutes / 15) * 15;
-
-    const adjustedUtc = new Date(utcDate);
-    adjustedUtc.setUTCMinutes(roundedMinutes % 60, 0, 0);
-    if (roundedMinutes >= 60) {
-      adjustedUtc.setUTCHours(utcDate.getUTCHours() + Math.floor(roundedMinutes / 60));
-    }
-
-    const adjustedLocal = utcToZonedTime(adjustedUtc, resolvedTimeZone);
-    setValue(field, format(adjustedLocal, "yyyy-MM-dd'T'HH:mm"));
+    const normalized = normalizeQuarterHourLocalInput(value, resolvedTimeZone);
+    setValue(field, normalized.normalizedStart);
 
     // If changing start time, also update end time
     if (field === 'start_time') {
-      const endUtc = addHours(adjustedUtc, 1);
-      const endLocal = utcToZonedTime(endUtc, resolvedTimeZone);
-      setValue('end_time', format(endLocal, "yyyy-MM-dd'T'HH:mm"));
+      setValue('end_time', normalized.normalizedEnd);
     }
   };
 
   const handleSelectAlternativeTime = (newStartTime: string, newEndTime: string) => {
-    const toLocalInput = (iso: string) => formatLocalInput(iso);
+    const toLocalInput = (iso: string) => formatSessionLocalInput(iso, resolvedTimeZone);
     setValue('start_time', toLocalInput(newStartTime));
     setValue('end_time', toLocalInput(newEndTime));
   };

@@ -1,4 +1,6 @@
 import { supabase } from './supabase';
+import { buildSupabaseEdgeUrl } from "./runtimeConfig";
+import { callEdgeRoute } from "./sdk/client";
 
 export interface EdgeInvokeOptions<TBody = unknown> {
   body?: TBody;
@@ -43,6 +45,56 @@ export function createEdgeInvoke(client: { auth: { getSession: () => Promise<{ d
   };
 }
 
-export const edgeInvoke = createEdgeInvoke(supabase);
+const getSessionAccessToken = async (): Promise<string | null> => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+};
+
+export async function edgeInvoke<TResponse = unknown>(
+  functionName: string,
+  options: EdgeInvokeOptions = {},
+): Promise<{ data: TResponse | null; error: Error | null; status: number }> {
+  try {
+    const response = await callEdgeRoute(
+      functionName,
+      buildSupabaseEdgeUrl,
+      {
+        method: "POST",
+        body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      },
+      {
+        accessToken: options.accessToken,
+        anonKey: options.anonKey,
+        getAccessToken: getSessionAccessToken,
+      },
+    );
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message =
+        typeof (payload as { error?: unknown } | null)?.error === "string"
+          ? (payload as { error: string }).error
+          : `Edge function request failed (${response.status})`;
+      return {
+        data: null,
+        error: new Error(message),
+        status: response.status,
+      };
+    }
+
+    return {
+      data: (payload as TResponse | null) ?? null,
+      error: null,
+      status: response.status,
+    };
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    return { data: null, error, status: (error as { status?: number }).status ?? 500 };
+  }
+}
 
 

@@ -59,6 +59,8 @@ For CI policy strict mode, ensure the `SUPABASE_DB_URL` secret is configured so 
 
 For API authority convergence checks, `scripts/ci/check-api-adapter-boundary.mjs` now enforces that converged routes remain adapter-only and point to canonical edge functions.
 
+For Priority 3 rollout, review `docs/architecture/P3_SDK_MIGRATION_TRACKER.md` to confirm compatibility shims and removal targets before promoting staging changes to production.
+
 Staging deploys are currently executed from Netlify (or manual CLI), not via a dedicated `deploy-staging` GitHub job.
 
 ## Smoke test expectations

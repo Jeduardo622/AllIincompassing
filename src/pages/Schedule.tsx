@@ -24,17 +24,12 @@ import {
   useDropdownData,
 } from "../lib/optimizedQueries";
 import { cancelSessions } from "../lib/sessionCancellation";
-import { supabase } from "../lib/supabase";
 import { showError, showSuccess } from "../lib/toast";
 import { logger } from "../lib/logger/logger";
+import { toError } from "../lib/logger/normalizeError";
 import { buildSchedulingConflictHint } from "../lib/conflictPolicy";
 import { useAuth } from "../lib/authContext";
 import { useActiveOrganizationId } from "../lib/organization";
-import type {
-  BookSessionApiRequestBody,
-  BookSessionApiResponse,
-  BookSessionResult,
-} from "../server/types";
 import {
   buildSessionSlotIndex,
   createSessionSlotKey,
@@ -45,8 +40,11 @@ import {
   type RecurrenceFormState,
 } from "./schedule-utils";
 import { useCapturePendingScheduleEvent } from "./schedule-state";
+import {
+  bookSessionViaApi,
+  buildBookSessionApiPayload,
+} from "../features/scheduling/domain/booking";
 
-const SESSION_HOLD_SECONDS = 5 * 60; // 5 minutes
 const AUTO_SCHEDULE_CONCURRENCY = 3;
 
 // Memoized time slot component
@@ -137,147 +135,6 @@ const TimeSlot = React.memo(
 );
 
 TimeSlot.displayName = "TimeSlot";
-
-function createIdempotencyKey(): string | undefined {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    try {
-      return crypto.randomUUID();
-    } catch (error) {
-      logger.warn("Failed to generate idempotency key", {
-        metadata: {
-          failure: toError(error, "Idempotency key generation failed").message,
-        },
-      });
-    }
-  }
-  return undefined;
-}
-
-async function callBookSessionApi(
-  payload: BookSessionApiRequestBody,
-  options?: {
-    idempotencyKey?: string;
-    agentOperationId?: string;
-    requestId?: string;
-    correlationId?: string;
-  },
-): Promise<BookSessionResult> {
-  const idempotencyKey = options?.idempotencyKey ?? createIdempotencyKey();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-
-  if (idempotencyKey) {
-    headers["Idempotency-Key"] = idempotencyKey;
-  }
-  if (options?.agentOperationId) {
-    headers["x-agent-operation-id"] = options.agentOperationId;
-  }
-  if (options?.requestId) {
-    headers["x-request-id"] = options.requestId;
-  }
-  if (options?.correlationId) {
-    headers["x-correlation-id"] = options.correlationId;
-  }
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const accessToken = session?.access_token?.trim();
-
-  if (!accessToken) {
-    throw new Error("Authentication is required to book sessions");
-  }
-
-  headers.Authorization = `Bearer ${accessToken}`;
-
-  let response: Response;
-  try {
-    response = await fetch("/api/book", {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
-    });
-  } catch (networkError) {
-    logger.error("Booking API request failed", {
-      error: toError(networkError, "Booking API request failed"),
-      metadata: {
-        endpoint: "/api/book",
-      },
-    });
-    throw new Error("Unable to reach booking service");
-  }
-
-  let body: BookSessionApiResponse | null = null;
-  try {
-    body = await response.json() as BookSessionApiResponse;
-  } catch (parseError) {
-    logger.error("Failed to parse booking API response", {
-      error: toError(parseError, "Booking API response parsing failed"),
-      metadata: {
-        endpoint: "/api/book",
-      },
-    });
-  }
-
-  if (!response.ok || !body) {
-    const message = body?.error ?? "Failed to book session";
-    const enhancedError = new Error(message) as Error & {
-      status?: number;
-      retryHint?: string;
-      retryAfter?: string | null;
-      retryAfterSeconds?: number | null;
-      orchestration?: Record<string, unknown> | null;
-    };
-    enhancedError.status = response.status;
-    enhancedError.retryAfter = typeof body?.retryAfter === "string" ? body.retryAfter : null;
-    enhancedError.retryAfterSeconds = typeof body?.retryAfterSeconds === "number"
-      ? body.retryAfterSeconds
-      : null;
-    enhancedError.orchestration = typeof body?.orchestration === "object"
-      ? body.orchestration as Record<string, unknown>
-      : null;
-    if (response.status === 409) {
-      enhancedError.retryHint =
-        typeof body?.hint === 'string' && body.hint.length > 0
-          ? body.hint
-          : 'The selected slot was just taken. Refresh the schedule or choose a different time.';
-    }
-    throw enhancedError;
-  }
-
-  if (!body.success || !body.data) {
-    throw new Error(body.error ?? "Failed to book session");
-  }
-
-  return body.data;
-}
-
-function buildBookingPayload(
-  session: Partial<Session>,
-  metadata: {
-    startOffsetMinutes: number;
-    endOffsetMinutes: number;
-    timeZone: string;
-  },
-  recurrenceState?: RecurrenceFormState,
-): BookSessionApiRequestBody {
-  const normalizedSession = {
-    ...session,
-    status: session.status ?? "scheduled",
-  } as BookSessionApiRequestBody["session"];
-
-  const recurrence = normalizeRecurrencePayload(recurrenceState) ?? session.recurrence ?? undefined;
-
-  return {
-    session: normalizedSession,
-    startTimeOffsetMinutes: metadata.startOffsetMinutes,
-    endTimeOffsetMinutes: metadata.endOffsetMinutes,
-    timeZone: metadata.timeZone,
-    holdSeconds: SESSION_HOLD_SECONDS,
-    ...(recurrence ? { recurrence } : {}),
-  };
-}
 
 // Memoized day column component
 const DayColumn = React.memo(
@@ -827,13 +684,17 @@ export const Schedule = React.memo(() => {
       const { startOffsetMinutes, endOffsetMinutes, timeZone } =
         computeTimeMetadata(newSession);
 
-      const bookingResult = await callBookSessionApi(
+      const bookingResult = await bookSessionViaApi(
         {
-          ...buildBookingPayload(newSession, {
+          ...buildBookSessionApiPayload(
+            newSession,
+            {
             startOffsetMinutes,
             endOffsetMinutes,
             timeZone,
-          }, recurrenceFormState),
+            },
+            normalizeRecurrencePayload(recurrenceFormState) ?? newSession.recurrence ?? undefined,
+          ),
           overrides: undefined,
         },
         {
@@ -882,13 +743,16 @@ export const Schedule = React.memo(() => {
           const { startOffsetMinutes, endOffsetMinutes, timeZone } =
             computeTimeMetadata(session);
 
-          const bookingResult = await callBookSessionApi(
+          const bookingResult = await bookSessionViaApi(
             {
-              ...buildBookingPayload(session, {
+              ...buildBookSessionApiPayload(
+                session,
+                {
                 startOffsetMinutes,
                 endOffsetMinutes,
                 timeZone,
-              }),
+                },
+              ),
               overrides: undefined,
             }
           );
@@ -931,16 +795,16 @@ export const Schedule = React.memo(() => {
       const { startOffsetMinutes, endOffsetMinutes, timeZone } =
         computeTimeMetadata(mergedSession);
 
-      const bookingResult = await callBookSessionApi(
+      const bookingResult = await bookSessionViaApi(
         {
-          ...buildBookingPayload(
+          ...buildBookSessionApiPayload(
             { ...mergedSession, id: selectedSession.id },
             {
               startOffsetMinutes,
               endOffsetMinutes,
               timeZone,
             },
-            recurrenceFormState,
+            normalizeRecurrencePayload(recurrenceFormState) ?? mergedSession.recurrence ?? undefined,
           ),
           overrides: undefined,
         }

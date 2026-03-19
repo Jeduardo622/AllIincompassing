@@ -3,7 +3,8 @@
 // Re-use the canonical client from supabaseClient.ts.
 import { supabase } from './supabaseClient';
 import { buildSupabaseEdgeUrl } from './runtimeConfig';
-import { fetchWithRetry, type RetryOptions } from './retry';
+import type { RetryOptions } from './retry';
+import { callEdgeRoute } from './sdk/client';
 // Re-export for modules importing from './supabase'
 export { supabase };
 
@@ -266,44 +267,29 @@ export async function callEdge(
   init: RequestInit = {},
   options: CallEdgeOptions = {},
 ) {
-  const headers = new Headers(init.headers ?? {});
-
-  const providedToken = typeof options.accessToken === 'string'
-    ? options.accessToken.trim()
-    : '';
-
-  if (providedToken.length > 0) {
-    headers.set('Authorization', `Bearer ${providedToken}`);
-  } else if (!headers.has('Authorization')) {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.access_token) {
-        headers.set('Authorization', `Bearer ${session.access_token}`);
-      }
-    } catch {
-      // In server runtimes without browser bootstrap, proceed unauthenticated.
-    }
-  }
-
-  const anonKey = typeof options.anonKey === 'string' ? options.anonKey.trim() : '';
-  if (anonKey.length > 0) {
-    headers.set('apikey', anonKey);
-  }
-  if (typeof options.requestId === "string" && options.requestId.trim().length > 0) {
-    headers.set("x-request-id", options.requestId.trim());
-  }
-  if (typeof options.correlationId === "string" && options.correlationId.trim().length > 0) {
-    headers.set("x-correlation-id", options.correlationId.trim());
-  }
-  if (typeof options.agentOperationId === "string" && options.agentOperationId.trim().length > 0) {
-    headers.set("x-agent-operation-id", options.agentOperationId.trim());
-  }
-
-  const url = buildEdgeUrlWithFallback(path);
-  if (options.retry) {
-    return fetchWithRetry(url, { ...init, headers }, options.retry);
-  }
-  return fetch(url, { ...init, headers });
+  return callEdgeRoute(
+    path,
+    buildEdgeUrlWithFallback,
+    init,
+    {
+      accessToken: options.accessToken,
+      anonKey: options.anonKey,
+      retry: options.retry,
+      getAccessToken: async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          return session?.access_token ?? null;
+        } catch {
+          return null;
+        }
+      },
+      trace: {
+        requestId: options.requestId,
+        correlationId: options.correlationId,
+        agentOperationId: options.agentOperationId,
+      },
+    },
+  );
 }
 
 export type SessionNotesPdfExportStatus = 'queued' | 'processing' | 'ready' | 'failed' | 'expired';

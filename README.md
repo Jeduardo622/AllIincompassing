@@ -143,6 +143,12 @@ Required branch checks are enforced via CI policy and should include:
   - `API_AUTHORITY_MODE=edge|legacy` (`edge` default) controls whether `/api/book`, `/api/dashboard`, and `/api/sessions-start` run as thin transport adapters to edge authority.
   - `RATE_LIMIT_MODE=distributed|memory|waf_only` controls app-layer quota behavior. `distributed` uses Upstash REST (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`); `waf_only` disables app-layer limiting when upstream WAF quotas are authoritative.
 
+### Priority 3 modernization status
+
+- Canonical client surface is now `src/lib/sdk/client.ts`.
+- Legacy wrappers (`src/lib/api.ts`, `src/lib/supabase.ts#callEdge`, `src/lib/edgeInvoke.ts`) remain as compatibility shims during migration.
+- Scheduling domain extractions are tracked in `docs/architecture/P3_SDK_MIGRATION_TRACKER.md`.
+
 ## Reference documentation
 
 - [docs/AUTH_ROLES.md](docs/AUTH_ROLES.md) – RBAC hierarchy, permissions, and RLS policies across profiles, sessions, and billing tables.

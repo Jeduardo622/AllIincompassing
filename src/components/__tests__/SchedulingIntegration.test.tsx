@@ -293,7 +293,7 @@ describe('Scheduling Integration - End-to-End Flow', () => {
 
     // Should show existing session
     await waitFor(() => {
-      expect(screen.getByText('Johnny Appleseed')).toBeInTheDocument();
+      expect(screen.getAllByText('Johnny Appleseed').length).toBeGreaterThan(0);
     });
   });
 

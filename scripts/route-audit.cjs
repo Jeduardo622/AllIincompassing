@@ -74,6 +74,7 @@ const API_ENDPOINTS = {
   '/functions/v1/assign-therapist-user': { type: 'edge_function', name: 'assign-therapist-user', path: 'supabase/functions/assign-therapist-user' },
   '/functions/v1/suggest-alternative-times': { type: 'edge_function', name: 'suggest-alternative-times', path: 'supabase/functions/suggest-alternative-times' },
   '/functions/v1/generate-report': { type: 'edge_function', name: 'generate-report', path: 'supabase/functions/generate-report' },
+  '/functions/v1/vet-dashboard-data': { type: 'edge_function', name: 'vet-dashboard-data', path: 'supabase/functions/vet-dashboard-data' },
   '/functions/v1/ai-transcription': { type: 'edge_function', name: 'ai-transcription', path: 'supabase/functions/ai-transcription' },
   '/functions/v1/ai-session-note-generator': { type: 'edge_function', name: 'ai-session-note-generator', path: 'supabase/functions/ai-session-note-generator' },
   '/functions/v1/ai-agent-optimized': { type: 'edge_function', name: 'ai-agent-optimized', path: 'supabase/functions/ai-agent-optimized' },
@@ -229,6 +230,7 @@ class RouteAuditor {
       'supabase/functions/assign-therapist-user',
       'supabase/functions/suggest-alternative-times',
       'supabase/functions/generate-report',
+      'supabase/functions/vet-dashboard-data',
       'supabase/functions/ai-transcription',
       'supabase/functions/ai-session-note-generator',
       'supabase/functions/ai-agent-optimized'

@@ -22,7 +22,13 @@ FOR ALL
 TO authenticated
 USING (
   CASE
-    WHEN auth.user_has_role('admin') THEN true
+    WHEN EXISTS (
+      SELECT 1
+      FROM user_roles current_user_roles
+      JOIN roles current_roles ON current_roles.id = current_user_roles.role_id
+      WHERE current_user_roles.user_id = auth.uid()
+        AND current_roles.name = 'admin'
+    ) THEN true
     ELSE user_id = auth.uid()
   END
 );
@@ -37,7 +43,13 @@ DECLARE
   admin_role_id uuid;
 BEGIN
   -- Check if current user is admin
-  IF NOT auth.user_has_role('admin') THEN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM user_roles current_user_roles
+    JOIN roles current_roles ON current_roles.id = current_user_roles.role_id
+    WHERE current_user_roles.user_id = auth.uid()
+      AND current_roles.name = 'admin'
+  ) THEN
     RAISE EXCEPTION 'Only administrators can manage admin users';
   END IF;
 

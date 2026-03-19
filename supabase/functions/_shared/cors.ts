@@ -15,7 +15,8 @@ const parseAllowedOrigins = (): string[] =>
     .filter((value) => value.length > 0);
 
 export const getAllowedOrigins = (): string[] => {
-  const merged = new Set<string>([...STATIC_ALLOWED_ORIGINS, ...parseAllowedOrigins()]);
+  // Environment-configured origins should take precedence for default fallback behavior.
+  const merged = new Set<string>([...parseAllowedOrigins(), ...STATIC_ALLOWED_ORIGINS]);
   return Array.from(merged);
 };
 

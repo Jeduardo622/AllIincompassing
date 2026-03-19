@@ -10,6 +10,7 @@
  */
 import { errorEnvelope, getRequestId } from "../lib/http/error.ts";
 import { resolveOrgId } from "./org.ts";
+import { corsHeadersForRequest as sharedCorsHeadersForRequest } from "./cors.ts";
 
 type SupabaseModule = typeof import("npm:@supabase/supabase-js@2.50.0");
 
@@ -58,65 +59,21 @@ export class AuthenticationError extends Error {
   }
 }
 
-const resolveFallbackOrigin = (): string => {
-  const configuredOrigins = Deno.env.get("CORS_ALLOWED_ORIGINS");
-  if (configuredOrigins && configuredOrigins.trim().length > 0) {
-    return configuredOrigins.split(",")[0].trim();
-  }
-
-  const appEnv = (Deno.env.get("APP_ENV") ?? Deno.env.get("DENO_ENV") ?? "production").toLowerCase();
-  if (appEnv === "development" || appEnv === "local") {
-    return "http://localhost:5173";
-  }
-
-  return "https://velvety-cendol-dae4d6.netlify.app";
-};
-
-const getConfiguredOrigins = (): string[] => {
-  const configuredOrigins = Deno.env.get("CORS_ALLOWED_ORIGINS");
-  if (!configuredOrigins || configuredOrigins.trim().length === 0) {
-    return [resolveFallbackOrigin()];
-  }
-  return configuredOrigins
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter((origin) => origin.length > 0);
-};
-
-const resolveOriginForRequest = (req: Request): string => {
-  const requestOrigin = req.headers.get("origin");
-  const allowedOrigins = getConfiguredOrigins();
-  if (!requestOrigin) {
-    return allowedOrigins[0] ?? resolveFallbackOrigin();
-  }
-  if (allowedOrigins.includes(requestOrigin)) {
-    return requestOrigin;
-  }
-  return allowedOrigins[0] ?? resolveFallbackOrigin();
-};
-
-/**
- * CORS headers for all API responses
- */
-export const corsHeaders = {
-  "Access-Control-Allow-Origin": resolveFallbackOrigin(),
-  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Client-Info, x-client-info, apikey",
-  "Access-Control-Max-Age": "86400",
-};
-
 export const tokenResponseCacheHeaders = {
   "Cache-Control": "no-store, no-cache, max-age=0",
   Pragma: "no-cache",
   Expires: "0",
 };
 
+/**
+ * Backward-compatible static CORS headers for handlers that do not yet pass req.
+ */
+export const corsHeaders: Record<string, string> = sharedCorsHeadersForRequest(
+  new Request("https://edge.internal.local"),
+);
+
 export function corsHeadersForRequest(req: Request): Record<string, string> {
-  return {
-    ...corsHeaders,
-    "Access-Control-Allow-Origin": resolveOriginForRequest(req),
-    Vary: "Origin",
-  };
+  return sharedCorsHeadersForRequest(req);
 }
 
 /**

@@ -233,6 +233,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   ).length;
   const hasRequiredAcceptedGoalMix =
     acceptedDraftChildGoalCount >= MIN_CHILD_GOALS && acceptedDraftParentGoalCount >= MIN_PARENT_GOALS;
+  const hasStagedDraftChanges = hasExistingDrafts;
   const canPromoteAssessment =
     canQuerySelectedAssessment &&
     !hasPendingRequiredChecklistItems &&
@@ -550,7 +551,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       queryClient.invalidateQueries({
         queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
       });
-      showSuccess("Draft program updated.");
+      showSuccess("Program draft saved. Not published yet.");
     },
     onError: showError,
   });
@@ -590,7 +591,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       queryClient.invalidateQueries({
         queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
       });
-      showSuccess("Draft goal updated.");
+      showSuccess("Goal draft saved. Not published yet.");
     },
     onError: showError,
   });
@@ -619,10 +620,30 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       queryClient.invalidateQueries({
         queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
       });
-      showSuccess(`Published approved records. Created production program and ${result.created_goal_count} goals.`);
+      showSuccess(`Published to live records. Created production program and ${result.created_goal_count} goals.`);
     },
     onError: showError,
   });
+
+  const handlePublishApprovedRecords = () => {
+    const acceptedProgramCount = (assessmentDrafts?.programs ?? []).filter(
+      (program) => program.accept_state === "accepted" || program.accept_state === "edited",
+    ).length;
+    const acceptedGoalCount = (assessmentDrafts?.goals ?? []).filter(
+      (goal) => goal.accept_state === "accepted" || goal.accept_state === "edited",
+    ).length;
+    const selectedAssessmentLabel = selectedAssessmentDocument?.file_name ?? "selected assessment";
+    const confirmationMessage = `Publish accepted drafts from ${selectedAssessmentLabel} to live Programs & Goals?\n\nThis will make ${acceptedProgramCount} program(s) and ${acceptedGoalCount} goal(s) visible in the live care plan.`;
+
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(confirmationMessage);
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    promoteAssessment.mutate();
+  };
 
   const generateAssessmentPlanPdf = useMutation({
     mutationFn: async () => {
@@ -914,13 +935,16 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               </div>
               <button
                 type="button"
-                onClick={() => promoteAssessment.mutate()}
+                onClick={handlePublishApprovedRecords}
                 disabled={!canPromoteAssessment || promoteAssessment.isLoading}
                 title={promoteDisabledReason ?? undefined}
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
               >
-                {promoteAssessment.isLoading ? "Publishing..." : "Publish Approved Programs + Goals"}
+                {promoteAssessment.isLoading ? "Publishing..." : "Publish to Live Programs + Goals"}
               </button>
+              <p className="text-xs text-gray-500 dark:text-gray-300">
+                Publishing makes accepted drafts live in Programs and Goals.
+              </p>
               {promoteDisabledReason && !promoteAssessment.isLoading && (
                 <p className="text-xs text-amber-700 dark:text-amber-300">{promoteDisabledReason}</p>
               )}
@@ -1177,6 +1201,14 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
               AI Proposal Review (Approve / Reject / Edit)
             </h3>
+            <p className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-300" role="status" aria-live="polite">
+              {hasStagedDraftChanges ? "Draft changes pending publication." : "All changes published."}
+            </p>
+            {selectedAssessmentDocument && (
+              <p className="mb-3 text-xs text-gray-500 dark:text-gray-300">
+                Selected assessment: {selectedAssessmentDocument.file_name}
+              </p>
+            )}
             {!selectedAssessmentId ? (
               <p className="text-sm text-gray-500">Select an assessment to review its draft program and goals.</p>
             ) : (
@@ -1260,8 +1292,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         disabled={updateDraftProgram.isLoading}
                         className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
                       >
-                        Save Program Review
+                        Save Program Draft
                       </button>
+                      <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
+                        Saves to draft only. Not visible in live records until published.
+                      </p>
                     </div>
                   );
                 })}
@@ -1488,8 +1523,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         disabled={updateDraftGoal.isLoading}
                         className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
                       >
-                        Save Goal Review
+                        Save Goal Draft
                       </button>
+                      <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
+                        Saves to draft only. Not visible in live records until published.
+                      </p>
                     </div>
                   );
                 })}

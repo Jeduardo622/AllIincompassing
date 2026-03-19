@@ -46,6 +46,23 @@ npm test -- \
 
 Expected result (current baseline): 6 files, 19 tests passing.
 
+## Draft-vs-publish UX checks (2026-03)
+
+For the Programs & Goals staged review clarity refactor, run:
+
+```bash
+npm run test -- src/components/__tests__/ProgramsGoalsTab.test.tsx
+```
+
+Focus assertions:
+
+- Save actions are explicitly draft-scoped (`Save Program Draft` / `Save Goal Draft`).
+- Status messaging is visible (`Draft changes pending publication.` or `All changes published.`).
+- Publish uses live terminology (`Publish to Live Programs + Goals`) and requires confirmation.
+- Draft save toasts confirm records are not published yet.
+
+Reference UX contract: [`docs/PROGRAMS_GOALS_DRAFT_PUBLISH_WORKFLOW.md`](./PROGRAMS_GOALS_DRAFT_PUBLISH_WORKFLOW.md).
+
 ## Assessment PDF generation suite (2026-02)
 
 For the staged assessment + completed CalOptima PDF flow, run:

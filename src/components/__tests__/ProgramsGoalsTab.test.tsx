@@ -754,6 +754,8 @@ describe("ProgramsGoalsTab", () => {
       return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
     });
 
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
     renderWithProviders(
       <ProgramsGoalsTab
         client={
@@ -783,14 +785,146 @@ describe("ProgramsGoalsTab", () => {
     );
 
     await screen.findByText("fba.pdf");
-    await userEvent.click(screen.getByRole("button", { name: /Publish Approved Programs \+ Goals/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Publish to Live Programs \+ Goals/i }));
 
     await waitFor(() => {
       expect(showError).toHaveBeenCalled();
     });
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining("to live Programs & Goals"));
     const firstErrorArg = vi.mocked(showError).mock.calls[0]?.[0];
     expect(firstErrorArg).toBeInstanceOf(Error);
     expect((firstErrorArg as Error).message).toBe("Required checklist items must be approved before promotion.");
+    confirmSpy.mockRestore();
+  });
+
+  it("shows draft-vs-live status messaging in review panel", async () => {
+    renderWithProviders(
+      <ProgramsGoalsTab
+        client={
+          {
+            id: "client-1",
+            email: "client@example.com",
+            full_name: "Client One",
+            date_of_birth: "2017-05-01",
+            insurance_info: {},
+            service_preference: [],
+            one_to_one_units: 0,
+            supervision_units: 0,
+            parent_consult_units: 0,
+            assessment_units: 0,
+            availability_hours: {},
+            created_at: "2026-02-11T00:00:00.000Z",
+          } as any
+        }
+      />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    expect(await screen.findByText("All changes published.")).toBeInTheDocument();
+    expect(screen.getByText("Publishing makes accepted drafts live in Programs and Goals.")).toBeInTheDocument();
+  });
+
+  it("saves a program draft and shows draft-only messaging", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/fba.pdf",
+              status: "drafted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(
+          JSON.stringify({
+            programs: [
+              {
+                id: "draft-program-1",
+                assessment_document_id: ASSESSMENT_ID,
+                organization_id: ORG_ID,
+                client_id: "client-1",
+                name: "Draft Program",
+                description: "Initial draft",
+                accept_state: "accepted",
+                review_notes: null,
+              },
+            ],
+            goals: [],
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "PATCH" && path === "/api/assessment-drafts") {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <ProgramsGoalsTab
+        client={
+          {
+            id: "client-1",
+            email: "client@example.com",
+            full_name: "Client One",
+            date_of_birth: "2017-05-01",
+            insurance_info: {},
+            service_preference: [],
+            one_to_one_units: 0,
+            supervision_units: 0,
+            parent_consult_units: 0,
+            assessment_units: 0,
+            availability_hours: {},
+            created_at: "2026-02-11T00:00:00.000Z",
+          } as any
+        }
+      />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    await screen.findByText("Draft changes pending publication.");
+    await userEvent.click(await screen.findByRole("button", { name: /Save Program Draft/i }));
+
+    await waitFor(() => {
+      expect(callApi).toHaveBeenCalledWith(
+        "/api/assessment-drafts",
+        expect.objectContaining({
+          method: "PATCH",
+          body: expect.stringContaining("\"draft_type\":\"program\""),
+        }),
+      );
+    });
+    expect(showSuccess).toHaveBeenCalledWith("Program draft saved. Not published yet.");
+    expect(screen.getByText("Saves to draft only. Not visible in live records until published.")).toBeInTheDocument();
   });
 
   it("shows inline helper when promote is disabled", async () => {

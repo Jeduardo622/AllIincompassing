@@ -229,17 +229,25 @@ describe('Scheduling Integration - End-to-End Flow', () => {
   }, 60000);
 
   it('should handle scheduling conflicts gracefully', async () => {
+    const now = new Date();
+    const existingStart = new Date(now);
+    existingStart.setHours(10, 0, 0, 0);
+    const existingEnd = new Date(now);
+    existingEnd.setHours(11, 0, 0, 0);
+    const existingCreatedAt = new Date(now);
+    existingCreatedAt.setDate(existingCreatedAt.getDate() - 1);
+
     const existingSession = {
       id: 'existing-session',
       client_id: 'client-1',
       therapist_id: 'therapist-1',
-      start_time: '2025-07-01T10:00:00Z',
-      end_time: '2025-07-01T11:00:00Z',
+      start_time: existingStart.toISOString(),
+      end_time: existingEnd.toISOString(),
       status: 'scheduled' as const,
       notes: 'Existing session',
-      created_at: '2025-06-30T00:00:00Z',
+      created_at: existingCreatedAt.toISOString(),
       created_by: 'user-2',
-      updated_at: '2025-06-30T00:00:00Z',
+      updated_at: existingCreatedAt.toISOString(),
       updated_by: 'user-2',
       therapist: { id: 'therapist-1', full_name: 'Dr. Jane Smith' },
       client: { id: 'client-1', full_name: 'Johnny Appleseed' },

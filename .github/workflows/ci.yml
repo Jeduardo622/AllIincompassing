@@ -304,6 +304,10 @@ jobs:
           done
 
           if [ "${#missing[@]}" -gt 0 ]; then
+            if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+              echo "::warning::Missing auth smoke secrets on pull_request; skipping browser smoke gate: ${missing[*]}"
+              exit 0
+            fi
             echo "Missing required secrets for auth browser smoke gate: ${missing[*]}"
             exit 1
           fi

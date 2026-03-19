@@ -61,7 +61,7 @@ jobs:
           node-version: 20
 
       - name: Install Lighthouse CI
-        run: npm install --no-save @lhci/cli@0.13.1
+        run: npm install --no-save @lhci/cli@latest
 
       - name: Run Lighthouse CI (advisory)
         if: ${{ steps.preview.outputs.url != '' }}

@@ -143,8 +143,14 @@ Cypress.Commands.add('login', (email: string, password: string) => {
       win.localStorage.removeItem('auth-storage');
     });
 
-    cy.get('input[name="email"]').should('be.enabled').clear().type(email);
-    cy.get('input[name="password"]').should('be.enabled').clear().type(password, { log: false });
+    cy.get('input[name="email"]')
+      .should('be.visible')
+      .and('be.enabled')
+      .type(`{selectall}${email}`, { force: true });
+    cy.get('input[name="password"]')
+      .should('be.visible')
+      .and('be.enabled')
+      .type(`{selectall}${password}`, { log: false, force: true });
     cy.get('button[type="submit"]').should('be.enabled').click();
 
     cy.wait('@supabaseToken');

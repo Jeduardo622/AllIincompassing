@@ -59,6 +59,32 @@ export class AuthenticationError extends Error {
   }
 }
 
+const resolveLegacyFallbackOrigin = (): string => {
+  const configuredOrigins = Deno.env.get("CORS_ALLOWED_ORIGINS");
+  if (configuredOrigins && configuredOrigins.trim().length > 0) {
+    return configuredOrigins.split(",")[0].trim();
+  }
+
+  const appEnv = (Deno.env.get("APP_ENV") ?? Deno.env.get("DENO_ENV") ?? "production").toLowerCase();
+  if (appEnv === "development" || appEnv === "local") {
+    return "http://localhost:5173";
+  }
+
+  return "https://velvety-cendol-dae4d6.netlify.app";
+};
+
+const resolveLegacyStaticOrigin = (): string => {
+  const configuredOrigins = Deno.env.get("CORS_ALLOWED_ORIGINS");
+  if (!configuredOrigins || configuredOrigins.trim().length === 0) {
+    return resolveLegacyFallbackOrigin();
+  }
+  const firstConfigured = configuredOrigins
+    .split(",")
+    .map((origin) => origin.trim())
+    .find((origin) => origin.length > 0);
+  return firstConfigured ?? resolveLegacyFallbackOrigin();
+};
+
 export const tokenResponseCacheHeaders = {
   "Cache-Control": "no-store, no-cache, max-age=0",
   Pragma: "no-cache",
@@ -68,9 +94,16 @@ export const tokenResponseCacheHeaders = {
 /**
  * Backward-compatible static CORS headers for handlers that do not yet pass req.
  */
-export const corsHeaders: Record<string, string> = sharedCorsHeadersForRequest(
-  new Request("https://edge.internal.local"),
-);
+export const corsHeaders: Record<string, string> = {
+  ...sharedCorsHeadersForRequest(
+    new Request("https://edge.internal.local", {
+      headers: {
+        origin: resolveLegacyStaticOrigin(),
+      },
+    }),
+  ),
+  "Access-Control-Allow-Origin": resolveLegacyStaticOrigin(),
+};
 
 export function corsHeadersForRequest(req: Request): Record<string, string> {
   return sharedCorsHeadersForRequest(req);

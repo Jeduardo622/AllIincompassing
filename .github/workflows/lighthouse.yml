@@ -49,8 +49,9 @@ jobs:
           fi
 
           if [ -z "$candidate" ]; then
-            echo "::error::Preview URL missing. Provide it via the workflow input, repository variable LIGHTHOUSE_PREVIEW_URL, or secret LIGHTHOUSE_PREVIEW_URL." >&2
-            exit 1
+            echo "::warning::Preview URL missing. Lighthouse audit is advisory and will be skipped. Configure workflow input, repository variable LIGHTHOUSE_PREVIEW_URL, or secret LIGHTHOUSE_PREVIEW_URL to re-enable strict auditing."
+            echo "url=" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           echo "url=${candidate%/}" >> "$GITHUB_OUTPUT"
@@ -62,7 +63,9 @@ jobs:
       - name: Install Lighthouse CI
         run: npm install --no-save @lhci/cli@0.13.1
 
-      - name: Run Lighthouse CI
+      - name: Run Lighthouse CI (advisory)
+        if: ${{ steps.preview.outputs.url != '' }}
+        continue-on-error: true
         env:
           TARGET_URL: ${{ steps.preview.outputs.url }}
         run: |

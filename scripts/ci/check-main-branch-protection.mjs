@@ -105,6 +105,12 @@ const run = async () => {
     return;
   }
 
+  if (expectedBranches.length === 0) {
+    fail(
+      'No protected branches configured. Set CI_PROTECTED_BRANCH or CI_PROTECTED_BRANCHES to at least one branch name.',
+    );
+  }
+
   if (!repository) {
     fail('GITHUB_REPOSITORY is required for branch protection checks.');
   }

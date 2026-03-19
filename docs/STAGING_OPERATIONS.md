@@ -41,7 +41,7 @@ This playbook captures the operational steps required to stand up and maintain t
 
 The active workflow (`.github/workflows/ci.yml`) runs staged jobs on pull requests and pushes to `main`/`develop`:
 
-1. `policy` – runs `npm run ci:secrets` and `npm run ci:check-focused` (startup canary + governance guards).
+1. `policy` – runs `npm run ci:deploy:session-edge-bundle`, `npm run ci:secrets`, and `npm run ci:check-focused` (startup canary + governance guards).
 2. `lint-typecheck` and `unit-tests` – parallel code-quality and test gates after `policy`.
 3. `build` – build canary once lint + unit tests pass.
 4. `tier0-browser` and `auth-browser-smoke` – browser-critical regression gates.
@@ -61,7 +61,8 @@ For CI policy strict mode, ensure the `SUPABASE_DB_URL` secret is configured so 
 
 For API authority convergence checks, `scripts/ci/check-api-adapter-boundary.mjs` now enforces that converged routes remain adapter-only and point to canonical edge functions.
 For session lifecycle edge contracts, `scripts/ci/deploy-session-edge-bundle.mjs` enforces `verify_jwt=true` for all lifecycle functions.
-The `policy` job now runs `npm run ci:deploy:session-edge-bundle` on push events before policy checks so parity is verified against freshly deployed lifecycle functions.
+The `policy` job now runs `npm run ci:deploy:session-edge-bundle` on push and pull-request events before policy checks so parity is verified against freshly deployed lifecycle functions.
+`lighthouse-ci` currently runs as an advisory (non-blocking) signal while preview URL detection is stabilized; retain artifact review in release checklists even though it does not block merge.
 
 For Priority 3 rollout, review `docs/architecture/P3_SDK_MIGRATION_TRACKER.md` to confirm compatibility shims and removal targets before promoting staging changes to production.
 

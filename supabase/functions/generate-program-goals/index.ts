@@ -9,12 +9,13 @@ const openai = new OpenAI({
   apiKey: Deno.env.get("OPENAI_API_KEY"),
 });
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
+const corsHeaders = (req: Request) => ({
+  "Access-Control-Allow-Origin": resolveAllowedOrigin(req.headers.get("origin")),
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers":
     "Content-Type, Authorization, apikey, x-client-info, x-request-id, x-correlation-id",
-};
+  Vary: "Origin",
+});
 
 const requestSchema = z.object({
   assessment_text: z.string().trim().min(20).max(12000),
@@ -30,6 +31,16 @@ type ParentGoalSubtype = (typeof PARENT_GOAL_SUBTYPES)[number];
 const MAX_GENERATION_ATTEMPTS = 2;
 const OPENAI_ATTEMPT_TIMEOUT_MS = 15000;
 const MAX_ASSESSMENT_PROMPT_CHARS = 6500;
+const GOAL_BLOCK_HINTS = [
+  "GOAL",
+  "TREATMENT",
+  "RECOMMENDATION",
+  "SKILL ACQUISITION",
+  "PARENT",
+  "REPLACEMENT",
+  "GENERALIZATION",
+  "MAINTENANCE",
+];
 
 const responseSchema = z.object({
   program: z.object({
@@ -135,6 +146,53 @@ const truncate = (value: string, max: number): string => {
     return value;
   }
   return value.slice(0, max - 1).trimEnd() + "…";
+};
+
+const blockPriority = (block: string): number => {
+  const title = block.split("\n")[0]?.toUpperCase() ?? "";
+  if (GOAL_BLOCK_HINTS.some((hint) => title.includes(hint))) {
+    return 0;
+  }
+  return 1;
+};
+
+const buildAssessmentExcerpt = (assessmentText: string, maxChars: number): string => {
+  const normalized = assessmentText.trim();
+  if (normalized.length <= maxChars) {
+    return normalized;
+  }
+
+  const blocks = normalized.split(/\n{2,}/u).map((block) => block.trim()).filter((block) => block.length > 0);
+  if (blocks.length <= 1) {
+    return normalized.slice(0, maxChars);
+  }
+
+  const ordered = [...blocks].sort((left, right) => {
+    const leftPriority = blockPriority(left);
+    const rightPriority = blockPriority(right);
+    if (leftPriority !== rightPriority) {
+      return leftPriority - rightPriority;
+    }
+    return 0;
+  });
+
+  const selected: string[] = [];
+  let used = 0;
+  for (const block of ordered) {
+    const separatorLength = selected.length > 0 ? 2 : 0;
+    const nextLength = used + separatorLength + block.length;
+    if (nextLength > maxChars) {
+      continue;
+    }
+    selected.push(block);
+    used = nextLength;
+  }
+
+  if (selected.length === 0) {
+    return normalized.slice(0, maxChars);
+  }
+
+  return selected.join("\n\n");
 };
 
 const buildSupplementalGoal = (args: {
@@ -467,19 +525,19 @@ const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<T | null
   }
 };
 
-const json = (payload: unknown, status = 200): Response =>
+const json = (req: Request, payload: unknown, status = 200): Response =>
   new Response(JSON.stringify(payload), {
     status,
-    headers: { "Content-Type": "application/json", ...corsHeaders },
+    headers: { "Content-Type": "application/json", ...corsHeaders(req) },
   });
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders });
+    return new Response(null, { status: 204, headers: corsHeaders(req) });
   }
 
   if (req.method !== "POST") {
-    return json({ error: "Method not allowed" }, 405);
+    return json(req, { error: "Method not allowed" }, 405);
   }
 
   try {
@@ -490,10 +548,11 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const parsed = requestSchema.safeParse(body);
     if (!parsed.success) {
-      return json({ error: "Invalid request body" }, 400);
+      return json(req, { error: "Invalid request body" }, 400);
     }
 
     const whiteBibleGuidance = await loadWhiteBibleGuidance();
+    const assessmentExcerpt = buildAssessmentExcerpt(parsed.data.assessment_text, MAX_ASSESSMENT_PROMPT_CHARS);
     let retryHint: string | undefined;
     const attemptFailures: AttemptFailureReason[] = [];
     let lastFailureReason = "unknown";
@@ -502,7 +561,7 @@ Deno.serve(async (req) => {
       const prompt = buildPrompt({
         whiteBibleGuidance,
         clientName: parsed.data.client_name,
-        assessmentText: parsed.data.assessment_text.slice(0, MAX_ASSESSMENT_PROMPT_CHARS),
+        assessmentText: assessmentExcerpt,
         retryHint,
       });
       const completion = await withTimeout(
@@ -569,7 +628,7 @@ Deno.serve(async (req) => {
       const completedGoalMix = ensureMinimumGoalMix({
         goals: dedupedGoals,
         clientName: parsed.data.client_name,
-        assessmentText: parsed.data.assessment_text.slice(0, MAX_ASSESSMENT_PROMPT_CHARS),
+        assessmentText: assessmentExcerpt,
       });
       const normalizedResponse = responseSchema.safeParse({
         ...validated.data,
@@ -592,7 +651,7 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      return json(normalizedResponse.data, 200);
+      return json(req, normalizedResponse.data, 200);
     }
 
     const failuresSummary = Array.from(new Set(attemptFailures)).join(",");
@@ -604,19 +663,19 @@ Deno.serve(async (req) => {
       });
       const fallbackResponse = buildFallbackResponse({
         clientName: parsed.data.client_name,
-        assessmentText: parsed.data.assessment_text.slice(0, MAX_ASSESSMENT_PROMPT_CHARS),
+        assessmentText: assessmentExcerpt,
         reason: `timeout-only failure (${MAX_GENERATION_ATTEMPTS} attempts)`,
       });
-      return json(fallbackResponse, 200);
+      return json(req, fallbackResponse, 200);
     }
 
-    return json({
+    return json(req, {
       error:
         `Generated draft failed after ${MAX_GENERATION_ATTEMPTS} attempts. Last failure: ${lastFailureReason}. ` +
         `Failure categories: ${failuresSummary || "none"}.`,
     }, 502);
   } catch (error) {
     console.error("generate-program-goals error", error);
-    return json({ error: "Failed to generate draft" }, 500);
+    return json(req, { error: "Failed to generate draft" }, 500);
   }
 });

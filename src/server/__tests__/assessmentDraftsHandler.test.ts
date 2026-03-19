@@ -153,6 +153,20 @@ describe("assessmentDraftsHandler", () => {
               label: "Summary",
               placeholder_key: "CALOPTIMA_SUMMARY",
               value_text: "Client presents with communication deficits.",
+              value_json: null,
+              required: true,
+              status: "drafted",
+            },
+            {
+              section_key: "goals_treatment_planning",
+              label: "Skill Acquisition Goal 1",
+              placeholder_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+              value_text: "Client will follow one-step directions.",
+              value_json: {
+                mastery_criteria: "80% across 4 consecutive weeks",
+                maintenance_criteria: "80% during maintenance probes",
+                generalization_criteria: "Across home and community with parent and staff",
+              },
               required: true,
               status: "drafted",
             },
@@ -218,6 +232,19 @@ describe("assessmentDraftsHandler", () => {
     const parentGoalCount = goalPayload.filter((goal) => goal.goal_type === "parent").length;
     expect(childGoalCount).toBe(20);
     expect(parentGoalCount).toBe(6);
+    const generationCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url.includes("/functions/v1/generate-program-goals") &&
+          (init?.method ?? "").toUpperCase() === "POST",
+      );
+    expect(generationCall).toBeTruthy();
+    const generationPayload = JSON.parse((generationCall?.[1] as RequestInit).body as string) as {
+      assessment_text?: string;
+    };
+    expect(generationPayload.assessment_text).toContain("mastery_criteria: 80% across 4 consecutive weeks");
   });
 
   it("returns empty drafts when requested assessment is no longer in scope", async () => {

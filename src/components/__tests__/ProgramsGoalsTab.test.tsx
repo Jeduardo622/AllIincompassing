@@ -959,6 +959,39 @@ describe("ProgramsGoalsTab", () => {
     expect(await screen.findByText("Select a valid assessment first.")).toBeInTheDocument();
   });
 
+  it("shows add-goal prerequisites when create goal is disabled", async () => {
+    renderWithProviders(
+      <ProgramsGoalsTab
+        client={
+          {
+            id: "client-1",
+            email: "client@example.com",
+            full_name: "Client One",
+            date_of_birth: "2017-05-01",
+            insurance_info: {},
+            service_preference: [],
+            one_to_one_units: 0,
+            supervision_units: 0,
+            parent_consult_units: 0,
+            assessment_units: 0,
+            availability_hours: {},
+            created_at: "2026-02-11T00:00:00.000Z",
+          } as any
+        }
+      />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    expect(await screen.findByText("Create or select a program first.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Create Goal/i })).toBeDisabled();
+  });
+
   it("deletes an uploaded assessment document from the queue", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();

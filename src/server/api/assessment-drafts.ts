@@ -8,6 +8,10 @@ import {
   json,
   resolveOrgAndRole,
 } from "./shared";
+import {
+  composeAssessmentTextFromChecklist,
+  type AssessmentChecklistValueRow,
+} from "./assessment-text-composer";
 
 const MIN_CHILD_GOALS = 20;
 const MIN_PARENT_GOALS = 6;
@@ -86,12 +90,7 @@ interface AssessmentDraftGoalRow {
   accept_state: "pending" | "accepted" | "rejected" | "edited";
 }
 
-interface AssessmentChecklistValueRow {
-  section_key: string;
-  label: string;
-  placeholder_key: string;
-  value_text: string | null;
-  value_json: Record<string, unknown> | null;
+interface AssessmentChecklistWithStatusValueRow extends AssessmentChecklistValueRow {
   required: boolean;
   status: "not_started" | "drafted" | "verified" | "approved";
 }
@@ -147,40 +146,6 @@ const getAssessmentDocument = async (
     return null;
   }
   return lookup.data[0];
-};
-
-const composeAssessmentTextFromChecklist = (rows: AssessmentChecklistValueRow[]): string => {
-  const grouped = new Map<string, AssessmentChecklistValueRow[]>();
-  rows.forEach((row) => {
-    const hasText = !!row.value_text && row.value_text.trim().length > 0;
-    const hasJson = !!row.value_json && Object.keys(row.value_json).length > 0;
-    if (!hasText && !hasJson) {
-      return;
-    }
-    const sectionRows = grouped.get(row.section_key) ?? [];
-    sectionRows.push(row);
-    grouped.set(row.section_key, sectionRows);
-  });
-
-  const blocks = Array.from(grouped.entries()).map(([section, sectionRows]) => {
-    const title = section.replace(/_/g, " ").toUpperCase();
-    const values = sectionRows
-      .map((row) => {
-        const textPart = row.value_text?.trim();
-        if (textPart && textPart.length > 0) {
-          return `- ${row.label}: ${textPart}`;
-        }
-        if (row.value_json && Object.keys(row.value_json).length > 0) {
-          return `- ${row.label}: ${JSON.stringify(row.value_json)}`;
-        }
-        return null;
-      })
-      .filter((value): value is string => value !== null)
-      .join("\n");
-    return `${title}\n${values}`;
-  });
-
-  return blocks.join("\n\n").trim();
 };
 
 const draftsAlreadyExistForDocument = async (args: {
@@ -426,7 +391,7 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
       return json({ draft_program_id: result.draftProgramId }, 201);
     }
 
-    const checklistResult = await fetchJson<AssessmentChecklistValueRow[]>(
+    const checklistResult = await fetchJson<AssessmentChecklistWithStatusValueRow[]>(
       `${supabaseUrl}/rest/v1/assessment_checklist_items?select=section_key,label,placeholder_key,value_text,value_json,required,status&organization_id=eq.${encodeURIComponent(
         organizationId,
       )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocumentId)}&order=section_key.asc,created_at.asc`,

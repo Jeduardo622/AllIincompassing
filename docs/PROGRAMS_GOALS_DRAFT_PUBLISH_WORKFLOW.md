@@ -40,3 +40,25 @@ Before publish, the UI prompts for confirmation with:
 - Clinician can identify publish as the only live-promotion action.
 - Status text reflects whether drafts are pending.
 - Publish flow requires explicit confirmation before mutation.
+
+## Incident Hardening Notes (2026-03-19)
+
+- Goal-generation input now prioritizes `goals_*`, `treatment_*`, and recommendation sections before background/history sections so the model budget preserves true clinical goals first.
+- Structured checklist JSON fields are carried into composed assessment text even when a short `value_text` exists. This keeps `mastery_criteria`, `maintenance_criteria`, and `generalization_criteria` visible to generation.
+- `Create Program` and extraction/generation edge handlers now resolve CORS from each request origin (instead of static default origin), reducing browser-side `Failed to fetch` errors in preview/staging domains.
+- Add Goal UI now shows explicit prerequisites when disabled:
+  - program must exist or be selected
+  - title is required
+  - description is required
+  - original clinical wording is required
+
+## Runtime/CORS Troubleshooting
+
+If `Create Program` fails with `Failed to fetch`:
+
+1. Confirm runtime config from `/api/runtime-config` includes the correct `supabaseUrl` and optional `supabaseEdgeUrl`.
+2. Ensure current app origin is allowed in `CORS_ALLOWED_ORIGINS` or `API_ALLOWED_ORIGINS`.
+3. Verify edge responses include:
+   - `Access-Control-Allow-Origin: <current origin>`
+   - `Vary: Origin`
+4. Re-test from the same deployed domain (not localhost unless it is explicitly allowlisted).

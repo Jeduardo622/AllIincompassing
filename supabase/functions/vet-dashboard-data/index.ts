@@ -15,6 +15,39 @@ const jsonError = (status: number, message: string): Response =>
     headers: CORS_HEADERS,
   });
 
+const buildForwardHeaders = (req: Request): Headers => {
+  const headers = new Headers();
+  const auth = req.headers.get("Authorization");
+  if (auth) {
+    headers.set("Authorization", auth);
+  }
+
+  const apiKey = req.headers.get("apikey");
+  if (apiKey) {
+    headers.set("apikey", apiKey);
+  }
+
+  const traceHeaders = ["x-request-id", "x-correlation-id", "x-agent-operation-id"];
+  for (const name of traceHeaders) {
+    const value = req.headers.get(name);
+    if (value && value.trim().length > 0) {
+      headers.set(name, value);
+    }
+  }
+
+  // Preserve client metadata expected by Supabase telemetry when present.
+  const clientInfo = req.headers.get("x-client-info") ?? req.headers.get("X-Client-Info");
+  if (clientInfo) {
+    headers.set("x-client-info", clientInfo);
+  }
+
+  if (req.method === "POST") {
+    headers.set("Content-Type", req.headers.get("Content-Type") ?? "application/json");
+  }
+
+  return headers;
+};
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: CORS_HEADERS });
@@ -32,9 +65,10 @@ Deno.serve(async (req: Request) => {
   const targetUrl = `${baseUrl.replace(/\/$/, "")}/functions/v1/get-dashboard-data`;
 
   try {
+    const forwardHeaders = buildForwardHeaders(req);
     const forwarded = await fetch(targetUrl, {
       method: req.method,
-      headers: req.headers,
+      headers: forwardHeaders,
       body: req.method === "POST" ? await req.text() : undefined,
     });
     const payload = await forwarded.text();

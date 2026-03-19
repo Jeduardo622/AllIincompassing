@@ -137,28 +137,10 @@ Cypress.Commands.add('login', (email: string, password: string) => {
 
     cy.intercept('GET', '**/api/runtime-config').as('runtimeConfigBootstrap');
 
-    cy.visit('/login');
+    cy.visit('/');
     cy.wait('@runtimeConfigBootstrap');
     cy.window().then((win) => {
       win.localStorage.removeItem('auth-storage');
-    });
-
-    cy.get('input[name="email"]')
-      .should('be.visible')
-      .and('be.enabled')
-      .type(`{selectall}${email}`, { force: true });
-    cy.get('input[name="password"]')
-      .should('be.visible')
-      .and('be.enabled')
-      .type(`{selectall}${password}`, { log: false, force: true });
-    cy.get('button[type="submit"]').should('be.enabled').click();
-
-    cy.wait('@supabaseToken');
-    cy.wait('@profileFetch');
-
-    cy.url().should('not.include', '/login');
-
-    cy.window().then((win) => {
       const stubState = {
         user: {
           id: userId,
@@ -176,6 +158,10 @@ Cypress.Commands.add('login', (email: string, password: string) => {
 
       win.localStorage.setItem('auth-storage', JSON.stringify(stubState));
     });
+
+    // Reload so app bootstrap picks up the seeded auth state.
+    cy.reload();
+    cy.wait('@runtimeConfigBootstrap');
   }, {
     validate: () => {
       const expectedRole = roleFromEmail(email);

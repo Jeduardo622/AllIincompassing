@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.fn();
+const getSessionMock = vi.fn();
 
 vi.mock("../supabase", () => ({
   supabase: {
     functions: {
       invoke: invokeMock,
+    },
+    auth: {
+      getSession: getSessionMock,
     },
   },
 }));
@@ -13,6 +17,7 @@ vi.mock("../supabase", () => ({
 describe("useDashboardData edge invocation", () => {
   afterEach(() => {
     invokeMock.mockReset();
+    getSessionMock.mockReset();
     vi.restoreAllMocks();
   });
 
@@ -29,12 +34,44 @@ describe("useDashboardData edge invocation", () => {
   });
 
   it("throws error with status from edge invoke failure context", async () => {
+    getSessionMock.mockResolvedValue({
+      data: { session: { access_token: "token" } },
+      error: null,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: { message: "Forbidden" } }), { status: 403 }),
+      ),
+    );
+
     invokeMock.mockResolvedValue({
       data: null,
       error: { message: "Forbidden", context: { status: 403 } },
     });
     const { fetchDashboardData } = await import("../optimizedQueries");
     await expect(fetchDashboardData()).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("falls back to /api/dashboard when edge invoke fails", async () => {
+    const payload = { todaySessions: [] };
+    getSessionMock.mockResolvedValue({
+      data: { session: { access_token: "token" } },
+      error: null,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(payload), { status: 200 }),
+      ),
+    );
+    invokeMock.mockResolvedValue({
+      data: null,
+      error: { message: "Edge unavailable", context: { status: 503 } },
+    });
+
+    const { fetchDashboardData } = await import("../optimizedQueries");
+    await expect(fetchDashboardData()).resolves.toEqual(payload);
   });
 });
 

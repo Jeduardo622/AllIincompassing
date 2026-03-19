@@ -7,6 +7,7 @@ import {
 } from '../../test/utils';
 import { SuperAdminImpersonation } from '../SuperAdminImpersonation';
 import { supabase } from '../../lib/supabase';
+import * as edgeInvokeModule from '../../lib/edgeInvoke';
 import * as authContext from '../../lib/authContext';
 import * as toast from '../../lib/toast';
 import { logger } from '../../lib/logger/logger';
@@ -26,7 +27,7 @@ beforeEach(() => {
   selectMock.mockReset();
   orderMock.mockReset();
 
-  invokeSpy = vi.spyOn(supabase.functions, 'invoke');
+  invokeSpy = vi.spyOn(edgeInvokeModule, 'edgeInvoke');
   fromSpy = vi.spyOn(supabase, 'from');
   orderMock.mockResolvedValue({ data: [], error: null });
   fromSpy.mockImplementation(() => ({
@@ -77,6 +78,7 @@ describe('SuperAdminImpersonation page', () => {
     invokeSpy.mockResolvedValue({
       data: { token: 'token-123', expiresAt: '2025-06-01T12:15:00.000Z', auditId: 'audit-1', expiresInMinutes: 30 },
       error: null,
+      status: 200,
     });
 
     renderWithProviders(<SuperAdminImpersonation />);
@@ -119,7 +121,7 @@ describe('SuperAdminImpersonation page', () => {
     };
 
     orderMock.mockResolvedValueOnce({ data: [expiredEntry], error: null });
-    invokeSpy.mockResolvedValue({ data: { revoked: true, auditId: 'audit-auto' }, error: null });
+    invokeSpy.mockResolvedValue({ data: { revoked: true, auditId: 'audit-auto' }, error: null, status: 200 });
 
     renderWithProviders(<SuperAdminImpersonation />);
 

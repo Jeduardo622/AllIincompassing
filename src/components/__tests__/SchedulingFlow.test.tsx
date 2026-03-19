@@ -5,6 +5,7 @@ import { server } from '../../test/setup';
 import { Schedule } from '../../pages/Schedule';
 import { SessionModal } from '../SessionModal';
 import { supabase } from '../../lib/supabase';
+import * as edgeInvokeModule from '../../lib/edgeInvoke';
 
 // Mock data for testing
 const mockTherapists = [
@@ -148,6 +149,7 @@ const mockGoals = [
 ];
 
 const baseFrom = supabase.from;
+const edgeInvokeSpy = vi.spyOn(edgeInvokeModule, 'edgeInvoke');
 
 const buildProgramGoalQuery = (data: unknown[]) => {
   const chain = {
@@ -162,6 +164,26 @@ describe('Scheduling Flow - Client with Therapist', () => {
   beforeEach(() => {
     // Reset all mocks
     vi.clearAllMocks();
+    edgeInvokeSpy.mockReset();
+    edgeInvokeSpy.mockImplementation(async (functionName: string) => {
+      if (functionName === 'suggest-alternative-times') {
+        return {
+          data: {
+            alternatives: [
+              {
+                startTime: '2024-03-18T10:00:00.000Z',
+                endTime: '2024-03-18T11:00:00.000Z',
+                score: 0.9,
+                reason: 'High compatibility',
+              },
+            ],
+          },
+          error: null,
+          status: 200,
+        };
+      }
+      return { data: null, error: null, status: 200 };
+    });
     vi.mocked(supabase.from).mockImplementation((table: string) => {
       if (table === 'programs') {
         return buildProgramGoalQuery(mockPrograms) as ReturnType<typeof baseFrom>;
@@ -273,6 +295,7 @@ describe('Scheduling Flow - Client with Therapist', () => {
       existingSessions: mockExistingSessions,
       selectedDate: new Date('2024-03-19T10:00:00Z'),
       selectedTime: '10:00',
+      timeZone: 'UTC',
     };
 
     it('should render session modal with pre-filled date and time', async () => {
@@ -480,6 +503,7 @@ describe('Scheduling Flow - Client with Therapist', () => {
         existingSessions: mockExistingSessions,
         selectedDate: new Date('2024-03-18T14:00:00Z'),
         selectedTime: '14:00',
+        timeZone: 'UTC',
       };
 
       renderWithProviders(<SessionModal {...props} />);
@@ -508,6 +532,7 @@ describe('Scheduling Flow - Client with Therapist', () => {
         existingSessions: mockExistingSessions,
         selectedDate: new Date('2024-03-18T14:00:00Z'),
         selectedTime: '14:00',
+        timeZone: 'UTC',
       };
 
       renderWithProviders(<SessionModal {...props} />);

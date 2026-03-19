@@ -1,13 +1,13 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { SuperAdminFeatureFlags } from '../SuperAdminFeatureFlags';
-import { supabase } from '../../lib/supabase';
+import * as edgeInvokeModule from '../../lib/edgeInvoke';
 import * as authContext from '../../lib/authContext';
 import * as toast from '../../lib/toast';
 import { logger } from '../../lib/logger/logger';
 
 describe('SuperAdminFeatureFlags', () => {
-  const invokeSpy = vi.spyOn(supabase.functions, 'invoke');
+  const invokeSpy = vi.spyOn(edgeInvokeModule, 'edgeInvoke');
   const useAuthSpy = vi.spyOn(authContext, 'useAuth');
   const showSuccessSpy = vi.spyOn(toast, 'showSuccess');
   const showErrorSpy = vi.spyOn(toast, 'showError');
@@ -71,10 +71,11 @@ describe('SuperAdminFeatureFlags', () => {
             ],
           },
           error: null,
+          status: 200,
         };
       }
 
-      return { data: { ok: true }, error: null };
+      return { data: { ok: true }, error: null, status: 200 };
     });
 
     renderWithProviders(<SuperAdminFeatureFlags />);
@@ -164,10 +165,11 @@ describe('SuperAdminFeatureFlags', () => {
             ],
           },
           error: null,
+          status: 200,
         };
       }
 
-      return { data: { ok: true }, error: null };
+      return { data: { ok: true }, error: null, status: 200 };
     });
 
     renderWithProviders(<SuperAdminFeatureFlags />);
@@ -196,6 +198,7 @@ describe('SuperAdminFeatureFlags', () => {
         plans: [],
       },
       error: null,
+      status: 200,
     });
 
     renderWithProviders(<SuperAdminFeatureFlags />);

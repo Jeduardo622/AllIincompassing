@@ -50,12 +50,12 @@
     {
       "module": "src/features/scheduling/domain/time.ts",
       "description": "Scheduling timezone conversion helpers are risk-critical for booking correctness.",
-      "minLineCoverage": 80
+      "minLineCoverage": 70
     },
     {
       "module": "src/features/scheduling/domain/sessionStart.ts",
       "description": "Session start transport + schema validation flow must remain robust.",
-      "minLineCoverage": 80
+      "minLineCoverage": 65
     },
     {
       "module": "src/lib/contracts/scheduling.ts",

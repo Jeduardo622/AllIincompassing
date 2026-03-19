@@ -2,20 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { checkSchedulingConflicts, suggestAlternativeTimes } from '../conflicts';
 import { parseISO, addHours } from 'date-fns';
 import { fromZonedTime } from 'date-fns-tz';
-// Mock supabase
-vi.mock('../supabase', () => ({
-  supabase: {
-    functions: {
-      invoke: vi.fn(),
-    },
-  },
-}));
-
-let supabase: { functions: { invoke: ReturnType<typeof vi.fn> } };
+import * as edgeInvokeModule from '../edgeInvoke';
+const edgeInvokeSpy = vi.spyOn(edgeInvokeModule, 'edgeInvoke');
 
 beforeEach(async () => {
-  ({ supabase } = await import('../supabase'));
-  vi.mocked(supabase.functions.invoke).mockReset();
+  edgeInvokeSpy.mockReset();
 });
 
 describe('checkSchedulingConflicts', () => {
@@ -650,10 +641,10 @@ describe('suggestAlternativeTimes', () => {
   ];
 
   it('calls the Supabase function with correct parameters', async () => {
-    const mockInvoke = vi.mocked(supabase.functions.invoke);
-    mockInvoke.mockResolvedValue({
+    edgeInvokeSpy.mockResolvedValue({
       data: { alternatives: mockAlternatives },
-      error: null
+      error: null,
+      status: 200,
     });
 
     const startTime = '2025-05-20T08:00:00Z';
@@ -670,7 +661,7 @@ describe('suggestAlternativeTimes', () => {
       mockConflicts
     );
 
-    expect(mockInvoke).toHaveBeenCalledWith('suggest-alternative-times', {
+    expect(edgeInvokeSpy).toHaveBeenCalledWith('suggest-alternative-times', {
       body: {
         startTime,
         endTime,
@@ -689,10 +680,10 @@ describe('suggestAlternativeTimes', () => {
   });
 
   it('returns empty array when Supabase function fails', async () => {
-    const mockInvoke = vi.mocked(supabase.functions.invoke);
-    mockInvoke.mockResolvedValue({
+    edgeInvokeSpy.mockResolvedValue({
       data: null,
-      error: new Error('Function failed')
+      error: new Error('Function failed'),
+      status: 500,
     });
 
     const startTime = '2025-05-20T08:00:00Z';
@@ -713,8 +704,7 @@ describe('suggestAlternativeTimes', () => {
   });
 
   it('handles exceptions gracefully', async () => {
-    const mockInvoke = vi.mocked(supabase.functions.invoke);
-    mockInvoke.mockRejectedValue(new Error('Network error'));
+    edgeInvokeSpy.mockRejectedValue(new Error('Network error'));
 
     const startTime = '2025-05-20T08:00:00Z';
     const endTime = '2025-05-20T09:00:00Z';

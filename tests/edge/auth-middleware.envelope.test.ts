@@ -16,7 +16,7 @@ describe('auth middleware envelope responses', () => {
 
   it('returns forbidden envelope for inactive users', async () => {
     const module = await import('../../supabase/functions/_shared/auth-middleware.ts');
-    vi.spyOn(module, 'getUserContext').mockResolvedValue({
+    vi.spyOn(module.authMiddlewareDeps, 'getUserContext').mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com' },
       profile: { id: 'user-1', email: 'user@example.com', role: 'client', is_active: false },
     });
@@ -48,7 +48,7 @@ describe('auth middleware envelope responses', () => {
 
   it('returns forbidden envelope for insufficient role', async () => {
     const module = await import('../../supabase/functions/_shared/auth-middleware.ts');
-    vi.spyOn(module, 'getUserContext').mockResolvedValue({
+    vi.spyOn(module.authMiddlewareDeps, 'getUserContext').mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com' },
       profile: { id: 'user-1', email: 'user@example.com', role: 'client', is_active: true },
     });
@@ -80,7 +80,7 @@ describe('auth middleware envelope responses', () => {
 
   it('returns forbidden envelope when protected handlers throw AuthorizationError', async () => {
     const module = await import('../../supabase/functions/_shared/auth-middleware.ts');
-    vi.spyOn(module, 'getUserContext').mockResolvedValue({
+    vi.spyOn(module.authMiddlewareDeps, 'getUserContext').mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com' },
       profile: { id: 'user-1', email: 'user@example.com', role: 'client', is_active: true },
     });

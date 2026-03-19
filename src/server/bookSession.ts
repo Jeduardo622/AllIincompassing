@@ -57,12 +57,6 @@ interface ParsedRRule {
   until?: string;
 }
 
-type HeldOccurrence = {
-  holdKey: string;
-  startTime: string;
-  endTime: string;
-};
-
 function occurrenceKey(startTime: string, endTime: string): string {
   const normalizedStart = new Date(startTime).toISOString();
   const normalizedEnd = new Date(endTime).toISOString();

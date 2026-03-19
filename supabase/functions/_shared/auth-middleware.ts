@@ -226,6 +226,10 @@ export async function getUserContext(req: Request): Promise<UserContext | null> 
   }
 }
 
+export const authMiddlewareDeps = {
+  getUserContext,
+};
+
 /**
  * Check if user has required role
  */
@@ -376,7 +380,7 @@ export async function withAuth(
 
   try {
     // Get user context
-    const userContext = await getUserContext(req);
+    const userContext = await authMiddlewareDeps.getUserContext(req);
 
     // Check if authentication is required
     if (requireAuth && !userContext) {

@@ -1,1 +1,7007 @@
-{"types":"export type Json =\n  | string\n  | number\n  | boolean\n  | null\n  | { [key: string]: Json | undefined }\n  | Json[]\n\nexport type Database = {\n  // Allows to automatically instantiate createClient with right options\n  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)\n  __InternalSupabase: {\n    PostgrestVersion: \"13.0.5\"\n  }\n  public: {\n    Tables: {\n      admin_actions: {\n        Row: {\n          action_details: Json | null\n          action_type: string\n          admin_user_id: string | null\n          created_at: string | null\n          id: string\n          organization_id: string | null\n          target_user_id: string | null\n        }\n        Insert: {\n          action_details?: Json | null\n          action_type: string\n          admin_user_id?: string | null\n          created_at?: string | null\n          id?: string\n          organization_id?: string | null\n          target_user_id?: string | null\n        }\n        Update: {\n          action_details?: Json | null\n          action_type?: string\n          admin_user_id?: string | null\n          created_at?: string | null\n          id?: string\n          organization_id?: string | null\n          target_user_id?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"admin_actions_admin_user_id_fkey\"\n            columns: [\"admin_user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"admin_actions_admin_user_id_fkey\"\n            columns: [\"admin_user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"admin_actions_target_user_id_fkey\"\n            columns: [\"target_user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"admin_actions_target_user_id_fkey\"\n            columns: [\"target_user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      admin_invite_tokens: {\n        Row: {\n          created_at: string\n          created_by: string\n          email: string\n          expires_at: string\n          id: string\n          organization_id: string\n          role: Database[\"public\"][\"Enums\"][\"role_type\"]\n          token_hash: string\n        }\n        Insert: {\n          created_at?: string\n          created_by: string\n          email: string\n          expires_at: string\n          id?: string\n          organization_id: string\n          role?: Database[\"public\"][\"Enums\"][\"role_type\"]\n          token_hash: string\n        }\n        Update: {\n          created_at?: string\n          created_by?: string\n          email?: string\n          expires_at?: string\n          id?: string\n          organization_id?: string\n          role?: Database[\"public\"][\"Enums\"][\"role_type\"]\n          token_hash?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"admin_invite_tokens_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"admin_invite_tokens_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      agent_execution_traces: {\n        Row: {\n          conversation_id: string | null\n          correlation_id: string\n          created_at: string\n          id: string\n          organization_id: string | null\n          payload: Json | null\n          replay_payload: Json | null\n          request_id: string\n          status: string\n          step_index: number\n          step_name: string\n          user_id: string | null\n        }\n        Insert: {\n          conversation_id?: string | null\n          correlation_id: string\n          created_at?: string\n          id?: string\n          organization_id?: string | null\n          payload?: Json | null\n          replay_payload?: Json | null\n          request_id: string\n          status: string\n          step_index?: number\n          step_name: string\n          user_id?: string | null\n        }\n        Update: {\n          conversation_id?: string | null\n          correlation_id?: string\n          created_at?: string\n          id?: string\n          organization_id?: string | null\n          payload?: Json | null\n          replay_payload?: Json | null\n          request_id?: string\n          status?: string\n          step_index?: number\n          step_name?: string\n          user_id?: string | null\n        }\n        Relationships: []\n      }\n      agent_prompt_tool_versions: {\n        Row: {\n          created_at: string\n          created_by: string | null\n          id: string\n          is_current: boolean\n          metadata: Json | null\n          prompt_version: string\n          rollback_reason: string | null\n          status: string\n          tool_version: string\n          updated_at: string\n          updated_by: string | null\n        }\n        Insert: {\n          created_at?: string\n          created_by?: string | null\n          id?: string\n          is_current?: boolean\n          metadata?: Json | null\n          prompt_version: string\n          rollback_reason?: string | null\n          status?: string\n          tool_version: string\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Update: {\n          created_at?: string\n          created_by?: string | null\n          id?: string\n          is_current?: boolean\n          metadata?: Json | null\n          prompt_version?: string\n          rollback_reason?: string | null\n          status?: string\n          tool_version?: string\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Relationships: []\n      }\n      agent_runtime_config: {\n        Row: {\n          actions_disabled: boolean\n          config_key: string\n          reason: string | null\n          updated_at: string\n          updated_by: string | null\n        }\n        Insert: {\n          actions_disabled?: boolean\n          config_key: string\n          reason?: string | null\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Update: {\n          actions_disabled?: boolean\n          config_key?: string\n          reason?: string | null\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Relationships: []\n      }\n      ai_cache: {\n        Row: {\n          created_at: string | null\n          expires_at: string | null\n          function_name: string\n          hit_count: number | null\n          id: string\n          input_hash: string\n          last_accessed: string | null\n          response_data: Json\n        }\n        Insert: {\n          created_at?: string | null\n          expires_at?: string | null\n          function_name: string\n          hit_count?: number | null\n          id?: string\n          input_hash: string\n          last_accessed?: string | null\n          response_data: Json\n        }\n        Update: {\n          created_at?: string | null\n          expires_at?: string | null\n          function_name?: string\n          hit_count?: number | null\n          id?: string\n          input_hash?: string\n          last_accessed?: string | null\n          response_data?: Json\n        }\n        Relationships: []\n      }\n      ai_guidance_documents: {\n        Row: {\n          created_at: string\n          guidance_key: string\n          guidance_text: string\n          id: string\n          is_active: boolean\n          source_reference: string | null\n          source_type: string\n          title: string\n          updated_at: string\n        }\n        Insert: {\n          created_at?: string\n          guidance_key: string\n          guidance_text: string\n          id?: string\n          is_active?: boolean\n          source_reference?: string | null\n          source_type: string\n          title: string\n          updated_at?: string\n        }\n        Update: {\n          created_at?: string\n          guidance_key?: string\n          guidance_text?: string\n          id?: string\n          is_active?: boolean\n          source_reference?: string | null\n          source_type?: string\n          title?: string\n          updated_at?: string\n        }\n        Relationships: []\n      }\n      ai_performance_metrics: {\n        Row: {\n          cache_hit: boolean | null\n          conversation_id: string | null\n          cost_usd: number | null\n          created_at: string | null\n          error_occurred: boolean | null\n          function_called: string | null\n          function_name: string | null\n          id: string\n          organization_id: string | null\n          parameters: Json | null\n          response_time_ms: number\n          timestamp: string | null\n          token_count: number | null\n          token_usage: Json | null\n          user_id: string | null\n        }\n        Insert: {\n          cache_hit?: boolean | null\n          conversation_id?: string | null\n          cost_usd?: number | null\n          created_at?: string | null\n          error_occurred?: boolean | null\n          function_called?: string | null\n          function_name?: string | null\n          id?: string\n          organization_id?: string | null\n          parameters?: Json | null\n          response_time_ms: number\n          timestamp?: string | null\n          token_count?: number | null\n          token_usage?: Json | null\n          user_id?: string | null\n        }\n        Update: {\n          cache_hit?: boolean | null\n          conversation_id?: string | null\n          cost_usd?: number | null\n          created_at?: string | null\n          error_occurred?: boolean | null\n          function_called?: string | null\n          function_name?: string | null\n          id?: string\n          organization_id?: string | null\n          parameters?: Json | null\n          response_time_ms?: number\n          timestamp?: string | null\n          token_count?: number | null\n          token_usage?: Json | null\n          user_id?: string | null\n        }\n        Relationships: []\n      }\n      ai_processing_logs: {\n        Row: {\n          api_provider: string | null\n          confidence_score: number | null\n          created_at: string | null\n          error_message: string | null\n          id: string\n          input_data_size: number | null\n          model_version: string | null\n          processing_time_ms: number | null\n          processing_type: string\n          session_id: string\n        }\n        Insert: {\n          api_provider?: string | null\n          confidence_score?: number | null\n          created_at?: string | null\n          error_message?: string | null\n          id?: string\n          input_data_size?: number | null\n          model_version?: string | null\n          processing_time_ms?: number | null\n          processing_type: string\n          session_id: string\n        }\n        Update: {\n          api_provider?: string | null\n          confidence_score?: number | null\n          created_at?: string | null\n          error_message?: string | null\n          id?: string\n          input_data_size?: number | null\n          model_version?: string | null\n          processing_time_ms?: number | null\n          processing_type?: string\n          session_id?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"ai_processing_logs_session_id_fkey\"\n            columns: [\"session_id\"]\n            isOneToOne: false\n            referencedRelation: \"sessions\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      ai_response_cache: {\n        Row: {\n          cache_key: string\n          created_at: string | null\n          expires_at: string\n          hit_count: number | null\n          id: string\n          last_hit_at: string | null\n          metadata: Json | null\n          query_hash: string | null\n          query_text: string\n          response_text: string\n          updated_at: string | null\n        }\n        Insert: {\n          cache_key: string\n          created_at?: string | null\n          expires_at: string\n          hit_count?: number | null\n          id?: string\n          last_hit_at?: string | null\n          metadata?: Json | null\n          query_hash?: string | null\n          query_text: string\n          response_text: string\n          updated_at?: string | null\n        }\n        Update: {\n          cache_key?: string\n          created_at?: string | null\n          expires_at?: string\n          hit_count?: number | null\n          id?: string\n          last_hit_at?: string | null\n          metadata?: Json | null\n          query_hash?: string | null\n          query_text?: string\n          response_text?: string\n          updated_at?: string | null\n        }\n        Relationships: []\n      }\n      ai_session_notes: {\n        Row: {\n          ai_confidence_score: number | null\n          ai_generated_summary: string | null\n          behavioral_observations: Json | null\n          california_compliant: boolean | null\n          client_id: string\n          client_responses: Json | null\n          created_at: string | null\n          current_clinical_status: string | null\n          data_collection_summary: Json | null\n          end_time: string\n          goal_ids: string[] | null\n          id: string\n          insurance_ready: boolean | null\n          interventions_used: Json | null\n          location: string | null\n          manual_edits: string[] | null\n          participants: string[] | null\n          progress_toward_goals: Json | null\n          recommendations: string[] | null\n          session_date: string\n          session_duration: number\n          session_id: string\n          signature: string | null\n          signed_at: string | null\n          start_time: string\n          targeted_goals: Json | null\n          therapist_id: string\n          updated_at: string | null\n        }\n        Insert: {\n          ai_confidence_score?: number | null\n          ai_generated_summary?: string | null\n          behavioral_observations?: Json | null\n          california_compliant?: boolean | null\n          client_id: string\n          client_responses?: Json | null\n          created_at?: string | null\n          current_clinical_status?: string | null\n          data_collection_summary?: Json | null\n          end_time: string\n          goal_ids?: string[] | null\n          id?: string\n          insurance_ready?: boolean | null\n          interventions_used?: Json | null\n          location?: string | null\n          manual_edits?: string[] | null\n          participants?: string[] | null\n          progress_toward_goals?: Json | null\n          recommendations?: string[] | null\n          session_date: string\n          session_duration: number\n          session_id: string\n          signature?: string | null\n          signed_at?: string | null\n          start_time: string\n          targeted_goals?: Json | null\n          therapist_id: string\n          updated_at?: string | null\n        }\n        Update: {\n          ai_confidence_score?: number | null\n          ai_generated_summary?: string | null\n          behavioral_observations?: Json | null\n          california_compliant?: boolean | null\n          client_id?: string\n          client_responses?: Json | null\n          created_at?: string | null\n          current_clinical_status?: string | null\n          data_collection_summary?: Json | null\n          end_time?: string\n          goal_ids?: string[] | null\n          id?: string\n          insurance_ready?: boolean | null\n          interventions_used?: Json | null\n          location?: string | null\n          manual_edits?: string[] | null\n          participants?: string[] | null\n          progress_toward_goals?: Json | null\n          recommendations?: string[] | null\n          session_date?: string\n          session_duration?: number\n          session_id?: string\n          signature?: string | null\n          signed_at?: string | null\n          start_time?: string\n          targeted_goals?: Json | null\n          therapist_id?: string\n          updated_at?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"ai_session_notes_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"ai_session_notes_session_id_fkey\"\n            columns: [\"session_id\"]\n            isOneToOne: false\n            referencedRelation: \"sessions\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"ai_session_notes_therapist_id_fkey\"\n            columns: [\"therapist_id\"]\n            isOneToOne: false\n            referencedRelation: \"therapists\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      assessment_checklist_items: {\n        Row: {\n          assessment_document_id: string\n          client_id: string\n          created_at: string\n          extraction_method: string\n          extraction_owner: string | null\n          id: string\n          label: string\n          last_reviewed_at: string | null\n          last_reviewed_by: string | null\n          mode: string\n          organization_id: string\n          placeholder_key: string\n          required: boolean\n          review_notes: string | null\n          review_owner: string | null\n          section_key: string\n          source: string\n          status: string\n          updated_at: string\n          validation_rule: string\n          value_json: Json | null\n          value_text: string | null\n        }\n        Insert: {\n          assessment_document_id: string\n          client_id: string\n          created_at?: string\n          extraction_method?: string\n          extraction_owner?: string | null\n          id?: string\n          label: string\n          last_reviewed_at?: string | null\n          last_reviewed_by?: string | null\n          mode: string\n          organization_id: string\n          placeholder_key: string\n          required?: boolean\n          review_notes?: string | null\n          review_owner?: string | null\n          section_key: string\n          source?: string\n          status?: string\n          updated_at?: string\n          validation_rule?: string\n          value_json?: Json | null\n          value_text?: string | null\n        }\n        Update: {\n          assessment_document_id?: string\n          client_id?: string\n          created_at?: string\n          extraction_method?: string\n          extraction_owner?: string | null\n          id?: string\n          label?: string\n          last_reviewed_at?: string | null\n          last_reviewed_by?: string | null\n          mode?: string\n          organization_id?: string\n          placeholder_key?: string\n          required?: boolean\n          review_notes?: string | null\n          review_owner?: string | null\n          section_key?: string\n          source?: string\n          status?: string\n          updated_at?: string\n          validation_rule?: string\n          value_json?: Json | null\n          value_text?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"assessment_checklist_items_assessment_document_id_fkey\"\n            columns: [\"assessment_document_id\"]\n            isOneToOne: false\n            referencedRelation: \"assessment_documents\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"assessment_checklist_items_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"assessment_checklist_items_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      assessment_documents: {\n        Row: {\n          approved_at: string | null\n          bucket_id: string\n          client_id: string\n          created_at: string\n          extracted_at: string | null\n          extraction_error: string | null\n          file_name: string\n          file_size: number\n          id: string\n          mime_type: string\n          object_path: string\n          organization_id: string\n          status: string\n          template_type: string\n          updated_at: string\n          uploaded_by: string | null\n        }\n        Insert: {\n          approved_at?: string | null\n          bucket_id?: string\n          client_id: string\n          created_at?: string\n          extracted_at?: string | null\n          extraction_error?: string | null\n          file_name: string\n          file_size?: number\n          id?: string\n          mime_type: string\n          object_path: string\n          organization_id: string\n          status?: string\n          template_type?: string\n          updated_at?: string\n          uploaded_by?: string | null\n        }\n        Update: {\n          approved_at?: string | null\n          bucket_id?: string\n          client_id?: string\n          created_at?: string\n          extracted_at?: string | null\n          extraction_error?: string | null\n          file_name?: string\n          file_size?: number\n          id?: string\n          mime_type?: string\n          object_path?: string\n          organization_id?: string\n          status?: string\n          template_type?: string\n          updated_at?: string\n          uploaded_by?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"assessment_documents_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"assessment_documents_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      assessment_draft_goals: {\n        Row: {\n          accept_state: string\n          assessment_document_id: string\n          baseline_data: string | null\n          client_id: string\n          created_at: string\n          description: string\n          draft_program_id: string | null\n          generalization_criteria: string | null\n          goal_type: string\n          id: string\n          maintenance_criteria: string | null\n          mastery_criteria: string | null\n          measurement_type: string | null\n          objective_data_points: Json\n          organization_id: string\n          original_text: string\n          review_notes: string | null\n          reviewed_at: string | null\n          reviewed_by: string | null\n          target_behavior: string | null\n          target_criteria: string | null\n          title: string\n          updated_at: string\n        }\n        Insert: {\n          accept_state?: string\n          assessment_document_id: string\n          baseline_data?: string | null\n          client_id: string\n          created_at?: string\n          description: string\n          draft_program_id?: string | null\n          generalization_criteria?: string | null\n          goal_type?: string\n          id?: string\n          maintenance_criteria?: string | null\n          mastery_criteria?: string | null\n          measurement_type?: string | null\n          objective_data_points?: Json\n          organization_id: string\n          original_text: string\n          review_notes?: string | null\n          reviewed_at?: string | null\n          reviewed_by?: string | null\n          target_behavior?: string | null\n          target_criteria?: string | null\n          title: string\n          updated_at?: string\n        }\n        Update: {\n          accept_state?: string\n          assessment_document_id?: string\n          baseline_data?: string | null\n          client_id?: string\n          created_at?: string\n          description?: string\n          draft_program_id?: string | null\n          generalization_criteria?: string | null\n          goal_type?: string\n          id?: string\n          maintenance_criteria?: string | null\n          mastery_criteria?: string | null\n          measurement_type?: string | null\n          objective_data_points?: Json\n          organization_id?: string\n          original_text?: string\n          review_notes?: string | null\n          reviewed_at?: string | null\n          reviewed_by?: string | null\n          target_behavior?: string | null\n          target_criteria?: string | null\n          title?: string\n          updated_at?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"assessment_draft_goals_assessment_document_id_fkey\"\n            columns: [\"assessment_document_id\"]\n            isOneToOne: false\n            referencedRelation: \"assessment_documents\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"assessment_draft_goals_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"assessment_draft_goals_draft_program_id_fkey\"\n            columns: [\"draft_program_id\"]\n            isOneToOne: false\n            referencedRelation: \"assessment_draft_programs\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"assessment_draft_goals_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      assessment_draft_programs: {\n        Row: {\n          accept_state: string\n          assessment_document_id: string\n          client_id: string\n          created_at: string\n          description: string | null\n          id: string\n          name: string\n          organization_id: string\n          rationale: string | null\n          review_notes: string | null\n          reviewed_at: string | null\n          reviewed_by: string | null\n          updated_at: string\n        }\n        Insert: {\n          accept_state?: string\n          assessment_document_id: string\n          client_id: string\n          created_at?: string\n          description?: string | null\n          id?: string\n          name: string\n          organization_id: string\n          rationale?: string | null\n          review_notes?: string | null\n          reviewed_at?: string | null\n          reviewed_by?: string | null\n          updated_at?: string\n        }\n        Update: {\n          accept_state?: string\n          assessment_document_id?: string\n          client_id?: string\n          created_at?: string\n          description?: string | null\n          id?: string\n          name?: string\n          organization_id?: string\n          rationale?: string | null\n          review_notes?: string | null\n          reviewed_at?: string | null\n          reviewed_by?: string | null\n          updated_at?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"assessment_draft_programs_assessment_document_id_fkey\"\n            columns: [\"assessment_document_id\"]\n            isOneToOne: false\n            referencedRelation: \"assessment_documents\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"assessment_draft_programs_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"assessment_draft_programs_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      assessment_extractions: {\n        Row: {\n          assessment_document_id: string\n          client_id: string\n          confidence: number | null\n          created_at: string\n          extraction_method_detail: string | null\n          field_key: string\n          id: string\n          label: string\n          mode: string\n          organization_id: string\n          required: boolean\n          review_notes: string | null\n          section_key: string\n          source_span: Json | null\n          status: string\n          updated_at: string\n          value_json: Json | null\n          value_text: string | null\n        }\n        Insert: {\n          assessment_document_id: string\n          client_id: string\n          confidence?: number | null\n          created_at?: string\n          extraction_method_detail?: string | null\n          field_key: string\n          id?: string\n          label: string\n          mode: string\n          organization_id: string\n          required?: boolean\n          review_notes?: string | null\n          section_key: string\n          source_span?: Json | null\n          status?: string\n          updated_at?: string\n          value_json?: Json | null\n          value_text?: string | null\n        }\n        Update: {\n          assessment_document_id?: string\n          client_id?: string\n          confidence?: number | null\n          created_at?: string\n          extraction_method_detail?: string | null\n          field_key?: string\n          id?: string\n          label?: string\n          mode?: string\n          organization_id?: string\n          required?: boolean\n          review_notes?: string | null\n          section_key?: string\n          source_span?: Json | null\n          status?: string\n          updated_at?: string\n          value_json?: Json | null\n          value_text?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"assessment_extractions_assessment_document_id_fkey\"\n            columns: [\"assessment_document_id\"]\n            isOneToOne: false\n            referencedRelation: \"assessment_documents\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"assessment_extractions_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"assessment_extractions_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      assessment_review_events: {\n        Row: {\n          action: string\n          actor_id: string | null\n          assessment_document_id: string\n          client_id: string\n          created_at: string\n          event_payload: Json\n          from_status: string | null\n          id: string\n          item_id: string | null\n          item_type: string\n          notes: string | null\n          organization_id: string\n          to_status: string | null\n        }\n        Insert: {\n          action: string\n          actor_id?: string | null\n          assessment_document_id: string\n          client_id: string\n          created_at?: string\n          event_payload?: Json\n          from_status?: string | null\n          id?: string\n          item_id?: string | null\n          item_type: string\n          notes?: string | null\n          organization_id: string\n          to_status?: string | null\n        }\n        Update: {\n          action?: string\n          actor_id?: string | null\n          assessment_document_id?: string\n          client_id?: string\n          created_at?: string\n          event_payload?: Json\n          from_status?: string | null\n          id?: string\n          item_id?: string | null\n          item_type?: string\n          notes?: string | null\n          organization_id?: string\n          to_status?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"assessment_review_events_assessment_document_id_fkey\"\n            columns: [\"assessment_document_id\"]\n            isOneToOne: false\n            referencedRelation: \"assessment_documents\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"assessment_review_events_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"assessment_review_events_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      authorization_services: {\n        Row: {\n          approved_units: number | null\n          authorization_id: string\n          created_at: string | null\n          created_by: string\n          decision_status: string\n          from_date: string\n          id: string\n          organization_id: string\n          requested_units: number\n          service_code: string\n          service_description: string\n          to_date: string\n          unit_type: string\n          updated_at: string | null\n        }\n        Insert: {\n          approved_units?: number | null\n          authorization_id: string\n          created_at?: string | null\n          created_by: string\n          decision_status?: string\n          from_date: string\n          id?: string\n          organization_id: string\n          requested_units: number\n          service_code: string\n          service_description: string\n          to_date: string\n          unit_type: string\n          updated_at?: string | null\n        }\n        Update: {\n          approved_units?: number | null\n          authorization_id?: string\n          created_at?: string | null\n          created_by?: string\n          decision_status?: string\n          from_date?: string\n          id?: string\n          organization_id?: string\n          requested_units?: number\n          service_code?: string\n          service_description?: string\n          to_date?: string\n          unit_type?: string\n          updated_at?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"authorization_services_authorization_id_fkey\"\n            columns: [\"authorization_id\"]\n            isOneToOne: false\n            referencedRelation: \"authorizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"authorization_services_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"authorization_services_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"authorization_services_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      authorizations: {\n        Row: {\n          approval_notes: string | null\n          approved_at: string | null\n          approved_by: string | null\n          authorization_number: string\n          client_id: string\n          created_at: string | null\n          created_by: string\n          denial_reason: string | null\n          denied_at: string | null\n          diagnosis_code: string\n          diagnosis_description: string | null\n          documents: Json | null\n          end_date: string\n          id: string\n          insurance_provider_id: string | null\n          member_id: string | null\n          organization_id: string\n          plan_type: string | null\n          provider_id: string\n          start_date: string\n          status: string\n          updated_at: string | null\n        }\n        Insert: {\n          approval_notes?: string | null\n          approved_at?: string | null\n          approved_by?: string | null\n          authorization_number: string\n          client_id: string\n          created_at?: string | null\n          created_by: string\n          denial_reason?: string | null\n          denied_at?: string | null\n          diagnosis_code: string\n          diagnosis_description?: string | null\n          documents?: Json | null\n          end_date: string\n          id?: string\n          insurance_provider_id?: string | null\n          member_id?: string | null\n          organization_id: string\n          plan_type?: string | null\n          provider_id: string\n          start_date: string\n          status?: string\n          updated_at?: string | null\n        }\n        Update: {\n          approval_notes?: string | null\n          approved_at?: string | null\n          approved_by?: string | null\n          authorization_number?: string\n          client_id?: string\n          created_at?: string | null\n          created_by?: string\n          denial_reason?: string | null\n          denied_at?: string | null\n          diagnosis_code?: string\n          diagnosis_description?: string | null\n          documents?: Json | null\n          end_date?: string\n          id?: string\n          insurance_provider_id?: string | null\n          member_id?: string | null\n          organization_id?: string\n          plan_type?: string | null\n          provider_id?: string\n          start_date?: string\n          status?: string\n          updated_at?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"authorizations_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"authorizations_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"authorizations_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"authorizations_insurance_provider_id_fkey\"\n            columns: [\"insurance_provider_id\"]\n            isOneToOne: false\n            referencedRelation: \"insurance_providers\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"authorizations_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"authorizations_provider_id_fkey\"\n            columns: [\"provider_id\"]\n            isOneToOne: false\n            referencedRelation: \"therapists\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      behavioral_patterns: {\n        Row: {\n          aba_terminology: string | null\n          confidence_weight: number | null\n          created_at: string | null\n          created_by: string | null\n          id: string\n          is_active: boolean | null\n          organization_id: string | null\n          pattern_name: string\n          pattern_type: string\n          regex_pattern: string\n          updated_at: string | null\n        }\n        Insert: {\n          aba_terminology?: string | null\n          confidence_weight?: number | null\n          created_at?: string | null\n          created_by?: string | null\n          id?: string\n          is_active?: boolean | null\n          organization_id?: string | null\n          pattern_name: string\n          pattern_type: string\n          regex_pattern: string\n          updated_at?: string | null\n        }\n        Update: {\n          aba_terminology?: string | null\n          confidence_weight?: number | null\n          created_at?: string | null\n          created_by?: string | null\n          id?: string\n          is_active?: boolean | null\n          organization_id?: string | null\n          pattern_name?: string\n          pattern_type?: string\n          regex_pattern?: string\n          updated_at?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"behavioral_patterns_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"behavioral_patterns_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      billing_modifiers: {\n        Row: {\n          billing_note: string | null\n          code: string\n          created_at: string\n          description: string | null\n          id: string\n          is_active: boolean\n          updated_at: string\n        }\n        Insert: {\n          billing_note?: string | null\n          code: string\n          created_at?: string\n          description?: string | null\n          id?: string\n          is_active?: boolean\n          updated_at?: string\n        }\n        Update: {\n          billing_note?: string | null\n          code?: string\n          created_at?: string\n          description?: string | null\n          id?: string\n          is_active?: boolean\n          updated_at?: string\n        }\n        Relationships: []\n      }\n      billing_records: {\n        Row: {\n          amount: number\n          claim_number: string | null\n          created_at: string | null\n          id: string\n          organization_id: string\n          session_id: string\n          status: string\n          submitted_at: string | null\n        }\n        Insert: {\n          amount: number\n          claim_number?: string | null\n          created_at?: string | null\n          id?: string\n          organization_id: string\n          session_id: string\n          status?: string\n          submitted_at?: string | null\n        }\n        Update: {\n          amount?: number\n          claim_number?: string | null\n          created_at?: string | null\n          id?: string\n          organization_id?: string\n          session_id?: string\n          status?: string\n          submitted_at?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"billing_records_session_id_fkey\"\n            columns: [\"session_id\"]\n            isOneToOne: false\n            referencedRelation: \"sessions\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      chat_history: {\n        Row: {\n          action_data: Json | null\n          action_type: string | null\n          content: string\n          context: Json | null\n          conversation_id: string\n          created_at: string | null\n          id: string\n          role: string\n          updated_at: string | null\n          user_id: string | null\n        }\n        Insert: {\n          action_data?: Json | null\n          action_type?: string | null\n          content: string\n          context?: Json | null\n          conversation_id?: string\n          created_at?: string | null\n          id?: string\n          role: string\n          updated_at?: string | null\n          user_id?: string | null\n        }\n        Update: {\n          action_data?: Json | null\n          action_type?: string | null\n          content?: string\n          context?: Json | null\n          conversation_id?: string\n          created_at?: string | null\n          id?: string\n          role?: string\n          updated_at?: string | null\n          user_id?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"chat_history_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"chat_history_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      client_availability: {\n        Row: {\n          client_id: string\n          created_at: string | null\n          day_of_week: string\n          end_time: string\n          id: string\n          is_recurring: boolean | null\n          location_preference: string[] | null\n          start_time: string\n          updated_at: string | null\n        }\n        Insert: {\n          client_id: string\n          created_at?: string | null\n          day_of_week: string\n          end_time: string\n          id?: string\n          is_recurring?: boolean | null\n          location_preference?: string[] | null\n          start_time: string\n          updated_at?: string | null\n        }\n        Update: {\n          client_id?: string\n          created_at?: string | null\n          day_of_week?: string\n          end_time?: string\n          id?: string\n          is_recurring?: boolean | null\n          location_preference?: string[] | null\n          start_time?: string\n          updated_at?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"client_availability_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      client_guardians: {\n        Row: {\n          client_id: string\n          created_at: string\n          created_by: string | null\n          deleted_at: string | null\n          deleted_by: string | null\n          guardian_id: string\n          id: string\n          is_primary: boolean\n          metadata: Json\n          organization_id: string\n          relationship: string | null\n          updated_at: string\n          updated_by: string | null\n        }\n        Insert: {\n          client_id: string\n          created_at?: string\n          created_by?: string | null\n          deleted_at?: string | null\n          deleted_by?: string | null\n          guardian_id: string\n          id?: string\n          is_primary?: boolean\n          metadata?: Json\n          organization_id: string\n          relationship?: string | null\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Update: {\n          client_id?: string\n          created_at?: string\n          created_by?: string | null\n          deleted_at?: string | null\n          deleted_by?: string | null\n          guardian_id?: string\n          id?: string\n          is_primary?: boolean\n          metadata?: Json\n          organization_id?: string\n          relationship?: string | null\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"client_guardians_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_guardians_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_guardians_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"client_guardians_deleted_by_fkey\"\n            columns: [\"deleted_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_guardians_deleted_by_fkey\"\n            columns: [\"deleted_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"client_guardians_guardian_id_fkey\"\n            columns: [\"guardian_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_guardians_guardian_id_fkey\"\n            columns: [\"guardian_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"client_guardians_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_guardians_updated_by_fkey\"\n            columns: [\"updated_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_guardians_updated_by_fkey\"\n            columns: [\"updated_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      client_issues: {\n        Row: {\n          category: string | null\n          client_id: string\n          created_at: string\n          created_by: string | null\n          date_opened: string\n          description: string | null\n          id: string\n          last_action: string\n          organization_id: string\n          priority: string | null\n          status: string | null\n          updated_at: string\n        }\n        Insert: {\n          category?: string | null\n          client_id: string\n          created_at?: string\n          created_by?: string | null\n          date_opened?: string\n          description?: string | null\n          id?: string\n          last_action?: string\n          organization_id: string\n          priority?: string | null\n          status?: string | null\n          updated_at?: string\n        }\n        Update: {\n          category?: string | null\n          client_id?: string\n          created_at?: string\n          created_by?: string | null\n          date_opened?: string\n          description?: string | null\n          id?: string\n          last_action?: string\n          organization_id?: string\n          priority?: string | null\n          status?: string | null\n          updated_at?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"client_issues_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_issues_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_issues_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"client_issues_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      client_notes: {\n        Row: {\n          client_id: string\n          content: string | null\n          created_at: string | null\n          created_by: string | null\n          deleted_at: string | null\n          id: string\n          is_visible_to_parent: boolean | null\n          is_visible_to_therapist: boolean\n          organization_id: string | null\n          status: string | null\n        }\n        Insert: {\n          client_id: string\n          content?: string | null\n          created_at?: string | null\n          created_by?: string | null\n          deleted_at?: string | null\n          id?: string\n          is_visible_to_parent?: boolean | null\n          is_visible_to_therapist?: boolean\n          organization_id?: string | null\n          status?: string | null\n        }\n        Update: {\n          client_id?: string\n          content?: string | null\n          created_at?: string | null\n          created_by?: string | null\n          deleted_at?: string | null\n          id?: string\n          is_visible_to_parent?: boolean | null\n          is_visible_to_therapist?: boolean\n          organization_id?: string | null\n          status?: string | null\n        }\n        Relationships: []\n      }\n      client_onboarding_prefills: {\n        Row: {\n          consumed_at: string | null\n          consumed_by_user_id: string | null\n          created_at: string\n          created_by_user_id: string\n          expires_at: string\n          id: string\n          organization_id: string\n          payload: Json\n          token_hash: string\n        }\n        Insert: {\n          consumed_at?: string | null\n          consumed_by_user_id?: string | null\n          created_at?: string\n          created_by_user_id: string\n          expires_at: string\n          id?: string\n          organization_id: string\n          payload: Json\n          token_hash: string\n        }\n        Update: {\n          consumed_at?: string | null\n          consumed_by_user_id?: string | null\n          created_at?: string\n          created_by_user_id?: string\n          expires_at?: string\n          id?: string\n          organization_id?: string\n          payload?: Json\n          token_hash?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"client_onboarding_prefills_consumed_by_user_id_fkey\"\n            columns: [\"consumed_by_user_id\"]\n            isOneToOne: false\n            referencedRelation: \"app_users_safe\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"client_onboarding_prefills_consumed_by_user_id_fkey\"\n            columns: [\"consumed_by_user_id\"]\n            isOneToOne: false\n            referencedRelation: \"profiles\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_onboarding_prefills_created_by_user_id_fkey\"\n            columns: [\"created_by_user_id\"]\n            isOneToOne: false\n            referencedRelation: \"app_users_safe\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"client_onboarding_prefills_created_by_user_id_fkey\"\n            columns: [\"created_by_user_id\"]\n            isOneToOne: false\n            referencedRelation: \"profiles\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_onboarding_prefills_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      client_session_notes: {\n        Row: {\n          authorization_id: string\n          client_id: string\n          created_at: string\n          created_by: string\n          end_time: string\n          goal_ids: string[] | null\n          goals_addressed: string[]\n          id: string\n          is_locked: boolean\n          narrative: string\n          organization_id: string\n          service_code: string\n          session_date: string\n          session_duration: number\n          session_id: string | null\n          signed_at: string | null\n          start_time: string\n          therapist_id: string\n          updated_at: string\n        }\n        Insert: {\n          authorization_id: string\n          client_id: string\n          created_at?: string\n          created_by: string\n          end_time: string\n          goal_ids?: string[] | null\n          goals_addressed?: string[]\n          id?: string\n          is_locked?: boolean\n          narrative: string\n          organization_id: string\n          service_code: string\n          session_date: string\n          session_duration: number\n          session_id?: string | null\n          signed_at?: string | null\n          start_time: string\n          therapist_id: string\n          updated_at?: string\n        }\n        Update: {\n          authorization_id?: string\n          client_id?: string\n          created_at?: string\n          created_by?: string\n          end_time?: string\n          goal_ids?: string[] | null\n          goals_addressed?: string[]\n          id?: string\n          is_locked?: boolean\n          narrative?: string\n          organization_id?: string\n          service_code?: string\n          session_date?: string\n          session_duration?: number\n          session_id?: string | null\n          signed_at?: string | null\n          start_time?: string\n          therapist_id?: string\n          updated_at?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"client_session_notes_authorization_id_fkey\"\n            columns: [\"authorization_id\"]\n            isOneToOne: false\n            referencedRelation: \"authorizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_session_notes_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_session_notes_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_session_notes_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"client_session_notes_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_session_notes_session_id_fkey\"\n            columns: [\"session_id\"]\n            isOneToOne: false\n            referencedRelation: \"sessions\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_session_notes_therapist_id_fkey\"\n            columns: [\"therapist_id\"]\n            isOneToOne: false\n            referencedRelation: \"therapists\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      client_therapist_links: {\n        Row: {\n          client_id: string\n          created_at: string\n          created_by: string | null\n          id: string\n          organization_id: string\n          therapist_id: string\n        }\n        Insert: {\n          client_id: string\n          created_at?: string\n          created_by?: string | null\n          id?: string\n          organization_id: string\n          therapist_id: string\n        }\n        Update: {\n          client_id?: string\n          created_at?: string\n          created_by?: string | null\n          id?: string\n          organization_id?: string\n          therapist_id?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"client_therapist_links_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_therapist_links_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_therapist_links_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"client_therapist_links_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"client_therapist_links_therapist_id_fkey\"\n            columns: [\"therapist_id\"]\n            isOneToOne: false\n            referencedRelation: \"therapists\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      clients: {\n        Row: {\n          address_line1: string | null\n          address_line2: string | null\n          assessment_units: number | null\n          auth_end_date: string | null\n          auth_start_date: string | null\n          auth_units: number | null\n          authorized_hours_per_month: number | null\n          availability_hours: Json | null\n          avoid_rush_hour: boolean | null\n          cin_number: string | null\n          city: string | null\n          client_id: string | null\n          created_at: string | null\n          created_by: string | null\n          date_of_birth: string | null\n          daycare_after_school: boolean | null\n          deleted_at: string | null\n          deleted_by: string | null\n          diagnosis: string[] | null\n          documents: Json | null\n          email: string | null\n          first_name: string | null\n          full_name: string\n          gender: string | null\n          hours_provided_per_month: number | null\n          id: string\n          in_clinic: boolean | null\n          in_home: boolean | null\n          in_school: boolean | null\n          insurance_info: Json | null\n          last_name: string | null\n          latitude: number | null\n          longitude: number | null\n          max_travel_minutes: number | null\n          middle_name: string | null\n          notes: string | null\n          one_to_one_units: number | null\n          organization_id: string\n          parent_consult_units: number | null\n          parent1_email: string | null\n          parent1_first_name: string | null\n          parent1_last_name: string | null\n          parent1_phone: string | null\n          parent1_relationship: string | null\n          parent2_email: string | null\n          parent2_first_name: string | null\n          parent2_last_name: string | null\n          parent2_phone: string | null\n          parent2_relationship: string | null\n          phone: string | null\n          preferred_language: string | null\n          preferred_radius_km: number | null\n          preferred_session_time: string[] | null\n          referral_source: string | null\n          service_preference: string[] | null\n          state: string | null\n          status: string\n          supervision_units: number | null\n          therapist_assigned_at: string | null\n          therapist_id: string | null\n          unscheduled_hours: number | null\n          updated_at: string\n          updated_by: string | null\n          zip_code: string | null\n        }\n        Insert: {\n          address_line1?: string | null\n          address_line2?: string | null\n          assessment_units?: number | null\n          auth_end_date?: string | null\n          auth_start_date?: string | null\n          auth_units?: number | null\n          authorized_hours_per_month?: number | null\n          availability_hours?: Json | null\n          avoid_rush_hour?: boolean | null\n          cin_number?: string | null\n          city?: string | null\n          client_id?: string | null\n          created_at?: string | null\n          created_by?: string | null\n          date_of_birth?: string | null\n          daycare_after_school?: boolean | null\n          deleted_at?: string | null\n          deleted_by?: string | null\n          diagnosis?: string[] | null\n          documents?: Json | null\n          email?: string | null\n          first_name?: string | null\n          full_name: string\n          gender?: string | null\n          hours_provided_per_month?: number | null\n          id?: string\n          in_clinic?: boolean | null\n          in_home?: boolean | null\n          in_school?: boolean | null\n          insurance_info?: Json | null\n          last_name?: string | null\n          latitude?: number | null\n          longitude?: number | null\n          max_travel_minutes?: number | null\n          middle_name?: string | null\n          notes?: string | null\n          one_to_one_units?: number | null\n          organization_id: string\n          parent_consult_units?: number | null\n          parent1_email?: string | null\n          parent1_first_name?: string | null\n          parent1_last_name?: string | null\n          parent1_phone?: string | null\n          parent1_relationship?: string | null\n          parent2_email?: string | null\n          parent2_first_name?: string | null\n          parent2_last_name?: string | null\n          parent2_phone?: string | null\n          parent2_relationship?: string | null\n          phone?: string | null\n          preferred_language?: string | null\n          preferred_radius_km?: number | null\n          preferred_session_time?: string[] | null\n          referral_source?: string | null\n          service_preference?: string[] | null\n          state?: string | null\n          status?: string\n          supervision_units?: number | null\n          therapist_assigned_at?: string | null\n          therapist_id?: string | null\n          unscheduled_hours?: number | null\n          updated_at?: string\n          updated_by?: string | null\n          zip_code?: string | null\n        }\n        Update: {\n          address_line1?: string | null\n          address_line2?: string | null\n          assessment_units?: number | null\n          auth_end_date?: string | null\n          auth_start_date?: string | null\n          auth_units?: number | null\n          authorized_hours_per_month?: number | null\n          availability_hours?: Json | null\n          avoid_rush_hour?: boolean | null\n          cin_number?: string | null\n          city?: string | null\n          client_id?: string | null\n          created_at?: string | null\n          created_by?: string | null\n          date_of_birth?: string | null\n          daycare_after_school?: boolean | null\n          deleted_at?: string | null\n          deleted_by?: string | null\n          diagnosis?: string[] | null\n          documents?: Json | null\n          email?: string | null\n          first_name?: string | null\n          full_name?: string\n          gender?: string | null\n          hours_provided_per_month?: number | null\n          id?: string\n          in_clinic?: boolean | null\n          in_home?: boolean | null\n          in_school?: boolean | null\n          insurance_info?: Json | null\n          last_name?: string | null\n          latitude?: number | null\n          longitude?: number | null\n          max_travel_minutes?: number | null\n          middle_name?: string | null\n          notes?: string | null\n          one_to_one_units?: number | null\n          organization_id?: string\n          parent_consult_units?: number | null\n          parent1_email?: string | null\n          parent1_first_name?: string | null\n          parent1_last_name?: string | null\n          parent1_phone?: string | null\n          parent1_relationship?: string | null\n          parent2_email?: string | null\n          parent2_first_name?: string | null\n          parent2_last_name?: string | null\n          parent2_phone?: string | null\n          parent2_relationship?: string | null\n          phone?: string | null\n          preferred_language?: string | null\n          preferred_radius_km?: number | null\n          preferred_session_time?: string[] | null\n          referral_source?: string | null\n          service_preference?: string[] | null\n          state?: string | null\n          status?: string\n          supervision_units?: number | null\n          therapist_assigned_at?: string | null\n          therapist_id?: string | null\n          unscheduled_hours?: number | null\n          updated_at?: string\n          updated_by?: string | null\n          zip_code?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"clients_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"clients_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"clients_deleted_by_fkey\"\n            columns: [\"deleted_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"clients_deleted_by_fkey\"\n            columns: [\"deleted_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"clients_therapist_id_fkey\"\n            columns: [\"therapist_id\"]\n            isOneToOne: false\n            referencedRelation: \"therapists\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"clients_updated_by_fkey\"\n            columns: [\"updated_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"clients_updated_by_fkey\"\n            columns: [\"updated_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      company_settings: {\n        Row: {\n          accent_color: string | null\n          address_line1: string | null\n          address_line2: string | null\n          city: string | null\n          company_name: string\n          created_at: string | null\n          date_format: string | null\n          default_currency: string | null\n          email: string | null\n          fax: string | null\n          id: string\n          legal_name: string | null\n          logo_url: string | null\n          medicaid_provider_id: string | null\n          npi_number: string | null\n          phone: string | null\n          primary_color: string | null\n          session_duration_default: number | null\n          state: string | null\n          tax_id: string | null\n          time_format: string | null\n          time_zone: string | null\n          updated_at: string | null\n          website: string | null\n          zip_code: string | null\n        }\n        Insert: {\n          accent_color?: string | null\n          address_line1?: string | null\n          address_line2?: string | null\n          city?: string | null\n          company_name: string\n          created_at?: string | null\n          date_format?: string | null\n          default_currency?: string | null\n          email?: string | null\n          fax?: string | null\n          id?: string\n          legal_name?: string | null\n          logo_url?: string | null\n          medicaid_provider_id?: string | null\n          npi_number?: string | null\n          phone?: string | null\n          primary_color?: string | null\n          session_duration_default?: number | null\n          state?: string | null\n          tax_id?: string | null\n          time_format?: string | null\n          time_zone?: string | null\n          updated_at?: string | null\n          website?: string | null\n          zip_code?: string | null\n        }\n        Update: {\n          accent_color?: string | null\n          address_line1?: string | null\n          address_line2?: string | null\n          city?: string | null\n          company_name?: string\n          created_at?: string | null\n          date_format?: string | null\n          default_currency?: string | null\n          email?: string | null\n          fax?: string | null\n          id?: string\n          legal_name?: string | null\n          logo_url?: string | null\n          medicaid_provider_id?: string | null\n          npi_number?: string | null\n          phone?: string | null\n          primary_color?: string | null\n          session_duration_default?: number | null\n          state?: string | null\n          tax_id?: string | null\n          time_format?: string | null\n          time_zone?: string | null\n          updated_at?: string | null\n          website?: string | null\n          zip_code?: string | null\n        }\n        Relationships: []\n      }\n      conversations: {\n        Row: {\n          created_at: string | null\n          id: string\n          is_active: boolean | null\n          metadata: Json | null\n          title: string\n          updated_at: string | null\n          user_id: string | null\n        }\n        Insert: {\n          created_at?: string | null\n          id?: string\n          is_active?: boolean | null\n          metadata?: Json | null\n          title?: string\n          updated_at?: string | null\n          user_id?: string | null\n        }\n        Update: {\n          created_at?: string | null\n          id?: string\n          is_active?: boolean | null\n          metadata?: Json | null\n          title?: string\n          updated_at?: string | null\n          user_id?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"conversations_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"conversations_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      cpt_codes: {\n        Row: {\n          code: string\n          created_at: string\n          id: string\n          is_active: boolean\n          long_description: string | null\n          service_setting: string | null\n          short_description: string\n          typical_duration_minutes: number | null\n          updated_at: string\n        }\n        Insert: {\n          code: string\n          created_at?: string\n          id?: string\n          is_active?: boolean\n          long_description?: string | null\n          service_setting?: string | null\n          short_description: string\n          typical_duration_minutes?: number | null\n          updated_at?: string\n        }\n        Update: {\n          code?: string\n          created_at?: string\n          id?: string\n          is_active?: boolean\n          long_description?: string | null\n          service_setting?: string | null\n          short_description?: string\n          typical_duration_minutes?: number | null\n          updated_at?: string\n        }\n        Relationships: []\n      }\n      cpt_modifier_mappings: {\n        Row: {\n          cpt_code_id: string\n          created_at: string\n          id: string\n          is_default: boolean\n          is_required: boolean\n          modifier_id: string\n          updated_at: string\n        }\n        Insert: {\n          cpt_code_id: string\n          created_at?: string\n          id?: string\n          is_default?: boolean\n          is_required?: boolean\n          modifier_id: string\n          updated_at?: string\n        }\n        Update: {\n          cpt_code_id?: string\n          created_at?: string\n          id?: string\n          is_default?: boolean\n          is_required?: boolean\n          modifier_id?: string\n          updated_at?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"cpt_modifier_mappings_cpt_code_id_fkey\"\n            columns: [\"cpt_code_id\"]\n            isOneToOne: false\n            referencedRelation: \"cpt_codes\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"cpt_modifier_mappings_modifier_id_fkey\"\n            columns: [\"modifier_id\"]\n            isOneToOne: false\n            referencedRelation: \"billing_modifiers\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      db_performance_metrics: {\n        Row: {\n          cache_hit: boolean | null\n          created_at: string | null\n          execution_time_ms: number\n          id: string\n          query_name: string | null\n          query_text: string | null\n          query_type: string\n          rows_affected: number | null\n          slow_query: boolean | null\n          table_name: string | null\n          timestamp: string | null\n        }\n        Insert: {\n          cache_hit?: boolean | null\n          created_at?: string | null\n          execution_time_ms: number\n          id?: string\n          query_name?: string | null\n          query_text?: string | null\n          query_type: string\n          rows_affected?: number | null\n          slow_query?: boolean | null\n          table_name?: string | null\n          timestamp?: string | null\n        }\n        Update: {\n          cache_hit?: boolean | null\n          created_at?: string | null\n          execution_time_ms?: number\n          id?: string\n          query_name?: string | null\n          query_text?: string | null\n          query_type?: string\n          rows_affected?: number | null\n          slow_query?: boolean | null\n          table_name?: string | null\n          timestamp?: string | null\n        }\n        Relationships: []\n      }\n      edi_claim_denials: {\n        Row: {\n          billing_record_id: string\n          denial_code: string\n          description: string | null\n          id: string\n          payer_control_number: string | null\n          received_at: string\n          recorded_at: string\n          session_id: string\n        }\n        Insert: {\n          billing_record_id: string\n          denial_code: string\n          description?: string | null\n          id?: string\n          payer_control_number?: string | null\n          received_at: string\n          recorded_at?: string\n          session_id: string\n        }\n        Update: {\n          billing_record_id?: string\n          denial_code?: string\n          description?: string | null\n          id?: string\n          payer_control_number?: string | null\n          received_at?: string\n          recorded_at?: string\n          session_id?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"edi_claim_denials_billing_record_id_fkey\"\n            columns: [\"billing_record_id\"]\n            isOneToOne: false\n            referencedRelation: \"billing_records\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"edi_claim_denials_session_id_fkey\"\n            columns: [\"session_id\"]\n            isOneToOne: false\n            referencedRelation: \"sessions\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      edi_claim_statuses: {\n        Row: {\n          billing_record_id: string\n          claim_control_number: string | null\n          created_at: string\n          effective_at: string\n          export_file_id: string | null\n          id: string\n          notes: string | null\n          session_id: string\n          status: string\n        }\n        Insert: {\n          billing_record_id: string\n          claim_control_number?: string | null\n          created_at?: string\n          effective_at: string\n          export_file_id?: string | null\n          id?: string\n          notes?: string | null\n          session_id: string\n          status: string\n        }\n        Update: {\n          billing_record_id?: string\n          claim_control_number?: string | null\n          created_at?: string\n          effective_at?: string\n          export_file_id?: string | null\n          id?: string\n          notes?: string | null\n          session_id?: string\n          status?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"edi_claim_statuses_billing_record_id_fkey\"\n            columns: [\"billing_record_id\"]\n            isOneToOne: false\n            referencedRelation: \"billing_records\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"edi_claim_statuses_export_file_id_fkey\"\n            columns: [\"export_file_id\"]\n            isOneToOne: false\n            referencedRelation: \"edi_export_files\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"edi_claim_statuses_session_id_fkey\"\n            columns: [\"session_id\"]\n            isOneToOne: false\n            referencedRelation: \"sessions\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      edi_export_files: {\n        Row: {\n          checksum: string\n          claim_count: number\n          content: string\n          created_at: string\n          file_name: string\n          group_control_number: string\n          id: string\n          interchange_control_number: string\n          transaction_set_control_number: string\n        }\n        Insert: {\n          checksum: string\n          claim_count: number\n          content: string\n          created_at?: string\n          file_name: string\n          group_control_number: string\n          id?: string\n          interchange_control_number: string\n          transaction_set_control_number: string\n        }\n        Update: {\n          checksum?: string\n          claim_count?: number\n          content?: string\n          created_at?: string\n          file_name?: string\n          group_control_number?: string\n          id?: string\n          interchange_control_number?: string\n          transaction_set_control_number?: string\n        }\n        Relationships: []\n      }\n      error_logs: {\n        Row: {\n          context: Json | null\n          created_at: string | null\n          details: Json | null\n          error_type: string\n          id: string\n          message: string\n          resolved: boolean | null\n          resolved_at: string | null\n          resolved_by: string | null\n          session_id: string | null\n          severity: string | null\n          stack_trace: string | null\n          updated_at: string | null\n          url: string | null\n          user_agent: string | null\n          user_id: string | null\n        }\n        Insert: {\n          context?: Json | null\n          created_at?: string | null\n          details?: Json | null\n          error_type: string\n          id?: string\n          message: string\n          resolved?: boolean | null\n          resolved_at?: string | null\n          resolved_by?: string | null\n          session_id?: string | null\n          severity?: string | null\n          stack_trace?: string | null\n          updated_at?: string | null\n          url?: string | null\n          user_agent?: string | null\n          user_id?: string | null\n        }\n        Update: {\n          context?: Json | null\n          created_at?: string | null\n          details?: Json | null\n          error_type?: string\n          id?: string\n          message?: string\n          resolved?: boolean | null\n          resolved_at?: string | null\n          resolved_by?: string | null\n          session_id?: string | null\n          severity?: string | null\n          stack_trace?: string | null\n          updated_at?: string | null\n          url?: string | null\n          user_agent?: string | null\n          user_id?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"error_logs_resolved_by_fkey\"\n            columns: [\"resolved_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"error_logs_resolved_by_fkey\"\n            columns: [\"resolved_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"error_logs_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"error_logs_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      error_taxonomy: {\n        Row: {\n          category: string\n          code: string\n          description: string\n          http_status: number\n          retryable: boolean\n          severity: string\n          updated_at: string\n          updated_by: string | null\n        }\n        Insert: {\n          category: string\n          code: string\n          description: string\n          http_status: number\n          retryable?: boolean\n          severity: string\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Update: {\n          category?: string\n          code?: string\n          description?: string\n          http_status?: number\n          retryable?: boolean\n          severity?: string\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Relationships: []\n      }\n      feature_flag_audit_logs: {\n        Row: {\n          action: string\n          actor_id: string | null\n          created_at: string\n          feature_flag_id: string | null\n          id: string\n          new_state: Json | null\n          organization_id: string | null\n          plan_code: string | null\n          previous_state: Json | null\n        }\n        Insert: {\n          action: string\n          actor_id?: string | null\n          created_at?: string\n          feature_flag_id?: string | null\n          id?: string\n          new_state?: Json | null\n          organization_id?: string | null\n          plan_code?: string | null\n          previous_state?: Json | null\n        }\n        Update: {\n          action?: string\n          actor_id?: string | null\n          created_at?: string\n          feature_flag_id?: string | null\n          id?: string\n          new_state?: Json | null\n          organization_id?: string | null\n          plan_code?: string | null\n          previous_state?: Json | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"feature_flag_audit_logs_actor_id_fkey\"\n            columns: [\"actor_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"feature_flag_audit_logs_actor_id_fkey\"\n            columns: [\"actor_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"feature_flag_audit_logs_feature_flag_id_fkey\"\n            columns: [\"feature_flag_id\"]\n            isOneToOne: false\n            referencedRelation: \"feature_flags\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"feature_flag_audit_logs_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"feature_flag_audit_logs_plan_code_fkey\"\n            columns: [\"plan_code\"]\n            isOneToOne: false\n            referencedRelation: \"plans\"\n            referencedColumns: [\"code\"]\n          },\n        ]\n      }\n      feature_flag_plan_history: {\n        Row: {\n          action: string\n          actor_id: string | null\n          change_context: string\n          feature_flag_id: string | null\n          id: string\n          new_state: Json | null\n          occurred_at: string\n          organization_id: string | null\n          plan_code: string | null\n          previous_state: Json | null\n        }\n        Insert: {\n          action: string\n          actor_id?: string | null\n          change_context: string\n          feature_flag_id?: string | null\n          id?: string\n          new_state?: Json | null\n          occurred_at?: string\n          organization_id?: string | null\n          plan_code?: string | null\n          previous_state?: Json | null\n        }\n        Update: {\n          action?: string\n          actor_id?: string | null\n          change_context?: string\n          feature_flag_id?: string | null\n          id?: string\n          new_state?: Json | null\n          occurred_at?: string\n          organization_id?: string | null\n          plan_code?: string | null\n          previous_state?: Json | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"feature_flag_plan_history_actor_id_fkey\"\n            columns: [\"actor_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"feature_flag_plan_history_actor_id_fkey\"\n            columns: [\"actor_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"feature_flag_plan_history_feature_flag_id_fkey\"\n            columns: [\"feature_flag_id\"]\n            isOneToOne: false\n            referencedRelation: \"feature_flags\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"feature_flag_plan_history_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"feature_flag_plan_history_plan_code_fkey\"\n            columns: [\"plan_code\"]\n            isOneToOne: false\n            referencedRelation: \"plans\"\n            referencedColumns: [\"code\"]\n          },\n        ]\n      }\n      feature_flags: {\n        Row: {\n          created_at: string\n          created_by: string | null\n          default_enabled: boolean\n          description: string | null\n          flag_key: string\n          id: string\n          metadata: Json | null\n          updated_at: string\n          updated_by: string | null\n        }\n        Insert: {\n          created_at?: string\n          created_by?: string | null\n          default_enabled?: boolean\n          description?: string | null\n          flag_key: string\n          id?: string\n          metadata?: Json | null\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Update: {\n          created_at?: string\n          created_by?: string | null\n          default_enabled?: boolean\n          description?: string | null\n          flag_key?: string\n          id?: string\n          metadata?: Json | null\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"feature_flags_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"feature_flags_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"feature_flags_updated_by_fkey\"\n            columns: [\"updated_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"feature_flags_updated_by_fkey\"\n            columns: [\"updated_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      file_cabinet_settings: {\n        Row: {\n          allowed_file_types: string[] | null\n          category_name: string\n          created_at: string | null\n          description: string | null\n          id: string\n          is_active: boolean | null\n          max_file_size_mb: number | null\n          requires_signature: boolean | null\n          retention_period_days: number | null\n          updated_at: string | null\n        }\n        Insert: {\n          allowed_file_types?: string[] | null\n          category_name: string\n          created_at?: string | null\n          description?: string | null\n          id?: string\n          is_active?: boolean | null\n          max_file_size_mb?: number | null\n          requires_signature?: boolean | null\n          retention_period_days?: number | null\n          updated_at?: string | null\n        }\n        Update: {\n          allowed_file_types?: string[] | null\n          category_name?: string\n          created_at?: string | null\n          description?: string | null\n          id?: string\n          is_active?: boolean | null\n          max_file_size_mb?: number | null\n          requires_signature?: boolean | null\n          retention_period_days?: number | null\n          updated_at?: string | null\n        }\n        Relationships: []\n      }\n      function_idempotency_keys: {\n        Row: {\n          created_at: string\n          endpoint: string\n          id: string\n          idempotency_key: string\n          response_body: Json\n          response_hash: string\n          status_code: number\n        }\n        Insert: {\n          created_at?: string\n          endpoint: string\n          id?: string\n          idempotency_key: string\n          response_body: Json\n          response_hash: string\n          status_code?: number\n        }\n        Update: {\n          created_at?: string\n          endpoint?: string\n          id?: string\n          idempotency_key?: string\n          response_body?: Json\n          response_hash?: string\n          status_code?: number\n        }\n        Relationships: []\n      }\n      function_performance_logs: {\n        Row: {\n          executed_at: string | null\n          executed_by: string | null\n          execution_time_ms: number\n          function_name: string\n          id: string\n          parameters: Json | null\n          result_size: number | null\n        }\n        Insert: {\n          executed_at?: string | null\n          executed_by?: string | null\n          execution_time_ms: number\n          function_name: string\n          id?: string\n          parameters?: Json | null\n          result_size?: number | null\n        }\n        Update: {\n          executed_at?: string | null\n          executed_by?: string | null\n          execution_time_ms?: number\n          function_name?: string\n          id?: string\n          parameters?: Json | null\n          result_size?: number | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"function_performance_logs_executed_by_fkey\"\n            columns: [\"executed_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"function_performance_logs_executed_by_fkey\"\n            columns: [\"executed_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      goal_versions: {\n        Row: {\n          baseline_data: string | null\n          change_reason: string | null\n          changed_at: string\n          changed_by: string\n          client_id: string\n          clinical_context: string | null\n          description: string\n          goal_id: string\n          id: string\n          measurement_type: string | null\n          organization_id: string\n          original_text: string\n          program_id: string\n          status: string\n          target_behavior: string | null\n          target_criteria: string | null\n          title: string\n        }\n        Insert: {\n          baseline_data?: string | null\n          change_reason?: string | null\n          changed_at?: string\n          changed_by: string\n          client_id: string\n          clinical_context?: string | null\n          description: string\n          goal_id: string\n          id?: string\n          measurement_type?: string | null\n          organization_id: string\n          original_text: string\n          program_id: string\n          status: string\n          target_behavior?: string | null\n          target_criteria?: string | null\n          title: string\n        }\n        Update: {\n          baseline_data?: string | null\n          change_reason?: string | null\n          changed_at?: string\n          changed_by?: string\n          client_id?: string\n          clinical_context?: string | null\n          description?: string\n          goal_id?: string\n          id?: string\n          measurement_type?: string | null\n          organization_id?: string\n          original_text?: string\n          program_id?: string\n          status?: string\n          target_behavior?: string | null\n          target_criteria?: string | null\n          title?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"goal_versions_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"goal_versions_goal_id_fkey\"\n            columns: [\"goal_id\"]\n            isOneToOne: false\n            referencedRelation: \"goals\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"goal_versions_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"goal_versions_program_id_fkey\"\n            columns: [\"program_id\"]\n            isOneToOne: false\n            referencedRelation: \"programs\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      goals: {\n        Row: {\n          baseline_data: string | null\n          client_id: string\n          clinical_context: string | null\n          created_at: string\n          created_by: string | null\n          description: string\n          generalization_criteria: string | null\n          goal_type: string\n          id: string\n          maintenance_criteria: string | null\n          mastery_criteria: string | null\n          measurement_type: string | null\n          objective_data_points: Json\n          organization_id: string\n          original_text: string\n          program_id: string\n          status: string\n          target_behavior: string | null\n          target_criteria: string | null\n          title: string\n          updated_at: string\n          updated_by: string | null\n        }\n        Insert: {\n          baseline_data?: string | null\n          client_id: string\n          clinical_context?: string | null\n          created_at?: string\n          created_by?: string | null\n          description: string\n          generalization_criteria?: string | null\n          goal_type?: string\n          id?: string\n          maintenance_criteria?: string | null\n          mastery_criteria?: string | null\n          measurement_type?: string | null\n          objective_data_points?: Json\n          organization_id: string\n          original_text: string\n          program_id: string\n          status?: string\n          target_behavior?: string | null\n          target_criteria?: string | null\n          title: string\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Update: {\n          baseline_data?: string | null\n          client_id?: string\n          clinical_context?: string | null\n          created_at?: string\n          created_by?: string | null\n          description?: string\n          generalization_criteria?: string | null\n          goal_type?: string\n          id?: string\n          maintenance_criteria?: string | null\n          mastery_criteria?: string | null\n          measurement_type?: string | null\n          objective_data_points?: Json\n          organization_id?: string\n          original_text?: string\n          program_id?: string\n          status?: string\n          target_behavior?: string | null\n          target_criteria?: string | null\n          title?: string\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"goals_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"goals_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"goals_program_id_fkey\"\n            columns: [\"program_id\"]\n            isOneToOne: false\n            referencedRelation: \"programs\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      guardian_link_queue: {\n        Row: {\n          approved_client_ids: string[]\n          created_at: string\n          created_by: string | null\n          guardian_email: string\n          guardian_id: string\n          id: string\n          invite_token: string | null\n          metadata: Json\n          organization_id: string | null\n          processed_at: string | null\n          processed_by: string | null\n          requested_client_ids: string[]\n          resolution_notes: string | null\n          status: string\n          updated_at: string\n        }\n        Insert: {\n          approved_client_ids?: string[]\n          created_at?: string\n          created_by?: string | null\n          guardian_email: string\n          guardian_id: string\n          id?: string\n          invite_token?: string | null\n          metadata?: Json\n          organization_id?: string | null\n          processed_at?: string | null\n          processed_by?: string | null\n          requested_client_ids?: string[]\n          resolution_notes?: string | null\n          status?: string\n          updated_at?: string\n        }\n        Update: {\n          approved_client_ids?: string[]\n          created_at?: string\n          created_by?: string | null\n          guardian_email?: string\n          guardian_id?: string\n          id?: string\n          invite_token?: string | null\n          metadata?: Json\n          organization_id?: string | null\n          processed_at?: string | null\n          processed_by?: string | null\n          requested_client_ids?: string[]\n          resolution_notes?: string | null\n          status?: string\n          updated_at?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"guardian_link_queue_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"guardian_link_queue_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"guardian_link_queue_guardian_id_fkey\"\n            columns: [\"guardian_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"guardian_link_queue_guardian_id_fkey\"\n            columns: [\"guardian_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"guardian_link_queue_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"guardian_link_queue_processed_by_fkey\"\n            columns: [\"processed_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"guardian_link_queue_processed_by_fkey\"\n            columns: [\"processed_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      impersonation_audit: {\n        Row: {\n          actor_ip: unknown\n          actor_organization_id: string\n          actor_user_agent: string | null\n          actor_user_id: string\n          created_at: string\n          expires_at: string\n          id: string\n          issued_at: string\n          reason: string | null\n          revoked_at: string | null\n          revoked_by: string | null\n          target_organization_id: string\n          target_user_id: string\n          token_jti: string\n        }\n        Insert: {\n          actor_ip?: unknown\n          actor_organization_id: string\n          actor_user_agent?: string | null\n          actor_user_id: string\n          created_at?: string\n          expires_at: string\n          id?: string\n          issued_at?: string\n          reason?: string | null\n          revoked_at?: string | null\n          revoked_by?: string | null\n          target_organization_id: string\n          target_user_id: string\n          token_jti: string\n        }\n        Update: {\n          actor_ip?: unknown\n          actor_organization_id?: string\n          actor_user_agent?: string | null\n          actor_user_id?: string\n          created_at?: string\n          expires_at?: string\n          id?: string\n          issued_at?: string\n          reason?: string | null\n          revoked_at?: string | null\n          revoked_by?: string | null\n          target_organization_id?: string\n          target_user_id?: string\n          token_jti?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"impersonation_audit_actor_user_id_fkey\"\n            columns: [\"actor_user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"impersonation_audit_actor_user_id_fkey\"\n            columns: [\"actor_user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"impersonation_audit_revoked_by_fkey\"\n            columns: [\"revoked_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"impersonation_audit_revoked_by_fkey\"\n            columns: [\"revoked_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"impersonation_audit_target_user_id_fkey\"\n            columns: [\"target_user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"impersonation_audit_target_user_id_fkey\"\n            columns: [\"target_user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      impersonation_revocation_queue: {\n        Row: {\n          audit_id: string\n          created_at: string\n          error: string | null\n          id: string\n          processed_at: string | null\n          token_jti: string\n        }\n        Insert: {\n          audit_id: string\n          created_at?: string\n          error?: string | null\n          id?: string\n          processed_at?: string | null\n          token_jti: string\n        }\n        Update: {\n          audit_id?: string\n          created_at?: string\n          error?: string | null\n          id?: string\n          processed_at?: string | null\n          token_jti?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"impersonation_revocation_queue_audit_id_fkey\"\n            columns: [\"audit_id\"]\n            isOneToOne: false\n            referencedRelation: \"impersonation_audit\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      insurance_providers: {\n        Row: {\n          contact_phone: string | null\n          created_at: string | null\n          fax: string | null\n          id: string\n          name: string\n          type: string\n          updated_at: string | null\n          website: string | null\n        }\n        Insert: {\n          contact_phone?: string | null\n          created_at?: string | null\n          fax?: string | null\n          id?: string\n          name: string\n          type: string\n          updated_at?: string | null\n          website?: string | null\n        }\n        Update: {\n          contact_phone?: string | null\n          created_at?: string | null\n          fax?: string | null\n          id?: string\n          name?: string\n          type?: string\n          updated_at?: string | null\n          website?: string | null\n        }\n        Relationships: []\n      }\n      locations: {\n        Row: {\n          address_line1: string | null\n          address_line2: string | null\n          city: string | null\n          created_at: string | null\n          email: string | null\n          fax: string | null\n          id: string\n          is_active: boolean | null\n          name: string\n          operating_hours: Json | null\n          organization_id: string | null\n          phone: string | null\n          state: string | null\n          type: string\n          updated_at: string | null\n          zip_code: string | null\n        }\n        Insert: {\n          address_line1?: string | null\n          address_line2?: string | null\n          city?: string | null\n          created_at?: string | null\n          email?: string | null\n          fax?: string | null\n          id?: string\n          is_active?: boolean | null\n          name: string\n          operating_hours?: Json | null\n          organization_id?: string | null\n          phone?: string | null\n          state?: string | null\n          type: string\n          updated_at?: string | null\n          zip_code?: string | null\n        }\n        Update: {\n          address_line1?: string | null\n          address_line2?: string | null\n          city?: string | null\n          created_at?: string | null\n          email?: string | null\n          fax?: string | null\n          id?: string\n          is_active?: boolean | null\n          name?: string\n          operating_hours?: Json | null\n          organization_id?: string | null\n          phone?: string | null\n          state?: string | null\n          type?: string\n          updated_at?: string | null\n          zip_code?: string | null\n        }\n        Relationships: []\n      }\n      organization_feature_flags: {\n        Row: {\n          created_at: string\n          created_by: string | null\n          feature_flag_id: string\n          id: string\n          is_enabled: boolean\n          organization_id: string\n          updated_at: string\n          updated_by: string | null\n        }\n        Insert: {\n          created_at?: string\n          created_by?: string | null\n          feature_flag_id: string\n          id?: string\n          is_enabled?: boolean\n          organization_id: string\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Update: {\n          created_at?: string\n          created_by?: string | null\n          feature_flag_id?: string\n          id?: string\n          is_enabled?: boolean\n          organization_id?: string\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"organization_feature_flags_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"organization_feature_flags_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"organization_feature_flags_feature_flag_id_fkey\"\n            columns: [\"feature_flag_id\"]\n            isOneToOne: false\n            referencedRelation: \"feature_flags\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"organization_feature_flags_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"organization_feature_flags_updated_by_fkey\"\n            columns: [\"updated_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"organization_feature_flags_updated_by_fkey\"\n            columns: [\"updated_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      organization_plans: {\n        Row: {\n          assigned_at: string\n          assigned_by: string | null\n          notes: string | null\n          organization_id: string\n          plan_code: string\n        }\n        Insert: {\n          assigned_at?: string\n          assigned_by?: string | null\n          notes?: string | null\n          organization_id: string\n          plan_code: string\n        }\n        Update: {\n          assigned_at?: string\n          assigned_by?: string | null\n          notes?: string | null\n          organization_id?: string\n          plan_code?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"organization_plans_assigned_by_fkey\"\n            columns: [\"assigned_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"organization_plans_assigned_by_fkey\"\n            columns: [\"assigned_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"organization_plans_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: true\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"organization_plans_plan_code_fkey\"\n            columns: [\"plan_code\"]\n            isOneToOne: false\n            referencedRelation: \"plans\"\n            referencedColumns: [\"code\"]\n          },\n        ]\n      }\n      organizations: {\n        Row: {\n          created_at: string\n          created_by: string | null\n          id: string\n          metadata: Json | null\n          name: string | null\n          slug: string | null\n          updated_at: string\n          updated_by: string | null\n        }\n        Insert: {\n          created_at?: string\n          created_by?: string | null\n          id: string\n          metadata?: Json | null\n          name?: string | null\n          slug?: string | null\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Update: {\n          created_at?: string\n          created_by?: string | null\n          id?: string\n          metadata?: Json | null\n          name?: string | null\n          slug?: string | null\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"organizations_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"organizations_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"organizations_updated_by_fkey\"\n            columns: [\"updated_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"organizations_updated_by_fkey\"\n            columns: [\"updated_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      performance_alerts: {\n        Row: {\n          alert_type: string\n          created_at: string | null\n          current_value: number\n          escalated: boolean | null\n          id: string\n          message: string\n          metric_name: string\n          resolved: boolean | null\n          resolved_at: string | null\n          threshold_value: number\n        }\n        Insert: {\n          alert_type: string\n          created_at?: string | null\n          current_value: number\n          escalated?: boolean | null\n          id?: string\n          message: string\n          metric_name: string\n          resolved?: boolean | null\n          resolved_at?: string | null\n          threshold_value: number\n        }\n        Update: {\n          alert_type?: string\n          created_at?: string | null\n          current_value?: number\n          escalated?: boolean | null\n          id?: string\n          message?: string\n          metric_name?: string\n          resolved?: boolean | null\n          resolved_at?: string | null\n          threshold_value?: number\n        }\n        Relationships: []\n      }\n      performance_baselines: {\n        Row: {\n          baseline_value: number\n          confidence_level: number\n          created_at: string\n          critical_threshold: number\n          id: string\n          is_active: boolean | null\n          measured_at: string\n          metric_name: string\n          sample_size: number\n          updated_at: string\n          warning_threshold: number\n        }\n        Insert: {\n          baseline_value: number\n          confidence_level: number\n          created_at?: string\n          critical_threshold: number\n          id: string\n          is_active?: boolean | null\n          measured_at: string\n          metric_name: string\n          sample_size: number\n          updated_at?: string\n          warning_threshold: number\n        }\n        Update: {\n          baseline_value?: number\n          confidence_level?: number\n          created_at?: string\n          critical_threshold?: number\n          id?: string\n          is_active?: boolean | null\n          measured_at?: string\n          metric_name?: string\n          sample_size?: number\n          updated_at?: string\n          warning_threshold?: number\n        }\n        Relationships: []\n      }\n      plans: {\n        Row: {\n          code: string\n          created_at: string\n          description: string | null\n          is_active: boolean\n          name: string\n          updated_at: string\n        }\n        Insert: {\n          code: string\n          created_at?: string\n          description?: string | null\n          is_active?: boolean\n          name: string\n          updated_at?: string\n        }\n        Update: {\n          code?: string\n          created_at?: string\n          description?: string | null\n          is_active?: boolean\n          name?: string\n          updated_at?: string\n        }\n        Relationships: []\n      }\n      profiles: {\n        Row: {\n          avatar_url: string | null\n          created_at: string | null\n          email: string\n          first_name: string | null\n          full_name: string | null\n          id: string\n          is_active: boolean | null\n          last_login_at: string | null\n          last_name: string | null\n          organization_id: string | null\n          phone: string | null\n          preferences: Json | null\n          role: Database[\"public\"][\"Enums\"][\"role_type\"]\n          time_zone: string | null\n          title: string | null\n          updated_at: string | null\n        }\n        Insert: {\n          avatar_url?: string | null\n          created_at?: string | null\n          email: string\n          first_name?: string | null\n          full_name?: string | null\n          id: string\n          is_active?: boolean | null\n          last_login_at?: string | null\n          last_name?: string | null\n          organization_id?: string | null\n          phone?: string | null\n          preferences?: Json | null\n          role?: Database[\"public\"][\"Enums\"][\"role_type\"]\n          time_zone?: string | null\n          title?: string | null\n          updated_at?: string | null\n        }\n        Update: {\n          avatar_url?: string | null\n          created_at?: string | null\n          email?: string\n          first_name?: string | null\n          full_name?: string | null\n          id?: string\n          is_active?: boolean | null\n          last_login_at?: string | null\n          last_name?: string | null\n          organization_id?: string | null\n          phone?: string | null\n          preferences?: Json | null\n          role?: Database[\"public\"][\"Enums\"][\"role_type\"]\n          time_zone?: string | null\n          title?: string | null\n          updated_at?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"profiles_id_fkey\"\n            columns: [\"id\"]\n            isOneToOne: true\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"profiles_id_fkey\"\n            columns: [\"id\"]\n            isOneToOne: true\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"profiles_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      program_notes: {\n        Row: {\n          author_id: string | null\n          content: Json\n          created_at: string\n          id: string\n          note_type: string\n          organization_id: string\n          program_id: string\n          updated_at: string\n        }\n        Insert: {\n          author_id?: string | null\n          content?: Json\n          created_at?: string\n          id?: string\n          note_type: string\n          organization_id: string\n          program_id: string\n          updated_at?: string\n        }\n        Update: {\n          author_id?: string | null\n          content?: Json\n          created_at?: string\n          id?: string\n          note_type?: string\n          organization_id?: string\n          program_id?: string\n          updated_at?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"program_notes_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"program_notes_program_id_fkey\"\n            columns: [\"program_id\"]\n            isOneToOne: false\n            referencedRelation: \"programs\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      programs: {\n        Row: {\n          client_id: string\n          created_at: string\n          created_by: string | null\n          description: string | null\n          end_date: string | null\n          id: string\n          name: string\n          organization_id: string\n          start_date: string | null\n          status: string\n          updated_at: string\n          updated_by: string | null\n        }\n        Insert: {\n          client_id: string\n          created_at?: string\n          created_by?: string | null\n          description?: string | null\n          end_date?: string | null\n          id?: string\n          name: string\n          organization_id: string\n          start_date?: string | null\n          status?: string\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Update: {\n          client_id?: string\n          created_at?: string\n          created_by?: string | null\n          description?: string | null\n          end_date?: string | null\n          id?: string\n          name?: string\n          organization_id?: string\n          start_date?: string | null\n          status?: string\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"programs_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"programs_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      query_performance_metrics: {\n        Row: {\n          affected_rows: number | null\n          cache_hit: boolean | null\n          created_at: string\n          data_size_bytes: number | null\n          duration_ms: number\n          error_message: string | null\n          error_occurred: boolean | null\n          id: string\n          operation: string\n          query_complexity: string | null\n          query_key: string\n          session_id: string\n          timestamp: string\n          user_id: string | null\n        }\n        Insert: {\n          affected_rows?: number | null\n          cache_hit?: boolean | null\n          created_at?: string\n          data_size_bytes?: number | null\n          duration_ms: number\n          error_message?: string | null\n          error_occurred?: boolean | null\n          id?: string\n          operation: string\n          query_complexity?: string | null\n          query_key: string\n          session_id: string\n          timestamp?: string\n          user_id?: string | null\n        }\n        Update: {\n          affected_rows?: number | null\n          cache_hit?: boolean | null\n          created_at?: string\n          data_size_bytes?: number | null\n          duration_ms?: number\n          error_message?: string | null\n          error_occurred?: boolean | null\n          id?: string\n          operation?: string\n          query_complexity?: string | null\n          query_key?: string\n          session_id?: string\n          timestamp?: string\n          user_id?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"query_performance_metrics_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"query_performance_metrics_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      referring_providers: {\n        Row: {\n          address_line1: string | null\n          address_line2: string | null\n          city: string | null\n          created_at: string | null\n          credentials: string[] | null\n          email: string | null\n          facility_name: string | null\n          fax: string | null\n          first_name: string\n          id: string\n          is_active: boolean | null\n          last_name: string\n          npi_number: string | null\n          phone: string | null\n          specialty: string | null\n          state: string | null\n          updated_at: string | null\n          zip_code: string | null\n        }\n        Insert: {\n          address_line1?: string | null\n          address_line2?: string | null\n          city?: string | null\n          created_at?: string | null\n          credentials?: string[] | null\n          email?: string | null\n          facility_name?: string | null\n          fax?: string | null\n          first_name: string\n          id?: string\n          is_active?: boolean | null\n          last_name: string\n          npi_number?: string | null\n          phone?: string | null\n          specialty?: string | null\n          state?: string | null\n          updated_at?: string | null\n          zip_code?: string | null\n        }\n        Update: {\n          address_line1?: string | null\n          address_line2?: string | null\n          city?: string | null\n          created_at?: string | null\n          credentials?: string[] | null\n          email?: string | null\n          facility_name?: string | null\n          fax?: string | null\n          first_name?: string\n          id?: string\n          is_active?: boolean | null\n          last_name?: string\n          npi_number?: string | null\n          phone?: string | null\n          specialty?: string | null\n          state?: string | null\n          updated_at?: string | null\n          zip_code?: string | null\n        }\n        Relationships: []\n      }\n      roles: {\n        Row: {\n          created_at: string | null\n          description: string | null\n          id: string\n          is_system_role: boolean | null\n          name: string\n          permissions: Json | null\n          updated_at: string | null\n        }\n        Insert: {\n          created_at?: string | null\n          description?: string | null\n          id?: string\n          is_system_role?: boolean | null\n          name: string\n          permissions?: Json | null\n          updated_at?: string | null\n        }\n        Update: {\n          created_at?: string | null\n          description?: string | null\n          id?: string\n          is_system_role?: boolean | null\n          name?: string\n          permissions?: Json | null\n          updated_at?: string | null\n        }\n        Relationships: []\n      }\n      scheduling_orchestration_runs: {\n        Row: {\n          correlation_id: string\n          created_at: string\n          id: string\n          inputs: Json | null\n          organization_id: string | null\n          outputs: Json | null\n          request_id: string\n          rollback_plan: Json | null\n          status: string\n          workflow: string\n        }\n        Insert: {\n          correlation_id: string\n          created_at?: string\n          id?: string\n          inputs?: Json | null\n          organization_id?: string | null\n          outputs?: Json | null\n          request_id: string\n          rollback_plan?: Json | null\n          status: string\n          workflow: string\n        }\n        Update: {\n          correlation_id?: string\n          created_at?: string\n          id?: string\n          inputs?: Json | null\n          organization_id?: string | null\n          outputs?: Json | null\n          request_id?: string\n          rollback_plan?: Json | null\n          status?: string\n          workflow?: string\n        }\n        Relationships: []\n      }\n      scheduling_preferences: {\n        Row: {\n          avoid_highways: boolean | null\n          created_at: string | null\n          end_location: string | null\n          id: string\n          max_consecutive_sessions: number | null\n          max_daily_hours: number | null\n          min_break_minutes: number | null\n          preferred_break_minutes: number | null\n          start_location: string | null\n          updated_at: string | null\n          user_id: string\n        }\n        Insert: {\n          avoid_highways?: boolean | null\n          created_at?: string | null\n          end_location?: string | null\n          id?: string\n          max_consecutive_sessions?: number | null\n          max_daily_hours?: number | null\n          min_break_minutes?: number | null\n          preferred_break_minutes?: number | null\n          start_location?: string | null\n          updated_at?: string | null\n          user_id: string\n        }\n        Update: {\n          avoid_highways?: boolean | null\n          created_at?: string | null\n          end_location?: string | null\n          id?: string\n          max_consecutive_sessions?: number | null\n          max_daily_hours?: number | null\n          min_break_minutes?: number | null\n          preferred_break_minutes?: number | null\n          start_location?: string | null\n          updated_at?: string | null\n          user_id?: string\n        }\n        Relationships: []\n      }\n      service_areas: {\n        Row: {\n          center_latitude: number\n          center_longitude: number\n          created_at: string | null\n          id: string\n          is_active: boolean | null\n          name: string\n          radius_km: number\n          updated_at: string | null\n        }\n        Insert: {\n          center_latitude: number\n          center_longitude: number\n          created_at?: string | null\n          id?: string\n          is_active?: boolean | null\n          name: string\n          radius_km: number\n          updated_at?: string | null\n        }\n        Update: {\n          center_latitude?: number\n          center_longitude?: number\n          created_at?: string | null\n          id?: string\n          is_active?: boolean | null\n          name?: string\n          radius_km?: number\n          updated_at?: string | null\n        }\n        Relationships: []\n      }\n      service_contract_rates: {\n        Row: {\n          contract_id: string\n          cpt_code_id: string\n          created_at: string\n          id: string\n          modifiers: string[]\n          organization_id: string\n          rate: number\n          updated_at: string\n        }\n        Insert: {\n          contract_id: string\n          cpt_code_id: string\n          created_at?: string\n          id?: string\n          modifiers?: string[]\n          organization_id: string\n          rate: number\n          updated_at?: string\n        }\n        Update: {\n          contract_id?: string\n          cpt_code_id?: string\n          created_at?: string\n          id?: string\n          modifiers?: string[]\n          organization_id?: string\n          rate?: number\n          updated_at?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"service_contract_rates_contract_fk\"\n            columns: [\"contract_id\", \"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"service_contracts\"\n            referencedColumns: [\"id\", \"organization_id\"]\n          },\n          {\n            foreignKeyName: \"service_contract_rates_cpt_code_id_fkey\"\n            columns: [\"cpt_code_id\"]\n            isOneToOne: false\n            referencedRelation: \"cpt_codes\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"service_contract_rates_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      service_contract_versions: {\n        Row: {\n          contract_id: string\n          file_url: string | null\n          id: string\n          organization_id: string\n          uploaded_at: string\n          uploaded_by: string | null\n        }\n        Insert: {\n          contract_id: string\n          file_url?: string | null\n          id?: string\n          organization_id: string\n          uploaded_at?: string\n          uploaded_by?: string | null\n        }\n        Update: {\n          contract_id?: string\n          file_url?: string | null\n          id?: string\n          organization_id?: string\n          uploaded_at?: string\n          uploaded_by?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"service_contract_versions_contract_fk\"\n            columns: [\"contract_id\", \"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"service_contracts\"\n            referencedColumns: [\"id\", \"organization_id\"]\n          },\n          {\n            foreignKeyName: \"service_contract_versions_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"service_contract_versions_uploaded_by_fkey\"\n            columns: [\"uploaded_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"service_contract_versions_uploaded_by_fkey\"\n            columns: [\"uploaded_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      service_contracts: {\n        Row: {\n          authorized_units: number\n          client_id: string\n          confidence_score: number | null\n          created_at: string\n          created_by: string | null\n          effective_date: string\n          file_url: string | null\n          id: string\n          insurance_provider_id: string | null\n          organization_id: string\n          payer_name: string\n          reimbursement_method: string\n          termination_date: string | null\n          updated_at: string\n          updated_by: string | null\n        }\n        Insert: {\n          authorized_units?: number\n          client_id: string\n          confidence_score?: number | null\n          created_at?: string\n          created_by?: string | null\n          effective_date: string\n          file_url?: string | null\n          id?: string\n          insurance_provider_id?: string | null\n          organization_id: string\n          payer_name: string\n          reimbursement_method?: string\n          termination_date?: string | null\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Update: {\n          authorized_units?: number\n          client_id?: string\n          confidence_score?: number | null\n          created_at?: string\n          created_by?: string | null\n          effective_date?: string\n          file_url?: string | null\n          id?: string\n          insurance_provider_id?: string | null\n          organization_id?: string\n          payer_name?: string\n          reimbursement_method?: string\n          termination_date?: string | null\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"service_contracts_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"service_contracts_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"service_contracts_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"service_contracts_insurance_provider_id_fkey\"\n            columns: [\"insurance_provider_id\"]\n            isOneToOne: false\n            referencedRelation: \"insurance_providers\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"service_contracts_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"service_contracts_updated_by_fkey\"\n            columns: [\"updated_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"service_contracts_updated_by_fkey\"\n            columns: [\"updated_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      service_lines: {\n        Row: {\n          available_locations: string[] | null\n          billable: boolean | null\n          code: string | null\n          created_at: string | null\n          description: string | null\n          documentation_required: boolean | null\n          id: string\n          is_active: boolean | null\n          name: string\n          rate_per_hour: number | null\n          requires_authorization: boolean | null\n          updated_at: string | null\n        }\n        Insert: {\n          available_locations?: string[] | null\n          billable?: boolean | null\n          code?: string | null\n          created_at?: string | null\n          description?: string | null\n          documentation_required?: boolean | null\n          id?: string\n          is_active?: boolean | null\n          name: string\n          rate_per_hour?: number | null\n          requires_authorization?: boolean | null\n          updated_at?: string | null\n        }\n        Update: {\n          available_locations?: string[] | null\n          billable?: boolean | null\n          code?: string | null\n          created_at?: string | null\n          description?: string | null\n          documentation_required?: boolean | null\n          id?: string\n          is_active?: boolean | null\n          name?: string\n          rate_per_hour?: number | null\n          requires_authorization?: boolean | null\n          updated_at?: string | null\n        }\n        Relationships: []\n      }\n      session_audit_logs: {\n        Row: {\n          actor_id: string | null\n          created_at: string\n          event_payload: Json\n          event_type: string\n          id: string\n          organization_id: string\n          session_id: string\n          therapist_id: string | null\n        }\n        Insert: {\n          actor_id?: string | null\n          created_at?: string\n          event_payload?: Json\n          event_type: string\n          id?: string\n          organization_id: string\n          session_id: string\n          therapist_id?: string | null\n        }\n        Update: {\n          actor_id?: string | null\n          created_at?: string\n          event_payload?: Json\n          event_type?: string\n          id?: string\n          organization_id?: string\n          session_id?: string\n          therapist_id?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"session_audit_logs_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"session_audit_logs_session_id_fkey\"\n            columns: [\"session_id\"]\n            isOneToOne: false\n            referencedRelation: \"sessions\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"session_audit_logs_therapist_id_fkey\"\n            columns: [\"therapist_id\"]\n            isOneToOne: false\n            referencedRelation: \"therapists\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      session_cpt_entries: {\n        Row: {\n          billed_minutes: number | null\n          cpt_code_id: string\n          created_at: string\n          id: string\n          is_primary: boolean\n          line_number: number\n          notes: string | null\n          organization_id: string | null\n          rate: number | null\n          session_id: string\n          units: number\n          updated_at: string\n        }\n        Insert: {\n          billed_minutes?: number | null\n          cpt_code_id: string\n          created_at?: string\n          id?: string\n          is_primary?: boolean\n          line_number?: number\n          notes?: string | null\n          organization_id?: string | null\n          rate?: number | null\n          session_id: string\n          units?: number\n          updated_at?: string\n        }\n        Update: {\n          billed_minutes?: number | null\n          cpt_code_id?: string\n          created_at?: string\n          id?: string\n          is_primary?: boolean\n          line_number?: number\n          notes?: string | null\n          organization_id?: string | null\n          rate?: number | null\n          session_id?: string\n          units?: number\n          updated_at?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"session_cpt_entries_cpt_code_id_fkey\"\n            columns: [\"cpt_code_id\"]\n            isOneToOne: false\n            referencedRelation: \"cpt_codes\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"session_cpt_entries_session_id_fkey\"\n            columns: [\"session_id\"]\n            isOneToOne: false\n            referencedRelation: \"sessions\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      session_cpt_modifiers: {\n        Row: {\n          id: number\n          modifier_id: string\n          position: number\n          session_cpt_entry_id: string\n        }\n        Insert: {\n          id?: never\n          modifier_id: string\n          position: number\n          session_cpt_entry_id: string\n        }\n        Update: {\n          id?: never\n          modifier_id?: string\n          position?: number\n          session_cpt_entry_id?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"session_cpt_modifiers_modifier_id_fkey\"\n            columns: [\"modifier_id\"]\n            isOneToOne: false\n            referencedRelation: \"billing_modifiers\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"session_cpt_modifiers_session_cpt_entry_id_fkey\"\n            columns: [\"session_cpt_entry_id\"]\n            isOneToOne: false\n            referencedRelation: \"session_cpt_details_vw\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"session_cpt_modifiers_session_cpt_entry_id_fkey\"\n            columns: [\"session_cpt_entry_id\"]\n            isOneToOne: false\n            referencedRelation: \"session_cpt_entries\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      session_goals: {\n        Row: {\n          client_id: string\n          created_at: string\n          goal_id: string\n          organization_id: string\n          program_id: string\n          session_id: string\n        }\n        Insert: {\n          client_id: string\n          created_at?: string\n          goal_id: string\n          organization_id: string\n          program_id: string\n          session_id: string\n        }\n        Update: {\n          client_id?: string\n          created_at?: string\n          goal_id?: string\n          organization_id?: string\n          program_id?: string\n          session_id?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"session_goals_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"session_goals_goal_id_fkey\"\n            columns: [\"goal_id\"]\n            isOneToOne: false\n            referencedRelation: \"goals\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"session_goals_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"session_goals_program_id_fkey\"\n            columns: [\"program_id\"]\n            isOneToOne: false\n            referencedRelation: \"programs\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"session_goals_session_id_fkey\"\n            columns: [\"session_id\"]\n            isOneToOne: false\n            referencedRelation: \"sessions\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      session_holds: {\n        Row: {\n          client_id: string\n          created_at: string\n          end_time: string\n          expires_at: string\n          hold_key: string\n          id: string\n          organization_id: string\n          session_id: string | null\n          start_time: string\n          therapist_id: string\n        }\n        Insert: {\n          client_id: string\n          created_at?: string\n          end_time: string\n          expires_at?: string\n          hold_key?: string\n          id?: string\n          organization_id: string\n          session_id?: string | null\n          start_time: string\n          therapist_id: string\n        }\n        Update: {\n          client_id?: string\n          created_at?: string\n          end_time?: string\n          expires_at?: string\n          hold_key?: string\n          id?: string\n          organization_id?: string\n          session_id?: string | null\n          start_time?: string\n          therapist_id?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"session_holds_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"session_holds_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"session_holds_session_id_fkey\"\n            columns: [\"session_id\"]\n            isOneToOne: false\n            referencedRelation: \"sessions\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"session_holds_therapist_id_fkey\"\n            columns: [\"therapist_id\"]\n            isOneToOne: false\n            referencedRelation: \"therapists\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      session_note_pdf_exports: {\n        Row: {\n          client_id: string\n          completed_at: string | null\n          created_at: string\n          error: string | null\n          expires_at: string | null\n          id: string\n          note_ids: string[]\n          organization_id: string\n          request_id: string | null\n          requested_by: string\n          started_at: string | null\n          status: string\n          storage_bucket: string\n          storage_path: string | null\n          updated_at: string\n        }\n        Insert: {\n          client_id: string\n          completed_at?: string | null\n          created_at?: string\n          error?: string | null\n          expires_at?: string | null\n          id?: string\n          note_ids: string[]\n          organization_id: string\n          request_id?: string | null\n          requested_by: string\n          started_at?: string | null\n          status?: string\n          storage_bucket?: string\n          storage_path?: string | null\n          updated_at?: string\n        }\n        Update: {\n          client_id?: string\n          completed_at?: string | null\n          created_at?: string\n          error?: string | null\n          expires_at?: string | null\n          id?: string\n          note_ids?: string[]\n          organization_id?: string\n          request_id?: string | null\n          requested_by?: string\n          started_at?: string | null\n          status?: string\n          storage_bucket?: string\n          storage_path?: string | null\n          updated_at?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"session_note_pdf_exports_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"session_note_pdf_exports_organization_id_fkey\"\n            columns: [\"organization_id\"]\n            isOneToOne: false\n            referencedRelation: \"organizations\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      session_note_templates: {\n        Row: {\n          compliance_requirements: Json | null\n          created_at: string | null\n          created_by: string | null\n          description: string | null\n          id: string\n          is_california_compliant: boolean | null\n          organization_id: string | null\n          template_name: string\n          template_structure: Json\n          template_type: string\n          updated_at: string | null\n        }\n        Insert: {\n          compliance_requirements?: Json | null\n          created_at?: string | null\n          created_by?: string | null\n          description?: string | null\n          id?: string\n          is_california_compliant?: boolean | null\n          organization_id?: string | null\n          template_name: string\n          template_structure: Json\n          template_type: string\n          updated_at?: string | null\n        }\n        Update: {\n          compliance_requirements?: Json | null\n          created_at?: string | null\n          created_by?: string | null\n          description?: string | null\n          id?: string\n          is_california_compliant?: boolean | null\n          organization_id?: string | null\n          template_name?: string\n          template_structure?: Json\n          template_type?: string\n          updated_at?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"session_note_templates_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"session_note_templates_created_by_fkey\"\n            columns: [\"created_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      session_transcript_segments: {\n        Row: {\n          behavioral_markers: Json | null\n          confidence: number | null\n          created_at: string | null\n          end_time: number\n          id: string\n          organization_id: string | null\n          session_id: string\n          speaker: string\n          start_time: number\n          text: string\n        }\n        Insert: {\n          behavioral_markers?: Json | null\n          confidence?: number | null\n          created_at?: string | null\n          end_time: number\n          id?: string\n          organization_id?: string | null\n          session_id: string\n          speaker: string\n          start_time: number\n          text: string\n        }\n        Update: {\n          behavioral_markers?: Json | null\n          confidence?: number | null\n          created_at?: string | null\n          end_time?: number\n          id?: string\n          organization_id?: string | null\n          session_id?: string\n          speaker?: string\n          start_time?: number\n          text?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"session_transcript_segments_session_id_fkey\"\n            columns: [\"session_id\"]\n            isOneToOne: false\n            referencedRelation: \"sessions\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      session_transcripts: {\n        Row: {\n          confidence_score: number | null\n          created_at: string | null\n          id: string\n          organization_id: string | null\n          processed_transcript: string\n          raw_transcript: string\n          session_id: string\n          updated_at: string | null\n        }\n        Insert: {\n          confidence_score?: number | null\n          created_at?: string | null\n          id?: string\n          organization_id?: string | null\n          processed_transcript: string\n          raw_transcript: string\n          session_id: string\n          updated_at?: string | null\n        }\n        Update: {\n          confidence_score?: number | null\n          created_at?: string | null\n          id?: string\n          organization_id?: string | null\n          processed_transcript?: string\n          raw_transcript?: string\n          session_id?: string\n          updated_at?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"session_transcripts_session_id_fkey\"\n            columns: [\"session_id\"]\n            isOneToOne: false\n            referencedRelation: \"sessions\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      sessions: {\n        Row: {\n          client_id: string\n          created_at: string | null\n          created_by: string | null\n          duration_minutes: number | null\n          end_time: string\n          goal_id: string\n          has_transcription_consent: boolean\n          id: string\n          location_type: string | null\n          notes: string | null\n          organization_id: string\n          program_id: string\n          rate_per_hour: number | null\n          session_date: string | null\n          session_type: string | null\n          start_time: string\n          started_at: string | null\n          status: string\n          therapist_id: string\n          total_cost: number | null\n          updated_at: string\n          updated_by: string | null\n        }\n        Insert: {\n          client_id: string\n          created_at?: string | null\n          created_by?: string | null\n          duration_minutes?: number | null\n          end_time: string\n          goal_id: string\n          has_transcription_consent?: boolean\n          id?: string\n          location_type?: string | null\n          notes?: string | null\n          organization_id: string\n          program_id: string\n          rate_per_hour?: number | null\n          session_date?: string | null\n          session_type?: string | null\n          start_time: string\n          started_at?: string | null\n          status?: string\n          therapist_id: string\n          total_cost?: number | null\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Update: {\n          client_id?: string\n          created_at?: string | null\n          created_by?: string | null\n          duration_minutes?: number | null\n          end_time?: string\n          goal_id?: string\n          has_transcription_consent?: boolean\n          id?: string\n          location_type?: string | null\n          notes?: string | null\n          organization_id?: string\n          program_id?: string\n          rate_per_hour?: number | null\n          session_date?: string | null\n          session_type?: string | null\n          start_time?: string\n          started_at?: string | null\n          status?: string\n          therapist_id?: string\n          total_cost?: number | null\n          updated_at?: string\n          updated_by?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"sessions_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"sessions_goal_id_fkey\"\n            columns: [\"goal_id\"]\n            isOneToOne: false\n            referencedRelation: \"goals\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"sessions_program_id_fkey\"\n            columns: [\"program_id\"]\n            isOneToOne: false\n            referencedRelation: \"programs\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"sessions_therapist_id_fkey\"\n            columns: [\"therapist_id\"]\n            isOneToOne: false\n            referencedRelation: \"therapists\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      system_performance_metrics: {\n        Row: {\n          id: string\n          metric_type: string\n          threshold_breached: boolean | null\n          timestamp: string | null\n          unit: string\n          value: number\n        }\n        Insert: {\n          id?: string\n          metric_type: string\n          threshold_breached?: boolean | null\n          timestamp?: string | null\n          unit: string\n          value: number\n        }\n        Update: {\n          id?: string\n          metric_type?: string\n          threshold_breached?: boolean | null\n          timestamp?: string | null\n          unit?: string\n          value?: number\n        }\n        Relationships: []\n      }\n      therapist_availability: {\n        Row: {\n          created_at: string | null\n          day_of_week: string\n          end_time: string\n          id: string\n          is_recurring: boolean | null\n          organization_id: string\n          service_types: string[] | null\n          start_time: string\n          therapist_id: string\n          updated_at: string | null\n        }\n        Insert: {\n          created_at?: string | null\n          day_of_week: string\n          end_time: string\n          id?: string\n          is_recurring?: boolean | null\n          organization_id: string\n          service_types?: string[] | null\n          start_time: string\n          therapist_id: string\n          updated_at?: string | null\n        }\n        Update: {\n          created_at?: string | null\n          day_of_week?: string\n          end_time?: string\n          id?: string\n          is_recurring?: boolean | null\n          organization_id?: string\n          service_types?: string[] | null\n          start_time?: string\n          therapist_id?: string\n          updated_at?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"therapist_availability_therapist_id_fkey\"\n            columns: [\"therapist_id\"]\n            isOneToOne: false\n            referencedRelation: \"therapists\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      therapist_certifications: {\n        Row: {\n          created_at: string | null\n          expiry_date: string | null\n          file_name: string\n          file_size: number\n          file_type: string\n          file_url: string\n          id: string\n          issue_date: string\n          name: string\n          notes: string | null\n          organization_id: string\n          status: string\n          therapist_id: string\n          type: string\n          updated_at: string | null\n        }\n        Insert: {\n          created_at?: string | null\n          expiry_date?: string | null\n          file_name: string\n          file_size: number\n          file_type: string\n          file_url: string\n          id?: string\n          issue_date: string\n          name: string\n          notes?: string | null\n          organization_id?: string\n          status?: string\n          therapist_id: string\n          type: string\n          updated_at?: string | null\n        }\n        Update: {\n          created_at?: string | null\n          expiry_date?: string | null\n          file_name?: string\n          file_size?: number\n          file_type?: string\n          file_url?: string\n          id?: string\n          issue_date?: string\n          name?: string\n          notes?: string | null\n          organization_id?: string\n          status?: string\n          therapist_id?: string\n          type?: string\n          updated_at?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"therapist_certifications_therapist_id_fkey\"\n            columns: [\"therapist_id\"]\n            isOneToOne: false\n            referencedRelation: \"therapists\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      therapist_documents: {\n        Row: {\n          bucket_id: string\n          created_at: string\n          document_key: string\n          id: string\n          object_path: string\n          organization_id: string\n          therapist_id: string\n        }\n        Insert: {\n          bucket_id?: string\n          created_at?: string\n          document_key: string\n          id?: string\n          object_path: string\n          organization_id: string\n          therapist_id: string\n        }\n        Update: {\n          bucket_id?: string\n          created_at?: string\n          document_key?: string\n          id?: string\n          object_path?: string\n          organization_id?: string\n          therapist_id?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"therapist_documents_therapist_id_fkey\"\n            columns: [\"therapist_id\"]\n            isOneToOne: false\n            referencedRelation: \"therapists\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n      therapists: {\n        Row: {\n          availability_hours: Json | null\n          avoid_rush_hour: boolean | null\n          bcba_number: string | null\n          city: string | null\n          created_at: string | null\n          deleted_at: string | null\n          deleted_by: string | null\n          email: string\n          employee_type: string | null\n          facility: string | null\n          first_name: string\n          full_name: string\n          id: string\n          last_name: string\n          latitude: number | null\n          license_number: string | null\n          longitude: number | null\n          max_clients: number | null\n          max_daily_travel_minutes: number | null\n          medicaid_id: string | null\n          middle_name: string | null\n          npi_number: string | null\n          organization_id: string\n          phone: string | null\n          practitioner_id: string | null\n          preferred_areas: string[] | null\n          rbt_number: string | null\n          service_radius_km: number | null\n          service_type: string[] | null\n          specialties: string[] | null\n          staff_id: string | null\n          state: string | null\n          status: string\n          street: string | null\n          supervisor: string | null\n          taxonomy_code: string | null\n          time_zone: string | null\n          title: string | null\n          weekly_hours_max: number | null\n          weekly_hours_min: number | null\n          zip_code: string | null\n        }\n        Insert: {\n          availability_hours?: Json | null\n          avoid_rush_hour?: boolean | null\n          bcba_number?: string | null\n          city?: string | null\n          created_at?: string | null\n          deleted_at?: string | null\n          deleted_by?: string | null\n          email: string\n          employee_type?: string | null\n          facility?: string | null\n          first_name: string\n          full_name: string\n          id?: string\n          last_name: string\n          latitude?: number | null\n          license_number?: string | null\n          longitude?: number | null\n          max_clients?: number | null\n          max_daily_travel_minutes?: number | null\n          medicaid_id?: string | null\n          middle_name?: string | null\n          npi_number?: string | null\n          organization_id: string\n          phone?: string | null\n          practitioner_id?: string | null\n          preferred_areas?: string[] | null\n          rbt_number?: string | null\n          service_radius_km?: number | null\n          service_type?: string[] | null\n          specialties?: string[] | null\n          staff_id?: string | null\n          state?: string | null\n          status?: string\n          street?: string | null\n          supervisor?: string | null\n          taxonomy_code?: string | null\n          time_zone?: string | null\n          title?: string | null\n          weekly_hours_max?: number | null\n          weekly_hours_min?: number | null\n          zip_code?: string | null\n        }\n        Update: {\n          availability_hours?: Json | null\n          avoid_rush_hour?: boolean | null\n          bcba_number?: string | null\n          city?: string | null\n          created_at?: string | null\n          deleted_at?: string | null\n          deleted_by?: string | null\n          email?: string\n          employee_type?: string | null\n          facility?: string | null\n          first_name?: string\n          full_name?: string\n          id?: string\n          last_name?: string\n          latitude?: number | null\n          license_number?: string | null\n          longitude?: number | null\n          max_clients?: number | null\n          max_daily_travel_minutes?: number | null\n          medicaid_id?: string | null\n          middle_name?: string | null\n          npi_number?: string | null\n          organization_id?: string\n          phone?: string | null\n          practitioner_id?: string | null\n          preferred_areas?: string[] | null\n          rbt_number?: string | null\n          service_radius_km?: number | null\n          service_type?: string[] | null\n          specialties?: string[] | null\n          staff_id?: string | null\n          state?: string | null\n          status?: string\n          street?: string | null\n          supervisor?: string | null\n          taxonomy_code?: string | null\n          time_zone?: string | null\n          title?: string | null\n          weekly_hours_max?: number | null\n          weekly_hours_min?: number | null\n          zip_code?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"therapists_deleted_by_fkey\"\n            columns: [\"deleted_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"therapists_deleted_by_fkey\"\n            columns: [\"deleted_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      user_profiles: {\n        Row: {\n          avatar_url: string | null\n          created_at: string | null\n          email: string\n          first_name: string | null\n          full_name: string | null\n          id: string\n          is_active: boolean | null\n          last_login_at: string | null\n          last_name: string | null\n          phone: string | null\n          preferences: Json | null\n          time_zone: string | null\n          updated_at: string | null\n        }\n        Insert: {\n          avatar_url?: string | null\n          created_at?: string | null\n          email: string\n          first_name?: string | null\n          full_name?: string | null\n          id: string\n          is_active?: boolean | null\n          last_login_at?: string | null\n          last_name?: string | null\n          phone?: string | null\n          preferences?: Json | null\n          time_zone?: string | null\n          updated_at?: string | null\n        }\n        Update: {\n          avatar_url?: string | null\n          created_at?: string | null\n          email?: string\n          first_name?: string | null\n          full_name?: string | null\n          id?: string\n          is_active?: boolean | null\n          last_login_at?: string | null\n          last_name?: string | null\n          phone?: string | null\n          preferences?: Json | null\n          time_zone?: string | null\n          updated_at?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"user_profiles_id_fkey\"\n            columns: [\"id\"]\n            isOneToOne: true\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"user_profiles_id_fkey\"\n            columns: [\"id\"]\n            isOneToOne: true\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      user_roles: {\n        Row: {\n          expires_at: string | null\n          granted_at: string | null\n          granted_by: string | null\n          id: string\n          is_active: boolean | null\n          role_id: string\n          user_id: string\n        }\n        Insert: {\n          expires_at?: string | null\n          granted_at?: string | null\n          granted_by?: string | null\n          id?: string\n          is_active?: boolean | null\n          role_id: string\n          user_id: string\n        }\n        Update: {\n          expires_at?: string | null\n          granted_at?: string | null\n          granted_by?: string | null\n          id?: string\n          is_active?: boolean | null\n          role_id?: string\n          user_id?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"user_roles_granted_by_fkey\"\n            columns: [\"granted_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"user_roles_granted_by_fkey\"\n            columns: [\"granted_by\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n          {\n            foreignKeyName: \"user_roles_role_id_fkey\"\n            columns: [\"role_id\"]\n            isOneToOne: false\n            referencedRelation: \"roles\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"user_roles_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"user_roles_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      user_sessions: {\n        Row: {\n          created_at: string | null\n          expires_at: string\n          id: string\n          ip_address: unknown\n          is_active: boolean | null\n          last_activity: string | null\n          session_token: string\n          user_agent: string | null\n          user_id: string\n        }\n        Insert: {\n          created_at?: string | null\n          expires_at: string\n          id?: string\n          ip_address?: unknown\n          is_active?: boolean | null\n          last_activity?: string | null\n          session_token: string\n          user_agent?: string | null\n          user_id: string\n        }\n        Update: {\n          created_at?: string | null\n          expires_at?: string\n          id?: string\n          ip_address?: unknown\n          is_active?: boolean | null\n          last_activity?: string | null\n          session_token?: string\n          user_agent?: string | null\n          user_id?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"user_sessions_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"user_sessions_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      user_therapist_links: {\n        Row: {\n          created_at: string\n          id: string\n          therapist_id: string\n          user_id: string\n        }\n        Insert: {\n          created_at?: string\n          id?: string\n          therapist_id: string\n          user_id: string\n        }\n        Update: {\n          created_at?: string\n          id?: string\n          therapist_id?: string\n          user_id?: string\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"user_therapist_links_therapist_id_fkey\"\n            columns: [\"therapist_id\"]\n            isOneToOne: false\n            referencedRelation: \"therapists\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"user_therapist_links_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"user_therapist_links_user_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: false\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n    }\n    Views: {\n      admin_users: {\n        Row: {\n          created_at: string | null\n          email: string | null\n          id: string | null\n          raw_user_meta_data: Json | null\n          user_id: string | null\n          user_role_id: string | null\n        }\n        Relationships: []\n      }\n      app_users_safe: {\n        Row: {\n          created_at: string | null\n          email: string | null\n          user_id: string | null\n        }\n        Insert: {\n          created_at?: string | null\n          email?: string | null\n          user_id?: string | null\n        }\n        Update: {\n          created_at?: string | null\n          email?: string | null\n          user_id?: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"profiles_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: true\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"profiles_id_fkey\"\n            columns: [\"user_id\"]\n            isOneToOne: true\n            referencedRelation: \"admin_users\"\n            referencedColumns: [\"user_id\"]\n          },\n        ]\n      }\n      session_cpt_details_vw: {\n        Row: {\n          billed_minutes: number | null\n          client_id: string | null\n          cpt_code: string | null\n          cpt_code_id: string | null\n          created_at: string | null\n          end_time: string | null\n          id: string | null\n          is_primary: boolean | null\n          line_number: number | null\n          modifier_codes: string[] | null\n          notes: string | null\n          rate: number | null\n          session_id: string | null\n          short_description: string | null\n          start_time: string | null\n          therapist_id: string | null\n          units: number | null\n          updated_at: string | null\n        }\n        Relationships: [\n          {\n            foreignKeyName: \"session_cpt_entries_cpt_code_id_fkey\"\n            columns: [\"cpt_code_id\"]\n            isOneToOne: false\n            referencedRelation: \"cpt_codes\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"session_cpt_entries_session_id_fkey\"\n            columns: [\"session_id\"]\n            isOneToOne: false\n            referencedRelation: \"sessions\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"sessions_client_id_fkey\"\n            columns: [\"client_id\"]\n            isOneToOne: false\n            referencedRelation: \"clients\"\n            referencedColumns: [\"id\"]\n          },\n          {\n            foreignKeyName: \"sessions_therapist_id_fkey\"\n            columns: [\"therapist_id\"]\n            isOneToOne: false\n            referencedRelation: \"therapists\"\n            referencedColumns: [\"id\"]\n          },\n        ]\n      }\n    }\n    Functions: {\n      _is_admin: { Args: { uid: string }; Returns: boolean }\n      _is_therapist: { Args: { uid: string }; Returns: boolean }\n      acquire_session_hold:\n        | {\n            Args: {\n              p_client_id: string\n              p_end_time: string\n              p_hold_seconds?: number\n              p_session_id?: string\n              p_start_time: string\n              p_therapist_id: string\n            }\n            Returns: Json\n          }\n        | {\n            Args: {\n              p_actor_id?: string\n              p_client_id: string\n              p_end_time: string\n              p_hold_seconds?: number\n              p_session_id?: string\n              p_start_time: string\n              p_therapist_id: string\n            }\n            Returns: Json\n          }\n      admin_reset_user_password: {\n        Args: {\n          create_if_not_exists?: boolean\n          new_password: string\n          user_email: string\n        }\n        Returns: Json\n      }\n      analyze_therapist_workload: {\n        Args: { p_analysis_period?: number; p_therapist_id?: string }\n        Returns: {\n          efficiency_score: number\n          recommendations: Json\n          target_hours: number\n          therapist_id: string\n          therapist_name: string\n          total_hours: number\n          utilization_rate: number\n          workload_distribution: Json\n        }[]\n      }\n      assign_admin_role: {\n        Args: { organization_id: string; reason?: string; user_email: string }\n        Returns: undefined\n      }\n      assign_therapist_role:\n        | { Args: { p_email: string; p_user_id: string }; Returns: undefined }\n        | { Args: { p_therapist_id: string }; Returns: undefined }\n      assign_user_role: {\n        Args: {\n          expires_at_param?: string\n          granted_by_uuid?: string\n          role_name: string\n          user_uuid: string\n        }\n        Returns: boolean\n      }\n      cache_ai_response: {\n        Args: {\n          p_cache_key: string\n          p_expires_at?: string\n          p_metadata: Json\n          p_query_text: string\n          p_response_text: string\n        }\n        Returns: undefined\n      }\n      calculate_efficiency_score: {\n        Args: {\n          p_actual_hours: number\n          p_session_count: number\n          p_therapist_id: string\n        }\n        Returns: number\n      }\n      calculate_therapist_client_compatibility: {\n        Args: { p_client_id: string; p_therapist_id: string }\n        Returns: number\n      }\n      calculate_time_slot_score: {\n        Args: {\n          p_client_id: string\n          p_client_prefs: Json\n          p_day_of_week: number\n          p_hour_of_day: number\n          p_slot_time: string\n          p_therapist_id: string\n          p_therapist_prefs: Json\n        }\n        Returns: number\n      }\n      can_access_client_documents: {\n        Args: { client_id: string }\n        Returns: boolean\n      }\n      check_migration_status: {\n        Args: never\n        Returns: {\n          applied_at: string\n          is_applied: boolean\n          migration_name: string\n        }[]\n      }\n      check_performance_thresholds: {\n        Args: { p_current_value: number; p_metric_name: string }\n        Returns: undefined\n      }\n      cleanup_ai_cache: { Args: never; Returns: number }\n      cleanup_expired_ai_cache: { Args: never; Returns: number }\n      cleanup_performance_data: { Args: never; Returns: number }\n      client_email_exists: { Args: { p_email: string }; Returns: boolean }\n      confirm_session_hold:\n        | { Args: { p_hold_key: string; p_session: Json }; Returns: Json }\n        | {\n            Args: {\n              p_actor_id: string\n              p_session_data: Json\n              p_session_hold_id: string\n            }\n            Returns: string\n          }\n      confirm_session_hold_with_enrichment: {\n        Args: {\n          p_actor_id?: string\n          p_cpt?: Json\n          p_goal_ids?: string[]\n          p_hold_key: string\n          p_session: Json\n        }\n        Returns: Json\n      }\n      confirm_session_holds_batch_with_enrichment: {\n        Args: { p_actor_id?: string; p_occurrences: Json }\n        Returns: Json\n      }\n      count_admin_users: { Args: { organization_id?: string }; Returns: number }\n      create_admin_invite: {\n        Args: {\n          p_email: string\n          p_role: Database[\"public\"][\"Enums\"][\"role_type\"]\n        }\n        Returns: string\n      }\n      create_authorization_with_services: {\n        Args: {\n          p_authorization_number: string\n          p_client_id: string\n          p_diagnosis_code: string\n          p_diagnosis_description: string\n          p_end_date: string\n          p_insurance_provider_id?: string\n          p_member_id?: string\n          p_plan_type?: string\n          p_provider_id: string\n          p_services?: Json\n          p_start_date: string\n          p_status?: string\n        }\n        Returns: {\n          approval_notes: string | null\n          approved_at: string | null\n          approved_by: string | null\n          authorization_number: string\n          client_id: string\n          created_at: string | null\n          created_by: string\n          denial_reason: string | null\n          denied_at: string | null\n          diagnosis_code: string\n          diagnosis_description: string | null\n          documents: Json | null\n          end_date: string\n          id: string\n          insurance_provider_id: string | null\n          member_id: string | null\n          organization_id: string\n          plan_type: string | null\n          provider_id: string\n          start_date: string\n          status: string\n          updated_at: string | null\n        }\n        SetofOptions: {\n          from: \"*\"\n          to: \"authorizations\"\n          isOneToOne: true\n          isSetofReturn: false\n        }\n      }\n      create_client: {\n        Args: { p_client_data: Json }\n        Returns: {\n          address_line1: string | null\n          address_line2: string | null\n          assessment_units: number | null\n          auth_end_date: string | null\n          auth_start_date: string | null\n          auth_units: number | null\n          authorized_hours_per_month: number | null\n          availability_hours: Json | null\n          avoid_rush_hour: boolean | null\n          cin_number: string | null\n          city: string | null\n          client_id: string | null\n          created_at: string | null\n          created_by: string | null\n          date_of_birth: string | null\n          daycare_after_school: boolean | null\n          deleted_at: string | null\n          deleted_by: string | null\n          diagnosis: string[] | null\n          documents: Json | null\n          email: string | null\n          first_name: string | null\n          full_name: string\n          gender: string | null\n          hours_provided_per_month: number | null\n          id: string\n          in_clinic: boolean | null\n          in_home: boolean | null\n          in_school: boolean | null\n          insurance_info: Json | null\n          last_name: string | null\n          latitude: number | null\n          longitude: number | null\n          max_travel_minutes: number | null\n          middle_name: string | null\n          notes: string | null\n          one_to_one_units: number | null\n          organization_id: string\n          parent_consult_units: number | null\n          parent1_email: string | null\n          parent1_first_name: string | null\n          parent1_last_name: string | null\n          parent1_phone: string | null\n          parent1_relationship: string | null\n          parent2_email: string | null\n          parent2_first_name: string | null\n          parent2_last_name: string | null\n          parent2_phone: string | null\n          parent2_relationship: string | null\n          phone: string | null\n          preferred_language: string | null\n          preferred_radius_km: number | null\n          preferred_session_time: string[] | null\n          referral_source: string | null\n          service_preference: string[] | null\n          state: string | null\n          status: string\n          supervision_units: number | null\n          therapist_assigned_at: string | null\n          therapist_id: string | null\n          unscheduled_hours: number | null\n          updated_at: string\n          updated_by: string | null\n          zip_code: string | null\n        }\n        SetofOptions: {\n          from: \"*\"\n          to: \"clients\"\n          isOneToOne: true\n          isSetofReturn: false\n        }\n      }\n      create_super_admin: { Args: { user_email: string }; Returns: undefined }\n      current_org_id: { Args: never; Returns: string }\n      current_user_is_super_admin: { Args: never; Returns: boolean }\n      current_user_organization_id: { Args: never; Returns: string }\n      detect_scheduling_conflicts: {\n        Args: {\n          p_end_date: string\n          p_include_suggestions?: boolean\n          p_start_date: string\n        }\n        Returns: {\n          affected_sessions: Json\n          conflict_id: string\n          conflict_type: string\n          severity: number\n          suggested_resolutions: Json\n        }[]\n      }\n      enqueue_impersonation_revocation:\n        | {\n            Args: { p_audit_id: string; p_token_jti: string }\n            Returns: undefined\n          }\n        | {\n            Args: { p_audit_id: string; p_token_jti: string }\n            Returns: undefined\n          }\n      ensure_admin_role:\n        | { Args: never; Returns: undefined }\n        | { Args: { user_email: string }; Returns: undefined }\n      ensure_all_users_admin: { Args: never; Returns: undefined }\n      ensure_user_has_admin_role:\n        | { Args: never; Returns: undefined }\n        | { Args: { p_user_id: string }; Returns: undefined }\n      generate_semantic_cache_key: {\n        Args: { p_context_hash?: string; p_query_text: string }\n        Returns: string\n      }\n      generate_slot_reasoning: {\n        Args: {\n          p_client_id: string\n          p_client_prefs: Json\n          p_slot_time: string\n          p_therapist_id: string\n          p_therapist_prefs: Json\n        }\n        Returns: Json\n      }\n      generate_workload_recommendations: {\n        Args: {\n          p_actual_hours: number\n          p_session_count: number\n          p_target_hours: number\n          p_therapist_id: string\n        }\n        Returns: Json\n      }\n      get_admin_users:\n        | { Args: never; Returns: Json }\n        | { Args: { p_org_id: string }; Returns: Json }\n      get_admin_users_paged: {\n        Args: { organization_id?: string; p_limit?: number; p_offset?: number }\n        Returns: {\n          created_at: string | null\n          email: string | null\n          id: string | null\n          raw_user_meta_data: Json | null\n          user_id: string | null\n          user_role_id: string | null\n        }[]\n        SetofOptions: {\n          from: \"*\"\n          to: \"admin_users\"\n          isOneToOne: false\n          isSetofReturn: true\n        }\n      }\n      get_ai_cache_metrics: {\n        Args: never\n        Returns: {\n          cache_size_mb: number\n          expired_entries: number\n          hit_rate: number\n          total_entries: number\n        }[]\n      }\n      get_alternative_therapists: {\n        Args: { p_client_id: string; p_end_time: string; p_start_time: string }\n        Returns: Json\n      }\n      get_alternative_times: {\n        Args: {\n          p_client_id: string\n          p_original_time: string\n          p_therapist_id: string\n        }\n        Returns: Json\n      }\n      get_authorization_metrics:\n        | {\n            Args: { p_end_date: string; p_start_date: string }\n            Returns: {\n              approved_authorizations: number\n              denied_authorizations: number\n              expired_authorizations: number\n              pending_authorizations: number\n              total_approved_units: number\n              total_authorizations: number\n              total_requested_units: number\n              units_by_service_code: Json\n            }[]\n          }\n        | {\n            Args: { p_end_date: string; p_start_date: string }\n            Returns: {\n              approval_rate: number\n              approval_ratio: number\n              approved_authorizations: number\n              denied_authorizations: number\n              expired_authorizations: number\n              pending_authorizations: number\n              total_approved_units: number\n              total_authorizations: number\n              total_requested_units: number\n            }[]\n          }\n      get_billing_metrics:\n        | {\n            Args: { p_end_date: string; p_start_date: string }\n            Returns: {\n              amount_by_client: Json\n              amount_by_status: Json\n              paid_amount: number\n              pending_amount: number\n              rejected_amount: number\n              total_billed: number\n            }[]\n          }\n        | {\n            Args: { p_end_date: string; p_start_date: string }\n            Returns: {\n              amount_by_client: Json\n              collection_rate: number\n              paid_amount: number\n              pending_amount: number\n              records_by_status: Json\n              rejected_amount: number\n              total_billed: number\n            }[]\n          }\n      get_cached_ai_response: {\n        Args: { p_cache_key: string }\n        Returns: {\n          metadata: Json\n          response_text: string\n        }[]\n      }\n      get_client_documents: { Args: { p_client_id: string }; Returns: Json }\n      get_client_metrics:\n        | {\n            Args: never\n            Returns: {\n              active_clients: number\n              new_clients_this_month: number\n              total_clients: number\n            }[]\n          }\n        | {\n            Args: { p_end_date: string; p_start_date: string }\n            Returns: {\n              active_clients: number\n              inactive_clients: number\n              new_clients: number\n              service_preferences: Json\n              sessions_per_client: Json\n              total_clients: number\n            }[]\n          }\n        | {\n            Args: { p_end_date: string; p_start_date: string }\n            Returns: {\n              active_clients: number\n              activity_rate: number\n              clients_by_age: Json\n              clients_by_gender: Json\n              clients_by_service_preference: Json\n              inactive_clients: number\n              total_clients: number\n            }[]\n          }\n      get_client_preference_factor: {\n        Args: { p_client_id: string; p_slot_time: string }\n        Returns: number\n      }\n      get_dashboard_data: { Args: never; Returns: Json }\n      get_db_version: { Args: never; Returns: string }\n      get_dropdown_data: { Args: never; Returns: Json }\n      get_guardian_client_portal: {\n        Args: { p_client_id?: string }\n        Returns: {\n          client_date_of_birth: string\n          client_email: string\n          client_full_name: string\n          client_id: string\n          client_phone: string\n          client_status: string\n          guardian_is_primary: boolean\n          guardian_notes: Json\n          guardian_relationship: string\n          upcoming_sessions: Json\n        }[]\n      }\n      get_historical_success_rate: {\n        Args: { p_client_id: string; p_therapist_id: string }\n        Returns: number\n      }\n      get_optimal_time_slots: {\n        Args: {\n          p_client_preferences: Json\n          p_date_range?: Json\n          p_duration?: number\n          p_therapist_preferences: Json\n        }\n        Returns: {\n          availability_data: Json\n          optimality_score: number\n          reasoning: Json\n          suggested_time: string\n        }[]\n      }\n      get_organization_id_from_metadata: {\n        Args: { p_metadata: Json }\n        Returns: string\n      }\n      get_performance_metrics: {\n        Args: { p_time_range?: string }\n        Returns: Json\n      }\n      get_performance_recommendations: {\n        Args: never\n        Returns: {\n          category: string\n          difficulty: string\n          estimated_improvement: string\n          impact: string\n          recommendation: string\n        }[]\n      }\n      get_recent_chat_history:\n        | {\n            Args: { p_conversation_id: string; p_limit?: number }\n            Returns: {\n              action_data: Json\n              action_type: string\n              content: string\n              context: Json\n              conversation_id: string\n              created_at: string\n              id: string\n              role: string\n            }[]\n          }\n        | {\n            Args: { p_conversation_id: string; p_limit?: number }\n            Returns: {\n              action_data: Json\n              action_type: string\n              content: string\n              context: Json\n              conversation_id: string\n              created_at: string\n              id: string\n              role: string\n            }[]\n          }\n      get_schedule_data_batch: {\n        Args: { p_end_date: string; p_start_date: string }\n        Returns: Json\n      }\n      get_scheduling_efficiency_factor: {\n        Args: { p_slot_time: string; p_therapist_id: string }\n        Returns: number\n      }\n      get_session_metrics:\n        | {\n            Args: {\n              p_client_id?: string\n              p_end_date: string\n              p_start_date: string\n              p_therapist_id?: string\n            }\n            Returns: {\n              cancelled_sessions: number\n              completed_sessions: number\n              no_show_sessions: number\n              sessions_by_client: Json\n              sessions_by_day: Json\n              sessions_by_therapist: Json\n              total_sessions: number\n            }[]\n          }\n        | {\n            Args: {\n              p_client_id?: string\n              p_end_date: string\n              p_start_date: string\n              p_therapist_id?: string\n            }\n            Returns: {\n              cancelled_sessions: number\n              completed_sessions: number\n              no_show_sessions: number\n              sessions_by_client: Json\n              sessions_by_day: Json\n              sessions_by_therapist: Json\n              total_sessions: number\n            }[]\n          }\n      get_session_notes_with_compliance: {\n        Args: { p_client_id: string; p_limit?: number }\n        Returns: {\n          ai_confidence_score: number\n          california_compliant: boolean\n          created_at: string\n          insurance_ready: boolean\n          note_id: string\n          session_date: string\n          signed_at: string\n          therapist_name: string\n        }[]\n      }\n      get_sessions_optimized: {\n        Args: {\n          p_client_id?: string\n          p_end_date: string\n          p_start_date: string\n          p_therapist_id?: string\n        }\n        Returns: {\n          session_data: Json\n        }[]\n      }\n      get_sessions_report:\n        | {\n            Args: { p_end_date: string; p_start_date: string }\n            Returns: {\n              client_name: string\n              session_day: string\n              session_id: string\n              session_type: string\n              status: string\n              therapist_name: string\n            }[]\n          }\n        | {\n            Args: {\n              p_client_id: string\n              p_end_date: string\n              p_start_date: string\n              p_status: string\n              p_therapist_id: string\n            }\n            Returns: {\n              client_name: string\n              session_day: string\n              session_id: string\n              session_type: string\n              status: string\n              therapist_name: string\n            }[]\n          }\n        | {\n            Args: {\n              p_client_id: string\n              p_end_date: string\n              p_start_date: string\n              p_status: string\n              p_therapist_id: string\n            }\n            Returns: {\n              client_name: string\n              session_day: string\n              session_id: string\n              session_type: string\n              status: string\n              therapist_name: string\n            }[]\n          }\n      get_slot_availability_context: {\n        Args: {\n          p_client_id: string\n          p_slot_time: string\n          p_therapist_id: string\n        }\n        Returns: Json\n      }\n      get_system_alerts: {\n        Args: { p_limit?: number }\n        Returns: {\n          alert_type: string\n          created_at: string\n          current_value: number\n          id: string\n          message: string\n          metric_name: string\n          resolved: boolean\n          threshold_value: number\n        }[]\n      }\n      get_therapist_availability: {\n        Args: { p_end: string; p_start: string; p_therapist_id: string }\n        Returns: Json\n      }\n      get_therapist_metrics:\n        | {\n            Args: { p_end_date: string; p_start_date: string }\n            Returns: {\n              active_therapists: number\n              inactive_therapists: number\n              service_types: Json\n              sessions_per_therapist: Json\n              specialties: Json\n              total_therapists: number\n            }[]\n          }\n        | {\n            Args: { p_end_date: string; p_start_date: string }\n            Returns: {\n              active_therapists: number\n              inactive_therapists: number\n              service_types: Json\n              sessions_per_therapist: Json\n              specialties: Json\n              total_therapists: number\n            }[]\n          }\n      get_therapist_workload_factor: {\n        Args: { p_slot_time: string; p_therapist_id: string }\n        Returns: number\n      }\n      get_user_role_from_junction: {\n        Args: { p_user_id: string }\n        Returns: Database[\"public\"][\"Enums\"][\"role_type\"]\n      }\n      get_user_roles: { Args: { p_user_id?: string }; Returns: Json }\n      get_user_therapist_id: { Args: never; Returns: string }\n      guardian_contact_metadata: {\n        Args: { p_guardian_id?: string }\n        Returns: {\n          client_id: string\n          metadata: Json\n        }[]\n      }\n      guardian_link_queue_admin_view: {\n        Args: { p_organization_id: string; p_status?: string }\n        Returns: {\n          approved_client_ids: string[]\n          created_at: string\n          guardian_email: string\n          guardian_id: string\n          id: string\n          invite_token: string\n          metadata: Json\n          organization_id: string\n          processed_at: string\n          processed_by: string\n          requested_client_ids: string[]\n          status: string\n          updated_at: string\n        }[]\n      }\n      has_care_role: { Args: never; Returns: boolean }\n      has_role: { Args: { target_role: string }; Returns: boolean }\n      insert_session_with_billing: {\n        Args: {\n          p_cpt_code: string\n          p_modifiers?: string[]\n          p_session: Json\n          p_session_id?: string\n        }\n        Returns: Json\n      }\n      is_admin: { Args: never; Returns: boolean }\n      is_super_admin: { Args: never; Returns: boolean }\n      is_valid_email: { Args: { email: string }; Returns: boolean }\n      is_valid_url: { Args: { url: string }; Returns: boolean }\n      log_ai_performance:\n        | {\n            Args: {\n              function_name: string\n              parameters: Json\n              response_time: string\n              token_count: number\n            }\n            Returns: undefined\n          }\n        | {\n            Args: {\n              p_cache_hit?: boolean\n              p_conversation_id?: string\n              p_error_occurred?: boolean\n              p_function_called?: string\n              p_response_time_ms: number\n              p_token_usage?: Json\n              p_user_id?: string\n            }\n            Returns: undefined\n          }\n        | {\n            Args: {\n              p_cache_hit?: boolean\n              p_conversation_id?: string\n              p_error_occurred?: boolean\n              p_function_called?: string\n              p_response_time_ms: number\n              p_token_usage?: Json\n              p_user_id?: string\n            }\n            Returns: undefined\n          }\n      log_db_performance:\n        | {\n            Args: {\n              p_cache_hit?: boolean\n              p_execution_time_ms: number\n              p_query_type: string\n              p_rows_affected?: number\n              p_table_name?: string\n            }\n            Returns: undefined\n          }\n        | {\n            Args: {\n              execution_time: string\n              query_name: string\n              query_text: string\n            }\n            Returns: undefined\n          }\n      log_error_event:\n        | {\n            Args: {\n              p_context?: Json\n              p_details?: Json\n              p_error_type: string\n              p_message: string\n              p_severity?: string\n              p_stack_trace?: string\n              p_url?: string\n              p_user_agent?: string\n            }\n            Returns: undefined\n          }\n        | { Args: { payload: Json }; Returns: undefined }\n      log_function_performance:\n        | {\n            Args: {\n              p_duration_ms: number\n              p_function_name: string\n              p_result_size_kb?: number\n            }\n            Returns: undefined\n          }\n        | {\n            Args: {\n              p_execution_time_ms: number\n              p_function_name: string\n              p_parameters?: Json\n              p_result_size?: number\n            }\n            Returns: undefined\n          }\n      manage_admin_users:\n        | {\n            Args: { operation: string; target_user_id: string }\n            Returns: undefined\n          }\n        | {\n            Args: {\n              caller_organization_id: string\n              operation: string\n              target_user_id: string\n            }\n            Returns: undefined\n          }\n      process_client_document: {\n        Args: {\n          p_client_id: string\n          p_document_type: string\n          p_file_name: string\n          p_file_path: string\n          p_file_size: number\n          p_file_type: string\n        }\n        Returns: Json\n      }\n      prune_admin_actions: {\n        Args: { retention_days?: number }\n        Returns: number\n      }\n      prune_admin_invite_tokens: { Args: never; Returns: number }\n      prune_session_transcripts: {\n        Args: { retention_days?: number }\n        Returns: {\n          deleted_segments: number\n          deleted_transcripts: number\n        }[]\n      }\n      record_session_audit: {\n        Args: {\n          p_actor_id?: string\n          p_event_payload?: Json\n          p_event_type: string\n          p_session_id: string\n        }\n        Returns: undefined\n      }\n      remove_user_role: {\n        Args: { removed_by_uuid?: string; role_name: string; user_uuid: string }\n        Returns: boolean\n      }\n      resolve_performance_alert: {\n        Args: { p_alert_id: string; p_resolution_note?: string }\n        Returns: boolean\n      }\n      start_session_with_goals: {\n        Args: {\n          p_actor_id?: string\n          p_goal_id: string\n          p_goal_ids?: string[]\n          p_program_id: string\n          p_session_id: string\n          p_started_at?: string\n        }\n        Returns: Json\n      }\n      temp_validate_time: { Args: never; Returns: undefined }\n      update_authorization_documents: {\n        Args: { p_authorization_id: string; p_documents: Json }\n        Returns: {\n          approval_notes: string | null\n          approved_at: string | null\n          approved_by: string | null\n          authorization_number: string\n          client_id: string\n          created_at: string | null\n          created_by: string\n          denial_reason: string | null\n          denied_at: string | null\n          diagnosis_code: string\n          diagnosis_description: string | null\n          documents: Json | null\n          end_date: string\n          id: string\n          insurance_provider_id: string | null\n          member_id: string | null\n          organization_id: string\n          plan_type: string | null\n          provider_id: string\n          start_date: string\n          status: string\n          updated_at: string | null\n        }\n        SetofOptions: {\n          from: \"*\"\n          to: \"authorizations\"\n          isOneToOne: true\n          isSetofReturn: false\n        }\n      }\n      update_authorization_with_services: {\n        Args: {\n          p_authorization_id: string\n          p_authorization_number: string\n          p_client_id: string\n          p_diagnosis_code: string\n          p_diagnosis_description: string\n          p_end_date: string\n          p_insurance_provider_id: string\n          p_member_id: string\n          p_plan_type: string\n          p_provider_id: string\n          p_services?: Json\n          p_start_date: string\n          p_status: string\n        }\n        Returns: {\n          approval_notes: string | null\n          approved_at: string | null\n          approved_by: string | null\n          authorization_number: string\n          client_id: string\n          created_at: string | null\n          created_by: string\n          denial_reason: string | null\n          denied_at: string | null\n          diagnosis_code: string\n          diagnosis_description: string | null\n          documents: Json | null\n          end_date: string\n          id: string\n          insurance_provider_id: string | null\n          member_id: string | null\n          organization_id: string\n          plan_type: string | null\n          provider_id: string\n          start_date: string\n          status: string\n          updated_at: string | null\n        }\n        SetofOptions: {\n          from: \"*\"\n          to: \"authorizations\"\n          isOneToOne: true\n          isSetofReturn: false\n        }\n      }\n      update_client_documents: {\n        Args: { p_client_id: string; p_documents: Json }\n        Returns: undefined\n      }\n      user_has_any_role: {\n        Args: { role_names: string[]; user_uuid?: string }\n        Returns: boolean\n      }\n      user_has_role:\n        | { Args: { role_name: string }; Returns: boolean }\n        | { Args: { role_name: string; user_uuid?: string }; Returns: boolean }\n      user_has_role_for_org: {\n        Args: {\n          role_name: string\n          target_client_id?: string\n          target_organization_id?: string\n          target_session_id?: string\n          target_therapist_id?: string\n        }\n        Returns: boolean\n      }\n      validate_feature_flag_metadata: { Args: { obj: Json }; Returns: boolean }\n      validate_organization_metadata: { Args: { obj: Json }; Returns: boolean }\n      validate_performance_improvements: { Args: never; Returns: Json }\n      validate_session_note_compliance: {\n        Args: { p_note_id: string }\n        Returns: Json\n      }\n      validate_time_interval_new: { Args: { t: string }; Returns: boolean }\n    }\n    Enums: {\n      role_type:\n        | \"client\"\n        | \"therapist\"\n        | \"staff\"\n        | \"supervisor\"\n        | \"admin\"\n        | \"super_admin\"\n    }\n    CompositeTypes: {\n      admin_user_row: {\n        id: string | null\n        user_role_id: string | null\n        user_id: string | null\n        email: string | null\n        created_at: string | null\n      }\n    }\n  }\n}\n\ntype DatabaseWithoutInternals = Omit<Database, \"__InternalSupabase\">\n\ntype DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, \"public\">]\n\nexport type Tables<\n  DefaultSchemaTableNameOrOptions extends\n    | keyof (DefaultSchema[\"Tables\"] & DefaultSchema[\"Views\"])\n    | { schema: keyof DatabaseWithoutInternals },\n  TableName extends DefaultSchemaTableNameOrOptions extends {\n    schema: keyof DatabaseWithoutInternals\n  }\n    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions[\"schema\"]][\"Tables\"] &\n        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions[\"schema\"]][\"Views\"])\n    : never = never,\n> = DefaultSchemaTableNameOrOptions extends {\n  schema: keyof DatabaseWithoutInternals\n}\n  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions[\"schema\"]][\"Tables\"] &\n      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions[\"schema\"]][\"Views\"])[TableName] extends {\n      Row: infer R\n    }\n    ? R\n    : never\n  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema[\"Tables\"] &\n        DefaultSchema[\"Views\"])\n    ? (DefaultSchema[\"Tables\"] &\n        DefaultSchema[\"Views\"])[DefaultSchemaTableNameOrOptions] extends {\n        Row: infer R\n      }\n      ? R\n      : never\n    : never\n\nexport type TablesInsert<\n  DefaultSchemaTableNameOrOptions extends\n    | keyof DefaultSchema[\"Tables\"]\n    | { schema: keyof DatabaseWithoutInternals },\n  TableName extends DefaultSchemaTableNameOrOptions extends {\n    schema: keyof DatabaseWithoutInternals\n  }\n    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions[\"schema\"]][\"Tables\"]\n    : never = never,\n> = DefaultSchemaTableNameOrOptions extends {\n  schema: keyof DatabaseWithoutInternals\n}\n  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions[\"schema\"]][\"Tables\"][TableName] extends {\n      Insert: infer I\n    }\n    ? I\n    : never\n  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema[\"Tables\"]\n    ? DefaultSchema[\"Tables\"][DefaultSchemaTableNameOrOptions] extends {\n        Insert: infer I\n      }\n      ? I\n      : never\n    : never\n\nexport type TablesUpdate<\n  DefaultSchemaTableNameOrOptions extends\n    | keyof DefaultSchema[\"Tables\"]\n    | { schema: keyof DatabaseWithoutInternals },\n  TableName extends DefaultSchemaTableNameOrOptions extends {\n    schema: keyof DatabaseWithoutInternals\n  }\n    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions[\"schema\"]][\"Tables\"]\n    : never = never,\n> = DefaultSchemaTableNameOrOptions extends {\n  schema: keyof DatabaseWithoutInternals\n}\n  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions[\"schema\"]][\"Tables\"][TableName] extends {\n      Update: infer U\n    }\n    ? U\n    : never\n  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema[\"Tables\"]\n    ? DefaultSchema[\"Tables\"][DefaultSchemaTableNameOrOptions] extends {\n        Update: infer U\n      }\n      ? U\n      : never\n    : never\n\nexport type Enums<\n  DefaultSchemaEnumNameOrOptions extends\n    | keyof DefaultSchema[\"Enums\"]\n    | { schema: keyof DatabaseWithoutInternals },\n  EnumName extends DefaultSchemaEnumNameOrOptions extends {\n    schema: keyof DatabaseWithoutInternals\n  }\n    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions[\"schema\"]][\"Enums\"]\n    : never = never,\n> = DefaultSchemaEnumNameOrOptions extends {\n  schema: keyof DatabaseWithoutInternals\n}\n  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions[\"schema\"]][\"Enums\"][EnumName]\n  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema[\"Enums\"]\n    ? DefaultSchema[\"Enums\"][DefaultSchemaEnumNameOrOptions]\n    : never\n\nexport type CompositeTypes<\n  PublicCompositeTypeNameOrOptions extends\n    | keyof DefaultSchema[\"CompositeTypes\"]\n    | { schema: keyof DatabaseWithoutInternals },\n  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {\n    schema: keyof DatabaseWithoutInternals\n  }\n    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions[\"schema\"]][\"CompositeTypes\"]\n    : never = never,\n> = PublicCompositeTypeNameOrOptions extends {\n  schema: keyof DatabaseWithoutInternals\n}\n  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions[\"schema\"]][\"CompositeTypes\"][CompositeTypeName]\n  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema[\"CompositeTypes\"]\n    ? DefaultSchema[\"CompositeTypes\"][PublicCompositeTypeNameOrOptions]\n    : never\n\nexport const Constants = {\n  public: {\n    Enums: {\n      role_type: [\n        \"client\",\n        \"therapist\",\n        \"staff\",\n        \"supervisor\",\n        \"admin\",\n        \"super_admin\",\n      ],\n    },\n  },\n} as const\n"}
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "13.0.5"
+  }
+  public: {
+    Tables: {
+      admin_actions: {
+        Row: {
+          action_details: Json | null
+          action_type: string
+          admin_user_id: string | null
+          created_at: string | null
+          id: string
+          organization_id: string | null
+          target_user_id: string | null
+        }
+        Insert: {
+          action_details?: Json | null
+          action_type: string
+          admin_user_id?: string | null
+          created_at?: string | null
+          id?: string
+          organization_id?: string | null
+          target_user_id?: string | null
+        }
+        Update: {
+          action_details?: Json | null
+          action_type?: string
+          admin_user_id?: string | null
+          created_at?: string | null
+          id?: string
+          organization_id?: string | null
+          target_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_actions_admin_user_id_fkey"
+            columns: ["admin_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_actions_admin_user_id_fkey"
+            columns: ["admin_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "admin_actions_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_actions_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      admin_invite_tokens: {
+        Row: {
+          created_at: string
+          created_by: string
+          email: string
+          expires_at: string
+          id: string
+          organization_id: string
+          role: Database["public"]["Enums"]["role_type"]
+          token_hash: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          email: string
+          expires_at: string
+          id?: string
+          organization_id: string
+          role?: Database["public"]["Enums"]["role_type"]
+          token_hash: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          organization_id?: string
+          role?: Database["public"]["Enums"]["role_type"]
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_invite_tokens_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_invite_tokens_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      agent_execution_traces: {
+        Row: {
+          conversation_id: string | null
+          correlation_id: string
+          created_at: string
+          id: string
+          organization_id: string | null
+          payload: Json | null
+          replay_payload: Json | null
+          request_id: string
+          status: string
+          step_index: number
+          step_name: string
+          user_id: string | null
+        }
+        Insert: {
+          conversation_id?: string | null
+          correlation_id: string
+          created_at?: string
+          id?: string
+          organization_id?: string | null
+          payload?: Json | null
+          replay_payload?: Json | null
+          request_id: string
+          status: string
+          step_index?: number
+          step_name: string
+          user_id?: string | null
+        }
+        Update: {
+          conversation_id?: string | null
+          correlation_id?: string
+          created_at?: string
+          id?: string
+          organization_id?: string | null
+          payload?: Json | null
+          replay_payload?: Json | null
+          request_id?: string
+          status?: string
+          step_index?: number
+          step_name?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      agent_prompt_tool_versions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_current: boolean
+          metadata: Json | null
+          prompt_version: string
+          rollback_reason: string | null
+          status: string
+          tool_version: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_current?: boolean
+          metadata?: Json | null
+          prompt_version: string
+          rollback_reason?: string | null
+          status?: string
+          tool_version: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_current?: boolean
+          metadata?: Json | null
+          prompt_version?: string
+          rollback_reason?: string | null
+          status?: string
+          tool_version?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      agent_runtime_config: {
+        Row: {
+          actions_disabled: boolean
+          config_key: string
+          reason: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          actions_disabled?: boolean
+          config_key: string
+          reason?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          actions_disabled?: boolean
+          config_key?: string
+          reason?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      ai_cache: {
+        Row: {
+          created_at: string | null
+          expires_at: string | null
+          function_name: string
+          hit_count: number | null
+          id: string
+          input_hash: string
+          last_accessed: string | null
+          response_data: Json
+        }
+        Insert: {
+          created_at?: string | null
+          expires_at?: string | null
+          function_name: string
+          hit_count?: number | null
+          id?: string
+          input_hash: string
+          last_accessed?: string | null
+          response_data: Json
+        }
+        Update: {
+          created_at?: string | null
+          expires_at?: string | null
+          function_name?: string
+          hit_count?: number | null
+          id?: string
+          input_hash?: string
+          last_accessed?: string | null
+          response_data?: Json
+        }
+        Relationships: []
+      }
+      ai_guidance_documents: {
+        Row: {
+          created_at: string
+          guidance_key: string
+          guidance_text: string
+          id: string
+          is_active: boolean
+          source_reference: string | null
+          source_type: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          guidance_key: string
+          guidance_text: string
+          id?: string
+          is_active?: boolean
+          source_reference?: string | null
+          source_type: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          guidance_key?: string
+          guidance_text?: string
+          id?: string
+          is_active?: boolean
+          source_reference?: string | null
+          source_type?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_performance_metrics: {
+        Row: {
+          cache_hit: boolean | null
+          conversation_id: string | null
+          cost_usd: number | null
+          created_at: string | null
+          error_occurred: boolean | null
+          function_called: string | null
+          function_name: string | null
+          id: string
+          organization_id: string | null
+          parameters: Json | null
+          response_time_ms: number
+          timestamp: string | null
+          token_count: number | null
+          token_usage: Json | null
+          user_id: string | null
+        }
+        Insert: {
+          cache_hit?: boolean | null
+          conversation_id?: string | null
+          cost_usd?: number | null
+          created_at?: string | null
+          error_occurred?: boolean | null
+          function_called?: string | null
+          function_name?: string | null
+          id?: string
+          organization_id?: string | null
+          parameters?: Json | null
+          response_time_ms: number
+          timestamp?: string | null
+          token_count?: number | null
+          token_usage?: Json | null
+          user_id?: string | null
+        }
+        Update: {
+          cache_hit?: boolean | null
+          conversation_id?: string | null
+          cost_usd?: number | null
+          created_at?: string | null
+          error_occurred?: boolean | null
+          function_called?: string | null
+          function_name?: string | null
+          id?: string
+          organization_id?: string | null
+          parameters?: Json | null
+          response_time_ms?: number
+          timestamp?: string | null
+          token_count?: number | null
+          token_usage?: Json | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      ai_processing_logs: {
+        Row: {
+          api_provider: string | null
+          confidence_score: number | null
+          created_at: string | null
+          error_message: string | null
+          id: string
+          input_data_size: number | null
+          model_version: string | null
+          processing_time_ms: number | null
+          processing_type: string
+          session_id: string
+        }
+        Insert: {
+          api_provider?: string | null
+          confidence_score?: number | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          input_data_size?: number | null
+          model_version?: string | null
+          processing_time_ms?: number | null
+          processing_type: string
+          session_id: string
+        }
+        Update: {
+          api_provider?: string | null
+          confidence_score?: number | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          input_data_size?: number | null
+          model_version?: string | null
+          processing_time_ms?: number | null
+          processing_type?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_processing_logs_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_response_cache: {
+        Row: {
+          cache_key: string
+          created_at: string | null
+          expires_at: string
+          hit_count: number | null
+          id: string
+          last_hit_at: string | null
+          metadata: Json | null
+          query_hash: string | null
+          query_text: string
+          response_text: string
+          updated_at: string | null
+        }
+        Insert: {
+          cache_key: string
+          created_at?: string | null
+          expires_at: string
+          hit_count?: number | null
+          id?: string
+          last_hit_at?: string | null
+          metadata?: Json | null
+          query_hash?: string | null
+          query_text: string
+          response_text: string
+          updated_at?: string | null
+        }
+        Update: {
+          cache_key?: string
+          created_at?: string | null
+          expires_at?: string
+          hit_count?: number | null
+          id?: string
+          last_hit_at?: string | null
+          metadata?: Json | null
+          query_hash?: string | null
+          query_text?: string
+          response_text?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      ai_session_notes: {
+        Row: {
+          ai_confidence_score: number | null
+          ai_generated_summary: string | null
+          behavioral_observations: Json | null
+          california_compliant: boolean | null
+          client_id: string
+          client_responses: Json | null
+          created_at: string | null
+          current_clinical_status: string | null
+          data_collection_summary: Json | null
+          end_time: string
+          goal_ids: string[] | null
+          id: string
+          insurance_ready: boolean | null
+          interventions_used: Json | null
+          location: string | null
+          manual_edits: string[] | null
+          participants: string[] | null
+          progress_toward_goals: Json | null
+          recommendations: string[] | null
+          session_date: string
+          session_duration: number
+          session_id: string
+          signature: string | null
+          signed_at: string | null
+          start_time: string
+          targeted_goals: Json | null
+          therapist_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          ai_confidence_score?: number | null
+          ai_generated_summary?: string | null
+          behavioral_observations?: Json | null
+          california_compliant?: boolean | null
+          client_id: string
+          client_responses?: Json | null
+          created_at?: string | null
+          current_clinical_status?: string | null
+          data_collection_summary?: Json | null
+          end_time: string
+          goal_ids?: string[] | null
+          id?: string
+          insurance_ready?: boolean | null
+          interventions_used?: Json | null
+          location?: string | null
+          manual_edits?: string[] | null
+          participants?: string[] | null
+          progress_toward_goals?: Json | null
+          recommendations?: string[] | null
+          session_date: string
+          session_duration: number
+          session_id: string
+          signature?: string | null
+          signed_at?: string | null
+          start_time: string
+          targeted_goals?: Json | null
+          therapist_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          ai_confidence_score?: number | null
+          ai_generated_summary?: string | null
+          behavioral_observations?: Json | null
+          california_compliant?: boolean | null
+          client_id?: string
+          client_responses?: Json | null
+          created_at?: string | null
+          current_clinical_status?: string | null
+          data_collection_summary?: Json | null
+          end_time?: string
+          goal_ids?: string[] | null
+          id?: string
+          insurance_ready?: boolean | null
+          interventions_used?: Json | null
+          location?: string | null
+          manual_edits?: string[] | null
+          participants?: string[] | null
+          progress_toward_goals?: Json | null
+          recommendations?: string[] | null
+          session_date?: string
+          session_duration?: number
+          session_id?: string
+          signature?: string | null
+          signed_at?: string | null
+          start_time?: string
+          targeted_goals?: Json | null
+          therapist_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_session_notes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_session_notes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_session_notes_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessment_checklist_items: {
+        Row: {
+          assessment_document_id: string
+          client_id: string
+          created_at: string
+          extraction_method: string
+          extraction_owner: string | null
+          id: string
+          label: string
+          last_reviewed_at: string | null
+          last_reviewed_by: string | null
+          mode: string
+          organization_id: string
+          placeholder_key: string
+          required: boolean
+          review_notes: string | null
+          review_owner: string | null
+          section_key: string
+          source: string
+          status: string
+          updated_at: string
+          validation_rule: string
+          value_json: Json | null
+          value_text: string | null
+        }
+        Insert: {
+          assessment_document_id: string
+          client_id: string
+          created_at?: string
+          extraction_method?: string
+          extraction_owner?: string | null
+          id?: string
+          label: string
+          last_reviewed_at?: string | null
+          last_reviewed_by?: string | null
+          mode: string
+          organization_id: string
+          placeholder_key: string
+          required?: boolean
+          review_notes?: string | null
+          review_owner?: string | null
+          section_key: string
+          source?: string
+          status?: string
+          updated_at?: string
+          validation_rule?: string
+          value_json?: Json | null
+          value_text?: string | null
+        }
+        Update: {
+          assessment_document_id?: string
+          client_id?: string
+          created_at?: string
+          extraction_method?: string
+          extraction_owner?: string | null
+          id?: string
+          label?: string
+          last_reviewed_at?: string | null
+          last_reviewed_by?: string | null
+          mode?: string
+          organization_id?: string
+          placeholder_key?: string
+          required?: boolean
+          review_notes?: string | null
+          review_owner?: string | null
+          section_key?: string
+          source?: string
+          status?: string
+          updated_at?: string
+          validation_rule?: string
+          value_json?: Json | null
+          value_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_checklist_items_assessment_document_id_fkey"
+            columns: ["assessment_document_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_checklist_items_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_checklist_items_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessment_documents: {
+        Row: {
+          approved_at: string | null
+          bucket_id: string
+          client_id: string
+          created_at: string
+          extracted_at: string | null
+          extraction_error: string | null
+          file_name: string
+          file_size: number
+          id: string
+          mime_type: string
+          object_path: string
+          organization_id: string
+          status: string
+          template_type: string
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          bucket_id?: string
+          client_id: string
+          created_at?: string
+          extracted_at?: string | null
+          extraction_error?: string | null
+          file_name: string
+          file_size?: number
+          id?: string
+          mime_type: string
+          object_path: string
+          organization_id: string
+          status?: string
+          template_type?: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          bucket_id?: string
+          client_id?: string
+          created_at?: string
+          extracted_at?: string | null
+          extraction_error?: string | null
+          file_name?: string
+          file_size?: number
+          id?: string
+          mime_type?: string
+          object_path?: string
+          organization_id?: string
+          status?: string
+          template_type?: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_documents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_documents_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessment_draft_goals: {
+        Row: {
+          accept_state: string
+          assessment_document_id: string
+          baseline_data: string | null
+          client_id: string
+          created_at: string
+          description: string
+          draft_program_id: string | null
+          generalization_criteria: string | null
+          goal_type: string
+          id: string
+          maintenance_criteria: string | null
+          mastery_criteria: string | null
+          measurement_type: string | null
+          objective_data_points: Json
+          organization_id: string
+          original_text: string
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          target_behavior: string | null
+          target_criteria: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          accept_state?: string
+          assessment_document_id: string
+          baseline_data?: string | null
+          client_id: string
+          created_at?: string
+          description: string
+          draft_program_id?: string | null
+          generalization_criteria?: string | null
+          goal_type?: string
+          id?: string
+          maintenance_criteria?: string | null
+          mastery_criteria?: string | null
+          measurement_type?: string | null
+          objective_data_points?: Json
+          organization_id: string
+          original_text: string
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          target_behavior?: string | null
+          target_criteria?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          accept_state?: string
+          assessment_document_id?: string
+          baseline_data?: string | null
+          client_id?: string
+          created_at?: string
+          description?: string
+          draft_program_id?: string | null
+          generalization_criteria?: string | null
+          goal_type?: string
+          id?: string
+          maintenance_criteria?: string | null
+          mastery_criteria?: string | null
+          measurement_type?: string | null
+          objective_data_points?: Json
+          organization_id?: string
+          original_text?: string
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          target_behavior?: string | null
+          target_criteria?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_draft_goals_assessment_document_id_fkey"
+            columns: ["assessment_document_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_draft_goals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_draft_goals_draft_program_id_fkey"
+            columns: ["draft_program_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_draft_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_draft_goals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessment_draft_programs: {
+        Row: {
+          accept_state: string
+          assessment_document_id: string
+          client_id: string
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          organization_id: string
+          rationale: string | null
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          accept_state?: string
+          assessment_document_id: string
+          client_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          rationale?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          accept_state?: string
+          assessment_document_id?: string
+          client_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          rationale?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_draft_programs_assessment_document_id_fkey"
+            columns: ["assessment_document_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_draft_programs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_draft_programs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessment_extractions: {
+        Row: {
+          assessment_document_id: string
+          client_id: string
+          confidence: number | null
+          created_at: string
+          extraction_method_detail: string | null
+          field_key: string
+          id: string
+          label: string
+          mode: string
+          organization_id: string
+          required: boolean
+          review_notes: string | null
+          section_key: string
+          source_span: Json | null
+          status: string
+          updated_at: string
+          value_json: Json | null
+          value_text: string | null
+        }
+        Insert: {
+          assessment_document_id: string
+          client_id: string
+          confidence?: number | null
+          created_at?: string
+          extraction_method_detail?: string | null
+          field_key: string
+          id?: string
+          label: string
+          mode: string
+          organization_id: string
+          required?: boolean
+          review_notes?: string | null
+          section_key: string
+          source_span?: Json | null
+          status?: string
+          updated_at?: string
+          value_json?: Json | null
+          value_text?: string | null
+        }
+        Update: {
+          assessment_document_id?: string
+          client_id?: string
+          confidence?: number | null
+          created_at?: string
+          extraction_method_detail?: string | null
+          field_key?: string
+          id?: string
+          label?: string
+          mode?: string
+          organization_id?: string
+          required?: boolean
+          review_notes?: string | null
+          section_key?: string
+          source_span?: Json | null
+          status?: string
+          updated_at?: string
+          value_json?: Json | null
+          value_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_extractions_assessment_document_id_fkey"
+            columns: ["assessment_document_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_extractions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_extractions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessment_review_events: {
+        Row: {
+          action: string
+          actor_id: string | null
+          assessment_document_id: string
+          client_id: string
+          created_at: string
+          event_payload: Json
+          from_status: string | null
+          id: string
+          item_id: string | null
+          item_type: string
+          notes: string | null
+          organization_id: string
+          to_status: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          assessment_document_id: string
+          client_id: string
+          created_at?: string
+          event_payload?: Json
+          from_status?: string | null
+          id?: string
+          item_id?: string | null
+          item_type: string
+          notes?: string | null
+          organization_id: string
+          to_status?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          assessment_document_id?: string
+          client_id?: string
+          created_at?: string
+          event_payload?: Json
+          from_status?: string | null
+          id?: string
+          item_id?: string | null
+          item_type?: string
+          notes?: string | null
+          organization_id?: string
+          to_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_review_events_assessment_document_id_fkey"
+            columns: ["assessment_document_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_review_events_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_review_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      authorization_services: {
+        Row: {
+          approved_units: number | null
+          authorization_id: string
+          created_at: string | null
+          created_by: string
+          decision_status: string
+          from_date: string
+          id: string
+          organization_id: string
+          requested_units: number
+          service_code: string
+          service_description: string
+          to_date: string
+          unit_type: string
+          updated_at: string | null
+        }
+        Insert: {
+          approved_units?: number | null
+          authorization_id: string
+          created_at?: string | null
+          created_by: string
+          decision_status?: string
+          from_date: string
+          id?: string
+          organization_id: string
+          requested_units: number
+          service_code: string
+          service_description: string
+          to_date: string
+          unit_type: string
+          updated_at?: string | null
+        }
+        Update: {
+          approved_units?: number | null
+          authorization_id?: string
+          created_at?: string | null
+          created_by?: string
+          decision_status?: string
+          from_date?: string
+          id?: string
+          organization_id?: string
+          requested_units?: number
+          service_code?: string
+          service_description?: string
+          to_date?: string
+          unit_type?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "authorization_services_authorization_id_fkey"
+            columns: ["authorization_id"]
+            isOneToOne: false
+            referencedRelation: "authorizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "authorization_services_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "authorization_services_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "authorization_services_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      authorizations: {
+        Row: {
+          approval_notes: string | null
+          approved_at: string | null
+          approved_by: string | null
+          authorization_number: string
+          client_id: string
+          created_at: string | null
+          created_by: string
+          denial_reason: string | null
+          denied_at: string | null
+          diagnosis_code: string
+          diagnosis_description: string | null
+          documents: Json | null
+          end_date: string
+          id: string
+          insurance_provider_id: string | null
+          member_id: string | null
+          organization_id: string
+          plan_type: string | null
+          provider_id: string
+          start_date: string
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          approval_notes?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          authorization_number: string
+          client_id: string
+          created_at?: string | null
+          created_by: string
+          denial_reason?: string | null
+          denied_at?: string | null
+          diagnosis_code: string
+          diagnosis_description?: string | null
+          documents?: Json | null
+          end_date: string
+          id?: string
+          insurance_provider_id?: string | null
+          member_id?: string | null
+          organization_id: string
+          plan_type?: string | null
+          provider_id: string
+          start_date: string
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          approval_notes?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          authorization_number?: string
+          client_id?: string
+          created_at?: string | null
+          created_by?: string
+          denial_reason?: string | null
+          denied_at?: string | null
+          diagnosis_code?: string
+          diagnosis_description?: string | null
+          documents?: Json | null
+          end_date?: string
+          id?: string
+          insurance_provider_id?: string | null
+          member_id?: string | null
+          organization_id?: string
+          plan_type?: string | null
+          provider_id?: string
+          start_date?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "authorizations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "authorizations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "authorizations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "authorizations_insurance_provider_id_fkey"
+            columns: ["insurance_provider_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_providers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "authorizations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "authorizations_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      behavioral_patterns: {
+        Row: {
+          aba_terminology: string | null
+          confidence_weight: number | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_active: boolean | null
+          organization_id: string | null
+          pattern_name: string
+          pattern_type: string
+          regex_pattern: string
+          updated_at: string | null
+        }
+        Insert: {
+          aba_terminology?: string | null
+          confidence_weight?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          organization_id?: string | null
+          pattern_name: string
+          pattern_type: string
+          regex_pattern: string
+          updated_at?: string | null
+        }
+        Update: {
+          aba_terminology?: string | null
+          confidence_weight?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          organization_id?: string | null
+          pattern_name?: string
+          pattern_type?: string
+          regex_pattern?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "behavioral_patterns_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "behavioral_patterns_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      billing_modifiers: {
+        Row: {
+          billing_note: string | null
+          code: string
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          updated_at: string
+        }
+        Insert: {
+          billing_note?: string | null
+          code: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Update: {
+          billing_note?: string | null
+          code?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      billing_records: {
+        Row: {
+          amount: number
+          claim_number: string | null
+          created_at: string | null
+          id: string
+          organization_id: string
+          session_id: string
+          status: string
+          submitted_at: string | null
+        }
+        Insert: {
+          amount: number
+          claim_number?: string | null
+          created_at?: string | null
+          id?: string
+          organization_id: string
+          session_id: string
+          status?: string
+          submitted_at?: string | null
+        }
+        Update: {
+          amount?: number
+          claim_number?: string | null
+          created_at?: string | null
+          id?: string
+          organization_id?: string
+          session_id?: string
+          status?: string
+          submitted_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_records_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_history: {
+        Row: {
+          action_data: Json | null
+          action_type: string | null
+          content: string
+          context: Json | null
+          conversation_id: string
+          created_at: string | null
+          id: string
+          role: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action_data?: Json | null
+          action_type?: string | null
+          content: string
+          context?: Json | null
+          conversation_id?: string
+          created_at?: string | null
+          id?: string
+          role: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action_data?: Json | null
+          action_type?: string | null
+          content?: string
+          context?: Json | null
+          conversation_id?: string
+          created_at?: string | null
+          id?: string
+          role?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_history_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_history_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      client_availability: {
+        Row: {
+          client_id: string
+          created_at: string | null
+          day_of_week: string
+          end_time: string
+          id: string
+          is_recurring: boolean | null
+          location_preference: string[] | null
+          start_time: string
+          updated_at: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string | null
+          day_of_week: string
+          end_time: string
+          id?: string
+          is_recurring?: boolean | null
+          location_preference?: string[] | null
+          start_time: string
+          updated_at?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string | null
+          day_of_week?: string
+          end_time?: string
+          id?: string
+          is_recurring?: boolean | null
+          location_preference?: string[] | null
+          start_time?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_availability_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_guardians: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          guardian_id: string
+          id: string
+          is_primary: boolean
+          metadata: Json
+          organization_id: string
+          relationship: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          guardian_id: string
+          id?: string
+          is_primary?: boolean
+          metadata?: Json
+          organization_id: string
+          relationship?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          guardian_id?: string
+          id?: string
+          is_primary?: boolean
+          metadata?: Json
+          organization_id?: string
+          relationship?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_guardians_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_guardians_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_guardians_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "client_guardians_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_guardians_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "client_guardians_guardian_id_fkey"
+            columns: ["guardian_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_guardians_guardian_id_fkey"
+            columns: ["guardian_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "client_guardians_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_guardians_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_guardians_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      client_issues: {
+        Row: {
+          category: string | null
+          client_id: string
+          created_at: string
+          created_by: string | null
+          date_opened: string
+          description: string | null
+          id: string
+          last_action: string
+          organization_id: string
+          priority: string | null
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          date_opened?: string
+          description?: string | null
+          id?: string
+          last_action?: string
+          organization_id: string
+          priority?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          date_opened?: string
+          description?: string | null
+          id?: string
+          last_action?: string
+          organization_id?: string
+          priority?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_issues_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_issues_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_issues_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "client_issues_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_notes: {
+        Row: {
+          client_id: string
+          content: string | null
+          created_at: string | null
+          created_by: string | null
+          deleted_at: string | null
+          id: string
+          is_visible_to_parent: boolean | null
+          is_visible_to_therapist: boolean
+          organization_id: string | null
+          status: string | null
+        }
+        Insert: {
+          client_id: string
+          content?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          is_visible_to_parent?: boolean | null
+          is_visible_to_therapist?: boolean
+          organization_id?: string | null
+          status?: string | null
+        }
+        Update: {
+          client_id?: string
+          content?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          is_visible_to_parent?: boolean | null
+          is_visible_to_therapist?: boolean
+          organization_id?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
+      client_onboarding_prefills: {
+        Row: {
+          consumed_at: string | null
+          consumed_by_user_id: string | null
+          created_at: string
+          created_by_user_id: string
+          expires_at: string
+          id: string
+          organization_id: string
+          payload: Json
+          token_hash: string
+        }
+        Insert: {
+          consumed_at?: string | null
+          consumed_by_user_id?: string | null
+          created_at?: string
+          created_by_user_id: string
+          expires_at: string
+          id?: string
+          organization_id: string
+          payload: Json
+          token_hash: string
+        }
+        Update: {
+          consumed_at?: string | null
+          consumed_by_user_id?: string | null
+          created_at?: string
+          created_by_user_id?: string
+          expires_at?: string
+          id?: string
+          organization_id?: string
+          payload?: Json
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_onboarding_prefills_consumed_by_user_id_fkey"
+            columns: ["consumed_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "app_users_safe"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "client_onboarding_prefills_consumed_by_user_id_fkey"
+            columns: ["consumed_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_onboarding_prefills_created_by_user_id_fkey"
+            columns: ["created_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "app_users_safe"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "client_onboarding_prefills_created_by_user_id_fkey"
+            columns: ["created_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_onboarding_prefills_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_session_notes: {
+        Row: {
+          authorization_id: string
+          client_id: string
+          created_at: string
+          created_by: string
+          end_time: string
+          goal_ids: string[] | null
+          goals_addressed: string[]
+          id: string
+          is_locked: boolean
+          narrative: string
+          organization_id: string
+          service_code: string
+          session_date: string
+          session_duration: number
+          session_id: string | null
+          signed_at: string | null
+          start_time: string
+          therapist_id: string
+          updated_at: string
+        }
+        Insert: {
+          authorization_id: string
+          client_id: string
+          created_at?: string
+          created_by: string
+          end_time: string
+          goal_ids?: string[] | null
+          goals_addressed?: string[]
+          id?: string
+          is_locked?: boolean
+          narrative: string
+          organization_id: string
+          service_code: string
+          session_date: string
+          session_duration: number
+          session_id?: string | null
+          signed_at?: string | null
+          start_time: string
+          therapist_id: string
+          updated_at?: string
+        }
+        Update: {
+          authorization_id?: string
+          client_id?: string
+          created_at?: string
+          created_by?: string
+          end_time?: string
+          goal_ids?: string[] | null
+          goals_addressed?: string[]
+          id?: string
+          is_locked?: boolean
+          narrative?: string
+          organization_id?: string
+          service_code?: string
+          session_date?: string
+          session_duration?: number
+          session_id?: string | null
+          signed_at?: string | null
+          start_time?: string
+          therapist_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_session_notes_authorization_id_fkey"
+            columns: ["authorization_id"]
+            isOneToOne: false
+            referencedRelation: "authorizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_session_notes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_session_notes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_session_notes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "client_session_notes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_session_notes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_session_notes_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_therapist_links: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          organization_id: string
+          therapist_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          organization_id: string
+          therapist_id: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          organization_id?: string
+          therapist_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_therapist_links_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_therapist_links_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_therapist_links_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "client_therapist_links_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_therapist_links_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clients: {
+        Row: {
+          address_line1: string | null
+          address_line2: string | null
+          assessment_units: number | null
+          auth_end_date: string | null
+          auth_start_date: string | null
+          auth_units: number | null
+          authorized_hours_per_month: number | null
+          availability_hours: Json | null
+          avoid_rush_hour: boolean | null
+          cin_number: string | null
+          city: string | null
+          client_id: string | null
+          created_at: string | null
+          created_by: string | null
+          date_of_birth: string | null
+          daycare_after_school: boolean | null
+          deleted_at: string | null
+          deleted_by: string | null
+          diagnosis: string[] | null
+          documents: Json | null
+          email: string | null
+          first_name: string | null
+          full_name: string
+          gender: string | null
+          hours_provided_per_month: number | null
+          id: string
+          in_clinic: boolean | null
+          in_home: boolean | null
+          in_school: boolean | null
+          insurance_info: Json | null
+          last_name: string | null
+          latitude: number | null
+          longitude: number | null
+          max_travel_minutes: number | null
+          middle_name: string | null
+          notes: string | null
+          one_to_one_units: number | null
+          organization_id: string
+          parent_consult_units: number | null
+          parent1_email: string | null
+          parent1_first_name: string | null
+          parent1_last_name: string | null
+          parent1_phone: string | null
+          parent1_relationship: string | null
+          parent2_email: string | null
+          parent2_first_name: string | null
+          parent2_last_name: string | null
+          parent2_phone: string | null
+          parent2_relationship: string | null
+          phone: string | null
+          preferred_language: string | null
+          preferred_radius_km: number | null
+          preferred_session_time: string[] | null
+          referral_source: string | null
+          service_preference: string[] | null
+          state: string | null
+          status: string
+          supervision_units: number | null
+          therapist_assigned_at: string | null
+          therapist_id: string | null
+          unscheduled_hours: number | null
+          updated_at: string
+          updated_by: string | null
+          zip_code: string | null
+        }
+        Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          assessment_units?: number | null
+          auth_end_date?: string | null
+          auth_start_date?: string | null
+          auth_units?: number | null
+          authorized_hours_per_month?: number | null
+          availability_hours?: Json | null
+          avoid_rush_hour?: boolean | null
+          cin_number?: string | null
+          city?: string | null
+          client_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          date_of_birth?: string | null
+          daycare_after_school?: boolean | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          diagnosis?: string[] | null
+          documents?: Json | null
+          email?: string | null
+          first_name?: string | null
+          full_name: string
+          gender?: string | null
+          hours_provided_per_month?: number | null
+          id?: string
+          in_clinic?: boolean | null
+          in_home?: boolean | null
+          in_school?: boolean | null
+          insurance_info?: Json | null
+          last_name?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          max_travel_minutes?: number | null
+          middle_name?: string | null
+          notes?: string | null
+          one_to_one_units?: number | null
+          organization_id: string
+          parent_consult_units?: number | null
+          parent1_email?: string | null
+          parent1_first_name?: string | null
+          parent1_last_name?: string | null
+          parent1_phone?: string | null
+          parent1_relationship?: string | null
+          parent2_email?: string | null
+          parent2_first_name?: string | null
+          parent2_last_name?: string | null
+          parent2_phone?: string | null
+          parent2_relationship?: string | null
+          phone?: string | null
+          preferred_language?: string | null
+          preferred_radius_km?: number | null
+          preferred_session_time?: string[] | null
+          referral_source?: string | null
+          service_preference?: string[] | null
+          state?: string | null
+          status?: string
+          supervision_units?: number | null
+          therapist_assigned_at?: string | null
+          therapist_id?: string | null
+          unscheduled_hours?: number | null
+          updated_at?: string
+          updated_by?: string | null
+          zip_code?: string | null
+        }
+        Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          assessment_units?: number | null
+          auth_end_date?: string | null
+          auth_start_date?: string | null
+          auth_units?: number | null
+          authorized_hours_per_month?: number | null
+          availability_hours?: Json | null
+          avoid_rush_hour?: boolean | null
+          cin_number?: string | null
+          city?: string | null
+          client_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          date_of_birth?: string | null
+          daycare_after_school?: boolean | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          diagnosis?: string[] | null
+          documents?: Json | null
+          email?: string | null
+          first_name?: string | null
+          full_name?: string
+          gender?: string | null
+          hours_provided_per_month?: number | null
+          id?: string
+          in_clinic?: boolean | null
+          in_home?: boolean | null
+          in_school?: boolean | null
+          insurance_info?: Json | null
+          last_name?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          max_travel_minutes?: number | null
+          middle_name?: string | null
+          notes?: string | null
+          one_to_one_units?: number | null
+          organization_id?: string
+          parent_consult_units?: number | null
+          parent1_email?: string | null
+          parent1_first_name?: string | null
+          parent1_last_name?: string | null
+          parent1_phone?: string | null
+          parent1_relationship?: string | null
+          parent2_email?: string | null
+          parent2_first_name?: string | null
+          parent2_last_name?: string | null
+          parent2_phone?: string | null
+          parent2_relationship?: string | null
+          phone?: string | null
+          preferred_language?: string | null
+          preferred_radius_km?: number | null
+          preferred_session_time?: string[] | null
+          referral_source?: string | null
+          service_preference?: string[] | null
+          state?: string | null
+          status?: string
+          supervision_units?: number | null
+          therapist_assigned_at?: string | null
+          therapist_id?: string | null
+          unscheduled_hours?: number | null
+          updated_at?: string
+          updated_by?: string | null
+          zip_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clients_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "clients_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "clients_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      company_settings: {
+        Row: {
+          accent_color: string | null
+          address_line1: string | null
+          address_line2: string | null
+          city: string | null
+          company_name: string
+          created_at: string | null
+          date_format: string | null
+          default_currency: string | null
+          email: string | null
+          fax: string | null
+          id: string
+          legal_name: string | null
+          logo_url: string | null
+          medicaid_provider_id: string | null
+          npi_number: string | null
+          phone: string | null
+          primary_color: string | null
+          session_duration_default: number | null
+          state: string | null
+          tax_id: string | null
+          time_format: string | null
+          time_zone: string | null
+          updated_at: string | null
+          website: string | null
+          zip_code: string | null
+        }
+        Insert: {
+          accent_color?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          company_name: string
+          created_at?: string | null
+          date_format?: string | null
+          default_currency?: string | null
+          email?: string | null
+          fax?: string | null
+          id?: string
+          legal_name?: string | null
+          logo_url?: string | null
+          medicaid_provider_id?: string | null
+          npi_number?: string | null
+          phone?: string | null
+          primary_color?: string | null
+          session_duration_default?: number | null
+          state?: string | null
+          tax_id?: string | null
+          time_format?: string | null
+          time_zone?: string | null
+          updated_at?: string | null
+          website?: string | null
+          zip_code?: string | null
+        }
+        Update: {
+          accent_color?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          company_name?: string
+          created_at?: string | null
+          date_format?: string | null
+          default_currency?: string | null
+          email?: string | null
+          fax?: string | null
+          id?: string
+          legal_name?: string | null
+          logo_url?: string | null
+          medicaid_provider_id?: string | null
+          npi_number?: string | null
+          phone?: string | null
+          primary_color?: string | null
+          session_duration_default?: number | null
+          state?: string | null
+          tax_id?: string | null
+          time_format?: string | null
+          time_zone?: string | null
+          updated_at?: string | null
+          website?: string | null
+          zip_code?: string | null
+        }
+        Relationships: []
+      }
+      conversations: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          metadata: Json | null
+          title: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          metadata?: Json | null
+          title?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          metadata?: Json | null
+          title?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      cpt_codes: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          is_active: boolean
+          long_description: string | null
+          service_setting: string | null
+          short_description: string
+          typical_duration_minutes: number | null
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          long_description?: string | null
+          service_setting?: string | null
+          short_description: string
+          typical_duration_minutes?: number | null
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          long_description?: string | null
+          service_setting?: string | null
+          short_description?: string
+          typical_duration_minutes?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cpt_modifier_mappings: {
+        Row: {
+          cpt_code_id: string
+          created_at: string
+          id: string
+          is_default: boolean
+          is_required: boolean
+          modifier_id: string
+          updated_at: string
+        }
+        Insert: {
+          cpt_code_id: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          is_required?: boolean
+          modifier_id: string
+          updated_at?: string
+        }
+        Update: {
+          cpt_code_id?: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          is_required?: boolean
+          modifier_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cpt_modifier_mappings_cpt_code_id_fkey"
+            columns: ["cpt_code_id"]
+            isOneToOne: false
+            referencedRelation: "cpt_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cpt_modifier_mappings_modifier_id_fkey"
+            columns: ["modifier_id"]
+            isOneToOne: false
+            referencedRelation: "billing_modifiers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      db_performance_metrics: {
+        Row: {
+          cache_hit: boolean | null
+          created_at: string | null
+          execution_time_ms: number
+          id: string
+          query_name: string | null
+          query_text: string | null
+          query_type: string
+          rows_affected: number | null
+          slow_query: boolean | null
+          table_name: string | null
+          timestamp: string | null
+        }
+        Insert: {
+          cache_hit?: boolean | null
+          created_at?: string | null
+          execution_time_ms: number
+          id?: string
+          query_name?: string | null
+          query_text?: string | null
+          query_type: string
+          rows_affected?: number | null
+          slow_query?: boolean | null
+          table_name?: string | null
+          timestamp?: string | null
+        }
+        Update: {
+          cache_hit?: boolean | null
+          created_at?: string | null
+          execution_time_ms?: number
+          id?: string
+          query_name?: string | null
+          query_text?: string | null
+          query_type?: string
+          rows_affected?: number | null
+          slow_query?: boolean | null
+          table_name?: string | null
+          timestamp?: string | null
+        }
+        Relationships: []
+      }
+      edi_claim_denials: {
+        Row: {
+          billing_record_id: string
+          denial_code: string
+          description: string | null
+          id: string
+          payer_control_number: string | null
+          received_at: string
+          recorded_at: string
+          session_id: string
+        }
+        Insert: {
+          billing_record_id: string
+          denial_code: string
+          description?: string | null
+          id?: string
+          payer_control_number?: string | null
+          received_at: string
+          recorded_at?: string
+          session_id: string
+        }
+        Update: {
+          billing_record_id?: string
+          denial_code?: string
+          description?: string | null
+          id?: string
+          payer_control_number?: string | null
+          received_at?: string
+          recorded_at?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "edi_claim_denials_billing_record_id_fkey"
+            columns: ["billing_record_id"]
+            isOneToOne: false
+            referencedRelation: "billing_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "edi_claim_denials_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      edi_claim_statuses: {
+        Row: {
+          billing_record_id: string
+          claim_control_number: string | null
+          created_at: string
+          effective_at: string
+          export_file_id: string | null
+          id: string
+          notes: string | null
+          session_id: string
+          status: string
+        }
+        Insert: {
+          billing_record_id: string
+          claim_control_number?: string | null
+          created_at?: string
+          effective_at: string
+          export_file_id?: string | null
+          id?: string
+          notes?: string | null
+          session_id: string
+          status: string
+        }
+        Update: {
+          billing_record_id?: string
+          claim_control_number?: string | null
+          created_at?: string
+          effective_at?: string
+          export_file_id?: string | null
+          id?: string
+          notes?: string | null
+          session_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "edi_claim_statuses_billing_record_id_fkey"
+            columns: ["billing_record_id"]
+            isOneToOne: false
+            referencedRelation: "billing_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "edi_claim_statuses_export_file_id_fkey"
+            columns: ["export_file_id"]
+            isOneToOne: false
+            referencedRelation: "edi_export_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "edi_claim_statuses_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      edi_export_files: {
+        Row: {
+          checksum: string
+          claim_count: number
+          content: string
+          created_at: string
+          file_name: string
+          group_control_number: string
+          id: string
+          interchange_control_number: string
+          transaction_set_control_number: string
+        }
+        Insert: {
+          checksum: string
+          claim_count: number
+          content: string
+          created_at?: string
+          file_name: string
+          group_control_number: string
+          id?: string
+          interchange_control_number: string
+          transaction_set_control_number: string
+        }
+        Update: {
+          checksum?: string
+          claim_count?: number
+          content?: string
+          created_at?: string
+          file_name?: string
+          group_control_number?: string
+          id?: string
+          interchange_control_number?: string
+          transaction_set_control_number?: string
+        }
+        Relationships: []
+      }
+      error_logs: {
+        Row: {
+          context: Json | null
+          created_at: string | null
+          details: Json | null
+          error_type: string
+          id: string
+          message: string
+          resolved: boolean | null
+          resolved_at: string | null
+          resolved_by: string | null
+          session_id: string | null
+          severity: string | null
+          stack_trace: string | null
+          updated_at: string | null
+          url: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          context?: Json | null
+          created_at?: string | null
+          details?: Json | null
+          error_type: string
+          id?: string
+          message: string
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          session_id?: string | null
+          severity?: string | null
+          stack_trace?: string | null
+          updated_at?: string | null
+          url?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          context?: Json | null
+          created_at?: string | null
+          details?: Json | null
+          error_type?: string
+          id?: string
+          message?: string
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          session_id?: string | null
+          severity?: string | null
+          stack_trace?: string | null
+          updated_at?: string | null
+          url?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "error_logs_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_logs_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "error_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      error_taxonomy: {
+        Row: {
+          category: string
+          code: string
+          description: string
+          http_status: number
+          retryable: boolean
+          severity: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          category: string
+          code: string
+          description: string
+          http_status: number
+          retryable?: boolean
+          severity: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          category?: string
+          code?: string
+          description?: string
+          http_status?: number
+          retryable?: boolean
+          severity?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      feature_flag_audit_logs: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          feature_flag_id: string | null
+          id: string
+          new_state: Json | null
+          organization_id: string | null
+          plan_code: string | null
+          previous_state: Json | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          feature_flag_id?: string | null
+          id?: string
+          new_state?: Json | null
+          organization_id?: string | null
+          plan_code?: string | null
+          previous_state?: Json | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          feature_flag_id?: string | null
+          id?: string
+          new_state?: Json | null
+          organization_id?: string | null
+          plan_code?: string | null
+          previous_state?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feature_flag_audit_logs_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feature_flag_audit_logs_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "feature_flag_audit_logs_feature_flag_id_fkey"
+            columns: ["feature_flag_id"]
+            isOneToOne: false
+            referencedRelation: "feature_flags"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feature_flag_audit_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feature_flag_audit_logs_plan_code_fkey"
+            columns: ["plan_code"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      feature_flag_plan_history: {
+        Row: {
+          action: string
+          actor_id: string | null
+          change_context: string
+          feature_flag_id: string | null
+          id: string
+          new_state: Json | null
+          occurred_at: string
+          organization_id: string | null
+          plan_code: string | null
+          previous_state: Json | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          change_context: string
+          feature_flag_id?: string | null
+          id?: string
+          new_state?: Json | null
+          occurred_at?: string
+          organization_id?: string | null
+          plan_code?: string | null
+          previous_state?: Json | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          change_context?: string
+          feature_flag_id?: string | null
+          id?: string
+          new_state?: Json | null
+          occurred_at?: string
+          organization_id?: string | null
+          plan_code?: string | null
+          previous_state?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feature_flag_plan_history_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feature_flag_plan_history_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "feature_flag_plan_history_feature_flag_id_fkey"
+            columns: ["feature_flag_id"]
+            isOneToOne: false
+            referencedRelation: "feature_flags"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feature_flag_plan_history_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feature_flag_plan_history_plan_code_fkey"
+            columns: ["plan_code"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      feature_flags: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          default_enabled: boolean
+          description: string | null
+          flag_key: string
+          id: string
+          metadata: Json | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          default_enabled?: boolean
+          description?: string | null
+          flag_key: string
+          id?: string
+          metadata?: Json | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          default_enabled?: boolean
+          description?: string | null
+          flag_key?: string
+          id?: string
+          metadata?: Json | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feature_flags_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feature_flags_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "feature_flags_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feature_flags_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      file_cabinet_settings: {
+        Row: {
+          allowed_file_types: string[] | null
+          category_name: string
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          max_file_size_mb: number | null
+          requires_signature: boolean | null
+          retention_period_days: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          allowed_file_types?: string[] | null
+          category_name: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_file_size_mb?: number | null
+          requires_signature?: boolean | null
+          retention_period_days?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          allowed_file_types?: string[] | null
+          category_name?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_file_size_mb?: number | null
+          requires_signature?: boolean | null
+          retention_period_days?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      function_idempotency_keys: {
+        Row: {
+          created_at: string
+          endpoint: string
+          id: string
+          idempotency_key: string
+          response_body: Json
+          response_hash: string
+          status_code: number
+        }
+        Insert: {
+          created_at?: string
+          endpoint: string
+          id?: string
+          idempotency_key: string
+          response_body: Json
+          response_hash: string
+          status_code?: number
+        }
+        Update: {
+          created_at?: string
+          endpoint?: string
+          id?: string
+          idempotency_key?: string
+          response_body?: Json
+          response_hash?: string
+          status_code?: number
+        }
+        Relationships: []
+      }
+      function_performance_logs: {
+        Row: {
+          executed_at: string | null
+          executed_by: string | null
+          execution_time_ms: number
+          function_name: string
+          id: string
+          parameters: Json | null
+          result_size: number | null
+        }
+        Insert: {
+          executed_at?: string | null
+          executed_by?: string | null
+          execution_time_ms: number
+          function_name: string
+          id?: string
+          parameters?: Json | null
+          result_size?: number | null
+        }
+        Update: {
+          executed_at?: string | null
+          executed_by?: string | null
+          execution_time_ms?: number
+          function_name?: string
+          id?: string
+          parameters?: Json | null
+          result_size?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "function_performance_logs_executed_by_fkey"
+            columns: ["executed_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "function_performance_logs_executed_by_fkey"
+            columns: ["executed_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      goal_versions: {
+        Row: {
+          baseline_data: string | null
+          change_reason: string | null
+          changed_at: string
+          changed_by: string
+          client_id: string
+          clinical_context: string | null
+          description: string
+          goal_id: string
+          id: string
+          measurement_type: string | null
+          organization_id: string
+          original_text: string
+          program_id: string
+          status: string
+          target_behavior: string | null
+          target_criteria: string | null
+          title: string
+        }
+        Insert: {
+          baseline_data?: string | null
+          change_reason?: string | null
+          changed_at?: string
+          changed_by: string
+          client_id: string
+          clinical_context?: string | null
+          description: string
+          goal_id: string
+          id?: string
+          measurement_type?: string | null
+          organization_id: string
+          original_text: string
+          program_id: string
+          status: string
+          target_behavior?: string | null
+          target_criteria?: string | null
+          title: string
+        }
+        Update: {
+          baseline_data?: string | null
+          change_reason?: string | null
+          changed_at?: string
+          changed_by?: string
+          client_id?: string
+          clinical_context?: string | null
+          description?: string
+          goal_id?: string
+          id?: string
+          measurement_type?: string | null
+          organization_id?: string
+          original_text?: string
+          program_id?: string
+          status?: string
+          target_behavior?: string | null
+          target_criteria?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goal_versions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_versions_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_versions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goal_versions_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      goals: {
+        Row: {
+          baseline_data: string | null
+          client_id: string
+          clinical_context: string | null
+          created_at: string
+          created_by: string | null
+          description: string
+          generalization_criteria: string | null
+          goal_type: string
+          id: string
+          maintenance_criteria: string | null
+          mastery_criteria: string | null
+          measurement_type: string | null
+          objective_data_points: Json
+          organization_id: string
+          original_text: string
+          program_id: string
+          status: string
+          target_behavior: string | null
+          target_criteria: string | null
+          title: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          baseline_data?: string | null
+          client_id: string
+          clinical_context?: string | null
+          created_at?: string
+          created_by?: string | null
+          description: string
+          generalization_criteria?: string | null
+          goal_type?: string
+          id?: string
+          maintenance_criteria?: string | null
+          mastery_criteria?: string | null
+          measurement_type?: string | null
+          objective_data_points?: Json
+          organization_id: string
+          original_text: string
+          program_id: string
+          status?: string
+          target_behavior?: string | null
+          target_criteria?: string | null
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          baseline_data?: string | null
+          client_id?: string
+          clinical_context?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          generalization_criteria?: string | null
+          goal_type?: string
+          id?: string
+          maintenance_criteria?: string | null
+          mastery_criteria?: string | null
+          measurement_type?: string | null
+          objective_data_points?: Json
+          organization_id?: string
+          original_text?: string
+          program_id?: string
+          status?: string
+          target_behavior?: string | null
+          target_criteria?: string | null
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goals_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      guardian_link_queue: {
+        Row: {
+          approved_client_ids: string[]
+          created_at: string
+          created_by: string | null
+          guardian_email: string
+          guardian_id: string
+          id: string
+          invite_token: string | null
+          metadata: Json
+          organization_id: string | null
+          processed_at: string | null
+          processed_by: string | null
+          requested_client_ids: string[]
+          resolution_notes: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          approved_client_ids?: string[]
+          created_at?: string
+          created_by?: string | null
+          guardian_email: string
+          guardian_id: string
+          id?: string
+          invite_token?: string | null
+          metadata?: Json
+          organization_id?: string | null
+          processed_at?: string | null
+          processed_by?: string | null
+          requested_client_ids?: string[]
+          resolution_notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          approved_client_ids?: string[]
+          created_at?: string
+          created_by?: string | null
+          guardian_email?: string
+          guardian_id?: string
+          id?: string
+          invite_token?: string | null
+          metadata?: Json
+          organization_id?: string | null
+          processed_at?: string | null
+          processed_by?: string | null
+          requested_client_ids?: string[]
+          resolution_notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guardian_link_queue_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guardian_link_queue_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "guardian_link_queue_guardian_id_fkey"
+            columns: ["guardian_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guardian_link_queue_guardian_id_fkey"
+            columns: ["guardian_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "guardian_link_queue_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guardian_link_queue_processed_by_fkey"
+            columns: ["processed_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guardian_link_queue_processed_by_fkey"
+            columns: ["processed_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      impersonation_audit: {
+        Row: {
+          actor_ip: unknown
+          actor_organization_id: string
+          actor_user_agent: string | null
+          actor_user_id: string
+          created_at: string
+          expires_at: string
+          id: string
+          issued_at: string
+          reason: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          target_organization_id: string
+          target_user_id: string
+          token_jti: string
+        }
+        Insert: {
+          actor_ip?: unknown
+          actor_organization_id: string
+          actor_user_agent?: string | null
+          actor_user_id: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          issued_at?: string
+          reason?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          target_organization_id: string
+          target_user_id: string
+          token_jti: string
+        }
+        Update: {
+          actor_ip?: unknown
+          actor_organization_id?: string
+          actor_user_agent?: string | null
+          actor_user_id?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          issued_at?: string
+          reason?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          target_organization_id?: string
+          target_user_id?: string
+          token_jti?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "impersonation_audit_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "impersonation_audit_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "impersonation_audit_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "impersonation_audit_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "impersonation_audit_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "impersonation_audit_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      impersonation_revocation_queue: {
+        Row: {
+          audit_id: string
+          created_at: string
+          error: string | null
+          id: string
+          processed_at: string | null
+          token_jti: string
+        }
+        Insert: {
+          audit_id: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          processed_at?: string | null
+          token_jti: string
+        }
+        Update: {
+          audit_id?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          processed_at?: string | null
+          token_jti?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "impersonation_revocation_queue_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "impersonation_audit"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      insurance_providers: {
+        Row: {
+          contact_phone: string | null
+          created_at: string | null
+          fax: string | null
+          id: string
+          name: string
+          type: string
+          updated_at: string | null
+          website: string | null
+        }
+        Insert: {
+          contact_phone?: string | null
+          created_at?: string | null
+          fax?: string | null
+          id?: string
+          name: string
+          type: string
+          updated_at?: string | null
+          website?: string | null
+        }
+        Update: {
+          contact_phone?: string | null
+          created_at?: string | null
+          fax?: string | null
+          id?: string
+          name?: string
+          type?: string
+          updated_at?: string | null
+          website?: string | null
+        }
+        Relationships: []
+      }
+      locations: {
+        Row: {
+          address_line1: string | null
+          address_line2: string | null
+          city: string | null
+          created_at: string | null
+          email: string | null
+          fax: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          operating_hours: Json | null
+          organization_id: string | null
+          phone: string | null
+          state: string | null
+          type: string
+          updated_at: string | null
+          zip_code: string | null
+        }
+        Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          created_at?: string | null
+          email?: string | null
+          fax?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          operating_hours?: Json | null
+          organization_id?: string | null
+          phone?: string | null
+          state?: string | null
+          type: string
+          updated_at?: string | null
+          zip_code?: string | null
+        }
+        Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          created_at?: string | null
+          email?: string | null
+          fax?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          operating_hours?: Json | null
+          organization_id?: string | null
+          phone?: string | null
+          state?: string | null
+          type?: string
+          updated_at?: string | null
+          zip_code?: string | null
+        }
+        Relationships: []
+      }
+      organization_feature_flags: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          feature_flag_id: string
+          id: string
+          is_enabled: boolean
+          organization_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          feature_flag_id: string
+          id?: string
+          is_enabled?: boolean
+          organization_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          feature_flag_id?: string
+          id?: string
+          is_enabled?: boolean
+          organization_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_feature_flags_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_feature_flags_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "organization_feature_flags_feature_flag_id_fkey"
+            columns: ["feature_flag_id"]
+            isOneToOne: false
+            referencedRelation: "feature_flags"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_feature_flags_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_feature_flags_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_feature_flags_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      organization_plans: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          notes: string | null
+          organization_id: string
+          plan_code: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          notes?: string | null
+          organization_id: string
+          plan_code: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          notes?: string | null
+          organization_id?: string
+          plan_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_plans_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_plans_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "organization_plans_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_plans_plan_code_fkey"
+            columns: ["plan_code"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      organizations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          metadata: Json | null
+          name: string | null
+          slug: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id: string
+          metadata?: Json | null
+          name?: string | null
+          slug?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          metadata?: Json | null
+          name?: string | null
+          slug?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organizations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organizations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "organizations_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organizations_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      performance_alerts: {
+        Row: {
+          alert_type: string
+          created_at: string | null
+          current_value: number
+          escalated: boolean | null
+          id: string
+          message: string
+          metric_name: string
+          resolved: boolean | null
+          resolved_at: string | null
+          threshold_value: number
+        }
+        Insert: {
+          alert_type: string
+          created_at?: string | null
+          current_value: number
+          escalated?: boolean | null
+          id?: string
+          message: string
+          metric_name: string
+          resolved?: boolean | null
+          resolved_at?: string | null
+          threshold_value: number
+        }
+        Update: {
+          alert_type?: string
+          created_at?: string | null
+          current_value?: number
+          escalated?: boolean | null
+          id?: string
+          message?: string
+          metric_name?: string
+          resolved?: boolean | null
+          resolved_at?: string | null
+          threshold_value?: number
+        }
+        Relationships: []
+      }
+      performance_baselines: {
+        Row: {
+          baseline_value: number
+          confidence_level: number
+          created_at: string
+          critical_threshold: number
+          id: string
+          is_active: boolean | null
+          measured_at: string
+          metric_name: string
+          sample_size: number
+          updated_at: string
+          warning_threshold: number
+        }
+        Insert: {
+          baseline_value: number
+          confidence_level: number
+          created_at?: string
+          critical_threshold: number
+          id: string
+          is_active?: boolean | null
+          measured_at: string
+          metric_name: string
+          sample_size: number
+          updated_at?: string
+          warning_threshold: number
+        }
+        Update: {
+          baseline_value?: number
+          confidence_level?: number
+          created_at?: string
+          critical_threshold?: number
+          id?: string
+          is_active?: boolean | null
+          measured_at?: string
+          metric_name?: string
+          sample_size?: number
+          updated_at?: string
+          warning_threshold?: number
+        }
+        Relationships: []
+      }
+      plans: {
+        Row: {
+          code: string
+          created_at: string
+          description: string | null
+          is_active: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description?: string | null
+          is_active?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          description?: string | null
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          email: string
+          first_name: string | null
+          full_name: string | null
+          id: string
+          is_active: boolean | null
+          last_login_at: string | null
+          last_name: string | null
+          organization_id: string | null
+          phone: string | null
+          preferences: Json | null
+          role: Database["public"]["Enums"]["role_type"]
+          time_zone: string | null
+          title: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email: string
+          first_name?: string | null
+          full_name?: string | null
+          id: string
+          is_active?: boolean | null
+          last_login_at?: string | null
+          last_name?: string | null
+          organization_id?: string | null
+          phone?: string | null
+          preferences?: Json | null
+          role?: Database["public"]["Enums"]["role_type"]
+          time_zone?: string | null
+          title?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string
+          first_name?: string | null
+          full_name?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_login_at?: string | null
+          last_name?: string | null
+          organization_id?: string | null
+          phone?: string | null
+          preferences?: Json | null
+          role?: Database["public"]["Enums"]["role_type"]
+          time_zone?: string | null
+          title?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      program_notes: {
+        Row: {
+          author_id: string | null
+          content: Json
+          created_at: string
+          id: string
+          note_type: string
+          organization_id: string
+          program_id: string
+          updated_at: string
+        }
+        Insert: {
+          author_id?: string | null
+          content?: Json
+          created_at?: string
+          id?: string
+          note_type: string
+          organization_id: string
+          program_id: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string | null
+          content?: Json
+          created_at?: string
+          id?: string
+          note_type?: string
+          organization_id?: string
+          program_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_notes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "program_notes_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      programs: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          end_date: string | null
+          id: string
+          name: string
+          organization_id: string
+          start_date: string | null
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          start_date?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          start_date?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "programs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "programs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      query_performance_metrics: {
+        Row: {
+          affected_rows: number | null
+          cache_hit: boolean | null
+          created_at: string
+          data_size_bytes: number | null
+          duration_ms: number
+          error_message: string | null
+          error_occurred: boolean | null
+          id: string
+          operation: string
+          query_complexity: string | null
+          query_key: string
+          session_id: string
+          timestamp: string
+          user_id: string | null
+        }
+        Insert: {
+          affected_rows?: number | null
+          cache_hit?: boolean | null
+          created_at?: string
+          data_size_bytes?: number | null
+          duration_ms: number
+          error_message?: string | null
+          error_occurred?: boolean | null
+          id?: string
+          operation: string
+          query_complexity?: string | null
+          query_key: string
+          session_id: string
+          timestamp?: string
+          user_id?: string | null
+        }
+        Update: {
+          affected_rows?: number | null
+          cache_hit?: boolean | null
+          created_at?: string
+          data_size_bytes?: number | null
+          duration_ms?: number
+          error_message?: string | null
+          error_occurred?: boolean | null
+          id?: string
+          operation?: string
+          query_complexity?: string | null
+          query_key?: string
+          session_id?: string
+          timestamp?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "query_performance_metrics_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "query_performance_metrics_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      referring_providers: {
+        Row: {
+          address_line1: string | null
+          address_line2: string | null
+          city: string | null
+          created_at: string | null
+          credentials: string[] | null
+          email: string | null
+          facility_name: string | null
+          fax: string | null
+          first_name: string
+          id: string
+          is_active: boolean | null
+          last_name: string
+          npi_number: string | null
+          phone: string | null
+          specialty: string | null
+          state: string | null
+          updated_at: string | null
+          zip_code: string | null
+        }
+        Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          created_at?: string | null
+          credentials?: string[] | null
+          email?: string | null
+          facility_name?: string | null
+          fax?: string | null
+          first_name: string
+          id?: string
+          is_active?: boolean | null
+          last_name: string
+          npi_number?: string | null
+          phone?: string | null
+          specialty?: string | null
+          state?: string | null
+          updated_at?: string | null
+          zip_code?: string | null
+        }
+        Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          created_at?: string | null
+          credentials?: string[] | null
+          email?: string | null
+          facility_name?: string | null
+          fax?: string | null
+          first_name?: string
+          id?: string
+          is_active?: boolean | null
+          last_name?: string
+          npi_number?: string | null
+          phone?: string | null
+          specialty?: string | null
+          state?: string | null
+          updated_at?: string | null
+          zip_code?: string | null
+        }
+        Relationships: []
+      }
+      roles: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_system_role: boolean | null
+          name: string
+          permissions: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_system_role?: boolean | null
+          name: string
+          permissions?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_system_role?: boolean | null
+          name?: string
+          permissions?: Json | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      scheduling_orchestration_runs: {
+        Row: {
+          correlation_id: string
+          created_at: string
+          id: string
+          inputs: Json | null
+          organization_id: string | null
+          outputs: Json | null
+          request_id: string
+          rollback_plan: Json | null
+          status: string
+          workflow: string
+        }
+        Insert: {
+          correlation_id: string
+          created_at?: string
+          id?: string
+          inputs?: Json | null
+          organization_id?: string | null
+          outputs?: Json | null
+          request_id: string
+          rollback_plan?: Json | null
+          status: string
+          workflow: string
+        }
+        Update: {
+          correlation_id?: string
+          created_at?: string
+          id?: string
+          inputs?: Json | null
+          organization_id?: string | null
+          outputs?: Json | null
+          request_id?: string
+          rollback_plan?: Json | null
+          status?: string
+          workflow?: string
+        }
+        Relationships: []
+      }
+      scheduling_preferences: {
+        Row: {
+          avoid_highways: boolean | null
+          created_at: string | null
+          end_location: string | null
+          id: string
+          max_consecutive_sessions: number | null
+          max_daily_hours: number | null
+          min_break_minutes: number | null
+          preferred_break_minutes: number | null
+          start_location: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          avoid_highways?: boolean | null
+          created_at?: string | null
+          end_location?: string | null
+          id?: string
+          max_consecutive_sessions?: number | null
+          max_daily_hours?: number | null
+          min_break_minutes?: number | null
+          preferred_break_minutes?: number | null
+          start_location?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          avoid_highways?: boolean | null
+          created_at?: string | null
+          end_location?: string | null
+          id?: string
+          max_consecutive_sessions?: number | null
+          max_daily_hours?: number | null
+          min_break_minutes?: number | null
+          preferred_break_minutes?: number | null
+          start_location?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      service_areas: {
+        Row: {
+          center_latitude: number
+          center_longitude: number
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          radius_km: number
+          updated_at: string | null
+        }
+        Insert: {
+          center_latitude: number
+          center_longitude: number
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          radius_km: number
+          updated_at?: string | null
+        }
+        Update: {
+          center_latitude?: number
+          center_longitude?: number
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          radius_km?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      service_contract_rates: {
+        Row: {
+          contract_id: string
+          cpt_code_id: string
+          created_at: string
+          id: string
+          modifiers: string[]
+          organization_id: string
+          rate: number
+          updated_at: string
+        }
+        Insert: {
+          contract_id: string
+          cpt_code_id: string
+          created_at?: string
+          id?: string
+          modifiers?: string[]
+          organization_id: string
+          rate: number
+          updated_at?: string
+        }
+        Update: {
+          contract_id?: string
+          cpt_code_id?: string
+          created_at?: string
+          id?: string
+          modifiers?: string[]
+          organization_id?: string
+          rate?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_contract_rates_contract_fk"
+            columns: ["contract_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "service_contracts"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "service_contract_rates_cpt_code_id_fkey"
+            columns: ["cpt_code_id"]
+            isOneToOne: false
+            referencedRelation: "cpt_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_contract_rates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_contract_versions: {
+        Row: {
+          contract_id: string
+          file_url: string | null
+          id: string
+          organization_id: string
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          contract_id: string
+          file_url?: string | null
+          id?: string
+          organization_id: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          contract_id?: string
+          file_url?: string | null
+          id?: string
+          organization_id?: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_contract_versions_contract_fk"
+            columns: ["contract_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "service_contracts"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "service_contract_versions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_contract_versions_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_contract_versions_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      service_contracts: {
+        Row: {
+          authorized_units: number
+          client_id: string
+          confidence_score: number | null
+          created_at: string
+          created_by: string | null
+          effective_date: string
+          file_url: string | null
+          id: string
+          insurance_provider_id: string | null
+          organization_id: string
+          payer_name: string
+          reimbursement_method: string
+          termination_date: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          authorized_units?: number
+          client_id: string
+          confidence_score?: number | null
+          created_at?: string
+          created_by?: string | null
+          effective_date: string
+          file_url?: string | null
+          id?: string
+          insurance_provider_id?: string | null
+          organization_id: string
+          payer_name: string
+          reimbursement_method?: string
+          termination_date?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          authorized_units?: number
+          client_id?: string
+          confidence_score?: number | null
+          created_at?: string
+          created_by?: string | null
+          effective_date?: string
+          file_url?: string | null
+          id?: string
+          insurance_provider_id?: string | null
+          organization_id?: string
+          payer_name?: string
+          reimbursement_method?: string
+          termination_date?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_contracts_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_contracts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_contracts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "service_contracts_insurance_provider_id_fkey"
+            columns: ["insurance_provider_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_providers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_contracts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_contracts_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_contracts_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      service_lines: {
+        Row: {
+          available_locations: string[] | null
+          billable: boolean | null
+          code: string | null
+          created_at: string | null
+          description: string | null
+          documentation_required: boolean | null
+          id: string
+          is_active: boolean | null
+          name: string
+          rate_per_hour: number | null
+          requires_authorization: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          available_locations?: string[] | null
+          billable?: boolean | null
+          code?: string | null
+          created_at?: string | null
+          description?: string | null
+          documentation_required?: boolean | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          rate_per_hour?: number | null
+          requires_authorization?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          available_locations?: string[] | null
+          billable?: boolean | null
+          code?: string | null
+          created_at?: string | null
+          description?: string | null
+          documentation_required?: boolean | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          rate_per_hour?: number | null
+          requires_authorization?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      session_audit_logs: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          event_payload: Json
+          event_type: string
+          id: string
+          organization_id: string
+          session_id: string
+          therapist_id: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          event_payload?: Json
+          event_type: string
+          id?: string
+          organization_id: string
+          session_id: string
+          therapist_id?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          event_payload?: Json
+          event_type?: string
+          id?: string
+          organization_id?: string
+          session_id?: string
+          therapist_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_audit_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_audit_logs_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_audit_logs_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_cpt_entries: {
+        Row: {
+          billed_minutes: number | null
+          cpt_code_id: string
+          created_at: string
+          id: string
+          is_primary: boolean
+          line_number: number
+          notes: string | null
+          organization_id: string | null
+          rate: number | null
+          session_id: string
+          units: number
+          updated_at: string
+        }
+        Insert: {
+          billed_minutes?: number | null
+          cpt_code_id: string
+          created_at?: string
+          id?: string
+          is_primary?: boolean
+          line_number?: number
+          notes?: string | null
+          organization_id?: string | null
+          rate?: number | null
+          session_id: string
+          units?: number
+          updated_at?: string
+        }
+        Update: {
+          billed_minutes?: number | null
+          cpt_code_id?: string
+          created_at?: string
+          id?: string
+          is_primary?: boolean
+          line_number?: number
+          notes?: string | null
+          organization_id?: string | null
+          rate?: number | null
+          session_id?: string
+          units?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_cpt_entries_cpt_code_id_fkey"
+            columns: ["cpt_code_id"]
+            isOneToOne: false
+            referencedRelation: "cpt_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_cpt_entries_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_cpt_modifiers: {
+        Row: {
+          id: number
+          modifier_id: string
+          position: number
+          session_cpt_entry_id: string
+        }
+        Insert: {
+          id?: never
+          modifier_id: string
+          position: number
+          session_cpt_entry_id: string
+        }
+        Update: {
+          id?: never
+          modifier_id?: string
+          position?: number
+          session_cpt_entry_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_cpt_modifiers_modifier_id_fkey"
+            columns: ["modifier_id"]
+            isOneToOne: false
+            referencedRelation: "billing_modifiers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_cpt_modifiers_session_cpt_entry_id_fkey"
+            columns: ["session_cpt_entry_id"]
+            isOneToOne: false
+            referencedRelation: "session_cpt_details_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_cpt_modifiers_session_cpt_entry_id_fkey"
+            columns: ["session_cpt_entry_id"]
+            isOneToOne: false
+            referencedRelation: "session_cpt_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_goals: {
+        Row: {
+          client_id: string
+          created_at: string
+          goal_id: string
+          organization_id: string
+          program_id: string
+          session_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          goal_id: string
+          organization_id: string
+          program_id: string
+          session_id: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          goal_id?: string
+          organization_id?: string
+          program_id?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_goals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_goals_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_goals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_goals_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_goals_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_holds: {
+        Row: {
+          client_id: string
+          created_at: string
+          end_time: string
+          expires_at: string
+          hold_key: string
+          id: string
+          organization_id: string
+          session_id: string | null
+          start_time: string
+          therapist_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          end_time: string
+          expires_at?: string
+          hold_key?: string
+          id?: string
+          organization_id: string
+          session_id?: string | null
+          start_time: string
+          therapist_id: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          end_time?: string
+          expires_at?: string
+          hold_key?: string
+          id?: string
+          organization_id?: string
+          session_id?: string | null
+          start_time?: string
+          therapist_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_holds_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_holds_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_holds_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_holds_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_note_pdf_exports: {
+        Row: {
+          client_id: string
+          completed_at: string | null
+          created_at: string
+          error: string | null
+          expires_at: string | null
+          id: string
+          note_ids: string[]
+          organization_id: string
+          request_id: string | null
+          requested_by: string
+          started_at: string | null
+          status: string
+          storage_bucket: string
+          storage_path: string | null
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          expires_at?: string | null
+          id?: string
+          note_ids: string[]
+          organization_id: string
+          request_id?: string | null
+          requested_by: string
+          started_at?: string | null
+          status?: string
+          storage_bucket?: string
+          storage_path?: string | null
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          expires_at?: string | null
+          id?: string
+          note_ids?: string[]
+          organization_id?: string
+          request_id?: string | null
+          requested_by?: string
+          started_at?: string | null
+          status?: string
+          storage_bucket?: string
+          storage_path?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_note_pdf_exports_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_note_pdf_exports_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_note_templates: {
+        Row: {
+          compliance_requirements: Json | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_california_compliant: boolean | null
+          organization_id: string | null
+          template_name: string
+          template_structure: Json
+          template_type: string
+          updated_at: string | null
+        }
+        Insert: {
+          compliance_requirements?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_california_compliant?: boolean | null
+          organization_id?: string | null
+          template_name: string
+          template_structure: Json
+          template_type: string
+          updated_at?: string | null
+        }
+        Update: {
+          compliance_requirements?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_california_compliant?: boolean | null
+          organization_id?: string | null
+          template_name?: string
+          template_structure?: Json
+          template_type?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_note_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_note_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      session_transcript_segments: {
+        Row: {
+          behavioral_markers: Json | null
+          confidence: number | null
+          created_at: string | null
+          end_time: number
+          id: string
+          organization_id: string | null
+          session_id: string
+          speaker: string
+          start_time: number
+          text: string
+        }
+        Insert: {
+          behavioral_markers?: Json | null
+          confidence?: number | null
+          created_at?: string | null
+          end_time: number
+          id?: string
+          organization_id?: string | null
+          session_id: string
+          speaker: string
+          start_time: number
+          text: string
+        }
+        Update: {
+          behavioral_markers?: Json | null
+          confidence?: number | null
+          created_at?: string | null
+          end_time?: number
+          id?: string
+          organization_id?: string | null
+          session_id?: string
+          speaker?: string
+          start_time?: number
+          text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_transcript_segments_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_transcripts: {
+        Row: {
+          confidence_score: number | null
+          created_at: string | null
+          id: string
+          organization_id: string | null
+          processed_transcript: string
+          raw_transcript: string
+          session_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string | null
+          id?: string
+          organization_id?: string | null
+          processed_transcript: string
+          raw_transcript: string
+          session_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string | null
+          id?: string
+          organization_id?: string | null
+          processed_transcript?: string
+          raw_transcript?: string
+          session_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_transcripts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sessions: {
+        Row: {
+          client_id: string
+          created_at: string | null
+          created_by: string | null
+          duration_minutes: number | null
+          end_time: string
+          goal_id: string
+          has_transcription_consent: boolean
+          id: string
+          location_type: string | null
+          notes: string | null
+          organization_id: string
+          program_id: string
+          rate_per_hour: number | null
+          session_date: string | null
+          session_type: string | null
+          start_time: string
+          started_at: string | null
+          status: string
+          therapist_id: string
+          total_cost: number | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string | null
+          created_by?: string | null
+          duration_minutes?: number | null
+          end_time: string
+          goal_id: string
+          has_transcription_consent?: boolean
+          id?: string
+          location_type?: string | null
+          notes?: string | null
+          organization_id: string
+          program_id: string
+          rate_per_hour?: number | null
+          session_date?: string | null
+          session_type?: string | null
+          start_time: string
+          started_at?: string | null
+          status?: string
+          therapist_id: string
+          total_cost?: number | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string | null
+          created_by?: string | null
+          duration_minutes?: number | null
+          end_time?: string
+          goal_id?: string
+          has_transcription_consent?: boolean
+          id?: string
+          location_type?: string | null
+          notes?: string | null
+          organization_id?: string
+          program_id?: string
+          rate_per_hour?: number | null
+          session_date?: string | null
+          session_type?: string | null
+          start_time?: string
+          started_at?: string | null
+          status?: string
+          therapist_id?: string
+          total_cost?: number | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sessions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      system_performance_metrics: {
+        Row: {
+          id: string
+          metric_type: string
+          threshold_breached: boolean | null
+          timestamp: string | null
+          unit: string
+          value: number
+        }
+        Insert: {
+          id?: string
+          metric_type: string
+          threshold_breached?: boolean | null
+          timestamp?: string | null
+          unit: string
+          value: number
+        }
+        Update: {
+          id?: string
+          metric_type?: string
+          threshold_breached?: boolean | null
+          timestamp?: string | null
+          unit?: string
+          value?: number
+        }
+        Relationships: []
+      }
+      therapist_availability: {
+        Row: {
+          created_at: string | null
+          day_of_week: string
+          end_time: string
+          id: string
+          is_recurring: boolean | null
+          organization_id: string
+          service_types: string[] | null
+          start_time: string
+          therapist_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          day_of_week: string
+          end_time: string
+          id?: string
+          is_recurring?: boolean | null
+          organization_id: string
+          service_types?: string[] | null
+          start_time: string
+          therapist_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          day_of_week?: string
+          end_time?: string
+          id?: string
+          is_recurring?: boolean | null
+          organization_id?: string
+          service_types?: string[] | null
+          start_time?: string
+          therapist_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "therapist_availability_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      therapist_certifications: {
+        Row: {
+          created_at: string | null
+          expiry_date: string | null
+          file_name: string
+          file_size: number
+          file_type: string
+          file_url: string
+          id: string
+          issue_date: string
+          name: string
+          notes: string | null
+          organization_id: string
+          status: string
+          therapist_id: string
+          type: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          expiry_date?: string | null
+          file_name: string
+          file_size: number
+          file_type: string
+          file_url: string
+          id?: string
+          issue_date: string
+          name: string
+          notes?: string | null
+          organization_id?: string
+          status?: string
+          therapist_id: string
+          type: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          expiry_date?: string | null
+          file_name?: string
+          file_size?: number
+          file_type?: string
+          file_url?: string
+          id?: string
+          issue_date?: string
+          name?: string
+          notes?: string | null
+          organization_id?: string
+          status?: string
+          therapist_id?: string
+          type?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "therapist_certifications_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      therapist_documents: {
+        Row: {
+          bucket_id: string
+          created_at: string
+          document_key: string
+          id: string
+          object_path: string
+          organization_id: string
+          therapist_id: string
+        }
+        Insert: {
+          bucket_id?: string
+          created_at?: string
+          document_key: string
+          id?: string
+          object_path: string
+          organization_id: string
+          therapist_id: string
+        }
+        Update: {
+          bucket_id?: string
+          created_at?: string
+          document_key?: string
+          id?: string
+          object_path?: string
+          organization_id?: string
+          therapist_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "therapist_documents_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      therapists: {
+        Row: {
+          availability_hours: Json | null
+          avoid_rush_hour: boolean | null
+          bcba_number: string | null
+          city: string | null
+          created_at: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          email: string
+          employee_type: string | null
+          facility: string | null
+          first_name: string
+          full_name: string
+          id: string
+          last_name: string
+          latitude: number | null
+          license_number: string | null
+          longitude: number | null
+          max_clients: number | null
+          max_daily_travel_minutes: number | null
+          medicaid_id: string | null
+          middle_name: string | null
+          npi_number: string | null
+          organization_id: string
+          phone: string | null
+          practitioner_id: string | null
+          preferred_areas: string[] | null
+          rbt_number: string | null
+          service_radius_km: number | null
+          service_type: string[] | null
+          specialties: string[] | null
+          staff_id: string | null
+          state: string | null
+          status: string
+          street: string | null
+          supervisor: string | null
+          taxonomy_code: string | null
+          time_zone: string | null
+          title: string | null
+          weekly_hours_max: number | null
+          weekly_hours_min: number | null
+          zip_code: string | null
+        }
+        Insert: {
+          availability_hours?: Json | null
+          avoid_rush_hour?: boolean | null
+          bcba_number?: string | null
+          city?: string | null
+          created_at?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          email: string
+          employee_type?: string | null
+          facility?: string | null
+          first_name: string
+          full_name: string
+          id?: string
+          last_name: string
+          latitude?: number | null
+          license_number?: string | null
+          longitude?: number | null
+          max_clients?: number | null
+          max_daily_travel_minutes?: number | null
+          medicaid_id?: string | null
+          middle_name?: string | null
+          npi_number?: string | null
+          organization_id: string
+          phone?: string | null
+          practitioner_id?: string | null
+          preferred_areas?: string[] | null
+          rbt_number?: string | null
+          service_radius_km?: number | null
+          service_type?: string[] | null
+          specialties?: string[] | null
+          staff_id?: string | null
+          state?: string | null
+          status?: string
+          street?: string | null
+          supervisor?: string | null
+          taxonomy_code?: string | null
+          time_zone?: string | null
+          title?: string | null
+          weekly_hours_max?: number | null
+          weekly_hours_min?: number | null
+          zip_code?: string | null
+        }
+        Update: {
+          availability_hours?: Json | null
+          avoid_rush_hour?: boolean | null
+          bcba_number?: string | null
+          city?: string | null
+          created_at?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          email?: string
+          employee_type?: string | null
+          facility?: string | null
+          first_name?: string
+          full_name?: string
+          id?: string
+          last_name?: string
+          latitude?: number | null
+          license_number?: string | null
+          longitude?: number | null
+          max_clients?: number | null
+          max_daily_travel_minutes?: number | null
+          medicaid_id?: string | null
+          middle_name?: string | null
+          npi_number?: string | null
+          organization_id?: string
+          phone?: string | null
+          practitioner_id?: string | null
+          preferred_areas?: string[] | null
+          rbt_number?: string | null
+          service_radius_km?: number | null
+          service_type?: string[] | null
+          specialties?: string[] | null
+          staff_id?: string | null
+          state?: string | null
+          status?: string
+          street?: string | null
+          supervisor?: string | null
+          taxonomy_code?: string | null
+          time_zone?: string | null
+          title?: string | null
+          weekly_hours_max?: number | null
+          weekly_hours_min?: number | null
+          zip_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "therapists_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "therapists_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      user_profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          email: string
+          first_name: string | null
+          full_name: string | null
+          id: string
+          is_active: boolean | null
+          last_login_at: string | null
+          last_name: string | null
+          phone: string | null
+          preferences: Json | null
+          time_zone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email: string
+          first_name?: string | null
+          full_name?: string | null
+          id: string
+          is_active?: boolean | null
+          last_login_at?: string | null
+          last_name?: string | null
+          phone?: string | null
+          preferences?: Json | null
+          time_zone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string
+          first_name?: string | null
+          full_name?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_login_at?: string | null
+          last_name?: string | null
+          phone?: string | null
+          preferences?: Json | null
+          time_zone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_profiles_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_profiles_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          expires_at: string | null
+          granted_at: string | null
+          granted_by: string | null
+          id: string
+          is_active: boolean | null
+          role_id: string
+          user_id: string
+        }
+        Insert: {
+          expires_at?: string | null
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          role_id: string
+          user_id: string
+        }
+        Update: {
+          expires_at?: string | null
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          role_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_roles_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_roles_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_roles_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "roles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_roles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_roles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      user_sessions: {
+        Row: {
+          created_at: string | null
+          expires_at: string
+          id: string
+          ip_address: unknown
+          is_active: boolean | null
+          last_activity: string | null
+          session_token: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          expires_at: string
+          id?: string
+          ip_address?: unknown
+          is_active?: boolean | null
+          last_activity?: string | null
+          session_token: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          expires_at?: string
+          id?: string
+          ip_address?: unknown
+          is_active?: boolean | null
+          last_activity?: string | null
+          session_token?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      user_therapist_links: {
+        Row: {
+          created_at: string
+          id: string
+          therapist_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          therapist_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          therapist_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_therapist_links_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_therapist_links_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_therapist_links_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      admin_users: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          id: string | null
+          raw_user_meta_data: Json | null
+          user_id: string | null
+          user_role_id: string | null
+        }
+        Relationships: []
+      }
+      app_users_safe: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      session_cpt_details_vw: {
+        Row: {
+          billed_minutes: number | null
+          client_id: string | null
+          cpt_code: string | null
+          cpt_code_id: string | null
+          created_at: string | null
+          end_time: string | null
+          id: string | null
+          is_primary: boolean | null
+          line_number: number | null
+          modifier_codes: string[] | null
+          notes: string | null
+          rate: number | null
+          session_id: string | null
+          short_description: string | null
+          start_time: string | null
+          therapist_id: string | null
+          units: number | null
+          updated_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_cpt_entries_cpt_code_id_fkey"
+            columns: ["cpt_code_id"]
+            isOneToOne: false
+            referencedRelation: "cpt_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_cpt_entries_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Functions: {
+      _is_admin: { Args: { uid: string }; Returns: boolean }
+      _is_therapist: { Args: { uid: string }; Returns: boolean }
+      acquire_session_hold:
+        | {
+            Args: {
+              p_client_id: string
+              p_end_time: string
+              p_hold_seconds?: number
+              p_session_id?: string
+              p_start_time: string
+              p_therapist_id: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_actor_id?: string
+              p_client_id: string
+              p_end_time: string
+              p_hold_seconds?: number
+              p_session_id?: string
+              p_start_time: string
+              p_therapist_id: string
+            }
+            Returns: Json
+          }
+      admin_reset_user_password: {
+        Args: {
+          create_if_not_exists?: boolean
+          new_password: string
+          user_email: string
+        }
+        Returns: Json
+      }
+      analyze_therapist_workload: {
+        Args: { p_analysis_period?: number; p_therapist_id?: string }
+        Returns: {
+          efficiency_score: number
+          recommendations: Json
+          target_hours: number
+          therapist_id: string
+          therapist_name: string
+          total_hours: number
+          utilization_rate: number
+          workload_distribution: Json
+        }[]
+      }
+      assign_admin_role: {
+        Args: { organization_id: string; reason?: string; user_email: string }
+        Returns: undefined
+      }
+      assign_therapist_role:
+        | { Args: { p_email: string; p_user_id: string }; Returns: undefined }
+        | { Args: { p_therapist_id: string }; Returns: undefined }
+      assign_user_role: {
+        Args: {
+          expires_at_param?: string
+          granted_by_uuid?: string
+          role_name: string
+          user_uuid: string
+        }
+        Returns: boolean
+      }
+      cache_ai_response: {
+        Args: {
+          p_cache_key: string
+          p_expires_at?: string
+          p_metadata: Json
+          p_query_text: string
+          p_response_text: string
+        }
+        Returns: undefined
+      }
+      calculate_efficiency_score: {
+        Args: {
+          p_actual_hours: number
+          p_session_count: number
+          p_therapist_id: string
+        }
+        Returns: number
+      }
+      calculate_therapist_client_compatibility: {
+        Args: { p_client_id: string; p_therapist_id: string }
+        Returns: number
+      }
+      calculate_time_slot_score: {
+        Args: {
+          p_client_id: string
+          p_client_prefs: Json
+          p_day_of_week: number
+          p_hour_of_day: number
+          p_slot_time: string
+          p_therapist_id: string
+          p_therapist_prefs: Json
+        }
+        Returns: number
+      }
+      can_access_client_documents: {
+        Args: { client_id: string }
+        Returns: boolean
+      }
+      check_migration_status: {
+        Args: never
+        Returns: {
+          applied_at: string
+          is_applied: boolean
+          migration_name: string
+        }[]
+      }
+      check_performance_thresholds: {
+        Args: { p_current_value: number; p_metric_name: string }
+        Returns: undefined
+      }
+      cleanup_ai_cache: { Args: never; Returns: number }
+      cleanup_expired_ai_cache: { Args: never; Returns: number }
+      cleanup_performance_data: { Args: never; Returns: number }
+      client_email_exists: { Args: { p_email: string }; Returns: boolean }
+      confirm_session_hold:
+        | { Args: { p_hold_key: string; p_session: Json }; Returns: Json }
+        | {
+            Args: {
+              p_actor_id: string
+              p_session_data: Json
+              p_session_hold_id: string
+            }
+            Returns: string
+          }
+      confirm_session_hold_with_enrichment: {
+        Args: {
+          p_actor_id?: string
+          p_cpt?: Json
+          p_goal_ids?: string[]
+          p_hold_key: string
+          p_session: Json
+        }
+        Returns: Json
+      }
+      confirm_session_holds_batch_with_enrichment: {
+        Args: { p_actor_id?: string; p_occurrences: Json }
+        Returns: Json
+      }
+      count_admin_users: { Args: { organization_id?: string }; Returns: number }
+      create_admin_invite: {
+        Args: {
+          p_email: string
+          p_role: Database["public"]["Enums"]["role_type"]
+        }
+        Returns: string
+      }
+      create_authorization_with_services: {
+        Args: {
+          p_authorization_number: string
+          p_client_id: string
+          p_diagnosis_code: string
+          p_diagnosis_description: string
+          p_end_date: string
+          p_insurance_provider_id?: string
+          p_member_id?: string
+          p_plan_type?: string
+          p_provider_id: string
+          p_services?: Json
+          p_start_date: string
+          p_status?: string
+        }
+        Returns: {
+          approval_notes: string | null
+          approved_at: string | null
+          approved_by: string | null
+          authorization_number: string
+          client_id: string
+          created_at: string | null
+          created_by: string
+          denial_reason: string | null
+          denied_at: string | null
+          diagnosis_code: string
+          diagnosis_description: string | null
+          documents: Json | null
+          end_date: string
+          id: string
+          insurance_provider_id: string | null
+          member_id: string | null
+          organization_id: string
+          plan_type: string | null
+          provider_id: string
+          start_date: string
+          status: string
+          updated_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "authorizations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_client: {
+        Args: { p_client_data: Json }
+        Returns: {
+          address_line1: string | null
+          address_line2: string | null
+          assessment_units: number | null
+          auth_end_date: string | null
+          auth_start_date: string | null
+          auth_units: number | null
+          authorized_hours_per_month: number | null
+          availability_hours: Json | null
+          avoid_rush_hour: boolean | null
+          cin_number: string | null
+          city: string | null
+          client_id: string | null
+          created_at: string | null
+          created_by: string | null
+          date_of_birth: string | null
+          daycare_after_school: boolean | null
+          deleted_at: string | null
+          deleted_by: string | null
+          diagnosis: string[] | null
+          documents: Json | null
+          email: string | null
+          first_name: string | null
+          full_name: string
+          gender: string | null
+          hours_provided_per_month: number | null
+          id: string
+          in_clinic: boolean | null
+          in_home: boolean | null
+          in_school: boolean | null
+          insurance_info: Json | null
+          last_name: string | null
+          latitude: number | null
+          longitude: number | null
+          max_travel_minutes: number | null
+          middle_name: string | null
+          notes: string | null
+          one_to_one_units: number | null
+          organization_id: string
+          parent_consult_units: number | null
+          parent1_email: string | null
+          parent1_first_name: string | null
+          parent1_last_name: string | null
+          parent1_phone: string | null
+          parent1_relationship: string | null
+          parent2_email: string | null
+          parent2_first_name: string | null
+          parent2_last_name: string | null
+          parent2_phone: string | null
+          parent2_relationship: string | null
+          phone: string | null
+          preferred_language: string | null
+          preferred_radius_km: number | null
+          preferred_session_time: string[] | null
+          referral_source: string | null
+          service_preference: string[] | null
+          state: string | null
+          status: string
+          supervision_units: number | null
+          therapist_assigned_at: string | null
+          therapist_id: string | null
+          unscheduled_hours: number | null
+          updated_at: string
+          updated_by: string | null
+          zip_code: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "clients"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_super_admin: { Args: { user_email: string }; Returns: undefined }
+      current_org_id: { Args: never; Returns: string }
+      current_user_is_super_admin: { Args: never; Returns: boolean }
+      current_user_organization_id: { Args: never; Returns: string }
+      detect_scheduling_conflicts: {
+        Args: {
+          p_end_date: string
+          p_include_suggestions?: boolean
+          p_start_date: string
+        }
+        Returns: {
+          affected_sessions: Json
+          conflict_id: string
+          conflict_type: string
+          severity: number
+          suggested_resolutions: Json
+        }[]
+      }
+      enqueue_impersonation_revocation:
+        | {
+            Args: { p_audit_id: string; p_token_jti: string }
+            Returns: undefined
+          }
+        | {
+            Args: { p_audit_id: string; p_token_jti: string }
+            Returns: undefined
+          }
+      ensure_admin_role:
+        | { Args: never; Returns: undefined }
+        | { Args: { user_email: string }; Returns: undefined }
+      ensure_all_users_admin: { Args: never; Returns: undefined }
+      ensure_user_has_admin_role:
+        | { Args: never; Returns: undefined }
+        | { Args: { p_user_id: string }; Returns: undefined }
+      generate_semantic_cache_key: {
+        Args: { p_context_hash?: string; p_query_text: string }
+        Returns: string
+      }
+      generate_slot_reasoning: {
+        Args: {
+          p_client_id: string
+          p_client_prefs: Json
+          p_slot_time: string
+          p_therapist_id: string
+          p_therapist_prefs: Json
+        }
+        Returns: Json
+      }
+      generate_workload_recommendations: {
+        Args: {
+          p_actual_hours: number
+          p_session_count: number
+          p_target_hours: number
+          p_therapist_id: string
+        }
+        Returns: Json
+      }
+      get_admin_users:
+        | { Args: never; Returns: Json }
+        | { Args: { p_org_id: string }; Returns: Json }
+      get_admin_users_paged: {
+        Args: { organization_id?: string; p_limit?: number; p_offset?: number }
+        Returns: {
+          created_at: string | null
+          email: string | null
+          id: string | null
+          raw_user_meta_data: Json | null
+          user_id: string | null
+          user_role_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "admin_users"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      get_ai_cache_metrics: {
+        Args: never
+        Returns: {
+          cache_size_mb: number
+          expired_entries: number
+          hit_rate: number
+          total_entries: number
+        }[]
+      }
+      get_alternative_therapists: {
+        Args: { p_client_id: string; p_end_time: string; p_start_time: string }
+        Returns: Json
+      }
+      get_alternative_times: {
+        Args: {
+          p_client_id: string
+          p_original_time: string
+          p_therapist_id: string
+        }
+        Returns: Json
+      }
+      get_authorization_metrics:
+        | {
+            Args: { p_end_date: string; p_start_date: string }
+            Returns: {
+              approved_authorizations: number
+              denied_authorizations: number
+              expired_authorizations: number
+              pending_authorizations: number
+              total_approved_units: number
+              total_authorizations: number
+              total_requested_units: number
+              units_by_service_code: Json
+            }[]
+          }
+        | {
+            Args: { p_end_date: string; p_start_date: string }
+            Returns: {
+              approval_rate: number
+              approval_ratio: number
+              approved_authorizations: number
+              denied_authorizations: number
+              expired_authorizations: number
+              pending_authorizations: number
+              total_approved_units: number
+              total_authorizations: number
+              total_requested_units: number
+            }[]
+          }
+      get_billing_metrics:
+        | {
+            Args: { p_end_date: string; p_start_date: string }
+            Returns: {
+              amount_by_client: Json
+              amount_by_status: Json
+              paid_amount: number
+              pending_amount: number
+              rejected_amount: number
+              total_billed: number
+            }[]
+          }
+        | {
+            Args: { p_end_date: string; p_start_date: string }
+            Returns: {
+              amount_by_client: Json
+              collection_rate: number
+              paid_amount: number
+              pending_amount: number
+              records_by_status: Json
+              rejected_amount: number
+              total_billed: number
+            }[]
+          }
+      get_cached_ai_response: {
+        Args: { p_cache_key: string }
+        Returns: {
+          metadata: Json
+          response_text: string
+        }[]
+      }
+      get_client_documents: { Args: { p_client_id: string }; Returns: Json }
+      get_client_metrics:
+        | {
+            Args: never
+            Returns: {
+              active_clients: number
+              new_clients_this_month: number
+              total_clients: number
+            }[]
+          }
+        | {
+            Args: { p_end_date: string; p_start_date: string }
+            Returns: {
+              active_clients: number
+              inactive_clients: number
+              new_clients: number
+              service_preferences: Json
+              sessions_per_client: Json
+              total_clients: number
+            }[]
+          }
+        | {
+            Args: { p_end_date: string; p_start_date: string }
+            Returns: {
+              active_clients: number
+              activity_rate: number
+              clients_by_age: Json
+              clients_by_gender: Json
+              clients_by_service_preference: Json
+              inactive_clients: number
+              total_clients: number
+            }[]
+          }
+      get_client_preference_factor: {
+        Args: { p_client_id: string; p_slot_time: string }
+        Returns: number
+      }
+      get_dashboard_data: { Args: never; Returns: Json }
+      get_db_version: { Args: never; Returns: string }
+      get_dropdown_data: { Args: never; Returns: Json }
+      get_guardian_client_portal: {
+        Args: { p_client_id?: string }
+        Returns: {
+          client_date_of_birth: string
+          client_email: string
+          client_full_name: string
+          client_id: string
+          client_phone: string
+          client_status: string
+          guardian_is_primary: boolean
+          guardian_notes: Json
+          guardian_relationship: string
+          upcoming_sessions: Json
+        }[]
+      }
+      get_historical_success_rate: {
+        Args: { p_client_id: string; p_therapist_id: string }
+        Returns: number
+      }
+      get_optimal_time_slots: {
+        Args: {
+          p_client_preferences: Json
+          p_date_range?: Json
+          p_duration?: number
+          p_therapist_preferences: Json
+        }
+        Returns: {
+          availability_data: Json
+          optimality_score: number
+          reasoning: Json
+          suggested_time: string
+        }[]
+      }
+      get_organization_id_from_metadata: {
+        Args: { p_metadata: Json }
+        Returns: string
+      }
+      get_performance_metrics: {
+        Args: { p_time_range?: string }
+        Returns: Json
+      }
+      get_performance_recommendations: {
+        Args: never
+        Returns: {
+          category: string
+          difficulty: string
+          estimated_improvement: string
+          impact: string
+          recommendation: string
+        }[]
+      }
+      get_recent_chat_history:
+        | {
+            Args: { p_conversation_id: string; p_limit?: number }
+            Returns: {
+              action_data: Json
+              action_type: string
+              content: string
+              context: Json
+              conversation_id: string
+              created_at: string
+              id: string
+              role: string
+            }[]
+          }
+        | {
+            Args: { p_conversation_id: string; p_limit?: number }
+            Returns: {
+              action_data: Json
+              action_type: string
+              content: string
+              context: Json
+              conversation_id: string
+              created_at: string
+              id: string
+              role: string
+            }[]
+          }
+      get_schedule_data_batch: {
+        Args: { p_end_date: string; p_start_date: string }
+        Returns: Json
+      }
+      get_scheduling_efficiency_factor: {
+        Args: { p_slot_time: string; p_therapist_id: string }
+        Returns: number
+      }
+      get_session_metrics:
+        | {
+            Args: {
+              p_client_id?: string
+              p_end_date: string
+              p_start_date: string
+              p_therapist_id?: string
+            }
+            Returns: {
+              cancelled_sessions: number
+              completed_sessions: number
+              no_show_sessions: number
+              sessions_by_client: Json
+              sessions_by_day: Json
+              sessions_by_therapist: Json
+              total_sessions: number
+            }[]
+          }
+        | {
+            Args: {
+              p_client_id?: string
+              p_end_date: string
+              p_start_date: string
+              p_therapist_id?: string
+            }
+            Returns: {
+              cancelled_sessions: number
+              completed_sessions: number
+              no_show_sessions: number
+              sessions_by_client: Json
+              sessions_by_day: Json
+              sessions_by_therapist: Json
+              total_sessions: number
+            }[]
+          }
+      get_session_notes_with_compliance: {
+        Args: { p_client_id: string; p_limit?: number }
+        Returns: {
+          ai_confidence_score: number
+          california_compliant: boolean
+          created_at: string
+          insurance_ready: boolean
+          note_id: string
+          session_date: string
+          signed_at: string
+          therapist_name: string
+        }[]
+      }
+      get_sessions_optimized: {
+        Args: {
+          p_client_id?: string
+          p_end_date: string
+          p_start_date: string
+          p_therapist_id?: string
+        }
+        Returns: {
+          session_data: Json
+        }[]
+      }
+      get_sessions_report:
+        | {
+            Args: { p_end_date: string; p_start_date: string }
+            Returns: {
+              client_name: string
+              session_day: string
+              session_id: string
+              session_type: string
+              status: string
+              therapist_name: string
+            }[]
+          }
+        | {
+            Args: {
+              p_client_id: string
+              p_end_date: string
+              p_start_date: string
+              p_status: string
+              p_therapist_id: string
+            }
+            Returns: {
+              client_name: string
+              session_day: string
+              session_id: string
+              session_type: string
+              status: string
+              therapist_name: string
+            }[]
+          }
+        | {
+            Args: {
+              p_client_id: string
+              p_end_date: string
+              p_start_date: string
+              p_status: string
+              p_therapist_id: string
+            }
+            Returns: {
+              client_name: string
+              session_day: string
+              session_id: string
+              session_type: string
+              status: string
+              therapist_name: string
+            }[]
+          }
+      get_slot_availability_context: {
+        Args: {
+          p_client_id: string
+          p_slot_time: string
+          p_therapist_id: string
+        }
+        Returns: Json
+      }
+      get_system_alerts: {
+        Args: { p_limit?: number }
+        Returns: {
+          alert_type: string
+          created_at: string
+          current_value: number
+          id: string
+          message: string
+          metric_name: string
+          resolved: boolean
+          threshold_value: number
+        }[]
+      }
+      get_therapist_availability: {
+        Args: { p_end: string; p_start: string; p_therapist_id: string }
+        Returns: Json
+      }
+      get_therapist_metrics:
+        | {
+            Args: { p_end_date: string; p_start_date: string }
+            Returns: {
+              active_therapists: number
+              inactive_therapists: number
+              service_types: Json
+              sessions_per_therapist: Json
+              specialties: Json
+              total_therapists: number
+            }[]
+          }
+        | {
+            Args: { p_end_date: string; p_start_date: string }
+            Returns: {
+              active_therapists: number
+              inactive_therapists: number
+              service_types: Json
+              sessions_per_therapist: Json
+              specialties: Json
+              total_therapists: number
+            }[]
+          }
+      get_therapist_workload_factor: {
+        Args: { p_slot_time: string; p_therapist_id: string }
+        Returns: number
+      }
+      get_user_role_from_junction: {
+        Args: { p_user_id: string }
+        Returns: Database["public"]["Enums"]["role_type"]
+      }
+      get_user_roles: { Args: { p_user_id?: string }; Returns: Json }
+      get_user_therapist_id: { Args: never; Returns: string }
+      guardian_contact_metadata: {
+        Args: { p_guardian_id?: string }
+        Returns: {
+          client_id: string
+          metadata: Json
+        }[]
+      }
+      guardian_link_queue_admin_view: {
+        Args: { p_organization_id: string; p_status?: string }
+        Returns: {
+          approved_client_ids: string[]
+          created_at: string
+          guardian_email: string
+          guardian_id: string
+          id: string
+          invite_token: string
+          metadata: Json
+          organization_id: string
+          processed_at: string
+          processed_by: string
+          requested_client_ids: string[]
+          status: string
+          updated_at: string
+        }[]
+      }
+      has_care_role: { Args: never; Returns: boolean }
+      has_role: { Args: { target_role: string }; Returns: boolean }
+      insert_session_with_billing: {
+        Args: {
+          p_cpt_code: string
+          p_modifiers?: string[]
+          p_session: Json
+          p_session_id?: string
+        }
+        Returns: Json
+      }
+      is_admin: { Args: never; Returns: boolean }
+      is_super_admin: { Args: never; Returns: boolean }
+      is_valid_email: { Args: { email: string }; Returns: boolean }
+      is_valid_url: { Args: { url: string }; Returns: boolean }
+      log_ai_performance:
+        | {
+            Args: {
+              function_name: string
+              parameters: Json
+              response_time: string
+              token_count: number
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_cache_hit?: boolean
+              p_conversation_id?: string
+              p_error_occurred?: boolean
+              p_function_called?: string
+              p_response_time_ms: number
+              p_token_usage?: Json
+              p_user_id?: string
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_cache_hit?: boolean
+              p_conversation_id?: string
+              p_error_occurred?: boolean
+              p_function_called?: string
+              p_response_time_ms: number
+              p_token_usage?: Json
+              p_user_id?: string
+            }
+            Returns: undefined
+          }
+      log_db_performance:
+        | {
+            Args: {
+              p_cache_hit?: boolean
+              p_execution_time_ms: number
+              p_query_type: string
+              p_rows_affected?: number
+              p_table_name?: string
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              execution_time: string
+              query_name: string
+              query_text: string
+            }
+            Returns: undefined
+          }
+      log_error_event:
+        | {
+            Args: {
+              p_context?: Json
+              p_details?: Json
+              p_error_type: string
+              p_message: string
+              p_severity?: string
+              p_stack_trace?: string
+              p_url?: string
+              p_user_agent?: string
+            }
+            Returns: undefined
+          }
+        | { Args: { payload: Json }; Returns: undefined }
+      log_function_performance:
+        | {
+            Args: {
+              p_duration_ms: number
+              p_function_name: string
+              p_result_size_kb?: number
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_execution_time_ms: number
+              p_function_name: string
+              p_parameters?: Json
+              p_result_size?: number
+            }
+            Returns: undefined
+          }
+      manage_admin_users:
+        | {
+            Args: { operation: string; target_user_id: string }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              caller_organization_id: string
+              operation: string
+              target_user_id: string
+            }
+            Returns: undefined
+          }
+      process_client_document: {
+        Args: {
+          p_client_id: string
+          p_document_type: string
+          p_file_name: string
+          p_file_path: string
+          p_file_size: number
+          p_file_type: string
+        }
+        Returns: Json
+      }
+      prune_admin_actions: {
+        Args: { retention_days?: number }
+        Returns: number
+      }
+      prune_admin_invite_tokens: { Args: never; Returns: number }
+      prune_session_transcripts: {
+        Args: { retention_days?: number }
+        Returns: {
+          deleted_segments: number
+          deleted_transcripts: number
+        }[]
+      }
+      record_session_audit: {
+        Args: {
+          p_actor_id?: string
+          p_event_payload?: Json
+          p_event_type: string
+          p_session_id: string
+        }
+        Returns: undefined
+      }
+      remove_user_role: {
+        Args: { removed_by_uuid?: string; role_name: string; user_uuid: string }
+        Returns: boolean
+      }
+      resolve_performance_alert: {
+        Args: { p_alert_id: string; p_resolution_note?: string }
+        Returns: boolean
+      }
+      start_session_with_goals: {
+        Args: {
+          p_actor_id?: string
+          p_goal_id: string
+          p_goal_ids?: string[]
+          p_program_id: string
+          p_session_id: string
+          p_started_at?: string
+        }
+        Returns: Json
+      }
+      temp_validate_time: { Args: never; Returns: undefined }
+      update_authorization_documents: {
+        Args: { p_authorization_id: string; p_documents: Json }
+        Returns: {
+          approval_notes: string | null
+          approved_at: string | null
+          approved_by: string | null
+          authorization_number: string
+          client_id: string
+          created_at: string | null
+          created_by: string
+          denial_reason: string | null
+          denied_at: string | null
+          diagnosis_code: string
+          diagnosis_description: string | null
+          documents: Json | null
+          end_date: string
+          id: string
+          insurance_provider_id: string | null
+          member_id: string | null
+          organization_id: string
+          plan_type: string | null
+          provider_id: string
+          start_date: string
+          status: string
+          updated_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "authorizations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_authorization_with_services: {
+        Args: {
+          p_authorization_id: string
+          p_authorization_number: string
+          p_client_id: string
+          p_diagnosis_code: string
+          p_diagnosis_description: string
+          p_end_date: string
+          p_insurance_provider_id: string
+          p_member_id: string
+          p_plan_type: string
+          p_provider_id: string
+          p_services?: Json
+          p_start_date: string
+          p_status: string
+        }
+        Returns: {
+          approval_notes: string | null
+          approved_at: string | null
+          approved_by: string | null
+          authorization_number: string
+          client_id: string
+          created_at: string | null
+          created_by: string
+          denial_reason: string | null
+          denied_at: string | null
+          diagnosis_code: string
+          diagnosis_description: string | null
+          documents: Json | null
+          end_date: string
+          id: string
+          insurance_provider_id: string | null
+          member_id: string | null
+          organization_id: string
+          plan_type: string | null
+          provider_id: string
+          start_date: string
+          status: string
+          updated_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "authorizations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_client_documents: {
+        Args: { p_client_id: string; p_documents: Json }
+        Returns: undefined
+      }
+      user_has_any_role: {
+        Args: { role_names: string[]; user_uuid?: string }
+        Returns: boolean
+      }
+      user_has_role:
+        | { Args: { role_name: string }; Returns: boolean }
+        | { Args: { role_name: string; user_uuid?: string }; Returns: boolean }
+      user_has_role_for_org: {
+        Args: {
+          role_name: string
+          target_client_id?: string
+          target_organization_id?: string
+          target_session_id?: string
+          target_therapist_id?: string
+        }
+        Returns: boolean
+      }
+      validate_feature_flag_metadata: { Args: { obj: Json }; Returns: boolean }
+      validate_organization_metadata: { Args: { obj: Json }; Returns: boolean }
+      validate_performance_improvements: { Args: never; Returns: Json }
+      validate_session_note_compliance: {
+        Args: { p_note_id: string }
+        Returns: Json
+      }
+      validate_time_interval_new: { Args: { t: string }; Returns: boolean }
+    }
+    Enums: {
+      role_type:
+        | "client"
+        | "therapist"
+        | "staff"
+        | "supervisor"
+        | "admin"
+        | "super_admin"
+    }
+    CompositeTypes: {
+      admin_user_row: {
+        id: string | null
+        user_role_id: string | null
+        user_id: string | null
+        email: string | null
+        created_at: string | null
+      }
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      role_type: [
+        "client",
+        "therapist",
+        "staff",
+        "supervisor",
+        "admin",
+        "super_admin",
+      ],
+    },
+  },
+} as const

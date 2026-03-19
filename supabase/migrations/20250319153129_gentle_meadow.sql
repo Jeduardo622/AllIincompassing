@@ -11,8 +11,8 @@
     - Keep function as SECURITY DEFINER
 */
 
--- Drop existing function if it exists in auth schema
-DROP FUNCTION IF EXISTS auth.get_user_roles;
+-- Drop legacy function from app schema before recreating in public.
+DROP FUNCTION IF EXISTS app.get_user_roles();
 
 -- Create function in public schema
 CREATE OR REPLACE FUNCTION public.get_user_roles()

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardList, Loader2, Plus, Trash2, UploadCloud } from "lucide-react";
 import type { Client, Goal, Program, ProgramNote } from "../../types";
@@ -42,6 +42,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   const { session } = useAuth();
+  const publishSectionRef = useRef<HTMLDivElement | null>(null);
   const assessmentDocumentsQueryKey = ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"] as const;
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [selectedAssessmentId, setSelectedAssessmentId] = useState<string | null>(null);
@@ -234,6 +235,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const hasRequiredAcceptedGoalMix =
     acceptedDraftChildGoalCount >= MIN_CHILD_GOALS && acceptedDraftParentGoalCount >= MIN_PARENT_GOALS;
   const hasStagedDraftChanges = hasExistingDrafts;
+  const hasDraftsButNoLivePrograms = hasExistingDrafts && programs.length === 0;
   const canPromoteAssessment =
     canQuerySelectedAssessment &&
     !hasPendingRequiredChecklistItems &&
@@ -813,9 +815,31 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
 
   return (
     <div className="space-y-6">
+      <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-4 py-3 text-sm text-sky-900 dark:border-sky-700/60 dark:bg-sky-900/20 dark:text-sky-100">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p>
+            Live care plan: <span className="font-semibold">{programs.length}</span> program(s) and{" "}
+            <span className="font-semibold">{goals.length}</span> goal(s) in the selected program.
+          </p>
+          {hasDraftsButNoLivePrograms && (
+            <button
+              type="button"
+              onClick={() => publishSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              className="rounded-md border border-sky-300 bg-white px-3 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-100 dark:border-sky-600 dark:bg-sky-950/40 dark:text-sky-200 dark:hover:bg-sky-900/50"
+            >
+              Review and publish drafts
+            </button>
+          )}
+        </div>
+        {hasDraftsButNoLivePrograms && (
+          <p className="mt-2 text-xs text-sky-800/90 dark:text-sky-100/90">
+            Uploaded assessments and AI proposals stay in draft review until you publish them to live Programs & Goals.
+          </p>
+        )}
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-4">
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+          <div ref={publishSectionRef} className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-2">
               <UploadCloud className="w-4 h-4" />
               FBA Upload + AI Workflow
@@ -1033,6 +1057,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
 
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Programs</h3>
+            <p className="mb-3 text-xs text-gray-500 dark:text-gray-300">
+              Live records only. Uploaded assessment drafts appear here after you publish.
+            </p>
             <div className="space-y-2">
               {programs.length === 0 && (
                 <p className="text-sm text-gray-500">No programs yet.</p>

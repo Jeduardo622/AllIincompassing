@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0
@@ -28,7 +29,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run Supabase migration lint
-        run: supabase db lint --linked
+        run: |
+          if [ -n "$SUPABASE_PROJECT_REF" ]; then
+            supabase db lint --project-ref "$SUPABASE_PROJECT_REF"
+          else
+            echo "SUPABASE_PROJECT_REF is not configured; skipping remote migration lint in this context."
+          fi
       - name: Record migration lint evidence
         if: always()
         run: npm run ci:write-evidence -- supabase-migration-lint "${{ job.status }}"

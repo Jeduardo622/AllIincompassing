@@ -151,6 +151,7 @@ const functionPaths = [
   'supabase/functions/assign-therapist-user',
   'supabase/functions/suggest-alternative-times',
   'supabase/functions/generate-report',
+  'supabase/functions/vet-dashboard-data',
   'supabase/functions/ai-transcription',
   'supabase/functions/ai-session-note-generator',
   'supabase/functions/ai-agent-optimized',
@@ -236,6 +237,11 @@ const API_ENDPOINTS: Record<string, ApiEndpointEntry> = {
     type: 'edge_function',
     name: 'generate-report',
     path: 'supabase/functions/generate-report',
+  },
+  '/functions/v1/vet-dashboard-data': {
+    type: 'edge_function',
+    name: 'vet-dashboard-data',
+    path: 'supabase/functions/vet-dashboard-data',
   },
   '/functions/v1/ai-transcription': {
     type: 'edge_function',

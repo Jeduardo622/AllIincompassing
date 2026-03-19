@@ -207,7 +207,7 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
         .select('id, status, start_time, end_time, therapist:therapists(id, full_name), client:clients(id, full_name)')
         // "incompleteSessions" means completed sessions still missing required notes.
         .eq('status', 'completed')
-        .or('notes.is.null,notes.eq.\"\"')
+        .or('notes.is.null,notes.eq.""')
         .order('start_time', { ascending: false })
         .limit(50)
         .returns<LegacySessionRow[]>(),

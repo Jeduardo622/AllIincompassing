@@ -41,6 +41,24 @@ CREATE INDEX IF NOT EXISTS idx_therapist_certifications_therapist_id ON therapis
 CREATE INDEX IF NOT EXISTS idx_therapist_certifications_status ON therapist_certifications(status);
 CREATE INDEX IF NOT EXISTS idx_therapist_certifications_expiry_date ON therapist_certifications(expiry_date);
 
+-- Ensure role helper exists before policy definitions in replay environments.
+CREATE OR REPLACE FUNCTION public.user_has_role(role_name text)
+RETURNS boolean AS $$
+DECLARE
+  has_role boolean;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1
+    FROM user_roles ur
+    JOIN roles r ON r.id = ur.role_id
+    WHERE ur.user_id = auth.uid()
+      AND r.name = role_name
+  ) INTO has_role;
+
+  RETURN has_role;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Drop existing policies if they exist
 DROP POLICY IF EXISTS "Therapist certifications are viewable by admin and assigned the" ON therapist_certifications;
 DROP POLICY IF EXISTS "Therapist certifications can be deleted by admin and assigned t" ON therapist_certifications;

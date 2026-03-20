@@ -29,6 +29,7 @@ vi.mock('../../lib/authContext', () => {
       loading: false,
       profileLoading: false,
       isGuardian: authIsGuardian,
+      effectiveRole: authRole,
       hasRole: (role: 'client' | 'therapist' | 'admin' | 'super_admin') => authRole === role,
       hasAnyRole: (roles: ('client' | 'therapist' | 'admin' | 'super_admin')[]) => roles.includes(authRole),
       signOut,
@@ -89,11 +90,13 @@ describe('App navigation landing', () => {
     mockLoggerInfo.mockReset();
   });
 
-  it('keeps plain clients on the dashboard', async () => {
+  it('redirects plain clients to documentation', async () => {
     window.history.pushState({}, '', '/');
     renderApp();
 
-    expect(await screen.findByText('DashboardPage')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/documentation');
+    });
   });
 
   it('redirects guardians to the family dashboard', async () => {
@@ -117,12 +120,14 @@ describe('App navigation landing', () => {
     });
   });
 
-  it('keeps therapists on the dashboard', async () => {
+  it('redirects therapists to schedule from dashboard landing', async () => {
     authRole = 'therapist';
     window.history.pushState({}, '', '/');
     renderApp();
 
-    expect(await screen.findByText('DashboardPage')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/schedule');
+    });
   });
 
   it('keeps admins on the dashboard', async () => {

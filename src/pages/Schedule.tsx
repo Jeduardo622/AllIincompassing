@@ -337,7 +337,7 @@ DayView.displayName = "DayView";
 
 export const Schedule = React.memo(() => {
   useCapturePendingScheduleEvent();
-  const { user, profile } = useAuth();
+  const { user, profile, effectiveRole } = useAuth();
   const activeOrganizationId = useActiveOrganizationId();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [view, setView] = useState<"day" | "week" | "matrix">("week");
@@ -598,7 +598,7 @@ export const Schedule = React.memo(() => {
     if (selectedTherapist) {
       return;
     }
-    if (profile?.role !== 'therapist') {
+    if (effectiveRole !== 'therapist') {
       return;
     }
 
@@ -637,7 +637,7 @@ export const Schedule = React.memo(() => {
       setSelectedTherapist(scopedMatch.id);
       setScopedTherapistId(scopedMatch.id);
     }
-  }, [selectedTherapist, profile?.role, profile?.id, profile?.preferences, user, displayData.therapists]);
+  }, [selectedTherapist, effectiveRole, profile?.id, profile?.preferences, user, displayData.therapists]);
 
   useEffect(() => {
     if (

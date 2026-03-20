@@ -1,12 +1,12 @@
 # Endpoint Ownership Matrix
 
-Last verified: `2026-03-18 (post critical/high remediation)`  
+Last verified: `2026-03-20 (dashboard authority convergence)`  
 Machine-readable source: `docs/api/endpoint-convergence-status.json`
 
 | Public API path | Current runtime | Authoritative target | Wave | Status | Owner | Exception expiry |
 |---|---|---|---|---|---|---|
 | `/api/runtime-config` | Netlify `runtime-config` | Netlify (bootstrap exception) | N/A | bootstrap | Platform | N/A |
-| `/api/dashboard` | Netlify `dashboard` transport adapter | Supabase edge `get-dashboard-data` | A | migrating_adapter | Backend Platform | 2026-05-15 |
+| `/api/dashboard` | Netlify `dashboard` transport adapter | Supabase edge `get-dashboard-data` | A | converged_adapter | Backend Platform | 2026-05-15 |
 | `/api/book` | Netlify `book` transport adapter | Supabase edge `sessions-book` (delegates to hold/confirm authority paths) | B | migrating_adapter | Backend Platform | 2026-05-15 |
 | `/api/sessions-start` | Netlify `sessions-start` transport adapter | Supabase edge `sessions-start` | B | migrating_adapter | Backend Platform | 2026-05-15 |
 | `/api/assessment-documents` | Netlify `assessment-documents` | Supabase edge `extract-assessment-fields` + assessment storage domain | A | migrating | Backend Platform | 2026-04-30 |

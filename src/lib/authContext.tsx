@@ -266,8 +266,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const effectiveRole = useMemo<Role>(() => {
     if (profileRole && roleFromAssignments) {
-      // Keep UI auth conservative when profile/user_roles drift temporarily.
-      return rolePriority[roleFromAssignments] < rolePriority[profileRole] ? roleFromAssignments : profileRole;
+      // Prefer the highest role granted by authoritative role assignments.
+      return rolePriority[roleFromAssignments] > rolePriority[profileRole] ? roleFromAssignments : profileRole;
     }
     if (roleFromAssignments) return roleFromAssignments;
     if (profileRole) return profileRole;

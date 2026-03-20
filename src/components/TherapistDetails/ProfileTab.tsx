@@ -35,9 +35,9 @@ interface Issue {
 }
 
 export function ProfileTab({ therapist }: ProfileTabProps) {
-  const { hasRole, profile } = useAuth();
+  const { hasRole, profile, effectiveRole } = useAuth();
   const isOwnProfile = Boolean(
-    profile?.role === 'therapist' &&
+    effectiveRole === 'therapist' &&
       (profile.id === therapist.id ||
         (profile.email && therapist.email && profile.email.toLowerCase() === therapist.email.toLowerCase())),
   );

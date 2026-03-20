@@ -31,7 +31,7 @@ const resolveOrganizationId = (metadata: Record<string, unknown> | null | undefi
 };
 
 export const SuperAdminImpersonation: React.FC = () => {
-  const { user, profile } = useAuth();
+  const { user, effectiveRole } = useAuth();
   const queryClient = useQueryClient();
   const [targetUserId, setTargetUserId] = useState('');
   const [targetUserEmail, setTargetUserEmail] = useState('');
@@ -61,7 +61,7 @@ export const SuperAdminImpersonation: React.FC = () => {
 
   const impersonationsQuery = useQuery({
     queryKey: ['impersonation-audit'],
-    enabled: profile?.role === 'super_admin',
+    enabled: effectiveRole === 'super_admin',
     refetchInterval: 15000,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -196,7 +196,7 @@ export const SuperAdminImpersonation: React.FC = () => {
     });
   }, [impersonationsQuery.data, now, revokeMutation]);
 
-  if (profile?.role !== 'super_admin') {
+  if (effectiveRole !== 'super_admin') {
     return (
       <div className="p-8">
         <h1 className="text-2xl font-semibold text-slate-900">Super Admin Impersonation</h1>

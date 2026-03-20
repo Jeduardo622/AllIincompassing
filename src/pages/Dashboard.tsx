@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
+import { Link } from 'react-router-dom';
 import { Users, Calendar, Clock, AlertCircle } from 'lucide-react';
 import { DashboardCard } from '../components/DashboardCard';
 import { ReportsSummary } from '../components/Dashboard/ReportsSummary';
 import { useDashboardData } from '../lib/optimizedQueries';
-import { useDashboardLiveRefresh } from '../lib/dashboardLiveRefresh';
+import { useAuth } from '../lib/authContext';
+import { canAccessStaffDashboard } from '../lib/dashboardAccess';
  
 type SessionSummary = {
   id: string;
@@ -40,6 +42,7 @@ export interface DashboardViewProps {
   refetch: () => void;
   isLiveRole: boolean;
   intervalMs: number;
+  showReportsSummary?: boolean;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -49,6 +52,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   refetch,
   isLiveRole,
   intervalMs,
+  showReportsSummary = true,
 }) => {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
@@ -195,10 +199,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         />
       </div>
 
-      {/* Reports Summary */}
-      <div className="mb-8">
-        <ReportsSummary />
-      </div>
+      {showReportsSummary && (
+        <div className="mb-8">
+          <ReportsSummary enabled={showReportsSummary} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <div className="bg-white dark:bg-dark-lighter rounded-lg shadow">
@@ -357,13 +362,40 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 };
 
 const Dashboard = () => {
-  const { data: dashboardData, isLoading: isLoadingDashboard, error: dashboardError, refetch } = useDashboardData() as unknown as {
+  const { effectiveRole } = useAuth();
+  const canViewStaffDashboard = canAccessStaffDashboard(effectiveRole);
+  const {
+    data: dashboardData,
+    isLoading: isLoadingDashboard,
+    error: dashboardError,
+    refetch,
+    refreshConfig,
+  } = useDashboardData({
+    enabled: canViewStaffDashboard,
+  }) as unknown as {
     data: DashboardDataShape | null;
     isLoading: boolean;
     error: unknown;
     refetch: () => void;
+    refreshConfig: { isLiveRole: boolean; intervalMs: number };
   };
-  const { isLiveRole, intervalMs } = useDashboardLiveRefresh();
+
+  if (!canViewStaffDashboard) {
+    const fallbackRoute = effectiveRole === 'therapist' ? '/schedule' : '/documentation';
+    const fallbackLabel = effectiveRole === 'therapist' ? 'Go to Schedule' : 'Go to Documentation';
+    return (
+      <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-700 shadow-sm dark:border-gray-700 dark:bg-dark-lighter dark:text-gray-300">
+        <p className="font-medium">This dashboard is reserved for admin roles.</p>
+        <p className="mt-2">Use your role-specific workspace to continue.</p>
+        <Link
+          to={fallbackRoute}
+          className="mt-4 inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          {fallbackLabel}
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <DashboardView
@@ -371,8 +403,9 @@ const Dashboard = () => {
       isLoading={isLoadingDashboard}
       error={dashboardError}
       refetch={refetch}
-      isLiveRole={isLiveRole}
-      intervalMs={intervalMs}
+      isLiveRole={refreshConfig.isLiveRole}
+      intervalMs={refreshConfig.intervalMs}
+      showReportsSummary={canViewStaffDashboard}
     />
   );
 };

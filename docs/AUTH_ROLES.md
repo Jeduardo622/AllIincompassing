@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the production-ready authentication and authorization system implemented for the therapy practice management application. The system uses role-based access control (RBAC) with four distinct roles and comprehensive Row Level Security (RLS) policies.
+This document describes the production-ready authentication and authorization system implemented for the therapy practice management application. The system uses role-based access control (RBAC) with four distinct user roles and comprehensive Row Level Security (RLS) policies.
 
 ## Architecture
 
@@ -60,6 +60,12 @@ Higher-level roles inherit permissions from lower-level roles.
   - Access system configuration
   - Delete users and data
 - **Restrictions**: Cannot demote themselves or deactivate their own account
+
+### Application Roles vs Database Roles
+
+- Application user roles are `client`, `therapist`, `admin`, and `super_admin`.
+- Database support roles such as `dashboard_consumer` are infrastructure roles, not end-user identities.
+- Authorization decisions in the app should use org-aware role resolution (`user_roles`/role RPCs), not only `profiles.role`.
 
 ## Database Schema
 
@@ -183,6 +189,7 @@ CREATE POLICY org_read_clients
 | `/profiles/me` | GET/PUT | All authenticated | User profile management |
 | `/admin/users` | GET | admin, super_admin | User management |
 | `/admin/users/:id/roles` | PATCH | super_admin | Role management |
+| `/api/dashboard` | GET | admin, super_admin | Transport adapter to edge `get-dashboard-data` |
 
 ### Authentication Middleware
 

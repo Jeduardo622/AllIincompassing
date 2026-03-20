@@ -93,7 +93,8 @@ export const useSessionsOptimized = (
  * Cached dropdown data - single query for all dropdowns
  * Reduces 3 separate queries to 1, cached for 20 minutes
  */
-export const useDropdownData = () => {
+export const useDropdownData = (options?: { enabled?: boolean }) => {
+  const enabled = options?.enabled ?? true;
   return useQuery({
     queryKey: generateCacheKey.dropdowns(),
     queryFn: async () => {
@@ -104,6 +105,7 @@ export const useDropdownData = () => {
     staleTime: CACHE_STRATEGIES.ENTITIES.dropdowns,
     gcTime: CACHE_STRATEGIES.ENTITIES.dropdowns * 2,
     refetchOnWindowFocus: false,
+    enabled,
   });
 };
 
@@ -119,9 +121,11 @@ export const useSessionMetrics = (
   startDate: string,
   endDate: string,
   therapistId?: string,
-  clientId?: string
+  clientId?: string,
+  options?: { enabled?: boolean },
 ) => {
   const debouncedFilters = useDebounce({ therapistId, clientId }, 300);
+  const enabled = options?.enabled ?? true;
   
   return useQuery({
     queryKey: generateCacheKey.sessionMetrics(
@@ -142,7 +146,7 @@ export const useSessionMetrics = (
       return data;
     },
     staleTime: CACHE_STRATEGIES.REPORTS.session_metrics,
-    enabled: !!startDate && !!endDate,
+    enabled: !!startDate && !!endDate && enabled,
   });
 };
 
@@ -268,12 +272,13 @@ export const fetchDashboardData = async () => {
   }
 };
 
-export const useDashboardData = () => {
+export const useDashboardData = (options?: { enabled?: boolean }) => {
   const { isLiveRole, intervalMs } = useDashboardLiveRefresh();
   const isTransientDashboardFailure = (status?: number) =>
     status === 429 || status === 502 || status === 503 || status === 504;
+  const enabled = options?.enabled ?? true;
 
-  return useQuery({
+  const dashboardQuery = useQuery({
     queryKey: generateCacheKey.dashboard(),
     queryFn: fetchDashboardData,
     staleTime: CACHE_STRATEGIES.DASHBOARD.summary,
@@ -288,7 +293,16 @@ export const useDashboardData = () => {
       return isTransientDashboardFailure(status) && failureCount < 1;
     },
     retryDelay: 1500,
+    enabled,
   });
+
+  return {
+    ...dashboardQuery,
+    refreshConfig: {
+      isLiveRole,
+      intervalMs,
+    },
+  };
 };
 
 // ============================================================================

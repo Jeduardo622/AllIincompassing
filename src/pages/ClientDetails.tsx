@@ -18,7 +18,7 @@ export function ClientDetails() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('profile');
-  const { profile } = useAuth();
+  const { profile, effectiveRole } = useAuth();
   const activeOrganizationId = useActiveOrganizationId();
 
   const { data: client, isLoading, error: clientError } = useQuery({
@@ -151,8 +151,8 @@ export function ClientDetails() {
     );
   }
 
-  const isTherapistViewer = profile?.role === 'therapist';
-  const isClientViewer = profile?.role === 'client';
+  const isTherapistViewer = effectiveRole === 'therapist';
+  const isClientViewer = effectiveRole === 'client';
   const viewingOwnClientRecord = isClientViewer && client.id === profile?.id;
   const therapistOwnsClient = isTherapistViewer
     ? client.therapist_id === profile?.id
@@ -241,7 +241,7 @@ export function ClientDetails() {
         </div>
 
         <div className="p-6">
-          {activeTab === 'profile' && <ProfileTab client={client} viewerRole={profile?.role} />}
+          {activeTab === 'profile' && <ProfileTab client={client} viewerRole={effectiveRole} />}
           {activeTab === 'session-notes' && <SessionNotesTab client={client} />}
           {activeTab === 'programs-goals' && <ProgramsGoalsTab client={client} />}
           {activeTab === 'pre-auth' && <PreAuthTab client={client} />}

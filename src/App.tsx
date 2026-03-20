@@ -6,6 +6,7 @@ import { AuthProvider } from './lib/authContext';
 import { appQueryClient } from './lib/queryClient';
 import { useTheme } from './lib/theme';
 import { useAuth } from './lib/authContext';
+import { canAccessStaffDashboard } from './lib/dashboardAccess';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PrivateRoute } from './components/PrivateRoute';
 import { RoleGuard } from './components/RoleGuard';
@@ -69,7 +70,7 @@ const LoadingSpinner = () => (
 );
 
 const DashboardLanding: React.FC = () => {
-  const { user, profile, loading, profileLoading, isGuardian } = useAuth();
+  const { user, profile, loading, profileLoading, isGuardian, effectiveRole } = useAuth();
 
   if (loading || (user && profileLoading && !profile)) {
     return <LoadingSpinner />;
@@ -79,13 +80,22 @@ const DashboardLanding: React.FC = () => {
     return <Navigate to="/family" replace />;
   }
 
-  return <Dashboard />;
+  if (canAccessStaffDashboard(effectiveRole)) {
+    return <Dashboard />;
+  }
+
+  if (effectiveRole === 'therapist') {
+    return <Navigate to="/schedule" replace />;
+  }
+
+  // Plain clients should land on family-safe docs, not the admin dashboard shell.
+  return <Navigate to="/documentation" replace />;
 };
 
 const RouteTelemetry: React.FC = () => {
   const location = useLocation();
   const navigationType = useNavigationType();
-  const { user, profile } = useAuth();
+  const { user, effectiveRole } = useAuth();
 
   useEffect(() => {
     logger.info('Route navigation event', {
@@ -94,14 +104,14 @@ const RouteTelemetry: React.FC = () => {
         route: location.pathname,
         navigationType,
         userId: user?.id ?? null,
-        role: profile?.role ?? null,
+        role: effectiveRole,
       },
     });
   }, [
     location.pathname,
     navigationType,
     user?.id,
-    profile?.role,
+    effectiveRole,
   ]);
 
   return null;

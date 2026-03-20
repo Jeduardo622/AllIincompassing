@@ -40,6 +40,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/dashboard"
+  to = "/.netlify/functions/dashboard"
+  status = 200
+
+[[redirects]]
   from = "/api/assessment-documents"
   to = "/.netlify/functions/assessment-documents"
   status = 200

@@ -1,6 +1,6 @@
 # Migration Catalog
 
-Generated: 2026-03-20T04:22:56.813Z
+Generated: 2026-03-20T04:32:51.985Z
 
 ## Classification Summary
 
@@ -302,7 +302,6 @@ Generated: 2026-03-20T04:22:56.813Z
 | 20260122193000_expose_user_role_rpc.sql | canonical |
 | 20260123172000_fix_auth_admin_seed.sql | corrective |
 | 20260123220346_fix_admin_users_paged_super_admin_access.sql | corrective |
-| 20260124005737_forward_fix_admin_users_paged_super_admin_return.sql | corrective |
 | 20260128100000_add_aba_cpt_codes.sql | canonical |
 | 20260128101500_add_california_aba_payer_codes.sql | canonical |
 | 20260128104500_create_service_contracts.sql | canonical |
@@ -319,6 +318,7 @@ Generated: 2026-03-20T04:22:56.813Z
 | 20260201134500_error_taxonomy.sql | canonical |
 | 20260202120000_scheduling_orchestration_runs.sql | canonical |
 | 20260202123000_fix_super_admin_governance.sql | corrective |
+| 20260202124000_forward_fix_admin_users_paged_super_admin_return.sql | corrective |
 | 20260202130000_session_holds_hold_key_default.sql | canonical |
 | 20260204193000_programs_goals_bank.sql | canonical |
 | 20260204200000_goal_versions_triggers.sql | canonical |

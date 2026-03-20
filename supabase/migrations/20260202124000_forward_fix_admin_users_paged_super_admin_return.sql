@@ -1,6 +1,6 @@
 /*
-  @migration-intent: Re-version super-admin paging function hardening to resolve local duplicate timestamp collisions.
-  @migration-dependencies: 20260202130000_session_holds_hold_key_default.sql
+  @migration-intent: Re-version super-admin paging function hardening to run after super-admin governance migration and preserve early-return behavior.
+  @migration-dependencies: 20260202123000_fix_super_admin_governance.sql
   @migration-rollback: Restore previous get_admin_users_paged function definition if rollback is required.
 */
 

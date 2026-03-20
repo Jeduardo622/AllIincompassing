@@ -1,6 +1,6 @@
 # Migration Health Report
 
-Generated: 2026-03-20T04:22:56.937Z
+Generated: 2026-03-20T04:32:52.132Z
 
 ## Summary
 - canonical migrations: 59

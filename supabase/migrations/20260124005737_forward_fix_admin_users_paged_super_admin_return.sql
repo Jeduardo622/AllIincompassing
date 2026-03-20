@@ -1,6 +1,10 @@
-BEGIN;
+/*
+  @migration-intent: Re-version super-admin paging function hardening to resolve local duplicate timestamp collisions.
+  @migration-dependencies: 20260202130000_session_holds_hold_key_default.sql
+  @migration-rollback: Restore previous get_admin_users_paged function definition if rollback is required.
+*/
 
--- Ensure super_admin requests return before admin-only checks.
+BEGIN;
 
 CREATE OR REPLACE FUNCTION public.get_admin_users_paged(
   organization_id uuid DEFAULT NULL,

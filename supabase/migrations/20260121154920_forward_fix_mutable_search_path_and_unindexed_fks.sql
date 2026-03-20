@@ -1,14 +1,11 @@
 /*
-  # Fix mutable search_path and unindexed foreign keys
-
-  This migration addresses Supabase advisor warnings by:
-  1. Setting immutable search_path on flagged public functions
-  2. Adding covering indexes for reported unindexed foreign keys
+  @migration-intent: Re-version corrective mutable search_path and FK index hardening to resolve local duplicate timestamp collisions.
+  @migration-dependencies: 20260202120000_scheduling_orchestration_runs.sql
+  @migration-rollback: Drop idx_authorization_services_created_by and idx_authorizations_created_by if rollback is required.
 */
 
 BEGIN;
 
--- Fix mutable search_path warnings (explicit function signatures).
 DO $$
 BEGIN
   BEGIN
@@ -43,7 +40,6 @@ BEGIN
 END
 $$;
 
--- Add missing foreign key indexes reported by advisors.
 CREATE INDEX IF NOT EXISTS idx_authorization_services_created_by
   ON public.authorization_services (created_by);
 CREATE INDEX IF NOT EXISTS idx_authorizations_created_by

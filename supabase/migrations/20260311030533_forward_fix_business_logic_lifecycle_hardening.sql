@@ -1,10 +1,11 @@
--- @migration-intent: Lock scheduling RPC execution to least-privilege roles and enforce session/authorization lifecycle status constraints and transition guards.
--- @migration-dependencies: 20260310190000_auth_access_hardening.sql
--- @migration-rollback: Re-grant legacy RPC execute privileges and drop lifecycle check constraints/triggers/functions if rollback is required after validation.
+/*
+  @migration-intent: Re-version scheduling and lifecycle hardening to resolve local duplicate timestamp collisions while preserving RPC privilege and status-transition guards.
+  @migration-dependencies: 20260310190000_auth_access_hardening.sql
+  @migration-rollback: Re-grant legacy RPC execution and drop transition guards/constraints if rollback is required.
+*/
 
 set search_path = public;
 
--- Workstream A: lock down scheduling RPC execution paths.
 revoke execute on function public.acquire_session_hold(uuid, uuid, timestamptz, timestamptz, uuid, integer) from public;
 revoke execute on function public.acquire_session_hold(uuid, uuid, timestamptz, timestamptz, uuid, integer) from anon;
 revoke execute on function public.acquire_session_hold(uuid, uuid, timestamptz, timestamptz, uuid, integer) from authenticated;
@@ -59,7 +60,6 @@ begin
 end
 $$;
 
--- Workstream B: normalize existing statuses before constraints.
 update public.sessions
 set status = lower(trim(coalesce(status, 'scheduled')))
 where status is null or status <> lower(trim(status));
@@ -106,7 +106,6 @@ begin
 end
 $$;
 
--- Workstream B: enforce valid lifecycle transitions.
 create or replace function public.enforce_session_status_transition()
 returns trigger
 language plpgsql

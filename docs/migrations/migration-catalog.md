@@ -1,12 +1,12 @@
 # Migration Catalog
 
-Generated: 2026-03-11T22:06:56.986Z
+Generated: 2026-03-20T04:22:56.813Z
 
 ## Classification Summary
 
-- canonical: 48
-- duplicate/backfill: 37
-- corrective: 31
+- canonical: 59
+- duplicate/backfill: 38
+- corrective: 36
 - legacy-only: 226
 
 ## Detailed Index
@@ -296,11 +296,13 @@ Generated: 2026-03-11T22:06:56.986Z
 | 20260105124500_harden_update_client_documents_path_allowlist.sql | canonical |
 | 20260120120000_soft_delete_audit_triggers.sql | canonical |
 | 20260121130000_soft_delete_audit_triggers_refresh.sql | canonical |
+| 20260121154920_forward_fix_mutable_search_path_and_unindexed_fks.sql | corrective |
 | 20260122180000_fix_org_rpc_exposure.sql | corrective |
 | 20260122190000_fix_schedule_batch_order.sql | duplicate/backfill |
 | 20260122193000_expose_user_role_rpc.sql | canonical |
 | 20260123172000_fix_auth_admin_seed.sql | corrective |
 | 20260123220346_fix_admin_users_paged_super_admin_access.sql | corrective |
+| 20260124005737_forward_fix_admin_users_paged_super_admin_return.sql | corrective |
 | 20260128100000_add_aba_cpt_codes.sql | canonical |
 | 20260128101500_add_california_aba_payer_codes.sql | canonical |
 | 20260128104500_create_service_contracts.sql | canonical |
@@ -315,10 +317,8 @@ Generated: 2026-03-11T22:06:56.986Z
 | 20260201120000_agent_trace_and_runtime_config.sql | canonical |
 | 20260201130000_agent_prompt_tool_versions.sql | canonical |
 | 20260201134500_error_taxonomy.sql | canonical |
-| 20260202120000_fix_mutable_search_path_and_unindexed_fks.sql | corrective |
 | 20260202120000_scheduling_orchestration_runs.sql | canonical |
 | 20260202123000_fix_super_admin_governance.sql | corrective |
-| 20260202130000_fix_admin_users_paged_super_admin_return.sql | corrective |
 | 20260202130000_session_holds_hold_key_default.sql | canonical |
 | 20260204193000_programs_goals_bank.sql | canonical |
 | 20260204200000_goal_versions_triggers.sql | canonical |
@@ -340,13 +340,13 @@ Generated: 2026-03-11T22:06:56.986Z
 | 20260304103000_goal_type_minimums.sql | canonical |
 | 20260305133000_add_goal_criteria_columns.sql | canonical |
 | 20260310162000_harden_ai_guidance_documents_rls.sql | canonical |
-| 20260310162000_harden_telemetry_function_grants.sql | canonical |
 | 20260310170000_assessment_fk_index_batch1.sql | duplicate/backfill |
 | 20260310174500_fk_index_batch2_remaining.sql | duplicate/backfill |
 | 20260310182500_policy_consolidation_batch1.sql | duplicate/backfill |
 | 20260310184500_unused_index_drop_batch1.sql | duplicate/backfill |
 | 20260310190000_auth_access_hardening.sql | canonical |
-| 20260310190000_business_logic_lifecycle_hardening.sql | canonical |
+| 20260310233433_forward_fix_harden_telemetry_function_grants.sql | corrective |
+| 20260311030533_forward_fix_business_logic_lifecycle_hardening.sql | corrective |
 | 20260311102000_confirm_session_hold_with_enrichment.sql | canonical |
 | 20260311104500_start_session_with_goals.sql | canonical |
 | 20260311111000_create_edi_persistence_tables.sql | canonical |
@@ -355,3 +355,20 @@ Generated: 2026-03-11T22:06:56.986Z
 | 20260311173000_rls_surface_tightening_batch2.sql | duplicate/backfill |
 | 20260311195000_auth_profile_and_query_metrics_contract.sql | canonical |
 | 20260311210000_harden_privileged_function_grants.sql | canonical |
+| 20260311212000_cover_unindexed_foreign_keys.sql | canonical |
+| 20260313103000_client_onboarding_prefills.sql | canonical |
+| 20260313120000_onboarding_authz_and_prefill_retention_hardening.sql | canonical |
+| 20260313123000_profiles_org_immutability_guard.sql | canonical |
+| 20260313124500_profiles_insert_authz_guard.sql | canonical |
+| 20260313160000_authz_storage_alignment.sql | corrective |
+| 20260313161000_performance_hotpath_indexes.sql | canonical |
+| 20260316153000_allow_session_in_progress_transitions.sql | canonical |
+| 20260316160000_ensure_transcript_tables_exist.sql | canonical |
+| 20260317043000_confirm_session_hold_program_goal_required.sql | canonical |
+| 20260318110000_harden_start_session_with_goals_authz.sql | canonical |
+| 20260318120000_session_note_pdf_exports_async.sql | canonical |
+| 20260318150000_batch_confirm_financial_hardening.sql | duplicate/backfill |
+| 20260318152000_admin_role_state_hardening.sql | canonical |
+| 20260319110000_priority4_session_query_indexes.sql | canonical |
+| 20260319222621_forward_fix_user_roles_policy_admin_check.sql | corrective |
+| 20260319224000_fix_app_get_user_roles_cleanup.sql | corrective |

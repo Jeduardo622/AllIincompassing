@@ -239,7 +239,19 @@ END $$;
 
 -- Adjust permissions to limit execution to the dedicated role
 REVOKE SELECT ON admin_users FROM authenticated;
-REVOKE EXECUTE ON FUNCTION get_admin_users() FROM authenticated;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname = 'get_admin_users'
+      AND pg_get_function_identity_arguments(p.oid) = ''
+  ) THEN
+    REVOKE EXECUTE ON FUNCTION get_admin_users() FROM authenticated;
+  END IF;
+END $$;
 REVOKE EXECUTE ON FUNCTION get_admin_users(uuid) FROM authenticated;
 REVOKE EXECUTE ON FUNCTION manage_admin_users(text, uuid) FROM authenticated;
 REVOKE EXECUTE ON FUNCTION manage_admin_users(text, uuid, uuid) FROM authenticated;

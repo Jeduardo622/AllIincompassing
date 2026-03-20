@@ -1,10 +1,8 @@
--- @migration-intent: Restrict telemetry RPC execution to authenticated/service roles and lock function search_path to public.
--- @migration-dependencies: 20260310162000_harden_ai_guidance_documents_rls.sql
--- @migration-rollback: Re-grant anon execute and restore prior function settings if telemetry ingestion regressions require rollback.
-
--- Harden telemetry function execution and lock search_path.
--- These RPCs are called from client code and accept arbitrary payloads, so we
--- explicitly prevent anonymous invocation while keeping authenticated access.
+/*
+  @migration-intent: Re-version telemetry grant hardening to resolve local duplicate timestamp collisions while preserving least-privilege function access.
+  @migration-dependencies: 20260310162000_harden_ai_guidance_documents_rls.sql
+  @migration-rollback: Re-grant anon/public execute if telemetry ingest rollback is required.
+*/
 
 do $$
 declare

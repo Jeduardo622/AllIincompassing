@@ -5,7 +5,7 @@ import { useAuth } from '../lib/authContext';
 import { useRouteQueryRefetch } from '../lib/useRouteQueryRefetch';
 
 export function Layout() {
-  const { user, profile } = useAuth();
+  const { user, effectiveRole } = useAuth();
   useRouteQueryRefetch();
 
   return (
@@ -16,7 +16,7 @@ export function Layout() {
         {user && (
           <div className="mb-4 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm">
             <span className="font-medium">Logged in as:</span> {user.email}
-            <span className="ml-2 font-medium">Role:</span> {profile?.role || 'No role assigned'}
+            <span className="ml-2 font-medium">Role:</span> {effectiveRole}
           </div>
         )}
         <Outlet />

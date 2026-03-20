@@ -49,7 +49,11 @@ export const __TESTING__ = {
   toCountMap,
 };
 
-export function ReportsSummary() {
+interface ReportsSummaryProps {
+  enabled?: boolean;
+}
+
+export function ReportsSummary({ enabled = true }: ReportsSummaryProps) {
   // Get current month date range
   const startDate = format(startOfMonth(new Date()), 'yyyy-MM-dd');
   const endDate = format(endOfMonth(new Date()), 'yyyy-MM-dd');
@@ -58,9 +62,9 @@ export function ReportsSummary() {
   const lastMonthStart = format(startOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd');
   const lastMonthEnd = format(endOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd');
 
-  const { data: dropdownData } = useDropdownData();
-  const { data: currentMonthMetricsData } = useSessionMetrics(startDate, endDate);
-  const { data: lastMonthMetricsData } = useSessionMetrics(lastMonthStart, lastMonthEnd);
+  const { data: dropdownData } = useDropdownData({ enabled });
+  const { data: currentMonthMetricsData } = useSessionMetrics(startDate, endDate, undefined, undefined, { enabled });
+  const { data: lastMonthMetricsData } = useSessionMetrics(lastMonthStart, lastMonthEnd, undefined, undefined, { enabled });
 
   const clients = dropdownData?.clients ?? [];
   const therapists = dropdownData?.therapists ?? [];

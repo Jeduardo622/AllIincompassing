@@ -13,7 +13,7 @@ import { ChatBot } from './ChatBot';
 import { logger } from '../lib/logger/logger';
 
 export function Sidebar() {
-  const { signOut, hasRole, hasAnyRole, user, profile, isGuardian } = useAuth();
+  const { signOut, hasRole, hasAnyRole, user, profile, isGuardian, effectiveRole } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -60,7 +60,7 @@ export function Sidebar() {
       // Note: authContext automatically manages session state
       logger.debug('Manual session refresh acknowledged by auth context', {
         context: { component: 'Sidebar', operation: 'refreshSession' },
-        metadata: { hasRole: Boolean(profile?.role) }
+        metadata: { hasRole: Boolean(effectiveRole) }
       });
       logger.info('Manual session refresh completed', {
         context: { component: 'Sidebar', operation: 'refreshSession' },
@@ -89,7 +89,7 @@ export function Sidebar() {
       icon: LayoutDashboard,
       label: 'Dashboard',
       path: '/',
-      roles: [], // accessible to all authenticated users
+      roles: ['admin', 'super_admin'],
       requiresGuardian: false,
     },
     { 
@@ -219,7 +219,7 @@ export function Sidebar() {
           </div>
           <div className="flex items-center justify-between">
             <div className="text-xs text-gray-500 dark:text-gray-400">
-              Role: {profile?.role || 'No role assigned'}
+              Role: {effectiveRole}
             </div>
             <button 
               onClick={handleRefreshSession}

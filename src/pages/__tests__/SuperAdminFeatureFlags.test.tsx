@@ -29,7 +29,10 @@ describe('SuperAdminFeatureFlags', () => {
   });
 
   it('blocks non-super-admins from accessing the page', () => {
-    useAuthSpy.mockReturnValue({ profile: { role: 'admin' } } as unknown as ReturnType<typeof authContext.useAuth>);
+    useAuthSpy.mockReturnValue({
+      profile: { role: 'admin' },
+      effectiveRole: 'admin',
+    } as unknown as ReturnType<typeof authContext.useAuth>);
 
     renderWithProviders(<SuperAdminFeatureFlags />);
 
@@ -37,7 +40,10 @@ describe('SuperAdminFeatureFlags', () => {
   });
 
   it('allows super admins to manage flags, organizations, and plans', async () => {
-    useAuthSpy.mockReturnValue({ profile: { role: 'super_admin' } } as unknown as ReturnType<typeof authContext.useAuth>);
+    useAuthSpy.mockReturnValue({
+      profile: { role: 'super_admin' },
+      effectiveRole: 'super_admin',
+    } as unknown as ReturnType<typeof authContext.useAuth>);
 
     invokeSpy.mockImplementation(async (_path: string, options?: { body?: Record<string, unknown> }) => {
       const action = options?.body?.action;
@@ -134,7 +140,10 @@ describe('SuperAdminFeatureFlags', () => {
   }, 15000);
 
   it('allows removing plan assignments', async () => {
-    useAuthSpy.mockReturnValue({ profile: { role: 'super_admin' } } as unknown as ReturnType<typeof authContext.useAuth>);
+    useAuthSpy.mockReturnValue({
+      profile: { role: 'super_admin' },
+      effectiveRole: 'super_admin',
+    } as unknown as ReturnType<typeof authContext.useAuth>);
 
     invokeSpy.mockImplementation(async (_path: string, options?: { body?: Record<string, unknown> }) => {
       const action = options?.body?.action;
@@ -187,7 +196,10 @@ describe('SuperAdminFeatureFlags', () => {
   });
 
   it('shows single-clinic lock messaging for super admins', () => {
-    useAuthSpy.mockReturnValue({ profile: { role: 'super_admin' } } as unknown as ReturnType<typeof authContext.useAuth>);
+    useAuthSpy.mockReturnValue({
+      profile: { role: 'super_admin' },
+      effectiveRole: 'super_admin',
+    } as unknown as ReturnType<typeof authContext.useAuth>);
 
     invokeSpy.mockResolvedValueOnce({
       data: {

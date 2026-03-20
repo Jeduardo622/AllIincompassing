@@ -65,14 +65,14 @@ const humanizeKey = (value: string): string => {
 };
 
 export const SuperAdminFeatureFlags: React.FC = () => {
-  const { profile } = useAuth();
+  const { effectiveRole } = useAuth();
   const queryClient = useQueryClient();
 
   const [newFlagKey, setNewFlagKey] = useState('');
   const [newFlagDescription, setNewFlagDescription] = useState('');
   const [newFlagDefaultEnabled, setNewFlagDefaultEnabled] = useState(false);
 
-  const isSuperAdmin = profile?.role === 'super_admin';
+  const isSuperAdmin = effectiveRole === 'super_admin';
   const defaultOrganizationId = useMemo(() => {
     try {
       return getDefaultOrganizationId();

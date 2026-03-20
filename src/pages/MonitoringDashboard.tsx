@@ -148,8 +148,7 @@ export function MonitoringDashboard() {
         <div className="bg-white dark:bg-dark-card shadow rounded-lg p-6 text-center space-y-2">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Admin access required</h2>
           <p className="text-sm text-gray-600 dark:text-gray-300">
-            Monitoring data is restricted to administrator or monitoring roles. Please contact an administrator if you need
-            access.
+            Monitoring data is restricted to admin and super admin roles. Please contact an administrator if you need access.
           </p>
         </div>
       </div>

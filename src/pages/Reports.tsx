@@ -140,9 +140,9 @@ const ReportMetrics = React.memo(({
 ReportMetrics.displayName = 'ReportMetrics';
 
 const Reports = React.memo(() => {
-  const { profile } = useAuth();
+  const { hasAnyRole, effectiveRole } = useAuth();
   const [reportType, setReportType] = useState<ReportType>('sessions');
-  const canExportReports = profile?.role === 'therapist' || profile?.role === 'admin' || profile?.role === 'super_admin';
+  const canExportReports = hasAnyRole(['therapist', 'admin', 'super_admin']);
 
   const [filters, setFilters] = useState<ReportFilters>({
     dateRange: 'current_month',
@@ -324,7 +324,7 @@ const Reports = React.memo(() => {
       logger.warn('Blocked unauthorized report export attempt', {
         metadata: {
           scope: 'reports.exportToCsv',
-          role: profile?.role ?? 'unknown',
+          role: effectiveRole,
         },
       });
       showError('You do not have permission to export reports.');
@@ -380,7 +380,7 @@ const Reports = React.memo(() => {
         rowCount: exportRows.length,
       },
     });
-  }, [canExportReports, profile?.role, reportData, reportType]);
+  }, [canExportReports, effectiveRole, reportData, reportType]);
 
   // Memoized report content
   const reportContent = useMemo(() => {

@@ -15,7 +15,7 @@ export function TherapistDetails() {
   const { therapistId } = useParams<{ therapistId: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('profile');
-  const { profile } = useAuth();
+  const { profile, effectiveRole } = useAuth();
 
   const { data: therapist, isLoading } = useQuery({
     queryKey: ['therapist', therapistId],
@@ -67,7 +67,7 @@ export function TherapistDetails() {
     );
   }
 
-  if (profile?.role === 'therapist' && profile.id !== therapist.id) {
+  if (effectiveRole === 'therapist' && profile?.id !== therapist.id) {
     return (
       <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded-lg shadow p-8 text-red-700 dark:text-red-200">
         <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />

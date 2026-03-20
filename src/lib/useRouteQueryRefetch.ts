@@ -5,7 +5,8 @@ import { useQueryClient } from '@tanstack/react-query';
 const ROUTE_QUERY_KEYS: Array<{ prefix: string; keys: readonly unknown[][] }> = [
   { prefix: '/schedule', keys: [['sessions'], ['sessions-batch'], ['dropdowns']] },
   { prefix: '/reports', keys: [['session-metrics'], ['dropdowns'], ['sessions']] },
-  { prefix: '/dashboard', keys: [['dashboard'], ['sessions'], ['clients', 'dashboard-summary'], ['therapists']] },
+  // Keep dashboard invalidation targeted; broad 'sessions' invalidation causes expensive refetch storms.
+  { prefix: '/dashboard', keys: [['dashboard'], ['session-metrics'], ['dropdowns']] },
   { prefix: '/clients', keys: [['clients'], ['dropdowns']] },
   { prefix: '/therapists', keys: [['therapists'], ['dropdowns']] },
   { prefix: '/authorizations', keys: [['authorizations']] },

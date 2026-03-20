@@ -48,11 +48,11 @@ const Clients = () => {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [archivedFilter, setArchivedFilter] = useState<'all' | 'active' | 'archived'>('active');
   const queryClient = useQueryClient();
-  const { isSuperAdmin, profile } = useAuth();
+  const { isSuperAdmin, profile, effectiveRole } = useAuth();
   const navigate = useNavigate();
   const activeOrganizationId = useActiveOrganizationId();
   const isSuperAdminUser = isSuperAdmin();
-  const isTherapistViewer = profile?.role === 'therapist';
+  const isTherapistViewer = effectiveRole === 'therapist';
   const resolvedOrganizationId = activeOrganizationId ?? null;
   const loadAllClients = isSuperAdminUser && !resolvedOrganizationId;
 

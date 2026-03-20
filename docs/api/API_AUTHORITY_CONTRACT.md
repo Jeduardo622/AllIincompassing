@@ -21,6 +21,18 @@
    - owner,
    - removal target date in the linked issue.
 
+## Dashboard Authority Contract
+
+- Public route: `/api/dashboard`
+- Canonical authority: Supabase edge function `get-dashboard-data`
+- Compatibility behavior: `/api/dashboard` remains a transport adapter only and must proxy to edge authority.
+- Canonical response envelope for both paths:
+  - `{ "success": true, "data": <dashboardPayload>, "lastUpdated": "<iso>", "requestId": "<id>" }`
+- Role scope:
+  - allow: `admin`, `super_admin`
+  - deny: `therapist`, `client`
+- Direct client access to `get_dashboard_data` RPC is not part of the public contract.
+
 ## Migration Waves
 - **Wave A (read/admin low risk)**: migrate low-risk reads and admin utility paths.
 - **Wave B (write/auth-sensitive)**: migrate write paths with org-scope + auth parity checks.

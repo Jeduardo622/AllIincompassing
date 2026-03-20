@@ -73,7 +73,6 @@ const unauthorized = (req: Request) =>
 
 const RPC_ALLOWLIST = new Set<string>([
   // Read-only or safe diagnostics RPCs only
-  'get_dashboard_data',
   'get_client_metrics',
   'get_therapist_metrics',
   'get_authorization_metrics',

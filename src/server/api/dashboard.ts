@@ -1,48 +1,14 @@
-import { getOptionalServerEnv, getRequiredServerEnv } from "../env";
-import { getDefaultOrganizationId } from "../runtimeConfig";
-import { serverLogger as logger } from "../../lib/logger/server";
-import { toError } from "../../lib/logger/normalizeError";
 import {
   consumeRateLimit,
   corsHeadersForRequest,
   errorResponse,
   isDisallowedOriginRequest,
-  jsonForRequest,
 } from "./shared";
-import { getApiAuthorityMode, proxyToEdgeAuthority } from "./edgeAuthority";
+import { proxyToEdgeAuthority } from "./edgeAuthority";
 
 const JSON_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
 };
-
-const isProductionEnvironment = (): boolean => {
-  const environment =
-    getOptionalServerEnv("APP_ENV") ||
-    getOptionalServerEnv("NODE_ENV") ||
-    getOptionalServerEnv("ENVIRONMENT") ||
-    getOptionalServerEnv("NETLIFY_CONTEXT") ||
-    "development";
-  return environment === "production";
-};
-
-const allowDashboardFallbackOrg = (): boolean =>
-  getOptionalServerEnv("DASHBOARD_ALLOW_DEFAULT_ORG_FALLBACK") === "true";
-
-async function fetchJson<T = unknown>(url: string, init: RequestInit): Promise<{ status: number; ok: boolean; data: T | null }>
-{
-  const response = await fetch(url, init);
-  const status = response.status;
-  const ok = response.ok;
-  const text = await response.text();
-  if (text.length === 0) {
-    return { status, ok, data: null };
-  }
-  try {
-    return { status, ok, data: JSON.parse(text) as T };
-  } catch {
-    return { status, ok, data: null };
-  }
-}
 
 export async function dashboardHandler(request: Request): Promise<Response> {
   if (isDisallowedOriginRequest(request)) {
@@ -76,134 +42,21 @@ export async function dashboardHandler(request: Request): Promise<Response> {
     });
   }
 
-  if (getApiAuthorityMode() === "edge") {
-    const forwarded = await proxyToEdgeAuthority(request, {
-      functionName: "get-dashboard-data",
-      accessToken,
-      method: "GET",
-    });
-    const body = await forwarded.text();
-    const retryAfter = forwarded.headers.get("Retry-After");
-    return new Response(body, {
-      status: forwarded.status,
-      headers: {
-        ...JSON_HEADERS,
-        ...corsHeadersForRequest(request),
-        ...(retryAfter ? { "Retry-After": retryAfter } : {}),
-      },
-    });
-  }
-
-  const supabaseUrl =
-    getOptionalServerEnv("SUPABASE_URL") ||
-    getOptionalServerEnv("SUPABASE_DATABASE_URL") ||
-    getRequiredServerEnv("VITE_SUPABASE_URL");
-
-  const anonKey =
-    getOptionalServerEnv("SUPABASE_ANON_KEY") ||
-    getRequiredServerEnv("VITE_SUPABASE_ANON_KEY");
-
-  // Resolve organization context from the user's JWT
-  try {
-    const orgUrl = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/rpc/current_user_organization_id`;
-    const orgResult = await fetchJson<string>(orgUrl, {
-      method: "POST",
-      headers: {
-        ...JSON_HEADERS,
-        apikey: anonKey,
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: "{}",
-    });
-
-    const fallbackOrgId = (() => {
-      if (isProductionEnvironment() || !allowDashboardFallbackOrg()) {
-        return null;
-      }
-      try {
-        return getDefaultOrganizationId();
-      } catch {
-        return null;
-      }
-    })();
-
-    const resolvedOrganizationId =
-      orgResult.ok && typeof orgResult.data === "string" && orgResult.data.length > 0
-        ? orgResult.data
-        : fallbackOrgId;
-
-    if (!resolvedOrganizationId) {
-      return errorResponse(request, "forbidden", "Access denied");
-    }
-
-    if ((!orgResult.ok || !orgResult.data) && fallbackOrgId) {
-      logger.warn("Dashboard request falling back to default organization", { fallbackOrgId });
-    }
-
-    // Role checks: allow org admins or super admins to access dashboard data
-    const roleUrl = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/rpc/user_has_role_for_org`;
-    const rolePayload = { role_name: "admin", target_organization_id: resolvedOrganizationId } as Record<string, unknown>;
-    const roleResult = await fetchJson<boolean>(roleUrl, {
-      method: "POST",
-      headers: {
-        ...JSON_HEADERS,
-        apikey: anonKey,
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify(rolePayload),
-    });
-
-    const superAdminUrl = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/rpc/current_user_is_super_admin`;
-    const superAdminResult = await fetchJson<boolean>(superAdminUrl, {
-      method: "POST",
-      headers: {
-        ...JSON_HEADERS,
-        apikey: anonKey,
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: "{}",
-    });
-
-    const isOrgAdmin = roleResult.ok && roleResult.data === true;
-    const isSuperAdmin = superAdminResult.ok && superAdminResult.data === true;
-
-    logger.info("Dashboard auth check", {
-      resolvedOrganizationId,
-      isOrgAdmin,
-      isSuperAdmin,
-      roleStatus: roleResult.status,
-      superAdminStatus: superAdminResult.status,
-    });
-
-    if (!isOrgAdmin && !isSuperAdmin) {
-      return errorResponse(request, "forbidden", "Forbidden");
-    }
-
-    // Call the hardened dashboard RPC with the caller's JWT to enforce RLS/org scoping.
-    const dashboardUrl = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/rpc/get_dashboard_data`;
-    const rpcResult = await fetchJson<unknown>(dashboardUrl, {
-      method: "POST",
-      headers: {
-        ...JSON_HEADERS,
-        apikey: anonKey,
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: "{}",
-    });
-
-    if (!rpcResult.ok) {
-      const status = rpcResult.status === 42501 ? 403 : rpcResult.status;
-      return errorResponse(request, "upstream_error", "Dashboard RPC failed", {
-        status: status > 0 ? status : 500,
-      });
-    }
-
-    // Return the raw payload expected by the client hook
-    return jsonForRequest(request, rpcResult.data ?? {}, 200);
-  } catch (error) {
-    logger.error("/api/dashboard failed", { error: toError(error, "dashboard proxy error") });
-    return errorResponse(request, "internal_error", "Internal Server Error");
-  }
+  const forwarded = await proxyToEdgeAuthority(request, {
+    functionName: "get-dashboard-data",
+    accessToken,
+    method: "GET",
+  });
+  const body = await forwarded.text();
+  const retryAfter = forwarded.headers.get("Retry-After");
+  return new Response(body, {
+    status: forwarded.status,
+    headers: {
+      ...JSON_HEADERS,
+      ...corsHeadersForRequest(request),
+      ...(retryAfter ? { "Retry-After": retryAfter } : {}),
+    },
+  });
 }
 
 

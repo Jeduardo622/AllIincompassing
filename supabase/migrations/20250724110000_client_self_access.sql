@@ -17,9 +17,9 @@ CREATE POLICY "Clients scoped access"
   TO authenticated
   USING (
     CASE
-      WHEN app.user_has_role_for_org('admin', organization_id, NULL, id) THEN true
-      WHEN app.user_has_role_for_org('super_admin', organization_id, NULL, id) THEN true
-      WHEN app.user_has_role_for_org('therapist', organization_id, NULL, id) THEN (
+      WHEN public.user_has_role('admin') THEN true
+      WHEN public.user_has_role('super_admin') THEN true
+      WHEN public.user_has_role('therapist') THEN (
         EXISTS (
           SELECT 1
           FROM public.sessions s
@@ -28,15 +28,15 @@ CREATE POLICY "Clients scoped access"
         )
         AND public.clients.deleted_at IS NULL
       )
-      WHEN app.user_has_role_for_org('client', organization_id, NULL, id) THEN public.clients.id = auth.uid()
+      WHEN public.user_has_role('client') THEN public.clients.id = auth.uid()
       ELSE false
     END
   )
   WITH CHECK (
     CASE
-      WHEN app.user_has_role_for_org('admin', organization_id, NULL, id) THEN true
-      WHEN app.user_has_role_for_org('super_admin', organization_id, NULL, id) THEN true
-      WHEN app.user_has_role_for_org('therapist', organization_id, NULL, id) THEN (
+      WHEN public.user_has_role('admin') THEN true
+      WHEN public.user_has_role('super_admin') THEN true
+      WHEN public.user_has_role('therapist') THEN (
         EXISTS (
           SELECT 1
           FROM public.sessions s
@@ -45,7 +45,7 @@ CREATE POLICY "Clients scoped access"
         )
         AND public.clients.deleted_at IS NULL
       )
-      WHEN app.user_has_role_for_org('client', organization_id, NULL, id) THEN public.clients.id = auth.uid()
+      WHEN public.user_has_role('client') THEN public.clients.id = auth.uid()
       ELSE false
     END
   );
@@ -57,19 +57,19 @@ CREATE POLICY "Sessions scoped access"
   TO authenticated
   USING (
     CASE
-      WHEN app.user_has_role_for_org('admin', organization_id, therapist_id, NULL, id) THEN true
-      WHEN app.user_has_role_for_org('super_admin', organization_id, therapist_id, NULL, id) THEN true
-      WHEN app.user_has_role_for_org('therapist', organization_id, therapist_id, NULL, id) THEN therapist_id = auth.uid()
-      WHEN app.user_has_role_for_org('client', organization_id, NULL, public.sessions.client_id, id) THEN public.sessions.client_id = auth.uid()
+      WHEN public.user_has_role('admin') THEN true
+      WHEN public.user_has_role('super_admin') THEN true
+      WHEN public.user_has_role('therapist') THEN therapist_id = auth.uid()
+      WHEN public.user_has_role('client') THEN public.sessions.client_id = auth.uid()
       ELSE false
     END
   )
   WITH CHECK (
     CASE
-      WHEN app.user_has_role_for_org('admin', organization_id, therapist_id, NULL, id) THEN true
-      WHEN app.user_has_role_for_org('super_admin', organization_id, therapist_id, NULL, id) THEN true
-      WHEN app.user_has_role_for_org('therapist', organization_id, therapist_id, NULL, id) THEN therapist_id = auth.uid()
-      WHEN app.user_has_role_for_org('client', organization_id, NULL, public.sessions.client_id, id) THEN public.sessions.client_id = auth.uid()
+      WHEN public.user_has_role('admin') THEN true
+      WHEN public.user_has_role('super_admin') THEN true
+      WHEN public.user_has_role('therapist') THEN therapist_id = auth.uid()
+      WHEN public.user_has_role('client') THEN public.sessions.client_id = auth.uid()
       ELSE false
     END
   );
@@ -81,15 +81,15 @@ CREATE POLICY "Billing records scoped access"
   TO authenticated
   USING (
     CASE
-      WHEN app.user_has_role_for_org('admin', organization_id, NULL, NULL, session_id) THEN true
-      WHEN app.user_has_role_for_org('super_admin', organization_id, NULL, NULL, session_id) THEN true
-      WHEN app.user_has_role_for_org('therapist', organization_id, NULL, NULL, session_id) THEN EXISTS (
+      WHEN public.user_has_role('admin') THEN true
+      WHEN public.user_has_role('super_admin') THEN true
+      WHEN public.user_has_role('therapist') THEN EXISTS (
         SELECT 1
         FROM public.sessions s
         WHERE s.id = public.billing_records.session_id
           AND s.therapist_id = auth.uid()
       )
-      WHEN app.user_has_role_for_org('client', organization_id, NULL, NULL, session_id) THEN EXISTS (
+      WHEN public.user_has_role('client') THEN EXISTS (
         SELECT 1
         FROM public.sessions s
         WHERE s.id = public.billing_records.session_id
@@ -100,15 +100,15 @@ CREATE POLICY "Billing records scoped access"
   )
   WITH CHECK (
     CASE
-      WHEN app.user_has_role_for_org('admin', organization_id, NULL, NULL, session_id) THEN true
-      WHEN app.user_has_role_for_org('super_admin', organization_id, NULL, NULL, session_id) THEN true
-      WHEN app.user_has_role_for_org('therapist', organization_id, NULL, NULL, session_id) THEN EXISTS (
+      WHEN public.user_has_role('admin') THEN true
+      WHEN public.user_has_role('super_admin') THEN true
+      WHEN public.user_has_role('therapist') THEN EXISTS (
         SELECT 1
         FROM public.sessions s
         WHERE s.id = public.billing_records.session_id
           AND s.therapist_id = auth.uid()
       )
-      WHEN app.user_has_role_for_org('client', organization_id, NULL, NULL, session_id) THEN EXISTS (
+      WHEN public.user_has_role('client') THEN EXISTS (
         SELECT 1
         FROM public.sessions s
         WHERE s.id = public.billing_records.session_id

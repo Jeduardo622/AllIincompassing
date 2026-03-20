@@ -20,8 +20,16 @@
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('therapist-documents', 'therapist-documents', false);
 
--- Enable RLS on the storage.objects table (should already be enabled, but ensure it)
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+-- Enable RLS on storage.objects (skip when ownership is restricted in preview replay).
+DO $$
+BEGIN
+  BEGIN
+    EXECUTE 'ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      RAISE NOTICE 'insufficient privileges to alter storage.objects';
+  END;
+END $$;
 
 -- Policy for therapists to upload their own documents
 CREATE POLICY "Therapists can upload their own documents"

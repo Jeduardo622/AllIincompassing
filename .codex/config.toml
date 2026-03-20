@@ -1,13 +1,7 @@
 model = "gpt-5.4"
-reasoning = "medium"
+model_reasoning_effort = "medium"
+approval_policy = "on-request"
 
-[subagents]
-enabled = true
+[agents]
 max_threads = 4
 max_depth = 1
-
-[cloud]
-enabled = true
-
-[approval]
-mode = "on-request"

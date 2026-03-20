@@ -150,7 +150,7 @@ FOR ALL
 TO authenticated
 USING (
   CASE
-    WHEN auth.user_has_role('admin') THEN true
+    WHEN public.user_has_role('admin') THEN true
     ELSE user_id = auth.uid()
   END
 );

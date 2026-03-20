@@ -1,5 +1,5 @@
 -- Improve user_has_role function
-CREATE OR REPLACE FUNCTION auth.user_has_role(role_name text)
+CREATE OR REPLACE FUNCTION public.user_has_role(role_name text)
 RETURNS boolean AS $$
 DECLARE
   has_role boolean;

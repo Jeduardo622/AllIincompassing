@@ -20,11 +20,11 @@ AS $$
 BEGIN
   RETURN (
     -- Admin can access all client documents
-    auth.user_has_role('admin') OR
+    public.user_has_role('admin') OR
     
     -- Therapist can access documents for clients they have sessions with
     (
-      auth.user_has_role('therapist') AND
+      public.user_has_role('therapist') AND
       EXISTS (
         SELECT 1 FROM sessions s
         WHERE s.client_id = client_id

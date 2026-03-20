@@ -24,11 +24,11 @@ BEGIN
 
   RETURN
     -- Super admins/admins may access all client documents
-    auth.user_has_role('super_admin')
-    OR auth.user_has_role('admin')
+    public.user_has_role('super_admin')
+    OR public.user_has_role('admin')
     OR (
       -- Therapists can access clients tied to their sessions
-    auth.user_has_role('therapist')
+    public.user_has_role('therapist')
       AND EXISTS (
         SELECT 1
         FROM sessions s

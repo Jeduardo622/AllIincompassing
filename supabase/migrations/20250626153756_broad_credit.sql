@@ -43,10 +43,10 @@ USING (
   bucket_id = 'therapist-documents'
   AND (
     -- Allow therapists to read their own documents
-    (auth.user_has_role('therapist'::text) AND (storage.foldername(name))[2] = auth.uid()::text)
+    (public.user_has_role('therapist'::text) AND (storage.foldername(name))[2] = auth.uid()::text)
     OR
     -- Allow admins to read all documents
-    auth.user_has_role('admin'::text)
+    public.user_has_role('admin'::text)
   )
 );
 
@@ -59,10 +59,10 @@ USING (
   bucket_id = 'therapist-documents'
   AND (
     -- Allow therapists to update their own documents
-    (auth.user_has_role('therapist'::text) AND (storage.foldername(name))[2] = auth.uid()::text)
+    (public.user_has_role('therapist'::text) AND (storage.foldername(name))[2] = auth.uid()::text)
     OR
     -- Allow admins to update all documents
-    auth.user_has_role('admin'::text)
+    public.user_has_role('admin'::text)
   )
 );
 
@@ -75,9 +75,9 @@ USING (
   bucket_id = 'therapist-documents'
   AND (
     -- Allow therapists to delete their own documents
-    (auth.user_has_role('therapist'::text) AND (storage.foldername(name))[2] = auth.uid()::text)
+    (public.user_has_role('therapist'::text) AND (storage.foldername(name))[2] = auth.uid()::text)
     OR
     -- Allow admins to delete all documents
-    auth.user_has_role('admin'::text)
+    public.user_has_role('admin'::text)
   )
 );

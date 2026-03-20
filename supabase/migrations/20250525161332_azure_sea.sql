@@ -19,8 +19,8 @@ ON authorizations
 FOR INSERT 
 TO authenticated 
 WITH CHECK (
-  auth.user_has_role('admin') OR 
-  (auth.user_has_role('therapist') AND provider_id = auth.uid())
+  public.user_has_role('admin') OR 
+  (public.user_has_role('therapist') AND provider_id = auth.uid())
 );
 
 -- Create UPDATE policy for authorizations
@@ -30,12 +30,12 @@ ON authorizations
 FOR UPDATE 
 TO authenticated 
 USING (
-  auth.user_has_role('admin') OR 
-  (auth.user_has_role('therapist') AND provider_id = auth.uid())
+  public.user_has_role('admin') OR 
+  (public.user_has_role('therapist') AND provider_id = auth.uid())
 )
 WITH CHECK (
-  auth.user_has_role('admin') OR 
-  (auth.user_has_role('therapist') AND provider_id = auth.uid())
+  public.user_has_role('admin') OR 
+  (public.user_has_role('therapist') AND provider_id = auth.uid())
 );
 
 -- Create DELETE policy for authorizations
@@ -45,8 +45,8 @@ ON authorizations
 FOR DELETE 
 TO authenticated 
 USING (
-  auth.user_has_role('admin') OR 
-  (auth.user_has_role('therapist') AND provider_id = auth.uid())
+  public.user_has_role('admin') OR 
+  (public.user_has_role('therapist') AND provider_id = auth.uid())
 );
 
 -- Create INSERT policy for authorization_services
@@ -60,8 +60,8 @@ WITH CHECK (
     SELECT 1 FROM authorizations a
     WHERE a.id = authorization_id
     AND (
-      auth.user_has_role('admin') OR 
-      (auth.user_has_role('therapist') AND a.provider_id = auth.uid())
+      public.user_has_role('admin') OR 
+      (public.user_has_role('therapist') AND a.provider_id = auth.uid())
     )
   )
 );
@@ -77,8 +77,8 @@ USING (
     SELECT 1 FROM authorizations a
     WHERE a.id = authorization_id
     AND (
-      auth.user_has_role('admin') OR 
-      (auth.user_has_role('therapist') AND a.provider_id = auth.uid())
+      public.user_has_role('admin') OR 
+      (public.user_has_role('therapist') AND a.provider_id = auth.uid())
     )
   )
 )
@@ -87,8 +87,8 @@ WITH CHECK (
     SELECT 1 FROM authorizations a
     WHERE a.id = authorization_id
     AND (
-      auth.user_has_role('admin') OR 
-      (auth.user_has_role('therapist') AND a.provider_id = auth.uid())
+      public.user_has_role('admin') OR 
+      (public.user_has_role('therapist') AND a.provider_id = auth.uid())
     )
   )
 );
@@ -104,8 +104,8 @@ USING (
     SELECT 1 FROM authorizations a
     WHERE a.id = authorization_id
     AND (
-      auth.user_has_role('admin') OR 
-      (auth.user_has_role('therapist') AND a.provider_id = auth.uid())
+      public.user_has_role('admin') OR 
+      (public.user_has_role('therapist') AND a.provider_id = auth.uid())
     )
   )
 );

@@ -15,6 +15,7 @@ import {
 
 const MIN_CHILD_GOALS = 20;
 const MIN_PARENT_GOALS = 6;
+const MAX_GENERATION_ASSESSMENT_TEXT_CHARS = 12000;
 
 const draftGoalSchema = z.object({
   title: z.string().trim().min(1),
@@ -400,7 +401,10 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
     if (!checklistResult.ok) {
       return json({ error: "Failed to load extracted checklist values for AI proposal generation." }, checklistResult.status || 500);
     }
-    const assessmentText = composeAssessmentTextFromChecklist(checklistResult.data ?? []);
+    const assessmentText = composeAssessmentTextFromChecklist(checklistResult.data ?? []).slice(
+      0,
+      MAX_GENERATION_ASSESSMENT_TEXT_CHARS,
+    );
     if (assessmentText.length < 20) {
       return json({ error: "Insufficient extracted checklist content to generate AI proposals." }, 409);
     }

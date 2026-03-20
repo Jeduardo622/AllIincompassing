@@ -41,6 +41,8 @@ const sectionPriority = (sectionKey: string): number => {
 };
 
 const compactWhitespace = (value: string): string => value.replace(/\s+/g, " ").trim();
+const truncateText = (value: string, maxChars: number): string =>
+  value.length <= maxChars ? value : `${value.slice(0, maxChars - 3)}...`;
 
 const safeStringify = (value: unknown, maxChars = 280): string => {
   const serialized = JSON.stringify(value);
@@ -68,7 +70,7 @@ const valueJsonSummary = (valueJson: Record<string, unknown>): string | null => 
     if (typeof rawValue === "string") {
       const compact = compactWhitespace(rawValue);
       if (compact.length > 0) {
-        parts.push(`${key}: ${compact}`);
+        parts.push(`${key}: ${truncateText(compact, 280)}`);
       }
       continue;
     }

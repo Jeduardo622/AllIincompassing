@@ -13,6 +13,7 @@
 
 -- Drop function first since it depends on the view
 DROP FUNCTION IF EXISTS get_admin_users();
+DROP FUNCTION IF EXISTS get_admin_users(uuid);
 
 -- Now we can safely drop and recreate the view
 DROP VIEW IF EXISTS admin_users;

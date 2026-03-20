@@ -1,5 +1,15 @@
 BEGIN;
 
+-- Ensure org-scoped columns exist before defining org-scoped policies in replay environments.
+ALTER TABLE public.clients
+  ADD COLUMN IF NOT EXISTS organization_id uuid;
+
+ALTER TABLE public.sessions
+  ADD COLUMN IF NOT EXISTS organization_id uuid;
+
+ALTER TABLE public.billing_records
+  ADD COLUMN IF NOT EXISTS organization_id uuid;
+
 DROP POLICY IF EXISTS "Clients scoped access" ON public.clients;
 CREATE POLICY "Clients scoped access"
   ON public.clients

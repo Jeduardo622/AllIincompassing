@@ -44,4 +44,23 @@ describe("composeAssessmentTextFromChecklist", () => {
     expect(output).toContain("maintenance_criteria: 80% at 2 and 4 weeks");
     expect(output).toContain("generalization_criteria: Across home and community with 2 adults");
   });
+
+  it("truncates long string values from value_json", () => {
+    const longValue = "x".repeat(500);
+    const output = composeAssessmentTextFromChecklist([
+      {
+        section_key: "goals_treatment_planning",
+        label: "Skill Acquisition Goal 1",
+        placeholder_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+        value_text: "Rolando will follow one-step directions.",
+        value_json: {
+          target_criteria: longValue,
+        },
+      },
+    ]);
+
+    expect(output).toContain("target_criteria:");
+    expect(output).toContain("...");
+    expect(output).not.toContain(`target_criteria: ${longValue}`);
+  });
 });

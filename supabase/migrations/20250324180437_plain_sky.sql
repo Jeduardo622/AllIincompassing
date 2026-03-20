@@ -81,23 +81,6 @@ CREATE INDEX idx_authorizations_status ON authorizations(status);
 CREATE INDEX idx_authorization_services_auth_id ON authorization_services(authorization_id);
 CREATE INDEX idx_authorization_services_status ON authorization_services(decision_status);
 
--- Compatibility helper for replay environments where auth.user_has_role is absent.
-CREATE OR REPLACE FUNCTION auth.user_has_role(role_name text)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public, auth
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.user_roles ur
-    JOIN public.roles r ON r.id = ur.role_id
-    WHERE ur.user_id = auth.uid()
-      AND r.name = role_name
-  );
-$$;
-
 -- Add RLS policies
 CREATE POLICY "Authorizations are viewable by admin and assigned therapist"
   ON authorizations
@@ -105,8 +88,20 @@ CREATE POLICY "Authorizations are viewable by admin and assigned therapist"
   TO authenticated
   USING (
     CASE
-      WHEN auth.user_has_role('admin') THEN true
-      WHEN auth.user_has_role('therapist') THEN provider_id = auth.uid()
+      WHEN EXISTS (
+        SELECT 1
+        FROM user_roles ur
+        JOIN roles r ON r.id = ur.role_id
+        WHERE ur.user_id = auth.uid()
+          AND r.name = 'admin'
+      ) THEN true
+      WHEN EXISTS (
+        SELECT 1
+        FROM user_roles ur
+        JOIN roles r ON r.id = ur.role_id
+        WHERE ur.user_id = auth.uid()
+          AND r.name = 'therapist'
+      ) THEN provider_id = auth.uid()
       ELSE false
     END
   );
@@ -120,8 +115,23 @@ CREATE POLICY "Authorization services are viewable by admin and assigned therapi
       SELECT 1 FROM authorizations a
       WHERE a.id = authorization_id
       AND (
-        auth.user_has_role('admin')
-        OR (auth.user_has_role('therapist') AND a.provider_id = auth.uid())
+        EXISTS (
+          SELECT 1
+          FROM user_roles ur
+          JOIN roles r ON r.id = ur.role_id
+          WHERE ur.user_id = auth.uid()
+            AND r.name = 'admin'
+        )
+        OR (
+          EXISTS (
+            SELECT 1
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = auth.uid()
+              AND r.name = 'therapist'
+          )
+          AND a.provider_id = auth.uid()
+        )
       )
     )
   );

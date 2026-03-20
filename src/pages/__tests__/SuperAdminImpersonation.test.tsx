@@ -41,6 +41,7 @@ beforeEach(() => {
   useAuthSpy.mockReturnValue({
     user: { user_metadata: { organization_id: 'org-123' } },
     profile: { role: 'super_admin' },
+    effectiveRole: 'super_admin',
   } as unknown as ReturnType<typeof authContext.useAuth>);
 
   showSuccessSpy = vi.spyOn(toast, 'showSuccess').mockImplementation(() => undefined);
@@ -65,6 +66,7 @@ describe('SuperAdminImpersonation page', () => {
     useAuthSpy.mockReturnValue({
       user: { user_metadata: { organization_id: 'org-123' } },
       profile: { role: 'admin' },
+      effectiveRole: 'admin',
     } as unknown as ReturnType<typeof authContext.useAuth>);
 
     renderWithProviders(<SuperAdminImpersonation />);

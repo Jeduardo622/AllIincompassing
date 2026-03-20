@@ -54,8 +54,8 @@ CREATE POLICY "Therapist certifications are viewable by admin and assigned the"
   TO authenticated
   USING (
     CASE
-      WHEN auth.user_has_role('admin'::text) THEN true
-      WHEN auth.user_has_role('therapist'::text) THEN therapist_id = auth.uid()
+      WHEN public.user_has_role('admin'::text) THEN true
+      WHEN public.user_has_role('therapist'::text) THEN therapist_id = auth.uid()
       ELSE false
     END
   );
@@ -66,8 +66,8 @@ CREATE POLICY "Therapist certifications can be deleted by admin and assigned t"
   TO authenticated
   USING (
     CASE
-      WHEN auth.user_has_role('admin'::text) THEN true
-      WHEN auth.user_has_role('therapist'::text) THEN therapist_id = auth.uid()
+      WHEN public.user_has_role('admin'::text) THEN true
+      WHEN public.user_has_role('therapist'::text) THEN therapist_id = auth.uid()
       ELSE false
     END
   );
@@ -78,8 +78,8 @@ CREATE POLICY "Therapist certifications can be inserted by admin and assigned "
   TO authenticated
   WITH CHECK (
     CASE
-      WHEN auth.user_has_role('admin'::text) THEN true
-      WHEN auth.user_has_role('therapist'::text) THEN therapist_id = auth.uid()
+      WHEN public.user_has_role('admin'::text) THEN true
+      WHEN public.user_has_role('therapist'::text) THEN therapist_id = auth.uid()
       ELSE false
     END
   );
@@ -90,15 +90,15 @@ CREATE POLICY "Therapist certifications can be updated by admin and assigned t"
   TO authenticated
   USING (
     CASE
-      WHEN auth.user_has_role('admin'::text) THEN true
-      WHEN auth.user_has_role('therapist'::text) THEN therapist_id = auth.uid()
+      WHEN public.user_has_role('admin'::text) THEN true
+      WHEN public.user_has_role('therapist'::text) THEN therapist_id = auth.uid()
       ELSE false
     END
   )
   WITH CHECK (
     CASE
-      WHEN auth.user_has_role('admin'::text) THEN true
-      WHEN auth.user_has_role('therapist'::text) THEN therapist_id = auth.uid()
+      WHEN public.user_has_role('admin'::text) THEN true
+      WHEN public.user_has_role('therapist'::text) THEN therapist_id = auth.uid()
       ELSE false
     END
   );

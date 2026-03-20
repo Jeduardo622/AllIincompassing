@@ -41,8 +41,8 @@ BEGIN
       bucket_id = 'client-documents' AND 
       (
         CASE
-          WHEN auth.user_has_role('admin'::text) THEN true
-          WHEN auth.user_has_role('therapist'::text) THEN (
+          WHEN public.user_has_role('admin'::text) THEN true
+          WHEN public.user_has_role('therapist'::text) THEN (
             EXISTS (
               SELECT 1 
               FROM public.sessions s
@@ -94,8 +94,8 @@ BEGIN
       bucket_id = 'client-documents' AND 
       (
         CASE
-          WHEN auth.user_has_role('admin'::text) THEN true
-          WHEN auth.user_has_role('therapist'::text) THEN (
+          WHEN public.user_has_role('admin'::text) THEN true
+          WHEN public.user_has_role('therapist'::text) THEN (
             EXISTS (
               SELECT 1 
               FROM public.sessions s
@@ -127,8 +127,8 @@ BEGIN
       bucket_id = 'client-documents' AND 
       (
         CASE
-          WHEN auth.user_has_role('admin'::text) THEN true
-          WHEN auth.user_has_role('therapist'::text) THEN (
+          WHEN public.user_has_role('admin'::text) THEN true
+          WHEN public.user_has_role('therapist'::text) THEN (
             EXISTS (
               SELECT 1 
               FROM public.sessions s
@@ -160,8 +160,8 @@ BEGIN
       bucket_id = 'client-documents' AND 
       (
         CASE
-          WHEN auth.user_has_role('admin'::text) THEN true
-          WHEN auth.user_has_role('therapist'::text) THEN (
+          WHEN public.user_has_role('admin'::text) THEN true
+          WHEN public.user_has_role('therapist'::text) THEN (
             EXISTS (
               SELECT 1 
               FROM public.sessions s
@@ -191,7 +191,7 @@ BEGIN
     TO authenticated 
     WITH CHECK (
       bucket_id = 'client-documents' AND
-      auth.user_has_role('client'::text) AND
+      public.user_has_role('client'::text) AND
       (storage.foldername(name))[2] = auth.uid()::text
     );
   END IF;
@@ -211,7 +211,7 @@ BEGIN
     TO authenticated 
     WITH CHECK (
       bucket_id = 'therapist-documents' AND
-      auth.user_has_role('therapist'::text) AND
+      public.user_has_role('therapist'::text) AND
       (storage.foldername(name))[2] = auth.uid()::text
     );
   END IF;
@@ -233,8 +233,8 @@ BEGIN
       bucket_id = 'therapist-documents' AND
       (
         CASE
-          WHEN auth.user_has_role('admin'::text) THEN true
-          WHEN auth.user_has_role('therapist'::text) THEN (storage.foldername(name))[2] = auth.uid()::text
+          WHEN public.user_has_role('admin'::text) THEN true
+          WHEN public.user_has_role('therapist'::text) THEN (storage.foldername(name))[2] = auth.uid()::text
           ELSE false
         END
       )
@@ -258,8 +258,8 @@ BEGIN
       bucket_id = 'therapist-documents' AND
       (
         CASE
-          WHEN auth.user_has_role('admin'::text) THEN true
-          WHEN auth.user_has_role('therapist'::text) THEN (storage.foldername(name))[2] = auth.uid()::text
+          WHEN public.user_has_role('admin'::text) THEN true
+          WHEN public.user_has_role('therapist'::text) THEN (storage.foldername(name))[2] = auth.uid()::text
           ELSE false
         END
       )
@@ -283,8 +283,8 @@ BEGIN
       bucket_id = 'therapist-documents' AND
       (
         CASE
-          WHEN auth.user_has_role('admin'::text) THEN true
-          WHEN auth.user_has_role('therapist'::text) THEN (storage.foldername(name))[2] = auth.uid()::text
+          WHEN public.user_has_role('admin'::text) THEN true
+          WHEN public.user_has_role('therapist'::text) THEN (storage.foldername(name))[2] = auth.uid()::text
           ELSE false
         END
       )

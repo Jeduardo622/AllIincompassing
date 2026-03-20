@@ -307,7 +307,7 @@ CREATE POLICY ai_session_notes_therapist_write
   TO authenticated
   WITH CHECK (
     therapist_id = auth.uid()
-    AND auth.user_has_role('therapist')
+    AND public.user_has_role('therapist')
   );
 
 CREATE POLICY ai_session_notes_therapist_update

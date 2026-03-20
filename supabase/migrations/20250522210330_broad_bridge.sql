@@ -13,7 +13,7 @@
 */
 
 -- Improve user_has_role function with better error handling
-CREATE OR REPLACE FUNCTION auth.user_has_role(role_name text)
+CREATE OR REPLACE FUNCTION public.user_has_role(role_name text)
 RETURNS boolean AS $$
 DECLARE
   has_role boolean;
@@ -146,7 +146,7 @@ END;
 $$;
 
 -- Grant execute permissions
-GRANT EXECUTE ON FUNCTION auth.user_has_role(text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.user_has_role(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_user_roles() TO authenticated;
 GRANT EXECUTE ON FUNCTION ensure_admin_role(text) TO authenticated;
 

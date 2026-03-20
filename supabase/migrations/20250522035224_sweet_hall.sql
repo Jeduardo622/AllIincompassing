@@ -13,7 +13,7 @@
 */
 
 -- Improve user_has_role function to properly handle admin role
-CREATE OR REPLACE FUNCTION auth.user_has_role(role_name text)
+CREATE OR REPLACE FUNCTION public.user_has_role(role_name text)
 RETURNS boolean AS $$
 DECLARE
   has_role boolean;
@@ -281,7 +281,7 @@ $$;
 
 -- Grant execute permission to authenticated users
 GRANT EXECUTE ON FUNCTION manage_admin_users(text, text, jsonb, text) TO authenticated;
-GRANT EXECUTE ON FUNCTION auth.user_has_role(text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.user_has_role(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_user_roles() TO authenticated;
 GRANT EXECUTE ON FUNCTION ensure_user_has_admin_role(uuid) TO authenticated;
 

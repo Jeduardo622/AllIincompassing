@@ -4,12 +4,13 @@ import { z } from "npm:zod@3.23.8";
 import { Buffer } from "node:buffer";
 import { resolveAllowedOrigin } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
+const corsHeaders = (req: Request) => ({
+  "Access-Control-Allow-Origin": resolveAllowedOrigin(req.headers.get("origin")),
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers":
     "Content-Type, Authorization, apikey, x-client-info, x-request-id, x-correlation-id",
-};
+  Vary: "Origin",
+});
 
 const checklistRowSchema = z.object({
   section: z.string().min(1),
@@ -102,10 +103,10 @@ const AI_EXTRACTION_TIMEOUT_MS = 4500;
 const MAX_AI_DOCUMENT_CHARS = 12000;
 const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 
-const json = (payload: unknown, status = 200): Response =>
+const json = (req: Request, payload: unknown, status = 200): Response =>
   new Response(JSON.stringify(payload), {
     status,
-    headers: { "Content-Type": "application/json", ...corsHeaders },
+    headers: { "Content-Type": "application/json", ...corsHeaders(req) },
   });
 
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> => {
@@ -418,6 +419,9 @@ const summarizeStructuredRecommendation = (valueJson: z.infer<typeof structuredR
     valueJson.measurement_type,
     valueJson.baseline_data,
     valueJson.target_criteria,
+    valueJson.mastery_criteria,
+    valueJson.maintenance_criteria,
+    valueJson.generalization_criteria,
   ].filter((part): part is string => typeof part === "string" && part.trim().length > 0);
   if (parts.length === 0) {
     return null;
@@ -547,10 +551,10 @@ ${trimmedText.slice(0, MAX_AI_DOCUMENT_CHARS)}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders });
+    return new Response(null, { status: 204, headers: corsHeaders(req) });
   }
   if (req.method !== "POST") {
-    return json({ error: "Method not allowed" }, 405);
+    return json(req, { error: "Method not allowed" }, 405);
   }
 
   try {
@@ -558,7 +562,7 @@ Deno.serve(async (req) => {
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     if (!supabaseUrl || !anonKey || !serviceRoleKey) {
-      return json({ error: "Supabase environment configuration is missing." }, 500);
+      return json(req, { error: "Supabase environment configuration is missing." }, 500);
     }
     const authHeader = req.headers.get("Authorization") ?? "";
     const requestClient = createClient(supabaseUrl, anonKey, {
@@ -566,13 +570,13 @@ Deno.serve(async (req) => {
     });
     const { data: userData, error: userError } = await requestClient.auth.getUser();
     if (userError || !userData?.user) {
-      return json({ error: "Unauthorized" }, 401);
+      return json(req, { error: "Unauthorized" }, 401);
     }
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
     const parsed = requestSchema.safeParse(await req.json());
     if (!parsed.success) {
-      return json({ error: "Invalid request body" }, 400);
+      return json(req, { error: "Invalid request body" }, 400);
     }
 
     const { data } = parsed;
@@ -583,30 +587,30 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (scopedAssessmentError || !scopedAssessment) {
-      return json({ error: "Assessment document is not accessible for this user context." }, 403);
+      return json(req, { error: "Assessment document is not accessible for this user context." }, 403);
     }
 
     if (scopedAssessment.bucket_id !== data.bucket_id || scopedAssessment.object_path !== data.object_path) {
-      return json({ error: "Assessment document storage location mismatch." }, 403);
+      return json(req, { error: "Assessment document storage location mismatch." }, 403);
     }
 
     const expectedClientPrefix = `clients/${scopedAssessment.client_id}/`;
     if (!data.object_path.startsWith(expectedClientPrefix)) {
-      return json({ error: "Assessment document path is outside the allowed client scope." }, 403);
+      return json(req, { error: "Assessment document path is outside the allowed client scope." }, 403);
     }
 
     const download = await adminClient.storage.from(data.bucket_id).download(data.object_path);
     if (download.error || !download.data) {
-      return json({ error: "Unable to download uploaded assessment document." }, 502);
+      return json(req, { error: "Unable to download uploaded assessment document." }, 502);
     }
 
     const objectPathLower = data.object_path.toLowerCase();
     if (!objectPathLower.endsWith(".pdf") && !objectPathLower.endsWith(".docx")) {
-      return json({ error: "Unsupported assessment document type." }, 415);
+      return json(req, { error: "Unsupported assessment document type." }, 415);
     }
 
     if (download.data.size > MAX_DOCUMENT_BYTES) {
-      return json({ error: "Assessment document exceeds maximum supported size." }, 413);
+      return json(req, { error: "Assessment document exceeds maximum supported size." }, 413);
     }
 
     const fileBytes = new Uint8Array(await download.data.arrayBuffer());
@@ -630,7 +634,7 @@ Deno.serve(async (req) => {
       (field) => structuredByKey.get(field.placeholder_key) ?? aiByKey.get(field.placeholder_key) ?? field,
     );
 
-    return json({
+    return json(req, {
       assessment_document_id: data.assessment_document_id,
       template_type: data.template_type,
       fields: merged,
@@ -642,6 +646,6 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error("extract-assessment-fields error", error);
-    return json({ error: "Failed to extract assessment fields." }, 500);
+    return json(req, { error: "Failed to extract assessment fields." }, 500);
   }
 });

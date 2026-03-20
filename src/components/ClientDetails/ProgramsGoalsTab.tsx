@@ -106,7 +106,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     setGoalObjectiveDataPoints(JSON.stringify(goal.objective_data_points ?? [], null, 2));
   };
 
-  const { data: programs = [], isLoading: programsLoading } = useQuery({
+  const {
+    data: programs = [],
+    isLoading: programsLoading,
+    error: programsQueryError,
+  } = useQuery({
     queryKey: ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
     queryFn: async () => {
       if (!organizationId) {
@@ -125,6 +129,19 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     if (selectedProgramId) return selectedProgramId;
     return programs.find((program) => program.status === "active")?.id ?? programs[0]?.id ?? null;
   }, [programs, selectedProgramId]);
+  const programNameValue = programName.trim();
+  const goalTitleValue = goalTitle.trim();
+  const goalDescriptionValue = goalDescription.trim();
+  const goalOriginalTextValue = goalOriginalText.trim();
+  const createGoalDisabledReason = !resolvedProgramId
+    ? "Create or select a program first."
+    : !goalTitleValue
+      ? "Goal title is required."
+      : !goalDescriptionValue
+        ? "Goal description is required."
+        : !goalOriginalTextValue
+          ? "Original clinical wording is required."
+          : null;
 
   const { data: goals = [], isLoading: goalsLoading } = useQuery({
     queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
@@ -678,12 +695,12 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         method: "POST",
         body: JSON.stringify({
           client_id: client.id,
-          name: programName,
-          description: programDescription || undefined,
+          name: programNameValue,
+          description: programDescription.trim() || undefined,
         }),
       });
       if (!response.ok) {
-        throw new Error("Failed to create program");
+        throw new Error(await parseApiErrorMessage(response, "Failed to create program."));
       }
       return parseJson<Program>(response);
     },
@@ -710,9 +727,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         body: JSON.stringify({
           client_id: client.id,
           program_id: resolvedProgramId,
-          title: goalTitle,
-          description: goalDescription,
-          original_text: goalOriginalText,
+          title: goalTitleValue,
+          description: goalDescriptionValue,
+          original_text: goalOriginalTextValue,
           measurement_type: goalMeasurementType || undefined,
           baseline_data: goalBaselineData || undefined,
           target_criteria: goalTargetCriteria || undefined,
@@ -723,7 +740,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         }),
       });
       if (!response.ok) {
-        throw new Error("Failed to create goal");
+        throw new Error(await parseApiErrorMessage(response, "Failed to create goal."));
       }
       return parseJson<Goal>(response);
     },
@@ -1107,11 +1124,19 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               <button
                 type="button"
                 onClick={() => createProgram.mutate()}
-                disabled={!programName || createProgram.isLoading}
+                disabled={!programNameValue || createProgram.isLoading}
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
               >
                 {createProgram.isLoading ? "Creating..." : "Create Program"}
               </button>
+              {programsQueryError instanceof Error && (
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  Could not load programs yet: {programsQueryError.message}
+                </p>
+              )}
+              {!createProgram.isLoading && !programNameValue && (
+                <p className="text-xs text-gray-500 dark:text-gray-300">Enter a program name to create a program.</p>
+              )}
             </div>
           </div>
         </div>
@@ -1680,11 +1705,14 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               <button
                 type="button"
                 onClick={() => createGoal.mutate()}
-                disabled={!resolvedProgramId || !goalTitle || !goalDescription || !goalOriginalText || createGoal.isLoading}
+                disabled={Boolean(createGoalDisabledReason) || createGoal.isLoading}
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
               >
                 {createGoal.isLoading ? "Creating..." : "Create Goal"}
               </button>
+              {createGoalDisabledReason && !createGoal.isLoading && (
+                <p className="text-xs text-gray-500 dark:text-gray-300">{createGoalDisabledReason}</p>
+              )}
             </div>
           </div>
 

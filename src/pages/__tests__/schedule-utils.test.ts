@@ -3,6 +3,7 @@ import {
   buildSessionSlotIndex,
   createSessionSlotKey,
   mapWithConcurrency,
+  normalizeRecurrencePayload,
 } from "../schedule-utils";
 import type { Session } from "../../types";
 
@@ -85,5 +86,23 @@ describe("schedule-utils performance helpers", () => {
 
     expect(output).toEqual([2, 4, 6, 8, 10]);
     expect(maxInFlight).toBeLessThanOrEqual(2);
+  });
+
+  it("de-duplicates normalized recurrence exceptions while preserving first-seen order", () => {
+    const result = normalizeRecurrencePayload({
+      enabled: true,
+      rule: "FREQ=WEEKLY",
+      exceptions: [
+        " 2026-03-12T09:00:00Z ",
+        "2026-03-12T09:00:00.000Z",
+        "2026-03-19T09:00:00Z",
+      ],
+      timeZone: "UTC",
+    });
+
+    expect(result?.exceptions).toEqual([
+      "2026-03-12T09:00:00.000Z",
+      "2026-03-19T09:00:00.000Z",
+    ]);
   });
 });

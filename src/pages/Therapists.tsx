@@ -30,12 +30,13 @@ export const matchesStatusFilter = (
   status: Therapist['status'] | null | undefined,
   selectedStatus: string,
 ) => {
-  if (selectedStatus === 'all') {
+  const normalizedSelectedStatus = selectedStatus.trim().toLowerCase();
+  if (normalizedSelectedStatus === 'all') {
     return true;
   }
 
-  const normalizedStatus = (status ?? 'active').toLowerCase();
-  return normalizedStatus === selectedStatus.toLowerCase();
+  const normalizedStatus = String(status ?? 'active').trim().toLowerCase();
+  return normalizedStatus === normalizedSelectedStatus;
 };
 
 const Therapists = () => {

@@ -118,8 +118,10 @@ export function normalizeRecurrencePayload(
     .map((value) => toTimeZoneAwareIso(value, state.timeZone))
     .filter((value): value is string => typeof value === "string");
 
-  if (exceptionIsoValues.length > 0) {
-    recurrence.exceptions = exceptionIsoValues;
+  const dedupedExceptionIsoValues = Array.from(new Set(exceptionIsoValues));
+
+  if (dedupedExceptionIsoValues.length > 0) {
+    recurrence.exceptions = dedupedExceptionIsoValues;
   }
 
   return recurrence;

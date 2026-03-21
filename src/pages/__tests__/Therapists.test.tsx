@@ -141,6 +141,10 @@ describe('matchesStatusFilter', () => {
   it('compares statuses case-insensitively', () => {
     expect(matchesStatusFilter('Inactive', 'inactive')).toBe(true);
   });
+
+  it('ignores surrounding whitespace in both status values', () => {
+    expect(matchesStatusFilter(' inactive ', ' inactive ')).toBe(true);
+  });
 });
 
 describe('Therapists page filtering', () => {

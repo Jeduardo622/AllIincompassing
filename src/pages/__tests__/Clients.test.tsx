@@ -108,6 +108,19 @@ beforeEach(() => {
 });
 
 describe('Clients page filtering', () => {
+  it('shows a search-specific empty state when filters remove all clients', async () => {
+    renderWithProviders(<Clients />);
+
+    const searchInput = screen.getByRole('textbox', { name: /search clients/i });
+    await userEvent.type(searchInput, 'missing client');
+
+    await waitFor(() => {
+      expect(screen.getByText('No clients match your search criteria')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('No clients found')).not.toBeInTheDocument();
+  });
+
   it('shows only archived clients when the archived filter is selected', async () => {
     renderWithProviders(<Clients />);
 

@@ -1,0 +1,95 @@
+# Verification Matrix
+
+Use the smallest verification set that matches the change. If a change spans multiple categories, run the union of those checks.
+
+## Baseline
+
+- Install dependencies: `npm ci`
+- Run policy checks when the change touches auth, server, database, CI, routing, or runtime boundaries: `npm run ci:check-focused`
+- If a required check cannot run locally because secrets or environment are missing, call that out explicitly in the PR summary.
+
+## UI And Component Changes
+
+Use for changes limited to `src/components/**`, `src/pages/**`, styling, copy, or non-auth UX.
+
+- `npm run lint`
+- `npm run typecheck`
+- Run targeted tests when they exist, otherwise `npm test`
+- `npm run build`
+
+Browser/auth checks are not required unless the change affects routing, login, guards, session flows, or browser-only regressions.
+
+## Auth, Routing, And Runtime Config
+
+Use for changes touching login, signup, password recovery, route guards, role handling, navigation rules, `src/lib/auth*`, `src/lib/runtimeConfig*`, `src/main.tsx`, `src/App.tsx`, `src/server/api/runtime-config.ts`, or `netlify.toml`.
+
+- `npm run ci:check-focused`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run test:ci`
+- `npm run test:routes:tier0`
+- `npm run build`
+
+Browser/auth checks required:
+
+- `npm run ci:playwright`
+
+If Playwright secrets are unavailable locally, state that clearly and rely on CI for the final browser/auth gate.
+
+## Server, API, And Edge Integration
+
+Use for changes in `src/server/**`, transport adapters, request/response contracts, API boundary code, or app-to-edge integration.
+
+- `npm run ci:check-focused`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run test:ci`
+- `npm run build`
+
+Add browser checks when the server/API change affects routed user flows, auth, or session lifecycle:
+
+- `npm run test:routes:tier0`
+- `npm run ci:playwright`
+
+## Database, RLS, Migrations, And Tenant Isolation
+
+Use for changes in `supabase/migrations/**`, `supabase/functions/**`, tenant scoping, grants, RLS, RPC exposure, or data access policy.
+
+- `npm run ci:check-focused`
+- `npm run test:ci`
+- `npm run validate:tenant`
+- `npm run build`
+
+Tenant validation is required for:
+
+- schema or migration changes
+- RLS or grant changes
+- authz or org-scope changes
+- RPC or edge-function changes that read or write tenant-scoped data
+
+Add browser/auth checks when these changes affect login, route access, session booking, or other user-facing protected flows:
+
+- `npm run test:routes:tier0`
+- `npm run ci:playwright`
+
+## CI, Workflow, And Policy Changes
+
+Use for changes in `.github/workflows/**`, `scripts/ci/**`, Husky hooks, or verification policy docs.
+
+- validate the affected workflow/script directly
+- `npm run ci:check-focused`
+- `npm run lint`
+- `npm run typecheck`
+
+If the change can affect app build or required checks, also run:
+
+- `npm run test:ci`
+- `npm run build`
+
+## Docs And Process Changes
+
+Use for docs-only or process-only changes with no code or config impact.
+
+- verify links, commands, and file paths manually
+
+Run additional commands only if the doc changes alter required developer workflow or verification guidance.

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { format, parseISO, addDays } from 'date-fns';
 import { 
   // MapPin, 
@@ -15,6 +15,7 @@ import { getDistance } from 'geolib';
 import { logger } from '../lib/logger/logger';
 import { callEdgeFunctionHttp } from '../lib/api';
 import { showError } from '../lib/toast';
+import { Modal } from './common/Modal';
 
 const listOrFallback = (value: string[] | null | undefined, fallback: string): string => {
   if (!Array.isArray(value) || value.length === 0) {
@@ -48,6 +49,7 @@ export function AutoScheduleModal({
   clients,
   existingSessions,
 }: AutoScheduleModalProps) {
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [numWeeks, setNumWeeks] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -57,6 +59,8 @@ export function AutoScheduleModal({
   });
   const [currentPage, setCurrentPage] = useState(0);
   const itemsPerPage = 5;
+  const dialogTitleId = 'auto-schedule-modal-title';
+  const dialogDescriptionId = 'auto-schedule-modal-description';
 
   const handleGeneratePreview = () => {
     const start = parseISO(startDate);
@@ -177,15 +181,27 @@ export function AutoScheduleModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      titleId={dialogTitleId}
+      describedById={dialogDescriptionId}
+      initialFocusRef={closeButtonRef}
+      overlayClassName="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      panelClassName="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+    >
+      <p id={dialogDescriptionId} className="sr-only">
+        Generate and review an automatically proposed schedule before creating sessions.
+      </p>
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+          <h2 id={dialogTitleId} className="text-xl font-semibold text-gray-900 dark:text-white">
             Auto Schedule Sessions
           </h2>
           <button
+            ref={closeButtonRef}
             onClick={onClose}
+            aria-label="Close auto schedule modal"
             className="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400"
           >
             <X className="h-6 w-6" />
@@ -268,6 +284,7 @@ export function AutoScheduleModal({
                   <button
                     onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
                     disabled={currentPage === 0}
+                    aria-label="Previous preview page"
                     className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
                   >
                     <ChevronLeft className="w-5 h-5" />
@@ -278,6 +295,7 @@ export function AutoScheduleModal({
                   <button
                     onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
                     disabled={currentPage === totalPages - 1}
+                    aria-label="Next preview page"
                     className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
                   >
                     <ChevronRight className="w-5 h-5" />
@@ -440,7 +458,6 @@ export function AutoScheduleModal({
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }

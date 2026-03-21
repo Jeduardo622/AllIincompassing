@@ -61,6 +61,26 @@ describe('AutoScheduleModal warnings', () => {
     mockedGenerateOptimalSchedule.mockReset();
   });
 
+  it('renders as an accessible dialog with labeled controls', () => {
+    render(
+      <AutoScheduleModal
+        isOpen
+        onClose={() => {}}
+        onSchedule={vi.fn()}
+        therapists={[createTherapist()]}
+        clients={[createClient()]}
+        existingSessions={[] as Session[]}
+      />
+    );
+
+    expect(
+      screen.getByRole('dialog', { name: /auto schedule sessions/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /close auto schedule modal/i })
+    ).toBeInTheDocument();
+  });
+
   it('displays capped client warnings when scheduling results indicate limits', () => {
     const therapist = createTherapist();
     const client = createClient();

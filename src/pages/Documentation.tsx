@@ -101,6 +101,10 @@ const matchesSearch = (entry: DocumentEntry, query: string) => {
   ].some((value) => value.toLowerCase().includes(normalized));
 };
 
+const buildSectionEmptyMessage = (baseMessage: string, query: string, hasDocuments: boolean) => {
+  return query && hasDocuments ? 'No documents in this section match your search.' : baseMessage;
+};
+
 const buildTherapistDocumentTitle = (objectPath: string, documentKey: string) => {
   const filename = objectPath.split('/').pop() ?? objectPath;
   return documentKey ? `${documentKey.replace(/_/g, ' ')} • ${filename}` : filename;
@@ -236,34 +240,46 @@ export function Documentation() {
 
   const sections = useMemo(() => {
     const query = search.trim();
+    const aiSessionNotes = data?.aiSessionNotes ?? [];
+    const therapistDocuments = data?.therapistDocuments ?? [];
+    const clientDocuments = data?.clientDocuments ?? [];
+    const authorizationDocuments = data?.authorizationDocuments ?? [];
     return [
       {
         id: 'ai-session-notes',
         title: 'AI Session Notes',
         description: 'AI-generated documentation linked to your sessions.',
-        documents: (data?.aiSessionNotes ?? []).filter((entry) => matchesSearch(entry, query)),
-        emptyMessage: 'No AI session notes yet.',
+        documents: aiSessionNotes.filter((entry) => matchesSearch(entry, query)),
+        emptyMessage: buildSectionEmptyMessage('No AI session notes yet.', query, aiSessionNotes.length > 0),
       },
       {
         id: 'therapist-uploads',
         title: 'Therapist Uploads',
         description: 'Licenses, resumes, certifications, and generated templates.',
-        documents: (data?.therapistDocuments ?? []).filter((entry) => matchesSearch(entry, query)),
-        emptyMessage: 'No therapist documents found.',
+        documents: therapistDocuments.filter((entry) => matchesSearch(entry, query)),
+        emptyMessage: buildSectionEmptyMessage(
+          'No therapist documents found.',
+          query,
+          therapistDocuments.length > 0,
+        ),
       },
       {
         id: 'client-uploads',
         title: 'Client Uploads',
         description: 'Documents you uploaded during client onboarding.',
-        documents: (data?.clientDocuments ?? []).filter((entry) => matchesSearch(entry, query)),
-        emptyMessage: 'No client documents found.',
+        documents: clientDocuments.filter((entry) => matchesSearch(entry, query)),
+        emptyMessage: buildSectionEmptyMessage('No client documents found.', query, clientDocuments.length > 0),
       },
       {
         id: 'authorization-uploads',
         title: 'Authorization Uploads',
         description: 'Pre-authorization documentation you uploaded.',
-        documents: (data?.authorizationDocuments ?? []).filter((entry) => matchesSearch(entry, query)),
-        emptyMessage: 'No authorization documents found.',
+        documents: authorizationDocuments.filter((entry) => matchesSearch(entry, query)),
+        emptyMessage: buildSectionEmptyMessage(
+          'No authorization documents found.',
+          query,
+          authorizationDocuments.length > 0,
+        ),
       },
     ];
   }, [data, search]);

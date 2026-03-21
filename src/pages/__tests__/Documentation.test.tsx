@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
+import { renderWithProviders, screen, userEvent, waitFor, within } from '../../test/utils';
 import { Documentation } from '../Documentation';
 
 const createTableData = () => ({
@@ -58,7 +58,16 @@ const createTableData = () => ({
   ],
 });
 
+type TableData = ReturnType<typeof createTableData>;
+
 let tableData = createTableData();
+
+const setTableData = (overrides: Partial<TableData> = {}) => {
+  tableData = {
+    ...createTableData(),
+    ...overrides,
+  };
+};
 
 const buildQuery = (table: keyof typeof tableData) => {
   const builder = {
@@ -104,7 +113,7 @@ vi.mock('../../lib/logger/logger', () => ({
 describe('Documentation page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    tableData = createTableData();
+    setTableData();
   });
 
   it('renders sections and filters results by search', async () => {
@@ -140,11 +149,59 @@ describe('Documentation page', () => {
     expect(screen.queryByText('license • license.pdf')).not.toBeInTheDocument();
   });
 
+  it('keeps the generic empty state when a section truly has no documents', async () => {
+    setTableData({
+      therapist_documents: [],
+    });
+
+    renderWithProviders(<Documentation />);
+
+    await waitFor(() => {
+      expect(screen.getByText('No therapist documents found.')).toBeInTheDocument();
+    });
+  });
+
+  it('keeps the generic empty state when a search is active for a truly empty section', async () => {
+    setTableData({
+      therapist_documents: [],
+    });
+
+    renderWithProviders(<Documentation />);
+
+    const searchInput = screen.getByPlaceholderText('Search documentation...');
+    await userEvent.clear(searchInput);
+    await userEvent.type(searchInput, 'authorization');
+
+    const therapistSection = screen.getByRole('heading', { name: 'Therapist Uploads' }).closest('section');
+    expect(therapistSection).not.toBeNull();
+    expect(within(therapistSection as HTMLElement).getByText('No therapist documents found.')).toBeInTheDocument();
+    expect(
+      within(therapistSection as HTMLElement).queryByText('No documents in this section match your search.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows a search-specific empty state when a query removes documents from a section', async () => {
+    renderWithProviders(<Documentation />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Therapist Uploads')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search documentation...');
+    await userEvent.clear(searchInput);
+    await userEvent.type(searchInput, 'authorization');
+
+    const therapistSection = screen.getByRole('heading', { name: 'Therapist Uploads' }).closest('section');
+    expect(therapistSection).not.toBeNull();
+    expect(within(therapistSection as HTMLElement).getByText('No documents in this section match your search.')).toBeInTheDocument();
+    expect(within(therapistSection as HTMLElement).queryByText('No therapist documents found.')).not.toBeInTheDocument();
+  });
+
   it('shows fallback metadata when a document is missing date and size', async () => {
-    tableData = {
-      ...tableData,
+    const baseTableData = createTableData();
+    setTableData({
       clients: [
-        ...tableData.clients,
+        ...baseTableData.clients,
         {
           id: 'client-2',
           full_name: 'Missing Metadata Client',
@@ -160,7 +217,7 @@ describe('Documentation page', () => {
           ],
         },
       ],
-    };
+    });
 
     renderWithProviders(<Documentation />);
 

@@ -24,8 +24,8 @@ export function buildAvailableCodesByProvider(cptCatalog: CptCatalogRow[]) {
   };
 
   for (const code of cptCatalog) {
-    const normalizedCode = String(code.code ?? "").toUpperCase();
-    const description = String(code.short_description ?? "");
+    const normalizedCode = String(code.code ?? "").trim().toUpperCase();
+    const description = String(code.short_description ?? "").trim();
     if (!normalizedCode) continue;
 
     if (normalizedCode === UNIVERSAL_CPT_CODE) {
@@ -53,4 +53,3 @@ export function buildAvailableCodesByProvider(cptCatalog: CptCatalogRow[]) {
 
   return grouped;
 }
-

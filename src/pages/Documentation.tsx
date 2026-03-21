@@ -92,11 +92,12 @@ const matchesSearch = (entry: DocumentEntry, query: string) => {
   }
 
   const normalized = query.toLowerCase();
+  const normalizedSource = entry.source.replace(/_/g, ' ');
   return [
     entry.title,
     entry.description,
     entry.fileType ?? '',
-    entry.source,
+    normalizedSource,
   ].some((value) => value.toLowerCase().includes(normalized));
 };
 

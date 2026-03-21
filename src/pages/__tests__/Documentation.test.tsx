@@ -125,6 +125,21 @@ describe('Documentation page', () => {
     expect(screen.queryByText('license • license.pdf')).not.toBeInTheDocument();
   });
 
+  it('matches source labels when the search query uses spaces instead of underscores', async () => {
+    renderWithProviders(<Documentation />);
+
+    await waitFor(() => {
+      expect(screen.getByText('auth-form.pdf')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search documentation...');
+    await userEvent.clear(searchInput);
+    await userEvent.type(searchInput, 'authorization document');
+
+    expect(screen.getByText('auth-form.pdf')).toBeInTheDocument();
+    expect(screen.queryByText('license • license.pdf')).not.toBeInTheDocument();
+  });
+
   it('shows fallback metadata when a document is missing date and size', async () => {
     tableData = {
       ...tableData,

@@ -61,6 +61,10 @@ See:
 
 Use the minimum verification required for the change type. See `docs/ai/verification-matrix.md`.
 
+Before finalizing any non-trivial code or config change, use the `verify-change` skill.
+
+When the required checks do not need secrets or protected external systems, run `npm run verify:local` before finalizing.
+
 At minimum:
 
 - UI-only changes: lint, typecheck, targeted tests, build

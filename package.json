@@ -15,6 +15,7 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
     "test:ci": "vitest run --coverage --run --reporter=verbose --coverage.reporter=json-summary && node scripts/ci/report-test-reliability.mjs",
+    "verify:local": "npm run ci:check-focused && npm run lint && npm run typecheck && npm run test:ci && npm run ci:verify-coverage && npm run build && npm run test:routes:tier0",
     "test:e2e": "cypress run",
     "test:e2e:open": "cypress open",
     "playwright:auth": "tsx scripts/playwright-auth-smoke.ts",

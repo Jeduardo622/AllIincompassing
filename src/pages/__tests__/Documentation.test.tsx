@@ -121,4 +121,33 @@ describe('Documentation page', () => {
     expect(screen.getByText('auth-form.pdf')).toBeInTheDocument();
     expect(screen.queryByText('license • license.pdf')).not.toBeInTheDocument();
   });
+
+  it('shows fallback metadata when a document is missing date and size', async () => {
+    tableData.clients.push({
+      id: 'client-2',
+      full_name: 'Missing Metadata Client',
+      created_at: null,
+      created_by: 'user-1',
+      email: 'missing@example.com',
+      documents: [
+        {
+          name: 'missing-metadata.pdf',
+          path: 'clients/client-2/forms/missing-metadata.pdf',
+          type: 'application/pdf',
+        },
+      ],
+    });
+
+    try {
+      renderWithProviders(<Documentation />);
+
+      await waitFor(() => {
+        expect(screen.getByText('missing-metadata.pdf')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText('Date unknown • Size unknown')).toBeInTheDocument();
+    } finally {
+      tableData.clients.pop();
+    }
+  });
 });

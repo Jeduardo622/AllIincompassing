@@ -21,4 +21,15 @@ describe("buildAvailableCodesByProvider", () => {
     expect(result.IEHP.filter((row) => row.code === UNIVERSAL_CPT_CODE)).toHaveLength(1);
     expect(result.CalOptima.filter((row) => row.code === UNIVERSAL_CPT_CODE)).toHaveLength(1);
   });
+
+  it("normalizes surrounding whitespace in CPT codes and descriptions", () => {
+    const result = buildAvailableCodesByProvider([
+      { code: " h0032 ", short_description: "  Shared H code  " },
+      { code: ` ${UNIVERSAL_CPT_CODE} `, short_description: "  Universal override  " },
+    ]);
+
+    expect(result.IEHP).toContainEqual({ code: "H0032", description: "Shared H code" });
+    expect(result.CalOptima).toContainEqual({ code: "H0032", description: "Shared H code" });
+    expect(result.Private).toContainEqual({ code: UNIVERSAL_CPT_CODE, description: "Universal override" });
+  });
 });

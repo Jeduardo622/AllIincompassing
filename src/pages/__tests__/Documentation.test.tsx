@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { Documentation } from '../Documentation';
 
-const tableData = {
+const createTableData = () => ({
   therapist_documents: [
     {
       id: 'td-1',
@@ -56,7 +56,9 @@ const tableData = {
       ],
     },
   ],
-};
+});
+
+let tableData = createTableData();
 
 const buildQuery = (table: keyof typeof tableData) => {
   const builder = {
@@ -102,6 +104,7 @@ vi.mock('../../lib/logger/logger', () => ({
 describe('Documentation page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    tableData = createTableData();
   });
 
   it('renders sections and filters results by search', async () => {
@@ -123,31 +126,33 @@ describe('Documentation page', () => {
   });
 
   it('shows fallback metadata when a document is missing date and size', async () => {
-    tableData.clients.push({
-      id: 'client-2',
-      full_name: 'Missing Metadata Client',
-      created_at: null,
-      created_by: 'user-1',
-      email: 'missing@example.com',
-      documents: [
+    tableData = {
+      ...tableData,
+      clients: [
+        ...tableData.clients,
         {
-          name: 'missing-metadata.pdf',
-          path: 'clients/client-2/forms/missing-metadata.pdf',
-          type: 'application/pdf',
+          id: 'client-2',
+          full_name: 'Missing Metadata Client',
+          created_at: null,
+          created_by: 'user-1',
+          email: 'missing@example.com',
+          documents: [
+            {
+              name: 'missing-metadata.pdf',
+              path: 'clients/client-2/forms/missing-metadata.pdf',
+              type: 'application/pdf',
+            },
+          ],
         },
       ],
+    };
+
+    renderWithProviders(<Documentation />);
+
+    await waitFor(() => {
+      expect(screen.getByText('missing-metadata.pdf')).toBeInTheDocument();
     });
 
-    try {
-      renderWithProviders(<Documentation />);
-
-      await waitFor(() => {
-        expect(screen.getByText('missing-metadata.pdf')).toBeInTheDocument();
-      });
-
-      expect(screen.getByText('Date unknown • Size unknown')).toBeInTheDocument();
-    } finally {
-      tableData.clients.pop();
-    }
+    expect(screen.getByText('Date unknown • Size unknown')).toBeInTheDocument();
   });
 });

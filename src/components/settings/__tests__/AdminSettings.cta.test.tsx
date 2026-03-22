@@ -31,6 +31,7 @@ describe('AdminSettings CTA', () => {
       </QueryClientProvider>
     );
     expect(screen.getByText(/Create organization/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Admin' })).toBeDisabled();
   });
 });
 

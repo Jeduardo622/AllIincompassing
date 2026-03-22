@@ -1,0 +1,4 @@
+interface:
+  display_name: "Supabase Tenant Safety"
+  short_description: "Protect tenant, RLS, and Supabase changes"
+  default_prompt: "Use $supabase-tenant-safety to plan or review migrations, RLS, grants, RPC, or org-scoped Supabase changes in this repo."

@@ -63,6 +63,12 @@ Use the minimum verification required for the change type. See `docs/ai/verifica
 
 Before finalizing any non-trivial code or config change, use the `verify-change` skill.
 
+Repo-local skill layout:
+
+- Codex repo-local skills live under `.agents/skills/**`.
+- Cursor-only skills live under `.cursor/skills/**`.
+- Do not add required Codex workflow skills under `agents/skills/**`; keep `.agents/skills/**` as the canonical Codex skill root.
+
 When the required checks do not need secrets or protected external systems, run `npm run verify:local` before finalizing.
 
 At minimum:

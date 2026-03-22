@@ -39,8 +39,11 @@ Use this sequence for every week-1 candidate:
 
 1. `route-task`
 2. implement only if the task remains `low-risk autonomous`
-3. `verify-change` for non-trivial code or config work
-4. `reviewer` before finalizing any non-trivial code or config work
+3. invoke `playwright-regression-triage` if browser-only evidence or route repro is needed before implementation
+4. invoke `auth-routing-guard` or `supabase-tenant-safety` immediately if scope expands into those protected domains, then reclassify with `route-task`
+5. `verify-change` for non-trivial code or config work
+6. `reviewer` before finalizing any non-trivial code or config work
+7. `pr-hygiene` before final handoff for any non-trivial code or config diff
 
 Docs-only tasks stay in the lane only if they remain docs-only and do not rewrite repo policy. Any protected-path touch or scope expansion exits the lane immediately.
 

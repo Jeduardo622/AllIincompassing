@@ -1,0 +1,4 @@
+interface:
+  display_name: "Auth Routing Guard"
+  short_description: "Guard auth, routing, and session changes"
+  default_prompt: "Use $auth-routing-guard to plan or review auth, guard, redirect, or session-flow changes in this repo."

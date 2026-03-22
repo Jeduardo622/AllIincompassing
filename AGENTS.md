@@ -68,6 +68,15 @@ Repo-local skill layout:
 - Codex repo-local skills live under `.agents/skills/**`.
 - Cursor-only skills live under `.cursor/skills/**`.
 - Do not add required Codex workflow skills under `agents/skills/**`; keep `.agents/skills/**` as the canonical Codex skill root.
+- Use the repo-local workflow spine for non-trivial work:
+  - `route-task` before implementation
+  - invoke the matching repo-local skill when scope enters auth/routing, tenant-sensitive Supabase work, or Playwright-driven browser triage
+  - `verify-change` before closing
+  - `pr-hygiene` before final handoff
+- Use these repo-local skills when the matching work appears:
+  - `auth-routing-guard` for auth, routing, session, or redirect changes
+  - `supabase-tenant-safety` for migrations, functions, RLS, grants, RPC exposure, or tenant-boundary changes
+  - `playwright-regression-triage` for browser-only or route-level reproduction and evidence capture
 
 When the required checks do not need secrets or protected external systems, run `npm run verify:local` before finalizing.
 

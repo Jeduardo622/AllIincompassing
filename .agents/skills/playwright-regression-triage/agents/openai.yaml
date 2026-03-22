@@ -1,0 +1,4 @@
+interface:
+  display_name: "Playwright Regression Triage"
+  short_description: "Triage browser-only and route regressions"
+  default_prompt: "Use $playwright-regression-triage to reproduce and summarize a route, auth, session, or browser-only regression in this repo."

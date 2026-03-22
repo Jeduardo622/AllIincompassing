@@ -76,9 +76,43 @@ describe('AutoScheduleModal warnings', () => {
     expect(
       screen.getByRole('dialog', { name: /auto schedule sessions/i })
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /close auto schedule modal/i })
-    ).toBeInTheDocument();
+    const closeButton = screen.getByRole('button', { name: /close auto schedule modal/i });
+    expect(closeButton).toBeInTheDocument();
+    expect(closeButton).toHaveAttribute('title', 'Close auto schedule modal');
+  });
+
+  it('adds matching titles to preview pagination controls', () => {
+    const therapist = createTherapist();
+    const client = createClient();
+    mockedGenerateOptimalSchedule.mockReturnValue({
+      slots: Array.from({ length: 6 }, (_, index) => ({
+        therapist,
+        client,
+        startTime: new Date(`2025-03-${String(index + 1).padStart(2, '0')}T09:00:00.000Z`).toISOString(),
+        endTime: new Date(`2025-03-${String(index + 1).padStart(2, '0')}T10:00:00.000Z`).toISOString(),
+        score: 0.9,
+      })),
+      cappedClients: [],
+    });
+
+    render(
+      <AutoScheduleModal
+        isOpen
+        onClose={() => {}}
+        onSchedule={vi.fn()}
+        therapists={[therapist]}
+        clients={[client]}
+        existingSessions={[] as Session[]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /generate preview/i }));
+
+    const previousButton = screen.getByRole('button', { name: /previous preview page/i });
+    const nextButton = screen.getByRole('button', { name: /next preview page/i });
+
+    expect(previousButton).toHaveAttribute('title', 'Previous preview page');
+    expect(nextButton).toHaveAttribute('title', 'Next preview page');
   });
 
   it('displays capped client warnings when scheduling results indicate limits', () => {

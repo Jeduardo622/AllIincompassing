@@ -21,8 +21,9 @@
   - Basic a11y tests in `tests/ui/a11y.spec.ts`.
 
 #### Performance (Updated)
-- Build artifacts: Vite bundles present (`dist/index.html` references `assets/index-*.js` + code-split chunks for maps/supabase/vendor/dates/reports). Code-splitting in place.
-- Quick win: Confirmed code-splitting is active; recommend lazy-loading heavy dashboards if bundle size flagged. Preload strategy to be added in a follow-up PR if needed.
+- Route loading: `src/App.tsx` already lazy-loads the top-level route shells and pages (`Login`, `Signup`, `Layout`, `Dashboard`, `Schedule`, `Clients`, `Therapists`, `MonitoringDashboard`, `Reports`, `Settings`, and related detail/onboarding pages) behind a shared `Suspense` fallback.
+- Build artifacts: Vite bundles present (`dist/index.html` references `assets/index-*.js` plus multiple route/page chunks, including reports, dates, vendor, and Supabase bundles). Code-splitting is active in both source and build output.
+- Quick win: confirmed route-level code-splitting is already doing the main performance work. The next candidate is not broad lazy-loading, but reviewing whether the heaviest already-lazy pages (`MonitoringDashboard`, `ClientDetails`, `Settings`, `Reports`) need chunk-size follow-up or targeted prefetching based on actual navigation patterns.
 - Lighthouse evidence: `reports/lighthouse-after.json` is currently only a failed-run artifact (`CHROME_INTERSTITIAL_ERROR` to `chrome-error://chromewebdata/`), so it should not be treated as current paint-metric proof.
 - Request waterfalls: Batched schedule query hooks in `src/lib/optimizedQueries.ts` reduce N+1.
 

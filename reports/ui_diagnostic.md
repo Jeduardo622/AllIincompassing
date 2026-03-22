@@ -23,6 +23,7 @@
 #### Performance (Updated)
 - Build artifacts: Vite bundles present (`dist/index.html` references `assets/index-*.js` + code-split chunks for maps/supabase/vendor/dates/reports). Code-splitting in place.
 - Quick win: Confirmed code-splitting is active; recommend lazy-loading heavy dashboards if bundle size flagged. Preload strategy to be added in a follow-up PR if needed.
+- Lighthouse evidence: `reports/lighthouse-after.json` is currently only a failed-run artifact (`CHROME_INTERSTITIAL_ERROR` to `chrome-error://chromewebdata/`), so it should not be treated as current paint-metric proof.
 - Request waterfalls: Batched schedule query hooks in `src/lib/optimizedQueries.ts` reduce N+1.
 
 #### Recording Screen

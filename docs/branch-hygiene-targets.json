@@ -1,0 +1,46 @@
+[
+  {
+    "name": "backup/pre-purge-main",
+    "note": "Local backup branch to review before deleting if main cleanup is confirmed."
+  },
+  {
+    "name": "bolt-new-sync",
+    "note": "Legacy local-only sync branch; decide whether it is still a useful scratch branch."
+  },
+  {
+    "name": "codex/access-supabase-mcp-server",
+    "note": "Local-only Codex branch with no upstream currently configured."
+  },
+  {
+    "name": "codex/confirm-supabase-cli-and-mcp-usage",
+    "note": "Local-only docs/setup branch; review whether it should be pushed or deleted."
+  },
+  {
+    "name": "codex/review-and-update-supabase-edge-functions",
+    "note": "Local-only Codex work branch; keep only if the unpublished work still matters."
+  },
+  {
+    "name": "codex/w1-performance-evidence",
+    "note": "Week-1 evidence branch without an upstream; verify whether it is an intentional local archive."
+  },
+  {
+    "name": "codex/w1-schedule-a11y-toggle",
+    "note": "Local-only accessibility branch; decide whether to push or delete."
+  },
+  {
+    "name": "codex/disable-add-admin-without-org",
+    "note": "Tracked cleanup target that is currently behind remote."
+  },
+  {
+    "name": "codex/w1-lighthouse-evidence-refresh",
+    "note": "Tracked cleanup target that is currently behind remote."
+  },
+  {
+    "name": "codex/pr-hygiene-skill",
+    "note": "Tracked cleanup target that diverged from remote."
+  },
+  {
+    "name": "codex/retain-vitest-coverage-on-failure",
+    "note": "Tracked cleanup target that diverged from remote."
+  }
+]

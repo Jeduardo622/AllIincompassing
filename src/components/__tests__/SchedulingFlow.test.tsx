@@ -283,6 +283,34 @@ describe('Scheduling Flow - Client with Therapist', () => {
       expect(screen.getAllByText(/therapists/i).length).toBeGreaterThan(0);
       expect(screen.getAllByText(/clients/i).length).toBeGreaterThan(0);
     }, 60000);
+
+    it('exposes selected and toggled state for schedule controls', async () => {
+      renderWithProviders(<Schedule />);
+
+      await screen.findByRole('combobox', { name: /therapist/i });
+      await screen.findByRole('combobox', { name: /client/i });
+
+      const dayButton = screen.getByRole('button', { name: /day view/i });
+      const weekButton = screen.getByRole('button', { name: /week view/i });
+      const matrixButton = screen.getByRole('button', { name: /matrix view/i });
+      const availabilityButton = screen.getByRole('button', { name: /show availability/i });
+
+      expect(dayButton).toHaveAttribute('aria-pressed', 'false');
+      expect(weekButton).toHaveAttribute('aria-pressed', 'true');
+      expect(matrixButton).toHaveAttribute('aria-pressed', 'false');
+      expect(availabilityButton).toHaveAttribute('aria-pressed', 'true');
+
+      await userEvent.click(dayButton);
+      expect(dayButton).toHaveAttribute('aria-pressed', 'true');
+      expect(weekButton).toHaveAttribute('aria-pressed', 'false');
+
+      await userEvent.click(matrixButton);
+      expect(matrixButton).toHaveAttribute('aria-pressed', 'true');
+      expect(dayButton).toHaveAttribute('aria-pressed', 'false');
+
+      await userEvent.click(availabilityButton);
+      expect(availabilityButton).toHaveAttribute('aria-pressed', 'false');
+    }, 20000);
   });
 
   describe('Session Modal - Creating New Session', () => {

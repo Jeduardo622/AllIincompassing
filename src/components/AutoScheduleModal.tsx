@@ -200,8 +200,10 @@ export function AutoScheduleModal({
           </h2>
           <button
             ref={closeButtonRef}
+            type="button"
             onClick={onClose}
             aria-label="Close auto schedule modal"
+            title="Close auto schedule modal"
             className="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400"
           >
             <X className="h-6 w-6" />
@@ -282,9 +284,11 @@ export function AutoScheduleModal({
                 </h3>
                 <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
                   <button
+                    type="button"
                     onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
                     disabled={currentPage === 0}
                     aria-label="Previous preview page"
+                    title="Previous preview page"
                     className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
                   >
                     <ChevronLeft className="w-5 h-5" />
@@ -293,9 +297,11 @@ export function AutoScheduleModal({
                     Page {currentPage + 1} of {totalPages}
                   </span>
                   <button
+                    type="button"
                     onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
                     disabled={currentPage === totalPages - 1}
                     aria-label="Next preview page"
+                    title="Next preview page"
                     className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
                   >
                     <ChevronRight className="w-5 h-5" />

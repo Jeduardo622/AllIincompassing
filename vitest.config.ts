@@ -20,6 +20,7 @@ export default defineConfig({
     ],
     coverage: {
       provider: 'v8',
+      reportOnFailure: true,
       reporter: ['text', 'html'],
       include: [
         'src/lib/authStubSession.ts',

@@ -220,6 +220,8 @@ describe('SessionModal', () => {
 
     const closeButton = screen.getByRole('button', { name: /close session modal/i });
     expect(closeButton).toBeInTheDocument();
+    expect(closeButton).toHaveAttribute('title', 'Close session modal');
+    expect(closeButton).toHaveFocus();
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(defaultProps.onClose).toHaveBeenCalled();

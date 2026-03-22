@@ -692,8 +692,10 @@ export function SessionModal({
           </h2>
           <button
             ref={closeButtonRef}
+            type="button"
             onClick={onClose}
             aria-label="Close session modal"
+            title="Close session modal"
             className="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             <X className="w-5 h-5" />

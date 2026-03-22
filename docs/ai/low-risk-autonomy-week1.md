@@ -37,13 +37,16 @@ If a task touches any protected path or excluded area, remove it from this lane 
 
 Use this sequence for every week-1 candidate:
 
-1. `route-task`
-2. implement only if the task remains `low-risk autonomous`
-3. invoke `playwright-regression-triage` if browser-only evidence or route repro is needed before implementation
-4. invoke `auth-routing-guard` or `supabase-tenant-safety` immediately if scope expands into those protected domains, then reclassify with `route-task`
-5. `verify-change` for non-trivial code or config work
-6. `reviewer` before finalizing any non-trivial code or config work
-7. `pr-hygiene` before final handoff for any non-trivial code or config diff
+1. create a new `codex/` branch for the candidate work
+2. create or confirm a Linear issue when the task is non-trivial enough to benefit from tracked handoff
+3. `route-task`
+4. implement only if the task remains `low-risk autonomous`
+5. invoke `playwright-regression-triage` if browser-only evidence or route repro is needed before implementation
+6. invoke `auth-routing-guard` or `supabase-tenant-safety` immediately if scope expands into those protected domains, then reclassify with `route-task`
+7. `verify-change` for non-trivial code or config work
+8. `reviewer` before finalizing any non-trivial code or config work
+9. `pr-hygiene` before final handoff for any non-trivial code or config diff
+10. push the branch and create a PR for human review
 
 Docs-only tasks stay in the lane only if they remain docs-only and do not rewrite repo policy. Any protected-path touch or scope expansion exits the lane immediately.
 

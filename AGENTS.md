@@ -9,8 +9,11 @@ This repository is an AI-assisted engineering lab for a React/Vite app with Supa
 - Inspect the relevant architecture before changing code.
 - Prefer existing patterns over new abstractions.
 - Keep diffs small and easy to review.
+- For implementation work, create a new branch before changing code. Use the `codex/` prefix for Codex-created branches.
 - Do not bypass tests, lint, typecheck, or policy checks.
 - For non-trivial changes, summarize risk and verification before closing the task.
+- After changes are complete, push the branch and create a PR for human review. Do not assume direct pushes to `main`.
+- Use Linear for non-trivial work that should have reviewable execution history. At minimum, high-risk changes should map to a Linear issue before merge.
 
 ## Commands
 
@@ -69,10 +72,13 @@ Repo-local skill layout:
 - Cursor-only skills live under `.cursor/skills/**`.
 - Do not add required Codex workflow skills under `agents/skills/**`; keep `.agents/skills/**` as the canonical Codex skill root.
 - Use the repo-local workflow spine for non-trivial work:
+  - create a new `codex/` branch before implementation work begins
+  - create or confirm the matching Linear issue for non-trivial work; require one for high-risk work
   - `route-task` before implementation
   - invoke the matching repo-local skill when scope enters auth/routing, tenant-sensitive Supabase work, or Playwright-driven browser triage
   - `verify-change` before closing
   - `pr-hygiene` before final handoff
+  - push the branch and create a PR for human review
 - Use these repo-local skills when the matching work appears:
   - `auth-routing-guard` for auth, routing, session, or redirect changes
   - `supabase-tenant-safety` for migrations, functions, RLS, grants, RPC exposure, or tenant-boundary changes
@@ -102,5 +108,6 @@ A task is done only when:
 1. Code is implemented.
 2. Required verification has passed, or any unrun checks are explicitly called out.
 3. Docs/comments are updated when behavior or process changes.
-4. The result is ready for human PR review.
+4. The result is pushed on a branch and a PR is ready for human review.
 5. High-risk changes include a short risk summary.
+6. High-risk changes are linked to a Linear issue, and non-trivial changes should be linked when practical.

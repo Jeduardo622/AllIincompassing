@@ -81,7 +81,7 @@ describe('AutoScheduleModal warnings', () => {
     expect(closeButton).toHaveAttribute('title', 'Close auto schedule modal');
   });
 
-  it('adds matching titles to preview pagination controls', () => {
+  it('exposes labeled preview pager controls when multiple preview pages exist', () => {
     const therapist = createTherapist();
     const client = createClient();
     mockedGenerateOptimalSchedule.mockReturnValue({
@@ -113,6 +113,8 @@ describe('AutoScheduleModal warnings', () => {
 
     expect(previousButton).toHaveAttribute('title', 'Previous preview page');
     expect(nextButton).toHaveAttribute('title', 'Next preview page');
+    expect(previousButton).toBeDisabled();
+    expect(nextButton).toBeEnabled();
   });
 
   it('displays capped client warnings when scheduling results indicate limits', () => {

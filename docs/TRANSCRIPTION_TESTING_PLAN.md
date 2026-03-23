@@ -268,10 +268,10 @@ const e2eTest = async () => {
 
 ```bash
 # Unit Tests
-npm run test:unit
+npm run test
 
-# Integration Tests
-npm run test:integration
+# CI Regression Tests (Vitest + coverage)
+npm run test:ci
 
 # Edge smoke (staging/preview)
 EDGE_SMOKE_ACCESS_TOKEN=<user-jwt> \
@@ -283,10 +283,10 @@ npx tsx scripts/agent-eval-smoke.ts
 npm run test:e2e
 
 # Performance Tests
-npm run test:performance
+npm run perf:p2:check
 
-# Compliance Tests
-npm run test:compliance
+# Policy Compliance Gates
+npm run ci:check-focused
 ```
 
 ## 7. Test Data and Scenarios

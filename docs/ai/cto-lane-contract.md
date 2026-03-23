@@ -140,6 +140,29 @@ A task is blocked from completion when any item below is true:
 - `critical` work is not linked to a Linear issue
 - PR hygiene output is missing or `pr-ready: no`
 
+## PR Wait Policy (No Indefinite Hangs)
+
+After opening a PR for autonomous work:
+
+- move the Linear issue to `In Review` and post a "waiting on checks" note
+- poll required checks every 3 minutes
+- use a hard timeout of 45 minutes per PR
+
+Outcomes:
+
+- all required checks pass within timeout:
+  - merge or mark ready to merge
+  - move issue to `Done`
+- any required check fails:
+  - move issue to `In Progress`
+  - post failing checks and next fix action
+- checks still pending at timeout:
+  - move issue to `Blocked`
+  - label as waiting on checks/human approval
+  - post exact next action and continue the queue
+
+Never block the whole autonomous batch on one pending PR.
+
 ## Required Handoff Card
 
 All non-trivial tasks must include this artifact:

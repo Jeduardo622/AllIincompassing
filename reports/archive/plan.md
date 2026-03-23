@@ -169,6 +169,6 @@ All acceptance proof points must be logged in [`execspec.md`](../execspec.md) be
 - **Verification Commands:**
   ```bash
   npm run audit:routes
-  npm run schedule:sync -- --dry-run
+  # historical command reference: npm run schedule:sync -- --dry-run
   git log -- reports/timeline.json
   ```

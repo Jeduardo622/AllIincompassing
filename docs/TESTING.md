@@ -1,5 +1,22 @@
 # Testing Notes
 
+## Lane Hard-Gate Contract
+
+For non-trivial code/config work, testing and verification must follow:
+
+- `docs/ai/cto-lane-contract.md`
+- `docs/ai/verification-matrix.md`
+
+Before final handoff, include a verification card with:
+
+- classification and lane
+- required checks
+- executed checks with pass/fail
+- blocked checks with reasons (or `none`)
+- residual risk
+
+Do not mark work complete when required checks are missing and not explicitly blocked.
+
 ## Vitest hang watchdog
 
 We wrap Vitest through [`scripts/run-vitest.mjs`](../scripts/run-vitest.mjs) so that hung specs

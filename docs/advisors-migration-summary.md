@@ -136,7 +136,7 @@ psql $DATABASE_URL -f scripts/investigate-advisor-warnings.sql
 
 - [Supabase Advisors: Unindexed Foreign Keys](https://supabase.com/docs/guides/database/advisors/unindexed_foreign_keys)
 - [PostgreSQL search_path Security](https://www.postgresql.org/docs/current/ddl-schemas.html#DDL-SCHEMAS-PATH)
-- [Engineering Rules: DB rules](.cursor/rules/engineering.mdc)
+- [Engineering Rules: AGENTS](../AGENTS.md)
 
 ## 2026-03-10 follow-up batch (assessment domain)
 

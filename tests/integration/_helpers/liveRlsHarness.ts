@@ -175,6 +175,16 @@ export async function setupLiveRlsHarness(): Promise<LiveRlsHarness> {
   const runDatabaseIntegrationTests = parseBooleanEnv(
     process.env.RUN_DB_IT ?? importMetaEnv.RUN_DB_IT,
   );
+  const explicitlyEnabled = runDatabaseIntegrationTests;
+
+  if (!explicitlyEnabled) {
+    return {
+      enabled: false,
+      required: false,
+      skipReason:
+        "Live Supabase RLS tests are opt-in. Set RUN_DB_IT=1 to execute these tests against a Supabase integration environment.",
+    };
+  }
 
   const environmentResolution = await resolveSupabaseTestEnv({
     isCiEnvironment,
@@ -194,7 +204,7 @@ export async function setupLiveRlsHarness(): Promise<LiveRlsHarness> {
     ]
       .filter(Boolean)
       .join(" ");
-    return { enabled: false, required: isCiEnvironment || runDatabaseIntegrationTests, skipReason };
+    return { enabled: false, required: explicitlyEnabled, skipReason };
   }
 
   const supabaseUrl = environmentResolution.supabaseUrl as string;

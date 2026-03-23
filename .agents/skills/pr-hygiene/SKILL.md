@@ -59,6 +59,11 @@ Sources of truth:
 - Check PR handoff readiness:
   - Confirm the branch can be pushed cleanly.
   - Confirm there is enough summary material for a PR title and body.
+- Apply bounded wait handling for checks:
+  - move issue to `In Review` when PR opens
+  - poll required checks every 3 minutes
+  - stop waiting after 45 minutes
+  - on timeout, set `Blocked` with explicit next action and continue other queued work
 - Use `reviewer` before finalizing:
   - Ask for focused review on auth, tenant isolation, CI-policy, protected-path drift, and regression risk.
 - Report a final PR-hygiene verdict.
@@ -90,4 +95,5 @@ Sources of truth:
 - Do not treat mixed-purpose diffs as PR-ready.
 - Do not treat missing `route-task` lane/classification output as PR-ready.
 - Do not treat missing verification card fields as PR-ready.
+- Do not wait indefinitely for checks or manual approvals.
 - Do not modify app logic as part of this pass.

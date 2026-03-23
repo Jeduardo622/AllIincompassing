@@ -1,10 +1,23 @@
 export type OrgSeedRecord = {
+  // Primary organization used by org-scoped fixture assertions.
   organizationId: string;
   sessions: Array<{ id: string; organization_id: string; therapist_id: string; client_id: string; status: string }>;
   therapists: Array<{ id: string; organization_id: string; full_name: string }>;
   clients: Array<{ id: string; organization_id: string; full_name: string; is_active: boolean }>;
   billingRecords: Array<{ id: string; organization_id: string; session_id: string; status: string; amount: number }>;
 };
+
+export type SeedHarnessSource = "fixture" | "mcp";
+
+export type MultiOrgSeedHarness = {
+  source: SeedHarnessSource;
+  seed: OrgSeedRecord;
+  warnings: string[];
+};
+
+type MultiOrgSeedLoader = () => Promise<OrgSeedRecord> | OrgSeedRecord;
+
+let activeSeedLoader: MultiOrgSeedLoader | null = null;
 
 export function buildMultiOrgSeed(): OrgSeedRecord {
   return {
@@ -40,4 +53,42 @@ export function buildMultiOrgSeed(): OrgSeedRecord {
   };
 }
 
-// TODO: Replace with Supabase MCP-driven seed once available in CI environment.
+/**
+ * Registers an optional MCP/Supabase seed provider for integration tests.
+ * Tests fall back to the deterministic fixture when no provider is available.
+ */
+export function registerMultiOrgSeedLoader(loader: MultiOrgSeedLoader | null): void {
+  activeSeedLoader = loader;
+}
+
+export function resetMultiOrgSeedLoader(): void {
+  activeSeedLoader = null;
+}
+
+export async function loadMultiOrgSeed(options?: {
+  preferMcp?: boolean;
+}): Promise<MultiOrgSeedHarness> {
+  const preferMcp = options?.preferMcp ?? true;
+  const mode = process.env.INTEGRATION_SEED_MODE;
+  const wantsMcp = preferMcp && mode === "mcp";
+
+  if (wantsMcp && activeSeedLoader) {
+    const seed = await activeSeedLoader();
+    return {
+      source: "mcp",
+      seed,
+      warnings: [],
+    };
+  }
+
+  const warnings: string[] = [];
+  if (wantsMcp && !activeSeedLoader) {
+    warnings.push("INTEGRATION_SEED_MODE=mcp requested but no MCP seed loader is registered; using fixture seed.");
+  }
+
+  return {
+    source: "fixture",
+    seed: buildMultiOrgSeed(),
+    warnings,
+  };
+}

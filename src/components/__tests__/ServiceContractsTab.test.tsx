@@ -9,8 +9,14 @@ vi.mock('../../lib/toast', () => ({
   showSuccess: vi.fn(),
 }));
 
+type ServiceContractsQueryChain = {
+  select: () => ServiceContractsQueryChain;
+  eq: () => ServiceContractsQueryChain;
+  order: () => Promise<{ data: unknown; error: unknown }>;
+};
+
 const createChain = (result: { data: unknown; error: unknown }) => {
-  const chain: any = {
+  const chain: ServiceContractsQueryChain = {
     select: vi.fn(() => chain),
     eq: vi.fn(() => chain),
     order: vi.fn(async () => result),

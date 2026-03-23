@@ -4,10 +4,10 @@
 # Audit Remediation Execution Plan
 
 ## Reference Materials
-- [Route Audit Completion Summary](../../ROUTE_AUDIT_COMPLETION_SUMMARY.md)
-- [Route Audit Summary Report](../../docs/ROUTE_AUDIT_SUMMARY.md)
+- Route Audit Completion Summary (historical reference; source document removed)
+- Route Audit Summary Report (historical reference; source document removed)
 - [Preview Environment Smoke Guide](../../docs/PREVIEW_SMOKE.md)
-- [Production Readiness Runbook](../../docs/PRODUCTION_READINESS_RUNBOOK.md)
+- Production Readiness Runbook (historical reference; source document removed)
 - [Secret Rotation Runbook](../../docs/SECRET_ROTATION_RUNBOOK.md)
 - [Execution Evidence Tracker](./plan.execspec.md)
 
@@ -40,12 +40,12 @@ All acceptance proof points must be logged in [`plan.execspec.md`](./plan.execsp
 - **Owner:** Platform Team (J. Alvarez)
 - **Acceptance Criteria:**
   - Latest `main` build executes `npm run preview:smoke` without failures against preview infrastructure.
-  - Any regressions flagged in the [Route Audit Completion Summary](../../ROUTE_AUDIT_COMPLETION_SUMMARY.md#%F0%9F%93%8A-route-coverage-matrix) are triaged with linked tickets.
+  - Any regressions flagged in the Route Audit Completion Summary (historical reference; source document removed) are triaged with linked tickets.
   - Preview monitoring dashboards match the baseline thresholds documented in the [Preview Environment Smoke Guide](../../docs/PREVIEW_SMOKE.md#monitoring-expectations).
   - Acceptance checks captured in [`plan.execspec.md`](./plan.execspec.md#task-d0-1-preview-smoke-stability).
 - **Sequencing / Dependencies:** Establishes the baseline preview environment for D0-2; requires no upstream tasks.
 - **Rollback Procedure:**
-  - Revert the preview environment to the last green deployment snapshot per [Production Readiness Runbook §Rollback Playbook](../../docs/PRODUCTION_READINESS_RUNBOOK.md#rollback-playbook).
+  - Revert the preview environment to the last green deployment snapshot per Production Readiness Runbook rollback playbook (historical reference; source document removed).
   - Disable automated preview promotions in Netlify until smoke suite passes twice consecutively.
 - **Required Files:**
   - `.github/workflows/ci.yml`
@@ -61,9 +61,9 @@ All acceptance proof points must be logged in [`plan.execspec.md`](./plan.execsp
 ### Task D0-2: Validate Route Guard Hotfix Deployments
 - **Owner:** App Team (S. Khatri)
 - **Acceptance Criteria:**
-  - All guarded routes listed in the [Route Audit Summary Report](../../docs/ROUTE_AUDIT_SUMMARY.md#protected-routes) enforce Supabase RBAC policies.
+  - All guarded routes listed in the Route Audit Summary Report (historical reference; source document removed) enforce Supabase RBAC policies.
   - Emergency hotfixes are documented with rollback notes in `reports/` and mapped to [Secret Rotation Runbook §Access Controls](../../docs/SECRET_ROTATION_RUNBOOK.md#access-controls).
-  - New patches align with guidance in [Route Audit Completion Summary](../../ROUTE_AUDIT_COMPLETION_SUMMARY.md#%F0%9F%94%A7-automated-fixes-applied).
+  - New patches align with guidance in Route Audit Completion Summary (historical reference; source document removed).
   - Acceptance checks captured in [`plan.execspec.md`](./plan.execspec.md#task-d0-2-route-guard-verification).
 - **Sequencing / Dependencies:** Begins after D0-1 confirms preview stability; feeds Week-1 regression hardening.
 - **Rollback Procedure:**
@@ -85,8 +85,8 @@ All acceptance proof points must be logged in [`plan.execspec.md`](./plan.execsp
 ### Task W1-1: Harden CI Coverage for Critical Paths
 - **Owner:** DevEx Team (R. Patel)
 - **Acceptance Criteria:**
-  - Expand CI workflow in `.github/workflows/ci.yml` to include audit regression stages referencing [Production Readiness Runbook §CI/CD Expectations](../../docs/PRODUCTION_READINESS_RUNBOOK.md#cicd-expectations).
-  - Coverage metrics exceed 90% lines for modules called out in [Route Audit Completion Summary](../../ROUTE_AUDIT_COMPLETION_SUMMARY.md#%F0%9F%93%8A-route-coverage-matrix).
+  - Expand CI workflow in `.github/workflows/ci.yml` to include audit regression stages referencing Production Readiness Runbook CI/CD expectations (historical reference; source document removed).
+  - Coverage metrics exceed 90% lines for modules called out in Route Audit Completion Summary (historical reference; source document removed).
   - CI artifacts archive the latest `npm run preview:smoke` reports per [Preview Environment Smoke Guide](../../docs/PREVIEW_SMOKE.md#reporting--alerting).
   - Acceptance checks captured in [`plan.execspec.md`](./plan.execspec.md#task-w1-1-ci-hardening-sign-off).
 - **Sequencing / Dependencies:** Requires Day-0 close-out to ensure regression stages run against stable previews; prerequisite for W1-2 deployments.
@@ -108,8 +108,8 @@ All acceptance proof points must be logged in [`plan.execspec.md`](./plan.execsp
 ### Task W1-2: Replace Stub RPC Implementations
 - **Owner:** App Team (L. Chen)
 - **Acceptance Criteria:**
-  - Implement concrete logic for stubbed RPC functions identified in [Route Audit Summary Report §RPC Functions](../../docs/ROUTE_AUDIT_SUMMARY.md#rpc-functions).
-  - Unit and integration tests cover happy-path and failure scenarios with ≥90% line coverage, aligning with [Production Readiness Runbook §Testing Matrix](../../docs/PRODUCTION_READINESS_RUNBOOK.md#testing-matrix).
+  - Implement concrete logic for stubbed RPC functions identified in Route Audit Summary Report (historical reference; source document removed).
+  - Unit and integration tests cover happy-path and failure scenarios with ≥90% line coverage, aligning with Production Readiness Runbook testing matrix (historical reference; source document removed).
   - Security reviews confirm compliance with [Secret Rotation Runbook §Least Privilege](../../docs/SECRET_ROTATION_RUNBOOK.md#least-privilege-enforcement).
   - Acceptance checks captured in [`plan.execspec.md`](./plan.execspec.md#task-w1-2-rpc-replacement-validation).
 - **Sequencing / Dependencies:** Executes after W1-1 to leverage hardened CI gates; unlocks Week-2 automation once RPC stability is verified.
@@ -132,8 +132,8 @@ All acceptance proof points must be logged in [`plan.execspec.md`](./plan.execsp
 ### Task W2-1: Automate Compliance Dashboards
 - **Owner:** Observability Team (M. Rivera)
 - **Acceptance Criteria:**
-  - Dashboards surface metrics flagged in [Route Audit Completion Summary §Metrics & Performance](../../ROUTE_AUDIT_COMPLETION_SUMMARY.md#%F0%9F%93%8A-metrics--performance).
-  - Alerts integrate with escalation steps in [Production Readiness Runbook §Incident Response](../../docs/PRODUCTION_READINESS_RUNBOOK.md#incident-response).
+  - Dashboards surface metrics flagged in Route Audit Completion Summary (historical reference; source document removed).
+  - Alerts integrate with escalation steps in Production Readiness Runbook incident response guidance (historical reference; source document removed).
   - Dashboard source-of-truth stored alongside operational docs in `docs/` with traceable changes.
   - Acceptance checks captured in [`plan.execspec.md`](./plan.execspec.md#task-w2-1-compliance-dashboard-automation).
 - **Sequencing / Dependencies:** Starts once Week-1 code is live; outputs metrics referenced by W2-2 documentation.
@@ -154,7 +154,7 @@ All acceptance proof points must be logged in [`plan.execspec.md`](./plan.execsp
 ### Task W2-2: Institutionalize Weekly Route Audits
 - **Owner:** Docs Team (P. Singh)
 - **Acceptance Criteria:**
-  - Standing calendar events and runbooks updated per [Route Audit Summary Report §Support & Maintenance](../../docs/ROUTE_AUDIT_SUMMARY.md#support--maintenance).
+  - Standing calendar events and runbooks updated per Route Audit Summary Report (historical reference; source document removed).
   - Automation updates `reports/timeline.json` to reflect recurring audits aligned with the audit timeline.
   - Documentation references [Staging Operations Handbook](../../docs/STAGING_OPERATIONS.md#weekly-rituals) for staging parity.
   - Acceptance checks captured in [`plan.execspec.md`](./plan.execspec.md#task-w2-2-route-audit-institutionalization).

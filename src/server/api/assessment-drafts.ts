@@ -12,33 +12,64 @@ import {
   composeAssessmentTextFromChecklist,
   type AssessmentChecklistValueRow,
 } from "./assessment-text-composer";
+import {
+  buildGenerateProgramGoalsPayload,
+  type AssessmentExtractionGenerationRow,
+} from "./assessment-generation-payload";
 
 const MIN_CHILD_GOALS = 20;
 const MIN_PARENT_GOALS = 6;
 const MAX_GENERATION_ASSESSMENT_TEXT_CHARS = 12000;
 
+const evidenceRefSchema = z.object({
+  section_key: z.string().trim().min(1),
+  source_span: z.string().trim().min(1),
+});
+
+const reviewFlagSchema = z.enum([
+  "missing_baseline",
+  "weak_measurement_definition",
+  "unsupported_parent_goal",
+  "ambiguous_mastery_threshold",
+  "evidence_gap",
+  "duplicate_risk",
+  "clinician_confirmation_needed",
+]);
+
 const draftGoalSchema = z.object({
+  program_name: z.string().trim().min(1),
   title: z.string().trim().min(1),
   description: z.string().trim().min(1),
   original_text: z.string().trim().min(1),
   goal_type: z.enum(["child", "parent"]),
-  target_behavior: z.string().trim().optional(),
-  measurement_type: z.string().trim().optional(),
-  baseline_data: z.string().trim().optional(),
-  target_criteria: z.string().trim().optional(),
-  mastery_criteria: z.string().trim().optional(),
-  maintenance_criteria: z.string().trim().optional(),
-  generalization_criteria: z.string().trim().optional(),
-  objective_data_points: z.array(z.record(z.unknown())).optional(),
+  target_behavior: z.string().trim().min(1),
+  measurement_type: z.string().trim().min(1),
+  baseline_data: z.string().trim().min(1),
+  target_criteria: z.string().trim().min(1),
+  mastery_criteria: z.string().trim().min(1),
+  maintenance_criteria: z.string().trim().min(1),
+  generalization_criteria: z.string().trim().min(1),
+  objective_data_points: z.array(z.string().trim().min(1)).min(1),
+  rationale: z.string().trim().min(1),
+  evidence_refs: z.array(evidenceRefSchema).min(1),
+  review_flags: z.array(reviewFlagSchema),
 });
 
 const draftCreateSchema = z.object({
   assessment_document_id: z.string().uuid(),
-  program: z.object({
-    name: z.string().trim().min(1),
-    description: z.string().trim().optional(),
-  }),
-  rationale: z.string().trim().optional(),
+  programs: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1),
+        description: z.string().trim().min(1),
+        rationale: z.string().trim().min(1),
+        evidence_refs: z.array(evidenceRefSchema).min(1),
+        review_flags: z.array(reviewFlagSchema),
+      }),
+    )
+    .min(1),
+  summary_rationale: z.string().trim().min(1),
+  confidence: z.enum(["low", "medium", "high"]),
   goals: z.array(draftGoalSchema).min(MIN_CHILD_GOALS + MIN_PARENT_GOALS),
 });
 
@@ -54,6 +85,7 @@ const draftUpdateSchema = z.object({
   review_notes: z.string().optional(),
   name: z.string().trim().optional(),
   description: z.string().trim().optional(),
+  rationale: z.string().trim().optional(),
   title: z.string().trim().optional(),
   original_text: z.string().trim().optional(),
   goal_type: z.enum(["child", "parent"]).optional(),
@@ -65,6 +97,9 @@ const draftUpdateSchema = z.object({
   maintenance_criteria: z.string().trim().optional(),
   generalization_criteria: z.string().trim().optional(),
   objective_data_points: z.array(z.record(z.unknown())).optional(),
+  program_name: z.string().trim().optional(),
+  evidence_refs: z.array(evidenceRefSchema).optional(),
+  review_flags: z.array(reviewFlagSchema).optional(),
 });
 
 const isUuid = (value: string): boolean => z.string().uuid().safeParse(value).success;
@@ -97,25 +132,49 @@ interface AssessmentChecklistWithStatusValueRow extends AssessmentChecklistValue
 }
 
 interface GeneratedDraftPayload {
-  program: {
+  programs: Array<{
     name: string;
-    description?: string;
-  };
+    description: string;
+    rationale: string;
+    evidence_refs: Array<{ section_key: string; source_span: string }>;
+    review_flags: Array<
+      | "missing_baseline"
+      | "weak_measurement_definition"
+      | "unsupported_parent_goal"
+      | "ambiguous_mastery_threshold"
+      | "evidence_gap"
+      | "duplicate_risk"
+      | "clinician_confirmation_needed"
+    >;
+  }>;
   goals: Array<{
+    program_name: string;
     title: string;
     description: string;
     original_text: string;
     goal_type: "child" | "parent";
-    target_behavior?: string;
-    measurement_type?: string;
-    baseline_data?: string;
-    target_criteria?: string;
-    mastery_criteria?: string;
-    maintenance_criteria?: string;
-    generalization_criteria?: string;
-    objective_data_points?: Array<Record<string, unknown>>;
+    target_behavior: string;
+    measurement_type: string;
+    baseline_data: string;
+    target_criteria: string;
+    mastery_criteria: string;
+    maintenance_criteria: string;
+    generalization_criteria: string;
+    objective_data_points: string[];
+    rationale: string;
+    evidence_refs: Array<{ section_key: string; source_span: string }>;
+    review_flags: Array<
+      | "missing_baseline"
+      | "weak_measurement_definition"
+      | "unsupported_parent_goal"
+      | "ambiguous_mastery_threshold"
+      | "evidence_gap"
+      | "duplicate_risk"
+      | "clinician_confirmation_needed"
+    >;
   }>;
-  rationale?: string;
+  summary_rationale: string;
+  confidence: "low" | "medium" | "high";
 }
 
 interface GeneratedDraftErrorPayload {
@@ -186,17 +245,21 @@ const persistDraftRows = async (args: {
   payload: GeneratedDraftPayload;
 }) => {
   const { supabaseUrl, headers, organizationId, actorId, document, assessmentDocumentId, payload } = args;
-  const createProgramPayload = {
+  const createProgramPayload = payload.programs.map((program) => ({
     assessment_document_id: assessmentDocumentId,
     organization_id: organizationId,
     client_id: document.client_id,
-    name: payload.program.name,
-    description: payload.program.description ?? null,
-    rationale: payload.rationale ?? null,
+    name: program.name,
+    description: program.description,
+    rationale: program.rationale,
+    summary_rationale: payload.summary_rationale,
+    confidence: payload.confidence,
+    evidence_refs: program.evidence_refs,
+    review_flags: program.review_flags,
     accept_state: "pending",
-  };
+  }));
 
-  const createProgramResult = await fetchJson<Array<{ id: string }>>(
+  const createProgramResult = await fetchJson<Array<{ id: string; name: string }>>(
     `${supabaseUrl}/rest/v1/assessment_draft_programs`,
     {
       method: "POST",
@@ -209,24 +272,50 @@ const persistDraftRows = async (args: {
     return { ok: false as const, status: createProgramResult.status || 500, error: "Failed to create draft program" };
   }
 
-  const createdProgramId = createProgramResult.data[0].id;
+  const createdProgramByName = new Map(
+    createProgramResult.data.map((row) => [row.name.trim().toLowerCase(), row.id]),
+  );
+  const missingProgramReference = payload.goals.find(
+    (goal) => !createdProgramByName.has(goal.program_name.trim().toLowerCase()),
+  );
+  if (missingProgramReference) {
+    const insertedProgramIds = createProgramResult.data.map((row) => row.id);
+    if (insertedProgramIds.length > 0) {
+      await fetchJson(
+        `${supabaseUrl}/rest/v1/assessment_draft_programs?id=in.(${insertedProgramIds.join(",")})&organization_id=eq.${encodeURIComponent(
+          organizationId,
+        )}`,
+        { method: "DELETE", headers },
+      );
+    }
+    return {
+      ok: false as const,
+      status: 409,
+      error: `missing_program_match: Generated goal references missing program_name: ${missingProgramReference.program_name}`,
+    };
+  }
+
   const createGoalsPayload = payload.goals.map((goal) => ({
+    draft_program_id: createdProgramByName.get(goal.program_name.trim().toLowerCase()) ?? null,
     assessment_document_id: assessmentDocumentId,
-    draft_program_id: createdProgramId,
     organization_id: organizationId,
     client_id: document.client_id,
+    program_name: goal.program_name,
     title: goal.title,
     description: goal.description,
     original_text: goal.original_text,
     goal_type: goal.goal_type,
-    target_behavior: goal.target_behavior ?? null,
-    measurement_type: goal.measurement_type ?? null,
-    baseline_data: goal.baseline_data ?? null,
-    target_criteria: goal.target_criteria ?? null,
-    mastery_criteria: goal.mastery_criteria ?? null,
-    maintenance_criteria: goal.maintenance_criteria ?? null,
-    generalization_criteria: goal.generalization_criteria ?? null,
-    objective_data_points: goal.objective_data_points ?? [],
+    target_behavior: goal.target_behavior,
+    measurement_type: goal.measurement_type,
+    baseline_data: goal.baseline_data,
+    target_criteria: goal.target_criteria,
+    mastery_criteria: goal.mastery_criteria,
+    maintenance_criteria: goal.maintenance_criteria,
+    generalization_criteria: goal.generalization_criteria,
+    objective_data_points: goal.objective_data_points,
+    rationale: goal.rationale,
+    evidence_refs: goal.evidence_refs,
+    review_flags: goal.review_flags,
     accept_state: "pending",
   }));
 
@@ -237,6 +326,15 @@ const persistDraftRows = async (args: {
   });
 
   if (!createGoalsResult.ok) {
+    const insertedProgramIds = createProgramResult.data.map((row) => row.id);
+    if (insertedProgramIds.length > 0) {
+      await fetchJson(
+        `${supabaseUrl}/rest/v1/assessment_draft_programs?id=in.(${insertedProgramIds.join(",")})&organization_id=eq.${encodeURIComponent(
+          organizationId,
+        )}`,
+        { method: "DELETE", headers },
+      );
+    }
     return { ok: false as const, status: createGoalsResult.status || 500, error: "Failed to create draft goals" };
   }
 
@@ -266,7 +364,7 @@ const persistDraftRows = async (args: {
     }),
   });
 
-  return { ok: true as const, draftProgramId: createdProgramId };
+  return { ok: true as const, draftProgramId: createProgramResult.data[0].id };
 };
 
 export async function assessmentDraftsHandler(request: Request): Promise<Response> {
@@ -381,9 +479,10 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
         document,
         assessmentDocumentId,
         payload: {
-          program: parsedManual.data.program,
+          programs: parsedManual.data.programs,
           goals: parsedManual.data.goals,
-          rationale: parsedManual.data.rationale,
+          summary_rationale: parsedManual.data.summary_rationale,
+          confidence: parsedManual.data.confidence,
         },
       });
       if (!result.ok) {
@@ -401,12 +500,20 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
     if (!checklistResult.ok) {
       return json({ error: "Failed to load extracted checklist values for AI proposal generation." }, checklistResult.status || 500);
     }
-    const assessmentText = composeAssessmentTextFromChecklist(checklistResult.data ?? []).slice(
-      0,
-      MAX_GENERATION_ASSESSMENT_TEXT_CHARS,
-    );
+    const checklistRows = checklistResult.data ?? [];
+    const assessmentText = composeAssessmentTextFromChecklist(checklistRows).slice(0, MAX_GENERATION_ASSESSMENT_TEXT_CHARS);
     if (assessmentText.length < 20) {
       return json({ error: "Insufficient extracted checklist content to generate AI proposals." }, 409);
+    }
+
+    const extractionResult = await fetchJson<AssessmentExtractionGenerationRow[]>(
+      `${supabaseUrl}/rest/v1/assessment_extractions?select=section_key,field_key,label,value_text,value_json,source_span,status&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocumentId)}&order=section_key.asc,created_at.asc`,
+      { method: "GET", headers },
+    );
+    if (!extractionResult.ok) {
+      return json({ error: "Failed to load extraction evidence for AI proposal generation." }, extractionResult.status || 500);
     }
 
     const hasExistingDrafts = await draftsAlreadyExistForDocument({
@@ -427,14 +534,26 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
     );
     const clientName = Array.isArray(clientResult.data) ? clientResult.data[0]?.full_name ?? undefined : undefined;
 
+    const guidanceResult = await fetchJson<Array<{ guidance_text: string | null }>>(
+      `${supabaseUrl}/rest/v1/ai_guidance_documents?select=guidance_text&guidance_key=eq.white_bible_core&is_active=eq.true&order=updated_at.desc&limit=1`,
+      { method: "GET", headers },
+    );
+    const organizationGuidance = Array.isArray(guidanceResult.data) ? guidanceResult.data[0]?.guidance_text ?? "" : "";
+
+    const generationPayload = buildGenerateProgramGoalsPayload({
+      assessmentDocumentId,
+      clientId: document.client_id,
+      organizationId,
+      clientDisplayName: clientName,
+      organizationGuidance,
+      checklistRows,
+      extractionRows: extractionResult.data ?? [],
+    });
+
     const generatedResult = await fetchJson<GeneratedDraftPayload>(`${supabaseUrl}/functions/v1/generate-program-goals`, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        assessment_text: assessmentText,
-        client_name: clientName,
-        assessment_document_id: assessmentDocumentId,
-      }),
+      body: JSON.stringify(generationPayload),
     });
     if (!generatedResult.ok || !generatedResult.data) {
       const generatedError = (generatedResult.data as unknown as GeneratedDraftErrorPayload | null)?.error;
@@ -520,6 +639,15 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
       }
       if (parsed.data.description !== undefined) {
         updatePayload.description = parsed.data.description;
+      }
+      if (parsed.data.rationale !== undefined) {
+        updatePayload.rationale = parsed.data.rationale;
+      }
+      if (parsed.data.evidence_refs !== undefined) {
+        updatePayload.evidence_refs = parsed.data.evidence_refs;
+      }
+      if (parsed.data.review_flags !== undefined) {
+        updatePayload.review_flags = parsed.data.review_flags;
       }
 
       const update = await fetchJson<Array<Record<string, unknown>>>(
@@ -611,6 +739,18 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
     }
     if (parsed.data.objective_data_points !== undefined) {
       updatePayload.objective_data_points = parsed.data.objective_data_points;
+    }
+    if (parsed.data.program_name !== undefined) {
+      updatePayload.program_name = parsed.data.program_name;
+    }
+    if (parsed.data.rationale !== undefined) {
+      updatePayload.rationale = parsed.data.rationale;
+    }
+    if (parsed.data.evidence_refs !== undefined) {
+      updatePayload.evidence_refs = parsed.data.evidence_refs;
+    }
+    if (parsed.data.review_flags !== undefined) {
+      updatePayload.review_flags = parsed.data.review_flags;
     }
 
     const update = await fetchJson<Array<Record<string, unknown>>>(

@@ -237,6 +237,476 @@ describe("assessmentDocumentsHandler", () => {
     expect(response.status).toBe(400);
   });
 
+  it("auto-generates staged drafts with structured payload and no live publish", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([
+      {
+        section: "goals_treatment_planning",
+        label: "Skill Acquisition Goal 1",
+        placeholder_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+        mode: "AUTO",
+        source: "uploaded_fba",
+        required: true,
+        extraction_method: "ai_extract",
+        validation_rule: "non_empty_text",
+        status: "not_started",
+      },
+    ]);
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "client-1" }] };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
+        return {
+          ok: true,
+          status: 201,
+          data: [{ id: "doc-auto-1", organization_id: "org-1", client_id: "11111111-1111-1111-1111-111111111111" }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_checklist_items")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_extractions")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "POST" && url.includes("/functions/v1/extract-assessment-fields")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            fields: [
+              {
+                placeholder_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+                value_text: "Client will follow one-step directions.",
+                value_json: null,
+                confidence: 0.95,
+                mode: "AUTO",
+                status: "approved",
+                source_span: { page: 4, line: "Skill acquisition evidence" },
+                review_notes: "Extracted.",
+              },
+            ],
+            unresolved_keys: [],
+            extracted_count: 1,
+            unresolved_count: 0,
+          },
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_checklist_items")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_extractions")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_programs?select=id")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=section_key")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              section_key: "goals_treatment_planning",
+              label: "Skill Acquisition Goal 1",
+              placeholder_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+              value_text: "Client will follow one-step directions.",
+              value_json: null,
+              status: "approved",
+            },
+          ],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_extractions?select=section_key")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              section_key: "goals_treatment_planning",
+              field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+              label: "Skill Acquisition Goal 1",
+              value_text: "Client will follow one-step directions.",
+              value_json: null,
+              source_span: { page: 4, line: "Skill acquisition evidence" },
+              status: "approved",
+            },
+          ],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name")) {
+        return { ok: true, status: 200, data: [{ full_name: "Client One" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/ai_guidance_documents?")) {
+        return { ok: true, status: 200, data: [{ guidance_text: "Use objective ABA language." }] };
+      }
+      if (method === "POST" && url.includes("/functions/v1/generate-program-goals")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            programs: [
+              {
+                name: "Communication Program",
+                description: "Improve communication.",
+                rationale: "Rationale text",
+                evidence_refs: [{ section_key: "assessment_summary", source_span: "Program evidence" }],
+                review_flags: [],
+              },
+            ],
+            goals: [
+              ...Array.from({ length: 20 }, (_, index) => ({
+                program_name: "Communication Program",
+                title: `Child Goal ${index + 1}`,
+                description: "Child description",
+                original_text: "Child original text",
+                goal_type: "child",
+                target_behavior: "Functional communication",
+                measurement_type: "Frequency",
+                baseline_data: "Baseline",
+                target_criteria: "Target",
+                mastery_criteria: "Mastery",
+                maintenance_criteria: "Maintenance",
+                generalization_criteria: "Generalization",
+                objective_data_points: ["Track independent responses"],
+                rationale: "Goal rationale",
+                evidence_refs: [{ section_key: "assessment_summary", source_span: "Goal evidence" }],
+                review_flags: [],
+              })),
+              ...Array.from({ length: 6 }, (_, index) => ({
+                program_name: "Communication Program",
+                title: `Parent Goal ${index + 1}`,
+                description: "Parent description",
+                original_text: "Parent original text",
+                goal_type: "parent",
+                target_behavior: "Caregiver fidelity",
+                measurement_type: "Percent fidelity",
+                baseline_data: "Baseline",
+                target_criteria: "Target",
+                mastery_criteria: "Mastery",
+                maintenance_criteria: "Maintenance",
+                generalization_criteria: "Generalization",
+                objective_data_points: ["Track caregiver steps completed"],
+                rationale: "Goal rationale",
+                evidence_refs: [{ section_key: "parent_training", source_span: "Parent evidence" }],
+                review_flags: [],
+              })),
+            ],
+            summary_rationale: "Summary rationale",
+            confidence: "medium",
+          },
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_draft_programs")) {
+        return { ok: true, status: 201, data: [{ id: "draft-program-1", name: "Communication Program" }] };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_draft_goals")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/client-1/assessments/fba.pdf",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const generationCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url.includes("/functions/v1/generate-program-goals") &&
+          (init?.method ?? "").toUpperCase() === "POST",
+      );
+    expect(generationCall).toBeTruthy();
+    const generationPayload = JSON.parse((generationCall?.[1] as RequestInit).body as string) as {
+      approved_checklist_rows?: Array<{ section_key: string }>;
+      assessment_summary?: string;
+      source_evidence_snippets?: Array<{ section_key: string; snippet: string }>;
+    };
+    expect(Array.isArray(generationPayload.approved_checklist_rows)).toBe(true);
+    expect(typeof generationPayload.assessment_summary).toBe("string");
+    expect(Array.isArray(generationPayload.source_evidence_snippets)).toBe(true);
+    const stagedGoalCreateCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url.includes("/rest/v1/assessment_draft_goals") &&
+          (init?.method ?? "").toUpperCase() === "POST",
+      );
+    const stagedGoalPayload = JSON.parse((stagedGoalCreateCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
+    expect(Array.isArray(stagedGoalPayload[0]?.evidence_refs)).toBe(true);
+    expect(Array.isArray(stagedGoalPayload[0]?.review_flags)).toBe(true);
+
+    const liveProgramWrite = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url]) => typeof url === "string" && url.includes("/rest/v1/programs"));
+    const liveGoalWrite = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url]) => typeof url === "string" && url.includes("/rest/v1/goals"));
+    expect(liveProgramWrite).toBeUndefined();
+    expect(liveGoalWrite).toBeUndefined();
+  });
+
+  it("marks extraction failure and cleans staged programs on missing_program_match", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(loadChecklistTemplateRows).mockResolvedValue([
+      {
+        section: "goals_treatment_planning",
+        label: "Skill Acquisition Goal 1",
+        placeholder_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+        mode: "AUTO",
+        source: "uploaded_fba",
+        required: true,
+        extraction_method: "ai_extract",
+        validation_rule: "non_empty_text",
+        status: "not_started",
+      },
+    ]);
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "client-1" }] };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
+        return {
+          ok: true,
+          status: 201,
+          data: [{ id: "doc-auto-2", organization_id: "org-1", client_id: "11111111-1111-1111-1111-111111111111" }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_checklist_items")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_extractions")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "POST" && url.includes("/functions/v1/extract-assessment-fields")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            fields: [
+              {
+                placeholder_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+                value_text: "Client will follow one-step directions.",
+                value_json: null,
+                confidence: 0.95,
+                mode: "AUTO",
+                status: "approved",
+                source_span: { page: 4, line: "Skill acquisition evidence" },
+                review_notes: "Extracted.",
+              },
+            ],
+            unresolved_keys: [],
+            extracted_count: 1,
+            unresolved_count: 0,
+          },
+        };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_checklist_items")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_extractions")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_programs?select=id")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?select=section_key")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              section_key: "goals_treatment_planning",
+              label: "Skill Acquisition Goal 1",
+              placeholder_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+              value_text: "Client will follow one-step directions.",
+              value_json: null,
+              status: "approved",
+            },
+          ],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_extractions?select=section_key")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              section_key: "goals_treatment_planning",
+              field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+              label: "Skill Acquisition Goal 1",
+              value_text: "Client will follow one-step directions.",
+              value_json: null,
+              source_span: { page: 4, line: "Skill acquisition evidence" },
+              status: "approved",
+            },
+          ],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name")) {
+        return { ok: true, status: 200, data: [{ full_name: "Client One" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/ai_guidance_documents?")) {
+        return { ok: true, status: 200, data: [{ guidance_text: "Use objective ABA language." }] };
+      }
+      if (method === "POST" && url.includes("/functions/v1/generate-program-goals")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            programs: [
+              {
+                name: "Communication Program",
+                description: "Improve communication.",
+                rationale: "Rationale text",
+                evidence_refs: [{ section_key: "assessment_summary", source_span: "Program evidence" }],
+                review_flags: [],
+              },
+            ],
+            goals: [
+              ...Array.from({ length: 20 }, (_, index) => ({
+                program_name: index === 0 ? "Unknown Program" : "Communication Program",
+                title: `Child Goal ${index + 1}`,
+                description: "Child description",
+                original_text: "Child original text",
+                goal_type: "child",
+                target_behavior: "Functional communication",
+                measurement_type: "Frequency",
+                baseline_data: "Baseline",
+                target_criteria: "Target",
+                mastery_criteria: "Mastery",
+                maintenance_criteria: "Maintenance",
+                generalization_criteria: "Generalization",
+                objective_data_points: ["Track independent responses"],
+                rationale: "Goal rationale",
+                evidence_refs: [{ section_key: "assessment_summary", source_span: "Goal evidence" }],
+                review_flags: [],
+              })),
+              ...Array.from({ length: 6 }, (_, index) => ({
+                program_name: "Communication Program",
+                title: `Parent Goal ${index + 1}`,
+                description: "Parent description",
+                original_text: "Parent original text",
+                goal_type: "parent",
+                target_behavior: "Caregiver fidelity",
+                measurement_type: "Percent fidelity",
+                baseline_data: "Baseline",
+                target_criteria: "Target",
+                mastery_criteria: "Mastery",
+                maintenance_criteria: "Maintenance",
+                generalization_criteria: "Generalization",
+                objective_data_points: ["Track caregiver steps completed"],
+                rationale: "Goal rationale",
+                evidence_refs: [{ section_key: "parent_training", source_span: "Parent evidence" }],
+                review_flags: [],
+              })),
+            ],
+            summary_rationale: "Summary rationale",
+            confidence: "medium",
+          },
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_draft_programs")) {
+        return { ok: true, status: 201, data: [{ id: "draft-program-mismatch-2", name: "Communication Program" }] };
+      }
+      if (method === "DELETE" && url.includes("/rest/v1/assessment_draft_programs?id=in.(draft-program-mismatch-2)")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/client-1/assessments/fba.pdf",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_draft_programs?id=in.(draft-program-mismatch-2)"),
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_documents?id=eq.doc-auto-2"),
+      expect.objectContaining({
+        method: "PATCH",
+        body: expect.stringContaining("missing_program_match"),
+      }),
+    );
+    const liveProgramWrite = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url]) => typeof url === "string" && url.includes("/rest/v1/programs"));
+    const liveGoalWrite = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url]) => typeof url === "string" && url.includes("/rest/v1/goals"));
+    expect(liveProgramWrite).toBeUndefined();
+    expect(liveGoalWrite).toBeUndefined();
+  });
+
   it("deletes an assessment document and dependent rows", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({

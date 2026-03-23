@@ -72,27 +72,35 @@ interface AIResponse {
 }
 
 export interface ProgramGoalDraftGoal {
+  program_name: string;
   title: string;
   description: string;
   original_text: string;
   goal_type: 'child' | 'parent';
-  target_behavior?: string;
-  measurement_type?: string;
-  baseline_data?: string;
-  target_criteria?: string;
-  mastery_criteria?: string;
-  maintenance_criteria?: string;
-  generalization_criteria?: string;
-  objective_data_points?: Array<Record<string, unknown>>;
+  target_behavior: string;
+  measurement_type: string;
+  baseline_data: string;
+  target_criteria: string;
+  mastery_criteria: string;
+  maintenance_criteria: string;
+  generalization_criteria: string;
+  objective_data_points: string[];
+  rationale: string;
+  evidence_refs: Array<{ section_key: string; source_span: string }>;
+  review_flags: string[];
 }
 
 export interface ProgramGoalDraftResponse {
-  program: {
+  programs: Array<{
     name: string;
-    description?: string;
-  };
+    description: string;
+    rationale: string;
+    evidence_refs: Array<{ section_key: string; source_span: string }>;
+    review_flags: string[];
+  }>;
   goals: ProgramGoalDraftGoal[];
-  rationale?: string;
+  summary_rationale: string;
+  confidence: 'low' | 'medium' | 'high';
   requestId?: string;
   correlationId?: string;
 }
@@ -273,6 +281,18 @@ export async function generateProgramGoalDraft(
   options?: {
     clientName?: string;
     assessmentDocumentId?: string;
+    clientId?: string;
+    organizationId?: string;
+    organizationGuidance?: string;
+    approvedChecklistRows?: Array<{
+      section_key: string;
+      label: string;
+      placeholder_key: string;
+      value_text?: string;
+      value_json?: Record<string, unknown>;
+    }>;
+    extractedCanonicalFields?: Record<string, unknown>;
+    sourceEvidenceSnippets?: Array<{ section_key: string; snippet: string }>;
   },
 ): Promise<ProgramGoalDraftResponse> {
   if (typeof assessmentText !== 'string' || assessmentText.trim().length < 20) {
@@ -286,9 +306,29 @@ export async function generateProgramGoalDraft(
   const correlationId = requestId;
 
   const payload = {
-    assessment_text: assessmentText.trim(),
-    client_name: options?.clientName?.trim() || undefined,
-    assessment_document_id: options?.assessmentDocumentId?.trim() || undefined,
+    assessment_document_id:
+      options?.assessmentDocumentId?.trim() ||
+      (typeof globalThis.crypto?.randomUUID === 'function'
+        ? globalThis.crypto.randomUUID()
+        : '00000000-0000-4000-8000-000000000000'),
+    client_id:
+      options?.clientId?.trim() ||
+      (typeof globalThis.crypto?.randomUUID === 'function'
+        ? globalThis.crypto.randomUUID()
+        : '00000000-0000-4000-8000-000000000001'),
+    organization_id:
+      options?.organizationId?.trim() ||
+      (typeof globalThis.crypto?.randomUUID === 'function'
+        ? globalThis.crypto.randomUUID()
+        : '00000000-0000-4000-8000-000000000002'),
+    client_display_name: options?.clientName?.trim() || '',
+    organization_guidance: options?.organizationGuidance?.trim() || '',
+    approved_checklist_rows: options?.approvedChecklistRows ?? [],
+    extracted_canonical_fields: options?.extractedCanonicalFields ?? {},
+    assessment_summary: assessmentText.trim(),
+    source_evidence_snippets: options?.sourceEvidenceSnippets ?? [
+      { section_key: 'assessment_summary', snippet: assessmentText.trim() },
+    ],
   };
 
   const response = await fetch(

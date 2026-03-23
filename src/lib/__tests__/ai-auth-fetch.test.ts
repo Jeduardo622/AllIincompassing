@@ -172,14 +172,37 @@ describe('AI edge function authentication', () => {
   it('calls generate-program-goals with authenticated headers', async () => {
     fetchMock.mockResolvedValueOnce(
       buildFetchResponse({
-        program: { name: 'Communication Program' },
+        programs: [
+          {
+            name: 'Communication Program',
+            description: 'Program description',
+            rationale: 'Program rationale',
+            evidence_refs: [{ section_key: 'assessment_summary', source_span: 'Program evidence' }],
+            review_flags: [],
+          },
+        ],
         goals: [
           {
+            program_name: 'Communication Program',
             title: 'Goal A',
             description: 'desc',
             original_text: 'original',
+            goal_type: 'child',
+            target_behavior: 'behavior',
+            measurement_type: 'frequency',
+            baseline_data: 'baseline',
+            target_criteria: 'target',
+            mastery_criteria: 'mastery',
+            maintenance_criteria: 'maintenance',
+            generalization_criteria: 'generalization',
+            objective_data_points: ['point'],
+            rationale: 'rationale',
+            evidence_refs: [{ section_key: 'assessment_summary', source_span: 'Goal evidence' }],
+            review_flags: [],
           },
         ],
+        summary_rationale: 'summary',
+        confidence: 'medium',
       })
     );
 
@@ -201,7 +224,7 @@ describe('AI edge function authentication', () => {
         }),
       })
     );
-    expect(result.program.name).toBe('Communication Program');
+    expect(result.programs[0]?.name).toBe('Communication Program');
   });
 
   it('rejects generateProgramGoalDraft when assessment text is too short', async () => {

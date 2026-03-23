@@ -179,25 +179,55 @@ describe("ProgramsGoalsTab", () => {
     });
 
     vi.mocked(generateProgramGoalDraft).mockResolvedValue({
-      program: {
-        name: "Communication Program",
-        description: "Build requesting and social communication skills.",
-      },
+      programs: [
+        {
+          name: "Communication Program",
+          description: "Build requesting and social communication skills.",
+          rationale: "Communication deficits and prompt dependence from the source assessment.",
+          evidence_refs: [{ section_key: "summary", source_span: "communication deficits with prompt dependence" }],
+          review_flags: [],
+        },
+      ],
       goals: [
         {
+          program_name: "Communication Program",
           title: "Requesting preferred items with 2-word phrase",
           description: "Client requests preferred items in natural environment opportunities.",
           original_text: "Client will request preferred items using a 2-word phrase.",
           goal_type: "child",
+          target_behavior: "functional requesting",
+          measurement_type: "percent opportunities",
+          baseline_data: "40% with full prompt",
+          target_criteria: "80% with gestural prompt",
+          mastery_criteria: "80% across 3 sessions",
+          maintenance_criteria: "70% after 4 weeks",
+          generalization_criteria: "2 settings with 2 adults",
+          objective_data_points: ["independent request count", "prompt level"],
+          rationale: "Aligned to communication deficits noted in FBA",
+          evidence_refs: [{ section_key: "goals", source_span: "requesting deficits" }],
+          review_flags: [],
         },
         {
+          program_name: "Communication Program",
           title: "Answering simple WH questions",
           description: "Client answers WH questions with visual support.",
           original_text: "Client will answer who/what/where questions with 80% accuracy.",
           goal_type: "child",
+          target_behavior: "responding to WH questions",
+          measurement_type: "percent correct",
+          baseline_data: "35% correct with model prompts",
+          target_criteria: "80% correct with visual cue only",
+          mastery_criteria: "80% across 3 sessions",
+          maintenance_criteria: "75% after 4 weeks",
+          generalization_criteria: "2 settings and 2 communication partners",
+          objective_data_points: ["correct response count", "prompt level"],
+          rationale: "Supported by deficits in receptive language skills",
+          evidence_refs: [{ section_key: "language", source_span: "WH-question deficits" }],
+          review_flags: [],
         },
       ],
-      rationale: "Derived from assessment deficits and ABA measurement guidelines.",
+      summary_rationale: "Derived from assessment deficits and ABA measurement guidelines.",
+      confidence: "medium",
     });
   });
 
@@ -278,6 +308,70 @@ describe("ProgramsGoalsTab", () => {
     });
     expect(showSuccess).toHaveBeenCalledWith("AI proposal saved to assessment queue for review.");
   }, 15000);
+
+  it("prioritizes programs array over legacy program fallback", async () => {
+    vi.mocked(generateProgramGoalDraft).mockResolvedValueOnce({
+      programs: [
+        {
+          name: "Primary Program",
+          description: "Primary programs[] entry",
+          rationale: "Primary response shape",
+          evidence_refs: [{ section_key: "summary", source_span: "primary shape evidence" }],
+          review_flags: [],
+        },
+      ],
+      goals: [
+        {
+          program_name: "Primary Program",
+          title: "Primary goal title",
+          description: "Primary goal description",
+          original_text: "Primary original text",
+          goal_type: "child",
+          target_behavior: "requesting",
+          measurement_type: "percent opportunities",
+          baseline_data: "30%",
+          target_criteria: "80%",
+          mastery_criteria: "80% across 3 sessions",
+          maintenance_criteria: "70% at 1 month",
+          generalization_criteria: "2 settings and 2 adults",
+          objective_data_points: ["independent responses"],
+          rationale: "primary rationale",
+          evidence_refs: [{ section_key: "goals", source_span: "primary goal evidence" }],
+          review_flags: [],
+        },
+      ],
+      summary_rationale: "Primary rationale",
+      confidence: "medium",
+      // Transitional fixture for compatibility guardrail validation.
+      // programs[] must remain the source of truth while this exists.
+      ...( {
+        program: {
+          name: "Legacy Program",
+          description: "Legacy fallback shape",
+        },
+        rationale: "Legacy rationale",
+      } as Record<string, unknown>),
+    } as unknown as Awaited<ReturnType<typeof generateProgramGoalDraft>>);
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    const assessmentInput = await screen.findByPlaceholderText(/Paste assessment summary or White Bible-aligned notes/i);
+    await userEvent.type(assessmentInput, "Assessment evidence supports one focused communication program and one child goal.");
+    await userEvent.click(screen.getByRole("button", { name: /Generate AI Proposal Program \+ Goals/i }));
+
+    await waitFor(() => {
+      expect(generateProgramGoalDraft).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByPlaceholderText("Program name")).toHaveValue("Primary Program");
+    expect(screen.getByText(/Draft programs: Primary Program/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Legacy Program/i)).not.toBeInTheDocument();
+  });
 
   it("uploads IEHP assessment with selected template type", async () => {
     const baseCallApiImpl = vi.mocked(callApi).getMockImplementation();

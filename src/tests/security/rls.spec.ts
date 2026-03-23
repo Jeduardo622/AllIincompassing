@@ -1710,7 +1710,7 @@ describe('row level security for multi-tenant tables', () => {
 
   it('prevents clients from reading other clients in the same organization', async () => {
     if (!runTests || !orgAContext || !serviceClient) {
-      console.log('??  Skipping RLS test - setup incomplete.');
+      console.log('⏭️  Skipping RLS test - setup incomplete.');
       return;
     }
 

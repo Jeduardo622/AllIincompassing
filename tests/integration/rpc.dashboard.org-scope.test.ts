@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setupLiveRlsHarness, type LiveRlsHarness } from "./_helpers/liveRlsHarness.ts";
 
-let harness: LiveRlsHarness;
+let harness: LiveRlsHarness = {
+  enabled: false,
+  required: false,
+  skipReason: "Harness not initialized.",
+};
 
 beforeAll(async () => {
   harness = await setupLiveRlsHarness();

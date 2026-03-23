@@ -55,15 +55,15 @@ Historical command references are preserved as point-in-time evidence and may di
 ### Task W2-1: Compliance Dashboard Automation
 
 - [x] Owner confirmation: Observability (M. Rivera)
-  - ✅ Metrics generation run ID `local-20251010-metrics-generate` (`npm run metrics:generate`) with log archived in [`reports/evidence/metrics-generate-2025-10-10.txt`](./evidence/metrics-generate-2025-10-10.txt).
-  - ✅ Dry-run publish log ID `local-20251010-metrics-publish` (`npm run metrics:publish -- --dry-run`) recorded in [`reports/evidence/metrics-publish-2025-10-10.txt`](./evidence/metrics-publish-2025-10-10.txt) and blocking failures when alerts appear.
+  - ✅ Metrics generation run ID `local-20251010-metrics-generate` (historical command reference: `npm run metrics:generate`) with log archived in [`reports/evidence/metrics-generate-2025-10-10.txt`](./evidence/metrics-generate-2025-10-10.txt).
+  - ✅ Dry-run publish log ID `local-20251010-metrics-publish` (historical command reference: `npm run metrics:publish -- --dry-run`) recorded in [`reports/evidence/metrics-publish-2025-10-10.txt`](./evidence/metrics-publish-2025-10-10.txt) and blocking failures when alerts appear.
   - ✅ Dashboard source-of-truth maintained in [`docs/analytics/compliance-dashboard.md`](../docs/analytics/compliance-dashboard.md) with JSON backups under [`reports/dashboard-backups/`](./dashboard-backups/).
   - ✅ Alerts reference Production Readiness Runbook §Incident Response (historical reference; source document removed) via automated messaging in `src/server/metrics/complianceDashboard.ts`.
 
 ### Task W2-2: Route Audit Institutionalization
 
 - [x] Owner confirmation: Docs (P. Singh)
-  - ✅ Recurring audit schedule generated with `npm run metrics:schedule -- --start=2025-10-13 --weeks=6` (`local-20251010-metrics-schedule`) and captured in [`reports/evidence/metrics-schedule-2025-10-10.txt`](./evidence/metrics-schedule-2025-10-10.txt).
+  - ✅ Recurring audit schedule generated with historical command reference `npm run metrics:schedule -- --start=2025-10-13 --weeks=6` (`local-20251010-metrics-schedule`) and captured in [`reports/evidence/metrics-schedule-2025-10-10.txt`](./evidence/metrics-schedule-2025-10-10.txt).
   - ✅ `reports/timeline.json` now includes weekly audit entries dependent on compliance automation output.
   - ✅ Documentation updates in Route Audit Summary Report (historical reference; source document removed) reference [Staging Operations Handbook](../docs/STAGING_OPERATIONS.md) for staging parity.
   - ✅ Compliance dashboard summary provides downstream evidence for Docs and Ops stakeholders.

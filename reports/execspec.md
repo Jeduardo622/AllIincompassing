@@ -1,6 +1,7 @@
 # Audit Remediation Execution Spec
 
 This execspec captures the evidence required to advance through the remediation milestones defined in [`plan.md`](./plan.md). Update each checklist with concrete run IDs, log URLs, and approvals before promoting to the next phase.
+Historical command references are preserved as point-in-time evidence and may differ from current script names.
 
 ## Day-0 Completion Gate
 

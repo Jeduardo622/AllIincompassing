@@ -9,7 +9,7 @@ All remediation milestones (Day-0 through Week-2) completed successfully followi
 - **Week-2 (W2-1, W2-2):** Compliance dashboard automation emits weekly artifacts consumed by documentation updates that institutionalize the audit cadence.
 
 ## Evidence Links
-- Preview smoke + build logs: [`reports/evidence/preview-smoke-2025-02-15.txt`](../evidence/preview-smoke-2025-02-15.txt), [`reports/evidence/preview-build-2025-02-15.txt`](../evidence/preview-build-2025-02-15.txt)
+- Preview smoke + build logs: [`reports/archive/evidence/preview-smoke-2025-02-15.txt`](../archive/evidence/preview-smoke-2025-02-15.txt), [`reports/archive/evidence/preview-build-2025-02-15.txt`](../archive/evidence/preview-build-2025-02-15.txt)
 - Route audit outputs: [`reports/evidence/route-audit-report-2025-10-09T20-01-26-211Z.json`](../evidence/route-audit-report-2025-10-09T20-01-26-211Z.json)
 - CI hardening artifacts: [`reports/coverage-baseline.json`](../coverage-baseline.json), `.github/workflows/ci.yml`
 - Compliance dashboard snapshots: [`reports/dashboard-backups/`](../dashboard-backups/) (latest run ID `local-20251010-metrics-generate`)

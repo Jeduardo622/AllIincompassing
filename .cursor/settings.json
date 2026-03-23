@@ -11,6 +11,9 @@
     },
     "linear": {
       "enabled": true
+    },
+    "postman": {
+      "enabled": true
     }
   }
 }

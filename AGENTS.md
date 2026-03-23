@@ -14,6 +14,7 @@ This repository is an AI-assisted engineering lab for a React/Vite app with Supa
 - For non-trivial changes, summarize risk and verification before closing the task.
 - After changes are complete, push the branch and create a PR for human review. Do not assume direct pushes to `main`.
 - Use Linear for non-trivial work that should have reviewable execution history. At minimum, high-risk changes should map to a Linear issue before merge.
+- Route non-trivial work using the lane contract in `docs/ai/cto-lane-contract.md` before implementation.
 
 ## Commands
 
@@ -59,6 +60,7 @@ See:
 
 - `docs/ai/verification-matrix.md`
 - `docs/ai/high-risk-paths.md`
+- `docs/ai/cto-lane-contract.md`
 
 ## Verification
 
@@ -75,6 +77,7 @@ Repo-local skill layout:
   - create a new `codex/` branch before implementation work begins
   - create or confirm the matching Linear issue for non-trivial work; require one for high-risk work
   - `route-task` before implementation
+  - ensure `route-task` emits both `classification` and `lane` (`fast`|`standard`|`critical`|`blocked`)
   - invoke the matching repo-local skill when scope enters auth/routing, tenant-sensitive Supabase work, or Playwright-driven browser triage
   - `verify-change` before closing
   - `pr-hygiene` before final handoff
@@ -91,6 +94,11 @@ At minimum:
 - UI-only changes: lint, typecheck, targeted tests, build
 - Auth/routing/runtime-config changes: policy checks, lint, typecheck, test:ci, tier-0 browser gate, build
 - Database or tenant-isolation changes: policy checks, test:ci, tenant validation, build
+
+Required artifact for non-trivial code/config work:
+
+- verification card from `verify-change` containing lane, required checks, executed checks, blocked checks, result, and residual risk
+- PR hygiene verdict from `pr-hygiene` with `pr-ready` decision
 
 ## Subagent Use
 

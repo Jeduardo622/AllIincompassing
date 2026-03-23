@@ -1,12 +1,28 @@
 # Verification Matrix
 
 Use the smallest verification set that matches the change. If a change spans multiple categories, run the union of those checks.
+For lane routing and hard-gate rules, see `docs/ai/cto-lane-contract.md`.
+
+## Lane Baseline
+
+`route-task` must assign exactly one lane before implementation:
+
+- `fast`: docs/process only or small low-risk updates
+- `standard`: non-trivial code/config outside protected paths
+- `critical`: any protected path or blast-radius-heavy behavior
+
+Lane output does not replace category checks below. Always run the union of:
+
+- lane baseline checks
+- category-specific checks from this document
+- any explicit task-specific checks
 
 ## Baseline
 
 - Install dependencies: `npm ci`
 - Run policy checks when the change touches auth, server, database, CI, routing, or runtime boundaries: `npm run ci:check-focused`
 - If a required check cannot run locally because secrets or environment are missing, call that out explicitly in the PR summary.
+- When required checks do not need secrets or protected external systems, include `npm run verify:local` before finalizing.
 
 ## UI And Component Changes
 

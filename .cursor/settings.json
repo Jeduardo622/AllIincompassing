@@ -8,6 +8,9 @@
     },
     "supabase": {
       "enabled": true
+    },
+    "linear": {
+      "enabled": true
     }
   }
 }

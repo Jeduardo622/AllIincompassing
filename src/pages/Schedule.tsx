@@ -1112,7 +1112,6 @@ export const Schedule = React.memo(() => {
           <div className="flex rounded-lg shadow-sm">
             <button
               onClick={() => handleViewChange("day")}
-              aria-pressed={view === "day"}
               className={`px-4 py-2 text-sm font-medium transition-colors ${
                 view === "day"
                   ? "bg-blue-600 text-white"
@@ -1124,7 +1123,6 @@ export const Schedule = React.memo(() => {
             </button>
             <button
               onClick={() => handleViewChange("week")}
-              aria-pressed={view === "week"}
               className={`px-4 py-2 text-sm font-medium transition-colors ${
                 view === "week"
                   ? "bg-blue-600 text-white"
@@ -1136,7 +1134,6 @@ export const Schedule = React.memo(() => {
             </button>
             <button
               onClick={() => handleViewChange("matrix")}
-              aria-pressed={view === "matrix"}
               className={`px-4 py-2 text-sm font-medium transition-colors ${
                 view === "matrix"
                   ? "bg-blue-600 text-white"
@@ -1150,7 +1147,6 @@ export const Schedule = React.memo(() => {
 
           <button
             onClick={toggleAvailability}
-            aria-pressed={showAvailability}
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               showAvailability
                 ? "bg-green-600 text-white"

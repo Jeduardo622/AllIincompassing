@@ -20,16 +20,8 @@ BEGIN
 END
 $$;
 
--- Enable RLS on storage.objects (skip when ownership is restricted in preview replay).
-DO $$
-BEGIN
-  BEGIN
-    EXECUTE 'ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY';
-  EXCEPTION
-    WHEN insufficient_privilege THEN
-      RAISE NOTICE 'insufficient privileges to alter storage.objects';
-  END;
-END $$;
+-- Enable RLS on storage.objects (if not already enabled)
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies if they exist to avoid conflicts
 DROP POLICY IF EXISTS "Allow authenticated users to upload client documents" ON storage.objects;

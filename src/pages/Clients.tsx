@@ -534,10 +534,16 @@ const Clients = () => {
                     Loading clients...
                   </td>
                 </tr>
+              ) : filteredClients.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400" role="status" aria-live="polite">
+                    No clients found
+                  </td>
+                </tr>
               ) : sortedClients.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400" role="status" aria-live="polite">
-                    {clients.length === 0 ? 'No clients found' : 'No clients match your search criteria'}
+                    No clients match your search criteria
                   </td>
                 </tr>
               ) : (

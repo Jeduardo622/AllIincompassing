@@ -7,18 +7,11 @@
     - Update permissions metadata to acknowledge new column
 */
 
-DO $$
-BEGIN
-  IF to_regclass('public.admin_actions') IS NOT NULL THEN
-    ALTER TABLE public.admin_actions
-      ADD COLUMN IF NOT EXISTS organization_id UUID;
+ALTER TABLE public.admin_actions
+  ADD COLUMN IF NOT EXISTS organization_id UUID;
 
-    COMMENT ON COLUMN public.admin_actions.organization_id IS
-      'Optional organization scope for admin action auditing';
+COMMENT ON COLUMN public.admin_actions.organization_id IS
+  'Optional organization scope for admin action auditing';
 
-    CREATE INDEX IF NOT EXISTS admin_actions_organization_id_idx
-      ON public.admin_actions (organization_id);
-  ELSE
-    RAISE NOTICE 'public.admin_actions does not exist; skipping organization scope update';
-  END IF;
-END $$;
+CREATE INDEX IF NOT EXISTS admin_actions_organization_id_idx
+  ON public.admin_actions (organization_id);

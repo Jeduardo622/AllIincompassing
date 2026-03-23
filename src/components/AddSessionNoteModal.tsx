@@ -309,6 +309,8 @@ export function AddSessionNoteModal({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close add session note modal"
+            title="Close add session note modal"
             className="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400"
           >
             <X className="w-5 h-5" />

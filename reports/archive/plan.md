@@ -138,7 +138,7 @@ All acceptance proof points must be logged in [`execspec.md`](../execspec.md) be
   - Acceptance checks captured in [`execspec.md`](../execspec.md#task-w2-1-compliance-dashboard-automation).
 - **Sequencing / Dependencies:** Starts once Week-1 code is live; outputs metrics referenced by W2-2 documentation.
 - **Rollback Procedure:**
-  - Disable new analytics data sources and revert to manual reporting described in [CEO Progress Report](../../docs/CEO_PROGRESS_REPORT.md#status-summary).
+  - Disable new analytics data sources and revert to manual reporting described in [Archived CEO Progress Report](../../docs/archive/CEO_PROGRESS_REPORT.md).
   - Restore prior dashboard configuration snapshots archived in `reports/dashboard-backups/`.
 - **Required Files:**
   - `docs/analytics/` (new or updated dashboards)

@@ -20,22 +20,28 @@ For branch `main`:
 - Merge queue removes manual update/rebase loops.
 - Auto-merge and queue let approved PRs merge once checks pass in queue order.
 
+## Docs-Only Fast Path Scope
+
+The fast path applies only to markdown/governance documentation paths (for example `docs/**/*.md`, `reports/**/*.md`, top-level `README*.md`, `AGENTS.md`, and skill `SKILL.md` files). Non-markdown files under docs/reports still take the full CI path.
+
 ## Required Checks Guidance
 
-Keep required checks aligned with the CI workflow job names:
+Preferred required check:
 
-- `policy`
-- `lint-typecheck`
-- `unit-tests`
-- `build`
-- `tier0-browser`
-- `auth-browser-smoke`
+- `ci-gate`
 
 Optional:
 
 - `docs-guard` (docs-only fast-path gate)
 
-If you add `docs-guard` as required, validate branch protection behavior in a test PR first, since docs-only and non-doc flows intentionally use skipped jobs differently.
+Why:
+
+- `ci-gate` always runs and evaluates the correct path:
+  - docs-only changes require `docs-guard`
+  - non-doc changes require the full heavy job chain
+- This avoids brittle branch-protection behavior around skipped checks.
+
+Legacy (transitional only): if your branch protection still requires individual checks (`policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`), migrate to `ci-gate` in one update window and validate with a test PR before enforcing.
 
 ## Merge Queue Compatibility
 

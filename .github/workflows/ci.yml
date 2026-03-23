@@ -61,7 +61,7 @@ jobs:
 
           docs_only=true
           while IFS= read -r file; do
-            if ! printf '%s\n' "${file}" | grep -Eq '^(docs/|reports/.*\.md$|README.*\.md$|AGENTS\.md$|\.agents/skills/.*/SKILL\.md$|\.cursor/skills/.*/SKILL\.md$)'; then
+            if ! printf '%s\n' "${file}" | grep -Eq '^(docs/.*\.md$|reports/.*\.md$|README.*\.md$|AGENTS\.md$|\.agents/skills/.*/SKILL\.md$|\.cursor/skills/.*/SKILL\.md$)'; then
               docs_only=false
               break
             fi
@@ -99,7 +99,7 @@ jobs:
             exit 0
           fi
 
-          mapfile -t changed_docs < <(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" | grep -E '^(docs/|reports/.*\.md$|README.*\.md$|AGENTS\.md$|\.agents/skills/.*/SKILL\.md$|\.cursor/skills/.*/SKILL\.md$)' || true)
+          mapfile -t changed_docs < <(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" | grep -E '^(docs/.*\.md$|reports/.*\.md$|README.*\.md$|AGENTS\.md$|\.agents/skills/.*/SKILL\.md$|\.cursor/skills/.*/SKILL\.md$)' || true)
           if [ "${#changed_docs[@]}" -eq 0 ]; then
             echo "No tracked docs files changed."
             exit 0
@@ -448,3 +448,56 @@ jobs:
           name: playwright-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/latest
           if-no-files-found: ignore
+
+  ci_gate:
+    name: ci-gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - change_scope
+      - docs_guard
+      - policy
+      - lint_typecheck
+      - unit_tests
+      - build
+      - tier0_browser
+      - auth_browser_smoke
+    steps:
+      - name: Enforce lane-specific CI results
+        shell: bash
+        env:
+          DOCS_ONLY: ${{ needs.change_scope.outputs.docs_only }}
+          DOCS_GUARD_RESULT: ${{ needs.docs_guard.result }}
+          POLICY_RESULT: ${{ needs.policy.result }}
+          LINT_RESULT: ${{ needs.lint_typecheck.result }}
+          UNIT_RESULT: ${{ needs.unit_tests.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          TIER0_RESULT: ${{ needs.tier0_browser.result }}
+          AUTH_SMOKE_RESULT: ${{ needs.auth_browser_smoke.result }}
+        run: |
+          set -euo pipefail
+          echo "docs_only=${DOCS_ONLY}"
+
+          if [ "${DOCS_ONLY}" = "true" ]; then
+            if [ "${DOCS_GUARD_RESULT}" != "success" ]; then
+              echo "docs-only run requires docs-guard=success but got ${DOCS_GUARD_RESULT}"
+              exit 1
+            fi
+            echo "docs-only run passed via docs-guard."
+            exit 0
+          fi
+
+          failed=()
+          [ "${POLICY_RESULT}" = "success" ] || failed+=("policy=${POLICY_RESULT}")
+          [ "${LINT_RESULT}" = "success" ] || failed+=("lint-typecheck=${LINT_RESULT}")
+          [ "${UNIT_RESULT}" = "success" ] || failed+=("unit-tests=${UNIT_RESULT}")
+          [ "${BUILD_RESULT}" = "success" ] || failed+=("build=${BUILD_RESULT}")
+          [ "${TIER0_RESULT}" = "success" ] || failed+=("tier0-browser=${TIER0_RESULT}")
+          [ "${AUTH_SMOKE_RESULT}" = "success" ] || failed+=("auth-browser-smoke=${AUTH_SMOKE_RESULT}")
+
+          if [ "${#failed[@]}" -gt 0 ]; then
+            echo "non-doc run failed required jobs: ${failed[*]}"
+            exit 1
+          fi
+
+          echo "non-doc run passed full CI gate."

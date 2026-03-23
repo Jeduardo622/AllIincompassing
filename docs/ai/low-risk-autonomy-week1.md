@@ -1,5 +1,12 @@
 # Week-1 Low-Risk Autonomy Runbook
 
+## Status
+
+- Closed on 2026-03-23 after week-1 low-priority queue completion.
+- Outcome: 10 queued low-priority tasks were completed (WIN-5 through WIN-14), each delivered as an isolated PR.
+- Lane conclusion: week-1 low-risk goals were met for queue throughput and reviewability; any protected-path touches were re-routed through lane controls before merge.
+- This document is now historical guidance; use current lane routing and verification sources for new work.
+
 ## Purpose
 
 Operate a narrow 1-week low-risk autonomy lane without changing auth, tenant isolation, CI policy, runtime config, deploy routing, or other protected surfaces.

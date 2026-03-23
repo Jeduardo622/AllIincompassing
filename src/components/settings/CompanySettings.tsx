@@ -68,9 +68,6 @@ export function CompanySettings() {
   const { data: settings, isLoading, error } = useQuery<CompanySettingsRecord | null, Error>({
     queryKey: ['company-settings'],
     queryFn: async () => {
-      if (!canManageConfig) {
-        throw new Error('Only admins can load company settings.');
-      }
       // First try to get existing settings
       const { data: existingSettings, error: fetchError } = await supabase
         .from('company_settings')
@@ -99,9 +96,6 @@ export function CompanySettings() {
 
   const updateSettings = useMutation({
     mutationFn: async (formData: CompanySettingsForm) => {
-      if (!canManageConfig) {
-        throw new Error('Only admins can update company settings.');
-      }
       // Format data before submission
       const data = prepareFormData(formData);
 

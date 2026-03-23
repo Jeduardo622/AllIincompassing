@@ -15,6 +15,7 @@ This repository is an AI-assisted engineering lab for a React/Vite app with Supa
 - After changes are complete, push the branch and create a PR for human review. Do not assume direct pushes to `main`.
 - Use Linear for non-trivial work that should have reviewable execution history. At minimum, high-risk changes should map to a Linear issue before merge.
 - Route non-trivial work using the lane contract in `docs/ai/cto-lane-contract.md` before implementation.
+- For autonomous PR waiting, use bounded polling with explicit timeout; never allow indefinite hangs.
 
 ## Commands
 

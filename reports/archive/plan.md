@@ -146,8 +146,8 @@ All acceptance proof points must be logged in [`execspec.md`](../execspec.md) be
   - `scripts/metrics/*.ts`
 - **Verification Commands:**
   ```bash
-  npm run metrics:generate
-  npm run metrics:publish -- --dry-run
+  (historical command reference: npm run metrics:generate)
+  (historical command reference: npm run metrics:publish -- --dry-run)
   npm test -- metrics
   ```
 

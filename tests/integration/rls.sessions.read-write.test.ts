@@ -1,41 +1,63 @@
-import { describe, expect, it } from "vitest";
-import { buildMultiOrgSeed } from "../fixtures/multiOrgSeed.ts";
-import { ForbiddenError } from "../../supabase/functions/_shared/org.ts";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { setupLiveRlsHarness, type LiveRlsHarness } from "./_helpers/liveRlsHarness.ts";
 
-function simulateRlsSelect<T extends { organization_id: string }>(
-  rows: readonly T[],
-  orgId: string,
-) {
-  return rows.filter(row => row.organization_id === orgId);
-}
+let harness: LiveRlsHarness = {
+  enabled: false,
+  required: false,
+  skipReason: "Harness not initialized.",
+};
 
-function simulateRlsUpdate<T extends { organization_id: string; id: string }>(
-  rows: readonly T[],
-  orgId: string,
-  targetId: string,
-) {
-  const record = rows.find(row => row.id === targetId);
-  if (!record) {
-    throw new ForbiddenError("Record not visible");
-  }
-  if (record.organization_id !== orgId) {
-    throw new ForbiddenError("Cross-org mutation denied");
-  }
-  return record;
-}
-
-describe("RLS sessions read/write simulation", () => {
-  const seed = buildMultiOrgSeed();
-
-  it("returns only same-org sessions to org-a member", () => {
-    const accessible = simulateRlsSelect(seed.sessions, "org-a");
-    expect(accessible.every(session => session.organization_id === "org-a")).toBe(true);
-    expect(accessible.map(session => session.id)).toEqual(["sess-001"]);
-  });
-
-  it("prevents org-a admin from updating org-b session", () => {
-    expect(() => simulateRlsUpdate(seed.sessions, "org-a", "sess-002")).toThrow(ForbiddenError);
-  });
+beforeAll(async () => {
+  harness = await setupLiveRlsHarness();
 });
 
-// TODO: Replace simulation with Supabase-backed integration tests once MCP is available in CI.
+afterAll(async () => {
+  if (harness.enabled) {
+    await harness.cleanup();
+  }
+});
+
+describe("RLS sessions read/write (live Supabase)", () => {
+  it("returns only same-org sessions to org-a member", async () => {
+    if (!harness.enabled) {
+      if (harness.required) {
+        throw new Error(harness.skipReason);
+      }
+      return;
+    }
+
+    const orgAClient = await harness.signInAdminA();
+    const { data, error } = await orgAClient
+      .from("sessions")
+      .select("id, organization_id")
+      .in("id", [harness.orgA.sessionId, harness.orgB.sessionId]);
+
+    expect(error).toBeNull();
+    expect((data ?? []).every(session => session.organization_id === harness.orgAId)).toBe(true);
+    expect((data ?? []).map(session => session.id)).toContain(harness.orgA.sessionId);
+    expect((data ?? []).map(session => session.id)).not.toContain(harness.orgB.sessionId);
+  });
+
+  it("prevents org-a admin from updating org-b session", async () => {
+    if (!harness.enabled) {
+      if (harness.required) {
+        throw new Error(harness.skipReason);
+      }
+      return;
+    }
+
+    const orgAClient = await harness.signInAdminA();
+    const updateResult = await orgAClient
+      .from("sessions")
+      .update({ notes: "cross-org attempt should fail" })
+      .eq("id", harness.orgB.sessionId)
+      .select("id");
+
+    if (updateResult.error) {
+      expect(updateResult.error.message.toLowerCase()).toMatch(/row-level security|permission|not allowed|violat/);
+      return;
+    }
+
+    expect(updateResult.data ?? []).toHaveLength(0);
+  });
+});

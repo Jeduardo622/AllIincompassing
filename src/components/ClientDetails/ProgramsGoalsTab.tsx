@@ -38,6 +38,54 @@ interface ProgramsGoalsTabProps {
   client: Client;
 }
 
+type LegacyProgramDraftShape = {
+  program?: {
+    name?: string;
+    description?: string;
+    rationale?: string;
+    evidence_refs?: Array<{ section_key?: string; source_span?: string }>;
+    review_flags?: string[];
+  };
+  rationale?: string;
+  summary_rationale?: string;
+  confidence?: "low" | "medium" | "high";
+};
+
+// TODO(fba-payload-upgrade-cleanup): Remove legacy `draftPlan.program` fallback once all callers/tests use `programs[]`.
+// Exit criteria: no `program` usage in `generateProgramGoalDraft` responses and no legacy-shaped fixtures.
+const getDraftProgramsForSave = (draft: ProgramGoalDraftResponse): ProgramGoalDraftResponse["programs"] => {
+  if (Array.isArray(draft.programs) && draft.programs.length > 0) {
+    return draft.programs;
+  }
+  const legacyDraft = draft as ProgramGoalDraftResponse & LegacyProgramDraftShape;
+  if (!legacyDraft.program) {
+    return [];
+  }
+  return [
+    {
+      name: legacyDraft.program.name ?? "",
+      description: legacyDraft.program.description ?? "",
+      rationale: legacyDraft.program.rationale ?? "",
+      evidence_refs:
+        legacyDraft.program.evidence_refs?.map((ref) => ({
+          section_key: ref.section_key ?? "legacy_program",
+          source_span: ref.source_span ?? "Legacy draft fixture without explicit evidence span.",
+        })) ?? [],
+      review_flags: legacyDraft.program.review_flags ?? ["clinician_confirmation_needed"],
+    },
+  ];
+};
+
+const getDraftSummaryRationaleForSave = (draft: ProgramGoalDraftResponse): string => {
+  const legacyDraft = draft as ProgramGoalDraftResponse & LegacyProgramDraftShape;
+  return legacyDraft.summary_rationale ?? legacyDraft.rationale ?? "";
+};
+
+const getDraftConfidenceForSave = (draft: ProgramGoalDraftResponse): "low" | "medium" | "high" => {
+  const legacyDraft = draft as ProgramGoalDraftResponse & LegacyProgramDraftShape;
+  return legacyDraft.confidence ?? "low";
+};
+
 export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
@@ -496,9 +544,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         method: "POST",
         body: JSON.stringify({
           assessment_document_id: selectedAssessmentId,
-          program: draftPlan.program,
+          programs: getDraftProgramsForSave(draftPlan),
           goals: draftPlan.goals,
-          rationale: draftPlan.rationale ?? undefined,
+          summary_rationale: getDraftSummaryRationaleForSave(draftPlan),
+          confidence: getDraftConfidenceForSave(draftPlan),
         }),
       });
       if (!response.ok) {
@@ -799,13 +848,19 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       return generateProgramGoalDraft(
         assessmentInput,
         { accessToken: session.access_token },
-        { clientName: client.full_name },
+        {
+          clientName: client.full_name,
+          clientId: client.id,
+          organizationId: organizationId ?? undefined,
+          assessmentDocumentId: selectedAssessmentId ?? undefined,
+        },
       );
     },
     onSuccess: (draft) => {
       setDraftPlan(draft);
-      setProgramName(draft.program.name);
-      setProgramDescription(draft.program.description ?? "");
+      const primaryProgram = getDraftProgramsForSave(draft)[0];
+      setProgramName(primaryProgram?.name ?? "");
+      setProgramDescription(primaryProgram?.description ?? "");
       if (draft.goals[0]) {
         applyDraftGoal(draft.goals[0]);
       }
@@ -1044,8 +1099,12 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
 
             {draftPlan && (
               <div className="mt-4 space-y-3 rounded-md border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900 dark:border-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-100">
-                <p className="font-semibold">Draft program: {draftPlan.program.name}</p>
-                {draftPlan.rationale && <p>{draftPlan.rationale}</p>}
+                <p className="font-semibold">
+                  Draft programs: {getDraftProgramsForSave(draftPlan).map((program) => program.name).join(", ")}
+                </p>
+                <p>
+                  {getDraftSummaryRationaleForSave(draftPlan)}
+                </p>
                 <div className="space-y-2">
                   {draftPlan.goals.map((goal, index) => (
                     <div key={`${goal.title}-${index}`} className="rounded border border-indigo-200 bg-white px-2 py-2 dark:border-indigo-700 dark:bg-dark-lighter">

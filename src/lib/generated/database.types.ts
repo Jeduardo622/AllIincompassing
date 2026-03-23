@@ -737,6 +737,7 @@ export type Database = {
           created_at: string
           description: string
           draft_program_id: string | null
+          evidence_refs: Json
           generalization_criteria: string | null
           goal_type: string
           id: string
@@ -746,7 +747,10 @@ export type Database = {
           objective_data_points: Json
           organization_id: string
           original_text: string
+          program_name: string | null
+          rationale: string | null
           review_notes: string | null
+          review_flags: string[]
           reviewed_at: string | null
           reviewed_by: string | null
           target_behavior: string | null
@@ -762,6 +766,7 @@ export type Database = {
           created_at?: string
           description: string
           draft_program_id?: string | null
+          evidence_refs?: Json
           generalization_criteria?: string | null
           goal_type?: string
           id?: string
@@ -771,7 +776,10 @@ export type Database = {
           objective_data_points?: Json
           organization_id: string
           original_text: string
+          program_name?: string | null
+          rationale?: string | null
           review_notes?: string | null
+          review_flags?: string[]
           reviewed_at?: string | null
           reviewed_by?: string | null
           target_behavior?: string | null
@@ -787,6 +795,7 @@ export type Database = {
           created_at?: string
           description?: string
           draft_program_id?: string | null
+          evidence_refs?: Json
           generalization_criteria?: string | null
           goal_type?: string
           id?: string
@@ -796,7 +805,10 @@ export type Database = {
           objective_data_points?: Json
           organization_id?: string
           original_text?: string
+          program_name?: string | null
+          rationale?: string | null
           review_notes?: string | null
+          review_flags?: string[]
           reviewed_at?: string | null
           reviewed_by?: string | null
           target_behavior?: string | null
@@ -840,45 +852,57 @@ export type Database = {
           accept_state: string
           assessment_document_id: string
           client_id: string
+          confidence: string | null
           created_at: string
           description: string | null
+          evidence_refs: Json
           id: string
           name: string
           organization_id: string
           rationale: string | null
           review_notes: string | null
+          review_flags: string[]
           reviewed_at: string | null
           reviewed_by: string | null
+          summary_rationale: string | null
           updated_at: string
         }
         Insert: {
           accept_state?: string
           assessment_document_id: string
           client_id: string
+          confidence?: string | null
           created_at?: string
           description?: string | null
+          evidence_refs?: Json
           id?: string
           name: string
           organization_id: string
           rationale?: string | null
           review_notes?: string | null
+          review_flags?: string[]
           reviewed_at?: string | null
           reviewed_by?: string | null
+          summary_rationale?: string | null
           updated_at?: string
         }
         Update: {
           accept_state?: string
           assessment_document_id?: string
           client_id?: string
+          confidence?: string | null
           created_at?: string
           description?: string | null
+          evidence_refs?: Json
           id?: string
           name?: string
           organization_id?: string
           rationale?: string | null
           review_notes?: string | null
+          review_flags?: string[]
           reviewed_at?: string | null
           reviewed_by?: string | null
+          summary_rationale?: string | null
           updated_at?: string
         }
         Relationships: [

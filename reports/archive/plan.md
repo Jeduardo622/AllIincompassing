@@ -1,4 +1,5 @@
 > Archived: This document has been archived and is no longer maintained.
+> Note: command examples in this file are historical snapshots and may no longer map to current `package.json` scripts.
 
 # Audit Remediation Execution Plan
 

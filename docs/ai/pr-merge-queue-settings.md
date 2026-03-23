@@ -30,9 +30,9 @@ Preferred required check:
 
 - `ci-gate`
 
-Optional:
+Do not add as an independent required branch-protection check:
 
-- `docs-guard` (docs-only fast-path gate)
+- `docs-guard` (it is a docs-only internal gate enforced by `ci-gate`)
 
 Why:
 
@@ -43,6 +43,15 @@ Why:
 
 Legacy (transitional only): if your branch protection still requires individual checks (`policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`), migrate to `ci-gate` in one update window and validate with a test PR before enforcing.
 
+Migration order requirement:
+
+1. Add `ci-gate` to GitHub branch protection while legacy required checks are still present.
+2. Set `CI_REQUIRED_CHECKS=ci-gate` in CI policy enforcement.
+3. Validate with a non-doc test PR.
+4. Remove legacy required checks from branch protection after the test PR confirms green.
+
 ## Merge Queue Compatibility
 
-`CI` now listens to `pull_request`, `push`, and `merge_group` events so merge-queue runs execute the same checks model as normal PRs.
+`CI` now listens to `pull_request`, `push`, and `merge_group` events so merge-queue runs enforce the same required gate (`ci-gate`) as normal PRs.
+
+Note: docs-only PRs run the docs fast path on standard PR events, but merge-queue (`merge_group`) currently uses the full non-doc chain before `ci-gate`.

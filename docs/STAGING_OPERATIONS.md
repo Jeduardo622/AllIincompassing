@@ -45,15 +45,21 @@ The active workflow (`.github/workflows/ci.yml`) runs staged jobs on pull reques
 2. `lint-typecheck` and `unit-tests` – parallel code-quality and test gates after `policy`.
 3. `build` – build canary once lint + unit tests pass.
 4. `tier0-browser` and `auth-browser-smoke` – browser-critical regression gates.
+5. `ci-gate` – final required check that enforces docs-only (`docs-guard`) or full non-doc CI pass.
 
-Branch protection must require at least:
+Branch protection should require:
 
-- `policy`
-- `lint-typecheck`
-- `unit-tests`
-- `build`
-- `tier0-browser`
-- `auth-browser-smoke`
+- `ci-gate` (primary required check)
+- do not require `docs-guard` directly (it is a docs-only gate enforced by `ci-gate`)
+
+Legacy required checks (`policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`) are transitional only while repositories migrate branch protection to `ci-gate`.
+
+Migration order requirement:
+
+1. Add `ci-gate` to GitHub branch protection while legacy required checks are still present.
+2. Update CI policy expectations to `CI_REQUIRED_CHECKS=ci-gate`.
+3. Validate with a non-doc test PR.
+4. Remove legacy required checks only after the test PR confirms green.
 
 CI policy checks currently validate branch protection for `main` via `CI_PROTECTED_BRANCHES=main` and should be expanded to include `develop` once that branch is present and protected.
 

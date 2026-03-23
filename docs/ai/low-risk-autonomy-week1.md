@@ -1,5 +1,7 @@
 # Week-1 Low-Risk Autonomy Runbook
 
+> **Historical only.** This file records the week-1 low-risk autonomy batch and its closure. For current low-risk queue operations, use [`docs/ai/low-risk-queue-runbook.md`](./low-risk-queue-runbook.md). Lane routing, verification, and protected paths are defined in `AGENTS.md`, `docs/ai/cto-lane-contract.md`, `docs/ai/verification-matrix.md`, and `docs/ai/high-risk-paths.md`; those sources prevail if anything here disagrees.
+
 ## Status
 
 - Closed on 2026-03-23 after week-1 low-priority queue completion.
@@ -83,6 +85,8 @@ Queue slots are candidate placeholders, not standing authorization. Every task s
 
 Do not expand this lane until week 1 meets all of the following:
 
+Historical note: this threshold was exceeded and the week-1 batch closed with 10 completed items.
+
 - `5` low-risk tasks completed with zero protected-path incursions
 - all non-doc tasks used the correct verification path, including `npm run verify:local` where required
 - zero major `reviewer` findings in auth, tenant isolation, CI policy, runtime config, or deployment safety
@@ -93,4 +97,4 @@ Do not expand this lane until week 1 meets all of the following:
 
 Week-1 autonomy is advisory and narrow by design. It does not authorize CI edits, deploy actions, Supabase changes, automation setup, or access to real environment secrets.
 
-If this runbook conflicts with `AGENTS.md`, `docs/ai/verification-matrix.md`, or `docs/ai/high-risk-paths.md`, those source-of-truth files take precedence.
+If this runbook conflicts with `AGENTS.md`, `docs/ai/cto-lane-contract.md`, `docs/ai/verification-matrix.md`, or `docs/ai/high-risk-paths.md`, those source-of-truth files take precedence.

@@ -1,321 +1,125 @@
-# 🚀 Database-First CI/CD Pipeline
+# Database-First CI/CD Pipeline
 
-This document describes the comprehensive database-first CI/CD pipeline implemented for the AllIncompassing project. This pipeline provides isolated database environments, automated testing, security checks, and seamless deployments.
+This document describes the current database-related CI behavior in this repository and the supporting local scripts.
 
-## 📋 Table of Contents
+## Overview
 
-- [Overview](#overview)
-- [Pipeline Flow](#pipeline-flow)
-- [Setup Requirements](#setup-requirements)
-- [GitHub Actions Workflows](#github-actions-workflows)
-- [Database Health Monitoring](#database-health-monitoring)
-- [Manual Commands](#manual-commands)
-- [Troubleshooting](#troubleshooting)
+The current model has three tracks:
 
-## 🎯 Overview
+1. `supabase-validate.yml` for migration lint and hosted DB test coverage.
+2. `ci.yml` for repository-wide quality and policy gates.
+3. `supabase-preview.yml` for on-demand local Supabase preview runs.
 
-The “database-first” workflow combines a focused GitHub Action (`supabase-validate.yml`), the general CI pipeline, and a set of Supabase CLI scripts. Together they lint migrations, run integration tests against the hosted project (`wnnjeqheqxxyrgsjmygy`), and give contributors tools to spin up Supabase branches when they need isolated data.
+The repository does not create per-PR Supabase branches automatically. Branch creation remains manual via `npm run db:branch:create` when isolation is needed.
 
-The current implementation does **not** create per-PR Supabase branches automatically. Instead, engineers run the supplied scripts (see [Manual Commands](#-manual-commands)) whenever a feature actually requires a dedicated database copy. CI reuses the shared project and enforces safety via linting and tests.
+## Pipeline Flow
 
-### Key Components & Benefits
+1. Pull request touches `supabase/migrations/**`.
+   - `supabase-validate.yml` runs `lint-migrations`.
+   - The lint step runs `supabase db lint --project-ref "$SUPABASE_PROJECT_REF"` when a project ref is configured.
+2. Push to `main` touches `supabase/migrations/**`.
+   - `supabase-validate.yml` runs `test-main`.
+   - `test-main` runs `npm test -- --run --reporter=verbose` with `RUN_DB_IT=1`.
+3. Pull request, push, or merge queue (`merge_group`) to `main`/`develop`.
+   - `ci.yml` runs either:
+     - docs-only path: `change-scope` -> `docs-guard` -> `ci-gate`
+     - non-doc path: `change-scope` -> `policy` -> parallel gates:
+       - chain A: `lint-typecheck` + `unit-tests` -> `build` -> `tier0-browser`
+       - chain B: `auth-browser-smoke`
+       - both chains feed `ci-gate`
+4. Manual preview run.
+   - `supabase-preview.yml` can be triggered with `workflow_dispatch` to run local Supabase startup/reset plus preview build/smoke checks.
 
-- ✅ **Migration linting on PRs** – `supabase-validate.yml` runs `supabase db lint` whenever a PR touches `supabase/migrations/**`.【.github/workflows/supabase-validate.yml†L4-L26】
-- ✅ **Hosted-integration tests on push** – the same workflow runs `npm test` with `RUN_DB_IT=1` for pushes to `main`, guaranteeing RLS-aware suites execute against real Supabase credentials.【.github/workflows/supabase-validate.yml†L27-L46】
-- ✅ **Full project CI** – `.github/workflows/ci.yml` adds linting, coverage, Netlify deploys, and smoke tests so schema changes are exercised together with the app code.【.github/workflows/ci.yml†1-L215】
-- ✅ **Release gate policy check** – `npm run ci:check-focused` includes `check-main-branch-protection.mjs`, which validates protected `main` branch status and required checks in CI.
-- ✅ **On-demand previews** – `supabase-preview.yml` provides a manual workflow for rapidly bringing up an ephemeral Supabase stack when deeper QA is needed.【.github/workflows/supabase-preview.yml†1-L37】
-- ✅ **Branch utilities** – `npm run db:branch:create|cleanup` wrap the Supabase CLI so engineers can create, reuse, and destroy database branches without crafting CLI commands by hand.
-
-## 🔄 Pipeline Flow
-
-1. **Pull request touches migrations**
-   - `supabase-validate.yml` triggers `lint-migrations`, which checks out the PR, installs the Supabase CLI, and runs `supabase db lint --linked`. Failures block the PR until policies, functions, and grants pass lint.
-2. **Push to `main`**
-   - `supabase-validate.yml` runs the `test-main` job. It installs dependencies, sets `RUN_DB_IT=1`, injects hosted Supabase credentials, and executes `npm test` so database-backed Vitest suites run with live data.
-3. **Repo-wide CI (`ci.yml`)**
-   - For every PR/push, the standard CI pipeline validates secrets, runs ESLint/TypeScript, executes Vitest with Supabase credentials, enforces coverage, builds canary bundles, and (on `develop`) deploys to Netlify staging before running smoke tests.
-4. **Optional Supabase preview**
-   - When needed, maintainers run `Supabase Preview` via the **Actions** tab to start a local Supabase stack (`supabase start`, `supabase db reset`) for exploratory testing.
-5. **Manual Supabase branch workflow**
-   - If a change needs an isolated database, run `npm run db:branch:create pr-123` locally, apply migrations, and work against that branch. Cleanup via `npm run db:branch:cleanup pr-123` when done. These scripts are not wired into Actions yet, keeping branch creation intentional rather than automatic.
-
-## ⚙️ Setup Requirements
-
-### GitHub Secrets
-
-Add these secrets to your GitHub repository:
-
-```bash
-# Supabase Configuration
-SUPABASE_URL=https://your-project-ref.supabase.co
-SUPABASE_ACCESS_TOKEN=your_supabase_access_token
-SUPABASE_PROJECT_REF=wnnjeqheqxxyrgsjmygy
-SUPABASE_DB_PASSWORD=your_database_password
-SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-
-# OpenAI for AI features
-OPENAI_API_KEY=your_openai_api_key
-
-# Netlify for deployments
-NETLIFY_AUTH_TOKEN=your_netlify_auth_token
-NETLIFY_SITE_ID=your_netlify_site_id
-```
-
-> 🔒 Provide these values via your CI/CD secret store. Scripts that require elevated access, including `scripts/admin-password-reset.js`, will abort if `SUPABASE_SERVICE_ROLE_KEY` is missing or blank; no fallback credentials are embedded.
-
-Expose the read-only Supabase credentials to CI jobs so the RLS security tests can authenticate:
-
-```yaml
-env:
-  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-  SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-```
-
-For local runs, export the same variables and set `RUN_DB_IT=1` before invoking `npm test` to opt into the database-backed suites.
-
-### Local Development Setup
-
-1. **Install Supabase CLI**:
-   ```bash
-   npm install -g supabase
-   ```
-
-2. **Login to Supabase**:
-   ```bash
-   supabase login
-   ```
-
-3. **Install Dependencies**:
-   ```bash
-   npm install
-   ```
-
-## 🤖 GitHub Actions Workflows
+## GitHub Actions Workflows
 
 ### `supabase-validate.yml`
-- **Triggers**: Pull requests that modify `supabase/migrations/**` and pushes to `main` touching those paths.【.github/workflows/supabase-validate.yml†4-L13】
-- **PR behavior**: Runs `supabase db lint --linked` to ensure policies, grants, and SQL syntax conform before review.【.github/workflows/supabase-validate.yml†15-L26】
-- **Push behavior**: Installs dependencies and executes `npm test` with `RUN_DB_IT=1`, pointing to the hosted Supabase environment so RLS and RPC tests run against real data.【.github/workflows/supabase-validate.yml†27-L46】
+
+- Triggered by:
+  - pull requests that touch `supabase/migrations/**` or `.github/workflows/supabase-validate.yml`
+  - pushes to `main` that touch `supabase/migrations/**`
+- Jobs:
+  - `lint-migrations` (PR only): checks migrations with Supabase CLI.
+  - `test-main` (push only): runs unit/integration suites with hosted Supabase env vars and `RUN_DB_IT=1`.
 
 ### `ci.yml`
-- **Triggers**: All PRs and pushes.
-- **Focus**: Validates secrets, runs ESLint/TypeScript, executes Vitest with Supabase credentials, enforces coverage, builds canary bundles, deploys to Netlify staging on `develop`, and runs smoke tests plus route audits.【.github/workflows/ci.yml†1-L248】
-- **Why it matters for the database**: Because `RUN_DB_IT` is set for Vitest, schema and RLS regressions surface during the general CI build even when migrations are untouched.
 
-### `database-first-ci.yml`
-- **Triggers**: Pushes to `main` and `develop`. (It intentionally omits PR events for now.)【.github/workflows/database-first-ci.yml†1-L12】
-- **Scope**: Currently a thin placeholder that checks out the repository and is ready for future branch automation. We keep it documented so future automation work has a home and we remember it runs on every protected branch push.
+- Triggered on `pull_request`, `push`, and `merge_group` for `main` and `develop`.
+- Uses `change-scope` to select docs-only vs non-doc path.
+- `docs-guard` validates `npm run` examples for docs-path markdown changes (for example `docs/**`, `reports/**`, `README*.md`, `AGENTS.md`, and skill `SKILL.md` docs paths) when docs-only changes are detected.
+- `policy` runs prerequisite validations, secret checks, session-edge deployment parity checks, and `npm run ci:check-focused`.
+- Test and build gates include:
+  - `lint-typecheck`
+  - `unit-tests` (includes coverage verification)
+  - `build`
+  - `tier0-browser`
+  - `auth-browser-smoke`
+- `ci-gate` is the final required status gate for branch protection.
 
 ### `supabase-preview.yml`
-- **Triggers**: Manual `workflow_dispatch`.
-- **Focus**: Starts a local Supabase stack via `supabase start`, resets the database, optionally runs type generation, and surfaces connection info so developers can point their local app at the ephemeral environment.【.github/workflows/supabase-preview.yml†1-L37】
-- **Use case**: Great for QA/debug sessions when you need a clean Supabase instance but don’t want to create a managed branch.
 
-## 🏥 Database Health Monitoring
+- Manual only (`workflow_dispatch`).
+- Starts local Supabase (`supabase start`), applies migrations locally (`supabase db reset --local --yes`), optionally generates types, then runs:
+  - `npm run preview:build`
+  - `npm run preview:smoke`
+- Optional type generation runs only when repository variable `SUPABASE_PROJECT_ID` is set.
 
-CI currently surfaces schema issues through tests and linting; deeper health checks remain opt-in via the supplied scripts. Run them locally, in a Codespace, or from a scheduled job when needed:
+## Setup Requirements
 
-- `npm run db:check:security <branch-id>` – wraps Supabase advisors and our RLS/policy checks.
-- `npm run db:check:performance <branch-id>` – scrapes pg_stat views for slow queries, missing indexes, and bloat.
-- `npm run db:health:report <branch-id>` – produces a consolidated Markdown report using the outputs above.
-- `npm run db:health:production` – shortcuts to the production reference (`wnnjeqheqxxyrgsjmygy`) for release audits.
-- `npm run pipeline:health <branch-id>` – convenience script that runs security + performance + report in one go.
-- Application readiness endpoint:
-  - `GET /api/health` returns `200` with `readiness: "ready"` when runtime config is valid.
-  - Returns `503` with `readiness: "not_ready"` when runtime config/env prerequisites fail.
+### CI secrets
 
-### Security Checks
-
-The security script focuses on:
-
-- **RLS coverage** – fails if tables under `public` miss RLS or if policies conflict with helper functions.
-- **Function hardening** – verifies `SECURITY DEFINER` and locked-down `search_path` on helper functions.
-- **Supabase advisors** – relays any high/critical recommendations Supabase emits for the project.
-
-### Performance Analysis
-
-The performance script highlights:
-
-- **Slow queries** – anything over ~1000 ms cumulative time.
-- **Missing/unused indexes** – looks for high seq scans vs. tuples returned.
-- **Table bloat** – flags tables with large dead tuple ratios.
-- **Connection stats** – simple `pg_stat_activity` snapshot for runaway clients.
-
-### Health Report Format
-
-Running `npm run db:health:report branch-id` emits Markdown similar to the following, which you can paste into a PR comment or attach to release notes:
-
-```markdown
-# 🏥 Database Health Report
-
-## 📊 Overall Health: 🟢 EXCELLENT
-
-| Metric | Score | Status |
-|--------|-------|--------|
-| 🔒 Security | 95/100 | 🟢 Excellent |
-| ⚡ Performance | 88/100 | 🟡 Good |
-| 📋 Total Issues | 2 | ⚠️ Found |
-| 🚨 Critical Issues | 0 | ✅ None |
-
-## 💡 Recommendations
-- ⚠️ **PERFORMANCE**: Add indexes to 2 tables
-- 💡 _Action: CREATE INDEX ON table_name (column_name);_
-```
-
-## 🛠️ Manual Commands
-
-### Database Branch Management
+Typical secrets used by database-related workflows:
 
 ```bash
-# Create a new database branch
+SUPABASE_URL
+SUPABASE_ACCESS_TOKEN
+SUPABASE_PROJECT_REF
+SUPABASE_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_DB_URL
+```
+
+`supabase-preview.yml` and `ci.yml` may also reference additional environment-specific secrets when preview and policy checks run.
+
+For local hosted-db parity runs, export the Supabase variables and set `RUN_DB_IT=1` before running `npm test`.
+
+### Local tooling
+
+```bash
+npm install -g supabase
+supabase login
+npm ci
+```
+
+## Manual Commands
+
+### Supabase branch management
+
+```bash
 npm run db:branch:create branch-name
-
-# Cleanup a database branch
 npm run db:branch:cleanup branch-name
-
-# Cleanup multiple branches by pattern
-node scripts/cleanup-supabase-branch.js --pattern "pr-.*"
 ```
 
-### Health Checks
+### Database health checks
 
 ```bash
-# Run security analysis
-npm run db:check:security branch-id
-
-# Run performance analysis
-npm run db:check:performance branch-id
-
-# Generate combined health report
-npm run db:health:report branch-id
-
-# Check production health
+npm run db:check:security
+npm run db:check:performance
+npm run db:health:report
 npm run db:health:production
-
-# Run all health checks
-npm run pipeline:health branch-id
+npm run pipeline:health
 ```
 
-### Development Workflow
+### CI parity commands
 
 ```bash
-# 1. Create feature branch
-git checkout -b feature/new-feature
-
-# 2. Make database changes
-# Add migration files to supabase/migrations/
-
-# 3. Test locally with branch database
-supabase db push --project-ref your-branch-id
-
-# 4. Run health checks locally
-npm run pipeline:health your-branch-id
-
-# 5. Create PR - pipeline runs automatically
-gh pr create
+npm run ci:check-focused
+npm run ci:playwright
 ```
 
-## 🐛 Troubleshooting
+`ci:playwright` is broader than the CI `auth-browser-smoke` job and includes additional Playwright suites (for example schedule conflict and therapist onboarding) used for local parity checks.
 
-### Common Issues
+## Troubleshooting
 
-#### 1. Branch Creation Fails
-```bash
-Error: Cost confirmation required
-```
-**Solution**: The script handles cost confirmation automatically. If it fails, check Supabase billing settings.
-
-#### 2. Migration Conflicts
-```bash
-Error: Migration conflict detected
-```
-**Solution**: Resolve conflicts in migration files and push again. The isolated branch prevents conflicts with main.
-
-#### 3. Type Generation Fails
-```bash
-Error: Failed to generate types
-```
-**Solution**: Check database connection and ensure migrations applied successfully.
-
-#### 4. Security Check Failures
-```bash
-Error: Critical security issues found
-```
-**Solution**: Review the health report and address RLS policies or security advisors.
-
-#### 5. Performance Warnings
-```bash
-Warning: Slow queries detected
-```
-**Solution**: Optimize queries and add indexes as recommended in the health report.
-
-### Debug Commands
-
-```bash
-# List all branches
-supabase branches list
-
-# Check branch status
-supabase branches get branch-id
-
-# View migration status
-supabase db diff --schema public
-
-# Test database connection
-psql "$SUPABASE_DB_URL" -c "SELECT NOW();"
-```
-
-### Log Locations
-
-- **GitHub Actions**: Check the Actions tab in your repository
-- **Local Reports**: `.reports/` directory
-- **Branch Cache**: `.cache/supabase-branches/`
-- **Supabase Logs**: Use `supabase logs` command
-
-## 📈 Monitoring & Metrics
-
-### Pipeline Metrics
-
-Track pipeline effectiveness:
-
-- **PR Processing Time**: Time from PR creation to deployment
-- **Migration Success Rate**: Percentage of successful migrations
-- **Security Issue Detection**: Number of issues caught pre-production
-- **Performance Regression Detection**: Queries optimized per month
-
-### Health Score Calculation
-
-**Security Score (0-100)**:
-- Critical issues: -30 points each
-- High severity issues: -20 points each
-- Medium severity issues: -10 points each
-- Low severity warnings: -5 points each
-
-**Performance Score (0-100)**:
-- Critical slow queries (>5s): -25 points each
-- Slow queries: -10 points each
-- Missing indexes: -5 points each
-
-**Overall Health**:
-- 85-100: Excellent 🟢
-- 70-84: Good 🟡
-- 50-69: Fair 🟠
-- 0-49: Poor 🔴
-
-## 🔮 Future Enhancements
-
-Planned improvements:
-
-- **Cost Optimization**: Automatic branch cleanup based on age
-- **Advanced Security**: SAST scanning for SQL injection vulnerabilities
-- **Performance Baselines**: Compare performance against main branch
-- **Blue-Green Deployments**: Zero-downtime production deployments
-- **Rollback Automation**: Automatic rollback on health check failures
-- **Metrics Dashboard**: Real-time pipeline and database health visualization
-
----
-
-**Need Help?** Check our [troubleshooting guide](#troubleshooting) or create an issue in the repository. 
+- If migration lint is skipped in `supabase-validate.yml`, confirm `SUPABASE_PROJECT_REF` is configured.
+- If docs-only changes fail `docs-guard`, verify every `npm run <script>` in changed docs exists in `package.json`.
+- If policy checks fail branch-protection validation, align required checks with the current `ci-gate` contract documented in `docs/ai/pr-merge-queue-settings.md`.

@@ -94,9 +94,24 @@ describe("assessmentDocumentsHandler", () => {
 
   it("returns 401 when authorization is missing", async () => {
     const response = await assessmentDocumentsHandler(
-      new Request("http://localhost/api/assessment-documents?client_id=11111111-1111-1111-1111-111111111111"),
+      new Request("http://localhost/api/assessment-documents?client_id=11111111-1111-1111-1111-111111111111", {
+        headers: { Origin: "http://localhost:5173" },
+      }),
     );
     expect(response.status).toBe(401);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5173");
+  });
+
+  it("responds to OPTIONS with request-scoped CORS headers", async () => {
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "OPTIONS",
+        headers: { Origin: "http://localhost:5173" },
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5173");
+    expect(response.headers.get("Access-Control-Allow-Methods")).toContain("DELETE");
   });
 
   it("creates assessment document and seeds checklist rows", async () => {

@@ -7,6 +7,24 @@ import { callApi, callEdgeFunctionHttp } from "../../lib/api";
 
 const ORG_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
 const ASSESSMENT_ID = "11111111-1111-4111-8111-111111111111";
+type ProgramsGoalsTabClient = React.ComponentProps<typeof ProgramsGoalsTab>["client"];
+
+const buildClient = (overrides: Partial<ProgramsGoalsTabClient> = {}): ProgramsGoalsTabClient => ({
+  id: "client-1",
+  email: "client@example.com",
+  full_name: "Client One",
+  date_of_birth: "2017-05-01",
+  insurance_info: {},
+  service_preference: [],
+  one_to_one_units: 0,
+  supervision_units: 0,
+  parent_consult_units: 0,
+  assessment_units: 0,
+  auth_units: 0,
+  availability_hours: {},
+  created_at: "2026-02-11T00:00:00.000Z",
+  ...overrides,
+});
 
 const buildAcceptedDraftGoals = () => [
   ...Array.from({ length: 20 }, (_, index) => ({
@@ -224,24 +242,7 @@ describe("ProgramsGoalsTab", () => {
     });
 
     renderWithProviders(
-      <ProgramsGoalsTab
-        client={
-          {
-            id: "client-1",
-            email: "client@example.com",
-            full_name: "Client One",
-            date_of_birth: "2017-05-01",
-            insurance_info: {},
-            service_preference: [],
-            one_to_one_units: 0,
-            supervision_units: 0,
-            parent_consult_units: 0,
-            assessment_units: 0,
-            availability_hours: {},
-            created_at: "2026-02-11T00:00:00.000Z",
-          } as any
-        }
-      />,
+      <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
           role: "therapist",
@@ -292,24 +293,7 @@ describe("ProgramsGoalsTab", () => {
     });
 
     renderWithProviders(
-      <ProgramsGoalsTab
-        client={
-          {
-            id: "client-1",
-            email: "client@example.com",
-            full_name: "Client One",
-            date_of_birth: "2017-05-01",
-            insurance_info: {},
-            service_preference: [],
-            one_to_one_units: 0,
-            supervision_units: 0,
-            parent_consult_units: 0,
-            assessment_units: 0,
-            availability_hours: {},
-            created_at: "2026-02-11T00:00:00.000Z",
-          } as any
-        }
-      />,
+      <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
           role: "therapist",
@@ -390,24 +374,7 @@ describe("ProgramsGoalsTab", () => {
     });
 
     renderWithProviders(
-      <ProgramsGoalsTab
-        client={
-          {
-            id: "client-1",
-            email: "client@example.com",
-            full_name: "Client One",
-            date_of_birth: "2017-05-01",
-            insurance_info: {},
-            service_preference: [],
-            one_to_one_units: 0,
-            supervision_units: 0,
-            parent_consult_units: 0,
-            assessment_units: 0,
-            availability_hours: {},
-            created_at: "2026-02-11T00:00:00.000Z",
-          } as any
-        }
-      />,
+      <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
           role: "therapist",
@@ -478,24 +445,7 @@ describe("ProgramsGoalsTab", () => {
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
 
     renderWithProviders(
-      <ProgramsGoalsTab
-        client={
-          {
-            id: "client-1",
-            email: "client@example.com",
-            full_name: "Client One",
-            date_of_birth: "2017-05-01",
-            insurance_info: {},
-            service_preference: [],
-            one_to_one_units: 0,
-            supervision_units: 0,
-            parent_consult_units: 0,
-            assessment_units: 0,
-            availability_hours: {},
-            created_at: "2026-02-11T00:00:00.000Z",
-          } as any
-        }
-      />,
+      <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
           role: "therapist",
@@ -553,24 +503,7 @@ describe("ProgramsGoalsTab", () => {
     });
 
     renderWithProviders(
-      <ProgramsGoalsTab
-        client={
-          {
-            id: "client-1",
-            email: "client@example.com",
-            full_name: "Client One",
-            date_of_birth: "2017-05-01",
-            insurance_info: {},
-            service_preference: [],
-            one_to_one_units: 0,
-            supervision_units: 0,
-            parent_consult_units: 0,
-            assessment_units: 0,
-            availability_hours: {},
-            created_at: "2026-02-11T00:00:00.000Z",
-          } as any
-        }
-      />,
+      <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
           role: "therapist",
@@ -638,24 +571,7 @@ describe("ProgramsGoalsTab", () => {
     });
 
     const { rerender } = renderWithProviders(
-      <ProgramsGoalsTab
-        client={
-          {
-            id: "client-a",
-            email: "client@example.com",
-            full_name: "Client One",
-            date_of_birth: "2017-05-01",
-            insurance_info: {},
-            service_preference: [],
-            one_to_one_units: 0,
-            supervision_units: 0,
-            parent_consult_units: 0,
-            assessment_units: 0,
-            availability_hours: {},
-            created_at: "2026-02-11T00:00:00.000Z",
-          } as any
-        }
-      />,
+      <ProgramsGoalsTab client={buildClient({ id: "client-a" })} />,
       {
         auth: {
           role: "therapist",
@@ -677,24 +593,7 @@ describe("ProgramsGoalsTab", () => {
     const callsBeforeRerender = vi.mocked(callApi).mock.calls.length;
 
     rerender(
-      <ProgramsGoalsTab
-        client={
-          {
-            id: "client-b",
-            email: "client@example.com",
-            full_name: "Client Two",
-            date_of_birth: "2017-05-01",
-            insurance_info: {},
-            service_preference: [],
-            one_to_one_units: 0,
-            supervision_units: 0,
-            parent_consult_units: 0,
-            assessment_units: 0,
-            availability_hours: {},
-            created_at: "2026-02-11T00:00:00.000Z",
-          } as any
-        }
-      />,
+      <ProgramsGoalsTab client={buildClient({ id: "client-b", full_name: "Client Two" })} />,
     );
 
     await screen.findByText("b-fba.pdf");
@@ -757,24 +656,7 @@ describe("ProgramsGoalsTab", () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     renderWithProviders(
-      <ProgramsGoalsTab
-        client={
-          {
-            id: "client-1",
-            email: "client@example.com",
-            full_name: "Client One",
-            date_of_birth: "2017-05-01",
-            insurance_info: {},
-            service_preference: [],
-            one_to_one_units: 0,
-            supervision_units: 0,
-            parent_consult_units: 0,
-            assessment_units: 0,
-            availability_hours: {},
-            created_at: "2026-02-11T00:00:00.000Z",
-          } as any
-        }
-      />,
+      <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
           role: "therapist",
@@ -799,24 +681,7 @@ describe("ProgramsGoalsTab", () => {
 
   it("shows draft-vs-live status messaging in review panel", async () => {
     renderWithProviders(
-      <ProgramsGoalsTab
-        client={
-          {
-            id: "client-1",
-            email: "client@example.com",
-            full_name: "Client One",
-            date_of_birth: "2017-05-01",
-            insurance_info: {},
-            service_preference: [],
-            one_to_one_units: 0,
-            supervision_units: 0,
-            parent_consult_units: 0,
-            assessment_units: 0,
-            availability_hours: {},
-            created_at: "2026-02-11T00:00:00.000Z",
-          } as any
-        }
-      />,
+      <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
           role: "therapist",
@@ -884,24 +749,7 @@ describe("ProgramsGoalsTab", () => {
     });
 
     renderWithProviders(
-      <ProgramsGoalsTab
-        client={
-          {
-            id: "client-1",
-            email: "client@example.com",
-            full_name: "Client One",
-            date_of_birth: "2017-05-01",
-            insurance_info: {},
-            service_preference: [],
-            one_to_one_units: 0,
-            supervision_units: 0,
-            parent_consult_units: 0,
-            assessment_units: 0,
-            availability_hours: {},
-            created_at: "2026-02-11T00:00:00.000Z",
-          } as any
-        }
-      />,
+      <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
           role: "therapist",
@@ -929,24 +777,7 @@ describe("ProgramsGoalsTab", () => {
 
   it("shows inline helper when promote is disabled", async () => {
     renderWithProviders(
-      <ProgramsGoalsTab
-        client={
-          {
-            id: "client-1",
-            email: "client@example.com",
-            full_name: "Client One",
-            date_of_birth: "2017-05-01",
-            insurance_info: {},
-            service_preference: [],
-            one_to_one_units: 0,
-            supervision_units: 0,
-            parent_consult_units: 0,
-            assessment_units: 0,
-            availability_hours: {},
-            created_at: "2026-02-11T00:00:00.000Z",
-          } as any
-        }
-      />,
+      <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
           role: "therapist",
@@ -961,24 +792,7 @@ describe("ProgramsGoalsTab", () => {
 
   it("shows add-goal prerequisites when create goal is disabled", async () => {
     renderWithProviders(
-      <ProgramsGoalsTab
-        client={
-          {
-            id: "client-1",
-            email: "client@example.com",
-            full_name: "Client One",
-            date_of_birth: "2017-05-01",
-            insurance_info: {},
-            service_preference: [],
-            one_to_one_units: 0,
-            supervision_units: 0,
-            parent_consult_units: 0,
-            assessment_units: 0,
-            availability_hours: {},
-            created_at: "2026-02-11T00:00:00.000Z",
-          } as any
-        }
-      />,
+      <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
           role: "therapist",
@@ -1031,24 +845,7 @@ describe("ProgramsGoalsTab", () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     renderWithProviders(
-      <ProgramsGoalsTab
-        client={
-          {
-            id: "client-1",
-            email: "client@example.com",
-            full_name: "Client One",
-            date_of_birth: "2017-05-01",
-            insurance_info: {},
-            service_preference: [],
-            one_to_one_units: 0,
-            supervision_units: 0,
-            parent_consult_units: 0,
-            assessment_units: 0,
-            availability_hours: {},
-            created_at: "2026-02-11T00:00:00.000Z",
-          } as any
-        }
-      />,
+      <ProgramsGoalsTab client={buildClient()} />,
       {
         auth: {
           role: "therapist",

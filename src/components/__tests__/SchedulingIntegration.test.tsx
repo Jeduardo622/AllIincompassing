@@ -75,6 +75,7 @@ const mockGoal = {
 };
 
 const baseFrom = supabase.from;
+const mockRpc = vi.mocked(supabase.rpc);
 
 const buildProgramGoalQuery = (data: unknown[]) => {
   const chain = {
@@ -98,7 +99,7 @@ describe('Scheduling Integration - End-to-End Flow', () => {
       return baseFrom(table);
     });
     // Override supabase.rpc to return our mock therapist/client so we see Dr. Jane Smith in UI
-    vi.mocked(supabase.rpc as any).mockImplementation(async (functionName: string) => {
+    mockRpc.mockImplementation(async (functionName: string) => {
       if (functionName === 'get_schedule_data_batch') {
         return { data: { sessions: [], therapists: [mockTherapist], clients: [mockClient] }, error: null };
       }
@@ -254,7 +255,7 @@ describe('Scheduling Integration - End-to-End Flow', () => {
     };
 
     // Override RPC for this test so batched data contains the existing session
-    vi.mocked(supabase.rpc as any).mockImplementationOnce(async (functionName: string) => {
+    mockRpc.mockImplementationOnce(async (functionName: string) => {
       if (functionName === 'get_schedule_data_batch') {
         return { data: { sessions: [existingSession], therapists: [mockTherapist], clients: [mockClient] }, error: null };
       }

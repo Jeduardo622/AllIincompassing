@@ -10,7 +10,7 @@
 ## Internal tooling
 | Tooling | Purpose | Interface |
 | --- | --- | --- |
-| Playwright | E2E smoke tests | `npm run playwright:*` |
+| Playwright | E2E smoke tests | `npm run playwright:preflight`, `npm run ci:playwright` |
 | Cypress | UI regression tests | `npm run test:e2e` |
 | Lighthouse | Performance/a11y audits | `audits/lighthouse/*` |
 

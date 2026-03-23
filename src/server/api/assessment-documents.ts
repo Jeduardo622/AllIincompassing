@@ -1,11 +1,11 @@
 import { z } from "zod";
 import {
-  CORS_HEADERS,
+  corsHeadersForRequest,
   fetchJson,
   getAccessToken,
   getAccessTokenSubject,
   getSupabaseConfig,
-  json,
+  jsonForRequest,
   resolveOrgAndRole,
 } from "./shared";
 import {
@@ -644,17 +644,17 @@ const runCaloptimaExtractionWorkflow = async (args: {
 
 export async function assessmentDocumentsHandler(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
-    return new Response("ok", { status: 200, headers: { ...CORS_HEADERS } });
+    return new Response("ok", { status: 200, headers: { ...corsHeadersForRequest(request) } });
   }
 
   const accessToken = getAccessToken(request);
   if (!accessToken) {
-    return json({ error: "Missing authorization token" }, 401, { "WWW-Authenticate": "Bearer" });
+    return jsonForRequest(request, { error: "Missing authorization token" }, 401, { "WWW-Authenticate": "Bearer" });
   }
 
   const { organizationId, isTherapist, isAdmin, isSuperAdmin } = await resolveOrgAndRole(accessToken);
   if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
-    return json({ error: "Forbidden" }, 403);
+    return jsonForRequest(request, { error: "Forbidden" }, 403);
   }
 
   const { supabaseUrl, anonKey } = getSupabaseConfig();
@@ -680,33 +680,33 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
 
     if (clientId) {
       if (!isUuid(clientId)) {
-        return json({ error: "client_id must be a valid UUID" }, 400);
+        return jsonForRequest(request, { error: "client_id must be a valid UUID" }, 400);
       }
       const urlValue = `${supabaseUrl}/rest/v1/assessment_documents?select=*&${baseQuery}&client_id=eq.${encodeURIComponent(
         clientId,
       )}&order=created_at.desc`;
       const result = await fetchJson(urlValue, { method: "GET", headers });
       if (!result.ok) {
-        return json({ error: "Failed to load assessment documents" }, result.status || 500);
+        return jsonForRequest(request, { error: "Failed to load assessment documents" }, result.status || 500);
       }
-      return json(result.data ?? []);
+      return jsonForRequest(request, result.data ?? []);
     }
 
     if (assessmentDocumentId) {
       if (!isUuid(assessmentDocumentId)) {
-        return json({ error: "assessment_document_id must be a valid UUID" }, 400);
+        return jsonForRequest(request, { error: "assessment_document_id must be a valid UUID" }, 400);
       }
       const urlValue = `${supabaseUrl}/rest/v1/assessment_documents?select=*&${baseQuery}&id=eq.${encodeURIComponent(
         assessmentDocumentId,
       )}&limit=1`;
       const result = await fetchJson<Array<Record<string, unknown>>>(urlValue, { method: "GET", headers });
       if (!result.ok) {
-        return json({ error: "Failed to load assessment document" }, result.status || 500);
+        return jsonForRequest(request, { error: "Failed to load assessment document" }, result.status || 500);
       }
-      return json(Array.isArray(result.data) ? result.data[0] ?? null : null);
+      return jsonForRequest(request, Array.isArray(result.data) ? result.data[0] ?? null : null);
     }
 
-    return json({ error: "client_id or assessment_document_id is required" }, 400);
+    return jsonForRequest(request, { error: "client_id or assessment_document_id is required" }, 400);
   }
 
   if (request.method === "POST") {
@@ -714,17 +714,17 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
     try {
       payload = await request.json();
     } catch {
-      return json({ error: "Invalid JSON body" }, 400);
+      return jsonForRequest(request, { error: "Invalid JSON body" }, 400);
     }
 
     const parsed = assessmentDocumentCreateSchema.safeParse(payload);
     if (!parsed.success) {
-      return json({ error: "Invalid request body" }, 400);
+      return jsonForRequest(request, { error: "Invalid request body" }, 400);
     }
 
     const clientExists = await clientExistsInOrg(parsed.data.client_id);
     if (!clientExists) {
-      return json({ error: "client_id is not in scope for this organization" }, 403);
+      return jsonForRequest(request, { error: "client_id is not in scope for this organization" }, 403);
     }
 
     const actorId = getAccessTokenSubject(accessToken);
@@ -752,7 +752,7 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
     );
 
     if (!createResult.ok || !Array.isArray(createResult.data) || !createResult.data[0]) {
-      return json({ error: "Failed to create assessment document" }, createResult.status || 500);
+      return jsonForRequest(request, { error: "Failed to create assessment document" }, createResult.status || 500);
     }
 
     const createdDocument = createResult.data[0];
@@ -762,7 +762,7 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
       checklistRows = await loadChecklistTemplateRows(templateType);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to load checklist template rows.";
-      return json({ error: message }, 500);
+      return jsonForRequest(request, { error: message }, 500);
     }
     const checklistInsertPayload = checklistRows.map((row) => ({
       assessment_document_id: createdDocument.id,
@@ -809,11 +809,11 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
     ]);
 
     if (!checklistInsertResult.ok) {
-      return json({ error: "Failed to seed checklist items" }, checklistInsertResult.status || 500);
+      return jsonForRequest(request, { error: "Failed to seed checklist items" }, checklistInsertResult.status || 500);
     }
 
     if (!extractionInsertResult.ok) {
-      return json({ error: "Failed to seed extraction records" }, extractionInsertResult.status || 500);
+      return jsonForRequest(request, { error: "Failed to seed extraction records" }, extractionInsertResult.status || 500);
     }
 
     let finalStatus: string = "uploaded";
@@ -862,17 +862,17 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
       body: JSON.stringify(eventPayload),
     });
 
-    return json({ ...createdDocument, status: finalStatus }, 201);
+    return jsonForRequest(request, { ...createdDocument, status: finalStatus }, 201);
   }
 
   if (request.method === "DELETE") {
     const url = new URL(request.url);
     const assessmentDocumentId = url.searchParams.get("assessment_document_id");
     if (!assessmentDocumentId) {
-      return json({ error: "assessment_document_id is required" }, 400);
+      return jsonForRequest(request, { error: "assessment_document_id is required" }, 400);
     }
     if (!isUuid(assessmentDocumentId)) {
-      return json({ error: "assessment_document_id must be a valid UUID" }, 400);
+      return jsonForRequest(request, { error: "assessment_document_id must be a valid UUID" }, 400);
     }
 
     const lookup = await fetchJson<AssessmentDocumentDeleteRow[]>(
@@ -883,7 +883,7 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
     );
     const document = Array.isArray(lookup.data) ? lookup.data[0] : null;
     if (!lookup.ok || !document) {
-      return json({ error: "assessment_document_id is not in scope for this organization" }, 403);
+      return jsonForRequest(request, { error: "assessment_document_id is not in scope for this organization" }, 403);
     }
 
     const dependentTables = [
@@ -902,7 +902,7 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
         { method: "DELETE", headers },
       );
       if (!deletion.ok) {
-        return json({ error: `Failed to delete dependent ${table} records` }, deletion.status || 500);
+        return jsonForRequest(request, { error: `Failed to delete dependent ${table} records` }, deletion.status || 500);
       }
     }
 
@@ -913,10 +913,10 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
       { method: "DELETE", headers },
     );
     if (!deleteDocument.ok) {
-      return json({ error: "Failed to delete assessment document" }, deleteDocument.status || 500);
+      return jsonForRequest(request, { error: "Failed to delete assessment document" }, deleteDocument.status || 500);
     }
 
-    return json({
+    return jsonForRequest(request, {
       deleted: true,
       assessment_document_id: assessmentDocumentId,
       bucket_id: document.bucket_id,
@@ -924,5 +924,5 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
     });
   }
 
-  return json({ error: "Method not allowed" }, 405);
+  return jsonForRequest(request, { error: "Method not allowed" }, 405);
 }

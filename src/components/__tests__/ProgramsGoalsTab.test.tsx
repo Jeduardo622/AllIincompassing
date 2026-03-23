@@ -423,6 +423,21 @@ describe("ProgramsGoalsTab", () => {
     });
   });
 
+  it("limits accepted upload types to pdf and docx", async () => {
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await screen.findByText(/FBA Upload \+ AI Workflow/i);
+    const uploadInput = document.querySelector("input[type='file']") as HTMLInputElement | null;
+    expect(uploadInput).not.toBeNull();
+    expect(uploadInput?.getAttribute("accept")).toBe(".pdf,.docx");
+  });
+
   it("generates staged drafts from selected uploaded assessment", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();

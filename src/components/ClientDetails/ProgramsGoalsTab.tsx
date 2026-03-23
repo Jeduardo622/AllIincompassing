@@ -33,6 +33,12 @@ import {
 } from "./ProgramsGoalsTab.helpers";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SUPPORTED_ASSESSMENT_FILE_EXTENSIONS = [".pdf", ".docx"] as const;
+
+const isSupportedAssessmentFile = (file: File): boolean => {
+  const lowerFileName = file.name.trim().toLowerCase();
+  return SUPPORTED_ASSESSMENT_FILE_EXTENSIONS.some((extension) => lowerFileName.endsWith(extension));
+};
 
 interface ProgramsGoalsTabProps {
   client: Client;
@@ -409,6 +415,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     mutationFn: async () => {
       if (!assessmentFile) {
         throw new Error("Select a file before uploading.");
+      }
+      if (!isSupportedAssessmentFile(assessmentFile)) {
+        throw new Error("Unsupported file type. Upload a .pdf or .docx assessment.");
       }
       const filePath = `clients/${client.id}/assessments/${Date.now()}-${assessmentFile.name.replace(/\s+/g, "-")}`;
       const { error: uploadError } = await supabase.storage.from("client-documents").upload(filePath, assessmentFile);
@@ -927,7 +936,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               </select>
               <input
                 type="file"
-                accept=".pdf,.doc,.docx"
+                accept=".pdf,.docx"
                 onChange={(event) => setAssessmentFile(event.target.files?.[0] ?? null)}
                 className="w-full text-sm"
               />

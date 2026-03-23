@@ -2,6 +2,8 @@ import { getOptionalServerEnv } from "./env";
 
 const STATIC_ALLOWED_ORIGINS = [
   "https://app.allincompassing.ai",
+  "https://allincompassing.ai",
+  "https://www.allincompassing.ai",
   "https://preview.allincompassing.ai",
   "https://staging.allincompassing.ai",
   "http://127.0.0.1:4173",
@@ -35,7 +37,7 @@ export const corsHeadersForOrigin = (origin: string | null): Record<string, stri
   return {
     "Access-Control-Allow-Origin": resolvedOrigin,
     "Access-Control-Allow-Headers": "authorization, content-type, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id",
-    "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     Vary: "Origin",
   };
 };

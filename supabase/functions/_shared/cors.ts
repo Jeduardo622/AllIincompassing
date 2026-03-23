@@ -1,5 +1,7 @@
 const STATIC_ALLOWED_ORIGINS = [
   "https://app.allincompassing.ai",
+  "https://allincompassing.ai",
+  "https://www.allincompassing.ai",
   "https://preview.allincompassing.ai",
   "https://staging.allincompassing.ai",
   "http://127.0.0.1:4173",

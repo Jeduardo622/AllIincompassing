@@ -150,6 +150,7 @@ const mockGoals = [
 
 const baseFrom = supabase.from;
 const edgeInvokeSpy = vi.spyOn(edgeInvokeModule, 'edgeInvoke');
+const mockRpc = vi.mocked(supabase.rpc);
 
 const buildProgramGoalQuery = (data: unknown[]) => {
   const chain = {
@@ -221,7 +222,7 @@ describe('Scheduling Flow - Client with Therapist', () => {
     );
 
     // Ensure RPC returns our test-specific entities for this suite
-    vi.mocked(supabase.rpc as any).mockImplementation(async (functionName: string) => {
+    mockRpc.mockImplementation(async (functionName: string) => {
       if (functionName === 'get_schedule_data_batch') {
         return { data: { sessions: mockExistingSessions, therapists: mockTherapists, clients: mockClients }, error: null };
       }

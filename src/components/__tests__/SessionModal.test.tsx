@@ -3,6 +3,15 @@ import { renderWithProviders, screen, userEvent, waitFor } from '../../test/util
 import { fireEvent } from '@testing-library/react';
 import { SessionModal } from '../SessionModal';
 import { supabase } from '../../lib/supabase';
+import type { Session } from '../../types';
+
+type SupabaseQueryChain = {
+  select: () => SupabaseQueryChain;
+  eq: () => SupabaseQueryChain;
+  order: () => Promise<{ data: unknown[]; error: null }>;
+  maybeSingle: () => Promise<{ data: unknown; error: null }>;
+  limit: () => Promise<{ data: unknown[]; error: null }>;
+};
 
 describe('SessionModal', () => {
   const mockPrograms = [
@@ -35,7 +44,7 @@ describe('SessionModal', () => {
 
   beforeEach(() => {
     const buildChain = (rows: unknown[]) => {
-      const chain: any = {
+      const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
@@ -171,10 +180,17 @@ describe('SessionModal', () => {
       id: 'conflict-1',
       therapist_id: 'test-therapist-1',
       client_id: 'test-client-1',
+      program_id: 'program-1',
+      goal_id: 'goal-1',
       start_time: '2025-03-18T14:15:00.000Z',
       end_time: '2025-03-18T14:45:00.000Z',
       status: 'scheduled',
-    } as any];
+      notes: 'Existing conflicting session',
+      created_at: '2025-03-18T14:00:00.000Z',
+      created_by: 'test-user',
+      updated_at: '2025-03-18T14:00:00.000Z',
+      updated_by: 'test-user',
+    }] satisfies Session[];
 
     renderWithProviders(<SessionModal {...defaultProps} existingSessions={existingSessions} />);
 
@@ -264,7 +280,7 @@ describe('SessionModal', () => {
 
   it('disables start session when authoritative details already show started_at', async () => {
     const buildChain = (rows: unknown[], singleRow: unknown = null) => {
-      const chain: any = {
+      const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
         eq: vi.fn(() => chain),
         order: vi.fn(async () => ({ data: rows, error: null })),
@@ -306,8 +322,13 @@ describe('SessionModal', () => {
           start_time: '2026-01-01T10:00:00.000Z',
           end_time: '2026-01-01T11:00:00.000Z',
           status: 'scheduled',
+          notes: '',
+          created_at: '2026-01-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-01-01T09:00:00.000Z',
+          updated_by: null,
           started_at: null,
-        } as any}
+        } satisfies Session}
       />
     );
 

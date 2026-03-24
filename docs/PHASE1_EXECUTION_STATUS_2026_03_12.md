@@ -1,5 +1,8 @@
 # Phase 1 Execution Status - 2026-03-12
 
+> **Historical snapshot (archived).** This status reflects the 2026-03-12 execution point-in-time and is retained for traceability.  
+> For current reliability signal, use `reports/test-reliability-latest.json`.
+
 ## Phase Objective
 Converge API/runtime boundaries, remove role-access drift on critical routes, and harden release/test reliability gates before Phase 2 performance work.
 

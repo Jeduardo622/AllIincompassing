@@ -15,6 +15,8 @@
 | Lighthouse | Performance/a11y audits | `audits/lighthouse/*` |
 
 ## Planned / TBD
-- EHR integrations (TBD)
-- Billing system integrations (TBD)
-- SSO beyond current auth stack (TBD)
+| Planned integration | Owner | Tracking hook | Notes |
+| --- | --- | --- | --- |
+| EHR integrations | Platform (TBD assignee) | Linear: create linked issue before implementation | Planning only; no implementation commitment in this catalog. |
+| Billing system integrations | Platform + Ops (TBD assignee) | Linear: create linked issue before implementation | Planning only; no implementation commitment in this catalog. |
+| SSO beyond current auth stack | Platform/Auth (TBD assignee) | Linear: create linked issue before implementation | Planning only; no implementation commitment in this catalog. |

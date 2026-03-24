@@ -1,5 +1,8 @@
 # Phase 3 Execution Status (2026-03-12)
 
+> **Historical snapshot (archived).** This status reflects the 2026-03-12 execution point-in-time and is retained for traceability.  
+> For current reliability signal, use `reports/test-reliability-latest.json`.
+
 ## Phase objective
 
 Deliver reliability-first production hardening by removing skip-prone critical E2E behavior, tightening Playwright env/data contracts, and enforcing deterministic CI reliability gates.

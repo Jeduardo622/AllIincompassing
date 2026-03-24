@@ -1,5 +1,8 @@
 # Phase 2 Execution Status - 2026-03-12
 
+> **Historical snapshot (archived).** This status reflects the 2026-03-12 execution point-in-time and is retained for traceability.  
+> For current reliability signal, use `reports/test-reliability-latest.json`.
+
 ## Phase Objective
 Improve latency, request efficiency, and payload discipline on scheduling, dashboard, and reports paths while keeping Phase 0/1 security and policy checks intact.
 
@@ -15,7 +18,7 @@ Improve latency, request efficiency, and payload discipline on scheduling, dashb
 ## KPI Evidence
 Source: `reports/p2-performance-metrics.json`
 
-- Schedule synthetic hot-path improvement: **99.14%** (`12.73ms` baseline proxy -> `0.11ms` indexed lookup).
+- Schedule synthetic hot-path improvement: **99.11%** (`12.73ms` baseline proxy -> `0.08ms` indexed lookup).
 - Dashboard/report wildcard over-fetch count: **1 -> 0**.
 - Route invalidation mode: **global invalidation removed** (`globalRouteInvalidationEnabled=false`).
 - Sessions API pagination contract: **cursor + nextCursor present**.

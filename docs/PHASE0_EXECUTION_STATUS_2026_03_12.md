@@ -1,5 +1,8 @@
 # Phase 0 Execution Status (2026-03-12)
 
+> **Historical snapshot (archived).** This status reflects the 2026-03-12 execution point-in-time and is retained for traceability.  
+> For current reliability signal, use `reports/test-reliability-latest.json`.
+
 ## Scope Executed
 - Enforced strict CORS handling for `book` and `dashboard` API handlers using shared allowlist helpers.
 - Tightened dashboard authorization from `admin | therapist | super_admin` to `admin | super_admin`.

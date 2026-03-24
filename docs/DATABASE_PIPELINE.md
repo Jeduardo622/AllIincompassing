@@ -20,14 +20,16 @@ The repository does not create per-PR Supabase branches automatically. Branch cr
 2. Push to `main` touches `supabase/migrations/**`.
    - `supabase-validate.yml` runs `test-main`.
    - `test-main` runs `npm test -- --run --reporter=verbose` with `RUN_DB_IT=1`.
-3. Pull request, push, or merge queue (`merge_group`) to `main`/`develop`.
+3. Pull request or push to `main`/`develop`.
    - `ci.yml` runs either:
      - docs-only path: `change-scope` -> `docs-guard` -> `ci-gate`
      - non-doc path: `change-scope` -> `policy` -> parallel gates:
        - chain A: `lint-typecheck` + `unit-tests` -> `build` -> `tier0-browser`
        - chain B: `auth-browser-smoke`
        - both chains feed `ci-gate`
-4. Manual preview run.
+4. Merge queue (`merge_group`) to `main`/`develop`.
+   - `ci.yml` runs the non-doc chain before `ci-gate` (no docs-only fast path on `merge_group`).
+5. Manual preview run.
    - `supabase-preview.yml` can be triggered with `workflow_dispatch` to run local Supabase startup/reset plus preview build/smoke checks.
 
 ## GitHub Actions Workflows
@@ -45,7 +47,8 @@ The repository does not create per-PR Supabase branches automatically. Branch cr
 
 - Triggered on `pull_request`, `push`, and `merge_group` for `main` and `develop`.
 - Uses `change-scope` to select docs-only vs non-doc path.
-- `docs-guard` validates `npm run` examples for docs-path markdown changes (for example `docs/**`, `reports/**`, `README*.md`, `AGENTS.md`, and skill `SKILL.md` docs paths) when docs-only changes are detected.
+- Docs-only fast path applies on `pull_request` and `push`; `merge_group` currently enforces the full non-doc chain before `ci-gate`.
+- `docs-guard` validates `npm run` examples for markdown-only docs-path changes (for example `docs/**/*.md`, `reports/**/*.md`, `README*.md`, `AGENTS.md`, and skill `SKILL.md` docs paths) when docs-only changes are detected.
 - `policy` runs prerequisite validations, secret checks, session-edge deployment parity checks, and `npm run ci:check-focused`.
 - Test and build gates include:
   - `lint-typecheck`

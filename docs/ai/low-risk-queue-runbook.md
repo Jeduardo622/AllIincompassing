@@ -1,5 +1,8 @@
 # Low-Risk Queue Runbook
 
+> This is the canonical current source for low-risk queue operations.  
+> `docs/ai/low-risk-autonomy-week1.md` remains historical evidence only.
+
 ## Purpose
 
 Use this runbook to operate the current low-risk candidate queue. It defines execution flow and queue hygiene only.
@@ -25,7 +28,7 @@ Queue items are candidates, not pre-approved implementation.
 ## Mandatory Workflow Per Task
 
 1. Create an isolated `codex/` branch for implementation work.
-2. Ensure Linear linkage per `AGENTS.md` requirements.
+2. Ensure Linear linkage per `AGENTS.md` requirements (required for high-risk work; for non-trivial low-risk work, link when practical).
 3. Run `route-task` and capture both `classification` and `lane`.
 4. Implement only if lane is `fast` or `standard` (do not implement `blocked` or `critical` queue items in this runbook).
 5. Invoke domain guard skills when scope requires them:
@@ -51,6 +54,7 @@ For `standard` lanes, satisfy the full required agent sequence and checks in `do
 Operational queue hygiene:
 
 - Keep `3 active + 2 backup` candidates.
+- Prefer execution order from the active queue first (`WIN-31`, `WIN-29`, `WIN-32` at the time this runbook was introduced), then backups.
 - Run at most `2` mutating tasks in parallel.
 - Run at most `1` `npm run verify:local` at a time.
 - Keep write sets isolated; avoid parallel edits to shared docs/evidence files.

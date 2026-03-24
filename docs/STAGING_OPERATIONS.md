@@ -51,6 +51,13 @@ Branch protection should require:
 
 - `ci-gate` (primary required check)
 - do not require `docs-guard` directly (it is a docs-only gate enforced by `ci-gate`)
+- mirror the same required-check policy to `develop` when that branch is active/protected
+
+Merge queue note:
+
+- docs-only fast path applies to `pull_request`/`push`, but `merge_group` currently runs the full non-doc chain before `ci-gate`
+- `merge_group` runs do not execute the `ci:deploy:session-edge-bundle` deploy step guarded to `pull_request`/`push`; treat deploy parity evidence as PR/push scoped unless workflow conditions are changed
+- `auth-browser-smoke` can soft-skip for missing secrets on `pull_request`, but missing secrets fail the job on `merge_group`/`push`
 
 Legacy required checks (`policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`) are transitional only while repositories migrate branch protection to `ci-gate`.
 

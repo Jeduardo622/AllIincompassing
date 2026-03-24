@@ -44,8 +44,202 @@ import {
   bookSessionViaApi,
   buildBookSessionApiPayload,
 } from "../features/scheduling/domain/booking";
+import { buildScheduleDisplayData } from "../features/scheduling/domain/displayData";
+import {
+  collectTherapistScopeCandidateIds,
+  resolveScopedTherapistId,
+} from "../features/scheduling/domain/sessionScope";
+import { planPendingScheduleTransition } from "../features/scheduling/domain/pendingScheduleTransition";
+import { filterSessionsBySelectedScope } from "../features/scheduling/domain/sessionFilters";
+import { shouldClearMissingSelection } from "../features/scheduling/domain/selectionGuard";
+import { buildScheduleModalOpenResetPlan } from "../features/scheduling/domain/modalOpenResetPlan";
+import { applyScheduleResetBranch } from "../features/scheduling/domain/scheduleResetBranch";
 
 const AUTO_SCHEDULE_CONCURRENCY = 3;
+
+type PendingScheduleTransitionLedgerRow = {
+  seq: number;
+  kind: "decision" | "ref-checkpoint" | "setter" | "storage";
+  name: string;
+  payload: unknown;
+};
+
+export type PendingScheduleTransitionRecorder = (
+  row: Omit<PendingScheduleTransitionLedgerRow, "seq">,
+) => void;
+
+type PendingScheduleTransitionSetters = {
+  setPendingAgentIdempotencyKey: (value: string | null) => void;
+  setPendingAgentOperationId: (value: string | null) => void;
+  setPendingTraceRequestId: (value: string | null) => void;
+  setPendingTraceCorrelationId: (value: string | null) => void;
+  setSelectedDate: (value: Date) => void;
+  setSelectedTimeSlot: (value: { date: Date; time: string }) => void;
+  setSelectedSession: (value: Session | undefined) => void;
+  setRetryHint: (value: string | null) => void;
+  setIsModalOpen: (value: boolean) => void;
+};
+
+export const applyPendingScheduleDetail = ({
+  detail,
+  lastDetailKeyRef,
+  setters,
+  record,
+}: {
+  detail: PendingScheduleDetail | null;
+  lastDetailKeyRef: { current: string | null };
+  setters: PendingScheduleTransitionSetters;
+  record?: PendingScheduleTransitionRecorder;
+}) => {
+  record?.({
+    kind: "ref-checkpoint",
+    name: "before",
+    payload: lastDetailKeyRef.current,
+  });
+
+  const transition = planPendingScheduleTransition(detail, lastDetailKeyRef.current);
+  record?.({
+    kind: "decision",
+    name: transition.decision,
+    payload: {
+      reason: transition.reason,
+      detailKey: transition.detailKey,
+    },
+  });
+  if (transition.decision === "noop") {
+    record?.({
+      kind: "ref-checkpoint",
+      name: "after",
+      payload: lastDetailKeyRef.current,
+    });
+    return transition;
+  }
+
+  lastDetailKeyRef.current = transition.detailKey;
+  record?.({
+    kind: "ref-checkpoint",
+    name: "after",
+    payload: lastDetailKeyRef.current,
+  });
+
+  setters.setPendingAgentIdempotencyKey(transition.pendingAgentIdempotencyKey);
+  record?.({
+    kind: "setter",
+    name: "setPendingAgentIdempotencyKey",
+    payload: transition.pendingAgentIdempotencyKey,
+  });
+
+  setters.setPendingAgentOperationId(transition.pendingAgentOperationId);
+  record?.({
+    kind: "setter",
+    name: "setPendingAgentOperationId",
+    payload: transition.pendingAgentOperationId,
+  });
+
+  setters.setPendingTraceRequestId(transition.pendingTraceRequestId);
+  record?.({
+    kind: "setter",
+    name: "setPendingTraceRequestId",
+    payload: transition.pendingTraceRequestId,
+  });
+
+  setters.setPendingTraceCorrelationId(transition.pendingTraceCorrelationId);
+  record?.({
+    kind: "setter",
+    name: "setPendingTraceCorrelationId",
+    payload: transition.pendingTraceCorrelationId,
+  });
+
+  if (transition.prefill) {
+    setters.setSelectedDate(transition.prefill.date);
+    record?.({
+      kind: "setter",
+      name: "setSelectedDate",
+      payload: transition.prefill.date,
+    });
+
+    setters.setSelectedTimeSlot({
+      date: transition.prefill.date,
+      time: transition.prefill.time,
+    });
+    record?.({
+      kind: "setter",
+      name: "setSelectedTimeSlot",
+      payload: {
+        date: transition.prefill.date,
+        time: transition.prefill.time,
+      },
+    });
+  }
+
+  setters.setSelectedSession(undefined);
+  record?.({
+    kind: "setter",
+    name: "setSelectedSession",
+    payload: undefined,
+  });
+
+  setters.setRetryHint(null);
+  record?.({
+    kind: "setter",
+    name: "setRetryHint",
+    payload: null,
+  });
+
+  setters.setIsModalOpen(true);
+  record?.({
+    kind: "setter",
+    name: "setIsModalOpen",
+    payload: true,
+  });
+
+  return transition;
+};
+
+export const consumePendingScheduleFromStorage = ({
+  storage,
+  openFromPendingSchedule,
+  record,
+}: {
+  storage: Pick<Storage, "getItem" | "removeItem">;
+  openFromPendingSchedule: (detail: PendingScheduleDetail | null) => void;
+  record?: PendingScheduleTransitionRecorder;
+}) => {
+  const pending = storage.getItem("pendingSchedule");
+  record?.({
+    kind: "storage",
+    name: "getItem",
+    payload: pending,
+  });
+  if (!pending) {
+    return;
+  }
+
+  let detail: PendingScheduleDetail | null = null;
+  try {
+    detail = toPendingScheduleDetail(JSON.parse(pending));
+  } catch {
+    detail = null;
+  } finally {
+    storage.removeItem("pendingSchedule");
+    record?.({
+      kind: "storage",
+      name: "removeItem",
+      payload: "pendingSchedule",
+    });
+  }
+
+  openFromPendingSchedule(detail);
+};
+
+export const createOpenScheduleModalHandler = (
+  openFromPendingSchedule: (detail: PendingScheduleDetail | null) => void,
+) => {
+  return (event: Event) => {
+    const detail = toPendingScheduleDetail((event as CustomEvent).detail);
+    openFromPendingSchedule(detail);
+  };
+};
 
 // Memoized time slot component
 const TimeSlot = React.memo(
@@ -362,6 +556,19 @@ export const Schedule = React.memo(() => {
   const lastPendingScheduleKeyRef = useRef<string | null>(null);
 
   const queryClient = useQueryClient();
+  const scheduleResetSetters = useMemo(
+    () => ({
+      setIsModalOpen,
+      setSelectedSession,
+      setSelectedTimeSlot,
+      setRetryHint,
+      setPendingAgentIdempotencyKey,
+      setPendingAgentOperationId,
+      setPendingTraceRequestId,
+      setPendingTraceCorrelationId,
+    }),
+    [],
+  );
 
   const handleScheduleMutationError = useCallback((error: unknown) => {
     const normalized = toError(error, "Schedule mutation failed");
@@ -382,14 +589,28 @@ export const Schedule = React.memo(() => {
         },
       });
 
-      setRetryHint(hint);
+      applyScheduleResetBranch(
+        {
+          kind: "mutation-error",
+          retryHint: hint,
+          source: "409",
+        },
+        scheduleResetSetters,
+      );
       showError(`${normalized.message}. ${hint}`);
       return;
     }
 
-    setRetryHint(null);
+    applyScheduleResetBranch(
+      {
+        kind: "mutation-error",
+        retryHint: null,
+        source: "non409",
+      },
+      scheduleResetSetters,
+    );
     showError(normalized);
-  }, []);
+  }, [scheduleResetSetters]);
 
   const userTimeZone = useMemo(() => {
     try {
@@ -469,65 +690,34 @@ export const Schedule = React.memo(() => {
   );
 
   const openFromPendingSchedule = useCallback((detail: PendingScheduleDetail | null) => {
-    if (!detail) {
-      return;
-    }
-
-    const detailKey = JSON.stringify({
-      start_time: detail.start_time ?? null,
-      idempotency_key: detail.idempotency_key ?? null,
-      agent_operation_id: detail.agent_operation_id ?? null,
-      trace_request_id: detail.trace_request_id ?? null,
-      trace_correlation_id: detail.trace_correlation_id ?? null,
+    applyPendingScheduleDetail({
+      detail,
+      lastDetailKeyRef: lastPendingScheduleKeyRef,
+      setters: {
+        setPendingAgentIdempotencyKey,
+        setPendingAgentOperationId,
+        setPendingTraceRequestId,
+        setPendingTraceCorrelationId,
+        setSelectedDate,
+        setSelectedTimeSlot,
+        setSelectedSession,
+        setRetryHint,
+        setIsModalOpen,
+      },
     });
-    if (lastPendingScheduleKeyRef.current === detailKey) {
-      return;
-    }
-    lastPendingScheduleKeyRef.current = detailKey;
-
-    setPendingAgentIdempotencyKey(detail.idempotency_key ?? null);
-    setPendingAgentOperationId(detail.agent_operation_id ?? null);
-    setPendingTraceRequestId(detail.trace_request_id ?? null);
-    setPendingTraceCorrelationId(detail.trace_correlation_id ?? null);
-
-    if (detail.start_time) {
-      const date = parseISO(detail.start_time);
-      if (!Number.isNaN(date.getTime())) {
-        setSelectedDate(date);
-        setSelectedTimeSlot({ date, time: format(date, "HH:mm") });
-      }
-    }
-
-    setSelectedSession(undefined);
-    setRetryHint(null);
-    setIsModalOpen(true);
   }, []);
 
   const consumePendingSchedule = useCallback(() => {
-    const pending = localStorage.getItem("pendingSchedule");
-    if (!pending) {
-      return;
-    }
-
-    let detail: PendingScheduleDetail | null = null;
-    try {
-      detail = toPendingScheduleDetail(JSON.parse(pending));
-    } catch {
-      detail = null;
-    } finally {
-      localStorage.removeItem("pendingSchedule");
-    }
-
-    openFromPendingSchedule(detail);
+    consumePendingScheduleFromStorage({
+      storage: localStorage,
+      openFromPendingSchedule,
+    });
   }, [openFromPendingSchedule]);
 
   useLayoutEffect(() => {
     consumePendingSchedule();
 
-    const handler = (e: Event) => {
-      const detail = toPendingScheduleDetail((e as CustomEvent).detail);
-      openFromPendingSchedule(detail);
-    };
+    const handler = createOpenScheduleModalHandler(openFromPendingSchedule);
 
     document.addEventListener("openScheduleModal", handler as EventListener);
     window.addEventListener("openScheduleModal", handler as EventListener);
@@ -580,19 +770,19 @@ export const Schedule = React.memo(() => {
       return null;
     }
 
-    return candidateSessions.filter((session) => {
-      const therapistMatches = !selectedTherapist || session.therapist_id === selectedTherapist;
-      const clientMatches = !selectedClient || session.client_id === selectedClient;
-      return therapistMatches && clientMatches;
+    return filterSessionsBySelectedScope(candidateSessions, {
+      selectedTherapistId: selectedTherapist,
+      selectedClientId: selectedClient,
     });
   }, [batchedData?.sessions, selectedTherapist, selectedClient]);
 
   // Use batched data if available, otherwise use individual query results
-  const displayData = {
-    sessions: filteredBatchedSessions ?? sessions,
-    therapists: batchedData?.therapists || dropdownData?.therapists || [],
-    clients: batchedData?.clients || dropdownData?.clients || [],
-  };
+  const displayData = buildScheduleDisplayData({
+    filteredBatchedSessions,
+    fallbackSessions: sessions,
+    batchedData,
+    dropdownData,
+  });
 
   useEffect(() => {
     if (selectedTherapist) {
@@ -603,56 +793,30 @@ export const Schedule = React.memo(() => {
     }
 
     const metadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
-    const candidateIds = new Set<string>();
+    const candidateIds = collectTherapistScopeCandidateIds({
+      profileId: profile?.id,
+      userMetadata: metadata,
+      preferences: profile?.preferences,
+    });
 
-    if (typeof profile?.id === 'string') {
-      candidateIds.add(profile.id);
+    const resolvedTherapistId = resolveScopedTherapistId(
+      displayData.therapists,
+      candidateIds,
+    );
+    if (resolvedTherapistId) {
+      setSelectedTherapist(resolvedTherapistId);
+      setScopedTherapistId(resolvedTherapistId);
     }
-
-    const metadataTherapistSnake = typeof metadata.therapist_id === 'string' ? metadata.therapist_id.trim() : null;
-    if (metadataTherapistSnake) {
-      candidateIds.add(metadataTherapistSnake);
-    }
-
-    const metadataTherapistCamel = typeof metadata.therapistId === 'string' ? metadata.therapistId.trim() : null;
-    if (metadataTherapistCamel) {
-      candidateIds.add(metadataTherapistCamel);
-    }
-
-    const preferences = profile?.preferences;
-    if (preferences && typeof preferences === 'object') {
-      const prefRecord = preferences as Record<string, unknown>;
-      const prefTherapistSnake = typeof prefRecord.therapist_id === 'string' ? prefRecord.therapist_id.trim() : null;
-      if (prefTherapistSnake) {
-        candidateIds.add(prefTherapistSnake);
-      }
-      const prefTherapistCamel = typeof prefRecord.therapistId === 'string' ? prefRecord.therapistId.trim() : null;
-      if (prefTherapistCamel) {
-        candidateIds.add(prefTherapistCamel);
-      }
-    }
-
-    const scopedMatch = displayData.therapists.find((therapist) => candidateIds.has(therapist.id));
-    if (scopedMatch) {
-      setSelectedTherapist(scopedMatch.id);
-      setScopedTherapistId(scopedMatch.id);
-    }
-  }, [selectedTherapist, effectiveRole, profile?.id, profile?.preferences, user, displayData.therapists]);
+  }, [selectedTherapist, effectiveRole, profile?.id, profile?.preferences, user?.user_metadata, displayData.therapists]);
 
   useEffect(() => {
-    if (
-      selectedTherapist &&
-      !displayData.therapists.some((therapist) => therapist.id === selectedTherapist)
-    ) {
+    if (shouldClearMissingSelection(selectedTherapist, displayData.therapists)) {
       setSelectedTherapist(null);
     }
   }, [selectedTherapist, displayData.therapists]);
 
   useEffect(() => {
-    if (
-      selectedClient &&
-      !displayData.clients.some((client) => client.id === selectedClient)
-    ) {
+    if (shouldClearMissingSelection(selectedClient, displayData.clients)) {
       setSelectedClient(null);
     }
   }, [selectedClient, displayData.clients]);
@@ -714,14 +878,10 @@ export const Schedule = React.memo(() => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
       queryClient.invalidateQueries({ queryKey: ["sessions-batch"] });
-      setIsModalOpen(false);
-      setSelectedSession(undefined);
-      setSelectedTimeSlot(undefined);
-      setRetryHint(null);
-      setPendingAgentIdempotencyKey(null);
-      setPendingAgentOperationId(null);
-      setPendingTraceRequestId(null);
-      setPendingTraceCorrelationId(null);
+      applyScheduleResetBranch(
+        { kind: "create-success" },
+        scheduleResetSetters,
+      );
     },
     onError: (error) => {
       handleScheduleMutationError(error);
@@ -819,9 +979,10 @@ export const Schedule = React.memo(() => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
       queryClient.invalidateQueries({ queryKey: ["sessions-batch"] });
-      setIsModalOpen(false);
-      setSelectedSession(undefined);
-      setRetryHint(null);
+      applyScheduleResetBranch(
+        { kind: "update-success" },
+        scheduleResetSetters,
+      );
     },
     onError: (error) => {
       handleScheduleMutationError(error);
@@ -855,27 +1016,37 @@ export const Schedule = React.memo(() => {
   // Memoized callbacks
   const handleCreateSession = useCallback(
     (timeSlot: { date: Date; time: string }) => {
-      setRetryHint(null);
-      setPendingAgentIdempotencyKey(null);
-      setPendingAgentOperationId(null);
-      setPendingTraceRequestId(null);
-      setPendingTraceCorrelationId(null);
-      setSelectedTimeSlot(timeSlot);
-      setSelectedSession(undefined);
-      setIsModalOpen(true);
+      const plan = buildScheduleModalOpenResetPlan({
+        mode: "create",
+        timeSlot,
+      });
+
+      setRetryHint(plan.retryHint);
+      setPendingAgentIdempotencyKey(plan.pendingAgentIdempotencyKey);
+      setPendingAgentOperationId(plan.pendingAgentOperationId);
+      setPendingTraceRequestId(plan.pendingTraceRequestId);
+      setPendingTraceCorrelationId(plan.pendingTraceCorrelationId);
+      setSelectedTimeSlot(plan.selectedTimeSlot);
+      setSelectedSession(plan.selectedSession);
+      setIsModalOpen(plan.isModalOpen);
     },
     [],
   );
 
   const handleEditSession = useCallback((session: Session) => {
-    setRetryHint(null);
-    setPendingAgentIdempotencyKey(null);
-    setPendingAgentOperationId(null);
-    setPendingTraceRequestId(null);
-    setPendingTraceCorrelationId(null);
-    setSelectedSession(session);
-    setSelectedTimeSlot(undefined);
-    setIsModalOpen(true);
+    const plan = buildScheduleModalOpenResetPlan({
+      mode: "edit",
+      session,
+    });
+
+    setRetryHint(plan.retryHint);
+    setPendingAgentIdempotencyKey(plan.pendingAgentIdempotencyKey);
+    setPendingAgentOperationId(plan.pendingAgentOperationId);
+    setPendingTraceRequestId(plan.pendingTraceRequestId);
+    setPendingTraceCorrelationId(plan.pendingTraceCorrelationId);
+    setSelectedSession(plan.selectedSession);
+    setSelectedTimeSlot(plan.selectedTimeSlot);
+    setIsModalOpen(plan.isModalOpen);
   }, []);
 
   const handleAddRecurrenceException = useCallback(() => {
@@ -898,9 +1069,11 @@ export const Schedule = React.memo(() => {
   }, []);
 
   const handleCloseSessionModal = useCallback(() => {
-    setIsModalOpen(false);
-    setRetryHint(null);
-  }, []);
+    applyScheduleResetBranch(
+      { kind: "close-modal" },
+      scheduleResetSetters,
+    );
+  }, [scheduleResetSetters]);
 
   const dismissRetryHint = useCallback(() => {
     setRetryHint(null);
@@ -943,8 +1116,10 @@ export const Schedule = React.memo(() => {
               : "Session was already cancelled",
           );
 
-          setIsModalOpen(false);
-          setSelectedSession(undefined);
+          applyScheduleResetBranch(
+            { kind: "submit-cancel" },
+            scheduleResetSetters,
+          );
           return;
         }
 
@@ -955,6 +1130,7 @@ export const Schedule = React.memo(() => {
     },
     [
       selectedSession,
+      scheduleResetSetters,
       cancelSessionMutation,
       updateSessionMutation,
       createSessionMutation,
@@ -1028,11 +1204,6 @@ export const Schedule = React.memo(() => {
   const isLoading = isLoadingBatch || (!hasBatchedData && (isLoadingSessions || isLoadingDropdowns));
 
   if (isLoading) {
-    const fallbackDisplay = {
-      sessions: filteredBatchedSessions ?? sessions,
-      therapists: batchedData?.therapists || dropdownData?.therapists || [],
-      clients: batchedData?.clients || dropdownData?.clients || [],
-    };
     return (
       <div className="h-full relative">
         <div className="h-full flex items-center justify-center">
@@ -1046,9 +1217,9 @@ export const Schedule = React.memo(() => {
             session={selectedSession}
             selectedDate={selectedTimeSlot?.date}
             selectedTime={selectedTimeSlot?.time}
-            therapists={fallbackDisplay.therapists}
-            clients={fallbackDisplay.clients}
-            existingSessions={fallbackDisplay.sessions}
+            therapists={displayData.therapists}
+            clients={displayData.clients}
+            existingSessions={displayData.sessions}
             timeZone={userTimeZone}
             defaultTherapistId={selectedTherapist}
             defaultClientId={selectedClient}

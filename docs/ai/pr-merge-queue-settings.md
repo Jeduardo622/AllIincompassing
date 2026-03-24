@@ -4,7 +4,7 @@ Use these repository settings to reduce "Update branch" churn while keeping bran
 
 ## Recommended GitHub Settings
 
-For branch `main`:
+For branch `main` (and `develop` when that branch is actively protected):
 
 1. Enable branch protection.
 2. Enable "Require a pull request before merging".
@@ -12,7 +12,7 @@ For branch `main`:
 4. Enable "Require branches to be up to date before merging".
 5. Enable "Require merge queue".
 6. Enable "Auto-merge".
-7. Keep "Include administrators" enabled.
+7. Keep "Include administrators" enabled (so admin-authored/admin-merged changes still respect the same protection rules).
 
 ## Why This Combination
 
@@ -43,6 +43,8 @@ Why:
 
 Legacy (transitional only): if your branch protection still requires individual checks (`policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`), migrate to `ci-gate` in one update window and validate with a test PR before enforcing.
 
+Until the migration step that updates CI policy expectations (`CI_REQUIRED_CHECKS`) is complete, keep branch-protection and policy changes coordinated in the same rollout window to avoid temporary mismatch.
+
 Migration order requirement:
 
 1. Add `ci-gate` to GitHub branch protection while legacy required checks are still present.
@@ -55,3 +57,4 @@ Migration order requirement:
 `CI` now listens to `pull_request`, `push`, and `merge_group` events so merge-queue runs enforce the same required gate (`ci-gate`) as normal PRs.
 
 Note: docs-only PRs run the docs fast path on standard PR events, but merge-queue (`merge_group`) currently uses the full non-doc chain before `ci-gate`.
+Note: `auth-browser-smoke` allows a non-fatal secret-missing skip on `pull_request`, but treats missing secrets as a failure on `merge_group`/`push`; do not treat PR soft-skip behavior as merge-queue parity.

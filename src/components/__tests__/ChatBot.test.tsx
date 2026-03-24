@@ -75,9 +75,7 @@ describe("ChatBot scheduling", () => {
 
     const input = screen.getByPlaceholderText(/Type your message/);
     await userEvent.type(input, "schedule a session");
-    const sendBtn = input
-      .closest("form")!
-      .querySelector('button[type="submit"]') as HTMLButtonElement;
+    const sendBtn = screen.getByTestId("send-message");
     await userEvent.click(sendBtn);
 
     await screen.findByText("Sure thing");
@@ -104,9 +102,7 @@ describe("ChatBot scheduling", () => {
 
     const input = screen.getByPlaceholderText(/Type your message/);
     await userEvent.type(input, "schedule a session");
-    const sendBtn = input
-      .closest("form")!
-      .querySelector('button[type="submit"]') as HTMLButtonElement;
+    const sendBtn = screen.getByTestId("send-message");
     await userEvent.click(sendBtn);
 
     await screen.findByText("Sure thing");
@@ -144,9 +140,7 @@ describe("ChatBot scheduling", () => {
 
     const input = screen.getByPlaceholderText(/Type your message/);
     await userEvent.type(input, "cancel sessions");
-    const sendBtn = input
-      .closest("form")!
-      .querySelector('button[type="submit"]') as HTMLButtonElement;
+    const sendBtn = screen.getByTestId("send-message");
     await userEvent.click(sendBtn);
 
     await screen.findByText(/✅ 2 sessions cancelled/);
@@ -172,9 +166,7 @@ describe("ChatBot scheduling", () => {
 
     const input = screen.getByPlaceholderText(/Type your message/);
     await userEvent.type(input, "hello");
-    const sendBtn = input
-      .closest("form")!
-      .querySelector('button[type="submit"]') as HTMLButtonElement;
+    const sendBtn = screen.getByTestId("send-message");
     await userEvent.click(sendBtn);
 
     await screen.findByText("Please sign in to use the assistant.");

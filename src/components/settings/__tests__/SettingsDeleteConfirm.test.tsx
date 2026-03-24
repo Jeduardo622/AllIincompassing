@@ -237,21 +237,12 @@ const testConfigs: Config[] = [
   },
 ];
 
-const getDeleteButtonForTitle = (title: string): HTMLButtonElement => {
-  const heading = screen.getByRole('heading', { name: title });
-  const card = heading.closest('div[class*="rounded-lg shadow-sm border"]');
-  if (!card) {
-    throw new Error(`Could not locate card container for heading: ${title}`);
-  }
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  const trashIcon = card.querySelector('button svg.lucide-trash2');
-  const deleteButton = trashIcon?.closest('button');
-  if (!(deleteButton instanceof HTMLButtonElement)) {
-    throw new Error(`Could not locate delete button for heading: ${title}`);
-  }
-
-  return deleteButton;
-};
+const getDeleteButtonForTitle = (title: string): HTMLButtonElement =>
+  screen.getByRole('button', {
+    name: new RegExp(`^Delete\\s+${escapeRegex(title)}$`, 'i'),
+  }) as HTMLButtonElement;
 
 describe('Settings destructive confirmation gating', () => {
   beforeEach(() => {

@@ -47,3 +47,5 @@ WHITE BIBLE.pdf
 # Generated local analysis/security artifacts (may include sensitive output)
 .reports/*.json
 .reports/*.md
+# Root-level local Lighthouse exports (timestamped browser downloads)
+/example.com_*.report.html

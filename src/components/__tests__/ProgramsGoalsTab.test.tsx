@@ -399,12 +399,11 @@ describe("ProgramsGoalsTab", () => {
 
     await screen.findByText(/FBA Upload \+ AI Workflow/i);
     await userEvent.selectOptions(screen.getByDisplayValue("CalOptima FBA"), "iehp_fba");
-    const uploadInput = document.querySelector("input[type='file']") as HTMLInputElement | null;
-    expect(uploadInput).not.toBeNull();
+    const uploadInput = screen.getByLabelText(/FBA file \(PDF or DOCX\)/i);
     const file = new File(["mock iehp content"], "iehp-fba.docx", {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
-    await userEvent.upload(uploadInput as HTMLInputElement, file);
+    await userEvent.upload(uploadInput, file);
     await userEvent.click(screen.getByRole("button", { name: /Upload IEHP FBA/i }));
     await screen.findByText(/Uploading and processing your FBA/i);
     expect(screen.getByRole("button", { name: /Uploading and processing/i })).toBeDisabled();
@@ -433,9 +432,8 @@ describe("ProgramsGoalsTab", () => {
     });
 
     await screen.findByText(/FBA Upload \+ AI Workflow/i);
-    const uploadInput = document.querySelector("input[type='file']") as HTMLInputElement | null;
-    expect(uploadInput).not.toBeNull();
-    expect(uploadInput?.getAttribute("accept")).toBe(".pdf,.docx");
+    const uploadInput = screen.getByLabelText(/FBA file \(PDF or DOCX\)/i);
+    expect(uploadInput.getAttribute("accept")).toBe(".pdf,.docx");
   });
 
   it("generates staged drafts from selected uploaded assessment", async () => {

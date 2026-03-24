@@ -934,7 +934,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 <option value="caloptima_fba">CalOptima FBA</option>
                 <option value="iehp_fba">IEHP FBA</option>
               </select>
+              <label htmlFor="programs-goals-fba-file-upload" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                FBA file (PDF or DOCX)
+              </label>
               <input
+                id="programs-goals-fba-file-upload"
                 type="file"
                 accept=".pdf,.docx"
                 onChange={(event) => setAssessmentFile(event.target.files?.[0] ?? null)}

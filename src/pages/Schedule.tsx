@@ -54,6 +54,8 @@ import { filterSessionsBySelectedScope } from "../features/scheduling/domain/ses
 import { shouldClearMissingSelection } from "../features/scheduling/domain/selectionGuard";
 import { buildScheduleModalOpenResetPlan } from "../features/scheduling/domain/modalOpenResetPlan";
 import { applyScheduleResetBranch } from "../features/scheduling/domain/scheduleResetBranch";
+import { decideScheduleSubmitBranch } from "../features/scheduling/domain/submitBranchDecision";
+import { planScheduleMutationLifecycle } from "../features/scheduling/domain/mutationLifecyclePlan";
 
 const AUTO_SCHEDULE_CONCURRENCY = 3;
 
@@ -576,39 +578,33 @@ export const Schedule = React.memo(() => {
       ? (error as { status?: number }).status
       : undefined;
 
-    if (status === 409) {
-      const hint = buildSchedulingConflictHint(
-        error,
-        'The selected time slot was just booked. Refresh the schedule or choose a different time.',
-      );
+    const conflictHint = status === 409
+      ? buildSchedulingConflictHint(
+          error,
+          'The selected time slot was just booked. Refresh the schedule or choose a different time.',
+        )
+      : null;
 
+    const lifecyclePlan = planScheduleMutationLifecycle({
+      kind: "mutation-error",
+      status,
+      retryHint: conflictHint,
+    });
+
+    if (lifecyclePlan.errorKind === "conflict") {
       logger.warn('Schedule mutation conflict', {
         metadata: {
-          hint,
+          hint: lifecyclePlan.resetBranch.retryHint,
           error: normalized.message,
         },
       });
 
-      applyScheduleResetBranch(
-        {
-          kind: "mutation-error",
-          retryHint: hint,
-          source: "409",
-        },
-        scheduleResetSetters,
-      );
-      showError(`${normalized.message}. ${hint}`);
+      applyScheduleResetBranch(lifecyclePlan.resetBranch, scheduleResetSetters);
+      showError(`${normalized.message}. ${lifecyclePlan.resetBranch.retryHint}`);
       return;
     }
 
-    applyScheduleResetBranch(
-      {
-        kind: "mutation-error",
-        retryHint: null,
-        source: "non409",
-      },
-      scheduleResetSetters,
-    );
+    applyScheduleResetBranch(lifecyclePlan.resetBranch, scheduleResetSetters);
     showError(normalized);
   }, [scheduleResetSetters]);
 
@@ -876,12 +872,13 @@ export const Schedule = React.memo(() => {
       return bookingResult.session;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["sessions-batch"] });
-      applyScheduleResetBranch(
-        { kind: "create-success" },
-        scheduleResetSetters,
-      );
+      const lifecyclePlan = planScheduleMutationLifecycle({
+        kind: "create-success",
+      });
+      for (const queryKey of lifecyclePlan.invalidateQueryKeys) {
+        queryClient.invalidateQueries({ queryKey: [queryKey] });
+      }
+      applyScheduleResetBranch(lifecyclePlan.resetBranch, scheduleResetSetters);
     },
     onError: (error) => {
       handleScheduleMutationError(error);
@@ -977,12 +974,13 @@ export const Schedule = React.memo(() => {
       return bookingResult.session;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["sessions-batch"] });
-      applyScheduleResetBranch(
-        { kind: "update-success" },
-        scheduleResetSetters,
-      );
+      const lifecyclePlan = planScheduleMutationLifecycle({
+        kind: "update-success",
+      });
+      for (const queryKey of lifecyclePlan.invalidateQueryKeys) {
+        queryClient.invalidateQueries({ queryKey: [queryKey] });
+      }
+      applyScheduleResetBranch(lifecyclePlan.resetBranch, scheduleResetSetters);
     },
     onError: (error) => {
       handleScheduleMutationError(error);
@@ -1098,16 +1096,16 @@ export const Schedule = React.memo(() => {
 
   const handleSubmit = useCallback(
     async (data: Partial<Session>) => {
-      if (selectedSession) {
-        if (data.status === "cancelled") {
-          const cancellationReason =
-            typeof data.notes === "string" && data.notes.trim().length > 0
-              ? data.notes
-              : undefined;
+      const decision = decideScheduleSubmitBranch({
+        selectedSession,
+        data,
+      });
 
+      switch (decision.kind) {
+        case "edit-cancel": {
           const result = await cancelSessionMutation.mutateAsync({
-            sessionId: selectedSession.id,
-            reason: cancellationReason,
+            sessionId: decision.selectedSessionId,
+            reason: decision.cancellationReason,
           });
 
           showSuccess(
@@ -1122,10 +1120,18 @@ export const Schedule = React.memo(() => {
           );
           return;
         }
-
-        await updateSessionMutation.mutateAsync(data);
-      } else {
-        await createSessionMutation.mutateAsync(data);
+        case "edit-update": {
+          await updateSessionMutation.mutateAsync(data);
+          return;
+        }
+        case "create": {
+          await createSessionMutation.mutateAsync(data);
+          return;
+        }
+        default: {
+          const _exhaustiveCheck: never = decision;
+          return _exhaustiveCheck;
+        }
       }
     },
     [

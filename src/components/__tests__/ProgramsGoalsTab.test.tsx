@@ -398,7 +398,7 @@ describe("ProgramsGoalsTab", () => {
     );
 
     await screen.findByText(/FBA Upload \+ AI Workflow/i);
-    await userEvent.selectOptions(screen.getByDisplayValue("CalOptima FBA"), "iehp_fba");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: /FBA template/i }), "iehp_fba");
     const uploadInput = screen.getByLabelText(/FBA file \(PDF or DOCX\)/i);
     const file = new File(["mock iehp content"], "iehp-fba.docx", {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

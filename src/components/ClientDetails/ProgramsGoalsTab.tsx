@@ -926,7 +926,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               FBA Upload + AI Workflow
             </h3>
             <div className="space-y-3">
+              <label htmlFor="programs-goals-fba-template" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                FBA template
+              </label>
               <select
+                id="programs-goals-fba-template"
                 value={assessmentTemplateType}
                 onChange={(event) => setAssessmentTemplateType(event.target.value as AssessmentTemplateType)}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"

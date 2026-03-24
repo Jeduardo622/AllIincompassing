@@ -282,6 +282,7 @@ export function FileCabinetSettings() {
                     </button>
                     <button
                       onClick={() => handleDelete(category.id)}
+                      aria-label={`Delete ${category.category_name}`}
                       className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400"
                     >
                       <Trash2 className="w-4 h-4" />

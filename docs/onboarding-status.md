@@ -1,5 +1,8 @@
 # Therapist Onboarding Status (2026-03-13)
 
+> **Historical snapshot (archived).** This status reflects the 2026-03-13 execution point-in-time and is retained for traceability.  
+> For current reliability signal, use `reports/test-reliability-latest.json`.
+
 ## TL;DR
 - Client onboarding prefill links are now tokenized and one-time; PHI/PII is no longer passed in query-string fields.
 - `initiate-client-onboarding` is deployed with create/consume token flow, org-scoped role checks, and one-time consume semantics.

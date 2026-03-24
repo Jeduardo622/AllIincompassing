@@ -9,6 +9,9 @@ const REQUIRED_FUNCTIONS = [
   "generate-session-notes-pdf",
   "session-notes-pdf-status",
   "session-notes-pdf-download",
+  "programs",
+  "goals",
+  "program-notes",
 ];
 
 const EXPECT_VERIFY_JWT = String(process.env.CI_EXPECT_VERIFY_JWT ?? "true").toLowerCase() !== "false";
@@ -68,7 +71,7 @@ if (!process.env.SUPABASE_ACCESS_TOKEN || process.env.SUPABASE_ACCESS_TOKEN.trim
   process.exit(1);
 }
 
-console.log(`Deploying session edge bundle to project ${projectRef}...`);
+console.log(`Deploying required edge function bundle to project ${projectRef}...`);
 for (const fn of REQUIRED_FUNCTIONS) {
   const status = runSupabase(["functions", "deploy", fn, "--project-ref", projectRef]);
   if (status !== 0) {
@@ -112,4 +115,4 @@ if (jwtMismatches.length > 0) {
   process.exit(1);
 }
 
-console.log(`✅ Session edge bundle deployed and verified (${REQUIRED_FUNCTIONS.length} functions).`);
+console.log(`✅ Required edge function bundle deployed and verified (${REQUIRED_FUNCTIONS.length} functions).`);

@@ -62,3 +62,28 @@ If `Create Program` fails with `Failed to fetch`:
    - `Access-Control-Allow-Origin: <current origin>`
    - `Vary: Origin`
 4. Re-test from the same deployed domain (not localhost unless it is explicitly allowlisted).
+
+## Re-audit Prerequisites And Evidence Checklist (WIN-49)
+
+Use this checklist before and during Programs & Goals re-audit sessions. This section is evidence hygiene guidance only and does not assert implementation outcomes.
+
+### Required QA credentials and roles
+
+- Confirm a valid QA user can authenticate in the target environment.
+- Confirm the QA user has the role needed to open a client record and view `Programs & Goals`.
+- Record the role used for the run (for example: `therapist`, `admin`) in the test notes.
+
+### Required evidence artifacts
+
+- Capture at least one browser network preflight trace (`OPTIONS`) for the Programs flow.
+- Record the exact endpoint URL observed in the request details.
+- Save screenshots with this naming convention:
+  - `programs-goals-reaudit-<yyyy-mm-dd>-<environment>-<step>.png`
+
+### Escalation path for implementation fixes
+
+If re-audit evidence shows a runtime defect, escalate to the implementation tickets instead of editing behavior in docs:
+
+- Endpoint target alignment: `WIN-46`
+- Request-scoped preflight/CORS handling: `WIN-47`
+- Regression coverage additions: `WIN-48`

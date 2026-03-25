@@ -69,14 +69,17 @@ Use this checklist before and during Programs & Goals re-audit sessions. This se
 
 ### Required QA credentials and roles
 
+- Access request owner: QA lead (or delegated test coordinator) opens the access request with platform/admin ownership before re-audit is scheduled.
 - Confirm a valid QA user can authenticate in the target environment.
-- Confirm the QA user has the role needed to open a client record and view `Programs & Goals`.
+- Required role: confirm the QA user has the app role needed to open a client record and view `Programs & Goals` (for example `therapist` or `admin`).
+- Pre-start gate: before re-audit begins, confirm login succeeds, the target client record is reachable, and the `Programs & Goals` tab is visible for the selected QA role.
 - Record the role used for the run (for example: `therapist`, `admin`) in the test notes.
 
 ### Required evidence artifacts
 
 - Capture at least one browser network preflight trace (`OPTIONS`) for the Programs flow.
-- Record the exact endpoint URL observed in the request details.
+- Record the exact endpoint URL in the active Linear audit thread (`WIN-43` or current child) together with environment and timestamp.
+- Reference the network/preflight trace by attaching the trace artifact and logging the request URL + method (`OPTIONS`/`GET`) in the same handoff note.
 - Save screenshots with this naming convention:
   - `programs-goals-reaudit-<yyyy-mm-dd>-<environment>-<step>.png`
 

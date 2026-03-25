@@ -27,7 +27,6 @@ import { cancelSessions } from "../lib/sessionCancellation";
 import { showError, showSuccess } from "../lib/toast";
 import { logger } from "../lib/logger/logger";
 import { toError } from "../lib/logger/normalizeError";
-import { buildSchedulingConflictHint } from "../lib/conflictPolicy";
 import { useAuth } from "../lib/authContext";
 import { useActiveOrganizationId } from "../lib/organization";
 import {
@@ -55,6 +54,7 @@ import { buildScheduleModalOpenResetPlan } from "../features/scheduling/domain/m
 import { applyScheduleResetBranch } from "../features/scheduling/domain/scheduleResetBranch";
 import { decideScheduleSubmitBranch } from "../features/scheduling/domain/submitBranchDecision";
 import { planScheduleMutationLifecycle } from "../features/scheduling/domain/mutationLifecyclePlan";
+import { adaptScheduleMutationError } from "../features/scheduling/domain/mutationErrorAdapter";
 import {
   applyPendingScheduleDetail,
   type PendingScheduleTransitionRecorder,
@@ -440,39 +440,23 @@ export const Schedule = React.memo(() => {
   );
 
   const handleScheduleMutationError = useCallback((error: unknown) => {
-    const normalized = toError(error, "Schedule mutation failed");
-    const status = typeof (error as { status?: number } | null | undefined)?.status === 'number'
-      ? (error as { status?: number }).status
-      : undefined;
+    const adaptation = adaptScheduleMutationError(error);
 
-    const conflictHint = status === 409
-      ? buildSchedulingConflictHint(
-          error,
-          'The selected time slot was just booked. Refresh the schedule or choose a different time.',
-        )
-      : null;
-
-    const lifecyclePlan = planScheduleMutationLifecycle({
-      kind: "mutation-error",
-      status,
-      retryHint: conflictHint,
-    });
-
-    if (lifecyclePlan.errorKind === "conflict") {
-      logger.warn('Schedule mutation conflict', {
+    if (adaptation.lifecyclePlan.errorKind === "conflict") {
+      logger.warn("Schedule mutation conflict", {
         metadata: {
-          hint: lifecyclePlan.resetBranch.retryHint,
-          error: normalized.message,
+          hint: adaptation.conflictLogMetadata?.hint ?? null,
+          error: adaptation.conflictLogMetadata?.error ?? adaptation.normalized.message,
         },
       });
 
-      applyScheduleResetBranch(lifecyclePlan.resetBranch, scheduleResetSetters);
-      showError(`${normalized.message}. ${lifecyclePlan.resetBranch.retryHint}`);
+      applyScheduleResetBranch(adaptation.lifecyclePlan.resetBranch, scheduleResetSetters);
+      showError(adaptation.userMessage);
       return;
     }
 
-    applyScheduleResetBranch(lifecyclePlan.resetBranch, scheduleResetSetters);
-    showError(normalized);
+    applyScheduleResetBranch(adaptation.lifecyclePlan.resetBranch, scheduleResetSetters);
+    showError(adaptation.userMessage);
   }, [scheduleResetSetters]);
 
   const userTimeZone = useMemo(() => {

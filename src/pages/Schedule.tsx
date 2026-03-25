@@ -49,154 +49,21 @@ import {
   collectTherapistScopeCandidateIds,
   resolveScopedTherapistId,
 } from "../features/scheduling/domain/sessionScope";
-import { planPendingScheduleTransition } from "../features/scheduling/domain/pendingScheduleTransition";
 import { filterSessionsBySelectedScope } from "../features/scheduling/domain/sessionFilters";
 import { shouldClearMissingSelection } from "../features/scheduling/domain/selectionGuard";
 import { buildScheduleModalOpenResetPlan } from "../features/scheduling/domain/modalOpenResetPlan";
 import { applyScheduleResetBranch } from "../features/scheduling/domain/scheduleResetBranch";
 import { decideScheduleSubmitBranch } from "../features/scheduling/domain/submitBranchDecision";
 import { planScheduleMutationLifecycle } from "../features/scheduling/domain/mutationLifecyclePlan";
+import {
+  applyPendingScheduleDetail,
+  type PendingScheduleTransitionRecorder,
+} from "../features/scheduling/domain/pendingScheduleApply";
 
 const AUTO_SCHEDULE_CONCURRENCY = 3;
 
-type PendingScheduleTransitionLedgerRow = {
-  seq: number;
-  kind: "decision" | "ref-checkpoint" | "setter" | "storage";
-  name: string;
-  payload: unknown;
-};
-
-export type PendingScheduleTransitionRecorder = (
-  row: Omit<PendingScheduleTransitionLedgerRow, "seq">,
-) => void;
-
-type PendingScheduleTransitionSetters = {
-  setPendingAgentIdempotencyKey: (value: string | null) => void;
-  setPendingAgentOperationId: (value: string | null) => void;
-  setPendingTraceRequestId: (value: string | null) => void;
-  setPendingTraceCorrelationId: (value: string | null) => void;
-  setSelectedDate: (value: Date) => void;
-  setSelectedTimeSlot: (value: { date: Date; time: string }) => void;
-  setSelectedSession: (value: Session | undefined) => void;
-  setRetryHint: (value: string | null) => void;
-  setIsModalOpen: (value: boolean) => void;
-};
-
-export const applyPendingScheduleDetail = ({
-  detail,
-  lastDetailKeyRef,
-  setters,
-  record,
-}: {
-  detail: PendingScheduleDetail | null;
-  lastDetailKeyRef: { current: string | null };
-  setters: PendingScheduleTransitionSetters;
-  record?: PendingScheduleTransitionRecorder;
-}) => {
-  record?.({
-    kind: "ref-checkpoint",
-    name: "before",
-    payload: lastDetailKeyRef.current,
-  });
-
-  const transition = planPendingScheduleTransition(detail, lastDetailKeyRef.current);
-  record?.({
-    kind: "decision",
-    name: transition.decision,
-    payload: {
-      reason: transition.reason,
-      detailKey: transition.detailKey,
-    },
-  });
-  if (transition.decision === "noop") {
-    record?.({
-      kind: "ref-checkpoint",
-      name: "after",
-      payload: lastDetailKeyRef.current,
-    });
-    return transition;
-  }
-
-  lastDetailKeyRef.current = transition.detailKey;
-  record?.({
-    kind: "ref-checkpoint",
-    name: "after",
-    payload: lastDetailKeyRef.current,
-  });
-
-  setters.setPendingAgentIdempotencyKey(transition.pendingAgentIdempotencyKey);
-  record?.({
-    kind: "setter",
-    name: "setPendingAgentIdempotencyKey",
-    payload: transition.pendingAgentIdempotencyKey,
-  });
-
-  setters.setPendingAgentOperationId(transition.pendingAgentOperationId);
-  record?.({
-    kind: "setter",
-    name: "setPendingAgentOperationId",
-    payload: transition.pendingAgentOperationId,
-  });
-
-  setters.setPendingTraceRequestId(transition.pendingTraceRequestId);
-  record?.({
-    kind: "setter",
-    name: "setPendingTraceRequestId",
-    payload: transition.pendingTraceRequestId,
-  });
-
-  setters.setPendingTraceCorrelationId(transition.pendingTraceCorrelationId);
-  record?.({
-    kind: "setter",
-    name: "setPendingTraceCorrelationId",
-    payload: transition.pendingTraceCorrelationId,
-  });
-
-  if (transition.prefill) {
-    setters.setSelectedDate(transition.prefill.date);
-    record?.({
-      kind: "setter",
-      name: "setSelectedDate",
-      payload: transition.prefill.date,
-    });
-
-    setters.setSelectedTimeSlot({
-      date: transition.prefill.date,
-      time: transition.prefill.time,
-    });
-    record?.({
-      kind: "setter",
-      name: "setSelectedTimeSlot",
-      payload: {
-        date: transition.prefill.date,
-        time: transition.prefill.time,
-      },
-    });
-  }
-
-  setters.setSelectedSession(undefined);
-  record?.({
-    kind: "setter",
-    name: "setSelectedSession",
-    payload: undefined,
-  });
-
-  setters.setRetryHint(null);
-  record?.({
-    kind: "setter",
-    name: "setRetryHint",
-    payload: null,
-  });
-
-  setters.setIsModalOpen(true);
-  record?.({
-    kind: "setter",
-    name: "setIsModalOpen",
-    payload: true,
-  });
-
-  return transition;
-};
+export { applyPendingScheduleDetail };
+export type { PendingScheduleTransitionRecorder };
 
 export const consumePendingScheduleFromStorage = ({
   storage,

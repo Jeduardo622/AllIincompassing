@@ -51,6 +51,7 @@ import {
 import { filterSessionsBySelectedScope } from "../features/scheduling/domain/sessionFilters";
 import { shouldClearMissingSelection } from "../features/scheduling/domain/selectionGuard";
 import { buildScheduleModalOpenResetPlan } from "../features/scheduling/domain/modalOpenResetPlan";
+import { applyScheduleModalOpenPlan } from "../features/scheduling/domain/modalOpenPlanApply";
 import { applyScheduleResetBranch } from "../features/scheduling/domain/scheduleResetBranch";
 import { decideScheduleSubmitBranch } from "../features/scheduling/domain/submitBranchDecision";
 import { adaptScheduleMutationError } from "../features/scheduling/domain/mutationErrorAdapter";
@@ -874,14 +875,20 @@ export const Schedule = React.memo(() => {
         timeSlot,
       });
 
-      setRetryHint(plan.retryHint);
-      setPendingAgentIdempotencyKey(plan.pendingAgentIdempotencyKey);
-      setPendingAgentOperationId(plan.pendingAgentOperationId);
-      setPendingTraceRequestId(plan.pendingTraceRequestId);
-      setPendingTraceCorrelationId(plan.pendingTraceCorrelationId);
-      setSelectedTimeSlot(plan.selectedTimeSlot);
-      setSelectedSession(plan.selectedSession);
-      setIsModalOpen(plan.isModalOpen);
+      applyScheduleModalOpenPlan({
+        mode: "create",
+        plan,
+        setters: {
+          setRetryHint,
+          setPendingAgentIdempotencyKey,
+          setPendingAgentOperationId,
+          setPendingTraceRequestId,
+          setPendingTraceCorrelationId,
+          setSelectedTimeSlot,
+          setSelectedSession,
+          setIsModalOpen,
+        },
+      });
     },
     [],
   );
@@ -892,14 +899,20 @@ export const Schedule = React.memo(() => {
       session,
     });
 
-    setRetryHint(plan.retryHint);
-    setPendingAgentIdempotencyKey(plan.pendingAgentIdempotencyKey);
-    setPendingAgentOperationId(plan.pendingAgentOperationId);
-    setPendingTraceRequestId(plan.pendingTraceRequestId);
-    setPendingTraceCorrelationId(plan.pendingTraceCorrelationId);
-    setSelectedSession(plan.selectedSession);
-    setSelectedTimeSlot(plan.selectedTimeSlot);
-    setIsModalOpen(plan.isModalOpen);
+    applyScheduleModalOpenPlan({
+      mode: "edit",
+      plan,
+      setters: {
+        setRetryHint,
+        setPendingAgentIdempotencyKey,
+        setPendingAgentOperationId,
+        setPendingTraceRequestId,
+        setPendingTraceCorrelationId,
+        setSelectedSession,
+        setSelectedTimeSlot,
+        setIsModalOpen,
+      },
+    });
   }, []);
 
   const handleAddRecurrenceException = useCallback(() => {

@@ -53,8 +53,8 @@ import { shouldClearMissingSelection } from "../features/scheduling/domain/selec
 import { buildScheduleModalOpenResetPlan } from "../features/scheduling/domain/modalOpenResetPlan";
 import { applyScheduleResetBranch } from "../features/scheduling/domain/scheduleResetBranch";
 import { decideScheduleSubmitBranch } from "../features/scheduling/domain/submitBranchDecision";
-import { planScheduleMutationLifecycle } from "../features/scheduling/domain/mutationLifecyclePlan";
 import { adaptScheduleMutationError } from "../features/scheduling/domain/mutationErrorAdapter";
+import { applyScheduleMutationSuccessLifecycle } from "../features/scheduling/domain/mutationSuccessLifecycle";
 import {
   applyPendingScheduleDetail,
   type PendingScheduleTransitionRecorder,
@@ -723,13 +723,15 @@ export const Schedule = React.memo(() => {
       return bookingResult.session;
     },
     onSuccess: () => {
-      const lifecyclePlan = planScheduleMutationLifecycle({
+      applyScheduleMutationSuccessLifecycle({
         kind: "create-success",
+        invalidateQuery: (queryKey) => {
+          queryClient.invalidateQueries({ queryKey: [queryKey] });
+        },
+        applyResetBranch: (resetBranch) => {
+          applyScheduleResetBranch(resetBranch, scheduleResetSetters);
+        },
       });
-      for (const queryKey of lifecyclePlan.invalidateQueryKeys) {
-        queryClient.invalidateQueries({ queryKey: [queryKey] });
-      }
-      applyScheduleResetBranch(lifecyclePlan.resetBranch, scheduleResetSetters);
     },
     onError: (error) => {
       handleScheduleMutationError(error);
@@ -825,13 +827,15 @@ export const Schedule = React.memo(() => {
       return bookingResult.session;
     },
     onSuccess: () => {
-      const lifecyclePlan = planScheduleMutationLifecycle({
+      applyScheduleMutationSuccessLifecycle({
         kind: "update-success",
+        invalidateQuery: (queryKey) => {
+          queryClient.invalidateQueries({ queryKey: [queryKey] });
+        },
+        applyResetBranch: (resetBranch) => {
+          applyScheduleResetBranch(resetBranch, scheduleResetSetters);
+        },
       });
-      for (const queryKey of lifecyclePlan.invalidateQueryKeys) {
-        queryClient.invalidateQueries({ queryKey: [queryKey] });
-      }
-      applyScheduleResetBranch(lifecyclePlan.resetBranch, scheduleResetSetters);
     },
     onError: (error) => {
       handleScheduleMutationError(error);

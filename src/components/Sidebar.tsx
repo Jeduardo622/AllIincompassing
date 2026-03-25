@@ -197,7 +197,7 @@ export function Sidebar() {
         w-64 bg-white dark:bg-dark-lighter border-r border-gray-200 dark:border-dark-border
         transform lg:transform-none transition-transform duration-200 ease-in-out
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-        flex flex-col h-screen
+        flex flex-col h-dvh lg:h-screen overflow-y-auto
       `}>
         <div className="flex items-center p-6">
           <Calendar aria-hidden="true" className="h-8 w-8 text-blue-600" />
@@ -245,7 +245,7 @@ export function Sidebar() {
           </div>
         )}
         
-        <nav className="flex-1 space-y-1 px-4 py-4">
+        <nav className="flex-1 min-h-0 overflow-y-auto space-y-1 px-4 py-4">
           {navItems.map(({ icon: Icon, label, path, roles, requiresGuardian }) => {
             if (requiresGuardian && !isGuardian) {
               return null;

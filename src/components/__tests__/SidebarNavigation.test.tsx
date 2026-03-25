@@ -172,4 +172,21 @@ describe("Sidebar navigation active styling", () => {
 
     expect(screen.queryByRole("link", { name: /family/i })).not.toBeInTheDocument();
   });
+
+  it("keeps mobile sidebar sections scrollable so footer actions stay reachable", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Sidebar />
+      </MemoryRouter>
+    );
+
+    const sidebar = container.querySelector("#app-sidebar");
+    expect(sidebar).not.toBeNull();
+    expect(sidebar).toHaveClass("overflow-y-auto");
+
+    const nav = sidebar?.querySelector("nav");
+    expect(nav).not.toBeNull();
+    expect(nav).toHaveClass("min-h-0");
+    expect(nav).toHaveClass("overflow-y-auto");
+  });
 });

@@ -28,6 +28,12 @@ async function run(): Promise<void> {
 
   try {
     await loginAndAssertSession(page, baseUrl, credentials.email, credentials.password);
+    await page.evaluate(() => {
+      const netlifyOverlay = document.querySelector("[data-netlify-deploy-id]");
+      if (netlifyOverlay instanceof HTMLElement) {
+        netlifyOverlay.style.display = "none";
+      }
+    });
 
     const openNavButton = page.getByRole("button", { name: /open navigation/i });
     await openNavButton.click();

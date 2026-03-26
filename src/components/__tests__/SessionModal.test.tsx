@@ -116,8 +116,9 @@ describe('SessionModal', () => {
   it('shows validation errors for required fields', async () => {
     renderWithProviders(<SessionModal {...defaultProps} />);
     
-    const form = document.querySelector('form');
-    fireEvent.submit(form!);
+    const form = document.getElementById('session-form');
+    expect(form).toBeInstanceOf(HTMLFormElement);
+    fireEvent.submit(form as HTMLFormElement);
 
     await waitFor(() => {
       expect(screen.getByText(/Therapist is required/)).toBeInTheDocument();

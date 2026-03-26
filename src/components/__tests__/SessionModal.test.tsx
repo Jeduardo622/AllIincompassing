@@ -111,6 +111,11 @@ describe('SessionModal', () => {
   it('renders the modal when open', () => {
     renderWithProviders(<SessionModal {...defaultProps} />);
     expect(screen.getByText(/New Session/)).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-labelledby', 'session-modal-title');
+    expect(dialog).toHaveAttribute('aria-describedby', 'session-modal-description');
+    expect(screen.queryByRole('region', { name: /Session not saved/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /Scheduling Conflicts/i })).not.toBeInTheDocument();
   });
 
   it('shows validation errors for required fields', async () => {
@@ -193,7 +198,13 @@ describe('SessionModal', () => {
       updated_by: 'test-user',
     }] satisfies Session[];
 
-    renderWithProviders(<SessionModal {...defaultProps} existingSessions={existingSessions} />);
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        existingSessions={existingSessions}
+        retryHint="Pick a different time or refresh the schedule."
+      />
+    );
 
     // Fill out the form
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
@@ -213,6 +224,14 @@ describe('SessionModal', () => {
       expect(screen.getByText(/Scheduling Conflicts/i)).toBeInTheDocument();
     });
 
+    const dialog = screen.getByRole('dialog');
+    const describedBy = dialog.getAttribute('aria-describedby') ?? '';
+    expect(describedBy).toContain('session-modal-description');
+    expect(describedBy).toContain('session-modal-retry-description');
+    expect(describedBy).toContain('session-modal-conflicts-description');
+    expect(screen.getByRole('region', { name: /Session not saved/i })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /Scheduling Conflicts/i })).toBeInTheDocument();
+
     // User chooses to proceed
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     await userEvent.click(screen.getByRole('button', { name: /Create Session/i }));
@@ -221,6 +240,61 @@ describe('SessionModal', () => {
       expect(confirmSpy).toHaveBeenCalled();
       expect(defaultProps.onSubmit).toHaveBeenCalled();
     });
+  });
+
+  it('wires conflict-only callout into dialog description when retry hint is absent', async () => {
+    const existingSessions = [{
+      id: 'conflict-only',
+      therapist_id: 'test-therapist-1',
+      client_id: 'test-client-1',
+      program_id: 'program-1',
+      goal_id: 'goal-1',
+      start_time: '2025-03-18T14:15:00.000Z',
+      end_time: '2025-03-18T14:45:00.000Z',
+      status: 'scheduled',
+      notes: 'Existing conflicting session',
+      created_at: '2025-03-18T14:00:00.000Z',
+      created_by: 'test-user',
+      updated_at: '2025-03-18T14:00:00.000Z',
+      updated_by: 'test-user',
+    }] satisfies Session[];
+
+    renderWithProviders(<SessionModal {...defaultProps} existingSessions={existingSessions} />);
+
+    await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    await screen.findByRole('option', { name: /Default Program/i });
+    await userEvent.selectOptions(screen.getByLabelText(/Program/i), 'program-1');
+    await screen.findByRole('option', { name: /Default Goal/i });
+    await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
+    fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2025-03-18T10:00' } });
+    fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2025-03-18T11:00' } });
+
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: /Scheduling Conflicts/i })).toBeInTheDocument();
+    });
+
+    const dialog = screen.getByRole('dialog');
+    const describedBy = dialog.getAttribute('aria-describedby') ?? '';
+    expect(describedBy).toContain('session-modal-description');
+    expect(describedBy).toContain('session-modal-conflicts-description');
+    expect(describedBy).not.toContain('session-modal-retry-description');
+  });
+
+  it('includes retry hint content in dialog description when retry guidance is shown', () => {
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        retryHint="Pick a different time or refresh the schedule."
+      />
+    );
+
+    const dialog = screen.getByRole('dialog');
+    const describedBy = dialog.getAttribute('aria-describedby') ?? '';
+    expect(describedBy).toContain('session-modal-description');
+    expect(describedBy).toContain('session-modal-retry-description');
+    expect(screen.getByText(/Session not saved/i)).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /Session not saved/i })).toBeInTheDocument();
   });
 
   it('closes modal when cancel button is clicked', async () => {

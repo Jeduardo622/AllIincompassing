@@ -14,7 +14,7 @@
 - reviewer required: no
 - verify-change required: no
 - mandatory checks:
-  - none (planning-only, no implementation)
+  - manual verification of links, commands, and file paths per `docs/ai/verification-matrix.md` (Docs And Process Changes)
 - blocking conditions:
   - if implementation is attempted in this phase, re-route first
 - linear required: no
@@ -22,6 +22,7 @@
 ## Scope And Boundaries
 
 This artifact defines the orchestration contract for post-WIN-27 follow-on work in `src/pages/Schedule.tsx`.
+For Phase 1 planning handoff, see `docs/ai/WIN-27-phase1-seam-inventory.md`.
 
 In scope for analysis:
 

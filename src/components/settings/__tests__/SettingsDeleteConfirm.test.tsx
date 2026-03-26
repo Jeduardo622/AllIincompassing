@@ -23,6 +23,7 @@ type Config = {
   name: string;
   component: React.ComponentType;
   title: string;
+  deleteButtonName: string;
   confirmMessage: string;
   deleteTable: string;
   deleteId: string;
@@ -206,6 +207,7 @@ const testConfigs: Config[] = [
     name: 'FileCabinetSettings',
     component: FileCabinetSettings,
     title: 'Assessments',
+    deleteButtonName: 'Delete category Assessments',
     confirmMessage: 'Are you sure you want to delete this category?',
     deleteTable: 'file_cabinet_settings',
     deleteId: FILE_CABINET_ID,
@@ -214,6 +216,7 @@ const testConfigs: Config[] = [
     name: 'LocationSettings',
     component: LocationSettings,
     title: 'Main Clinic',
+    deleteButtonName: 'Delete location Main Clinic',
     confirmMessage: 'Are you sure you want to delete this location?',
     deleteTable: 'locations',
     deleteId: LOCATION_ID,
@@ -222,6 +225,7 @@ const testConfigs: Config[] = [
     name: 'ReferringProviderSettings',
     component: ReferringProviderSettings,
     title: 'Casey Provider',
+    deleteButtonName: 'Delete referring provider Casey Provider',
     confirmMessage: 'Are you sure you want to delete this referring provider?',
     deleteTable: 'referring_providers',
     deleteId: PROVIDER_ID,
@@ -230,19 +234,13 @@ const testConfigs: Config[] = [
     name: 'ServiceLineSettings',
     component: ServiceLineSettings,
     title: 'ABA Therapy',
+    deleteButtonName: 'Delete service line ABA Therapy',
     confirmMessage: 'Are you sure you want to delete this service line?',
     deleteTable: 'service_lines',
     deleteId: SERVICE_LINE_ID,
     serviceLineLocationId: LOCATION_ID,
   },
 ];
-
-const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-const getDeleteButtonForTitle = (title: string): HTMLButtonElement =>
-  screen.getByRole('button', {
-    name: new RegExp(`^Delete\\s+${escapeRegex(title)}$`, 'i'),
-  }) as HTMLButtonElement;
 
 describe('Settings destructive confirmation gating', () => {
   beforeEach(() => {
@@ -273,7 +271,7 @@ describe('Settings destructive confirmation gating', () => {
       });
 
       await screen.findByText(config.title);
-      const deleteButton = getDeleteButtonForTitle(config.title);
+      const deleteButton = screen.getByRole('button', { name: config.deleteButtonName });
 
       await userEvent.click(deleteButton);
 
@@ -304,7 +302,7 @@ describe('Settings destructive confirmation gating', () => {
       });
 
       await screen.findByText(config.title);
-      const deleteButton = getDeleteButtonForTitle(config.title);
+      const deleteButton = screen.getByRole('button', { name: config.deleteButtonName });
 
       await userEvent.click(deleteButton);
 

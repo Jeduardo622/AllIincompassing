@@ -17,11 +17,8 @@
 - reviewer required: yes
 - verify-change required: yes
 - mandatory checks:
-  - `npm run ci:check-focused`
-  - `npm run lint`
-  - `npm run typecheck`
-  - targeted tests for changed helper
-  - `npm run build`
+  - run the canonical `standard`-lane required check union from `docs/ai/cto-lane-contract.md` (`npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run build`)
+  - targeted tests for changed helper are additive, not a substitute for the canonical union
 
 ## Scope Goal
 
@@ -71,8 +68,7 @@ Not allowed in this slice:
    - `npm run typecheck`
    - targeted tests for new helper
 3. Lane-required checks:
-   - `npm run ci:check-focused`
-   - `npm run build`
+   - run the canonical `standard`-lane required check union from `docs/ai/cto-lane-contract.md` (includes `npm run test:ci`)
 
 ## Containment Gate
 

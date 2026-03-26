@@ -213,6 +213,40 @@ describe("Schedule", () => {
     });
   });
 
+  it("exposes recurrence toggle and labeled recurrence controls when enabled", async () => {
+    renderWithProviders(<Schedule />);
+
+    const recurrenceToggle = await screen.findByRole("checkbox", {
+      name: /Enable recurrence \(RRULE\)/i,
+    });
+    expect(recurrenceToggle).not.toBeChecked();
+    expect(screen.getByLabelText(/Time Zone/i)).toBeInTheDocument();
+
+    await userEvent.click(recurrenceToggle);
+    expect(screen.getByLabelText(/^RRULE$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Count/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Until/i)).toBeInTheDocument();
+  }, 15000);
+
+  it("shows accessible exception controls in recurrence panel", async () => {
+    renderWithProviders(<Schedule />);
+
+    const recurrenceToggle = await screen.findByRole("checkbox", {
+      name: /Enable recurrence \(RRULE\)/i,
+    });
+    await userEvent.click(recurrenceToggle);
+
+    expect(screen.getByText(/Exceptions/i)).toBeInTheDocument();
+    expect(screen.getByText(/No exception dates configured/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Add exception/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Remove/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/No exception dates configured/i)).not.toBeInTheDocument();
+  }, 15000);
+
   it("assigns deterministic accessible names to recurrence exception row controls", async () => {
     renderWithProviders(<Schedule />);
 

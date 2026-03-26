@@ -67,6 +67,10 @@ export function SessionModal({
   const activeOrganizationId = useActiveOrganizationId();
   const dialogTitleId = 'session-modal-title';
   const dialogDescriptionId = 'session-modal-description';
+  const retryHintDescriptionId = 'session-modal-retry-description';
+  const retryHintHeadingId = 'session-modal-retry-heading';
+  const conflictDescriptionId = 'session-modal-conflicts-description';
+  const conflictHeadingId = 'session-modal-conflicts-heading';
 
   const resolvedTimeZone = useMemo(() => resolveSchedulingTimeZone(timeZone), [timeZone]);
 
@@ -584,6 +588,11 @@ export function SessionModal({
   const hasStartedSession = Boolean(sessionDetails?.started_at ?? session?.started_at);
   const isDependentDataLoading = (Boolean(clientId) && isProgramsFetching) || (Boolean(programId) && isGoalsFetching);
   const canStartSession = Boolean(session?.id && !hasStartedSession && programId && goalId);
+  const dialogDescriptionIds = [
+    dialogDescriptionId,
+    ...(retryHint ? [retryHintDescriptionId] : []),
+    ...(conflicts.length > 0 ? [conflictDescriptionId] : []),
+  ].join(' ');
 
   useEffect(() => {
     if (!isOpen) {
@@ -681,7 +690,7 @@ export function SessionModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={dialogTitleId}
-        aria-describedby={dialogDescriptionId}
+        aria-describedby={dialogDescriptionIds}
         tabIndex={-1}
       >
         {/* Header */}
@@ -709,11 +718,16 @@ export function SessionModal({
           </p>
           <form id="session-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
             {retryHint && (
-              <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/40 dark:bg-blue-900/20">
+              <div
+                id={retryHintDescriptionId}
+                role="region"
+                aria-labelledby={retryHintHeadingId}
+                className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/40 dark:bg-blue-900/20"
+              >
                 <AlertCircle className="w-5 h-5 text-blue-500 dark:text-blue-300 mt-0.5 flex-shrink-0" />
                 <div className="text-sm text-blue-800 dark:text-blue-100 space-y-2">
                   <div>
-                    <p className="font-medium">Session not saved</p>
+                    <h3 id={retryHintHeadingId} className="font-medium">Session not saved</h3>
                     <p className="mt-1">{retryHint}</p>
                   </div>
                   {onRetryHintDismiss && (
@@ -729,10 +743,15 @@ export function SessionModal({
               </div>
             )}
             {conflicts.length > 0 && (
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 rounded-lg p-4">
+              <div
+                id={conflictDescriptionId}
+                role="region"
+                aria-labelledby={conflictHeadingId}
+                className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 rounded-lg p-4"
+              >
                 <div className="flex items-center mb-2">
                   <AlertTriangle className="w-5 h-5 text-amber-500 dark:text-amber-400 mr-2 flex-shrink-0" />
-                  <h3 className="font-medium text-amber-800 dark:text-amber-200">
+                  <h3 id={conflictHeadingId} className="font-medium text-amber-800 dark:text-amber-200">
                     Scheduling Conflicts
                   </h3>
                 </div>

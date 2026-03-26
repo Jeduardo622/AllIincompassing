@@ -213,5 +213,29 @@ describe("Schedule", () => {
     });
   });
 
+  it("assigns deterministic accessible names to recurrence exception row controls", async () => {
+    renderWithProviders(<Schedule />);
+
+    const recurrenceToggle = await screen.findByRole("checkbox", {
+      name: /Enable recurrence \(RRULE\)/i,
+    });
+    await userEvent.click(recurrenceToggle);
+
+    const addExceptionButton = await screen.findByRole("button", {
+      name: /Add exception/i,
+    });
+    await userEvent.click(addExceptionButton);
+    await userEvent.click(addExceptionButton);
+
+    expect(screen.getByLabelText("Exception date 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Exception date 2")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Remove exception date 1/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Remove exception date 2/i }),
+    ).toBeInTheDocument();
+  }, 15000);
+
 });
 

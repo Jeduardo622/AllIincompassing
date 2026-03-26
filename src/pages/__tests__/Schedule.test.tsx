@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
-import { fireEvent } from "@testing-library/react";
+import { fireEvent, within } from "@testing-library/react";
 import { server } from "../../test/setup";
 import { supabase } from "../../lib/supabase";
 
@@ -211,6 +211,43 @@ describe("Schedule", () => {
       expect(screen.getByTestId("session-modal-sessions")).not.toHaveTextContent("session-1");
       expect(screen.getByTestId("session-modal-sessions")).toHaveTextContent("session-2");
     });
+  });
+
+  it("groups recurrence controls under an accessible recurrence settings fieldset", async () => {
+    renderWithProviders(<Schedule />);
+
+    const recurrenceGroup = await screen.findByRole("group", {
+      name: /Recurrence settings/i,
+    });
+    expect(recurrenceGroup).toBeInTheDocument();
+
+    expect(
+      within(recurrenceGroup).getByRole("checkbox", {
+        name: /Enable recurrence \(RRULE\)/i,
+      }),
+    ).toBeInTheDocument();
+
+    expect(within(recurrenceGroup).getByLabelText(/Time Zone/i)).toBeInTheDocument();
+  });
+
+  it("retains recurrence control labels and exception controls when recurrence is enabled", async () => {
+    renderWithProviders(<Schedule />);
+
+    const recurrenceGroup = await screen.findByRole("group", {
+      name: /Recurrence settings/i,
+    });
+    const recurrenceToggle = within(recurrenceGroup).getByRole("checkbox", {
+      name: /Enable recurrence \(RRULE\)/i,
+    });
+
+    await userEvent.click(recurrenceToggle);
+
+    expect(within(recurrenceGroup).getByLabelText(/^RRULE$/i)).toBeInTheDocument();
+    expect(within(recurrenceGroup).getByLabelText(/Count/i)).toBeInTheDocument();
+    expect(within(recurrenceGroup).getByLabelText(/Until/i)).toBeInTheDocument();
+    expect(within(recurrenceGroup).getByText(/Exceptions/i)).toBeInTheDocument();
+    expect(within(recurrenceGroup).getByText(/No exception dates configured/i)).toBeInTheDocument();
+    expect(within(recurrenceGroup).getByRole("button", { name: /Add exception/i })).toBeInTheDocument();
   });
 
 });

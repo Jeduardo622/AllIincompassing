@@ -1218,7 +1218,8 @@ export const Schedule = React.memo(() => {
         scopedClientId={scopedClientId}
       />
 
-      <div className="mt-6 bg-white dark:bg-dark-lighter border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4">
+      <fieldset className="mt-6 bg-white dark:bg-dark-lighter border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4">
+        <legend className="sr-only">Recurrence settings</legend>
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <label className="inline-flex items-center text-sm font-medium text-gray-700 dark:text-gray-300">
             <input
@@ -1348,7 +1349,7 @@ export const Schedule = React.memo(() => {
             </div>
           </div>
         )}
-      </div>
+      </fieldset>
 
       {view === "matrix" ? (
         <SchedulingMatrix

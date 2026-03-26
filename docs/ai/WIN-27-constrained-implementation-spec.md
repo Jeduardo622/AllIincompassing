@@ -17,11 +17,8 @@
 - reviewer required: yes
 - verify-change required: yes
 - mandatory checks:
-  - `npm run ci:check-focused`
-  - `npm run lint`
-  - `npm run typecheck`
-  - targeted tests (domain helper + existing affected tests when needed)
-  - `npm run build`
+  - run the canonical `standard`-lane required check union from `docs/ai/cto-lane-contract.md` (`npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run build`)
+  - targeted tests (domain helper + existing affected tests when needed) are additive, not a substitute for the canonical union
 
 ## Scope Goal
 
@@ -49,6 +46,7 @@ Not allowed in this slice:
 - `scripts/ci/**`
 - `.github/workflows/**`
 - `supabase/**`
+- `netlify.toml`
 
 ## Explicit Non-Goals
 

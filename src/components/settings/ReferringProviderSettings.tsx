@@ -356,11 +356,13 @@ export function ReferringProviderSettings() {
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleDelete(provider.id)}
                       aria-label={`Delete ${provider.first_name} ${provider.last_name}`}
                       className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400"
+                      aria-label={`Delete referring provider ${provider.first_name} ${provider.last_name}`}
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" aria-hidden />
                     </button>
                   </div>
                 </div>

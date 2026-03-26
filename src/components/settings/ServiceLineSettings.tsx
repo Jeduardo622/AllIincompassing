@@ -316,11 +316,13 @@ export function ServiceLineSettings() {
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleDelete(serviceLine.id)}
                       aria-label={`Delete ${serviceLine.name}`}
                       className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400"
+                      aria-label={`Delete service line ${serviceLine.name}`}
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" aria-hidden />
                     </button>
                   </div>
                 </div>

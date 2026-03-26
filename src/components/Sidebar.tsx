@@ -209,7 +209,7 @@ export function Sidebar() {
       <MobileMenuButton />
       
       <aside id="app-sidebar" className={`
-        fixed lg:static inset-y-0 left-0 z-40
+        fixed inset-y-0 left-0 z-40
         w-64 bg-white dark:bg-dark-lighter border-r border-gray-200 dark:border-dark-border
         transform lg:transform-none transition-transform duration-200 ease-in-out
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}

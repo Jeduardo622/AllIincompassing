@@ -357,6 +357,7 @@ export function ReferringProviderSettings() {
                     </button>
                     <button
                       onClick={() => handleDelete(provider.id)}
+                      aria-label={`Delete ${provider.first_name} ${provider.last_name}`}
                       className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400"
                     >
                       <Trash2 className="w-4 h-4" />

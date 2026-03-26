@@ -54,7 +54,7 @@ For `standard` lanes, satisfy the full required agent sequence and checks in `do
 Operational queue hygiene:
 
 - Keep `3 active + 2 backup` candidates.
-- Prefer execution order from the active queue first (`WIN-31`, `WIN-29`, `WIN-32` at the time this runbook was introduced), then backups.
+- Populate the active queue from the agreed low-risk Linear view/filter at routing time (do not rely on historical issue IDs in this runbook); then execute active items before backups.
 - Run at most `2` mutating tasks in parallel.
 - Run at most `1` `npm run verify:local` at a time.
 - Keep write sets isolated; avoid parallel edits to shared docs/evidence files.

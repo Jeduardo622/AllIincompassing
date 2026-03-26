@@ -81,7 +81,7 @@ describe("ProgramsGoalsTab", () => {
   beforeEach(() => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && path.startsWith("/api/programs?")) {
+      if (method === "GET" && path.startsWith("programs?")) {
         return new Response(JSON.stringify([]), { status: 200 });
       }
       if (method === "GET" && path.startsWith("/api/goals?")) {
@@ -99,7 +99,7 @@ describe("ProgramsGoalsTab", () => {
       if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
         return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
       }
-      if (method === "POST" && path === "/api/programs") {
+      if (method === "POST" && path === "programs") {
         return new Response(
           JSON.stringify({
             id: "program-1",
@@ -170,7 +170,11 @@ describe("ProgramsGoalsTab", () => {
       return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
     });
     vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string, init?: RequestInit) => {
-      const apiPath = path.startsWith("/api/") ? path : `/api/${path}`;
+      const apiPath = path.startsWith("programs")
+        ? path
+        : path.startsWith("/api/")
+          ? path
+          : `/api/${path}`;
       const callApiImpl = vi.mocked(callApi).getMockImplementation();
       if (!callApiImpl) {
         return new Response(JSON.stringify({ error: "API mock missing" }), { status: 500 });
@@ -235,10 +239,92 @@ describe("ProgramsGoalsTab", () => {
     vi.clearAllMocks();
   });
 
+  it("loads live programs from canonical edge target semantics and renders returned program", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("programs?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "program-live-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              name: "Live Communication Program",
+              description: "Live program from edge route",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByText("Live Communication Program")).toBeInTheDocument();
+    expect(screen.queryByText("No programs yet.")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        vi
+          .mocked(callEdgeFunctionHttp)
+          .mock.calls.some(
+            ([path]) => typeof path === "string" && path.startsWith(`programs?client_id=${encodeURIComponent("client-1")}`),
+          ),
+      ).toBe(true);
+    });
+    expect(
+      vi.mocked(callEdgeFunctionHttp).mock.calls.some(([path]) => typeof path === "string" && path.includes("/api/programs")),
+    ).toBe(false);
+  });
+
+  it("keeps live-load failure observable when programs edge query fails", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("programs?")) {
+        return new Response(JSON.stringify({ error: "edge unavailable" }), { status: 503 });
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByText("Could not load programs yet: Failed to load programs")).toBeInTheDocument();
+    expect(screen.getByText("No programs yet.")).toBeInTheDocument();
+  });
+
   it("generates program/goals proposal and saves it for review", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("programs?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -439,7 +525,7 @@ describe("ProgramsGoalsTab", () => {
   it("generates staged drafts from selected uploaded assessment", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && path.startsWith("/api/programs?")) {
+      if (method === "GET" && path.startsWith("programs?")) {
         return new Response(JSON.stringify([]), { status: 200 });
       }
       if (method === "GET" && path.startsWith("/api/goals?")) {
@@ -509,7 +595,7 @@ describe("ProgramsGoalsTab", () => {
   it("generates completed CalOptima PDF for selected assessment", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("programs?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -579,7 +665,7 @@ describe("ProgramsGoalsTab", () => {
   it("shows a visible extracting indicator for assessment processing", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("programs?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -630,7 +716,7 @@ describe("ProgramsGoalsTab", () => {
 
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("programs?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.includes("assessment_document_id=")) return new Response(JSON.stringify([]), { status: 200 });
@@ -719,7 +805,7 @@ describe("ProgramsGoalsTab", () => {
   it("shows promote precondition API error details", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("programs?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -805,7 +891,7 @@ describe("ProgramsGoalsTab", () => {
   it("saves a program draft and shows draft-only messaging", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("programs?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -916,7 +1002,7 @@ describe("ProgramsGoalsTab", () => {
   it("deletes an uploaded assessment document from the queue", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("programs?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });

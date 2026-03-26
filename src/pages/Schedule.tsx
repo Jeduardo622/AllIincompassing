@@ -27,7 +27,6 @@ import { cancelSessions } from "../lib/sessionCancellation";
 import { showError, showSuccess } from "../lib/toast";
 import { logger } from "../lib/logger/logger";
 import { toError } from "../lib/logger/normalizeError";
-import { buildSchedulingConflictHint } from "../lib/conflictPolicy";
 import { useAuth } from "../lib/authContext";
 import { useActiveOrganizationId } from "../lib/organization";
 import {
@@ -49,154 +48,23 @@ import {
   collectTherapistScopeCandidateIds,
   resolveScopedTherapistId,
 } from "../features/scheduling/domain/sessionScope";
-import { planPendingScheduleTransition } from "../features/scheduling/domain/pendingScheduleTransition";
 import { filterSessionsBySelectedScope } from "../features/scheduling/domain/sessionFilters";
 import { shouldClearMissingSelection } from "../features/scheduling/domain/selectionGuard";
 import { buildScheduleModalOpenResetPlan } from "../features/scheduling/domain/modalOpenResetPlan";
+import { applyScheduleModalOpenPlan } from "../features/scheduling/domain/modalOpenPlanApply";
 import { applyScheduleResetBranch } from "../features/scheduling/domain/scheduleResetBranch";
 import { decideScheduleSubmitBranch } from "../features/scheduling/domain/submitBranchDecision";
-import { planScheduleMutationLifecycle } from "../features/scheduling/domain/mutationLifecyclePlan";
+import { adaptScheduleMutationError } from "../features/scheduling/domain/mutationErrorAdapter";
+import { applyScheduleMutationSuccessLifecycle } from "../features/scheduling/domain/mutationSuccessLifecycle";
+import {
+  applyPendingScheduleDetail,
+  type PendingScheduleTransitionRecorder,
+} from "../features/scheduling/domain/pendingScheduleApply";
 
 const AUTO_SCHEDULE_CONCURRENCY = 3;
 
-type PendingScheduleTransitionLedgerRow = {
-  seq: number;
-  kind: "decision" | "ref-checkpoint" | "setter" | "storage";
-  name: string;
-  payload: unknown;
-};
-
-export type PendingScheduleTransitionRecorder = (
-  row: Omit<PendingScheduleTransitionLedgerRow, "seq">,
-) => void;
-
-type PendingScheduleTransitionSetters = {
-  setPendingAgentIdempotencyKey: (value: string | null) => void;
-  setPendingAgentOperationId: (value: string | null) => void;
-  setPendingTraceRequestId: (value: string | null) => void;
-  setPendingTraceCorrelationId: (value: string | null) => void;
-  setSelectedDate: (value: Date) => void;
-  setSelectedTimeSlot: (value: { date: Date; time: string }) => void;
-  setSelectedSession: (value: Session | undefined) => void;
-  setRetryHint: (value: string | null) => void;
-  setIsModalOpen: (value: boolean) => void;
-};
-
-export const applyPendingScheduleDetail = ({
-  detail,
-  lastDetailKeyRef,
-  setters,
-  record,
-}: {
-  detail: PendingScheduleDetail | null;
-  lastDetailKeyRef: { current: string | null };
-  setters: PendingScheduleTransitionSetters;
-  record?: PendingScheduleTransitionRecorder;
-}) => {
-  record?.({
-    kind: "ref-checkpoint",
-    name: "before",
-    payload: lastDetailKeyRef.current,
-  });
-
-  const transition = planPendingScheduleTransition(detail, lastDetailKeyRef.current);
-  record?.({
-    kind: "decision",
-    name: transition.decision,
-    payload: {
-      reason: transition.reason,
-      detailKey: transition.detailKey,
-    },
-  });
-  if (transition.decision === "noop") {
-    record?.({
-      kind: "ref-checkpoint",
-      name: "after",
-      payload: lastDetailKeyRef.current,
-    });
-    return transition;
-  }
-
-  lastDetailKeyRef.current = transition.detailKey;
-  record?.({
-    kind: "ref-checkpoint",
-    name: "after",
-    payload: lastDetailKeyRef.current,
-  });
-
-  setters.setPendingAgentIdempotencyKey(transition.pendingAgentIdempotencyKey);
-  record?.({
-    kind: "setter",
-    name: "setPendingAgentIdempotencyKey",
-    payload: transition.pendingAgentIdempotencyKey,
-  });
-
-  setters.setPendingAgentOperationId(transition.pendingAgentOperationId);
-  record?.({
-    kind: "setter",
-    name: "setPendingAgentOperationId",
-    payload: transition.pendingAgentOperationId,
-  });
-
-  setters.setPendingTraceRequestId(transition.pendingTraceRequestId);
-  record?.({
-    kind: "setter",
-    name: "setPendingTraceRequestId",
-    payload: transition.pendingTraceRequestId,
-  });
-
-  setters.setPendingTraceCorrelationId(transition.pendingTraceCorrelationId);
-  record?.({
-    kind: "setter",
-    name: "setPendingTraceCorrelationId",
-    payload: transition.pendingTraceCorrelationId,
-  });
-
-  if (transition.prefill) {
-    setters.setSelectedDate(transition.prefill.date);
-    record?.({
-      kind: "setter",
-      name: "setSelectedDate",
-      payload: transition.prefill.date,
-    });
-
-    setters.setSelectedTimeSlot({
-      date: transition.prefill.date,
-      time: transition.prefill.time,
-    });
-    record?.({
-      kind: "setter",
-      name: "setSelectedTimeSlot",
-      payload: {
-        date: transition.prefill.date,
-        time: transition.prefill.time,
-      },
-    });
-  }
-
-  setters.setSelectedSession(undefined);
-  record?.({
-    kind: "setter",
-    name: "setSelectedSession",
-    payload: undefined,
-  });
-
-  setters.setRetryHint(null);
-  record?.({
-    kind: "setter",
-    name: "setRetryHint",
-    payload: null,
-  });
-
-  setters.setIsModalOpen(true);
-  record?.({
-    kind: "setter",
-    name: "setIsModalOpen",
-    payload: true,
-  });
-
-  return transition;
-};
+export { applyPendingScheduleDetail };
+export type { PendingScheduleTransitionRecorder };
 
 export const consumePendingScheduleFromStorage = ({
   storage,
@@ -573,39 +441,23 @@ export const Schedule = React.memo(() => {
   );
 
   const handleScheduleMutationError = useCallback((error: unknown) => {
-    const normalized = toError(error, "Schedule mutation failed");
-    const status = typeof (error as { status?: number } | null | undefined)?.status === 'number'
-      ? (error as { status?: number }).status
-      : undefined;
+    const adaptation = adaptScheduleMutationError(error);
 
-    const conflictHint = status === 409
-      ? buildSchedulingConflictHint(
-          error,
-          'The selected time slot was just booked. Refresh the schedule or choose a different time.',
-        )
-      : null;
-
-    const lifecyclePlan = planScheduleMutationLifecycle({
-      kind: "mutation-error",
-      status,
-      retryHint: conflictHint,
-    });
-
-    if (lifecyclePlan.errorKind === "conflict") {
-      logger.warn('Schedule mutation conflict', {
+    if (adaptation.lifecyclePlan.errorKind === "conflict") {
+      logger.warn("Schedule mutation conflict", {
         metadata: {
-          hint: lifecyclePlan.resetBranch.retryHint,
-          error: normalized.message,
+          hint: adaptation.conflictLogMetadata?.hint ?? null,
+          error: adaptation.conflictLogMetadata?.error ?? adaptation.normalized.message,
         },
       });
 
-      applyScheduleResetBranch(lifecyclePlan.resetBranch, scheduleResetSetters);
-      showError(`${normalized.message}. ${lifecyclePlan.resetBranch.retryHint}`);
+      applyScheduleResetBranch(adaptation.lifecyclePlan.resetBranch, scheduleResetSetters);
+      showError(adaptation.userMessage);
       return;
     }
 
-    applyScheduleResetBranch(lifecyclePlan.resetBranch, scheduleResetSetters);
-    showError(normalized);
+    applyScheduleResetBranch(adaptation.lifecyclePlan.resetBranch, scheduleResetSetters);
+    showError(adaptation.userMessage);
   }, [scheduleResetSetters]);
 
   const userTimeZone = useMemo(() => {
@@ -872,13 +724,15 @@ export const Schedule = React.memo(() => {
       return bookingResult.session;
     },
     onSuccess: () => {
-      const lifecyclePlan = planScheduleMutationLifecycle({
+      applyScheduleMutationSuccessLifecycle({
         kind: "create-success",
+        invalidateQuery: (queryKey) => {
+          queryClient.invalidateQueries({ queryKey: [queryKey] });
+        },
+        applyResetBranch: (resetBranch) => {
+          applyScheduleResetBranch(resetBranch, scheduleResetSetters);
+        },
       });
-      for (const queryKey of lifecyclePlan.invalidateQueryKeys) {
-        queryClient.invalidateQueries({ queryKey: [queryKey] });
-      }
-      applyScheduleResetBranch(lifecyclePlan.resetBranch, scheduleResetSetters);
     },
     onError: (error) => {
       handleScheduleMutationError(error);
@@ -974,13 +828,15 @@ export const Schedule = React.memo(() => {
       return bookingResult.session;
     },
     onSuccess: () => {
-      const lifecyclePlan = planScheduleMutationLifecycle({
+      applyScheduleMutationSuccessLifecycle({
         kind: "update-success",
+        invalidateQuery: (queryKey) => {
+          queryClient.invalidateQueries({ queryKey: [queryKey] });
+        },
+        applyResetBranch: (resetBranch) => {
+          applyScheduleResetBranch(resetBranch, scheduleResetSetters);
+        },
       });
-      for (const queryKey of lifecyclePlan.invalidateQueryKeys) {
-        queryClient.invalidateQueries({ queryKey: [queryKey] });
-      }
-      applyScheduleResetBranch(lifecyclePlan.resetBranch, scheduleResetSetters);
     },
     onError: (error) => {
       handleScheduleMutationError(error);
@@ -1019,14 +875,20 @@ export const Schedule = React.memo(() => {
         timeSlot,
       });
 
-      setRetryHint(plan.retryHint);
-      setPendingAgentIdempotencyKey(plan.pendingAgentIdempotencyKey);
-      setPendingAgentOperationId(plan.pendingAgentOperationId);
-      setPendingTraceRequestId(plan.pendingTraceRequestId);
-      setPendingTraceCorrelationId(plan.pendingTraceCorrelationId);
-      setSelectedTimeSlot(plan.selectedTimeSlot);
-      setSelectedSession(plan.selectedSession);
-      setIsModalOpen(plan.isModalOpen);
+      applyScheduleModalOpenPlan({
+        mode: "create",
+        plan,
+        setters: {
+          setRetryHint,
+          setPendingAgentIdempotencyKey,
+          setPendingAgentOperationId,
+          setPendingTraceRequestId,
+          setPendingTraceCorrelationId,
+          setSelectedTimeSlot,
+          setSelectedSession,
+          setIsModalOpen,
+        },
+      });
     },
     [],
   );
@@ -1037,14 +899,20 @@ export const Schedule = React.memo(() => {
       session,
     });
 
-    setRetryHint(plan.retryHint);
-    setPendingAgentIdempotencyKey(plan.pendingAgentIdempotencyKey);
-    setPendingAgentOperationId(plan.pendingAgentOperationId);
-    setPendingTraceRequestId(plan.pendingTraceRequestId);
-    setPendingTraceCorrelationId(plan.pendingTraceCorrelationId);
-    setSelectedSession(plan.selectedSession);
-    setSelectedTimeSlot(plan.selectedTimeSlot);
-    setIsModalOpen(plan.isModalOpen);
+    applyScheduleModalOpenPlan({
+      mode: "edit",
+      plan,
+      setters: {
+        setRetryHint,
+        setPendingAgentIdempotencyKey,
+        setPendingAgentOperationId,
+        setPendingTraceRequestId,
+        setPendingTraceCorrelationId,
+        setSelectedSession,
+        setSelectedTimeSlot,
+        setIsModalOpen,
+      },
+    });
   }, []);
 
   const handleAddRecurrenceException = useCallback(() => {
@@ -1460,7 +1328,14 @@ export const Schedule = React.memo(() => {
                 <div className="space-y-2">
                   {recurrenceExceptions.map((value, index) => (
                     <div key={`recurrence-exception-${index}`} className="flex items-center gap-2">
+                      <label
+                        htmlFor={`recurrence-exception-input-${index}`}
+                        className="sr-only"
+                      >
+                        Exception date {index + 1}
+                      </label>
                       <input
+                        id={`recurrence-exception-input-${index}`}
                         type="datetime-local"
                         value={value}
                         onChange={(event) => handleRecurrenceExceptionChange(index, event.target.value)}
@@ -1469,6 +1344,7 @@ export const Schedule = React.memo(() => {
                       <button
                         type="button"
                         onClick={() => handleRemoveRecurrenceException(index)}
+                        aria-label={`Remove exception date ${index + 1}`}
                         className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 focus:outline-none"
                       >
                         Remove

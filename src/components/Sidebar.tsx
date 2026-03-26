@@ -117,21 +117,21 @@ export function Sidebar() {
       icon: FileCheck,
       label: 'Authorizations',
       path: '/authorizations',
-      roles: ['therapist', 'admin', 'super_admin'],
+      roles: ['admin', 'super_admin'],
       requiresGuardian: false,
     },
     { 
       icon: FileText, 
       label: 'Documentation', 
       path: '/documentation',
-      roles: [], // accessible to all authenticated users
+      roles: ['client', 'admin', 'super_admin'], // therapist view excludes docs navigation
       requiresGuardian: false,
     },
     {
       icon: FileText,
       label: 'Fill Docs',
       path: '/fill-docs',
-      roles: ['therapist', 'admin', 'super_admin'],
+      roles: ['admin', 'super_admin'],
       requiresGuardian: false,
     },
     {

@@ -66,6 +66,42 @@ describe("Sidebar navigation active styling", () => {
     expect(icon).toHaveClass("dark:text-blue-400");
   });
 
+  it("hides therapist-inapplicable docs and authorization links", () => {
+    const hasRole = vi.fn(
+      (role: "client" | "therapist" | "admin" | "super_admin") => role === "therapist"
+    );
+
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole,
+      user: {
+        email: "therapist@example.com",
+        user_metadata: {
+          therapist_id: "therapist-123",
+        },
+      },
+      profile: {
+        role: "therapist",
+      },
+      isGuardian: false,
+      hasAnyRole: vi.fn((roles: ("client" | "therapist" | "admin" | "super_admin")[]) =>
+        roles.some(role => hasRole(role))
+      ),
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/schedule"]}>
+        <Sidebar />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByRole("link", { name: /authorizations/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /documentation/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /fill docs/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /schedule/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /clients/i })).toBeInTheDocument();
+  });
+
   it("shows admin navigation items for super admin users", () => {
     const hasRole = vi.fn(
       (role: "client" | "therapist" | "admin" | "super_admin") =>

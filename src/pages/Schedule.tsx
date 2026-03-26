@@ -1328,7 +1328,14 @@ export const Schedule = React.memo(() => {
                 <div className="space-y-2">
                   {recurrenceExceptions.map((value, index) => (
                     <div key={`recurrence-exception-${index}`} className="flex items-center gap-2">
+                      <label
+                        htmlFor={`recurrence-exception-input-${index}`}
+                        className="sr-only"
+                      >
+                        Exception date {index + 1}
+                      </label>
                       <input
+                        id={`recurrence-exception-input-${index}`}
                         type="datetime-local"
                         value={value}
                         onChange={(event) => handleRecurrenceExceptionChange(index, event.target.value)}
@@ -1337,6 +1344,7 @@ export const Schedule = React.memo(() => {
                       <button
                         type="button"
                         onClick={() => handleRemoveRecurrenceException(index)}
+                        aria-label={`Remove exception date ${index + 1}`}
                         className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 focus:outline-none"
                       >
                         Remove

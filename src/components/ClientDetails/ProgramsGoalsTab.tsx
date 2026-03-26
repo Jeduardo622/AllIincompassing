@@ -34,6 +34,10 @@ import {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SUPPORTED_ASSESSMENT_FILE_EXTENSIONS = [".pdf", ".docx"] as const;
+const PROGRAMS_EDGE_PATH = "programs";
+
+const buildProgramsQueryPath = (clientId: string): string =>
+  `${PROGRAMS_EDGE_PATH}?client_id=${encodeURIComponent(clientId)}`;
 
 const isSupportedAssessmentFile = (file: File): boolean => {
   const lowerFileName = file.name.trim().toLowerCase();
@@ -170,7 +174,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!organizationId) {
         throw new Error("Organization context is required to load programs.");
       }
-      const response = await callEdgeFunctionHttp(`programs?client_id=${encodeURIComponent(client.id)}`);
+      const response = await callEdgeFunctionHttp(buildProgramsQueryPath(client.id));
       if (!response.ok) {
         throw new Error("Failed to load programs");
       }
@@ -749,7 +753,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
 
   const createProgram = useMutation({
     mutationFn: async () => {
-      const response = await callEdgeFunctionHttp("programs", {
+      const response = await callEdgeFunctionHttp(PROGRAMS_EDGE_PATH, {
         method: "POST",
         body: JSON.stringify({
           client_id: client.id,

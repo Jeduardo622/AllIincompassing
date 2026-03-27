@@ -27,6 +27,7 @@ Document the minimum monitoring, alerting, and incident response requirements fo
 - [ ] `docs-guard` is not configured as an independent required branch-protection check (it is enforced by `ci-gate` for docs-only changes)
 - [ ] Merge queue (`merge_group`) behavior is documented as full-chain CI before `ci-gate` (docs-only fast path applies to PR/push, not queue runs)
 - [ ] Legacy required-check set (`policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`) is treated as transitional and removed once `ci-gate` migration is complete
+- [ ] Current-state note is understood: CI policy validation still enforces the legacy `CI_REQUIRED_CHECKS` set until the explicit migration step updates it to `ci-gate`
 - [ ] `ci-gate` is added to branch protection before CI policy expectations are updated to `CI_REQUIRED_CHECKS=ci-gate`
 - [ ] Migration is validated with a non-doc test PR before legacy required checks are removed
 - [ ] `npm run test:routes:tier0` passes (browser route/role gate)

@@ -91,6 +91,30 @@ describe("programsHandler", () => {
     expect(response.status).toBe(403);
   });
 
+  it("returns 403 when org context cannot be resolved", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: null,
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    const response = await programsHandler(
+      new Request("http://localhost/api/programs?client_id=11111111-1111-1111-1111-111111111111", {
+        method: "GET",
+        headers: { Authorization: "Bearer token" },
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
   const roleMatrix = [
     {
       label: "therapist",

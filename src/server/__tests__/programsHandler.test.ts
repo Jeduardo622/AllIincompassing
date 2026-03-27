@@ -191,6 +191,38 @@ describe("programsHandler", () => {
     );
   });
 
+  it.each(roleMatrix)("returns 403 for out-of-scope client_id PATCH as $label", async ({ role }) => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      ...role,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: [],
+    });
+
+    const response = await programsHandler(
+      new Request("http://localhost/api/programs?program_id=11111111-1111-4111-8111-111111111111", {
+        method: "PATCH",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ client_id: "22222222-2222-4222-8222-222222222222" }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(fetchJson).toHaveBeenCalledTimes(1);
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/clients"),
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("returns 400 when PATCH program_id is not a UUID", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({

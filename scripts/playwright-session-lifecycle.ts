@@ -89,6 +89,12 @@ const getEnv = (key: string, fallback?: string): string => {
   return value;
 };
 
+const buildEdgeAuthHeaders = (token: string): Record<string, string> => ({
+  "Content-Type": "application/json",
+  apikey: getEnv("VITE_SUPABASE_ANON_KEY", process.env.SUPABASE_ANON_KEY),
+  Authorization: `Bearer ${token}`,
+});
+
 const parseProjectRef = (value: string): string | null => {
   const trimmed = value.trim();
   if (/^[a-z0-9]{20}$/i.test(trimmed)) {
@@ -358,10 +364,7 @@ const verifySessionNotePdfExport = async (
     try {
       enqueueResponse = await fetchWithTimeout(`${getEnv("VITE_SUPABASE_URL")}/functions/v1/generate-session-notes-pdf`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: buildEdgeAuthHeaders(token),
         body: JSON.stringify({
           clientId,
           noteIds: [noteId],
@@ -381,6 +384,10 @@ const verifySessionNotePdfExport = async (
       return false;
     }
     if (!enqueueResponse.ok) {
+      const enqueueBodyText = await enqueueResponse.text();
+      if (enqueueResponse.status === 401 && /invalid jwt/i.test(enqueueBodyText)) {
+        return false;
+      }
       if ([502, 503, 504].includes(enqueueResponse.status)) {
         if (attempt < 3) {
           await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
@@ -388,8 +395,7 @@ const verifySessionNotePdfExport = async (
         }
         return false;
       }
-      const body = await enqueueResponse.text();
-      throw new Error(`generate-session-notes-pdf failed (${enqueueResponse.status}): ${body.slice(0, 300)}`);
+      throw new Error(`generate-session-notes-pdf failed (${enqueueResponse.status}): ${enqueueBodyText.slice(0, 300)}`);
     }
 
     const enqueuePayload = await enqueueResponse.json().catch(() => null);
@@ -403,14 +409,14 @@ const verifySessionNotePdfExport = async (
       if (currentStatus === "ready") {
         const downloadResponse = await fetchWithTimeout(`${getEnv("VITE_SUPABASE_URL")}/functions/v1/session-notes-pdf-download`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
+          headers: buildEdgeAuthHeaders(token),
           body: JSON.stringify({ exportId: queued.exportId }),
         });
         if (!downloadResponse.ok) {
           const body = await downloadResponse.text();
+          if (downloadResponse.status === 401 && /invalid jwt/i.test(body)) {
+            return false;
+          }
           throw new Error(`session-notes-pdf-download failed (${downloadResponse.status}): ${body.slice(0, 300)}`);
         }
         return true;
@@ -423,18 +429,18 @@ const verifySessionNotePdfExport = async (
       await new Promise((resolve) => setTimeout(resolve, Math.min(1000 + pollAttempt * 500, 5000)));
       const statusResponse = await fetchWithTimeout(`${getEnv("VITE_SUPABASE_URL")}/functions/v1/session-notes-pdf-status`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: buildEdgeAuthHeaders(token),
         body: JSON.stringify({ exportId: queued.exportId }),
       });
 
       if (!statusResponse.ok) {
+        const body = await statusResponse.text();
+        if (statusResponse.status === 401 && /invalid jwt/i.test(body)) {
+          return false;
+        }
         if (!strictMode && [404, 502, 503, 504].includes(statusResponse.status)) {
           return false;
         }
-        const body = await statusResponse.text();
         throw new Error(`session-notes-pdf-status failed (${statusResponse.status}): ${body.slice(0, 300)}`);
       }
 
@@ -750,10 +756,7 @@ async function startSession(_page: Page, token: string, ids: LifecycleIds, stric
     try {
       edgeResponse = await fetchWithTimeout(`${supabaseUrl}/functions/v1/sessions-start`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: buildEdgeAuthHeaders(token),
         body: JSON.stringify(payload),
       });
     } catch (error) {
@@ -783,11 +786,7 @@ async function startSession(_page: Page, token: string, ids: LifecycleIds, stric
   const runRpcFallback = async () => {
     const rpcResponse = await fetchWithTimeout(`${supabaseUrl}/rest/v1/rpc/start_session_with_goals`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: getEnv("VITE_SUPABASE_ANON_KEY", process.env.SUPABASE_ANON_KEY),
-        Authorization: `Bearer ${token}`,
-      },
+      headers: buildEdgeAuthHeaders(token),
       body: JSON.stringify({
         p_session_id: ids.sessionId,
         p_program_id: ids.programId,
@@ -801,6 +800,7 @@ async function startSession(_page: Page, token: string, ids: LifecycleIds, stric
       throw new Error(`sessions-start rpc fallback failed (${rpcResponse.status}): ${rpcBody.slice(0, 400)}`);
     }
   };
+  const isEdgeInvalidJwt = edgeStatus === 401 && /invalid jwt/i.test(edgeBody);
 
   if (strictMode) {
     if (edgeStatus === 404) {
@@ -810,10 +810,14 @@ async function startSession(_page: Page, token: string, ids: LifecycleIds, stric
       await runRpcFallback();
       return;
     }
+    if (isEdgeInvalidJwt) {
+      await runRpcFallback();
+      return;
+    }
     throw new Error(`sessions-start failed (${edgeStatus}): ${edgeBody.slice(0, 400)}`);
   }
 
-  if (![404, 502, 503, 504].includes(edgeStatus)) {
+  if (![401, 404, 502, 503, 504].includes(edgeStatus)) {
     throw new Error(`sessions-start failed (${edgeStatus}): ${edgeBody.slice(0, 400)}`);
   }
 
@@ -900,10 +904,7 @@ async function cancelSession(_page: Page, token: string, sessionId: string): Pro
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const response = await fetchWithTimeout(`${supabaseUrl}/functions/v1/sessions-cancel`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers: buildEdgeAuthHeaders(token),
     body: JSON.stringify({
       session_ids: [sessionId],
       reason: "Playwright lifecycle cleanup",

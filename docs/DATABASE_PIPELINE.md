@@ -1,14 +1,19 @@
 # Database-First CI/CD Pipeline
 
-This document describes the current database-related CI behavior in this repository and the supporting local scripts.
+This document describes the current Supabase/database-governance CI behavior in this repository and the supporting local scripts.
+It focuses on `supabase-validate.yml`, `ci.yml`, and `supabase-preview.yml`; `database-first-ci.yml` currently remains a placeholder workflow and is not an active source of database validation gates.
 
 ## Overview
 
-The current model has three tracks:
+The current model has three primary tracks:
 
-1. `supabase-validate.yml` for migration lint and hosted DB test coverage.
+1. `supabase-validate.yml` for migration lint and hosted DB integration test execution.
 2. `ci.yml` for repository-wide quality and policy gates.
 3. `supabase-preview.yml` for on-demand local Supabase preview runs.
+
+Supporting parallel safety gate:
+
+- `tenant-safety.yml` runs `npm run validate:tenant` (plus lint/typecheck/tests) on pull requests and pushes to `main`.
 
 The repository does not create per-PR Supabase branches automatically. Branch creation remains manual via `npm run db:branch:create` when isolation is needed.
 
@@ -57,6 +62,9 @@ The repository does not create per-PR Supabase branches automatically. Branch cr
   - `tier0-browser`
   - `auth-browser-smoke`
 - `ci-gate` is the final required status gate for branch protection.
+- Current transition state:
+  - branch protection should require `ci-gate`
+  - `policy` still validates `CI_REQUIRED_CHECKS` against the legacy set (`policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`) until that migration is explicitly completed
 
 ### `supabase-preview.yml`
 
@@ -125,4 +133,4 @@ npm run ci:playwright
 
 - If migration lint is skipped in `supabase-validate.yml`, confirm `SUPABASE_PROJECT_REF` is configured.
 - If docs-only changes fail `docs-guard`, verify every `npm run <script>` in changed docs exists in `package.json`.
-- If policy checks fail branch-protection validation, align required checks with the current `ci-gate` contract documented in `docs/ai/pr-merge-queue-settings.md`.
+- If policy checks fail branch-protection validation, align branch protection and `CI_REQUIRED_CHECKS` using the staged migration order in `docs/ai/pr-merge-queue-settings.md` (do not flip one side in isolation).

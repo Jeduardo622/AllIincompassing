@@ -120,7 +120,10 @@ export const handlePrograms = async (req: Request) => {
       .select("*")
       .limit(1);
     if (error) return json(req, { error: "Failed to update program" }, 500);
-    return json(req, data?.[0] ?? null);
+    if (!data || data.length === 0) {
+      return json(req, { error: "program_id is not in scope for this organization" }, 403);
+    }
+    return json(req, data[0]);
   }
 
   return json(req, { error: "Method not allowed" }, 405);

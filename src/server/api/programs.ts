@@ -136,8 +136,11 @@ export async function programsHandler(request: Request): Promise<Response> {
     if (!result.ok) {
       return json({ error: "Failed to update program" }, result.status || 500);
     }
-
-    return json(Array.isArray(result.data) ? result.data[0] : result.data);
+    const updatedProgram = Array.isArray(result.data) ? result.data[0] : result.data;
+    if (!updatedProgram) {
+      return json({ error: "program_id is not in scope for this organization" }, 403);
+    }
+    return json(updatedProgram);
   }
 
   return json({ error: "Method not allowed" }, 405);

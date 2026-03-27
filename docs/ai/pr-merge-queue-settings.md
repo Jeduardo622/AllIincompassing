@@ -22,7 +22,7 @@ For branch `main` (and `develop` when that branch is actively protected):
 
 ## Docs-Only Fast Path Scope
 
-The fast path applies only to markdown/governance documentation paths (for example `docs/**/*.md`, `reports/**/*.md`, top-level `README*.md`, `AGENTS.md`, and skill `SKILL.md` files). Non-markdown files under docs/reports still take the full CI path.
+The fast path applies only to markdown/governance documentation paths (for example `docs/**/*.md`, `reports/**/*.md`, top-level `README*.md`, `AGENTS.md`, and skill `SKILL.md` files under `.agents/skills/**` and `.cursor/skills/**`). Non-markdown files under docs/reports still take the full CI path.
 
 ## Required Checks Guidance
 
@@ -44,6 +44,7 @@ Why:
 Legacy (transitional only): if your branch protection still requires individual checks (`policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`), migrate to `ci-gate` in one update window and validate with a test PR before enforcing.
 
 Until the migration step that updates CI policy expectations (`CI_REQUIRED_CHECKS`) is complete, keep branch-protection and policy changes coordinated in the same rollout window to avoid temporary mismatch.
+Current repository state: `CI_REQUIRED_CHECKS` policy validation still expects the legacy required-check set; treat `ci-gate` as the branch-protection target and follow the migration order below when switching policy expectations.
 
 Migration order requirement:
 

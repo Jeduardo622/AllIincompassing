@@ -70,6 +70,17 @@ describe("assessmentDocumentsHandler", () => {
     expect(payload.assessment_document_id).toBe(payload.item_id);
   };
 
+  const expectExtractionFailedOrgClientLinkageInvariants = (
+    payload: Record<string, unknown>,
+    expectedOrganizationId: string,
+    expectedClientId: string,
+  ) => {
+    expect(payload.organization_id).toBe(expectedOrganizationId);
+    expect(payload.client_id).toBe(expectedClientId);
+    expect(payload.organization_id).toEqual(expect.any(String));
+    expect(payload.client_id).toEqual(expect.any(String));
+  };
+
   const mockUploadFlowResponses = (documentId: string) => {
     vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
@@ -765,6 +776,11 @@ describe("assessmentDocumentsHandler", () => {
     ) as Record<string, unknown>;
     expectExtractionFailedActorStatusInvariants(extractionFailedReviewEventPayload, "doc-extract-non-ok");
     expectExtractionFailedIdLinkageInvariants(extractionFailedReviewEventPayload, "doc-extract-non-ok");
+    expectExtractionFailedOrgClientLinkageInvariants(
+      extractionFailedReviewEventPayload,
+      "org-1",
+      "11111111-1111-1111-1111-111111111111",
+    );
     expect(extractionFailedReviewEventPayload).toStrictEqual({
       assessment_document_id: "doc-extract-non-ok",
       organization_id: "org-1",
@@ -900,6 +916,11 @@ describe("assessmentDocumentsHandler", () => {
     ) as Record<string, unknown>;
     expectExtractionFailedActorStatusInvariants(extractionFailedReviewEventPayload, "doc-extract-throw");
     expectExtractionFailedIdLinkageInvariants(extractionFailedReviewEventPayload, "doc-extract-throw");
+    expectExtractionFailedOrgClientLinkageInvariants(
+      extractionFailedReviewEventPayload,
+      "org-1",
+      "11111111-1111-1111-1111-111111111111",
+    );
     expect(extractionFailedReviewEventPayload).toStrictEqual({
       assessment_document_id: "doc-extract-throw",
       organization_id: "org-1",

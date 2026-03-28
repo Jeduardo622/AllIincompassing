@@ -739,7 +739,7 @@ describe("assessmentDocumentsHandler", () => {
     const extractionFailedReviewEventPayload = JSON.parse(
       (extractionFailedReviewEventCalls[0]?.[1] as RequestInit).body as string,
     ) as Record<string, unknown>;
-    expect(extractionFailedReviewEventPayload).toMatchObject({
+    expect(extractionFailedReviewEventPayload).toStrictEqual({
       assessment_document_id: "doc-extract-non-ok",
       organization_id: "org-1",
       client_id: "11111111-1111-1111-1111-111111111111",
@@ -750,6 +750,18 @@ describe("assessmentDocumentsHandler", () => {
       to_status: "extraction_failed",
       actor_id: "user-1",
     });
+    const reviewEventCalls = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url, init]) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        return typeof url === "string" && method === "POST" && url.includes("/rest/v1/assessment_review_events");
+      });
+    expect(reviewEventCalls).toHaveLength(2);
+    const uploadedEventCalls = reviewEventCalls.filter(([, init]) => {
+      const body = typeof init?.body === "string" ? init.body : "";
+      return body.includes("\"action\":\"uploaded\"");
+    });
+    expect(uploadedEventCalls).toHaveLength(1);
     const extractionCompletedEventCalls = vi
       .mocked(fetchJson)
       .mock.calls.filter(([url, init]) => {
@@ -848,7 +860,7 @@ describe("assessmentDocumentsHandler", () => {
     const extractionFailedReviewEventPayload = JSON.parse(
       (extractionFailedReviewEventCalls[0]?.[1] as RequestInit).body as string,
     ) as Record<string, unknown>;
-    expect(extractionFailedReviewEventPayload).toMatchObject({
+    expect(extractionFailedReviewEventPayload).toStrictEqual({
       assessment_document_id: "doc-extract-throw",
       organization_id: "org-1",
       client_id: "11111111-1111-1111-1111-111111111111",
@@ -859,6 +871,18 @@ describe("assessmentDocumentsHandler", () => {
       to_status: "extraction_failed",
       actor_id: "user-1",
     });
+    const reviewEventCalls = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url, init]) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        return typeof url === "string" && method === "POST" && url.includes("/rest/v1/assessment_review_events");
+      });
+    expect(reviewEventCalls).toHaveLength(2);
+    const uploadedEventCalls = reviewEventCalls.filter(([, init]) => {
+      const body = typeof init?.body === "string" ? init.body : "";
+      return body.includes("\"action\":\"uploaded\"");
+    });
+    expect(uploadedEventCalls).toHaveLength(1);
     const extractionCompletedEventCalls = vi
       .mocked(fetchJson)
       .mock.calls.filter(([url, init]) => {

@@ -267,6 +267,65 @@ describe("assessmentDocumentsHandler", () => {
     expect(response.status).toBe(400);
   });
 
+  it.each(roleMatrix)("returns 403 for out-of-org assessment document POST as $label without side effects", async ({ role }) => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      ...role,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/client-1/assessments/fba.pdf",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "client_id is not in scope for this organization",
+    });
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/clients?select=id"),
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchJson).toHaveBeenCalledTimes(1);
+    expect(loadChecklistTemplateRows).not.toHaveBeenCalled();
+
+    const sideEffectCalls = vi.mocked(fetchJson).mock.calls.filter(([url, init]) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (typeof url !== "string") return false;
+      if (method !== "POST" && method !== "PATCH") return false;
+      return (
+        url.includes("/rest/v1/assessment_documents") ||
+        url.includes("/rest/v1/assessment_checklist_items") ||
+        url.includes("/rest/v1/assessment_extractions") ||
+        url.includes("/rest/v1/assessment_review_events") ||
+        url.includes("/functions/v1/extract-assessment-fields")
+      );
+    });
+    expect(sideEffectCalls).toHaveLength(0);
+  });
+
   it("auto-generates staged drafts with structured payload and no live publish", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({

@@ -750,6 +750,11 @@ describe("assessmentDocumentsHandler", () => {
       to_status: "extraction_failed",
       actor_id: "user-1",
     });
+    expect(extractionFailedReviewEventPayload).not.toHaveProperty("notes");
+    expect(extractionFailedReviewEventPayload).not.toHaveProperty("event_payload");
+    expect(extractionFailedReviewEventPayload).not.toHaveProperty("extracted_count");
+    expect(extractionFailedReviewEventPayload).not.toHaveProperty("unresolved_count");
+    expect(extractionFailedReviewEventPayload).not.toHaveProperty("unresolved_keys");
     const reviewEventCalls = vi
       .mocked(fetchJson)
       .mock.calls.filter(([url, init]) => {
@@ -776,6 +781,13 @@ describe("assessmentDocumentsHandler", () => {
       .mocked(fetchJson)
       .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/functions/v1/generate-program-goals"));
     expect(generateCalls).toHaveLength(0);
+    const draftWriteCalls = vi.mocked(fetchJson).mock.calls.filter(([url, init]) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (typeof url !== "string") return false;
+      if (method !== "POST") return false;
+      return url.includes("/rest/v1/assessment_draft_programs") || url.includes("/rest/v1/assessment_draft_goals");
+    });
+    expect(draftWriteCalls).toHaveLength(0);
   });
 
   it("records extraction_failed audit event when extraction workflow throws", async () => {
@@ -871,6 +883,11 @@ describe("assessmentDocumentsHandler", () => {
       to_status: "extraction_failed",
       actor_id: "user-1",
     });
+    expect(extractionFailedReviewEventPayload).not.toHaveProperty("notes");
+    expect(extractionFailedReviewEventPayload).not.toHaveProperty("event_payload");
+    expect(extractionFailedReviewEventPayload).not.toHaveProperty("extracted_count");
+    expect(extractionFailedReviewEventPayload).not.toHaveProperty("unresolved_count");
+    expect(extractionFailedReviewEventPayload).not.toHaveProperty("unresolved_keys");
     const reviewEventCalls = vi
       .mocked(fetchJson)
       .mock.calls.filter(([url, init]) => {
@@ -897,6 +914,13 @@ describe("assessmentDocumentsHandler", () => {
       .mocked(fetchJson)
       .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/functions/v1/generate-program-goals"));
     expect(generateCalls).toHaveLength(0);
+    const draftWriteCalls = vi.mocked(fetchJson).mock.calls.filter(([url, init]) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (typeof url !== "string") return false;
+      if (method !== "POST") return false;
+      return url.includes("/rest/v1/assessment_draft_programs") || url.includes("/rest/v1/assessment_draft_goals");
+    });
+    expect(draftWriteCalls).toHaveLength(0);
   });
 
   it("marks extraction failure and cleans staged programs on missing_program_match", async () => {

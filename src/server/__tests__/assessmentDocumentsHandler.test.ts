@@ -726,13 +726,40 @@ describe("assessmentDocumentsHandler", () => {
         body: expect.stringContaining("extraction_failed"),
       }),
     );
-    expect(fetchJson).toHaveBeenCalledWith(
-      expect.stringContaining("/rest/v1/assessment_review_events"),
-      expect.objectContaining({
-        method: "POST",
-        body: expect.stringContaining("\"action\":\"extraction_failed\""),
-      }),
-    );
+    const extractionFailedReviewEventCalls = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url, init]) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (typeof url !== "string" || method !== "POST") return false;
+        if (!url.includes("/rest/v1/assessment_review_events")) return false;
+        const body = typeof init?.body === "string" ? init.body : "";
+        return body.includes("\"action\":\"extraction_failed\"");
+      });
+    expect(extractionFailedReviewEventCalls).toHaveLength(1);
+    const extractionFailedReviewEventPayload = JSON.parse(
+      (extractionFailedReviewEventCalls[0]?.[1] as RequestInit).body as string,
+    ) as Record<string, unknown>;
+    expect(extractionFailedReviewEventPayload).toMatchObject({
+      assessment_document_id: "doc-extract-non-ok",
+      organization_id: "org-1",
+      client_id: "11111111-1111-1111-1111-111111111111",
+      item_type: "document",
+      item_id: "doc-extract-non-ok",
+      action: "extraction_failed",
+      from_status: "extracting",
+      to_status: "extraction_failed",
+      actor_id: "user-1",
+    });
+    const extractionCompletedEventCalls = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url, init]) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (typeof url !== "string" || method !== "POST") return false;
+        if (!url.includes("/rest/v1/assessment_review_events")) return false;
+        const body = typeof init?.body === "string" ? init.body : "";
+        return body.includes("\"action\":\"extraction_completed\"");
+      });
+    expect(extractionCompletedEventCalls).toHaveLength(0);
     const generateCalls = vi
       .mocked(fetchJson)
       .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/functions/v1/generate-program-goals"));
@@ -808,13 +835,40 @@ describe("assessmentDocumentsHandler", () => {
         body: expect.stringContaining("extraction_failed"),
       }),
     );
-    expect(fetchJson).toHaveBeenCalledWith(
-      expect.stringContaining("/rest/v1/assessment_review_events"),
-      expect.objectContaining({
-        method: "POST",
-        body: expect.stringContaining("\"action\":\"extraction_failed\""),
-      }),
-    );
+    const extractionFailedReviewEventCalls = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url, init]) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (typeof url !== "string" || method !== "POST") return false;
+        if (!url.includes("/rest/v1/assessment_review_events")) return false;
+        const body = typeof init?.body === "string" ? init.body : "";
+        return body.includes("\"action\":\"extraction_failed\"");
+      });
+    expect(extractionFailedReviewEventCalls).toHaveLength(1);
+    const extractionFailedReviewEventPayload = JSON.parse(
+      (extractionFailedReviewEventCalls[0]?.[1] as RequestInit).body as string,
+    ) as Record<string, unknown>;
+    expect(extractionFailedReviewEventPayload).toMatchObject({
+      assessment_document_id: "doc-extract-throw",
+      organization_id: "org-1",
+      client_id: "11111111-1111-1111-1111-111111111111",
+      item_type: "document",
+      item_id: "doc-extract-throw",
+      action: "extraction_failed",
+      from_status: "extracting",
+      to_status: "extraction_failed",
+      actor_id: "user-1",
+    });
+    const extractionCompletedEventCalls = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url, init]) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (typeof url !== "string" || method !== "POST") return false;
+        if (!url.includes("/rest/v1/assessment_review_events")) return false;
+        const body = typeof init?.body === "string" ? init.body : "";
+        return body.includes("\"action\":\"extraction_completed\"");
+      });
+    expect(extractionCompletedEventCalls).toHaveLength(0);
     const generateCalls = vi
       .mocked(fetchJson)
       .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/functions/v1/generate-program-goals"));

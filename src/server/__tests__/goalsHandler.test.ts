@@ -19,6 +19,21 @@ describe("goalsHandler", () => {
     vi.resetAllMocks();
   });
 
+  const roleMatrix = [
+    {
+      label: "therapist",
+      role: { isTherapist: true, isAdmin: false, isSuperAdmin: false },
+    },
+    {
+      label: "admin",
+      role: { isTherapist: false, isAdmin: true, isSuperAdmin: false },
+    },
+    {
+      label: "super_admin",
+      role: { isTherapist: false, isAdmin: false, isSuperAdmin: true },
+    },
+  ] as const;
+
   it("returns 401 when authorization header is missing", async () => {
     const response = await goalsHandler(
       new Request("http://localhost/api/goals?program_id=program-1", { method: "GET" }),
@@ -133,5 +148,36 @@ describe("goalsHandler", () => {
     const createPayload = JSON.parse((createCall?.[1] as RequestInit).body as string) as Record<string, unknown>;
     expect(createPayload.mastery_criteria).toBe("80% for 2 sessions");
     expect(Array.isArray(createPayload.objective_data_points)).toBe(true);
+  });
+
+  it.each(roleMatrix)("returns 403 for out-of-org goal PATCH as $label", async ({ role }) => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      ...role,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: [],
+    });
+
+    const response = await goalsHandler(
+      new Request("http://localhost/api/goals?goal_id=11111111-1111-4111-8111-111111111111", {
+        method: "PATCH",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ title: "Updated Goal" }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("organization_id=eq.org-1"),
+      expect.objectContaining({ method: "PATCH" }),
+    );
   });
 });

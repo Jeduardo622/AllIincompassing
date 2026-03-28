@@ -46,6 +46,21 @@ describe("assessmentDocumentsHandler", () => {
     },
   ] as const;
 
+  const expectExtractionFailedActorStatusInvariants = (
+    payload: Record<string, unknown>,
+    expectedDocumentId: string,
+  ) => {
+    expect(payload.action).toBe("extraction_failed");
+    expect(payload.from_status).toBe("extracting");
+    expect(payload.to_status).toBe("extraction_failed");
+    expect(payload.actor_id).toBe("user-1");
+    expect(payload.item_type).toBe("document");
+    expect(payload.assessment_document_id).toBe(expectedDocumentId);
+    expect(payload.item_id).toBe(expectedDocumentId);
+    expect(payload.organization_id).toBe("org-1");
+    expect(payload.client_id).toBe("11111111-1111-1111-1111-111111111111");
+  };
+
   const mockUploadFlowResponses = (documentId: string) => {
     vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
@@ -739,6 +754,7 @@ describe("assessmentDocumentsHandler", () => {
     const extractionFailedReviewEventPayload = JSON.parse(
       (extractionFailedReviewEventCalls[0]?.[1] as RequestInit).body as string,
     ) as Record<string, unknown>;
+    expectExtractionFailedActorStatusInvariants(extractionFailedReviewEventPayload, "doc-extract-non-ok");
     expect(extractionFailedReviewEventPayload).toStrictEqual({
       assessment_document_id: "doc-extract-non-ok",
       organization_id: "org-1",
@@ -872,6 +888,7 @@ describe("assessmentDocumentsHandler", () => {
     const extractionFailedReviewEventPayload = JSON.parse(
       (extractionFailedReviewEventCalls[0]?.[1] as RequestInit).body as string,
     ) as Record<string, unknown>;
+    expectExtractionFailedActorStatusInvariants(extractionFailedReviewEventPayload, "doc-extract-throw");
     expect(extractionFailedReviewEventPayload).toStrictEqual({
       assessment_document_id: "doc-extract-throw",
       organization_id: "org-1",

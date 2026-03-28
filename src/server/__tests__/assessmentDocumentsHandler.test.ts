@@ -31,6 +31,21 @@ describe("assessmentDocumentsHandler", () => {
     vi.resetAllMocks();
   });
 
+  const roleMatrix = [
+    {
+      label: "therapist",
+      role: { isTherapist: true, isAdmin: false, isSuperAdmin: false },
+    },
+    {
+      label: "admin",
+      role: { isTherapist: false, isAdmin: true, isSuperAdmin: false },
+    },
+    {
+      label: "super_admin",
+      role: { isTherapist: false, isAdmin: false, isSuperAdmin: true },
+    },
+  ] as const;
+
   const mockUploadFlowResponses = (documentId: string) => {
     vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
@@ -720,6 +735,50 @@ describe("assessmentDocumentsHandler", () => {
       .mock.calls.find(([url]) => typeof url === "string" && url.includes("/rest/v1/goals"));
     expect(liveProgramWrite).toBeUndefined();
     expect(liveGoalWrite).toBeUndefined();
+  });
+
+  it.each(roleMatrix)("returns 403 for out-of-org assessment document delete as $label without side effects", async ({ role }) => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      ...role,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,bucket_id,object_path")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request(
+        "http://localhost/api/assessment-documents?assessment_document_id=11111111-1111-4111-8111-111111111111",
+        {
+          method: "DELETE",
+          headers: { Authorization: "Bearer token" },
+        },
+      ),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "assessment_document_id is not in scope for this organization",
+    });
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_documents?select=id,organization_id,client_id,bucket_id,object_path"),
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchJson).toHaveBeenCalledTimes(1);
+    const deleteCalls = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([, init]) => (init?.method ?? "GET").toUpperCase() === "DELETE");
+    expect(deleteCalls).toHaveLength(0);
   });
 
   it("deletes an assessment document and dependent rows", async () => {

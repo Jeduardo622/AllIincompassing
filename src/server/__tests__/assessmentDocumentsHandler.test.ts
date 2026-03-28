@@ -87,6 +87,15 @@ describe("assessmentDocumentsHandler", () => {
     expect(payload.from_status).not.toBe(payload.to_status);
   };
 
+  const expectExtractionFailedActorDocumentTypeInvariants = (
+    payload: Record<string, unknown>,
+    expectedActorId: string,
+  ) => {
+    expect(payload.actor_id).toBe(expectedActorId);
+    expect(payload.item_type).toBe("document");
+    expect(payload.actor_id).toEqual(expect.any(String));
+  };
+
   const mockUploadFlowResponses = (documentId: string) => {
     vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
@@ -788,6 +797,7 @@ describe("assessmentDocumentsHandler", () => {
       "11111111-1111-1111-1111-111111111111",
     );
     expectExtractionFailedLifecycleTransitionInvariants(extractionFailedReviewEventPayload);
+    expectExtractionFailedActorDocumentTypeInvariants(extractionFailedReviewEventPayload, "user-1");
     expect(extractionFailedReviewEventPayload).toStrictEqual({
       assessment_document_id: "doc-extract-non-ok",
       organization_id: "org-1",
@@ -929,6 +939,7 @@ describe("assessmentDocumentsHandler", () => {
       "11111111-1111-1111-1111-111111111111",
     );
     expectExtractionFailedLifecycleTransitionInvariants(extractionFailedReviewEventPayload);
+    expectExtractionFailedActorDocumentTypeInvariants(extractionFailedReviewEventPayload, "user-1");
     expect(extractionFailedReviewEventPayload).toStrictEqual({
       assessment_document_id: "doc-extract-throw",
       organization_id: "org-1",

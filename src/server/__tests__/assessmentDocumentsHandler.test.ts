@@ -61,6 +61,15 @@ describe("assessmentDocumentsHandler", () => {
     expect(payload.client_id).toBe("11111111-1111-1111-1111-111111111111");
   };
 
+  const expectExtractionFailedIdLinkageInvariants = (
+    payload: Record<string, unknown>,
+    expectedDocumentId: string,
+  ) => {
+    expect(payload.assessment_document_id).toBe(expectedDocumentId);
+    expect(payload.item_id).toBe(expectedDocumentId);
+    expect(payload.assessment_document_id).toBe(payload.item_id);
+  };
+
   const mockUploadFlowResponses = (documentId: string) => {
     vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
@@ -755,6 +764,7 @@ describe("assessmentDocumentsHandler", () => {
       (extractionFailedReviewEventCalls[0]?.[1] as RequestInit).body as string,
     ) as Record<string, unknown>;
     expectExtractionFailedActorStatusInvariants(extractionFailedReviewEventPayload, "doc-extract-non-ok");
+    expectExtractionFailedIdLinkageInvariants(extractionFailedReviewEventPayload, "doc-extract-non-ok");
     expect(extractionFailedReviewEventPayload).toStrictEqual({
       assessment_document_id: "doc-extract-non-ok",
       organization_id: "org-1",
@@ -889,6 +899,7 @@ describe("assessmentDocumentsHandler", () => {
       (extractionFailedReviewEventCalls[0]?.[1] as RequestInit).body as string,
     ) as Record<string, unknown>;
     expectExtractionFailedActorStatusInvariants(extractionFailedReviewEventPayload, "doc-extract-throw");
+    expectExtractionFailedIdLinkageInvariants(extractionFailedReviewEventPayload, "doc-extract-throw");
     expect(extractionFailedReviewEventPayload).toStrictEqual({
       assessment_document_id: "doc-extract-throw",
       organization_id: "org-1",

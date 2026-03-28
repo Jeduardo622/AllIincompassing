@@ -41,7 +41,7 @@ This playbook captures the operational steps required to stand up and maintain t
 
 The active workflow (`.github/workflows/ci.yml`) runs staged jobs on pull requests and pushes to `main`/`develop`:
 
-1. `policy` – runs `npm run ci:deploy:session-edge-bundle`, `npm run ci:secrets`, and `npm run ci:check-focused` (startup canary + governance guards).
+1. `policy` – runs `npm run ci:deploy:session-edge-bundle` on `pull_request`/`push`, plus `npm run ci:secrets` and `npm run ci:check-focused` for all non-doc CI paths (startup canary + governance guards).
 2. `lint-typecheck` and `unit-tests` – parallel code-quality and test gates after `policy`.
 3. `build` – build canary once lint + unit tests pass.
 4. `tier0-browser` and `auth-browser-smoke` – browser-critical regression gates.
@@ -60,6 +60,7 @@ Merge queue note:
 - `auth-browser-smoke` can soft-skip for missing secrets on `pull_request`, but missing secrets fail the job on `merge_group`/`push`
 
 Legacy required checks (`policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`) are transitional only while repositories migrate branch protection to `ci-gate`.
+Current-state note: policy validation still expects the legacy `CI_REQUIRED_CHECKS` set until a coordinated migration updates CI policy expectations to `ci-gate`.
 
 Migration order requirement:
 

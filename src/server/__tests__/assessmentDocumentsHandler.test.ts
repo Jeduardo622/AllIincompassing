@@ -368,7 +368,6 @@ describe("assessmentDocumentsHandler", () => {
       expect(fetchJson).toHaveBeenCalledTimes(1);
     },
   );
-
   it("auto-generates staged drafts with structured payload and no live publish", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({

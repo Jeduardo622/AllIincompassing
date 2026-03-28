@@ -135,7 +135,10 @@ export const handleGoals = async (req: Request) => {
       .select("*")
       .limit(1);
     if (error) return json({ error: "Failed to update goal" }, 500);
-    return json(data?.[0] ?? null);
+    if (!data || data.length === 0) {
+      return json({ error: "goal_id is not in scope for this organization" }, 403);
+    }
+    return json(data[0]);
   }
 
   return json({ error: "Method not allowed" }, 405);

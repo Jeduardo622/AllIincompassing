@@ -214,8 +214,11 @@ export async function goalsHandler(request: Request): Promise<Response> {
     if (!result.ok) {
       return json({ error: "Failed to update goal" }, result.status || 500);
     }
-
-    return json(Array.isArray(result.data) ? result.data[0] : result.data);
+    const updatedGoal = Array.isArray(result.data) ? result.data[0] : result.data;
+    if (!updatedGoal) {
+      return json({ error: "goal_id is not in scope for this organization" }, 403);
+    }
+    return json(updatedGoal);
   }
 
   return json({ error: "Method not allowed" }, 405);

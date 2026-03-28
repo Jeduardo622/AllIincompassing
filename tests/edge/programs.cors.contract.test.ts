@@ -146,6 +146,35 @@ describe('programs route CORS contract', () => {
     expect(response.headers.get('Content-Type')).toContain('application/json');
   });
 
+  it('returns 403 for invalid-token + missing-org combinations by prioritizing org-context denial', async () => {
+    const getUserMock = vi.fn(async () => ({
+      data: { user: null },
+      error: { message: 'invalid token' },
+    }));
+    createRequestClientMock.mockReturnValue({
+      auth: {
+        getUser: getUserMock,
+      },
+    });
+    requireOrgMock.mockRejectedValue(new MissingOrgContextError());
+    const module = await loadProgramsModule();
+
+    const response = await module.handlePrograms(
+      new Request('https://edge.example.com/functions/v1/programs?client_id=11111111-1111-4111-8111-111111111111', {
+        method: 'GET',
+        headers: {
+          Origin: 'https://preview.example.com',
+          Authorization: 'Bearer invalid-token',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(getUserMock).not.toHaveBeenCalled();
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://preview.example.com');
+    expect(response.headers.get('Content-Type')).toContain('application/json');
+  });
+
   it('keeps protected-route auth errors CORS-observable for browser callers', async () => {
     const module = await loadProgramsModule();
 

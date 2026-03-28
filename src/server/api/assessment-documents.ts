@@ -682,6 +682,10 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
       if (!isUuid(clientId)) {
         return jsonForRequest(request, { error: "client_id must be a valid UUID" }, 400);
       }
+      const clientExists = await clientExistsInOrg(clientId);
+      if (!clientExists) {
+        return jsonForRequest(request, { error: "client_id is not in scope for this organization" }, 403);
+      }
       const urlValue = `${supabaseUrl}/rest/v1/assessment_documents?select=*&${baseQuery}&client_id=eq.${encodeURIComponent(
         clientId,
       )}&order=created_at.desc`;

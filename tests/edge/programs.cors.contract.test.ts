@@ -292,4 +292,43 @@ describe('programs route org-scope deny matrix', () => {
 
     expect(response.status).toBe(403);
   });
+
+  it.each(roleMatrix)('denies out-of-scope PATCH client_id for %s role', async (activeRole) => {
+    createRequestClientMock.mockReturnValue({
+      auth: {
+        getUser: vi.fn(async () => ({ data: { user: { id: 'user-1' } }, error: null })),
+      },
+    });
+    requireOrgMock.mockResolvedValue('org-1');
+    assertUserHasOrgRoleMock.mockImplementation(async (_db: unknown, _orgId: string, role: string) => role === activeRole);
+    orgScopedQueryMock.mockImplementation((_db: unknown, table: string) => {
+      if (table !== 'clients') {
+        throw new Error(`Unexpected table lookup: ${table}`);
+      }
+      return {
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            limit: vi.fn(async () => ({ data: [], error: null })),
+          })),
+        })),
+      };
+    });
+    const module = await loadProgramsModule();
+
+    const response = await module.handlePrograms(
+      new Request(
+        'https://edge.example.com/functions/v1/programs?program_id=11111111-1111-4111-8111-111111111111',
+        {
+          method: 'PATCH',
+          headers: {
+            Origin: 'https://preview.example.com',
+            Authorization: 'Bearer token',
+          },
+          body: JSON.stringify({ client_id: '22222222-2222-4222-8222-222222222222' }),
+        },
+      ),
+    );
+
+    expect(response.status).toBe(403);
+  });
 });

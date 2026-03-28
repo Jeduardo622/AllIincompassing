@@ -703,7 +703,11 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
       if (!result.ok) {
         return jsonForRequest(request, { error: "Failed to load assessment document" }, result.status || 500);
       }
-      return jsonForRequest(request, Array.isArray(result.data) ? result.data[0] ?? null : null);
+      const assessmentDocument = Array.isArray(result.data) ? result.data[0] ?? null : null;
+      if (!assessmentDocument) {
+        return jsonForRequest(request, { error: "assessment_document_id is not in scope for this organization" }, 403);
+      }
+      return jsonForRequest(request, assessmentDocument);
     }
 
     return jsonForRequest(request, { error: "client_id or assessment_document_id is required" }, 400);

@@ -639,6 +639,21 @@ const runCaloptimaExtractionWorkflow = async (args: {
         updated_at: new Date().toISOString(),
       }),
     });
+    await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        assessment_document_id: createdDocumentId,
+        organization_id: organizationId,
+        client_id: clientId,
+        item_type: "document",
+        item_id: createdDocumentId,
+        action: "extraction_failed",
+        from_status: "extracting",
+        to_status: "extraction_failed",
+        actor_id: actorId,
+      }),
+    });
   }
 };
 

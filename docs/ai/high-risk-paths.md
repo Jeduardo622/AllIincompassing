@@ -2,6 +2,17 @@
 
 This document explains why certain paths in this repository always require human review before merge. It complements [AGENTS.md](../../AGENTS.md), lane routing in [docs/ai/cto-lane-contract.md](./cto-lane-contract.md), and verification rules in [docs/ai/verification-matrix.md](./verification-matrix.md).
 
+## Process Requirement Vs GitHub Enforcement
+
+In this single-owner repository, "human review required before merge" is currently stronger as a repository process rule than as a GitHub-enforced gate.
+
+Measured evidence:
+
+- live branch protection on `main` still reports `required_approving_review_count=1`
+- disposable docs-only probe PR [#311](https://github.com/Jeduardo622/AllIincompassing/pull/311) reached `mergeStateStatus: "CLEAN"` and `mergeable: "MERGEABLE"` with `latestReviews: []`
+
+Treat protected-path review requirements in this document and `AGENTS.md` as mandatory operating policy, but do not claim that GitHub currently enforces non-author approval effectively for the repo owner.
+
 ## `supabase/migrations/**`
 
 Why high risk:

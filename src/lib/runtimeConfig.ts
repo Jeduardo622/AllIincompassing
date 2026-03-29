@@ -7,6 +7,7 @@ export interface RuntimeSupabaseConfig {
 
 const RUNTIME_CONFIG_SYMBOL = '__SUPABASE_RUNTIME_CONFIG__';
 const PLACEHOLDER_VALUE_PATTERNS = [/^\*+$/, /^changeme$/i, /^replace[-_ ]?me$/i, /^your[-_ ]/i];
+const RUNTIME_CONFIG_RETRY_DELAYS_MS = [100, 300] as const;
 
 type RuntimeConfigContainer = typeof globalThis & {
   [RUNTIME_CONFIG_SYMBOL]?: RuntimeSupabaseConfig;
@@ -35,6 +36,69 @@ const validateConfig = (config: RuntimeSupabaseConfig): void => {
   }
   if (PLACEHOLDER_VALUE_PATTERNS.some((pattern) => pattern.test(trimmedAnonKey))) {
     throw new Error('Supabase runtime config has placeholder `supabaseAnonKey`');
+  }
+};
+
+class RetryableRuntimeConfigFetchError extends Error {
+  constructor(
+    readonly causeError: Error,
+    readonly retryable: boolean,
+  ) {
+    super(causeError.message);
+    this.name = 'RetryableRuntimeConfigFetchError';
+  }
+}
+
+const normalizeRuntimeConfigError = (error: unknown): Error =>
+  error instanceof Error ? error : new Error(String(error));
+
+const waitForRetryDelay = async (delayMs: number): Promise<void> => {
+  await new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+};
+
+const fetchRuntimeConfigOnce = async (): Promise<RuntimeSupabaseConfig> => {
+  const response = await fetch('/api/runtime-config', {
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+  }).catch((error: unknown) => {
+    throw new RetryableRuntimeConfigFetchError(normalizeRuntimeConfigError(error), true);
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    const detail = typeof payload.error === 'string' ? payload.error : response.statusText;
+    throw new RetryableRuntimeConfigFetchError(
+      new Error(`Failed to load Supabase runtime config: ${detail}`),
+      response.status === 429 || response.status >= 500,
+    );
+  }
+
+  const config = (await response.json()) as RuntimeSupabaseConfig;
+  setRuntimeSupabaseConfig(config);
+  return config;
+};
+
+const fetchRuntimeConfigWithRetry = async (): Promise<RuntimeSupabaseConfig> => {
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return await fetchRuntimeConfigOnce();
+    } catch (error) {
+      attempt += 1;
+
+      if (!(error instanceof RetryableRuntimeConfigFetchError)) {
+        throw error;
+      }
+
+      if (!error.retryable || attempt > RUNTIME_CONFIG_RETRY_DELAYS_MS.length) {
+        throw error.causeError;
+      }
+
+      await waitForRetryDelay(RUNTIME_CONFIG_RETRY_DELAYS_MS[attempt - 1]);
+    }
   }
 };
 
@@ -70,22 +134,7 @@ export const ensureRuntimeSupabaseConfig = async (): Promise<RuntimeSupabaseConf
       throw new Error('Supabase runtime configuration unavailable and fetch is not supported');
     }
 
-    fetchPromise = fetch('/api/runtime-config', {
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          const detail = typeof payload.error === 'string' ? payload.error : response.statusText;
-          throw new Error(`Failed to load Supabase runtime config: ${detail}`);
-        }
-        return response.json() as Promise<RuntimeSupabaseConfig>;
-      })
-      .then((config) => {
-        setRuntimeSupabaseConfig(config);
-        return config;
-      })
+    fetchPromise = fetchRuntimeConfigWithRetry()
       .catch((error) => {
         fetchPromise = null;
         throw error;

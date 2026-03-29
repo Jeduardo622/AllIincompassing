@@ -2,8 +2,24 @@ name: tenant-safety
 
 on:
   pull_request:
+    paths:
+      - 'supabase/**'
+      - 'src/server/**'
+      - 'src/lib/auth*'
+      - 'src/lib/runtimeConfig*'
+      - 'scripts/ci/**'
+      - '.github/workflows/**'
+      - 'netlify.toml'
   push:
     branches: [main]
+    paths:
+      - 'supabase/**'
+      - 'src/server/**'
+      - 'src/lib/auth*'
+      - 'src/lib/runtimeConfig*'
+      - 'scripts/ci/**'
+      - '.github/workflows/**'
+      - 'netlify.toml'
 
 jobs:
   tenant-safety:

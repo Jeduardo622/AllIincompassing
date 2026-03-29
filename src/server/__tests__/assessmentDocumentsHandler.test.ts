@@ -87,6 +87,17 @@ describe("assessmentDocumentsHandler", () => {
     expect(payload.from_status).not.toBe(payload.to_status);
   };
 
+  const expectExtractionFailedStatusWriteInvariants = (
+    payload: Record<string, unknown>,
+    expectedError: string,
+  ) => {
+    expect(payload).toMatchObject({
+      status: "extraction_failed",
+      extraction_error: expectedError,
+    });
+    expect(payload.updated_at).toEqual(expect.any(String));
+  };
+
   const expectExtractionFailedActorDocumentTypeInvariants = (
     payload: Record<string, unknown>,
     expectedActorId: string,
@@ -776,6 +787,26 @@ describe("assessmentDocumentsHandler", () => {
         body: expect.stringContaining("extraction_failed"),
       }),
     );
+    const extractionFailedDocumentPatchCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url, init]) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        const body = typeof init?.body === "string" ? init.body : "";
+        return (
+          typeof url === "string" &&
+          method === "PATCH" &&
+          url.includes("/rest/v1/assessment_documents?id=eq.doc-extract-non-ok") &&
+          body.includes("\"status\":\"extraction_failed\"")
+        );
+      });
+    expect(extractionFailedDocumentPatchCall).toBeDefined();
+    const extractionFailedDocumentPatchPayload = JSON.parse(
+      ((extractionFailedDocumentPatchCall?.[1] as RequestInit).body ?? "{}") as string,
+    ) as Record<string, unknown>;
+    expectExtractionFailedStatusWriteInvariants(
+      extractionFailedDocumentPatchPayload,
+      "Field extraction failed. Review checklist manually.",
+    );
     const extractionFailedReviewEventCalls = vi
       .mocked(fetchJson)
       .mock.calls.filter(([url, init]) => {
@@ -917,6 +948,26 @@ describe("assessmentDocumentsHandler", () => {
         method: "PATCH",
         body: expect.stringContaining("extraction_failed"),
       }),
+    );
+    const extractionFailedDocumentPatchCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url, init]) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        const body = typeof init?.body === "string" ? init.body : "";
+        return (
+          typeof url === "string" &&
+          method === "PATCH" &&
+          url.includes("/rest/v1/assessment_documents?id=eq.doc-extract-throw") &&
+          body.includes("\"status\":\"extraction_failed\"")
+        );
+      });
+    expect(extractionFailedDocumentPatchCall).toBeDefined();
+    const extractionFailedDocumentPatchPayload = JSON.parse(
+      ((extractionFailedDocumentPatchCall?.[1] as RequestInit).body ?? "{}") as string,
+    ) as Record<string, unknown>;
+    expectExtractionFailedStatusWriteInvariants(
+      extractionFailedDocumentPatchPayload,
+      "Field extraction failed. Review checklist manually.",
     );
     const extractionFailedReviewEventCalls = vi
       .mocked(fetchJson)

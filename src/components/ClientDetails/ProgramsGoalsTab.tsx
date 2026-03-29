@@ -48,54 +48,6 @@ interface ProgramsGoalsTabProps {
   client: Client;
 }
 
-type LegacyProgramDraftShape = {
-  program?: {
-    name?: string;
-    description?: string;
-    rationale?: string;
-    evidence_refs?: Array<{ section_key?: string; source_span?: string }>;
-    review_flags?: string[];
-  };
-  rationale?: string;
-  summary_rationale?: string;
-  confidence?: "low" | "medium" | "high";
-};
-
-// TODO(fba-payload-upgrade-cleanup): Remove legacy `draftPlan.program` fallback once all callers/tests use `programs[]`.
-// Exit criteria: no `program` usage in `generateProgramGoalDraft` responses and no legacy-shaped fixtures.
-const getDraftProgramsForSave = (draft: ProgramGoalDraftResponse): ProgramGoalDraftResponse["programs"] => {
-  if (Array.isArray(draft.programs) && draft.programs.length > 0) {
-    return draft.programs;
-  }
-  const legacyDraft = draft as ProgramGoalDraftResponse & LegacyProgramDraftShape;
-  if (!legacyDraft.program) {
-    return [];
-  }
-  return [
-    {
-      name: legacyDraft.program.name ?? "",
-      description: legacyDraft.program.description ?? "",
-      rationale: legacyDraft.program.rationale ?? "",
-      evidence_refs:
-        legacyDraft.program.evidence_refs?.map((ref) => ({
-          section_key: ref.section_key ?? "legacy_program",
-          source_span: ref.source_span ?? "Legacy draft fixture without explicit evidence span.",
-        })) ?? [],
-      review_flags: legacyDraft.program.review_flags ?? ["clinician_confirmation_needed"],
-    },
-  ];
-};
-
-const getDraftSummaryRationaleForSave = (draft: ProgramGoalDraftResponse): string => {
-  const legacyDraft = draft as ProgramGoalDraftResponse & LegacyProgramDraftShape;
-  return legacyDraft.summary_rationale ?? legacyDraft.rationale ?? "";
-};
-
-const getDraftConfidenceForSave = (draft: ProgramGoalDraftResponse): "low" | "medium" | "high" => {
-  const legacyDraft = draft as ProgramGoalDraftResponse & LegacyProgramDraftShape;
-  return legacyDraft.confidence ?? "low";
-};
-
 export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
@@ -557,10 +509,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         method: "POST",
         body: JSON.stringify({
           assessment_document_id: selectedAssessmentId,
-          programs: getDraftProgramsForSave(draftPlan),
+          programs: draftPlan.programs,
           goals: draftPlan.goals,
-          summary_rationale: getDraftSummaryRationaleForSave(draftPlan),
-          confidence: getDraftConfidenceForSave(draftPlan),
+          summary_rationale: draftPlan.summary_rationale,
+          confidence: draftPlan.confidence,
         }),
       });
       if (!response.ok) {
@@ -871,7 +823,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
     onSuccess: (draft) => {
       setDraftPlan(draft);
-      const primaryProgram = getDraftProgramsForSave(draft)[0];
+      const primaryProgram = draft.programs[0];
       setProgramName(primaryProgram?.name ?? "");
       setProgramDescription(primaryProgram?.description ?? "");
       if (draft.goals[0]) {
@@ -1121,10 +1073,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             {draftPlan && (
               <div className="mt-4 space-y-3 rounded-md border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900 dark:border-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-100">
                 <p className="font-semibold">
-                  Draft programs: {getDraftProgramsForSave(draftPlan).map((program) => program.name).join(", ")}
+                  Draft programs: {draftPlan.programs.map((program) => program.name).join(", ")}
                 </p>
                 <p>
-                  {getDraftSummaryRationaleForSave(draftPlan)}
+                  {draftPlan.summary_rationale}
                 </p>
                 <div className="space-y-2">
                   {draftPlan.goals.map((goal, index) => (

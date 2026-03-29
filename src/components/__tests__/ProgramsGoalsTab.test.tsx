@@ -395,7 +395,7 @@ describe("ProgramsGoalsTab", () => {
     expect(showSuccess).toHaveBeenCalledWith("AI proposal saved to assessment queue for review.");
   }, 15000);
 
-  it("prioritizes programs array over legacy program fallback", async () => {
+  it("uses canonical programs array values when generating a draft proposal", async () => {
     vi.mocked(generateProgramGoalDraft).mockResolvedValueOnce({
       programs: [
         {
@@ -428,8 +428,6 @@ describe("ProgramsGoalsTab", () => {
       ],
       summary_rationale: "Primary rationale",
       confidence: "medium",
-      // Transitional fixture for compatibility guardrail validation.
-      // programs[] must remain the source of truth while this exists.
       ...( {
         program: {
           name: "Legacy Program",
@@ -456,7 +454,91 @@ describe("ProgramsGoalsTab", () => {
     });
     expect(screen.getByPlaceholderText("Program name")).toHaveValue("Primary Program");
     expect(screen.getByText(/Draft programs: Primary Program/i)).toBeInTheDocument();
+    expect(screen.getByText("Primary rationale")).toBeInTheDocument();
     expect(screen.queryByText(/Legacy Program/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Legacy rationale")).not.toBeInTheDocument();
+  });
+
+  it("saves only canonical programs array payloads for generated drafts", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1234,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/fba.pdf",
+              status: "extracted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "POST" && path === "/api/assessment-drafts") {
+        return new Response(JSON.stringify({ draft_program_id: "draft-program-1" }), { status: 201 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    const assessmentInput = await screen.findByPlaceholderText(/Paste assessment summary or White Bible-aligned notes/i);
+    await userEvent.type(
+      assessmentInput,
+      "Assessment evidence supports one focused communication program and one child goal.",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Generate AI Proposal Program \+ Goals/i }));
+
+    await waitFor(() => {
+      expect(generateProgramGoalDraft).toHaveBeenCalledTimes(1);
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /Save AI Proposal to Selected Assessment/i }));
+
+    await waitFor(() => {
+      expect(callApi).toHaveBeenCalledWith("/api/assessment-drafts", expect.objectContaining({ method: "POST" }));
+    });
+
+    const saveDraftCall = vi
+      .mocked(callApi)
+      .mock.calls.find(([path, init]) => path === "/api/assessment-drafts" && init?.method === "POST");
+    expect(saveDraftCall).toBeDefined();
+    const saveDraftPayload = JSON.parse(String(saveDraftCall?.[1]?.body));
+    expect(saveDraftPayload.assessment_document_id).toBe(ASSESSMENT_ID);
+    expect(saveDraftPayload.programs).toEqual([
+      {
+        name: "Communication Program",
+        description: "Build requesting and social communication skills.",
+        rationale: "Communication deficits and prompt dependence from the source assessment.",
+        evidence_refs: [{ section_key: "summary", source_span: "communication deficits with prompt dependence" }],
+        review_flags: [],
+      },
+    ]);
+    expect(saveDraftPayload.summary_rationale).toBe("Derived from assessment deficits and ABA measurement guidelines.");
+    expect(saveDraftPayload.confidence).toBe("medium");
+    expect(Array.isArray(saveDraftPayload.goals)).toBe(true);
+    expect(saveDraftPayload).not.toHaveProperty("program");
   });
 
   it("uploads IEHP assessment with selected template type", async () => {

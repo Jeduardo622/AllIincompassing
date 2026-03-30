@@ -132,7 +132,13 @@ Deno.serve(async (req) => {
   const holdBody = await parseEdgeJson(holdResponse);
   if (!holdResponse.ok || holdBody?.success !== true) {
     const status = holdResponse.status > 0 ? holdResponse.status : 502;
-    return json(req, status, holdBody ?? { success: false, error: "Failed to acquire hold" });
+    const retryAfter = holdResponse.headers.get("Retry-After");
+    return json(
+      req,
+      status,
+      holdBody ?? { success: false, error: "Failed to acquire hold" },
+      retryAfter ? { "Retry-After": retryAfter } : {},
+    );
   }
 
   const holdData = holdBody.data as { holdKey?: string } | undefined;
@@ -160,7 +166,13 @@ Deno.serve(async (req) => {
   const confirmBody = await parseEdgeJson(confirmResponse);
   if (!confirmResponse.ok || confirmBody?.success !== true) {
     const status = confirmResponse.status > 0 ? confirmResponse.status : 502;
-    return json(req, status, confirmBody ?? { success: false, error: "Failed to confirm booking" });
+    const retryAfter = confirmResponse.headers.get("Retry-After");
+    return json(
+      req,
+      status,
+      confirmBody ?? { success: false, error: "Failed to confirm booking" },
+      retryAfter ? { "Retry-After": retryAfter } : {},
+    );
   }
 
   const confirmData = (confirmBody.data as Record<string, unknown> | undefined) ?? {};

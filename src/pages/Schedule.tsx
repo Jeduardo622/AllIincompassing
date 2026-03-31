@@ -56,6 +56,7 @@ import { applyScheduleResetBranch } from "../features/scheduling/domain/schedule
 import { decideScheduleSubmitBranch } from "../features/scheduling/domain/submitBranchDecision";
 import { adaptScheduleMutationError } from "../features/scheduling/domain/mutationErrorAdapter";
 import { applyScheduleMutationSuccessLifecycle } from "../features/scheduling/domain/mutationSuccessLifecycle";
+import { completeSessionFromModal } from "../features/scheduling/domain/sessionComplete";
 import {
   applyPendingScheduleDetail,
   type PendingScheduleTransitionRecorder,
@@ -111,6 +112,43 @@ export const createOpenScheduleModalHandler = (
   };
 };
 
+const SESSION_STATUS_STYLES: Record<
+  Session["status"],
+  { card: string; secondary: string; time: string }
+> = {
+  scheduled: {
+    card: "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-900/50",
+    secondary: "text-blue-600 dark:text-blue-300",
+    time: "text-blue-500 dark:text-blue-400",
+  },
+  in_progress: {
+    card: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-200 dark:hover:bg-emerald-900/50",
+    secondary: "text-emerald-600 dark:text-emerald-300",
+    time: "text-emerald-500 dark:text-emerald-400",
+  },
+  completed: {
+    card: "bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700",
+    secondary: "text-gray-400 dark:text-gray-500",
+    time: "text-gray-400 dark:text-gray-500",
+  },
+  cancelled: {
+    card: "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30",
+    secondary: "text-red-500 dark:text-red-400",
+    time: "text-red-400 dark:text-red-500",
+  },
+  "no-show": {
+    card: "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/30",
+    secondary: "text-amber-600 dark:text-amber-400",
+    time: "text-amber-500 dark:text-amber-500",
+  },
+};
+
+export function getSessionStatusClasses(
+  status: Session["status"],
+): { card: string; secondary: string; time: string } {
+  return SESSION_STATUS_STYLES[status] ?? SESSION_STATUS_STYLES.scheduled;
+}
+
 // Memoized time slot component
 const TimeSlot = React.memo(
   ({
@@ -160,39 +198,43 @@ const TimeSlot = React.memo(
           <Plus className="w-4 h-4 text-gray-500 dark:text-gray-400" />
         </span>
 
-        {slotSessions.map((session) => (
-          <div
-            key={session.id}
-            className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 rounded p-1 text-xs mb-1 group/session relative cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
-            role="button"
-            tabIndex={0}
-            onClick={(e) => handleSessionClick(e, session)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onEditSession(session);
-              }
-            }}
-          >
-            <div className="font-medium truncate">
-              {session.client?.full_name}
-            </div>
-            <div className="text-blue-600 dark:text-blue-300 truncate">
-              {session.therapist?.full_name}
-            </div>
-            <div className="flex items-center text-blue-500 dark:text-blue-400">
-              <Clock className="w-3 h-3 mr-1" />
-              {format(parseISO(session.start_time), "h:mm a")}
-            </div>
-
-            <span
-              aria-hidden="true"
-              className="absolute top-1 right-1 opacity-0 group-hover/session:opacity-100"
+        {slotSessions.map((session) => {
+          const statusStyles = getSessionStatusClasses(session.status);
+          return (
+            <div
+              key={session.id}
+              data-session-status={session.status}
+              className={`${statusStyles.card} rounded p-1 text-xs mb-1 group/session relative cursor-pointer transition-colors`}
+              role="button"
+              tabIndex={0}
+              onClick={(e) => handleSessionClick(e, session)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onEditSession(session);
+                }
+              }}
             >
-              <Edit2 className="w-3 h-3" />
-            </span>
-          </div>
-        ))}
+              <div className="font-medium truncate">
+                {session.client?.full_name}
+              </div>
+              <div className={`${statusStyles.secondary} truncate`}>
+                {session.therapist?.full_name}
+              </div>
+              <div className={`flex items-center ${statusStyles.time}`}>
+                <Clock className="w-3 h-3 mr-1" />
+                {format(parseISO(session.start_time), "h:mm a")}
+              </div>
+
+              <span
+                aria-hidden="true"
+                className="absolute top-1 right-1 opacity-0 group-hover/session:opacity-100"
+              >
+                <Edit2 className="w-3 h-3" />
+              </span>
+            </div>
+          );
+        })}
       </div>
     );
   },
@@ -593,10 +635,11 @@ export const Schedule = React.memo(() => {
   const { data: batchedData, isLoading: isLoadingBatch } = useScheduleDataBatch(
     weekStart,
     weekEnd,
+    { enabled: !!activeOrganizationId },
   );
 
   const hasBatchedSessions = Array.isArray(batchedData?.sessions);
-  const enableFallbackSessionsQuery = !isLoadingBatch && !hasBatchedSessions;
+  const enableFallbackSessionsQuery = !isLoadingBatch && !hasBatchedSessions && !!activeOrganizationId;
 
   // Fallback to individual queries if batched data is not available
   const { data: sessions = [], isLoading: isLoadingSessions } =
@@ -610,7 +653,7 @@ export const Schedule = React.memo(() => {
 
   // Use dropdown data hook for therapists and clients
   const { data: dropdownData, isLoading: isLoadingDropdowns } =
-    useDropdownData();
+    useDropdownData({ enabled: !!activeOrganizationId });
 
   const filteredBatchedSessions = useMemo(() => {
     const candidateSessions = Array.isArray(batchedData?.sessions) ? batchedData.sessions : null;
@@ -867,6 +910,27 @@ export const Schedule = React.memo(() => {
     },
   });
 
+  const completeSessionMutation = useMutation({
+    mutationFn: async ({
+      sessionId,
+      outcome,
+      notes,
+    }: {
+      sessionId: string;
+      outcome: "completed" | "no-show";
+      notes?: string | null;
+    }) => {
+      await completeSessionFromModal({ sessionId, outcome, notes });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["sessions-batch"] });
+    },
+    onError: (error) => {
+      handleScheduleMutationError(error);
+    },
+  });
+
   // Memoized callbacks
   const handleCreateSession = useCallback(
     (timeSlot: { date: Date; time: string }) => {
@@ -941,6 +1005,11 @@ export const Schedule = React.memo(() => {
     );
   }, [scheduleResetSetters]);
 
+  const handleSessionStarted = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    queryClient.invalidateQueries({ queryKey: ["sessions-batch"] });
+  }, [queryClient]);
+
   const dismissRetryHint = useCallback(() => {
     setRetryHint(null);
   }, []);
@@ -988,12 +1057,36 @@ export const Schedule = React.memo(() => {
           );
           return;
         }
+        case "edit-complete": {
+          await completeSessionMutation.mutateAsync({
+            sessionId: decision.selectedSessionId,
+            outcome: "completed",
+            notes: decision.notes,
+          });
+          showSuccess("Session marked as completed");
+          applyScheduleResetBranch({ kind: "submit-cancel" }, scheduleResetSetters);
+          return;
+        }
+        case "edit-no-show": {
+          await completeSessionMutation.mutateAsync({
+            sessionId: decision.selectedSessionId,
+            outcome: "no-show",
+            notes: decision.notes,
+          });
+          showSuccess("Session marked as no-show");
+          applyScheduleResetBranch({ kind: "submit-cancel" }, scheduleResetSetters);
+          return;
+        }
         case "edit-update": {
           await updateSessionMutation.mutateAsync(data);
           return;
         }
         case "create": {
           await createSessionMutation.mutateAsync(data);
+          return;
+        }
+        case "create-blocked": {
+          showError(`Cannot create a session with status '${decision.blockedStatus}'. New sessions must start as scheduled.`);
           return;
         }
         default: {
@@ -1006,6 +1099,7 @@ export const Schedule = React.memo(() => {
       selectedSession,
       scheduleResetSetters,
       cancelSessionMutation,
+      completeSessionMutation,
       updateSessionMutation,
       createSessionMutation,
     ],
@@ -1077,6 +1171,25 @@ export const Schedule = React.memo(() => {
   const hasBatchedData = Boolean(batchedData);
   const isLoading = isLoadingBatch || (!hasBatchedData && (isLoadingSessions || isLoadingDropdowns));
 
+  if (!activeOrganizationId) {
+    return (
+      <div
+        className="h-full flex items-center justify-center"
+        data-testid="schedule-missing-org"
+      >
+        <div className="text-center max-w-sm">
+          <p className="font-medium text-gray-900 dark:text-white">
+            Organization context unavailable
+          </p>
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            The schedule is scoped per organization. Impersonate a tenant or
+            contact an administrator.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="h-full relative">
@@ -1099,6 +1212,7 @@ export const Schedule = React.memo(() => {
             defaultClientId={selectedClient}
             retryHint={retryHint}
             onRetryHintDismiss={dismissRetryHint}
+            onSessionStarted={handleSessionStarted}
           />
         )}
       </div>
@@ -1107,14 +1221,6 @@ export const Schedule = React.memo(() => {
 
   return (
     <div className="h-full">
-      {!activeOrganizationId && (
-        <div className="mb-6 rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-amber-800 dark:text-amber-100">
-          <p className="font-medium">Organization context unavailable</p>
-          <p className="mt-1 text-sm opacity-80">
-            The schedule is scoped per organization. Impersonate a tenant or contact an administrator before booking sessions.
-          </p>
-        </div>
-      )}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
           Schedule
@@ -1407,6 +1513,7 @@ export const Schedule = React.memo(() => {
           defaultClientId={selectedClient}
           retryHint={retryHint}
           onRetryHintDismiss={dismissRetryHint}
+          onSessionStarted={handleSessionStarted}
         />
       )}
 

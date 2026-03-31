@@ -1,0 +1,428 @@
+import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
+import { resolveAllowedOrigin } from "../_shared/cors.ts";
+import {
+  buildScopedIdempotencyKey,
+  createSupabaseIdempotencyService,
+  IdempotencyConflictError,
+} from "../_shared/idempotency.ts";
+import {
+  requireOrg,
+  assertUserHasOrgRole,
+  orgScopedQuery,
+  MissingOrgContextError,
+  ForbiddenError,
+} from "../_shared/org.ts";
+import { getLogger, type Logger } from "../_shared/logging.ts";
+import { increment } from "../_shared/metrics.ts";
+import { recordSessionAuditEvent } from "../_shared/audit.ts";
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+// Statuses from which a session may be moved to a terminal outcome.
+// Symmetric with CANCELLABLE_STATUSES in sessions-cancel.
+const COMPLETABLE_STATUSES = new Set(["scheduled", "in_progress"]);
+
+// Already-terminal statuses that must be rejected explicitly.
+const TERMINAL_STATUSES = new Set(["completed", "cancelled", "no-show"]);
+
+type SessionOutcome = "completed" | "no-show";
+type CompletionRole = "super_admin" | "admin" | "therapist" | null;
+
+interface CompletionPayload {
+  session_id: string;
+  outcome: SessionOutcome;
+  notes: string | null;
+}
+
+interface SessionRecord {
+  id: string;
+  status: string;
+  therapist_id: string | null;
+  start_time: string;
+  end_time: string;
+}
+
+interface TraceMeta {
+  requestId: string | null;
+  correlationId: string | null;
+  agentOperationId: string | null;
+}
+
+class BadRequestError extends Error {
+  status = 400;
+  constructor(message: string) {
+    super(message);
+    this.name = "BadRequestError";
+  }
+}
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200,
+  extraHeaders: Record<string, string> = {},
+) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...corsHeaders,
+      ...extraHeaders,
+    },
+  });
+}
+
+function respondSuccess(data: Record<string, unknown>) {
+  return jsonResponse({ success: true, data });
+}
+
+async function ensureAuthenticated(db: SupabaseClient) {
+  const { data, error } = await db.auth.getUser();
+  if (error || !data?.user) {
+    throw jsonResponse({ success: false, error: "Unauthorized" }, 401);
+  }
+  return data.user;
+}
+
+export function parseCompletionPayload(input: unknown): CompletionPayload {
+  if (typeof input !== "object" || input === null) {
+    throw new BadRequestError("Invalid request payload");
+  }
+
+  const payload = input as Record<string, unknown>;
+
+  const sessionId =
+    typeof payload.session_id === "string" && payload.session_id.trim().length > 0
+      ? payload.session_id.trim()
+      : null;
+
+  if (!sessionId) {
+    throw new BadRequestError("Missing required field: session_id");
+  }
+
+  const outcome = payload.outcome;
+  if (outcome !== "completed" && outcome !== "no-show") {
+    throw new BadRequestError('outcome must be "completed" or "no-show"');
+  }
+
+  const notes =
+    typeof payload.notes === "string" && payload.notes.trim().length > 0
+      ? payload.notes.trim()
+      : null;
+
+  return { session_id: sessionId, outcome, notes };
+}
+
+export async function resolveCompletionRole(
+  db: SupabaseClient,
+  orgId: string,
+  userId: string,
+): Promise<CompletionRole> {
+  if (await assertUserHasOrgRole(db, orgId, "super_admin")) {
+    return "super_admin";
+  }
+  if (await assertUserHasOrgRole(db, orgId, "admin")) {
+    return "admin";
+  }
+  if (await assertUserHasOrgRole(db, orgId, "therapist", { targetTherapistId: userId })) {
+    return "therapist";
+  }
+  return null;
+}
+
+export async function handleSessionCompletion(
+  db: SupabaseClient,
+  orgId: string,
+  payload: CompletionPayload,
+  userId: string,
+  role: CompletionRole,
+  logger: Logger,
+  traceMeta: TraceMeta = { requestId: null, correlationId: null, agentOperationId: null },
+): Promise<Response> {
+  const { session_id: sessionId, outcome, notes } = payload;
+
+  // Fetch session scoped to the caller's org (uses request-auth client for RLS read)
+  const { data: sessions, error: fetchError } = await orgScopedQuery(db, "sessions", orgId)
+    .select("id, status, therapist_id, start_time, end_time")
+    .eq("id", sessionId)
+    .limit(1);
+
+  increment("org_scoped_query_total", {
+    function: "sessions-complete",
+    orgId,
+    operation: "fetch-session",
+  });
+
+  if (fetchError) {
+    logger.error("session.fetch.error", { error: fetchError.message ?? "unknown" });
+    throw new Error(fetchError.message ?? "Failed to load session");
+  }
+
+  const session = ((sessions ?? []) as SessionRecord[])[0] ?? null;
+
+  if (!session) {
+    logger.warn("session.not-found", { sessionId, reason: "not-in-org-scope" });
+    increment("tenant_denial_total", {
+      function: "sessions-complete",
+      orgId,
+      reason: "session-not-found",
+    });
+    return jsonResponse(
+      { success: false, error: "Session not found", code: "SESSION_NOT_FOUND" },
+      404,
+    );
+  }
+
+  // Therapist self-ownership: a therapist may only complete their own sessions.
+  // Admins and super_admins may complete any session in their org.
+  if (role === "therapist" && session.therapist_id !== userId) {
+    logger.warn("session.scope.denied", {
+      sessionId,
+      reason: "therapist-mismatch",
+      owner: session.therapist_id,
+    });
+    increment("tenant_denial_total", {
+      function: "sessions-complete",
+      orgId,
+      reason: "therapist-mismatch",
+    });
+    return jsonResponse({ success: false, error: "Forbidden", code: "FORBIDDEN" }, 403);
+  }
+
+  // Already-terminal sessions must be rejected with a clear error — do not silently skip.
+  if (TERMINAL_STATUSES.has(session.status)) {
+    logger.info("session.already-terminal", { sessionId, status: session.status });
+    return jsonResponse(
+      {
+        success: false,
+        error: `Session is already in a terminal state: ${session.status}`,
+        code: "ALREADY_TERMINAL",
+      },
+      409,
+    );
+  }
+
+  if (!COMPLETABLE_STATUSES.has(session.status)) {
+    logger.warn("session.invalid-status", { sessionId, status: session.status });
+    return jsonResponse(
+      {
+        success: false,
+        error: `Session status '${session.status}' cannot be transitioned to ${outcome}`,
+        code: "INVALID_STATUS",
+      },
+      409,
+    );
+  }
+
+  // Service-role UPDATE with all three scoping guards present:
+  //   1. exact id = sessionId
+  //   2. status IN COMPLETABLE_STATUSES  (optimistic guard — catches concurrent modifications)
+  //   3. organization_id = orgId
+  const updates: Record<string, unknown> = {
+    status: outcome,
+    updated_by: userId,
+  };
+  if (notes) {
+    updates.notes = notes;
+  }
+
+  const { data: updatedRows, error: updateError } = await supabaseAdmin
+    .from("sessions")
+    .update(updates)
+    .eq("id", sessionId)
+    .in("status", Array.from(COMPLETABLE_STATUSES))
+    .eq("organization_id", orgId)
+    .select("id, status, updated_at");
+
+  if (updateError) {
+    logger.error("session.update.error", { error: updateError.message ?? "unknown" });
+    throw new Error(updateError.message ?? "Failed to update session");
+  }
+
+  const updatedSession = (updatedRows ?? [])[0] ?? null;
+
+  if (!updatedSession) {
+    // Zero rows affected: status changed between fetch and update (race condition).
+    logger.warn("session.concurrent-modification", { sessionId });
+    increment("session_complete_concurrent_total", {
+      function: "sessions-complete",
+      orgId,
+    });
+    return jsonResponse(
+      {
+        success: false,
+        error: "Session was modified concurrently. Refresh and try again.",
+        code: "CONCURRENT_MODIFICATION",
+      },
+      409,
+    );
+  }
+
+  // Audit event fires after the write succeeds.
+  // required: false — audit degradation must not block the user-visible outcome.
+  const eventType = outcome === "completed" ? "session_completed" : "session_no_show";
+
+  await recordSessionAuditEvent(db, {
+    sessionId,
+    eventType,
+    actorId: userId,
+    required: false,
+    payload: {
+      outcome,
+      startTime: session.start_time,
+      endTime: session.end_time,
+      notes: notes ?? null,
+      agentOperationId: traceMeta.agentOperationId,
+      trace: traceMeta,
+    },
+    logger,
+  });
+
+  increment("session_complete_success_total", {
+    function: "sessions-complete",
+    orgId,
+    outcome,
+  });
+
+  logger.info("session.complete.success", { sessionId, outcome });
+
+  return respondSuccess({ session: updatedSession, outcome });
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  if (req.method !== "POST") {
+    return jsonResponse({ success: false, error: "Method not allowed" }, 405);
+  }
+
+  const db = createRequestClient(req);
+  const baseLogger = getLogger(req, { functionName: "sessions-complete" });
+  let userLogger: Logger = baseLogger;
+  let scopedLogger: Logger | null = null;
+  let currentOrgId: string | null = null;
+
+  try {
+    const user = await ensureAuthenticated(db);
+    userLogger = baseLogger.with({ userId: user.id });
+    userLogger.info("request.authenticated");
+
+    const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
+    const normalizedKey = idempotencyKey.length > 0 ? idempotencyKey : null;
+    const traceMeta: TraceMeta = {
+      requestId: req.headers.get("x-request-id") ?? null,
+      correlationId: req.headers.get("x-correlation-id") ?? null,
+      agentOperationId: req.headers.get("x-agent-operation-id") ?? null,
+    };
+    const idempotencyService = createSupabaseIdempotencyService(supabaseAdmin);
+
+    const orgId = await requireOrg(db);
+    currentOrgId = orgId;
+    scopedLogger = userLogger.with({ orgId });
+    scopedLogger.info("request.org-scoped");
+
+    const role = await resolveCompletionRole(db, orgId, user.id);
+    if (!role) {
+      const denialLogger = scopedLogger ?? userLogger;
+      denialLogger.warn("authorization.denied", { reason: "role-denied" });
+      increment("tenant_denial_total", {
+        function: "sessions-complete",
+        orgId,
+        reason: "role-denied",
+      });
+      throw new ForbiddenError("Forbidden");
+    }
+
+    const storageIdempotencyKey = normalizedKey
+      ? buildScopedIdempotencyKey(normalizedKey, { organizationId: orgId, userId: user.id })
+      : null;
+
+    if (storageIdempotencyKey) {
+      const existing = await idempotencyService.find(storageIdempotencyKey, "sessions-complete");
+      if (existing) {
+        return jsonResponse(
+          existing.responseBody as Record<string, unknown>,
+          existing.statusCode,
+          { "Idempotent-Replay": "true", "Idempotency-Key": normalizedKey! },
+        );
+      }
+    }
+
+    const payload = parseCompletionPayload(await req.json());
+    const activeLogger = scopedLogger ?? userLogger;
+
+    const response = await handleSessionCompletion(
+      db,
+      orgId,
+      payload,
+      user.id,
+      role,
+      activeLogger,
+      traceMeta,
+    );
+
+    if (storageIdempotencyKey) {
+      try {
+        const body = (await response.clone().json()) as Record<string, unknown>;
+        await idempotencyService.persist(
+          storageIdempotencyKey,
+          "sessions-complete",
+          body,
+          response.status,
+        );
+      } catch (error) {
+        if (error instanceof IdempotencyConflictError) {
+          return jsonResponse({ success: false, error: error.message }, 409);
+        }
+        throw error;
+      }
+    }
+
+    activeLogger.info("request.completed");
+    return response;
+  } catch (error) {
+    const errorLogger = scopedLogger ?? userLogger ?? baseLogger;
+
+    if (error instanceof MissingOrgContextError) {
+      errorLogger.warn("request.denied", { reason: "missing-org-context" });
+      increment("tenant_denial_total", {
+        function: "sessions-complete",
+        reason: "missing-org",
+      });
+      return jsonResponse({ success: false, error: error.message }, 403);
+    }
+
+    if (error instanceof ForbiddenError) {
+      errorLogger.warn("request.denied", { reason: error.message });
+      increment("tenant_denial_total", {
+        function: "sessions-complete",
+        orgId: currentOrgId ?? undefined,
+        reason: "forbidden-error",
+      });
+      return jsonResponse({ success: false, error: error.message }, 403);
+    }
+
+    if (error instanceof BadRequestError) {
+      return jsonResponse({ success: false, error: error.message }, error.status);
+    }
+
+    if (error instanceof Response) {
+      return error;
+    }
+
+    errorLogger.error("request.failed", { error: (error as Error).message ?? "unknown" });
+    return jsonResponse({ success: false, error: "Internal server error" }, 500);
+  }
+});
+
+export const __TESTING__ = {
+  handleSessionCompletion,
+  parseCompletionPayload,
+  resolveCompletionRole,
+};

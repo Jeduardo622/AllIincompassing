@@ -421,7 +421,7 @@ export const sessionSchema = z.object({
     message: 'Please select a session type'
   }),
   location: optionalStringSchema,
-  status: z.enum(['scheduled', 'completed', 'cancelled', 'no-show']).default('scheduled'),
+  status: z.enum(['scheduled', 'in_progress', 'completed', 'cancelled', 'no-show']).default('scheduled'),
   notes: optionalStringSchema,
 }).refine(
   (data) => {

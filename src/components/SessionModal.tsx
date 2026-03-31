@@ -37,6 +37,7 @@ interface SessionModalProps {
   defaultClientId?: string | null;
   retryHint?: string | null;
   onRetryHintDismiss?: () => void;
+  onSessionStarted?: () => void | Promise<void>;
 }
 
 export function SessionModal({
@@ -54,6 +55,7 @@ export function SessionModal({
   defaultClientId,
   retryHint,
   onRetryHintDismiss,
+  onSessionStarted,
 }: SessionModalProps) {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [alternativeTimes, setAlternativeTimes] = useState<AlternativeTime[]>([]);
@@ -552,6 +554,7 @@ export function SessionModal({
         goalIds: goalIds ?? [],
       });
       showSuccess("Session started");
+      await onSessionStarted?.();
       onClose();
     } catch (error) {
       logger.error("Failed to start session", {
@@ -1007,9 +1010,10 @@ export function SessionModal({
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
               >
                 <option value="scheduled">Scheduled</option>
-                <option value="completed">Completed</option>
+                <option value="in_progress" disabled>In Progress</option>
+                <option value="completed" disabled={!session}>Completed</option>
                 <option value="cancelled">Cancelled</option>
-                <option value="no-show">No Show</option>
+                <option value="no-show" disabled={!session}>No Show</option>
               </select>
             </div>
 

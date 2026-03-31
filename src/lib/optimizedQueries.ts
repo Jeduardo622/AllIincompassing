@@ -15,7 +15,7 @@ import { useDashboardLiveRefresh } from './dashboardLiveRefresh';
  * Optimized schedule data fetching - replaces 3 separate queries with 1 RPC call
  * Reduces API calls by ~60% on Schedule page
  */
-export const useScheduleDataBatch = (startDate: Date, endDate: Date) => {
+export const useScheduleDataBatch = (startDate: Date, endDate: Date, options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: generateCacheKey.sessionsBatch(startDate.toISOString(), endDate.toISOString()),
     queryFn: async () => {
@@ -42,6 +42,7 @@ export const useScheduleDataBatch = (startDate: Date, endDate: Date) => {
     gcTime: CACHE_STRATEGIES.SESSIONS.schedule_batch * 2,
     refetchOnWindowFocus: false,
     refetchOnReconnect: 'always',
+    enabled: options?.enabled ?? true,
   });
 };
 

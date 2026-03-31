@@ -4,6 +4,11 @@ import { fireEvent } from '@testing-library/react';
 import { SessionModal } from '../SessionModal';
 import { supabase } from '../../lib/supabase';
 import type { Session } from '../../types';
+import { startSessionFromModal } from '../../features/scheduling/domain/sessionStart';
+
+vi.mock('../../features/scheduling/domain/sessionStart', () => ({
+  startSessionFromModal: vi.fn(),
+}));
 
 type SupabaseQueryChain = {
   select: () => SupabaseQueryChain;
@@ -43,6 +48,10 @@ describe('SessionModal', () => {
   ];
 
   beforeEach(() => {
+    vi.mocked(startSessionFromModal).mockReset();
+    defaultProps.onClose.mockClear();
+    defaultProps.onSubmit.mockClear();
+
     const buildChain = (rows: unknown[]) => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
@@ -411,5 +420,161 @@ describe('SessionModal', () => {
     await waitFor(() => {
       expect(startButton).toBeDisabled();
     });
+  });
+
+  it('calls onSessionStarted after a successful Start Session', async () => {
+    vi.mocked(startSessionFromModal).mockResolvedValue(undefined);
+    const onSessionStarted = vi.fn();
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSessionStarted={onSessionStarted}
+        session={{
+          id: 'session-to-start',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'scheduled',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    const startButton = await screen.findByRole('button', { name: /Start Session/i });
+    await waitFor(() => expect(startButton).not.toBeDisabled());
+    await userEvent.click(startButton);
+
+    await waitFor(() => {
+      expect(vi.mocked(startSessionFromModal)).toHaveBeenCalledOnce();
+      expect(onSessionStarted).toHaveBeenCalledOnce();
+      expect(defaultProps.onClose).toHaveBeenCalled();
+    });
+  });
+
+  describe('status select — create mode (no session prop)', () => {
+    it('disables in_progress option in create mode', () => {
+      renderWithProviders(<SessionModal {...defaultProps} />);
+      const option = screen.getByRole('option', { name: /In Progress/i }) as HTMLOptionElement;
+      expect(option.disabled).toBe(true);
+    });
+
+    it('disables completed option in create mode', () => {
+      renderWithProviders(<SessionModal {...defaultProps} />);
+      const option = screen.getByRole('option', { name: /^Completed$/i }) as HTMLOptionElement;
+      expect(option.disabled).toBe(true);
+    });
+
+    it('disables no-show option in create mode', () => {
+      renderWithProviders(<SessionModal {...defaultProps} />);
+      const option = screen.getByRole('option', { name: /No Show/i }) as HTMLOptionElement;
+      expect(option.disabled).toBe(true);
+    });
+
+    it('keeps scheduled enabled in create mode', () => {
+      renderWithProviders(<SessionModal {...defaultProps} />);
+      const option = screen.getByRole('option', { name: /^Scheduled$/i }) as HTMLOptionElement;
+      expect(option.disabled).toBe(false);
+    });
+
+    it('keeps cancelled enabled in create mode', () => {
+      renderWithProviders(<SessionModal {...defaultProps} />);
+      const option = screen.getByRole('option', { name: /^Cancelled$/i }) as HTMLOptionElement;
+      expect(option.disabled).toBe(false);
+    });
+  });
+
+  describe('status select — edit mode (session prop present)', () => {
+    const editSession: Session = {
+      id: 'session-edit',
+      therapist_id: 'test-therapist-1',
+      client_id: 'test-client-1',
+      program_id: 'program-1',
+      goal_id: 'goal-1',
+      start_time: '2026-03-31T10:00:00.000Z',
+      end_time: '2026-03-31T11:00:00.000Z',
+      status: 'scheduled',
+      notes: '',
+      created_at: '2026-03-31T09:00:00.000Z',
+      created_by: null,
+      updated_at: '2026-03-31T09:00:00.000Z',
+      updated_by: null,
+      started_at: null,
+    };
+
+    it('enables completed option in edit mode', () => {
+      renderWithProviders(<SessionModal {...defaultProps} session={editSession} />);
+      const option = screen.getByRole('option', { name: /^Completed$/i }) as HTMLOptionElement;
+      expect(option.disabled).toBe(false);
+    });
+
+    it('enables no-show option in edit mode', () => {
+      renderWithProviders(<SessionModal {...defaultProps} session={editSession} />);
+      const option = screen.getByRole('option', { name: /No Show/i }) as HTMLOptionElement;
+      expect(option.disabled).toBe(false);
+    });
+
+    it('keeps in_progress disabled in edit mode (display-only state)', () => {
+      renderWithProviders(<SessionModal {...defaultProps} session={editSession} />);
+      const option = screen.getByRole('option', { name: /In Progress/i }) as HTMLOptionElement;
+      expect(option.disabled).toBe(true);
+    });
+
+    it('shows in_progress as current value when session status is in_progress', () => {
+      renderWithProviders(
+        <SessionModal
+          {...defaultProps}
+          session={{ ...editSession, status: 'in_progress' }}
+        />
+      );
+      const select = screen.getByRole('combobox', { name: /Status/i }) as HTMLSelectElement;
+      expect(select.value).toBe('in_progress');
+    });
+  });
+
+  it('does not call onSessionStarted when startSessionFromModal rejects', async () => {
+    vi.mocked(startSessionFromModal).mockRejectedValue(new Error('RPC failure'));
+    const onSessionStarted = vi.fn();
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSessionStarted={onSessionStarted}
+        session={{
+          id: 'session-fail-start',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'scheduled',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    const startButton = await screen.findByRole('button', { name: /Start Session/i });
+    await waitFor(() => expect(startButton).not.toBeDisabled());
+    await userEvent.click(startButton);
+
+    await waitFor(() => {
+      expect(vi.mocked(startSessionFromModal)).toHaveBeenCalledOnce();
+    });
+    expect(onSessionStarted).not.toHaveBeenCalled();
+    expect(defaultProps.onClose).not.toHaveBeenCalled();
   });
 });

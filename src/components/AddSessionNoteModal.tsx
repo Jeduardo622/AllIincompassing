@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Calendar, Clock, FileText, CheckCircle } from 'lucide-react';
 import type { Goal, Program, Therapist } from '../types';
@@ -143,6 +143,80 @@ export function AddSessionNoteModal({
 
   const hasSessions = sessions.length > 0;
 
+  // Tracks which session ID has already been auto-populated so that manual
+  // edits the therapist makes after auto-population are not overwritten on
+  // subsequent renders.
+  const appliedForSession = useRef<string | null>(null);
+
+  // Fetch session_goals when a session is linked.  This is the authoritative
+  // list of goals that were worked during that session, written by sessions-start.
+  const { data: sessionGoalsData } = useQuery({
+    queryKey: ['session-goals-for-note', selectedSessionId, organizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!selectedSessionId || !organizationId) {
+        return [];
+      }
+      const { data, error } = await supabase
+        .from('session_goals')
+        .select('goal_id, program_id')
+        .eq('session_id', selectedSessionId)
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: true });
+      if (error) {
+        throw error;
+      }
+      return (data ?? []) as Array<{ goal_id: string; program_id: string }>;
+    },
+    enabled: Boolean(selectedSessionId && organizationId),
+  });
+
+  // Pre-populate goals from session_goals when a session is linked.
+  //
+  // This single effect handles both orderings:
+  //   (a) goals load first — effect is a no-op until sessionGoalsData arrives
+  //   (b) session_goals arrives first — effect is a no-op until goals load
+  //   (c) both ready simultaneously — applies immediately
+  //
+  // The appliedForSession ref ensures pre-selection fires exactly once per
+  // session ID so that any manual edits the therapist makes afterwards are
+  // preserved.  The ref is reset in resetForm() when the modal closes.
+  //
+  // Multi-program note: session_goals may reference goals from multiple programs
+  // (sessions-start supports this via goal_ids[]).  The current modal supports
+  // only a single program selector, so we pick the first program_id as the
+  // primary context.  Goals from other programs are not selectable until the
+  // therapist changes the program selector; they are not silently lost but are
+  // not auto-selected either.  This is a known limitation of the single-program
+  // modal design and is reported in the implementation card.
+  useEffect(() => {
+    if (!sessionGoalsData || sessionGoalsData.length === 0 || goals.length === 0) {
+      return;
+    }
+    // Skip if we already auto-populated for this session.
+    if (selectedSessionId && selectedSessionId === appliedForSession.current) {
+      return;
+    }
+
+    const goalIds = sessionGoalsData.map((sg) => sg.goal_id);
+    const programIds = [...new Set(sessionGoalsData.map((sg) => sg.program_id))];
+    const primaryProgramId = programIds[0];
+    if (primaryProgramId) {
+      setSelectedProgramId(primaryProgramId);
+    }
+
+    const validIds = goals
+      .filter((g) => g.status !== 'archived' && goalIds.includes(g.id))
+      .map((g) => g.id);
+
+    if (validIds.length > 0) {
+      setSelectedGoalIds(validIds);
+      // Lock only after a successful application so that a program-change
+      // triggered by setSelectedProgramId above can still complete a second
+      // pass when the new program's goals load (validIds was empty on first pass).
+      appliedForSession.current = selectedSessionId;
+    }
+  }, [sessionGoalsData, goals, selectedSessionId]);
+
   const toggleGoalSelection = (goalId: string) => {
     setSelectedGoalIds((prev) =>
       prev.includes(goalId) ? prev.filter((id) => id !== goalId) : [...prev, goalId],
@@ -212,6 +286,7 @@ export function AddSessionNoteModal({
     setSelectedSessionId('');
     setNarrative('');
     setIsLocked(false);
+    appliedForSession.current = null;
   };
 
   useEffect(() => {

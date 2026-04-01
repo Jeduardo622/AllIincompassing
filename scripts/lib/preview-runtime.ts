@@ -174,7 +174,10 @@ export const startPreviewServer = async (config: PreviewConfig): Promise<Preview
 
     const url = new URL(rawUrl, `${config.protocol}://${config.host}:${config.port}`);
     const decodedPath = decodeURIComponent(url.pathname);
-    const requestedPath = path.join(absoluteDir, decodedPath);
+    // Join with a relative path only: leading slashes make path.join ignore the dist root on POSIX
+    // (e.g. join("/app/dist", "/login") -> "/login"), breaking SPA fallback and Cypress tier-0.
+    const relativePath = decodedPath.replace(/^[/\\]+/, '');
+    const requestedPath = path.join(absoluteDir, relativePath || '.');
 
     try {
       await sendFile(res, requestedPath, fallbackPath, absoluteDir);

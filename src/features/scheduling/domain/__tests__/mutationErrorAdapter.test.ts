@@ -53,4 +53,23 @@ describe("mutationErrorAdapter", () => {
     expect(adapted.lifecyclePlan.errorKind).toBe("non-conflict");
     expect(adapted.conflictLogMetadata).toBeNull();
   });
+
+  it("surfaces SESSION_NOTES_REQUIRED (409) as a conflict with the backend message", () => {
+    // Simulates a NormalizedApiError produced by toNormalizedApiError() when
+    // sessions-complete returns { code: "SESSION_NOTES_REQUIRED", status: 409 }.
+    const error = Object.assign(
+      new Error("Session notes with goal progress are required before closing this session."),
+      { status: 409, code: "SESSION_NOTES_REQUIRED" },
+    );
+
+    const adapted = adaptScheduleMutationError(error);
+
+    expect(adapted.lifecyclePlan.errorKind).toBe("conflict");
+    expect(adapted.lifecyclePlan.resetBranch.source).toBe("409");
+    // userMessage is a composed string beginning with the backend message text.
+    expect(typeof adapted.userMessage).toBe("string");
+    expect(adapted.userMessage as string).toContain(
+      "Session notes with goal progress are required",
+    );
+  });
 });

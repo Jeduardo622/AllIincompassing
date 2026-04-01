@@ -19,7 +19,7 @@ vi.mock("../../supabase/functions/_shared/metrics.ts", () => ({
 import * as database from "../../supabase/functions/_shared/database.ts";
 import { __TESTING__ } from "../../supabase/functions/sessions-complete/index.ts";
 
-const { handleSessionCompletion, parseCompletionPayload } = __TESTING__;
+const { handleSessionCompletion, parseCompletionPayload, checkSessionNotesPresent } = __TESTING__;
 
 // ---------------------------------------------------------------------------
 // Stub factories
@@ -119,9 +119,11 @@ describe("sessions-complete handler", () => {
     vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
       makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
     );
-    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockReturnValue(
-      makeUpdateBuilder(updatedRow),
-    );
+    // No session_goals → notes check skipped; notes table not needed.
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") return makeSelectBuilder([]);
+      return makeUpdateBuilder(updatedRow);
+    });
 
     const response = await handleSessionCompletion(
       makeDb(),
@@ -327,5 +329,257 @@ describe("parseCompletionPayload", () => {
 
   it("throws BadRequestError when payload is not an object", () => {
     expect(() => parseCompletionPayload("bad")).toThrow("Invalid request payload");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// checkSessionNotesPresent unit tests
+// ---------------------------------------------------------------------------
+
+describe("checkSessionNotesPresent", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Helper: make an admin select builder that resolves to specific rows.
+  const makeAdminSelect = (rows: unknown[]) => {
+    const builder: any = {};
+    const chain = () => builder;
+    builder.select = vi.fn(() => chain());
+    builder.eq = vi.fn(() => chain());
+    builder.then = (resolve: (value: { data: unknown[]; error: null }) => unknown) =>
+      resolve({ data: rows, error: null });
+    return builder;
+  };
+
+  it("returns null (passes) when there are no session_goals", async () => {
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") return makeAdminSelect([]);
+      return makeAdminSelect([]);
+    });
+
+    const result = await checkSessionNotesPresent("session-1", "org-1", createStubLogger());
+    expect(result).toBeNull();
+  });
+
+  it("returns 409 SESSION_NOTES_REQUIRED when there are session_goals but no note row", async () => {
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") return makeAdminSelect([{ goal_id: "goal-1" }]);
+      if (table === "client_session_notes") return makeAdminSelect([]);
+      return makeAdminSelect([]);
+    });
+
+    const result = await checkSessionNotesPresent("session-1", "org-1", createStubLogger());
+    expect(result).not.toBeNull();
+    const body = await result!.json() as { success: boolean; code: string; missing_goal_count: number };
+    expect(result!.status).toBe(409);
+    expect(body.code).toBe("SESSION_NOTES_REQUIRED");
+    expect(body.missing_goal_count).toBe(1);
+  });
+
+  it("returns 409 SESSION_NOTES_REQUIRED when a note row exists but goal_notes is missing an entry for one goal", async () => {
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") {
+        return makeAdminSelect([{ goal_id: "goal-1" }, { goal_id: "goal-2" }]);
+      }
+      if (table === "client_session_notes") {
+        // goal-1 covered, goal-2 missing
+        return makeAdminSelect([{ goal_notes: { "goal-1": "Good progress." } }]);
+      }
+      return makeAdminSelect([]);
+    });
+
+    const result = await checkSessionNotesPresent("session-1", "org-1", createStubLogger());
+    expect(result).not.toBeNull();
+    const body = await result!.json() as { success: boolean; code: string; missing_goal_count: number };
+    expect(result!.status).toBe(409);
+    expect(body.code).toBe("SESSION_NOTES_REQUIRED");
+    expect(body.missing_goal_count).toBe(1);
+  });
+
+  it("returns 409 SESSION_NOTES_REQUIRED when goal_notes entry is an empty string", async () => {
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") return makeAdminSelect([{ goal_id: "goal-1" }]);
+      if (table === "client_session_notes") {
+        return makeAdminSelect([{ goal_notes: { "goal-1": "   " } }]);
+      }
+      return makeAdminSelect([]);
+    });
+
+    const result = await checkSessionNotesPresent("session-1", "org-1", createStubLogger());
+    expect(result).not.toBeNull();
+    const body = await result!.json() as { success: boolean; code: string };
+    expect(result!.status).toBe(409);
+    expect(body.code).toBe("SESSION_NOTES_REQUIRED");
+  });
+
+  it("returns null (passes) when all session_goals have non-empty goal_notes entries", async () => {
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") {
+        return makeAdminSelect([{ goal_id: "goal-1" }, { goal_id: "goal-2" }]);
+      }
+      if (table === "client_session_notes") {
+        return makeAdminSelect([
+          { goal_notes: { "goal-1": "Excellent progress.", "goal-2": "Needed prompting." } },
+        ]);
+      }
+      return makeAdminSelect([]);
+    });
+
+    const result = await checkSessionNotesPresent("session-1", "org-1", createStubLogger());
+    expect(result).toBeNull();
+  });
+
+  it("returns null (passes) when goal_notes are spread across multiple note rows", async () => {
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") {
+        return makeAdminSelect([{ goal_id: "goal-1" }, { goal_id: "goal-2" }]);
+      }
+      if (table === "client_session_notes") {
+        // Two separate note rows, each covering one goal.
+        return makeAdminSelect([
+          { goal_notes: { "goal-1": "Great." } },
+          { goal_notes: { "goal-2": "Progressing." } },
+        ]);
+      }
+      return makeAdminSelect([]);
+    });
+
+    const result = await checkSessionNotesPresent("session-1", "org-1", createStubLogger());
+    expect(result).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SESSION_NOTES_REQUIRED surface-through tests (handleSessionCompletion)
+// ---------------------------------------------------------------------------
+
+describe("sessions-complete handler — SESSION_NOTES_REQUIRED guard", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const makeAdminSelect = (rows: unknown[]) => {
+    const builder: any = {};
+    const chain = () => builder;
+    builder.select = vi.fn(() => chain());
+    builder.eq = vi.fn(() => chain());
+    builder.then = (resolve: (value: { data: unknown[]; error: null }) => unknown) =>
+      resolve({ data: rows, error: null });
+    return builder;
+  };
+
+  it("rejects an in_progress session when no linked note exists (409 SESSION_NOTES_REQUIRED)", async () => {
+    const session = makeSession({ id: "session-notes-1", status: "in_progress" });
+
+    vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
+      makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
+    );
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") return makeAdminSelect([{ goal_id: "goal-a" }]);
+      if (table === "client_session_notes") return makeAdminSelect([]);
+      return makeAdminSelect([]);
+    });
+
+    const response = await handleSessionCompletion(
+      makeDb(),
+      "org-1",
+      { session_id: "session-notes-1", outcome: "completed", notes: null },
+      "admin-user",
+      "admin",
+      createStubLogger(),
+    );
+
+    const body = await response.json() as { success: boolean; code: string };
+    expect(response.status).toBe(409);
+    expect(body.success).toBe(false);
+    expect(body.code).toBe("SESSION_NOTES_REQUIRED");
+  });
+
+  it("rejects an in_progress session when some goal_notes entries are missing (409 SESSION_NOTES_REQUIRED)", async () => {
+    const session = makeSession({ id: "session-notes-2", status: "in_progress" });
+
+    vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
+      makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
+    );
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") {
+        return makeAdminSelect([{ goal_id: "goal-a" }, { goal_id: "goal-b" }]);
+      }
+      if (table === "client_session_notes") {
+        return makeAdminSelect([{ goal_notes: { "goal-a": "Covered." } }]);
+      }
+      return makeAdminSelect([]);
+    });
+
+    const response = await handleSessionCompletion(
+      makeDb(),
+      "org-1",
+      { session_id: "session-notes-2", outcome: "completed", notes: null },
+      "admin-user",
+      "admin",
+      createStubLogger(),
+    );
+
+    const body = await response.json() as { success: boolean; code: string };
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("SESSION_NOTES_REQUIRED");
+  });
+
+  it("allows an in_progress session when all session_goals have non-empty goal_notes", async () => {
+    const session = makeSession({ id: "session-notes-3", status: "in_progress" });
+    const updatedRow = { id: "session-notes-3", status: "completed", updated_at: "2026-03-31T11:00:00Z" };
+
+    vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
+      makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
+    );
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") return makeAdminSelect([{ goal_id: "goal-a" }]);
+      if (table === "client_session_notes") {
+        return makeAdminSelect([{ goal_notes: { "goal-a": "Client met target." } }]);
+      }
+      // UPDATE call (sessions table)
+      return makeUpdateBuilder(updatedRow);
+    });
+
+    const response = await handleSessionCompletion(
+      makeDb(),
+      "org-1",
+      { session_id: "session-notes-3", outcome: "completed", notes: null },
+      "admin-user",
+      "admin",
+      createStubLogger(),
+    );
+
+    const body = await response.json() as { success: boolean; data: { outcome: string } };
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.outcome).toBe("completed");
+  });
+
+  it("skips the notes guard for a scheduled session (no notes required)", async () => {
+    const session = makeSession({ id: "session-notes-4", status: "scheduled" });
+    const updatedRow = { id: "session-notes-4", status: "completed", updated_at: "2026-03-31T11:00:00Z" };
+
+    vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
+      makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
+    );
+    // UPDATE mock only — notes guard should never call supabaseAdmin.from
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockReturnValue(
+      makeUpdateBuilder(updatedRow),
+    );
+
+    const response = await handleSessionCompletion(
+      makeDb(),
+      "org-1",
+      { session_id: "session-notes-4", outcome: "completed", notes: null },
+      "admin-user",
+      "admin",
+      createStubLogger(),
+    );
+
+    const body = await response.json() as { success: boolean };
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
   });
 });

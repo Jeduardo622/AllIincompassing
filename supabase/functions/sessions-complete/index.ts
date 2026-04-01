@@ -134,6 +134,93 @@ export async function resolveCompletionRole(
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Session notes guard
+//
+// Checks that every goal worked in this session (session_goals rows) has a
+// non-empty note entry in the goal_notes jsonb column of the linked
+// client_session_notes row(s).  Uses supabaseAdmin with explicit org scoping
+// so the check is not affected by the caller's RLS context.
+//
+// Returns null when the check passes (or is not applicable).
+// Returns a 409 Response when the check fails.
+// ---------------------------------------------------------------------------
+
+export async function checkSessionNotesPresent(
+  sessionId: string,
+  orgId: string,
+  logger: Logger,
+): Promise<Response | null> {
+  // 1. Fetch session_goals for this session within the org.
+  const { data: sessionGoals, error: sgError } = await supabaseAdmin
+    .from("session_goals")
+    .select("goal_id")
+    .eq("session_id", sessionId)
+    .eq("organization_id", orgId);
+
+  if (sgError) {
+    logger.error("session.notes-check.goals-fetch-error", { error: sgError.message ?? "unknown" });
+    throw new Error(sgError.message ?? "Failed to load session goals for notes check");
+  }
+
+  if (!sessionGoals || sessionGoals.length === 0) {
+    // No goals were recorded for this session — notes guard does not apply.
+    return null;
+  }
+
+  const requiredGoalIds = (sessionGoals as Array<{ goal_id: string }>).map((sg) => sg.goal_id);
+
+  // 2. Fetch all note rows linked to this session within the org.
+  const { data: notes, error: notesError } = await supabaseAdmin
+    .from("client_session_notes")
+    .select("goal_notes")
+    .eq("session_id", sessionId)
+    .eq("organization_id", orgId);
+
+  if (notesError) {
+    logger.error("session.notes-check.notes-fetch-error", { error: notesError.message ?? "unknown" });
+    throw new Error(notesError.message ?? "Failed to load session notes for notes check");
+  }
+
+  // 3. Build the union of all goal_notes entries across every linked note row.
+  //    A goal counts as "covered" only if its note text is a non-empty string.
+  const covered = new Set<string>();
+  for (const row of (notes ?? []) as Array<{ goal_notes: Record<string, unknown> | null }>) {
+    const gn = row.goal_notes;
+    if (gn && typeof gn === "object") {
+      for (const [goalId, text] of Object.entries(gn)) {
+        if (typeof text === "string" && text.trim().length > 0) {
+          covered.add(goalId);
+        }
+      }
+    }
+  }
+
+  // 4. Every session_goal must be covered.
+  const missing = requiredGoalIds.filter((id) => !covered.has(id));
+  if (missing.length > 0) {
+    logger.warn("session.notes-required", {
+      sessionId,
+      missingGoalCount: missing.length,
+    });
+    increment("session_notes_required_rejection_total", {
+      function: "sessions-complete",
+      orgId,
+    });
+    return jsonResponse(
+      {
+        success: false,
+        error: "Session notes with goal progress are required before closing this session.",
+        code: "SESSION_NOTES_REQUIRED",
+        missing_goal_count: missing.length,
+      },
+      409,
+    );
+  }
+
+  return null;
+}
+
 export async function handleSessionCompletion(
   db: SupabaseClient,
   orgId: string,
@@ -216,6 +303,18 @@ export async function handleSessionCompletion(
       },
       409,
     );
+  }
+
+  // Notes guard — only for in_progress sessions.  A session that is still
+  // "scheduled" has not started, so no notes can exist yet; the guard is
+  // skipped.  For in_progress sessions the therapist must have filed a note
+  // row with non-empty goal_notes covering every session_goal before the
+  // session can be closed.
+  if (session.status === "in_progress") {
+    const notesCheckFailure = await checkSessionNotesPresent(sessionId, orgId, logger);
+    if (notesCheckFailure) {
+      return notesCheckFailure;
+    }
   }
 
   // Service-role UPDATE with all three scoping guards present:
@@ -425,4 +524,5 @@ export const __TESTING__ = {
   handleSessionCompletion,
   parseCompletionPayload,
   resolveCompletionRole,
+  checkSessionNotesPresent,
 };

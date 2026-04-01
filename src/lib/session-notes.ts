@@ -19,6 +19,7 @@ const SESSION_NOTE_SELECT_COLUMNS = `
   created_at,
   end_time,
   goal_ids,
+  goal_notes,
   goals_addressed,
   is_locked,
   narrative,
@@ -54,6 +55,7 @@ const mapRowToSessionNote = (
   therapist_name: therapist?.full_name ?? 'Unknown Therapist',
   goals_addressed: row.goals_addressed ?? [],
   goal_ids: row.goal_ids ?? [],
+  goal_notes: row.goal_notes as Record<string, string> | null ?? null,
   session_id: row.session_id ?? null,
   narrative: row.narrative,
   is_locked: row.is_locked,
@@ -119,6 +121,7 @@ export interface CreateClientSessionNoteInput {
   readonly sessionDuration: number;
   readonly goalsAddressed: string[];
   readonly goalIds?: string[];
+  readonly goalNotes?: Record<string, string> | null;
   readonly narrative: string;
   readonly isLocked: boolean;
   readonly sessionId?: string | null;
@@ -170,6 +173,11 @@ export const createClientSessionNote = async (
     throw new Error('Selected service code is not part of this authorization.');
   }
 
+  const goalNotesValue =
+    payload.goalNotes && Object.keys(payload.goalNotes).length > 0
+      ? payload.goalNotes
+      : null;
+
   const insertPayload: ClientSessionNoteInsert = {
     authorization_id: payload.authorizationId,
     client_id: payload.clientId,
@@ -183,6 +191,7 @@ export const createClientSessionNote = async (
     session_duration: payload.sessionDuration,
     goals_addressed: payload.goalsAddressed,
     goal_ids: payload.goalIds ?? null,
+    goal_notes: goalNotesValue,
     narrative: payload.narrative,
     is_locked: payload.isLocked,
     signed_at: payload.isLocked ? new Date().toISOString() : null,

@@ -214,3 +214,71 @@ describe('AddSessionNoteModal — session_goals auto-population', () => {
     expect(goalCheckbox).toBeChecked();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Per-goal note textarea tests
+// ---------------------------------------------------------------------------
+
+describe('AddSessionNoteModal — per-goal note textareas', () => {
+  const defaultProps = {
+    isOpen: true,
+    onClose: vi.fn(),
+    onSubmit: vi.fn(),
+    therapists: [],
+    clientId: 'client-1',
+  };
+
+  beforeEach(() => {
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') return buildChain([mockProgram]) as any;
+      if (table === 'goals') return buildChain([mockGoal]) as any;
+      if (table === 'sessions') return buildChainWithLimit([mockSession]) as any;
+      if (table === 'session_goals') return buildChain([]) as any;
+      return buildChain([]) as any;
+    });
+  });
+
+  it('shows a per-goal note textarea when a goal is checked', async () => {
+    renderWithProviders(<AddSessionNoteModal {...defaultProps} />);
+
+    const goalCheckbox = await screen.findByRole('checkbox', { name: /default goal/i });
+    expect(screen.queryByLabelText(/note for this goal/i)).not.toBeInTheDocument();
+
+    fireEvent.click(goalCheckbox);
+
+    expect(screen.getByLabelText(/note for this goal/i)).toBeInTheDocument();
+  });
+
+  it('removes the per-goal note textarea when a goal is unchecked', async () => {
+    renderWithProviders(<AddSessionNoteModal {...defaultProps} />);
+
+    const goalCheckbox = await screen.findByRole('checkbox', { name: /default goal/i });
+    fireEvent.click(goalCheckbox);
+    expect(screen.getByLabelText(/note for this goal/i)).toBeInTheDocument();
+
+    fireEvent.click(goalCheckbox);
+
+    expect(screen.queryByLabelText(/note for this goal/i)).not.toBeInTheDocument();
+  });
+
+  it('accepts text in the per-goal note textarea', async () => {
+    renderWithProviders(<AddSessionNoteModal {...defaultProps} />);
+
+    const goalCheckbox = await screen.findByRole('checkbox', { name: /default goal/i });
+    fireEvent.click(goalCheckbox);
+
+    const textarea = screen.getByLabelText(/note for this goal/i);
+    fireEvent.change(textarea, { target: { value: 'Good progress today.' } });
+
+    expect(textarea).toHaveValue('Good progress today.');
+  });
+
+  it('goals are grouped under a program header', async () => {
+    renderWithProviders(<AddSessionNoteModal {...defaultProps} />);
+
+    // Program header text appears above the goal list.
+    await screen.findByText(/default program/i);
+    // Goal checkbox still reachable.
+    expect(screen.getByRole('checkbox', { name: /default goal/i })).toBeInTheDocument();
+  });
+});

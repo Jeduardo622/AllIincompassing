@@ -125,5 +125,76 @@ describe('createClientSessionNote', () => {
     expect(result.id).toBe(noteRow.id);
     expect(lastInsertPayload?.goal_ids).toEqual(['goal-1']);
   });
+
+  it('persists goal_notes when provided', async () => {
+    setupMocks('approved');
+
+    await createClientSessionNote({
+      authorizationId: authRecord.id,
+      clientId: 'client-1',
+      therapistId: 'therapist-1',
+      organizationId: authRecord.organization_id,
+      createdBy: 'user-1',
+      serviceCode: '97153',
+      sessionDate: '2025-06-01',
+      startTime: '09:00',
+      endTime: '10:00',
+      sessionDuration: 60,
+      goalsAddressed: ['Goal A'],
+      goalIds: ['goal-1'],
+      goalNotes: { 'goal-1': 'Good progress on this goal.' },
+      narrative: '',
+      isLocked: false,
+    });
+
+    expect(lastInsertPayload?.goal_notes).toEqual({ 'goal-1': 'Good progress on this goal.' });
+  });
+
+  it('stores goal_notes as null when an empty object is provided', async () => {
+    setupMocks('approved');
+
+    await createClientSessionNote({
+      authorizationId: authRecord.id,
+      clientId: 'client-1',
+      therapistId: 'therapist-1',
+      organizationId: authRecord.organization_id,
+      createdBy: 'user-1',
+      serviceCode: '97153',
+      sessionDate: '2025-06-01',
+      startTime: '09:00',
+      endTime: '10:00',
+      sessionDuration: 60,
+      goalsAddressed: [],
+      goalIds: [],
+      goalNotes: {},
+      narrative: 'notes',
+      isLocked: false,
+    });
+
+    expect(lastInsertPayload?.goal_notes).toBeNull();
+  });
+
+  it('stores goal_notes as null when goalNotes is omitted', async () => {
+    setupMocks('approved');
+
+    await createClientSessionNote({
+      authorizationId: authRecord.id,
+      clientId: 'client-1',
+      therapistId: 'therapist-1',
+      organizationId: authRecord.organization_id,
+      createdBy: 'user-1',
+      serviceCode: '97153',
+      sessionDate: '2025-06-01',
+      startTime: '09:00',
+      endTime: '10:00',
+      sessionDuration: 60,
+      goalsAddressed: [],
+      goalIds: [],
+      narrative: 'notes',
+      isLocked: false,
+    });
+
+    expect(lastInsertPayload?.goal_notes).toBeNull();
+  });
 });
 

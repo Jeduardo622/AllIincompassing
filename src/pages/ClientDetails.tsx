@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { User, FileText, ClipboardCheck, Contact as FileContract, ArrowLeft, Calendar, AlertCircle, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -17,9 +17,22 @@ type TabType = 'profile' | 'session-notes' | 'pre-auth' | 'contracts' | 'program
 export function ClientDetails() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<TabType>('profile');
+  const location = useLocation();
+  const initialTab = useMemo<TabType>(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    if (tab === 'session-notes') {
+      return 'session-notes';
+    }
+    return 'profile';
+  }, [location.search]);
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const { profile, effectiveRole } = useAuth();
   const activeOrganizationId = useActiveOrganizationId();
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   const { data: client, isLoading, error: clientError } = useQuery({
     queryKey: ['client', clientId, activeOrganizationId ?? 'MISSING_ORG'],

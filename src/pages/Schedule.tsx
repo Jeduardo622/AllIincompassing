@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback, useLayoutEffect, useEffect, useR
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, startOfWeek, addDays, endOfWeek } from "date-fns";
 import { getTimezoneOffset } from "date-fns-tz";
+import { useNavigate } from "react-router-dom";
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -56,13 +57,19 @@ import { applyScheduleResetBranch } from "../features/scheduling/domain/schedule
 import { decideScheduleSubmitBranch } from "../features/scheduling/domain/submitBranchDecision";
 import { adaptScheduleMutationError } from "../features/scheduling/domain/mutationErrorAdapter";
 import { applyScheduleMutationSuccessLifecycle } from "../features/scheduling/domain/mutationSuccessLifecycle";
-import { completeSessionFromModal } from "../features/scheduling/domain/sessionComplete";
+import {
+  checkInProgressSessionCloseReadiness,
+  completeSessionFromModal,
+  IN_PROGRESS_CLOSE_NOT_READY_MESSAGE,
+} from "../features/scheduling/domain/sessionComplete";
 import {
   applyPendingScheduleDetail,
   type PendingScheduleTransitionRecorder,
 } from "../features/scheduling/domain/pendingScheduleApply";
 
 const AUTO_SCHEDULE_CONCURRENCY = 3;
+const MISSING_NOTES_RETRY_HINT =
+  "Before closing this in-progress session, complete a linked client session note for this session and add per-goal note text for each worked goal. Open Client Details and use Session Notes / Physical Auth for this same client session. In Schedule, the Notes field and overall narrative do not satisfy this requirement.";
 
 export { applyPendingScheduleDetail };
 export type { PendingScheduleTransitionRecorder };
@@ -442,6 +449,7 @@ const DayView = React.memo(
 DayView.displayName = "DayView";
 
 export const Schedule = React.memo(() => {
+  const navigate = useNavigate();
   useCapturePendingScheduleEvent();
   const { user, profile, effectiveRole } = useAuth();
   const activeOrganizationId = useActiveOrganizationId();
@@ -465,6 +473,7 @@ export const Schedule = React.memo(() => {
   const [pendingAgentOperationId, setPendingAgentOperationId] = useState<string | null>(null);
   const [pendingTraceRequestId, setPendingTraceRequestId] = useState<string | null>(null);
   const [pendingTraceCorrelationId, setPendingTraceCorrelationId] = useState<string | null>(null);
+  const [retryActionLabel, setRetryActionLabel] = useState<string | null>(null);
   const lastPendingScheduleKeyRef = useRef<string | null>(null);
 
   const queryClient = useQueryClient();
@@ -483,6 +492,7 @@ export const Schedule = React.memo(() => {
   );
 
   const handleScheduleMutationError = useCallback((error: unknown) => {
+    setRetryActionLabel(null);
     const adaptation = adaptScheduleMutationError(error);
 
     if (adaptation.lifecyclePlan.errorKind === "conflict") {
@@ -953,6 +963,7 @@ export const Schedule = React.memo(() => {
           setIsModalOpen,
         },
       });
+      setRetryActionLabel(null);
     },
     [],
   );
@@ -977,6 +988,7 @@ export const Schedule = React.memo(() => {
         setIsModalOpen,
       },
     });
+    setRetryActionLabel(null);
   }, []);
 
   const handleAddRecurrenceException = useCallback(() => {
@@ -999,6 +1011,7 @@ export const Schedule = React.memo(() => {
   }, []);
 
   const handleCloseSessionModal = useCallback(() => {
+    setRetryActionLabel(null);
     applyScheduleResetBranch(
       { kind: "close-modal" },
       scheduleResetSetters,
@@ -1011,8 +1024,16 @@ export const Schedule = React.memo(() => {
   }, [queryClient]);
 
   const dismissRetryHint = useCallback(() => {
+    setRetryActionLabel(null);
     setRetryHint(null);
   }, []);
+
+  const handleOpenLinkedSessionDocumentation = useCallback(() => {
+    if (!selectedSession?.client_id) {
+      return;
+    }
+    navigate(`/clients/${selectedSession.client_id}?tab=session-notes`);
+  }, [navigate, selectedSession?.client_id]);
 
   const _handleDeleteSession = useCallback(
     async (sessionId: string) => {
@@ -1058,6 +1079,28 @@ export const Schedule = React.memo(() => {
           return;
         }
         case "edit-complete": {
+          if (selectedSession?.status === "in_progress") {
+            try {
+              const readiness = await checkInProgressSessionCloseReadiness({
+                sessionId: decision.selectedSessionId,
+                organizationId: activeOrganizationId,
+              });
+              if (!readiness.ready) {
+                setRetryHint(MISSING_NOTES_RETRY_HINT);
+                setRetryActionLabel("Open Client Details");
+                showError(IN_PROGRESS_CLOSE_NOT_READY_MESSAGE);
+                return;
+              }
+            } catch (error) {
+              logger.warn("Session close readiness precheck failed; falling back to backend enforcement", {
+                metadata: {
+                  sessionId: decision.selectedSessionId,
+                  reason: toError(error, "Session close readiness precheck failed").message,
+                },
+              });
+            }
+          }
+
           await completeSessionMutation.mutateAsync({
             sessionId: decision.selectedSessionId,
             outcome: "completed",
@@ -1068,6 +1111,28 @@ export const Schedule = React.memo(() => {
           return;
         }
         case "edit-no-show": {
+          if (selectedSession?.status === "in_progress") {
+            try {
+              const readiness = await checkInProgressSessionCloseReadiness({
+                sessionId: decision.selectedSessionId,
+                organizationId: activeOrganizationId,
+              });
+              if (!readiness.ready) {
+                setRetryHint(MISSING_NOTES_RETRY_HINT);
+                setRetryActionLabel("Open Client Details");
+                showError(IN_PROGRESS_CLOSE_NOT_READY_MESSAGE);
+                return;
+              }
+            } catch (error) {
+              logger.warn("Session close readiness precheck failed; falling back to backend enforcement", {
+                metadata: {
+                  sessionId: decision.selectedSessionId,
+                  reason: toError(error, "Session close readiness precheck failed").message,
+                },
+              });
+            }
+          }
+
           await completeSessionMutation.mutateAsync({
             sessionId: decision.selectedSessionId,
             outcome: "no-show",
@@ -1097,6 +1162,7 @@ export const Schedule = React.memo(() => {
     },
     [
       selectedSession,
+      activeOrganizationId,
       scheduleResetSetters,
       cancelSessionMutation,
       completeSessionMutation,
@@ -1212,6 +1278,8 @@ export const Schedule = React.memo(() => {
             defaultClientId={selectedClient}
             retryHint={retryHint}
             onRetryHintDismiss={dismissRetryHint}
+            retryActionLabel={retryActionLabel}
+            onRetryAction={retryActionLabel ? handleOpenLinkedSessionDocumentation : undefined}
             onSessionStarted={handleSessionStarted}
           />
         )}
@@ -1513,6 +1581,8 @@ export const Schedule = React.memo(() => {
           defaultClientId={selectedClient}
           retryHint={retryHint}
           onRetryHintDismiss={dismissRetryHint}
+          retryActionLabel={retryActionLabel}
+          onRetryAction={retryActionLabel ? handleOpenLinkedSessionDocumentation : undefined}
           onSessionStarted={handleSessionStarted}
         />
       )}

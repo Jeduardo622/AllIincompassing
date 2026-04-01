@@ -4,12 +4,21 @@ import { renderWithProviders, userEvent } from '../../test/utils';
 import { ClientDetails } from '../ClientDetails';
 import { supabase } from '../../lib/supabase';
 
+let mockLocationSearch = '';
+
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
   return {
     ...actual,
     useParams: () => ({ clientId: 'client-1' }),
     useNavigate: () => vi.fn(),
+    useLocation: () => ({
+      pathname: '/clients/client-1',
+      search: mockLocationSearch,
+      hash: '',
+      state: null,
+      key: 'client-details-test',
+    }),
   };
 });
 
@@ -65,6 +74,7 @@ const createIssuesBuilder = () => {
 
 describe('ClientDetails page', () => {
   beforeEach(() => {
+    mockLocationSearch = '';
     vi.spyOn(supabase, 'from').mockImplementation((table: string) => {
       if (table === 'sessions') {
         return createSessionsBuilder();
@@ -93,5 +103,14 @@ describe('ClientDetails page', () => {
     await userEvent.click(screen.getByRole('button', { name: /Service Contracts/i }));
     expect(screen.getByText('ServiceContractsTabContent')).toBeInTheDocument();
   }, 15000);
+
+  it('selects Session Notes tab from tab query param', async () => {
+    mockLocationSearch = '?tab=session-notes';
+
+    renderWithProviders(<ClientDetails />);
+
+    await waitFor(() => expect(screen.getByText('SessionNotesTabContent')).toBeInTheDocument());
+    expect(screen.queryByText('ProfileTabContent')).not.toBeInTheDocument();
+  });
 });
 

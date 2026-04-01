@@ -37,6 +37,8 @@ interface SessionModalProps {
   defaultClientId?: string | null;
   retryHint?: string | null;
   onRetryHintDismiss?: () => void;
+  retryActionLabel?: string | null;
+  onRetryAction?: (() => void) | undefined;
   onSessionStarted?: () => void | Promise<void>;
 }
 
@@ -55,6 +57,8 @@ export function SessionModal({
   defaultClientId,
   retryHint,
   onRetryHintDismiss,
+  retryActionLabel,
+  onRetryAction,
   onSessionStarted,
 }: SessionModalProps) {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
@@ -740,6 +744,15 @@ export function SessionModal({
                       className="text-xs font-semibold text-blue-600 hover:text-blue-500 dark:text-blue-300 dark:hover:text-blue-200"
                     >
                       Dismiss
+                    </button>
+                  )}
+                  {onRetryAction && retryActionLabel && (
+                    <button
+                      type="button"
+                      onClick={onRetryAction}
+                      className="text-xs font-semibold text-blue-700 hover:text-blue-600 dark:text-blue-200 dark:hover:text-blue-100"
+                    >
+                      {retryActionLabel}
                     </button>
                   )}
                 </div>

@@ -526,6 +526,36 @@ describe("sessions-complete handler — SESSION_NOTES_REQUIRED guard", () => {
     expect(body.code).toBe("SESSION_NOTES_REQUIRED");
   });
 
+  it("rejects an in_progress no-show when required goal notes are missing (409 SESSION_NOTES_REQUIRED)", async () => {
+    const session = makeSession({ id: "session-notes-2b", status: "in_progress" });
+
+    vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
+      makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
+    );
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") {
+        return makeAdminSelect([{ goal_id: "goal-a" }, { goal_id: "goal-b" }]);
+      }
+      if (table === "client_session_notes") {
+        return makeAdminSelect([{ goal_notes: { "goal-a": "Covered." } }]);
+      }
+      return makeAdminSelect([]);
+    });
+
+    const response = await handleSessionCompletion(
+      makeDb(),
+      "org-1",
+      { session_id: "session-notes-2b", outcome: "no-show", notes: null },
+      "admin-user",
+      "admin",
+      createStubLogger(),
+    );
+
+    const body = await response.json() as { success: boolean; code: string };
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("SESSION_NOTES_REQUIRED");
+  });
+
   it("allows an in_progress session when all session_goals have non-empty goal_notes", async () => {
     const session = makeSession({ id: "session-notes-3", status: "in_progress" });
     const updatedRow = { id: "session-notes-3", status: "completed", updated_at: "2026-03-31T11:00:00Z" };
@@ -555,6 +585,83 @@ describe("sessions-complete handler — SESSION_NOTES_REQUIRED guard", () => {
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
     expect(body.data.outcome).toBe("completed");
+  });
+
+  it("allows an in_progress no-show when all session_goals have non-empty goal_notes", async () => {
+    const session = makeSession({ id: "session-notes-3b", status: "in_progress" });
+    const updatedRow = { id: "session-notes-3b", status: "no-show", updated_at: "2026-03-31T11:00:00Z" };
+
+    vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
+      makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
+    );
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") return makeAdminSelect([{ goal_id: "goal-a" }]);
+      if (table === "client_session_notes") {
+        return makeAdminSelect([{ goal_notes: { "goal-a": "Client met target." } }]);
+      }
+      return makeUpdateBuilder(updatedRow);
+    });
+
+    const response = await handleSessionCompletion(
+      makeDb(),
+      "org-1",
+      { session_id: "session-notes-3b", outcome: "no-show", notes: null },
+      "admin-user",
+      "admin",
+      createStubLogger(),
+    );
+
+    const body = await response.json() as { success: boolean; data: { outcome: string } };
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.outcome).toBe("no-show");
+  });
+
+  it("maps DB-triggered SESSION_NOTES_REQUIRED on update to 409 parity response", async () => {
+    const session = makeSession({ id: "session-notes-db-trigger", status: "in_progress" });
+
+    vi.spyOn(orgHelpers, "orgScopedQuery").mockReturnValue(
+      makeSelectBuilder([session]) as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
+    );
+
+    const updateBuilder: any = {};
+    const chain = () => updateBuilder;
+    updateBuilder.update = vi.fn(() => chain());
+    updateBuilder.eq = vi.fn(() => chain());
+    updateBuilder.in = vi.fn(() => chain());
+    updateBuilder.select = vi.fn(() => chain());
+    updateBuilder.then = (resolve: (value: { data: unknown[]; error: { message: string; details: string } }) => unknown) =>
+      resolve({
+        data: [],
+        error: {
+          message: "SESSION_NOTES_REQUIRED",
+          details: "Session notes with goal progress are required before closing this session.",
+        },
+      });
+
+    (database.supabaseAdmin.from as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
+      if (table === "session_goals") {
+        return makeAdminSelect([{ goal_id: "goal-a" }]);
+      }
+      if (table === "client_session_notes") {
+        return makeAdminSelect([{ goal_notes: { "goal-a": "Covered." } }]);
+      }
+      return updateBuilder;
+    });
+
+    const response = await handleSessionCompletion(
+      makeDb(),
+      "org-1",
+      { session_id: "session-notes-db-trigger", outcome: "completed", notes: null },
+      "admin-user",
+      "admin",
+      createStubLogger(),
+    );
+
+    const body = await response.json() as { success: boolean; code: string };
+    expect(response.status).toBe(409);
+    expect(body.success).toBe(false);
+    expect(body.code).toBe("SESSION_NOTES_REQUIRED");
   });
 
   it("skips the notes guard for a scheduled session (no notes required)", async () => {

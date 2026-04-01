@@ -2332,6 +2332,244 @@ describe('row level security for multi-tenant tables', () => {
     }
   });
 
+  it('blocks direct in_progress -> completed updates when required per-goal notes are missing', async () => {
+    if (!runTests || !serviceClient || !orgAContext) {
+      console.log('⏭️  Skipping close-boundary trigger test - setup incomplete.');
+      return;
+    }
+
+    const { data: baseSession, error: baseSessionError } = await serviceClient
+      .from('sessions')
+      .select('goal_id, program_id')
+      .eq('id', orgAContext.sessionId)
+      .single();
+
+    if (baseSessionError || !baseSession?.goal_id || !baseSession?.program_id) {
+      throw baseSessionError ?? new Error('Failed to resolve base program/goal fixture for close-boundary test');
+    }
+
+    const targetSessionId = randomUUID();
+    const targetStart = new Date(Date.now() - 45 * 60 * 1000);
+    const targetEnd = new Date(Date.now() + 15 * 60 * 1000);
+
+    const { error: insertSessionError } = await serviceClient
+      .from('sessions')
+      .insert({
+        id: targetSessionId,
+        client_id: orgAContext.clientId,
+        therapist_id: orgAContext.therapistId,
+        organization_id: orgAContext.organizationId,
+        program_id: baseSession.program_id,
+        goal_id: baseSession.goal_id,
+        start_time: targetStart.toISOString(),
+        end_time: targetEnd.toISOString(),
+        status: 'scheduled',
+      });
+
+    if (insertSessionError) {
+      throw insertSessionError;
+    }
+
+    try {
+      const { error: startError } = await serviceClient
+        .from('sessions')
+        .update({ status: 'in_progress' })
+        .eq('id', targetSessionId);
+      if (startError) {
+        throw startError;
+      }
+
+      const { error: sessionGoalsError } = await serviceClient
+        .from('session_goals')
+        .insert({
+          session_id: targetSessionId,
+          goal_id: baseSession.goal_id,
+          organization_id: orgAContext.organizationId,
+          client_id: orgAContext.clientId,
+          program_id: baseSession.program_id,
+        });
+      if (sessionGoalsError) {
+        throw sessionGoalsError;
+      }
+
+      const therapistClient = await signInTherapist(orgAContext);
+      try {
+        const result = await therapistClient
+          .from('sessions')
+          .update({ status: 'completed' })
+          .eq('id', targetSessionId)
+          .select('id');
+
+        expect(result.error).not.toBeNull();
+        expect((result.error?.message ?? '').toUpperCase()).toContain('SESSION_NOTES_REQUIRED');
+      } finally {
+        await therapistClient.auth.signOut();
+      }
+    } finally {
+      await serviceClient.from('session_goals').delete().eq('session_id', targetSessionId);
+      await serviceClient.from('sessions').delete().eq('id', targetSessionId);
+    }
+  });
+
+  it('blocks direct in_progress -> no-show updates when required per-goal notes are missing', async () => {
+    if (!runTests || !serviceClient || !orgAContext) {
+      console.log('⏭️  Skipping close-boundary trigger test - setup incomplete.');
+      return;
+    }
+
+    const { data: baseSession, error: baseSessionError } = await serviceClient
+      .from('sessions')
+      .select('goal_id, program_id')
+      .eq('id', orgAContext.sessionId)
+      .single();
+
+    if (baseSessionError || !baseSession?.goal_id || !baseSession?.program_id) {
+      throw baseSessionError ?? new Error('Failed to resolve base program/goal fixture for close-boundary test');
+    }
+
+    const targetSessionId = randomUUID();
+    const targetStart = new Date(Date.now() - 45 * 60 * 1000);
+    const targetEnd = new Date(Date.now() + 15 * 60 * 1000);
+
+    const { error: insertSessionError } = await serviceClient
+      .from('sessions')
+      .insert({
+        id: targetSessionId,
+        client_id: orgAContext.clientId,
+        therapist_id: orgAContext.therapistId,
+        organization_id: orgAContext.organizationId,
+        program_id: baseSession.program_id,
+        goal_id: baseSession.goal_id,
+        start_time: targetStart.toISOString(),
+        end_time: targetEnd.toISOString(),
+        status: 'scheduled',
+      });
+
+    if (insertSessionError) {
+      throw insertSessionError;
+    }
+
+    try {
+      const { error: startError } = await serviceClient
+        .from('sessions')
+        .update({ status: 'in_progress' })
+        .eq('id', targetSessionId);
+      if (startError) {
+        throw startError;
+      }
+
+      const { error: sessionGoalsError } = await serviceClient
+        .from('session_goals')
+        .insert({
+          session_id: targetSessionId,
+          goal_id: baseSession.goal_id,
+          organization_id: orgAContext.organizationId,
+          client_id: orgAContext.clientId,
+          program_id: baseSession.program_id,
+        });
+      if (sessionGoalsError) {
+        throw sessionGoalsError;
+      }
+
+      const therapistClient = await signInTherapist(orgAContext);
+      try {
+        const result = await therapistClient
+          .from('sessions')
+          .update({ status: 'no-show' })
+          .eq('id', targetSessionId)
+          .select('id');
+
+        expect(result.error).not.toBeNull();
+        expect((result.error?.message ?? '').toUpperCase()).toContain('SESSION_NOTES_REQUIRED');
+      } finally {
+        await therapistClient.auth.signOut();
+      }
+    } finally {
+      await serviceClient.from('session_goals').delete().eq('session_id', targetSessionId);
+      await serviceClient.from('sessions').delete().eq('id', targetSessionId);
+    }
+  });
+
+  it('prevents therapists from deleting session_goals on in_progress sessions', async () => {
+    if (!runTests || !serviceClient || !orgAContext) {
+      console.log('⏭️  Skipping session_goals in-progress hardening test - setup incomplete.');
+      return;
+    }
+
+    const { data: baseSession, error: baseSessionError } = await serviceClient
+      .from('sessions')
+      .select('goal_id, program_id')
+      .eq('id', orgAContext.sessionId)
+      .single();
+
+    if (baseSessionError || !baseSession?.goal_id || !baseSession?.program_id) {
+      throw baseSessionError ?? new Error('Failed to resolve base program/goal fixture for session_goals test');
+    }
+
+    const targetSessionId = randomUUID();
+    const targetStart = new Date(Date.now() - 50 * 60 * 1000);
+    const targetEnd = new Date(Date.now() + 10 * 60 * 1000);
+
+    const { error: insertSessionError } = await serviceClient
+      .from('sessions')
+      .insert({
+        id: targetSessionId,
+        client_id: orgAContext.clientId,
+        therapist_id: orgAContext.therapistId,
+        organization_id: orgAContext.organizationId,
+        program_id: baseSession.program_id,
+        goal_id: baseSession.goal_id,
+        start_time: targetStart.toISOString(),
+        end_time: targetEnd.toISOString(),
+        status: 'scheduled',
+      });
+
+    if (insertSessionError) {
+      throw insertSessionError;
+    }
+
+    try {
+      const { error: startError } = await serviceClient
+        .from('sessions')
+        .update({ status: 'in_progress' })
+        .eq('id', targetSessionId);
+      if (startError) {
+        throw startError;
+      }
+
+      const { error: sessionGoalsError } = await serviceClient
+        .from('session_goals')
+        .insert({
+          session_id: targetSessionId,
+          goal_id: baseSession.goal_id,
+          organization_id: orgAContext.organizationId,
+          client_id: orgAContext.clientId,
+          program_id: baseSession.program_id,
+        });
+      if (sessionGoalsError) {
+        throw sessionGoalsError;
+      }
+
+      const therapistClient = await signInTherapist(orgAContext);
+      try {
+        const result = await therapistClient
+          .from('session_goals')
+          .delete()
+          .eq('session_id', targetSessionId)
+          .eq('goal_id', baseSession.goal_id)
+          .select('session_id');
+
+        const affectedRows = Array.isArray(result.data) ? result.data.length : 0;
+        expectRlsViolation(result.error, affectedRows);
+      } finally {
+        await therapistClient.auth.signOut();
+      }
+    } finally {
+      await serviceClient.from('session_goals').delete().eq('session_id', targetSessionId);
+      await serviceClient.from('sessions').delete().eq('id', targetSessionId);
+    }
+  });
+
   it('prevents admins from reading other organization clients', async () => {
     if (!runTests || !adminContext || !orgBContext) {
       console.log('⏭️  Skipping RLS test - setup incomplete.');

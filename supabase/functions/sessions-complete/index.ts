@@ -338,6 +338,23 @@ export async function handleSessionCompletion(
     .select("id, status, updated_at");
 
   if (updateError) {
+    const normalizedMessage = (updateError.message ?? "").toUpperCase();
+    const normalizedDetails = (updateError.details ?? "").toUpperCase();
+    if (normalizedMessage.includes("SESSION_NOTES_REQUIRED") || normalizedDetails.includes("SESSION_NOTES_REQUIRED")) {
+      logger.warn("session.notes-required.db-guard", { sessionId });
+      increment("session_notes_required_rejection_total", {
+        function: "sessions-complete",
+        orgId,
+      });
+      return jsonResponse(
+        {
+          success: false,
+          error: "Session notes with goal progress are required before closing this session.",
+          code: "SESSION_NOTES_REQUIRED",
+        },
+        409,
+      );
+    }
     logger.error("session.update.error", { error: updateError.message ?? "unknown" });
     throw new Error(updateError.message ?? "Failed to update session");
   }

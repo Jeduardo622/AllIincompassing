@@ -75,3 +75,22 @@ jobs:
           name: supabase-validate-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/latest
           if-no-files-found: ignore
+
+  runtime-migration-parity:
+    if: github.event_name == 'push'
+    name: Runtime migration parity
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      MIGRATION_PARITY_BASE_SHA: ${{ github.event.before }}
+      MIGRATION_PARITY_HEAD_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify merged migrations exist in runtime DB
+        run: node scripts/ci/check-runtime-migration-parity.mjs

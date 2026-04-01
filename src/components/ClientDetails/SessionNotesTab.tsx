@@ -28,6 +28,10 @@ interface SessionNotesTabProps {
   client: { id: string };
 }
 
+function hasMeaningfulNarrative(narrative: string): boolean {
+  return narrative.trim().length > 0;
+}
+
 export function SessionNotesTab({ client }: SessionNotesTabProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -498,14 +502,16 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
                         )}
                       </div>
                       
-                      <div className="mt-3">
-                        <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Session Notes:
+                      {hasMeaningfulNarrative(note.narrative) && (
+                        <div className="mt-3">
+                          <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Session Notes:
+                          </div>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 whitespace-pre-wrap">
+                            {note.narrative}
+                          </p>
                         </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 whitespace-pre-wrap">
-                          {note.narrative}
-                        </p>
-                      </div>
+                      )}
                     </div>
                   </div>
                 </div>

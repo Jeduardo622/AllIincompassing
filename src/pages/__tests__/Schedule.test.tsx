@@ -5,6 +5,14 @@ import { fireEvent } from "@testing-library/react";
 import { server } from "../../test/setup";
 import { supabase } from "../../lib/supabase";
 
+const mockUseScheduleDataBatch = vi.fn(() => ({ data: scheduleFixtures, isLoading: false }));
+const mockUseSessionsOptimized = vi.fn(() => ({ data: scheduleFixtures.sessions, isLoading: false }));
+const mockUseDropdownData = vi.fn(() => ({
+  data: { therapists: scheduleFixtures.therapists, clients: scheduleFixtures.clients },
+  isLoading: false,
+}));
+const mockUseActiveOrganizationId = vi.fn(() => "org-1");
+
 const scheduleFixtures = {
   sessions: [
     {
@@ -101,12 +109,13 @@ const scheduleFixtures = {
 };
 
 vi.mock("../../lib/optimizedQueries", () => ({
-  useScheduleDataBatch: () => ({ data: scheduleFixtures, isLoading: false }),
-  useSessionsOptimized: () => ({ data: scheduleFixtures.sessions, isLoading: false }),
-  useDropdownData: () => ({
-    data: { therapists: scheduleFixtures.therapists, clients: scheduleFixtures.clients },
-    isLoading: false,
-  }),
+  useScheduleDataBatch: (...args: unknown[]) => mockUseScheduleDataBatch(...args),
+  useSessionsOptimized: (...args: unknown[]) => mockUseSessionsOptimized(...args),
+  useDropdownData: (...args: unknown[]) => mockUseDropdownData(...args),
+}));
+
+vi.mock("../../lib/organization", () => ({
+  useActiveOrganizationId: () => mockUseActiveOrganizationId(),
 }));
 
 vi.mock("../../components/SessionModal", () => ({
@@ -129,6 +138,16 @@ const defaultRpcImplementation = vi.mocked(supabase.rpc as any).getMockImplement
 
 describe("Schedule", () => {
   beforeEach(() => {
+    mockUseActiveOrganizationId.mockReturnValue("org-1");
+    mockUseScheduleDataBatch.mockReset();
+    mockUseScheduleDataBatch.mockReturnValue({ data: scheduleFixtures, isLoading: false });
+    mockUseSessionsOptimized.mockReset();
+    mockUseSessionsOptimized.mockReturnValue({ data: scheduleFixtures.sessions, isLoading: false });
+    mockUseDropdownData.mockReset();
+    mockUseDropdownData.mockReturnValue({
+      data: { therapists: scheduleFixtures.therapists, clients: scheduleFixtures.clients },
+      isLoading: false,
+    });
     vi.mocked(supabase.rpc as any).mockImplementation(async (functionName: string) => {
       if (functionName === "get_schedule_data_batch") {
         return { data: scheduleFixtures, error: null };
@@ -195,6 +214,35 @@ describe("Schedule", () => {
     if (loadingElement) {
       expect(loadingElement).toBeInTheDocument();
     }
+  });
+
+  it("renders a stable missing-org state and disables org-dependent queries", async () => {
+    mockUseActiveOrganizationId.mockReturnValue(null);
+
+    renderWithProviders(<Schedule />, {
+      auth: { organizationId: null },
+    });
+
+    expect(await screen.findByTestId("schedule-missing-org")).toBeInTheDocument();
+    expect(screen.getByText(/Organization context unavailable/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: /^Schedule$/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Auto Schedule/i)).not.toBeInTheDocument();
+
+    expect(mockUseScheduleDataBatch).toHaveBeenCalledWith(
+      expect.any(Date),
+      expect.any(Date),
+      { enabled: false },
+    );
+    expect(mockUseSessionsOptimized).toHaveBeenCalledWith(
+      expect.any(Date),
+      expect.any(Date),
+      null,
+      null,
+      false,
+    );
+    expect(mockUseDropdownData).toHaveBeenCalledWith({ enabled: false });
   });
 
   it("applies therapist filters to batched sessions", async () => {

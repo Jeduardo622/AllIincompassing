@@ -25,10 +25,13 @@ export interface SessionNoteFormValues {
   therapist_name: string;
   goals_addressed: string[];
   goal_ids: string[];
+  goal_notes?: Record<string, string> | null;
   session_id?: string | null;
   narrative: string;
   is_locked: boolean;
 }
+
+const MAX_GOAL_NOTE_LENGTH = 5000;
 
 export function AddSessionNoteModal({
   isOpen,
@@ -45,12 +48,16 @@ export function AddSessionNoteModal({
   const [endTime, setEndTime] = useState('10:00');
   const [serviceCode, setServiceCode] = useState('97153');
   const [therapistId, setTherapistId] = useState('');
-  const [selectedProgramId, setSelectedProgramId] = useState('');
   const [selectedGoalIds, setSelectedGoalIds] = useState<string[]>([]);
+  const [goalNotes, setGoalNotes] = useState<Record<string, string>>({});
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
   const [narrative, setNarrative] = useState('');
   const [isLocked, setIsLocked] = useState(false);
 
+  // ---------------------------------------------------------------------------
+  // Programs — still loaded for goal group headers (display only).
+  // The program <select> has been removed; goals are now fetched client-wide.
+  // ---------------------------------------------------------------------------
   const { data: programs = [], isLoading: isLoadingPrograms } = useQuery({
     queryKey: ['client-programs', clientId, organizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
@@ -72,19 +79,11 @@ export function AddSessionNoteModal({
     enabled: Boolean(clientId && organizationId),
   });
 
-  const resolvedProgramId = useMemo(() => {
-    if (selectedProgramId) return selectedProgramId;
-    return programs.find((program) => program.status === 'active')?.id ?? programs[0]?.id ?? '';
-  }, [programs, selectedProgramId]);
-
-  useEffect(() => {
-    setSelectedGoalIds([]);
-  }, [resolvedProgramId]);
-
+  // Client-scoped goals query — fetches all goals regardless of program.
   const { data: goals = [], isLoading: isLoadingGoals } = useQuery({
-    queryKey: ['program-goals', resolvedProgramId, organizationId ?? 'MISSING_ORG'],
+    queryKey: ['client-goals', clientId, organizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
-      if (!resolvedProgramId || !organizationId) {
+      if (!clientId || !organizationId) {
         return [];
       }
       const { data, error } = await supabase
@@ -92,7 +91,7 @@ export function AddSessionNoteModal({
         .select(
           'id, title, status, program_id, measurement_type, baseline_data, target_criteria, mastery_criteria, maintenance_criteria, generalization_criteria, objective_data_points',
         )
-        .eq('program_id', resolvedProgramId)
+        .eq('client_id', clientId)
         .eq('organization_id', organizationId)
         .order('created_at', { ascending: false });
 
@@ -101,16 +100,29 @@ export function AddSessionNoteModal({
       }
       return (data ?? []) as Goal[];
     },
-    enabled: Boolean(resolvedProgramId && organizationId),
+    enabled: Boolean(clientId && organizationId),
   });
 
   const availableGoals = useMemo(
     () => goals.filter((goal) => goal.status !== 'archived'),
     [goals],
   );
-  const selectedGoalDetails = useMemo(
-    () => availableGoals.filter((goal) => selectedGoalIds.includes(goal.id)),
-    [availableGoals, selectedGoalIds],
+
+  // Goals grouped by program_id, ordered by the programs array.
+  const goalsByProgram = useMemo(() => {
+    const map = new Map<string, Goal[]>();
+    for (const goal of availableGoals) {
+      const pid = goal.program_id ?? '__unknown__';
+      if (!map.has(pid)) map.set(pid, []);
+      map.get(pid)!.push(goal);
+    }
+    return map;
+  }, [availableGoals]);
+
+  // Programs that have at least one non-archived goal, in fetch order.
+  const programsWithGoals = useMemo(
+    () => programs.filter((p) => goalsByProgram.has(p.id)),
+    [programs, goalsByProgram],
   );
 
   const { data: sessions = [], isLoading: isLoadingSessions } = useQuery({
@@ -172,55 +184,50 @@ export function AddSessionNoteModal({
 
   // Pre-populate goals from session_goals when a session is linked.
   //
-  // This single effect handles both orderings:
-  //   (a) goals load first — effect is a no-op until sessionGoalsData arrives
-  //   (b) session_goals arrives first — effect is a no-op until goals load
+  // Handles both orderings:
+  //   (a) goals load first  — waits for sessionGoalsData
+  //   (b) session_goals arrives first — waits for goals
   //   (c) both ready simultaneously — applies immediately
   //
   // The appliedForSession ref ensures pre-selection fires exactly once per
   // session ID so that any manual edits the therapist makes afterwards are
   // preserved.  The ref is reset in resetForm() when the modal closes.
-  //
-  // Multi-program note: session_goals may reference goals from multiple programs
-  // (sessions-start supports this via goal_ids[]).  The current modal supports
-  // only a single program selector, so we pick the first program_id as the
-  // primary context.  Goals from other programs are not selectable until the
-  // therapist changes the program selector; they are not silently lost but are
-  // not auto-selected either.  This is a known limitation of the single-program
-  // modal design and is reported in the implementation card.
   useEffect(() => {
     if (!sessionGoalsData || sessionGoalsData.length === 0 || goals.length === 0) {
       return;
     }
-    // Skip if we already auto-populated for this session.
     if (selectedSessionId && selectedSessionId === appliedForSession.current) {
       return;
     }
 
     const goalIds = sessionGoalsData.map((sg) => sg.goal_id);
-    const programIds = [...new Set(sessionGoalsData.map((sg) => sg.program_id))];
-    const primaryProgramId = programIds[0];
-    if (primaryProgramId) {
-      setSelectedProgramId(primaryProgramId);
-    }
-
     const validIds = goals
       .filter((g) => g.status !== 'archived' && goalIds.includes(g.id))
       .map((g) => g.id);
 
     if (validIds.length > 0) {
       setSelectedGoalIds(validIds);
-      // Lock only after a successful application so that a program-change
-      // triggered by setSelectedProgramId above can still complete a second
-      // pass when the new program's goals load (validIds was empty on first pass).
       appliedForSession.current = selectedSessionId;
     }
   }, [sessionGoalsData, goals, selectedSessionId]);
 
   const toggleGoalSelection = (goalId: string) => {
-    setSelectedGoalIds((prev) =>
-      prev.includes(goalId) ? prev.filter((id) => id !== goalId) : [...prev, goalId],
-    );
+    setSelectedGoalIds((prev) => {
+      if (prev.includes(goalId)) {
+        // Remove the per-goal note when the goal is deselected.
+        setGoalNotes((n) => {
+          const next = { ...n };
+          delete next[goalId];
+          return next;
+        });
+        return prev.filter((id) => id !== goalId);
+      }
+      return [...prev, goalId];
+    });
+  };
+
+  const updateGoalNote = (goalId: string, text: string) => {
+    setGoalNotes((prev) => ({ ...prev, [goalId]: text }));
   };
 
   useEffect(() => {
@@ -281,8 +288,8 @@ export function AddSessionNoteModal({
     setEndTime('10:00');
     setServiceCode('97153');
     setTherapistId('');
-    setSelectedProgramId('');
     setSelectedGoalIds([]);
+    setGoalNotes({});
     setSelectedSessionId('');
     setNarrative('');
     setIsLocked(false);
@@ -303,27 +310,26 @@ export function AddSessionNoteModal({
       return;
     }
 
-    // Validate required fields
     if (!date) {
       showError('Session date is required');
       return;
     }
-    
+
     if (!startTime) {
       showError('Start time is required');
       return;
     }
-    
+
     if (!endTime) {
       showError('End time is required');
       return;
     }
-    
+
     if (!serviceCode) {
       showError('Service code is required');
       return;
     }
-    
+
     if (!therapistId) {
       showError('Therapist is required');
       return;
@@ -334,13 +340,8 @@ export function AddSessionNoteModal({
       return;
     }
 
-    if (!resolvedProgramId) {
-      showError('Select a program before choosing goals.');
-      return;
-    }
-
-    if (availableGoals.length === 0) {
-      showError('Add goals to the selected program before logging this note.');
+    if (availableGoals.length === 0 && !isLoadingGoals && !isLoadingPrograms) {
+      showError('Add goals to a program before logging this note.');
       return;
     }
 
@@ -349,15 +350,31 @@ export function AddSessionNoteModal({
       return;
     }
 
-    if (!narrative.trim()) {
-      showError('Session notes are required');
-      return;
+    // Every selected goal must have a non-empty note within the character limit.
+    for (const goalId of selectedGoalIds) {
+      const note = (goalNotes[goalId] ?? '').trim();
+      if (!note) {
+        const goalTitle = availableGoals.find((g) => g.id === goalId)?.title ?? goalId;
+        showError(`A note is required for goal: ${goalTitle}`);
+        return;
+      }
+      if (note.length > MAX_GOAL_NOTE_LENGTH) {
+        const goalTitle = availableGoals.find((g) => g.id === goalId)?.title ?? goalId;
+        showError(`Note for "${goalTitle}" exceeds ${MAX_GOAL_NOTE_LENGTH.toLocaleString()} characters.`);
+        return;
+      }
     }
-    
-    const selectedTherapist = therapists.find(t => t.id === therapistId);
+
+    const selectedTherapist = therapists.find((t) => t.id === therapistId);
     const selectedGoalTitles = availableGoals
       .filter((goal) => selectedGoalIds.includes(goal.id))
       .map((goal) => goal.title);
+
+    // Build goal_notes map — only include trimmed values for selected goals.
+    const submittedGoalNotes: Record<string, string> = {};
+    for (const goalId of selectedGoalIds) {
+      submittedGoalNotes[goalId] = (goalNotes[goalId] ?? '').trim();
+    }
 
     onSubmit({
       date,
@@ -368,9 +385,10 @@ export function AddSessionNoteModal({
       therapist_name: selectedTherapist?.full_name || 'Unknown Therapist',
       goals_addressed: selectedGoalTitles,
       goal_ids: selectedGoalIds,
+      goal_notes: submittedGoalNotes,
       session_id: selectedSessionId || null,
       narrative,
-      is_locked: isLocked
+      is_locked: isLocked,
     });
   };
 
@@ -391,7 +409,7 @@ export function AddSessionNoteModal({
             <X className="w-5 h-5" />
           </button>
         </div>
-        
+
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -407,7 +425,7 @@ export function AddSessionNoteModal({
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
               />
             </div>
-            
+
             <div>
               <label htmlFor="service-code" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 <FileText className="w-4 h-4 inline-block mr-1" />
@@ -431,7 +449,7 @@ export function AddSessionNoteModal({
               </select>
             </div>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label htmlFor="start-time" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -446,7 +464,7 @@ export function AddSessionNoteModal({
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
               />
             </div>
-            
+
             <div>
               <label htmlFor="end-time" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 <Clock className="w-4 h-4 inline-block mr-1" />
@@ -461,7 +479,7 @@ export function AddSessionNoteModal({
               />
             </div>
           </div>
-          
+
           <div>
             <label htmlFor="therapist-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Therapist
@@ -473,7 +491,7 @@ export function AddSessionNoteModal({
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
             >
               <option value="">Select therapist</option>
-              {therapists.map(therapist => (
+              {therapists.map((therapist) => (
                 <option key={therapist.id} value={therapist.id}>
                   {therapist.full_name} - {therapist.title || 'Therapist'}
                 </option>
@@ -497,7 +515,10 @@ export function AddSessionNoteModal({
               </option>
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
-                  {new Date(session.start_time).toLocaleDateString()} {new Date(session.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(session.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {session.therapist?.full_name ?? 'Therapist'}
+                  {new Date(session.start_time).toLocaleDateString()}{' '}
+                  {new Date(session.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} -{' '}
+                  {new Date(session.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ·{' '}
+                  {session.therapist?.full_name ?? 'Therapist'}
                 </option>
               ))}
             </select>
@@ -507,95 +528,154 @@ export function AddSessionNoteModal({
               </p>
             )}
           </div>
-          
-          <div>
-            <label htmlFor="program-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Program
-            </label>
-            <select
-              id="program-select"
-              value={resolvedProgramId}
-              onChange={(e) => {
-                setSelectedProgramId(e.target.value);
-                setSelectedGoalIds([]);
-              }}
-              className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-              disabled={isLoadingPrograms || programs.length === 0}
-            >
-              <option value="">
-                {isLoadingPrograms ? 'Loading programs...' : 'Select a program'}
-              </option>
-              {programs.map((program) => (
-                <option key={program.id} value={program.id}>
-                  {program.name}
-                </option>
-              ))}
-            </select>
-            {programs.length === 0 && !isLoadingPrograms && (
-              <p className="mt-2 text-xs text-amber-600 dark:text-amber-300">
-                No programs found for this client. Create one in Programs & Goals before logging.
-              </p>
-            )}
-          </div>
 
+          {/* Goals Addressed — grouped by program, with per-goal note textareas */}
           <div>
             <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Goals Addressed
             </p>
-            {isLoadingGoals ? (
-              <div className="text-sm text-gray-500 dark:text-gray-400">Loading goals...</div>
+            {isLoadingGoals || isLoadingPrograms ? (
+              <div className="text-sm text-gray-500 dark:text-gray-400">Loading goals…</div>
             ) : availableGoals.length === 0 ? (
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                No goals available for the selected program.
+                No goals available for this client. Add goals in Programs &amp; Goals before logging.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {availableGoals.map((goal) => (
-                  <label key={goal.id} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                    <input
-                      type="checkbox"
-                      checked={selectedGoalIds.includes(goal.id)}
-                      onChange={() => toggleGoalSelection(goal.id)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <span>{goal.title}</span>
-                    <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                      ({Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} data points)
-                    </span>
-                  </label>
-                ))}
-              </div>
-            )}
-            {selectedGoalDetails.length > 0 && (
-              <div className="mt-3 space-y-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-100">
-                {selectedGoalDetails.map((goal) => (
-                  <div key={goal.id} className="space-y-1">
-                    <p className="font-semibold">{goal.title}</p>
-                    {goal.measurement_type && <p>Measurement: {goal.measurement_type}</p>}
-                    {goal.target_criteria && <p>Target: {goal.target_criteria}</p>}
-                    {goal.mastery_criteria && <p>Mastery: {goal.mastery_criteria}</p>}
-                    {goal.maintenance_criteria && <p>Maintenance: {goal.maintenance_criteria}</p>}
-                    {goal.generalization_criteria && <p>Generalization: {goal.generalization_criteria}</p>}
+              <div className="space-y-4">
+                {programsWithGoals.map((program) => {
+                  const programGoals = goalsByProgram.get(program.id) ?? [];
+                  return (
+                    <div key={program.id}>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                        {program.name}
+                      </p>
+                      <div className="space-y-3">
+                        {programGoals.map((goal) => {
+                          const isSelected = selectedGoalIds.includes(goal.id);
+                          const noteText = goalNotes[goal.id] ?? '';
+                          const remaining = MAX_GOAL_NOTE_LENGTH - noteText.length;
+                          return (
+                            <div key={goal.id} className="rounded-md border border-gray-200 dark:border-gray-700 p-2">
+                              <label className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleGoalSelection(goal.id)}
+                                  className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                  aria-label={goal.title}
+                                />
+                                <span className="font-medium">{goal.title}</span>
+                                <span className="ml-auto text-[11px] text-gray-400 dark:text-gray-500 whitespace-nowrap">
+                                  ({Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} data pts)
+                                </span>
+                              </label>
+                              {isSelected && (
+                                <div className="mt-2 pl-6">
+                                  <label
+                                    htmlFor={`goal-note-${goal.id}`}
+                                    className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1"
+                                  >
+                                    Note for this goal <span className="text-red-500">*</span>
+                                  </label>
+                                  <textarea
+                                    id={`goal-note-${goal.id}`}
+                                    value={noteText}
+                                    onChange={(e) => updateGoalNote(goal.id, e.target.value)}
+                                    rows={3}
+                                    maxLength={MAX_GOAL_NOTE_LENGTH}
+                                    placeholder={`Describe progress on "${goal.title}"…`}
+                                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 text-sm"
+                                  />
+                                  <p className={`text-right text-[11px] mt-0.5 ${remaining < 100 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                                    {remaining.toLocaleString()} characters remaining
+                                  </p>
+                                  {/* Inline criteria summary */}
+                                  {(goal.measurement_type || goal.target_criteria || goal.mastery_criteria) && (
+                                    <div className="mt-1 rounded-md border border-blue-100 bg-blue-50 dark:border-blue-900/40 dark:bg-blue-900/20 px-2 py-1 text-[11px] text-blue-800 dark:text-blue-100 space-y-0.5">
+                                      {goal.measurement_type && <p>Measurement: {goal.measurement_type}</p>}
+                                      {goal.target_criteria && <p>Target: {goal.target_criteria}</p>}
+                                      {goal.mastery_criteria && <p>Mastery: {goal.mastery_criteria}</p>}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Goals whose program is not in the programs list (edge case) */}
+                {goalsByProgram.has('__unknown__') && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                      Uncategorized
+                    </p>
+                    <div className="space-y-3">
+                      {(goalsByProgram.get('__unknown__') ?? []).map((goal) => {
+                        const isSelected = selectedGoalIds.includes(goal.id);
+                        const noteText = goalNotes[goal.id] ?? '';
+                        const remaining = MAX_GOAL_NOTE_LENGTH - noteText.length;
+                        return (
+                          <div key={goal.id} className="rounded-md border border-gray-200 dark:border-gray-700 p-2">
+                            <label className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleGoalSelection(goal.id)}
+                                className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                aria-label={goal.title}
+                              />
+                              <span className="font-medium">{goal.title}</span>
+                            </label>
+                            {isSelected && (
+                              <div className="mt-2 pl-6">
+                                <label
+                                  htmlFor={`goal-note-${goal.id}`}
+                                  className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1"
+                                >
+                                  Note for this goal <span className="text-red-500">*</span>
+                                </label>
+                                <textarea
+                                  id={`goal-note-${goal.id}`}
+                                  value={noteText}
+                                  onChange={(e) => updateGoalNote(goal.id, e.target.value)}
+                                  rows={3}
+                                  maxLength={MAX_GOAL_NOTE_LENGTH}
+                                  placeholder={`Describe progress on "${goal.title}"…`}
+                                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 text-sm"
+                                />
+                                <p className={`text-right text-[11px] mt-0.5 ${remaining < 100 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                                  {remaining.toLocaleString()} characters remaining
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                ))}
+                )}
               </div>
             )}
           </div>
-          
+
           <div>
             <label htmlFor="session-notes" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Session Notes
+              Overall Session Notes <span className="font-normal text-gray-400 dark:text-gray-500">(optional)</span>
             </label>
             <textarea
               id="session-notes"
               value={narrative}
               onChange={(e) => setNarrative(e.target.value)}
-              rows={5}
+              rows={4}
               className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
-              placeholder="Enter detailed session notes..."
+              placeholder="Enter any overall session observations or context…"
             />
           </div>
-          
+
           <div className="flex items-center">
             <input
               type="checkbox"
@@ -610,7 +690,7 @@ export function AddSessionNoteModal({
             </label>
           </div>
         </div>
-        
+
         <div className="flex justify-end space-x-3 mt-6">
           <button
             type="button"

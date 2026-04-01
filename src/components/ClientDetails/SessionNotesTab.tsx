@@ -126,6 +126,7 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
         sessionDuration: durationMinutes,
         goalsAddressed: note.goals_addressed,
         goalIds: note.goal_ids,
+        goalNotes: note.goal_notes ?? null,
         sessionId: note.session_id ?? null,
         narrative: note.narrative,
         isLocked: note.is_locked,

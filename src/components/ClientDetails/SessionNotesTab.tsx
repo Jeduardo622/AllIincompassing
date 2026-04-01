@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { 
-  Calendar, Plus, Download, Inbox,
+import {
+  Calendar, ChevronRight, Plus, Download, Inbox,
   Clock, CheckCircle, AlertTriangle, User, Search
 } from 'lucide-react';
 import {
@@ -23,6 +23,45 @@ import {
   fetchClientSessionNotes,
   isSupabaseError,
 } from '../../lib/session-notes';
+
+// ---------------------------------------------------------------------------
+// GoalNoteEntry — collapsible row showing a single goal's note text.
+// ---------------------------------------------------------------------------
+
+interface GoalNoteEntryProps {
+  /** Human-readable goal label (title or truncated UUID). */
+  label: string;
+  /** The stored note text for this goal. */
+  noteText: string;
+}
+
+function GoalNoteEntry({ label, noteText }: GoalNoteEntryProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  return (
+    <div className="border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setIsExpanded(prev => !prev)}
+        aria-expanded={isExpanded}
+        className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+      >
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{label}</span>
+        <ChevronRight
+          className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
+        />
+      </button>
+
+      {isExpanded && (
+        <div className="px-3 py-2 bg-white dark:bg-dark-lighter border-t border-gray-200 dark:border-gray-700">
+          <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{noteText}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 
 interface SessionNotesTabProps {
   client: { id: string };
@@ -464,41 +503,40 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
                         )}
                       </div>
                       
+                      {/* Goals section — per-goal expandable view when goal_notes present,
+                          otherwise legacy chips-only display. */}
                       <div className="mt-3">
-                        <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                           Goals Addressed:
                         </div>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {note.goals_addressed.map((goal, index) => (
-                            <span 
-                              key={index}
-                              className="text-xs bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 px-2 py-0.5 rounded"
-                            >
-                              {goal}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
 
-                      <div className="mt-3">
-                        <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Goal IDs:
-                        </div>
-                        {note.goal_ids && note.goal_ids.length > 0 ? (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {note.goal_ids.map((goalId) => (
+                        {note.goal_notes && Object.keys(note.goal_notes).length > 0 ? (
+                          // Per-goal expandable entries (Slice 4+)
+                          <div className="space-y-1">
+                            {(note.goal_ids ?? []).map((goalId, index) => {
+                              const noteText = note.goal_notes![goalId];
+                              if (!noteText) return null; // goal in goal_ids but not in goal_notes
+                              const label =
+                                note.goal_ids!.length === note.goals_addressed.length
+                                  ? note.goals_addressed[index]
+                                  : `Goal ${goalId.slice(0, 8)}…`;
+                              return (
+                                <GoalNoteEntry key={goalId} label={label} noteText={noteText} />
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          // Legacy notes: show chips only
+                          <div className="flex flex-wrap gap-1">
+                            {note.goals_addressed.map((goal, index) => (
                               <span
-                                key={goalId}
-                                className="text-xs bg-gray-50 text-gray-600 dark:bg-gray-800 dark:text-gray-300 px-2 py-0.5 rounded font-mono"
+                                key={index}
+                                className="text-xs bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 px-2 py-0.5 rounded"
                               >
-                                {goalId}
+                                {goal}
                               </span>
                             ))}
                           </div>
-                        ) : (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            No goal IDs linked.
-                          </p>
                         )}
                       </div>
                       

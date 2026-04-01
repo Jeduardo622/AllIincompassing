@@ -25,6 +25,7 @@ The repository does not create per-PR Supabase branches automatically. Branch cr
 2. Push to `main` touches `supabase/migrations/**`.
    - `supabase-validate.yml` runs `test-main`.
    - `test-main` runs `npm test -- --run --reporter=verbose` with `RUN_DB_IT=1`.
+   - `supabase-validate.yml` also runs `runtime-migration-parity` to verify newly added migration versions from the merge range exist in the runtime DB's `supabase_migrations.schema_migrations`.
 3. Pull request or push to `main`/`develop`.
    - `ci.yml` runs either:
      - docs-only path: `change-scope` -> `docs-guard` -> `ci-gate`
@@ -47,6 +48,7 @@ The repository does not create per-PR Supabase branches automatically. Branch cr
 - Jobs:
   - `lint-migrations` (PR only): checks migrations with Supabase CLI.
   - `test-main` (push only): runs unit/integration suites with hosted Supabase env vars and `RUN_DB_IT=1`.
+  - `runtime-migration-parity` (push only): checks that newly merged migration versions are present in runtime DB history using `SUPABASE_DB_URL`.
 
 ### `ci.yml`
 

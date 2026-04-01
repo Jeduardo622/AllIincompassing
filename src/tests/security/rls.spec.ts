@@ -1094,6 +1094,28 @@ describe('admin organization scoping', () => {
   });
 });
 
+describe('user role assignment access', () => {
+  it('allows therapists to read their own user_roles rows without policy recursion errors', async () => {
+    if (!runTests || !orgAContext) {
+      console.log('⏭️  Skipping user_roles self-read test - setup incomplete.');
+      return;
+    }
+
+    const therapistClient = await signInTherapist(orgAContext);
+    try {
+      const result = await therapistClient
+        .from('user_roles')
+        .select('user_id, role_id, is_active, expires_at')
+        .eq('user_id', orgAContext.userId);
+
+      expect(result.error).toBeNull();
+      expect(Array.isArray(result.data)).toBe(true);
+    } finally {
+      await therapistClient.auth.signOut();
+    }
+  });
+});
+
 describe('therapist certifications organization scoping', () => {
   it('allows admins to manage certifications for therapists in their organization', async () => {
     if (!runTests || !adminContext || !therapistCertificationIdsByOrg) {

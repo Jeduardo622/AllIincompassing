@@ -47,5 +47,11 @@ WHITE BIBLE.pdf
 # Generated local analysis/security artifacts (may include sensitive output)
 .reports/*.json
 .reports/*.md
+
+# Local agent / editor scratch (not shipped)
+.claude/
+
+# Timestamped local test outputs (Playwright triage, etc.)
+artifacts/latest/
 # Root-level local Lighthouse exports (timestamped browser downloads)
 /example.com_*.report.html

@@ -76,6 +76,37 @@ const noteWithMismatchedLengths: SessionNote = {
   client_id: 'client-1',
 };
 
+const noteBlankNarrativeChipsOnly: SessionNote = {
+  id: 'note-blank-narrative',
+  date: '2024-06-15',
+  start_time: '09:00',
+  end_time: '10:00',
+  service_code: '97153',
+  therapist_name: 'Test Therapist',
+  goals_addressed: ['Per-goal detail target'],
+  goal_ids: ['goal-id-1'],
+  goal_notes: null,
+  narrative: '',
+  is_locked: false,
+  client_id: 'client-1',
+};
+
+const noteWhitespaceNarrative: SessionNote = {
+  ...noteBlankNarrativeChipsOnly,
+  id: 'note-ws-narrative',
+  narrative: '  \n\t  ',
+  goals_addressed: ['G1'],
+  goal_ids: ['goal-g1'],
+};
+
+const noteWithNarrativeBody: SessionNote = {
+  ...noteBlankNarrativeChipsOnly,
+  id: 'note-with-narrative',
+  narrative: 'Client made excellent progress today.',
+  goals_addressed: ['Motor skills'],
+  goal_ids: ['goal-ms-1'],
+};
+
 // ---------------------------------------------------------------------------
 // Auth options shared across all tests — guarantees a non-null organizationId
 // so the React Query `enabled` conditions are satisfied.
@@ -194,5 +225,49 @@ describe('SessionNotesTab — goal notes display', () => {
     expect(
       screen.queryByRole('button', { name: /only one label/i }),
     ).toBeNull();
+  });
+});
+
+describe('SessionNotesTab — overall narrative visibility', () => {
+  beforeEach(() => {
+    vi.mocked(fetchClientSessionNotes).mockResolvedValue([]);
+  });
+
+  it('does not render the per-note Session Notes narrative block when narrative is blank and goals are present', async () => {
+    vi.mocked(fetchClientSessionNotes).mockResolvedValue([noteBlankNarrativeChipsOnly]);
+
+    renderWithProviders(<SessionNotesTab client={CLIENT} />, AUTH_OPTS);
+
+    await waitFor(() => {
+      expect(screen.getByText('Per-goal detail target')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Session Notes:')).toBeNull();
+    expect(screen.getByText('Goals Addressed:')).toBeInTheDocument();
+  });
+
+  it('does not render the narrative block for whitespace-only narrative', async () => {
+    vi.mocked(fetchClientSessionNotes).mockResolvedValue([noteWhitespaceNarrative]);
+
+    renderWithProviders(<SessionNotesTab client={CLIENT} />, AUTH_OPTS);
+
+    await waitFor(() => {
+      expect(screen.getByText('G1')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Session Notes:')).toBeNull();
+  });
+
+  it('renders the Session Notes narrative block when narrative has content', async () => {
+    vi.mocked(fetchClientSessionNotes).mockResolvedValue([noteWithNarrativeBody]);
+
+    renderWithProviders(<SessionNotesTab client={CLIENT} />, AUTH_OPTS);
+
+    await waitFor(() => {
+      expect(screen.getByText('Session Notes:')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Client made excellent progress today.')).toBeInTheDocument();
+    expect(screen.getByText('Motor skills')).toBeInTheDocument();
   });
 });

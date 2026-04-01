@@ -54,7 +54,7 @@ describe("mutationErrorAdapter", () => {
     expect(adapted.conflictLogMetadata).toBeNull();
   });
 
-  it("surfaces SESSION_NOTES_REQUIRED (409) as a conflict with the backend message", () => {
+  it("surfaces SESSION_NOTES_REQUIRED (409) as a conflict with only the backend message — no slot-booking hint", () => {
     // Simulates a NormalizedApiError produced by toNormalizedApiError() when
     // sessions-complete returns { code: "SESSION_NOTES_REQUIRED", status: 409 }.
     const error = Object.assign(
@@ -66,10 +66,25 @@ describe("mutationErrorAdapter", () => {
 
     expect(adapted.lifecyclePlan.errorKind).toBe("conflict");
     expect(adapted.lifecyclePlan.resetBranch.source).toBe("409");
-    // userMessage is a composed string beginning with the backend message text.
-    expect(typeof adapted.userMessage).toBe("string");
-    expect(adapted.userMessage as string).toContain(
-      "Session notes with goal progress are required",
+    // userMessage must be exactly the backend message — the generic slot-booking
+    // hint is misleading for this code and must NOT be appended.
+    expect(adapted.userMessage).toBe(
+      "Session notes with goal progress are required before closing this session.",
     );
+    expect(adapted.userMessage as string).not.toContain("time slot was just booked");
+  });
+
+  it("still appends the slot-booking hint for generic 409 conflicts (non-SESSION_NOTES_REQUIRED)", () => {
+    // A regular scheduling conflict (no code) must still get the composed hint.
+    const adapted = adaptScheduleMutationError({
+      status: 409,
+      message: "Conflict",
+      retryHint: "choose a different slot",
+    });
+
+    expect(adapted.lifecyclePlan.errorKind).toBe("conflict");
+    expect(typeof adapted.userMessage).toBe("string");
+    // The hint should be appended for generic 409s.
+    expect(adapted.userMessage as string).toContain("choose a different slot");
   });
 });

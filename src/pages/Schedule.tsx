@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useLayoutEffect, useEffect, useR
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, startOfWeek, addDays, endOfWeek } from "date-fns";
 import { getTimezoneOffset } from "date-fns-tz";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -66,6 +66,12 @@ import {
   applyPendingScheduleDetail,
   type PendingScheduleTransitionRecorder,
 } from "../features/scheduling/domain/pendingScheduleApply";
+import {
+  applyScheduleModalSearchParams,
+  clearScheduleModalSearchParams,
+  parseScheduleModalSearchParams,
+  SCHEDULE_MODAL_URL_TTL_MS,
+} from "./schedule-modal-url-state";
 
 const AUTO_SCHEDULE_CONCURRENCY = 3;
 const MISSING_NOTES_RETRY_HINT =
@@ -450,6 +456,7 @@ DayView.displayName = "DayView";
 
 export const Schedule = React.memo(() => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   useCapturePendingScheduleEvent();
   const { user, profile, effectiveRole } = useAuth();
   const activeOrganizationId = useActiveOrganizationId();
@@ -475,6 +482,8 @@ export const Schedule = React.memo(() => {
   const [pendingTraceCorrelationId, setPendingTraceCorrelationId] = useState<string | null>(null);
   const [retryActionLabel, setRetryActionLabel] = useState<string | null>(null);
   const lastPendingScheduleKeyRef = useRef<string | null>(null);
+  const lastAppliedUrlModalKeyRef = useRef<string | null>(null);
+  const wasModalOpenRef = useRef(false);
 
   const queryClient = useQueryClient();
   const scheduleResetSetters = useMemo(
@@ -589,8 +598,21 @@ export const Schedule = React.memo(() => {
     [userTimeZone],
   );
 
+  const writeModalUrlState = useCallback(
+    (state: { mode: "create"; startTimeIso: string } | { mode: "edit"; sessionId: string }) => {
+      const params = applyScheduleModalSearchParams(searchParams, {
+        ...state,
+        expiresAtMs: Date.now() + SCHEDULE_MODAL_URL_TTL_MS,
+      });
+      setSearchParams(params, { replace: true });
+      const parsed = parseScheduleModalSearchParams(params);
+      lastAppliedUrlModalKeyRef.current = parsed.kind === "ready" ? parsed.key : null;
+    },
+    [searchParams, setSearchParams],
+  );
+
   const openFromPendingSchedule = useCallback((detail: PendingScheduleDetail | null) => {
-    applyPendingScheduleDetail({
+    const transition = applyPendingScheduleDetail({
       detail,
       lastDetailKeyRef: lastPendingScheduleKeyRef,
       setters: {
@@ -605,7 +627,14 @@ export const Schedule = React.memo(() => {
         setIsModalOpen,
       },
     });
-  }, []);
+
+    if (transition.decision === "apply" && transition.prefill) {
+      writeModalUrlState({
+        mode: "create",
+        startTimeIso: transition.prefill.date.toISOString(),
+      });
+    }
+  }, [writeModalUrlState]);
 
   const consumePendingSchedule = useCallback(() => {
     consumePendingScheduleFromStorage({
@@ -943,7 +972,10 @@ export const Schedule = React.memo(() => {
 
   // Memoized callbacks
   const handleCreateSession = useCallback(
-    (timeSlot: { date: Date; time: string }) => {
+    (
+      timeSlot: { date: Date; time: string },
+      options?: { syncUrl?: boolean },
+    ) => {
       const plan = buildScheduleModalOpenResetPlan({
         mode: "create",
         timeSlot,
@@ -964,11 +996,29 @@ export const Schedule = React.memo(() => {
         },
       });
       setRetryActionLabel(null);
+
+      const [hours, minutes] = timeSlot.time.split(":").map((part) => Number(part));
+      const startTime = new Date(timeSlot.date);
+      startTime.setHours(
+        Number.isFinite(hours) ? hours : 0,
+        Number.isFinite(minutes) ? minutes : 0,
+        0,
+        0,
+      );
+      if (options?.syncUrl !== false) {
+        writeModalUrlState({
+          mode: "create",
+          startTimeIso: startTime.toISOString(),
+        });
+      }
     },
-    [],
+    [writeModalUrlState],
   );
 
-  const handleEditSession = useCallback((session: Session) => {
+  const handleEditSession = useCallback((
+    session: Session,
+    options?: { syncUrl?: boolean },
+  ) => {
     const plan = buildScheduleModalOpenResetPlan({
       mode: "edit",
       session,
@@ -989,7 +1039,13 @@ export const Schedule = React.memo(() => {
       },
     });
     setRetryActionLabel(null);
-  }, []);
+    if (options?.syncUrl !== false) {
+      writeModalUrlState({
+        mode: "edit",
+        sessionId: session.id,
+      });
+    }
+  }, [writeModalUrlState]);
 
   const handleAddRecurrenceException = useCallback(() => {
     setRecurrenceExceptions((prev) => [...prev, ""]);
@@ -1017,6 +1073,15 @@ export const Schedule = React.memo(() => {
       scheduleResetSetters,
     );
   }, [scheduleResetSetters]);
+
+  useEffect(() => {
+    if (wasModalOpenRef.current && !isModalOpen) {
+      const params = clearScheduleModalSearchParams(searchParams);
+      setSearchParams(params, { replace: true });
+      lastAppliedUrlModalKeyRef.current = null;
+    }
+    wasModalOpenRef.current = isModalOpen;
+  }, [isModalOpen, searchParams, setSearchParams]);
 
   const handleSessionStarted = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["sessions"] });
@@ -1236,6 +1301,62 @@ export const Schedule = React.memo(() => {
 
   const hasBatchedData = Boolean(batchedData);
   const isLoading = isLoadingBatch || (!hasBatchedData && (isLoadingSessions || isLoadingDropdowns));
+
+  useEffect(() => {
+    const parsed = parseScheduleModalSearchParams(searchParams);
+    if (parsed.kind === "none") {
+      lastAppliedUrlModalKeyRef.current = null;
+      return;
+    }
+
+    if (parsed.kind === "expired" || parsed.kind === "invalid") {
+      const params = clearScheduleModalSearchParams(searchParams);
+      setSearchParams(params, { replace: true });
+      lastAppliedUrlModalKeyRef.current = null;
+      return;
+    }
+
+    if (lastAppliedUrlModalKeyRef.current === parsed.key) {
+      return;
+    }
+
+    if (parsed.state.mode === "create") {
+      const date = parseISO(parsed.state.startTimeIso);
+      handleCreateSession(
+        {
+          date,
+          time: format(date, "HH:mm"),
+        },
+        { syncUrl: false },
+      );
+      lastAppliedUrlModalKeyRef.current = parsed.key;
+      return;
+    }
+
+    if (isLoading) {
+      return;
+    }
+
+    const sessionPool = Array.isArray(batchedData?.sessions) ? batchedData.sessions : displayData.sessions;
+    const session = sessionPool.find((item) => item.id === parsed.state.sessionId);
+    if (!session) {
+      const params = clearScheduleModalSearchParams(searchParams);
+      setSearchParams(params, { replace: true });
+      lastAppliedUrlModalKeyRef.current = null;
+      return;
+    }
+
+    handleEditSession(session, { syncUrl: false });
+    lastAppliedUrlModalKeyRef.current = parsed.key;
+  }, [
+    searchParams,
+    setSearchParams,
+    isLoading,
+    batchedData?.sessions,
+    displayData.sessions,
+    handleCreateSession,
+    handleEditSession,
+  ]);
 
   if (!activeOrganizationId) {
     return (

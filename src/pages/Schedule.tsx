@@ -11,6 +11,8 @@ import {
   Plus,
   Edit2,
   Wand2,
+  AlertCircle,
+  CalendarX,
 } from "lucide-react";
 import type { Session, Therapist, Client } from "../types";
 import { SessionModal } from "../components/SessionModal";
@@ -30,6 +32,7 @@ import { logger } from "../lib/logger/logger";
 import { toError } from "../lib/logger/normalizeError";
 import { useAuth } from "../lib/authContext";
 import { useActiveOrganizationId } from "../lib/organization";
+import { supabase } from "../lib/supabase";
 import {
   buildSessionSlotIndex,
   createSessionSlotKey,
@@ -160,6 +163,18 @@ export function getSessionStatusClasses(
   status: Session["status"],
 ): { card: string; secondary: string; time: string } {
   return SESSION_STATUS_STYLES[status] ?? SESSION_STATUS_STYLES.scheduled;
+}
+
+/** Prefer batch directory rows when the batch list is non-empty; if the batch returns `[]`, fall back to dropdown data (batch `||` merge would otherwise hide a successful dropdown). */
+function mergeScheduleDirectoryLists<T>(
+  batchList: T[] | null | undefined,
+  dropdownList: T[] | null | undefined,
+): T[] {
+  const batch = batchList ?? [];
+  if (batch.length > 0) {
+    return batch;
+  }
+  return dropdownList ?? [];
 }
 
 // Memoized time slot component
@@ -671,28 +686,39 @@ export const Schedule = React.memo(() => {
   const debouncedClient = useDebounce(selectedClient, 300);
 
   // PHASE 3 OPTIMIZATION: Use batched schedule data
-  const { data: batchedData, isLoading: isLoadingBatch } = useScheduleDataBatch(
-    weekStart,
-    weekEnd,
-    { enabled: !!activeOrganizationId },
-  );
+  const {
+    data: batchedData,
+    isLoading: isLoadingBatch,
+    refetch: refetchScheduleBatch,
+  } = useScheduleDataBatch(weekStart, weekEnd, { enabled: !!activeOrganizationId });
 
   const hasBatchedSessions = Array.isArray(batchedData?.sessions);
-  const enableFallbackSessionsQuery = !isLoadingBatch && !hasBatchedSessions && !!activeOrganizationId;
+  const enableFallbackSessionsQuery =
+    !isLoadingBatch && !hasBatchedSessions && !!activeOrganizationId;
 
   // Fallback to individual queries if batched data is not available
-  const { data: sessions = [], isLoading: isLoadingSessions } =
-    useSessionsOptimized(
-      weekStart,
-      weekEnd,
-      debouncedTherapist,
-      debouncedClient,
-      enableFallbackSessionsQuery,
-    );
+  const {
+    data: sessions = [],
+    isLoading: isLoadingSessions,
+    isError: isSessionsError,
+    error: sessionsQueryError,
+    refetch: refetchSessions,
+  } = useSessionsOptimized(
+    weekStart,
+    weekEnd,
+    debouncedTherapist,
+    debouncedClient,
+    enableFallbackSessionsQuery,
+  );
 
   // Use dropdown data hook for therapists and clients
-  const { data: dropdownData, isLoading: isLoadingDropdowns } =
-    useDropdownData({ enabled: !!activeOrganizationId });
+  const {
+    data: dropdownData,
+    isLoading: isLoadingDropdowns,
+    isError: isDropdownError,
+    error: dropdownQueryError,
+    refetch: refetchDropdowns,
+  } = useDropdownData({ enabled: !!activeOrganizationId });
 
   const filteredBatchedSessions = useMemo(() => {
     const candidateSessions = Array.isArray(batchedData?.sessions) ? batchedData.sessions : null;
@@ -706,13 +732,66 @@ export const Schedule = React.memo(() => {
     });
   }, [batchedData?.sessions, selectedTherapist, selectedClient]);
 
-  // Use batched data if available, otherwise use individual query results
-  const displayData = buildScheduleDisplayData({
+  // Use batched data if available, otherwise use individual query results; merge directory lists so empty batch arrays do not mask dropdown results.
+  const displayData = useMemo(() => {
+    const base = buildScheduleDisplayData({
+      filteredBatchedSessions,
+      fallbackSessions: sessions,
+      batchedData,
+      dropdownData,
+    });
+    return {
+      ...base,
+      therapists: mergeScheduleDirectoryLists(
+        batchedData?.therapists,
+        dropdownData?.therapists,
+      ),
+      clients: mergeScheduleDirectoryLists(batchedData?.clients, dropdownData?.clients),
+    };
+  }, [
     filteredBatchedSessions,
-    fallbackSessions: sessions,
+    sessions,
     batchedData,
     dropdownData,
-  });
+  ]);
+
+  /** Batch RPC returns `null` on failure (see optimizedQueries). Directory lists merge batch + dropdown (`displayData`); surface dropdown errors whenever either list still depends on `useDropdownData`. */
+  const batchTherapistCount = Array.isArray(batchedData?.therapists)
+    ? batchedData.therapists.length
+    : 0;
+  const batchClientCount = Array.isArray(batchedData?.clients) ? batchedData.clients.length : 0;
+  const directoryLoadRequiresDropdown =
+    batchTherapistCount === 0 || batchClientCount === 0;
+
+  const sessionsPathFailed = enableFallbackSessionsQuery && isSessionsError;
+  const dropdownPathFailed =
+    !!activeOrganizationId && isDropdownError && directoryLoadRequiresDropdown;
+  const scheduleDataLoadFailed = sessionsPathFailed || dropdownPathFailed;
+
+  const scheduleDataLoadErrorMessage = useMemo(() => {
+    if (sessionsPathFailed && sessionsQueryError) {
+      return toError(sessionsQueryError, "Sessions could not be loaded").message;
+    }
+    if (dropdownPathFailed && dropdownQueryError) {
+      return toError(dropdownQueryError, "Schedule filters could not be loaded").message;
+    }
+    return "Schedule data could not be loaded. Try again in a moment.";
+  }, [sessionsPathFailed, dropdownPathFailed, sessionsQueryError, dropdownQueryError]);
+
+  const handleRetryScheduleDataLoad = useCallback(() => {
+    void refetchScheduleBatch();
+    void refetchSessions();
+    void refetchDropdowns();
+  }, [refetchScheduleBatch, refetchSessions, refetchDropdowns]);
+
+  const showEmptySessionsState = displayData.sessions.length === 0;
+
+  const scheduleEmptyReason = useMemo(() => {
+    if (displayData.therapists.length === 0 && displayData.clients.length === 0) {
+      return "no-schedule-data" as const;
+    }
+    return "no-sessions-in-period" as const;
+  }, [displayData.therapists.length, displayData.clients.length]);
 
   useEffect(() => {
     if (selectedTherapist) {
@@ -1144,7 +1223,25 @@ export const Schedule = React.memo(() => {
           return;
         }
         case "edit-complete": {
-          if (selectedSession?.status === "in_progress") {
+          let liveInProgress = selectedSession?.status === "in_progress";
+          if (!liveInProgress) {
+            const { data: liveRow, error: liveError } = await supabase
+              .from("sessions")
+              .select("status")
+              .eq("id", decision.selectedSessionId)
+              .maybeSingle();
+            if (liveError) {
+              logger.warn("Live session status lookup failed for close-readiness gate", {
+                metadata: {
+                  sessionId: decision.selectedSessionId,
+                  reason: liveError.message,
+                },
+              });
+            } else {
+              liveInProgress = liveRow?.status === "in_progress";
+            }
+          }
+          if (liveInProgress) {
             try {
               const readiness = await checkInProgressSessionCloseReadiness({
                 sessionId: decision.selectedSessionId,
@@ -1176,7 +1273,25 @@ export const Schedule = React.memo(() => {
           return;
         }
         case "edit-no-show": {
-          if (selectedSession?.status === "in_progress") {
+          let liveInProgressNoShow = selectedSession?.status === "in_progress";
+          if (!liveInProgressNoShow) {
+            const { data: liveRowNs, error: liveErrorNs } = await supabase
+              .from("sessions")
+              .select("status")
+              .eq("id", decision.selectedSessionId)
+              .maybeSingle();
+            if (liveErrorNs) {
+              logger.warn("Live session status lookup failed for close-readiness gate", {
+                metadata: {
+                  sessionId: decision.selectedSessionId,
+                  reason: liveErrorNs.message,
+                },
+              });
+            } else {
+              liveInProgressNoShow = liveRowNs?.status === "in_progress";
+            }
+          }
+          if (liveInProgressNoShow) {
             try {
               const readiness = await checkInProgressSessionCloseReadiness({
                 sessionId: decision.selectedSessionId,
@@ -1379,9 +1494,79 @@ export const Schedule = React.memo(() => {
 
   if (isLoading) {
     return (
+      <div className="h-full relative" aria-busy="true">
+        <div
+          className="h-full flex items-center justify-center"
+          role="status"
+          aria-live="polite"
+          data-testid="schedule-loading"
+        >
+          <span className="sr-only">Loading schedule…</span>
+          <div
+            className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"
+            aria-hidden="true"
+          />
+        </div>
+        {isModalOpen && (
+          <SessionModal
+            isOpen={isModalOpen}
+            onClose={handleCloseSessionModal}
+            onSubmit={handleSubmit}
+            session={selectedSession}
+            selectedDate={selectedTimeSlot?.date}
+            selectedTime={selectedTimeSlot?.time}
+            therapists={displayData.therapists}
+            clients={displayData.clients}
+            existingSessions={displayData.sessions}
+            timeZone={userTimeZone}
+            defaultTherapistId={selectedTherapist}
+            defaultClientId={selectedClient}
+            retryHint={retryHint}
+            onRetryHintDismiss={dismissRetryHint}
+            retryActionLabel={retryActionLabel}
+            onRetryAction={retryActionLabel ? handleOpenLinkedSessionDocumentation : undefined}
+            onSessionStarted={handleSessionStarted}
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (scheduleDataLoadFailed) {
+    return (
       <div className="h-full relative">
-        <div className="h-full flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div
+          className="h-full flex items-center justify-center px-4"
+          data-testid="schedule-data-load-error"
+          role="alert"
+          aria-labelledby="schedule-data-load-error-title"
+          aria-describedby="schedule-data-load-error-description"
+        >
+          <div className="text-center max-w-md">
+            <AlertCircle
+              className="mx-auto h-10 w-10 text-amber-500"
+              aria-hidden="true"
+            />
+            <h2
+              id="schedule-data-load-error-title"
+              className="mt-4 text-lg font-semibold text-gray-900 dark:text-white"
+            >
+              Couldn&apos;t load schedule
+            </h2>
+            <p
+              id="schedule-data-load-error-description"
+              className="mt-2 text-sm text-gray-500 dark:text-gray-400"
+            >
+              {scheduleDataLoadErrorMessage}
+            </p>
+            <button
+              type="button"
+              onClick={handleRetryScheduleDataLoad}
+              className="mt-6 inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+            >
+              Retry
+            </button>
+          </div>
         </div>
         {isModalOpen && (
           <SessionModal
@@ -1654,7 +1839,39 @@ export const Schedule = React.memo(() => {
         )}
       </fieldset>
 
-      {view === "matrix" ? (
+      {showEmptySessionsState ? (
+        <div
+          className="mt-6 flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 py-16 text-center dark:border-gray-600 dark:bg-gray-900/40"
+          data-testid="schedule-empty-sessions"
+          data-schedule-empty-reason={scheduleEmptyReason}
+          role="status"
+          aria-live="polite"
+        >
+          <CalendarX
+            className="h-12 w-12 text-gray-400 dark:text-gray-500"
+            aria-hidden="true"
+          />
+          {scheduleEmptyReason === "no-schedule-data" ? (
+            <>
+              <h2 className="mt-4 text-base font-medium text-gray-900 dark:text-white">
+                No schedule data yet
+              </h2>
+              <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+                There are no therapists or clients for this organization. Add team members and clients, then book sessions from the schedule.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 className="mt-4 text-base font-medium text-gray-900 dark:text-white">
+                No sessions in this period
+              </h2>
+              <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+                There are no sessions for this date range and filters. Try another period, adjust filters, or use Auto Schedule.
+              </p>
+            </>
+          )}
+        </div>
+      ) : view === "matrix" ? (
         <SchedulingMatrix
           therapists={displayData.therapists}
           clients={displayData.clients}

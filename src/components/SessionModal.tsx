@@ -698,6 +698,7 @@ export function SessionModal({
         aria-modal="true"
         aria-labelledby={dialogTitleId}
         aria-describedby={dialogDescriptionIds}
+        data-session-status={session?.status ?? ""}
         tabIndex={-1}
       >
         {/* Header */}
@@ -726,6 +727,7 @@ export function SessionModal({
           <form id="session-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
             {retryHint && (
               <div
+                data-testid="session-modal-blocked-close-panel"
                 id={retryHintDescriptionId}
                 role="region"
                 aria-labelledby={retryHintHeadingId}

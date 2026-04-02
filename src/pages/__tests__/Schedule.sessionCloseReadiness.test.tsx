@@ -81,6 +81,21 @@ vi.mock("../../lib/organization", () => ({
   useActiveOrganizationId: () => "org-1",
 }));
 
+vi.mock("../../lib/supabase", () => ({
+  supabase: {
+    from: vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          maybeSingle: vi.fn(async () => ({
+            data: { status: sessionStatus },
+            error: null,
+          })),
+        })),
+      })),
+    })),
+  },
+}));
+
 vi.mock("../../lib/optimizedQueries", () => ({
   useScheduleDataBatch: () => {
     const fixtures = buildFixtures();

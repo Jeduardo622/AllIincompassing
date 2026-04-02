@@ -17,6 +17,7 @@ const CRITICAL_PLAYWRIGHT_SCRIPTS = [
   path.join(ROOT, "scripts", "playwright-therapist-onboarding.ts"),
   path.join(ROOT, "scripts", "playwright-therapist-authorization.ts"),
   path.join(ROOT, "scripts", "playwright-session-lifecycle.ts"),
+  path.join(ROOT, "scripts", "playwright-schedule-blocked-close.ts"),
 ];
 
 const readJson = async (filePath) => JSON.parse(await readFile(filePath, "utf8"));

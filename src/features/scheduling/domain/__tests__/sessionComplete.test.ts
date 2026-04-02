@@ -128,19 +128,6 @@ const createFromResponse = (result: { data: unknown; error: unknown }) => ({
   })),
 });
 
-const createSessionOrgResponse = (organizationId: string) => ({
-  select: vi.fn(() => ({
-    eq: vi.fn(() => ({
-      maybeSingle: vi.fn(() =>
-        Promise.resolve({
-          data: { organization_id: organizationId },
-          error: null,
-        }),
-      ),
-    })),
-  })),
-});
-
 describe("checkInProgressSessionCloseReadiness", () => {
   beforeEach(() => {
     supabaseFromMock.mockReset();
@@ -148,9 +135,6 @@ describe("checkInProgressSessionCloseReadiness", () => {
 
   it("returns not ready when required goal notes coverage is missing", async () => {
     supabaseFromMock.mockImplementation((table: string) => {
-      if (table === "sessions") {
-        return createSessionOrgResponse("org-1");
-      }
       if (table === "session_goals") {
         return createFromResponse({
           data: [{ goal_id: "goal-1" }, { goal_id: "goal-2" }],
@@ -179,9 +163,6 @@ describe("checkInProgressSessionCloseReadiness", () => {
 
   it("returns ready when linked note rows cover all required goal ids with non-empty notes", async () => {
     supabaseFromMock.mockImplementation((table: string) => {
-      if (table === "sessions") {
-        return createSessionOrgResponse("org-1");
-      }
       if (table === "session_goals") {
         return createFromResponse({
           data: [{ goal_id: "goal-a" }, { goal_id: "goal-b" }],

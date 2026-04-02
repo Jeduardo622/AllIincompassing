@@ -25,23 +25,7 @@ export const IN_PROGRESS_CLOSE_NOT_READY_MESSAGE =
 export async function checkInProgressSessionCloseReadiness(
   input: InProgressSessionCloseReadinessInput,
 ): Promise<InProgressSessionCloseReadiness> {
-  const { data: sessionRow, error: sessionRowError } = await supabase
-    .from("sessions")
-    .select("organization_id")
-    .eq("id", input.sessionId)
-    .maybeSingle();
-
-  if (sessionRowError) {
-    throw sessionRowError;
-  }
-
-  const organizationIdFromSession =
-    typeof sessionRow?.organization_id === "string" && sessionRow.organization_id.trim().length > 0
-      ? sessionRow.organization_id.trim()
-      : null;
-  const organizationId = organizationIdFromSession ?? input.organizationId?.trim() ?? null;
-
-  if (!organizationId) {
+  if (!input.organizationId) {
     return { ready: false, requiredGoalIds: [], missingGoalIds: [] };
   }
 
@@ -49,7 +33,7 @@ export async function checkInProgressSessionCloseReadiness(
     .from("session_goals")
     .select("goal_id")
     .eq("session_id", input.sessionId)
-    .eq("organization_id", organizationId);
+    .eq("organization_id", input.organizationId);
 
   if (sessionGoalsError) {
     throw sessionGoalsError;
@@ -71,7 +55,7 @@ export async function checkInProgressSessionCloseReadiness(
     .from("client_session_notes")
     .select("goal_notes")
     .eq("session_id", input.sessionId)
-    .eq("organization_id", organizationId);
+    .eq("organization_id", input.organizationId);
 
   if (noteRowsError) {
     throw noteRowsError;

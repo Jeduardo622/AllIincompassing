@@ -1224,7 +1224,6 @@ export const Schedule = React.memo(() => {
         }
         case "edit-complete": {
           let liveInProgress = selectedSession?.status === "in_progress";
-          let liveStatusLookupFailed = false;
           if (!liveInProgress) {
             const { data: liveRow, error: liveError } = await supabase
               .from("sessions")
@@ -1232,7 +1231,6 @@ export const Schedule = React.memo(() => {
               .eq("id", decision.selectedSessionId)
               .maybeSingle();
             if (liveError) {
-              liveStatusLookupFailed = true;
               logger.warn("Live session status lookup failed for close-readiness gate", {
                 metadata: {
                   sessionId: decision.selectedSessionId,
@@ -1243,7 +1241,7 @@ export const Schedule = React.memo(() => {
               liveInProgress = liveRow?.status === "in_progress";
             }
           }
-          if (liveInProgress || liveStatusLookupFailed) {
+          if (liveInProgress) {
             try {
               const readiness = await checkInProgressSessionCloseReadiness({
                 sessionId: decision.selectedSessionId,
@@ -1276,7 +1274,6 @@ export const Schedule = React.memo(() => {
         }
         case "edit-no-show": {
           let liveInProgressNoShow = selectedSession?.status === "in_progress";
-          let liveStatusLookupFailedNoShow = false;
           if (!liveInProgressNoShow) {
             const { data: liveRowNs, error: liveErrorNs } = await supabase
               .from("sessions")
@@ -1284,7 +1281,6 @@ export const Schedule = React.memo(() => {
               .eq("id", decision.selectedSessionId)
               .maybeSingle();
             if (liveErrorNs) {
-              liveStatusLookupFailedNoShow = true;
               logger.warn("Live session status lookup failed for close-readiness gate", {
                 metadata: {
                   sessionId: decision.selectedSessionId,
@@ -1295,7 +1291,7 @@ export const Schedule = React.memo(() => {
               liveInProgressNoShow = liveRowNs?.status === "in_progress";
             }
           }
-          if (liveInProgressNoShow || liveStatusLookupFailedNoShow) {
+          if (liveInProgressNoShow) {
             try {
               const readiness = await checkInProgressSessionCloseReadiness({
                 sessionId: decision.selectedSessionId,
@@ -1459,11 +1455,6 @@ export const Schedule = React.memo(() => {
     const sessionPool = Array.isArray(batchedData?.sessions) ? batchedData.sessions : displayData.sessions;
     const session = sessionPool.find((item) => item.id === parsed.state.sessionId);
     if (!session) {
-      // While session batch refetches (e.g. after a mutation), the row can briefly disappear.
-      // Do not clear the edit URL or lose modal context during blocked-close / retry guidance.
-      if (retryHint) {
-        return;
-      }
       const params = clearScheduleModalSearchParams(searchParams);
       setSearchParams(params, { replace: true });
       lastAppliedUrlModalKeyRef.current = null;
@@ -1480,7 +1471,6 @@ export const Schedule = React.memo(() => {
     displayData.sessions,
     handleCreateSession,
     handleEditSession,
-    retryHint,
   ]);
 
   if (!activeOrganizationId) {

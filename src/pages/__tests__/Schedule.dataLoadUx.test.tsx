@@ -243,6 +243,56 @@ describe("Schedule data-load UX", () => {
     expect(screen.getByText(/get_dropdown_data failed for clients/i)).toBeInTheDocument();
   });
 
+  it("merges dropdown therapists when batch returns an empty therapist array (empty array is not treated as missing)", async () => {
+    mockUseScheduleDataBatch.mockReturnValue({
+      data: {
+        sessions: [],
+        therapists: [],
+        clients: [{ id: "c1", full_name: "C", email: "c@e.com", availability_hours: {} }],
+      },
+      isLoading: false,
+      refetch: vi.fn(),
+    });
+    mockUseDropdownData.mockReturnValue({
+      data: {
+        therapists: [{ id: "t1", full_name: "T", email: "t@e.com", availability_hours: {} }],
+        clients: [],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    renderWithProviders(<Schedule />);
+
+    const empty = await screen.findByTestId("schedule-empty-sessions");
+    expect(empty).toHaveAttribute("data-schedule-empty-reason", "no-sessions-in-period");
+    expect(screen.getByText(/No sessions in this period/i)).toBeInTheDocument();
+  });
+
+  it("uses generic copy when sessions query is in error but no error object is present", async () => {
+    mockUseScheduleDataBatch.mockReturnValue({
+      data: null,
+      isLoading: false,
+      refetch: vi.fn(),
+    });
+    mockUseSessionsOptimized.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    renderWithProviders(<Schedule />);
+
+    expect(await screen.findByTestId("schedule-data-load-error")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Schedule data could not be loaded\. Try again in a moment\./i),
+    ).toBeInTheDocument();
+  });
+
   it("does not surface a dropdown error when batch payload already supplies therapists and clients", async () => {
     mockUseScheduleDataBatch.mockReturnValue({
       data: {

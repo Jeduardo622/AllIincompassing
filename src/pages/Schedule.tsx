@@ -32,6 +32,7 @@ import { logger } from "../lib/logger/logger";
 import { toError } from "../lib/logger/normalizeError";
 import { useAuth } from "../lib/authContext";
 import { useActiveOrganizationId } from "../lib/organization";
+import { supabase } from "../lib/supabase";
 import {
   buildSessionSlotIndex,
   createSessionSlotKey,
@@ -162,6 +163,18 @@ export function getSessionStatusClasses(
   status: Session["status"],
 ): { card: string; secondary: string; time: string } {
   return SESSION_STATUS_STYLES[status] ?? SESSION_STATUS_STYLES.scheduled;
+}
+
+/** Prefer batch directory rows when the batch list is non-empty; if the batch returns `[]`, fall back to dropdown data (batch `||` merge would otherwise hide a successful dropdown). */
+function mergeScheduleDirectoryLists<T>(
+  batchList: T[] | null | undefined,
+  dropdownList: T[] | null | undefined,
+): T[] {
+  const batch = batchList ?? [];
+  if (batch.length > 0) {
+    return batch;
+  }
+  return dropdownList ?? [];
 }
 
 // Memoized time slot component
@@ -719,13 +732,28 @@ export const Schedule = React.memo(() => {
     });
   }, [batchedData?.sessions, selectedTherapist, selectedClient]);
 
-  // Use batched data if available, otherwise use individual query results
-  const displayData = buildScheduleDisplayData({
+  // Use batched data if available, otherwise use individual query results; merge directory lists so empty batch arrays do not mask dropdown results.
+  const displayData = useMemo(() => {
+    const base = buildScheduleDisplayData({
+      filteredBatchedSessions,
+      fallbackSessions: sessions,
+      batchedData,
+      dropdownData,
+    });
+    return {
+      ...base,
+      therapists: mergeScheduleDirectoryLists(
+        batchedData?.therapists,
+        dropdownData?.therapists,
+      ),
+      clients: mergeScheduleDirectoryLists(batchedData?.clients, dropdownData?.clients),
+    };
+  }, [
     filteredBatchedSessions,
-    fallbackSessions: sessions,
+    sessions,
     batchedData,
     dropdownData,
-  });
+  ]);
 
   /** Batch RPC returns `null` on failure (see optimizedQueries). Directory lists merge batch + dropdown (`displayData`); surface dropdown errors whenever either list still depends on `useDropdownData`. */
   const batchTherapistCount = Array.isArray(batchedData?.therapists)
@@ -1195,7 +1223,25 @@ export const Schedule = React.memo(() => {
           return;
         }
         case "edit-complete": {
-          if (selectedSession?.status === "in_progress") {
+          let liveInProgress = selectedSession?.status === "in_progress";
+          if (!liveInProgress) {
+            const { data: liveRow, error: liveError } = await supabase
+              .from("sessions")
+              .select("status")
+              .eq("id", decision.selectedSessionId)
+              .maybeSingle();
+            if (liveError) {
+              logger.warn("Live session status lookup failed for close-readiness gate", {
+                metadata: {
+                  sessionId: decision.selectedSessionId,
+                  reason: liveError.message,
+                },
+              });
+            } else {
+              liveInProgress = liveRow?.status === "in_progress";
+            }
+          }
+          if (liveInProgress) {
             try {
               const readiness = await checkInProgressSessionCloseReadiness({
                 sessionId: decision.selectedSessionId,
@@ -1227,7 +1273,25 @@ export const Schedule = React.memo(() => {
           return;
         }
         case "edit-no-show": {
-          if (selectedSession?.status === "in_progress") {
+          let liveInProgressNoShow = selectedSession?.status === "in_progress";
+          if (!liveInProgressNoShow) {
+            const { data: liveRowNs, error: liveErrorNs } = await supabase
+              .from("sessions")
+              .select("status")
+              .eq("id", decision.selectedSessionId)
+              .maybeSingle();
+            if (liveErrorNs) {
+              logger.warn("Live session status lookup failed for close-readiness gate", {
+                metadata: {
+                  sessionId: decision.selectedSessionId,
+                  reason: liveErrorNs.message,
+                },
+              });
+            } else {
+              liveInProgressNoShow = liveRowNs?.status === "in_progress";
+            }
+          }
+          if (liveInProgressNoShow) {
             try {
               const readiness = await checkInProgressSessionCloseReadiness({
                 sessionId: decision.selectedSessionId,
@@ -1430,9 +1494,18 @@ export const Schedule = React.memo(() => {
 
   if (isLoading) {
     return (
-      <div className="h-full relative">
-        <div className="h-full flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="h-full relative" aria-busy="true">
+        <div
+          className="h-full flex items-center justify-center"
+          role="status"
+          aria-live="polite"
+          data-testid="schedule-loading"
+        >
+          <span className="sr-only">Loading schedule…</span>
+          <div
+            className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"
+            aria-hidden="true"
+          />
         </div>
         {isModalOpen && (
           <SessionModal
@@ -1780,18 +1853,18 @@ export const Schedule = React.memo(() => {
           />
           {scheduleEmptyReason === "no-schedule-data" ? (
             <>
-              <p className="mt-4 text-base font-medium text-gray-900 dark:text-white">
+              <h2 className="mt-4 text-base font-medium text-gray-900 dark:text-white">
                 No schedule data yet
-              </p>
+              </h2>
               <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
                 There are no therapists or clients for this organization. Add team members and clients, then book sessions from the schedule.
               </p>
             </>
           ) : (
             <>
-              <p className="mt-4 text-base font-medium text-gray-900 dark:text-white">
+              <h2 className="mt-4 text-base font-medium text-gray-900 dark:text-white">
                 No sessions in this period
-              </p>
+              </h2>
               <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
                 There are no sessions for this date range and filters. Try another period, adjust filters, or use Auto Schedule.
               </p>

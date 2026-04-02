@@ -35,6 +35,31 @@ import {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SUPPORTED_ASSESSMENT_FILE_EXTENSIONS = [".pdf", ".docx"] as const;
 const PROGRAMS_EDGE_PATH = "programs";
+const PROGRAMS_REQUEST_TIMEOUT_MS = 12_000;
+const GOALS_REQUEST_TIMEOUT_MS = 12_000;
+const PROGRAM_NOTES_REQUEST_TIMEOUT_MS = 12_000;
+
+const withTimeout = async <T,>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> => {
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error(timeoutMessage));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+};
 
 const buildProgramsQueryPath = (clientId: string): string =>
   `${PROGRAMS_EDGE_PATH}?client_id=${encodeURIComponent(clientId)}`;
@@ -126,7 +151,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!organizationId) {
         throw new Error("Organization context is required to load programs.");
       }
-      const response = await callEdgeFunctionHttp(buildProgramsQueryPath(client.id));
+      const response = await withTimeout(
+        callEdgeFunctionHttp(buildProgramsQueryPath(client.id)),
+        PROGRAMS_REQUEST_TIMEOUT_MS,
+        "Programs request timed out. Please retry.",
+      );
       if (!response.ok) {
         throw new Error("Failed to load programs");
       }
@@ -161,7 +190,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
     queryFn: async () => {
       if (!resolvedProgramId) return [];
-      const response = await callEdgeFunctionHttp(`goals?program_id=${encodeURIComponent(resolvedProgramId)}`);
+      const response = await withTimeout(
+        callEdgeFunctionHttp(`goals?program_id=${encodeURIComponent(resolvedProgramId)}`),
+        GOALS_REQUEST_TIMEOUT_MS,
+        "Goals request timed out. Please retry.",
+      );
       if (!response.ok) {
         throw new Error(await parseApiErrorMessage(response, "Failed to load goals."));
       }
@@ -174,7 +207,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     queryKey: ["program-notes", resolvedProgramId, organizationId ?? "MISSING_ORG"],
     queryFn: async () => {
       if (!resolvedProgramId) return [];
-      const response = await callEdgeFunctionHttp(`program-notes?program_id=${encodeURIComponent(resolvedProgramId)}`);
+      const response = await withTimeout(
+        callEdgeFunctionHttp(`program-notes?program_id=${encodeURIComponent(resolvedProgramId)}`),
+        PROGRAM_NOTES_REQUEST_TIMEOUT_MS,
+        "Program notes request timed out. Please retry.",
+      );
       if (!response.ok) {
         throw new Error("Failed to load program notes");
       }

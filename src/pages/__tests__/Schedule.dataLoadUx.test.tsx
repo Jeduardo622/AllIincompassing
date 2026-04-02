@@ -186,9 +186,61 @@ describe("Schedule data-load UX", () => {
 
     renderWithProviders(<Schedule />);
 
-    expect(await screen.findByTestId("schedule-empty-sessions")).toBeInTheDocument();
+    const empty = await screen.findByTestId("schedule-empty-sessions");
+    expect(empty).toBeInTheDocument();
+    expect(empty).toHaveAttribute("data-schedule-empty-reason", "no-sessions-in-period");
     expect(screen.getByText(/No sessions in this period/i)).toBeInTheDocument();
     expect(screen.queryByTestId("schedule-data-load-error")).not.toBeInTheDocument();
+  });
+
+  it("shows an explicit empty state when there are no sessions and no therapists or clients (no schedule data)", async () => {
+    mockUseScheduleDataBatch.mockReturnValue({
+      data: {
+        sessions: [],
+        therapists: [],
+        clients: [],
+      },
+      isLoading: false,
+      refetch: vi.fn(),
+    });
+
+    renderWithProviders(<Schedule />);
+
+    const empty = await screen.findByTestId("schedule-empty-sessions");
+    expect(empty).toHaveAttribute("data-schedule-empty-reason", "no-schedule-data");
+    expect(screen.getByText(/No schedule data yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/No sessions in this period/i)).not.toBeInTheDocument();
+  });
+
+  it("shows an error when dropdown fails and batch payload omits one directory list (still depends on dropdown)", async () => {
+    mockUseScheduleDataBatch.mockReturnValue({
+      data: {
+        sessions: [],
+        therapists: [{ id: "t1", full_name: "T", email: "t@e.com", availability_hours: {} }],
+        clients: [],
+      },
+      isLoading: false,
+      refetch: vi.fn(),
+    });
+    mockUseSessionsOptimized.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockUseDropdownData.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error("get_dropdown_data failed for clients"),
+      refetch: vi.fn(),
+    });
+
+    renderWithProviders(<Schedule />);
+
+    expect(await screen.findByTestId("schedule-data-load-error")).toBeInTheDocument();
+    expect(screen.getByText(/get_dropdown_data failed for clients/i)).toBeInTheDocument();
   });
 
   it("does not surface a dropdown error when batch payload already supplies therapists and clients", async () => {

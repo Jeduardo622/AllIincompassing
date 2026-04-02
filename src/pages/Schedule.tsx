@@ -218,7 +218,6 @@ const TimeSlot = React.memo(
           return (
             <div
               key={session.id}
-              data-session-id={session.id}
               data-session-status={session.status}
               className={`${statusStyles.card} rounded p-1 text-xs mb-1 group/session relative cursor-pointer transition-colors`}
               role="button"
@@ -708,27 +707,6 @@ export const Schedule = React.memo(() => {
     refetch: refetchDropdowns,
   } = useDropdownData({ enabled: !!activeOrganizationId });
 
-  /** Batch RPC returns `null` on failure (see optimizedQueries); dropdowns are required when there is no batch payload. */
-  const sessionsPathFailed = enableFallbackSessionsQuery && isSessionsError;
-  const dropdownPathFailed = !!activeOrganizationId && isDropdownError && !batchedData;
-  const scheduleDataLoadFailed = sessionsPathFailed || dropdownPathFailed;
-
-  const scheduleDataLoadErrorMessage = useMemo(() => {
-    if (sessionsPathFailed && sessionsQueryError) {
-      return toError(sessionsQueryError, "Sessions could not be loaded").message;
-    }
-    if (dropdownPathFailed && dropdownQueryError) {
-      return toError(dropdownQueryError, "Schedule filters could not be loaded").message;
-    }
-    return "Schedule data could not be loaded. Try again in a moment.";
-  }, [sessionsPathFailed, dropdownPathFailed, sessionsQueryError, dropdownQueryError]);
-
-  const handleRetryScheduleDataLoad = useCallback(() => {
-    void refetchScheduleBatch();
-    void refetchSessions();
-    void refetchDropdowns();
-  }, [refetchScheduleBatch, refetchSessions, refetchDropdowns]);
-
   const filteredBatchedSessions = useMemo(() => {
     const candidateSessions = Array.isArray(batchedData?.sessions) ? batchedData.sessions : null;
     if (!candidateSessions) {
@@ -749,7 +727,43 @@ export const Schedule = React.memo(() => {
     dropdownData,
   });
 
+  /** Batch RPC returns `null` on failure (see optimizedQueries). Directory lists merge batch + dropdown (`displayData`); surface dropdown errors whenever either list still depends on `useDropdownData`. */
+  const batchTherapistCount = Array.isArray(batchedData?.therapists)
+    ? batchedData.therapists.length
+    : 0;
+  const batchClientCount = Array.isArray(batchedData?.clients) ? batchedData.clients.length : 0;
+  const directoryLoadRequiresDropdown =
+    batchTherapistCount === 0 || batchClientCount === 0;
+
+  const sessionsPathFailed = enableFallbackSessionsQuery && isSessionsError;
+  const dropdownPathFailed =
+    !!activeOrganizationId && isDropdownError && directoryLoadRequiresDropdown;
+  const scheduleDataLoadFailed = sessionsPathFailed || dropdownPathFailed;
+
+  const scheduleDataLoadErrorMessage = useMemo(() => {
+    if (sessionsPathFailed && sessionsQueryError) {
+      return toError(sessionsQueryError, "Sessions could not be loaded").message;
+    }
+    if (dropdownPathFailed && dropdownQueryError) {
+      return toError(dropdownQueryError, "Schedule filters could not be loaded").message;
+    }
+    return "Schedule data could not be loaded. Try again in a moment.";
+  }, [sessionsPathFailed, dropdownPathFailed, sessionsQueryError, dropdownQueryError]);
+
+  const handleRetryScheduleDataLoad = useCallback(() => {
+    void refetchScheduleBatch();
+    void refetchSessions();
+    void refetchDropdowns();
+  }, [refetchScheduleBatch, refetchSessions, refetchDropdowns]);
+
   const showEmptySessionsState = displayData.sessions.length === 0;
+
+  const scheduleEmptyReason = useMemo(() => {
+    if (displayData.therapists.length === 0 && displayData.clients.length === 0) {
+      return "no-schedule-data" as const;
+    }
+    return "no-sessions-in-period" as const;
+  }, [displayData.therapists.length, displayData.clients.length]);
 
   useEffect(() => {
     if (selectedTherapist) {
@@ -1452,16 +1466,24 @@ export const Schedule = React.memo(() => {
           className="h-full flex items-center justify-center px-4"
           data-testid="schedule-data-load-error"
           role="alert"
+          aria-labelledby="schedule-data-load-error-title"
+          aria-describedby="schedule-data-load-error-description"
         >
           <div className="text-center max-w-md">
             <AlertCircle
               className="mx-auto h-10 w-10 text-amber-500"
               aria-hidden="true"
             />
-            <p className="mt-4 font-medium text-gray-900 dark:text-white">
+            <h2
+              id="schedule-data-load-error-title"
+              className="mt-4 text-lg font-semibold text-gray-900 dark:text-white"
+            >
               Couldn&apos;t load schedule
-            </p>
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            </h2>
+            <p
+              id="schedule-data-load-error-description"
+              className="mt-2 text-sm text-gray-500 dark:text-gray-400"
+            >
               {scheduleDataLoadErrorMessage}
             </p>
             <button
@@ -1748,6 +1770,7 @@ export const Schedule = React.memo(() => {
         <div
           className="mt-6 flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 py-16 text-center dark:border-gray-600 dark:bg-gray-900/40"
           data-testid="schedule-empty-sessions"
+          data-schedule-empty-reason={scheduleEmptyReason}
           role="status"
           aria-live="polite"
         >
@@ -1755,12 +1778,25 @@ export const Schedule = React.memo(() => {
             className="h-12 w-12 text-gray-400 dark:text-gray-500"
             aria-hidden="true"
           />
-          <p className="mt-4 text-base font-medium text-gray-900 dark:text-white">
-            No sessions in this period
-          </p>
-          <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
-            There are no sessions for this date range and filters. Try another period, adjust filters, or use Auto Schedule.
-          </p>
+          {scheduleEmptyReason === "no-schedule-data" ? (
+            <>
+              <p className="mt-4 text-base font-medium text-gray-900 dark:text-white">
+                No schedule data yet
+              </p>
+              <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+                There are no therapists or clients for this organization. Add team members and clients, then book sessions from the schedule.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="mt-4 text-base font-medium text-gray-900 dark:text-white">
+                No sessions in this period
+              </p>
+              <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+                There are no sessions for this date range and filters. Try another period, adjust filters, or use Auto Schedule.
+              </p>
+            </>
+          )}
         </div>
       ) : view === "matrix" ? (
         <SchedulingMatrix

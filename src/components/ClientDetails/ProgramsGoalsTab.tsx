@@ -153,13 +153,17 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           ? "Original clinical wording is required."
           : null;
 
-  const { data: goals = [], isLoading: goalsLoading } = useQuery({
+  const {
+    data: goals = [],
+    isLoading: goalsLoading,
+    error: goalsQueryError,
+  } = useQuery({
     queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
     queryFn: async () => {
       if (!resolvedProgramId) return [];
       const response = await callEdgeFunctionHttp(`goals?program_id=${encodeURIComponent(resolvedProgramId)}`);
       if (!response.ok) {
-        return [];
+        throw new Error(await parseApiErrorMessage(response, "Failed to load goals."));
       }
       return parseJson<Goal[]>(response);
     },
@@ -1631,6 +1635,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             {goalsLoading ? (
               <div className="flex items-center justify-center h-32">
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+              </div>
+            ) : goalsQueryError instanceof Error ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
+                Could not load goals: {goalsQueryError.message}
               </div>
             ) : (
               <div className="space-y-3">

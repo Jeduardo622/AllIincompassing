@@ -380,7 +380,65 @@ describe("ChatBot scheduling", () => {
     await userEvent.type(input, "move the session by one hour");
     await userEvent.click(screen.getByTestId("send-message"));
 
-    await screen.findByText(new RegExp(`❌ Error: ${backendMessage}`));
+    await screen.findByText((content) =>
+      content.includes(`❌ Error: ${backendMessage}`),
+    );
+    expect(mockedShowError).toHaveBeenCalledWith(backendMessage);
+    expect(
+      screen.queryByText(/choose a different slot/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps self-describing non-409 modify_session copy without generic retry hint", async () => {
+    mockedProcessMessage.mockResolvedValueOnce({
+      response: "Updating the session now.",
+      action: {
+        type: "modify_session",
+        data: {
+          session_id: "session-123",
+          start_time: "2025-03-18T11:00:00Z",
+          end_time: "2025-03-18T12:00:00Z",
+        },
+      },
+    });
+
+    mockedSupabaseFrom.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          id: "session-123",
+          therapist_id: "therapist-1",
+          client_id: "client-1",
+          program_id: "program-1",
+          goal_id: "goal-1",
+          start_time: "2025-03-18T10:00:00Z",
+          end_time: "2025-03-18T11:00:00Z",
+          status: "scheduled",
+        },
+        error: null,
+      }),
+    } as unknown as ReturnType<typeof supabase.from>);
+
+    const backendMessage = "Session has already been completed and cannot be modified.";
+    mockedBookSessionViaApi.mockRejectedValueOnce(
+      Object.assign(new Error(backendMessage), {
+        status: 422,
+        code: "SESSION_ALREADY_COMPLETED",
+        retryHint: "choose a different slot",
+      }),
+    );
+
+    renderWithProviders(<ChatBot />);
+    await userEvent.click(document.getElementById("chat-trigger")!);
+
+    const input = screen.getByPlaceholderText(/Type your message/);
+    await userEvent.type(input, "move the session by one hour");
+    await userEvent.click(screen.getByTestId("send-message"));
+
+    await screen.findByText((content) =>
+      content.includes(`❌ Error: ${backendMessage}`),
+    );
     expect(mockedShowError).toHaveBeenCalledWith(backendMessage);
     expect(
       screen.queryByText(/choose a different slot/i),

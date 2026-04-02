@@ -38,6 +38,9 @@ const PROGRAMS_EDGE_PATH = "programs";
 const PROGRAMS_REQUEST_TIMEOUT_MS = 12_000;
 const GOALS_REQUEST_TIMEOUT_MS = 12_000;
 const PROGRAM_NOTES_REQUEST_TIMEOUT_MS = 12_000;
+const PROGRAM_CREATE_REQUEST_TIMEOUT_MS = 12_000;
+const GOAL_CREATE_REQUEST_TIMEOUT_MS = 12_000;
+const PROGRAM_NOTE_CREATE_REQUEST_TIMEOUT_MS = 12_000;
 
 const withTimeout = async <T,>(
   promise: Promise<T>,
@@ -162,6 +165,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       return parseJson<Program[]>(response);
     },
     enabled: Boolean(client.id && organizationId),
+    retry: false,
   });
 
   const resolvedProgramId = useMemo(() => {
@@ -201,6 +205,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       return parseJson<Goal[]>(response);
     },
     enabled: Boolean(resolvedProgramId),
+    retry: false,
   });
 
   const { data: programNotes = [] } = useQuery({
@@ -218,6 +223,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       return parseJson<ProgramNote[]>(response);
     },
     enabled: Boolean(resolvedProgramId),
+    retry: false,
   });
 
   const { data: assessmentDocuments = EMPTY_ASSESSMENT_DOCUMENTS, isLoading: assessmentLoading } = useQuery({
@@ -746,14 +752,18 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
 
   const createProgram = useMutation({
     mutationFn: async () => {
-      const response = await callEdgeFunctionHttp(PROGRAMS_EDGE_PATH, {
-        method: "POST",
-        body: JSON.stringify({
-          client_id: client.id,
-          name: programNameValue,
-          description: programDescription.trim() || undefined,
+      const response = await withTimeout(
+        callEdgeFunctionHttp(PROGRAMS_EDGE_PATH, {
+          method: "POST",
+          body: JSON.stringify({
+            client_id: client.id,
+            name: programNameValue,
+            description: programDescription.trim() || undefined,
+          }),
         }),
-      });
+        PROGRAM_CREATE_REQUEST_TIMEOUT_MS,
+        "Create program request timed out. Please retry.",
+      );
       if (!response.ok) {
         throw new Error(await parseApiErrorMessage(response, "Failed to create program."));
       }
@@ -777,23 +787,27 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         throw new Error("Select a program first");
       }
       const objectiveDataPoints = parseObjectiveDataPointsInput(goalObjectiveDataPoints);
-      const response = await callEdgeFunctionHttp("goals", {
-        method: "POST",
-        body: JSON.stringify({
-          client_id: client.id,
-          program_id: resolvedProgramId,
-          title: goalTitleValue,
-          description: goalDescriptionValue,
-          original_text: goalOriginalTextValue,
-          measurement_type: goalMeasurementType || undefined,
-          baseline_data: goalBaselineData || undefined,
-          target_criteria: goalTargetCriteria || undefined,
-          mastery_criteria: goalMasteryCriteria || undefined,
-          maintenance_criteria: goalMaintenanceCriteria || undefined,
-          generalization_criteria: goalGeneralizationCriteria || undefined,
-          objective_data_points: objectiveDataPoints,
+      const response = await withTimeout(
+        callEdgeFunctionHttp("goals", {
+          method: "POST",
+          body: JSON.stringify({
+            client_id: client.id,
+            program_id: resolvedProgramId,
+            title: goalTitleValue,
+            description: goalDescriptionValue,
+            original_text: goalOriginalTextValue,
+            measurement_type: goalMeasurementType || undefined,
+            baseline_data: goalBaselineData || undefined,
+            target_criteria: goalTargetCriteria || undefined,
+            mastery_criteria: goalMasteryCriteria || undefined,
+            maintenance_criteria: goalMaintenanceCriteria || undefined,
+            generalization_criteria: goalGeneralizationCriteria || undefined,
+            objective_data_points: objectiveDataPoints,
+          }),
         }),
-      });
+        GOAL_CREATE_REQUEST_TIMEOUT_MS,
+        "Create goal request timed out. Please retry.",
+      );
       if (!response.ok) {
         throw new Error(await parseApiErrorMessage(response, "Failed to create goal."));
       }
@@ -823,14 +837,18 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!resolvedProgramId) {
         throw new Error("Select a program first");
       }
-      const response = await callEdgeFunctionHttp("program-notes", {
-        method: "POST",
-        body: JSON.stringify({
-          program_id: resolvedProgramId,
-          note_type: noteType,
-          content: { text: noteContent },
+      const response = await withTimeout(
+        callEdgeFunctionHttp("program-notes", {
+          method: "POST",
+          body: JSON.stringify({
+            program_id: resolvedProgramId,
+            note_type: noteType,
+            content: { text: noteContent },
+          }),
         }),
-      });
+        PROGRAM_NOTE_CREATE_REQUEST_TIMEOUT_MS,
+        "Program note request timed out. Please retry.",
+      );
       if (!response.ok) {
         throw new Error("Failed to add program note");
       }

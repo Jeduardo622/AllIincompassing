@@ -63,9 +63,9 @@ const withTimeout = async <T,>(
   }
 };
 
-const PROGRAMS_EDGE_PATH = "/functions/v1/programs";
-const GOALS_EDGE_PATH = "/functions/v1/goals";
-const PROGRAM_NOTES_EDGE_PATH = "/functions/v1/program-notes";
+const PROGRAMS_EDGE_PATH = "programs";
+const GOALS_EDGE_PATH = "goals";
+const PROGRAM_NOTES_EDGE_PATH = "program-notes";
 
 const buildProgramsQueryPath = (clientId: string): string =>
   `${PROGRAMS_EDGE_PATH}?client_id=${encodeURIComponent(clientId)}`;

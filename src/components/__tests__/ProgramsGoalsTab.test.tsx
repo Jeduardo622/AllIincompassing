@@ -170,14 +170,11 @@ describe("ProgramsGoalsTab", () => {
       return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
     });
     vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string, init?: RequestInit) => {
-      const rawPath = path.startsWith("/functions/v1/") ? path.slice("/functions/v1".length) : path;
-      const apiPath = rawPath.startsWith("/programs")
-        ? `/api${rawPath}`
-        : rawPath.startsWith("/goals")
-          ? `/api${rawPath}`
-          : rawPath.startsWith("/program-notes")
-            ? `/api${rawPath}`
-            : rawPath;
+      const apiPath = path.startsWith("programs")
+        ? `/api/${path}`
+        : path.startsWith("/api/")
+          ? path
+          : `/api/${path}`;
       const callApiImpl = vi.mocked(callApi).getMockImplementation();
       if (!callApiImpl) {
         return new Response(JSON.stringify({ error: "API mock missing" }), { status: 500 });
@@ -288,7 +285,7 @@ describe("ProgramsGoalsTab", () => {
           .mock.calls.some(
             ([path]) =>
               typeof path === "string" &&
-              path.startsWith(`/functions/v1/programs?client_id=${encodeURIComponent("client-1")}`),
+              path.startsWith(`programs?client_id=${encodeURIComponent("client-1")}`),
           ),
       ).toBe(true);
     });
@@ -419,7 +416,7 @@ describe("ProgramsGoalsTab", () => {
 
     await waitFor(() => {
       expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
-        "/functions/v1/goals",
+        "goals",
         expect.objectContaining({
           method: "POST",
           body: expect.stringContaining("\"program_id\":\"program-1\""),

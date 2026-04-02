@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  buildSupabaseEdgeUrl,
   ensureRuntimeSupabaseConfig,
   getRuntimeSupabaseConfig,
   resetRuntimeSupabaseConfigForTests,
@@ -29,6 +30,17 @@ describe('runtimeConfig', () => {
   it('returns config once set manually', () => {
     setRuntimeSupabaseConfig(mockConfig);
     expect(getRuntimeSupabaseConfig()).toMatchObject(mockConfig);
+  });
+
+  it('builds edge URLs correctly when supabaseEdgeUrl omits trailing slash', () => {
+    setRuntimeSupabaseConfig({
+      ...mockConfig,
+      supabaseEdgeUrl: 'https://project.supabase.co/functions/v1',
+    });
+
+    expect(buildSupabaseEdgeUrl('programs?client_id=client-1')).toBe(
+      'https://project.supabase.co/functions/v1/programs?client_id=client-1',
+    );
   });
 
   it('fetches config when not initialised', async () => {

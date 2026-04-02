@@ -163,7 +163,8 @@ export const getSupabaseEdgeBaseUrl = (): string => {
 
 export const buildSupabaseEdgeUrl = (path: string): string => {
   const base = getSupabaseEdgeBaseUrl();
-  return new URL(path, base).toString();
+  const normalizedBase = base.endsWith("/") ? base : `${base}/`;
+  return new URL(path, normalizedBase).toString();
 };
 
 export const resetRuntimeSupabaseConfigForTests = (): void => {

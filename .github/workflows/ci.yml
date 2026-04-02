@@ -435,7 +435,7 @@ jobs:
             exit 1
           fi
           export CI_SESSION_PARITY_REQUIRED=true
-          npm run playwright:preflight && npm run playwright:auth && npm run playwright:session-lifecycle
+          npm run playwright:preflight && npm run playwright:auth && npm run playwright:session-lifecycle && npm run playwright:schedule-blocked-close
 
       - name: Record auth smoke evidence
         if: always()

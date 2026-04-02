@@ -332,4 +332,58 @@ describe("ChatBot scheduling", () => {
     await screen.findByText(/❌ Error: Conflict\. choose a different slot/);
     expect(mockedShowError).toHaveBeenCalledWith("Conflict. choose a different slot");
   });
+
+  it("keeps self-describing 409 modify_session copy without generic slot hint", async () => {
+    mockedProcessMessage.mockResolvedValueOnce({
+      response: "Updating the session now.",
+      action: {
+        type: "modify_session",
+        data: {
+          session_id: "session-123",
+          start_time: "2025-03-18T11:00:00Z",
+          end_time: "2025-03-18T12:00:00Z",
+        },
+      },
+    });
+
+    mockedSupabaseFrom.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          id: "session-123",
+          therapist_id: "therapist-1",
+          client_id: "client-1",
+          program_id: "program-1",
+          goal_id: "goal-1",
+          start_time: "2025-03-18T10:00:00Z",
+          end_time: "2025-03-18T11:00:00Z",
+          status: "scheduled",
+        },
+        error: null,
+      }),
+    } as unknown as ReturnType<typeof supabase.from>);
+
+    const backendMessage = "Session notes with goal progress are required before closing this session.";
+    mockedBookSessionViaApi.mockRejectedValueOnce(
+      Object.assign(new Error(backendMessage), {
+        status: 409,
+        code: "SESSION_NOTES_REQUIRED",
+        retryHint: "choose a different slot",
+      }),
+    );
+
+    renderWithProviders(<ChatBot />);
+    await userEvent.click(document.getElementById("chat-trigger")!);
+
+    const input = screen.getByPlaceholderText(/Type your message/);
+    await userEvent.type(input, "move the session by one hour");
+    await userEvent.click(screen.getByTestId("send-message"));
+
+    await screen.findByText(new RegExp(`❌ Error: ${backendMessage}`));
+    expect(mockedShowError).toHaveBeenCalledWith(backendMessage);
+    expect(
+      screen.queryByText(/choose a different slot/i),
+    ).not.toBeInTheDocument();
+  });
 });

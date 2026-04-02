@@ -22,6 +22,7 @@ import {
   captureFailureScreenshot,
   loginAndAssertSession,
 } from "./lib/playwright-smoke";
+import { assertNonAiSessionsEnvContract } from "./lib/playwright-nonai-sessions-contract";
 import {
   bookSession,
   cancelSession,
@@ -161,22 +162,9 @@ async function run(): Promise<void> {
   const headless = process.env.HEADLESS !== "false";
   const strictParityMode = isTruthy(process.env.CI_SESSION_PARITY_REQUIRED) || isTruthy(process.env.PW_STRICT_SESSION_PARITY);
 
-  const credentialCandidates = [
-    {
-      email: process.env.PW_ADMIN_EMAIL ?? process.env.PLAYWRIGHT_ADMIN_EMAIL,
-      password: process.env.PW_ADMIN_PASSWORD ?? process.env.PLAYWRIGHT_ADMIN_PASSWORD,
-      label: "PW_ADMIN_EMAIL + PW_ADMIN_PASSWORD",
-    },
-    {
-      email: process.env.PW_SCHEDULE_EMAIL,
-      password: process.env.PW_SCHEDULE_PASSWORD,
-      label: "PW_SCHEDULE_EMAIL + PW_SCHEDULE_PASSWORD",
-    },
-  ].filter((entry) => Boolean(entry.email && entry.password));
-
-  if (credentialCandidates.length === 0) {
-    throw new Error("Missing credentials (PW_SCHEDULE_* or PW_ADMIN_*).");
-  }
+  const credentialCandidates = assertNonAiSessionsEnvContract(
+    "Schedule blocked-close Playwright regression",
+  );
 
   const browser = await chromium.launch({ headless });
   let context: BrowserContext | undefined;

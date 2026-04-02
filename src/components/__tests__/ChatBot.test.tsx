@@ -6,6 +6,7 @@ import { cancelSessions } from "../../lib/sessionCancellation";
 import { useAuth } from "../../lib/authContext";
 import { bookSessionViaApi } from "../../features/scheduling/domain/booking";
 import { supabase } from "../../lib/supabase";
+import { showError } from "../../lib/toast";
 
 beforeAll(() => {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -55,11 +56,17 @@ vi.mock("../../lib/supabase", () => ({
   },
 }));
 
+vi.mock("../../lib/toast", () => ({
+  showSuccess: vi.fn(),
+  showError: vi.fn(),
+}));
+
 const mockedProcessMessage = vi.mocked(processMessage);
 const mockedCancelSessions = vi.mocked(cancelSessions);
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedBookSessionViaApi = vi.mocked(bookSessionViaApi);
 const mockedSupabaseFrom = vi.mocked(supabase.from);
+const mockedShowError = vi.mocked(showError);
 
 describe("ChatBot scheduling", () => {
   beforeEach(() => {
@@ -68,6 +75,7 @@ describe("ChatBot scheduling", () => {
     mockedCancelSessions.mockReset();
     mockedBookSessionViaApi.mockReset();
     mockedSupabaseFrom.mockReset();
+    mockedShowError.mockReset();
     mockedUseAuth.mockReturnValue({
       session: {
         access_token: "test-jwt",
@@ -274,5 +282,54 @@ describe("ChatBot scheduling", () => {
     );
     const firstCallPayload = mockedBookSessionViaApi.mock.calls[0]?.[0];
     expect(firstCallPayload?.session).not.toHaveProperty("ignored_field");
+  });
+
+  it("shows conflict-aware modify_session error copy for canonical 409 conflicts", async () => {
+    mockedProcessMessage.mockResolvedValueOnce({
+      response: "Updating the session now.",
+      action: {
+        type: "modify_session",
+        data: {
+          session_id: "session-123",
+          start_time: "2025-03-18T11:00:00Z",
+          end_time: "2025-03-18T12:00:00Z",
+        },
+      },
+    });
+
+    mockedSupabaseFrom.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          id: "session-123",
+          therapist_id: "therapist-1",
+          client_id: "client-1",
+          program_id: "program-1",
+          goal_id: "goal-1",
+          start_time: "2025-03-18T10:00:00Z",
+          end_time: "2025-03-18T11:00:00Z",
+          status: "scheduled",
+        },
+        error: null,
+      }),
+    } as unknown as ReturnType<typeof supabase.from>);
+
+    mockedBookSessionViaApi.mockRejectedValueOnce(
+      Object.assign(new Error("Conflict"), {
+        status: 409,
+        retryHint: "choose a different slot",
+      }),
+    );
+
+    renderWithProviders(<ChatBot />);
+    await userEvent.click(document.getElementById("chat-trigger")!);
+
+    const input = screen.getByPlaceholderText(/Type your message/);
+    await userEvent.type(input, "move the session by one hour");
+    await userEvent.click(screen.getByTestId("send-message"));
+
+    await screen.findByText(/❌ Error: Conflict\. choose a different slot/);
+    expect(mockedShowError).toHaveBeenCalledWith("Conflict. choose a different slot");
   });
 });

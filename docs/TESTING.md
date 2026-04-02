@@ -241,8 +241,10 @@ Fail-fast contract:
 
 CI/local command expectations:
 
-- CI chain (`npm run ci:playwright`) runs preflight + auth + schedule conflict + onboarding + authorization + no-show lifecycle + blocked-close.
-- `playwright:session-complete` is currently an explicit local/targeted regression command (not included in `ci:playwright` by default).
+- CI chain (`npm run ci:playwright`) now runs preflight + auth + schedule conflict + onboarding + authorization + no-show lifecycle + complete lifecycle + blocked-close.
+- `auth-browser-smoke` in `.github/workflows/ci.yml` now runs both non-AI terminal regressions with explicit step logs:
+  - `playwright:session-lifecycle` (`no-show`)
+  - `playwright:session-complete` (`completed`)
 
 Useful knobs:
 
@@ -271,6 +273,7 @@ Notes and caveats:
 - Playwright flows run against a remote runtime (`PW_BASE_URL`, default `https://app.allincompassing.ai`), so data shape and latency are environment-dependent.
 - `playwright:schedule-conflict` now fails fast on readiness and selector issues and requires a real observed `POST /api/book` response for the submit path.
 - `playwright:session-lifecycle` validates book/start/terminal close behavior using Schedule + SessionModal and can fall back to bounded service-role cleanup when edge responses are not observable in non-strict mode.
+- `playwright:session-complete` emits explicit terminal-flow mode logs and reuses the same harness/contract for deterministic completed-session coverage.
 
 ## Prod-like conflict workflow (2026-03-18)
 

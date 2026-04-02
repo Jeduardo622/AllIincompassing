@@ -17,6 +17,7 @@ const CRITICAL_PLAYWRIGHT_SCRIPTS = [
   path.join(ROOT, "scripts", "playwright-therapist-onboarding.ts"),
   path.join(ROOT, "scripts", "playwright-therapist-authorization.ts"),
   path.join(ROOT, "scripts", "playwright-session-lifecycle.ts"),
+  path.join(ROOT, "scripts", "playwright-session-complete.ts"),
   path.join(ROOT, "scripts", "playwright-schedule-blocked-close.ts"),
 ];
 
@@ -57,6 +58,16 @@ const run = async () => {
   const ciPlaywright = String(scripts["ci:playwright"] ?? "");
   if (!ciPlaywright.includes("playwright:preflight")) {
     errors.push("package.json script ci:playwright must start with playwright:preflight.");
+  }
+  if (!ciPlaywright.includes("playwright:session-complete")) {
+    errors.push("package.json script ci:playwright must include playwright:session-complete for completed terminal coverage.");
+  }
+  if (
+    ciPlaywright.includes("playwright:session-lifecycle") &&
+    ciPlaywright.includes("playwright:session-complete") &&
+    ciPlaywright.indexOf("playwright:session-complete") < ciPlaywright.indexOf("playwright:session-lifecycle")
+  ) {
+    errors.push("package.json script ci:playwright must run playwright:session-lifecycle before playwright:session-complete.");
   }
   if (!scripts["playwright:preflight"]) {
     errors.push("package.json is missing playwright:preflight script.");
@@ -104,6 +115,16 @@ const run = async () => {
   }
   if (!ciWorkflow.includes("Record auth smoke evidence")) {
     errors.push(".github/workflows/ci.yml must record auth smoke evidence artifacts for success/failure runs.");
+  }
+  if (!ciWorkflow.includes("npm run playwright:session-complete")) {
+    errors.push(".github/workflows/ci.yml auth-browser-smoke gate must run playwright:session-complete.");
+  }
+  if (
+    ciWorkflow.includes("npm run playwright:session-lifecycle") &&
+    ciWorkflow.includes("npm run playwright:session-complete") &&
+    ciWorkflow.indexOf("npm run playwright:session-complete") < ciWorkflow.indexOf("npm run playwright:session-lifecycle")
+  ) {
+    errors.push(".github/workflows/ci.yml must run playwright:session-lifecycle before playwright:session-complete.");
   }
   if (!ciWorkflow.includes("if: always()")) {
     errors.push(".github/workflows/ci.yml must retain artifacts with if: always() for deterministic evidence collection.");

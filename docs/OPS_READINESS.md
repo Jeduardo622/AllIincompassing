@@ -31,7 +31,7 @@ Document the minimum monitoring, alerting, and incident response requirements fo
 - [ ] `ci-gate` is added to branch protection before CI policy expectations are updated to `CI_REQUIRED_CHECKS=ci-gate`
 - [ ] Migration is validated with a non-doc test PR before legacy required checks are removed
 - [ ] `npm run test:routes:tier0` passes (browser route/role gate)
-- [ ] `npm run ci:playwright` passes (or, for focused parity, at minimum `npm run playwright:auth && npm run playwright:session-lifecycle`)
+- [ ] `npm run ci:playwright` passes (or, for focused parity, at minimum `npm run playwright:auth && npm run playwright:session-lifecycle && npm run playwright:session-complete && npm run playwright:schedule-blocked-close`)
 - [ ] `npm run ci:rollback-drill` passes and artifact evidence is attached to the release ticket
 - [ ] `API_AUTHORITY_MODE=edge` is enabled in production so `/api/*` remains transport-only for converged routes
 - [ ] Dual-layer throttling is configured (`RATE_LIMIT_MODE=distributed` with Upstash credentials or approved `waf_only` exception)

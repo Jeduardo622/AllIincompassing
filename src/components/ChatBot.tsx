@@ -21,6 +21,7 @@ import {
   buildBookSessionApiPayload,
   buildBookingTimeMetadata,
 } from "../features/scheduling/domain/booking";
+import { adaptScheduleMutationError } from "../features/scheduling/domain/mutationErrorAdapter";
 import { cancelSessions } from "../lib/sessionCancellation";
 import { showSuccess, showError } from "../lib/toast";
 import { errorTracker } from "../lib/errorTracking";
@@ -67,6 +68,13 @@ const pickSessionUpdatePatch = (updates: Record<string, unknown>): Partial<Sessi
     }
     return acc;
   }, {});
+};
+
+const getModifySessionUserMessage = (error: unknown): string => {
+  const adapted = adaptScheduleMutationError(error);
+  return typeof adapted.userMessage === "string"
+    ? adapted.userMessage
+    : adapted.userMessage.message;
 };
 
 export function ChatBot() {
@@ -814,11 +822,22 @@ export function ChatBot() {
               throw new Error(`Unsupported assistant action: ${actionType}`);
           }
         } catch (actionError) {
+          const fallbackMessage =
+            "Unable to complete the requested action. Please try again or use the manual interface.";
+          const userVisibleActionError =
+            actionType === "modify_session"
+              ? getModifySessionUserMessage(actionError)
+              : actionError instanceof Error
+                ? actionError.message
+                : typeof actionError === "string" && actionError.trim().length > 0
+                  ? actionError
+                : fallbackMessage;
+
           logger.error('Chat bot action execution failed', {
             error: actionError,
             context: { component: 'ChatBot', operation: actionType }
           });
-          showError(actionError);
+          showError(userVisibleActionError);
           if (actionError instanceof Error) {
             errorTracker.trackAIError(actionError, {
               functionCalled: `ChatBot_${response.action?.type}`,
@@ -834,9 +853,7 @@ export function ChatBot() {
               content:
                 response.response +
                 "\n\n❌ Error: " +
-                (actionError instanceof Error
-                  ? actionError.message
-                  : "Unable to complete the requested action. Please try again or use the manual interface."),
+                userVisibleActionError,
               status: "action_failed",
             },
           ]);

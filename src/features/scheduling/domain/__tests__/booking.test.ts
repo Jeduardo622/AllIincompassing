@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildBookSessionApiPayload } from "../booking";
+import {
+  buildBookSessionApiPayload,
+  buildBookingTimeMetadata,
+} from "../booking";
 
 describe("booking domain payload builder", () => {
   it("builds payload with defaults and metadata", () => {
@@ -22,6 +25,37 @@ describe("booking domain payload builder", () => {
     expect(payload.timeZone).toBe("America/New_York");
     expect(payload.holdSeconds).toBe(300);
     expect(payload.session.status).toBe("scheduled");
+  });
+
+  it("computes booking time metadata for valid session times", () => {
+    const metadata = buildBookingTimeMetadata(
+      {
+        start_time: "2026-03-20T15:00:00.000Z",
+        end_time: "2026-03-20T16:00:00.000Z",
+      },
+      "America/New_York",
+    );
+
+    expect(metadata.timeZone).toBe("America/New_York");
+    expect(typeof metadata.startOffsetMinutes).toBe("number");
+    expect(typeof metadata.endOffsetMinutes).toBe("number");
+  });
+
+  it("throws when booking time metadata is missing required timestamps", () => {
+    expect(() =>
+      buildBookingTimeMetadata({
+        start_time: "2026-03-20T15:00:00.000Z",
+      }),
+    ).toThrow("Missing session start or end time");
+  });
+
+  it("throws when booking time metadata receives invalid timestamps", () => {
+    expect(() =>
+      buildBookingTimeMetadata({
+        start_time: "not-a-date",
+        end_time: "still-not-a-date",
+      }),
+    ).toThrow("Invalid session time provided");
   });
 });
 

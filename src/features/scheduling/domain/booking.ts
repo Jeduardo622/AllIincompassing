@@ -3,6 +3,8 @@ import type {
   BookSessionResult,
 } from "../../../server/types";
 import type { Session } from "../../../types";
+import { parseISO } from "date-fns";
+import { getTimezoneOffset } from "date-fns-tz";
 import { supabase } from "../../../lib/supabase";
 import { logger } from "../../../lib/logger/logger";
 import { toError } from "../../../lib/logger/normalizeError";
@@ -65,6 +67,29 @@ export function buildBookSessionApiPayload(
     timeZone: metadata.timeZone,
     holdSeconds,
     ...(recurrence ? { recurrence } : {}),
+  };
+}
+
+export function buildBookingTimeMetadata(session: Pick<Partial<Session>, "start_time" | "end_time">, timeZone?: string): {
+  startOffsetMinutes: number;
+  endOffsetMinutes: number;
+  timeZone: string;
+} {
+  if (!session.start_time || !session.end_time) {
+    throw new Error("Missing session start or end time");
+  }
+
+  const startDate = parseISO(session.start_time);
+  const endDate = parseISO(session.end_time);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    throw new Error("Invalid session time provided");
+  }
+
+  const resolvedTimeZone = timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  return {
+    startOffsetMinutes: Math.round(getTimezoneOffset(resolvedTimeZone, startDate) / 60000),
+    endOffsetMinutes: Math.round(getTimezoneOffset(resolvedTimeZone, endDate) / 60000),
+    timeZone: resolvedTimeZone,
   };
 }
 

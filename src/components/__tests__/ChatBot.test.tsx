@@ -4,6 +4,8 @@ import { ChatBot } from "../ChatBot";
 import { processMessage } from "../../lib/ai";
 import { cancelSessions } from "../../lib/sessionCancellation";
 import { useAuth } from "../../lib/authContext";
+import { bookSessionViaApi } from "../../features/scheduling/domain/booking";
+import { supabase } from "../../lib/supabase";
 
 beforeAll(() => {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -37,15 +39,35 @@ vi.mock("../../lib/authContext", () => ({
   useAuth: vi.fn(),
 }));
 
+vi.mock("../../features/scheduling/domain/booking", () => ({
+  bookSessionViaApi: vi.fn(),
+  buildBookSessionApiPayload: vi.fn((session) => ({ session })),
+  buildBookingTimeMetadata: vi.fn(() => ({
+    startOffsetMinutes: -420,
+    endOffsetMinutes: -420,
+    timeZone: "America/Los_Angeles",
+  })),
+}));
+
+vi.mock("../../lib/supabase", () => ({
+  supabase: {
+    from: vi.fn(),
+  },
+}));
+
 const mockedProcessMessage = vi.mocked(processMessage);
 const mockedCancelSessions = vi.mocked(cancelSessions);
 const mockedUseAuth = vi.mocked(useAuth);
+const mockedBookSessionViaApi = vi.mocked(bookSessionViaApi);
+const mockedSupabaseFrom = vi.mocked(supabase.from);
 
 describe("ChatBot scheduling", () => {
   beforeEach(() => {
     mockedProcessMessage.mockReset();
     mockedProcessMessage.mockResolvedValue(defaultScheduleAction);
     mockedCancelSessions.mockReset();
+    mockedBookSessionViaApi.mockReset();
+    mockedSupabaseFrom.mockReset();
     mockedUseAuth.mockReturnValue({
       session: {
         access_token: "test-jwt",
@@ -171,5 +193,86 @@ describe("ChatBot scheduling", () => {
 
     await screen.findByText("Please sign in to use the assistant.");
     expect(mockedProcessMessage).not.toHaveBeenCalled();
+  });
+
+  it("routes modify_session through booking API path", async () => {
+    mockedProcessMessage.mockResolvedValueOnce({
+      response: "Updating the session now.",
+      action: {
+        type: "modify_session",
+        data: {
+          session_id: "session-123",
+          start_time: "2025-03-18T11:00:00Z",
+          end_time: "2025-03-18T12:00:00Z",
+          notes: "Updated by assistant",
+          ignored_field: "should-not-propagate",
+        },
+      },
+    });
+
+    const updateSpy = vi.fn();
+    mockedSupabaseFrom.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          id: "session-123",
+          therapist_id: "therapist-1",
+          client_id: "client-1",
+          program_id: "program-1",
+          goal_id: "goal-1",
+          start_time: "2025-03-18T10:00:00Z",
+          end_time: "2025-03-18T11:00:00Z",
+          status: "scheduled",
+        },
+        error: null,
+      }),
+      update: updateSpy,
+    } as unknown as ReturnType<typeof supabase.from>);
+
+    mockedBookSessionViaApi.mockResolvedValueOnce({
+      success: true,
+      session: {
+        id: "session-123",
+        therapist_id: "therapist-1",
+        client_id: "client-1",
+        program_id: "program-1",
+        goal_id: "goal-1",
+        start_time: "2025-03-18T11:00:00Z",
+        end_time: "2025-03-18T12:00:00Z",
+      },
+      updatedExisting: true,
+    } as never);
+
+    renderWithProviders(<ChatBot />);
+    await userEvent.click(document.getElementById("chat-trigger")!);
+
+    const input = screen.getByPlaceholderText(/Type your message/);
+    await userEvent.type(input, "move the session by one hour");
+    await userEvent.click(screen.getByTestId("send-message"));
+
+    await screen.findByText(/Session has been updated/);
+
+    expect(mockedSupabaseFrom).toHaveBeenCalledWith("sessions");
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(mockedBookSessionViaApi).toHaveBeenCalledTimes(1);
+    expect(mockedBookSessionViaApi).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session: expect.objectContaining({
+          id: "session-123",
+          notes: "Updated by assistant",
+          start_time: "2025-03-18T11:00:00Z",
+          end_time: "2025-03-18T12:00:00Z",
+        }),
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.any(String),
+        agentOperationId: expect.any(String),
+        requestId: expect.any(String),
+        correlationId: expect.any(String),
+      }),
+    );
+    const firstCallPayload = mockedBookSessionViaApi.mock.calls[0]?.[0];
+    expect(firstCallPayload?.session).not.toHaveProperty("ignored_field");
   });
 });

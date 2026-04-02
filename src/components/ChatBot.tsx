@@ -16,12 +16,18 @@ import {
   createAgentOperationContext,
   withAgentRetry,
 } from "../lib/agentTransactions";
+import {
+  bookSessionViaApi,
+  buildBookSessionApiPayload,
+  buildBookingTimeMetadata,
+} from "../features/scheduling/domain/booking";
 import { cancelSessions } from "../lib/sessionCancellation";
 import { showSuccess, showError } from "../lib/toast";
 import { errorTracker } from "../lib/errorTracking";
 import { logger } from "../lib/logger/logger";
 import { useAuth } from "../lib/authContext";
 import { getRoleAllowedTools } from "../lib/aiGuardrails";
+import type { Session } from "../types";
 // import type { Session, Client, Therapist, Authorization, AuthorizationService } from "../types";
 
 interface Message {
@@ -35,6 +41,33 @@ interface Message {
     | "action_success"
     | "action_failed";
 }
+
+const MODIFIABLE_SESSION_FIELDS: Array<keyof Session> = [
+  "therapist_id",
+  "client_id",
+  "program_id",
+  "goal_id",
+  "start_time",
+  "end_time",
+  "status",
+  "notes",
+  "location_type",
+  "session_type",
+  "rate_per_hour",
+  "total_cost",
+  "duration_minutes",
+  "recurrence",
+];
+
+const pickSessionUpdatePatch = (updates: Record<string, unknown>): Partial<Session> => {
+  const allowed = new Set<string>(MODIFIABLE_SESSION_FIELDS);
+  return Object.entries(updates).reduce<Partial<Session>>((acc, [key, value]) => {
+    if (allowed.has(key)) {
+      (acc as Record<string, unknown>)[key] = value;
+    }
+    return acc;
+  }, {});
+};
 
 export function ChatBot() {
   const [isOpen, setIsOpen] = useState(false);
@@ -392,7 +425,15 @@ export function ChatBot() {
             }
 
             case "modify_session": {
-              const { session_id, ...updates } = response.action.data;
+              const operation = createAgentOperationContext(
+                "modify_session",
+                3,
+                response.correlationId ?? null,
+              );
+              const { session_id: sessionId, ...updates } = response.action.data;
+              if (!sessionId || typeof sessionId !== "string") {
+                throw new Error("Session modification requires session_id");
+              }
 
               setMessages((prev) => [
                 ...prev.slice(0, -1),
@@ -403,15 +444,48 @@ export function ChatBot() {
                 },
               ]);
 
-              const { error } = await supabase
-                .from("sessions")
-                .update(updates)
-                .eq("id", session_id);
+              const bookingResult = await withAgentRetry(operation, async () => {
+                const { data: sessionRow, error: sessionLoadError } = await supabase
+                  .from("sessions")
+                  .select("*")
+                  .eq("id", sessionId)
+                  .maybeSingle();
 
-              if (error) throw error;
+                if (sessionLoadError) {
+                  throw sessionLoadError;
+                }
+                if (!sessionRow) {
+                  throw new Error("Session not found");
+                }
+
+                const sanitizedUpdates = pickSessionUpdatePatch(updates as Record<string, unknown>);
+                const mergedSession = {
+                  ...(sessionRow as Session),
+                  ...sanitizedUpdates,
+                  id: sessionId,
+                };
+
+                const metadata = buildBookingTimeMetadata(mergedSession);
+                return bookSessionViaApi(
+                  {
+                    ...buildBookSessionApiPayload(mergedSession, metadata),
+                    overrides: undefined,
+                  },
+                  {
+                    idempotencyKey: operation.idempotencyKey,
+                    agentOperationId: operation.operationId,
+                    requestId: operation.requestId,
+                    correlationId: operation.correlationId,
+                  },
+                );
+              });
 
               await queryClient.invalidateQueries({ queryKey: ["sessions"] });
-              showSuccess("Session updated successfully");
+              showSuccess(
+                bookingResult.updatedExisting
+                  ? "Session updated successfully"
+                  : "Session booking applied",
+              );
 
               setMessages((prev) => [
                 ...prev.slice(0, -1),
@@ -419,7 +493,7 @@ export function ChatBot() {
                   role: "assistant",
                   content:
                     response.response + "\n\n✅ Session has been updated.",
-                  status: "complete",
+                  status: "action_success",
                 },
               ]);
               break;

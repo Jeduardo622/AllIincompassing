@@ -221,6 +221,36 @@ npm run ci:touch:architecture-pack
 
 This updates `docs/architecture/pack-metadata.json` (`lastReviewedAt`) to prevent stale-pack failures.
 
+## Non-AI sessions Playwright flows (2026-04)
+
+Canonical non-AI sessions browser coverage now uses three scripts:
+
+- `npm run playwright:session-lifecycle` (book -> start -> terminal `no-show`)
+- `npm run playwright:session-complete` (book -> start -> terminal `completed`)
+- `npm run playwright:schedule-blocked-close` (in-progress close blocked by notes requirement + guidance path)
+
+Fail-fast contract:
+
+- Run `npm run playwright:preflight` first.
+- Preflight now hard-fails when session-flow requirements are missing/placeholder:
+  - credential pair: `PW_SCHEDULE_EMAIL/PW_SCHEDULE_PASSWORD` **or** `PW_ADMIN_EMAIL/PW_ADMIN_PASSWORD`
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_ANON_KEY` (or `SUPABASE_ANON_KEY`)
+  - `SUPABASE_SERVICE_ROLE_KEY`
+- Session scripts use the same contract and return actionable errors that point back to preflight + this section.
+
+CI/local command expectations:
+
+- CI chain (`npm run ci:playwright`) runs preflight + auth + schedule conflict + onboarding + authorization + no-show lifecycle + blocked-close.
+- `playwright:session-complete` is currently an explicit local/targeted regression command (not included in `ci:playwright` by default).
+
+Useful knobs:
+
+- `PW_BASE_URL` (defaults to `https://app.allincompassing.ai`)
+- `PW_LIFECYCLE_STEP_TIMEOUT_MS` (step watchdog, default `300000` for lifecycle)
+- `PW_EDGE_FETCH_TIMEOUT_MS` (edge fetch timeout, default `20000`)
+- `PW_STRICT_SESSION_PARITY=1` / `CI_SESSION_PARITY_REQUIRED=true` for stricter edge parity behavior
+
 ## Scheduling stabilization validation (2026-03-18)
 
 Completed validation run for Cypress + Playwright stabilization:
@@ -233,13 +263,14 @@ Completed validation run for Cypress + Playwright stabilization:
   - schedule conflict ✅ (graceful skip when no therapist/client pair has active program+goal)
   - therapist onboarding ✅
   - therapist authorization ✅
-  - session lifecycle ✅
+  - session lifecycle (no-show terminal) ✅
+  - blocked-close guidance ✅
 
 Notes and caveats:
 
 - Playwright flows run against a remote runtime (`PW_BASE_URL`, default `https://app.allincompassing.ai`), so data shape and latency are environment-dependent.
 - `playwright:schedule-conflict` now fails fast on readiness and selector issues and requires a real observed `POST /api/book` response for the submit path.
-- `playwright:session-lifecycle` now validates the async export branch (`generate-session-notes-pdf` enqueue -> `session-notes-pdf-status` poll -> `session-notes-pdf-download` retrieval). It can still log a non-fatal warning if this branch is unavailable in the target environment while core book/start/note/cancel checks pass.
+- `playwright:session-lifecycle` validates book/start/terminal close behavior using Schedule + SessionModal and can fall back to bounded service-role cleanup when edge responses are not observable in non-strict mode.
 
 ## Prod-like conflict workflow (2026-03-18)
 

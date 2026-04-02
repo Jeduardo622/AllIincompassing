@@ -1,5 +1,6 @@
 import { loadPlaywrightEnv } from './lib/load-playwright-env';
 import { assertUuid } from './lib/playwright-smoke';
+import { assertNonAiSessionsEnvContract } from './lib/playwright-nonai-sessions-contract';
 
 const REDACTED_PLACEHOLDER = '****';
 
@@ -59,6 +60,10 @@ const run = (): void => {
     throw new Error('PW_FOREIGN_THERAPIST_ID must not use the all-zero placeholder UUID.');
   }
 
+  const nonAiSessionCandidates = assertNonAiSessionsEnvContract(
+    'Non-AI sessions Playwright lifecycle/blocked-close suites',
+  );
+
   console.log(
     JSON.stringify({
       ok: true,
@@ -70,6 +75,10 @@ const run = (): void => {
       entities: {
         foreignClientId,
         foreignTherapistId,
+      },
+      nonAiSessions: {
+        ready: true,
+        credentialCandidates: nonAiSessionCandidates.map((candidate) => candidate.label),
       },
       message: 'Playwright preflight contract check passed.',
     }),

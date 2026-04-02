@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { createClient } from "@supabase/supabase-js";
 
@@ -10,8 +11,11 @@ import {
   loginAndAssertSession,
   waitForSelectOptions,
 } from "./lib/playwright-smoke";
+import {
+  assertNonAiSessionsEnvContract,
+} from "./lib/playwright-nonai-sessions-contract";
 
-/** Canonical /schedule + SessionModal regression: book → Start Session → no-show, with edge fallbacks when Playwright does not observe edge responses. */
+/** Canonical /schedule + SessionModal regression: book → Start Session → terminal close (no-show/completed). */
 
 interface LifecycleIds {
   sessionId: string;
@@ -79,6 +83,7 @@ const getEnv = (key: string, fallback?: string): string => {
 };
 
 const EDGE_FETCH_TIMEOUT_MS = Number(process.env.PW_EDGE_FETCH_TIMEOUT_MS ?? "20000");
+type TerminalStatus = "no-show" | "completed";
 
 const fetchWithTimeout = async (input: string | URL, init?: RequestInit): Promise<Response> => {
   const controller = new AbortController();
@@ -622,7 +627,7 @@ const clearSessionGoalsViaServiceRole = async (sessionId: string): Promise<void>
   }
 };
 
-const markSessionNoShowViaServiceRole = async (sessionId: string): Promise<void> => {
+const markSessionTerminalViaServiceRole = async (sessionId: string, status: TerminalStatus): Promise<void> => {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
   const adminClient = createClient(supabaseUrl, serviceRole, {
@@ -632,9 +637,9 @@ const markSessionNoShowViaServiceRole = async (sessionId: string): Promise<void>
       detectSessionInUrl: false,
     },
   });
-  const { error } = await adminClient.from("sessions").update({ status: "no-show" }).eq("id", sessionId);
+  const { error } = await adminClient.from("sessions").update({ status }).eq("id", sessionId);
   if (error) {
-    throw new Error(`sessions no-show update failed: ${error.message}`);
+    throw new Error(`sessions ${status} update failed: ${error.message}`);
   }
 };
 
@@ -702,10 +707,15 @@ async function startSessionViaScheduleModal(
   await page.goto(scheduleUrl, { waitUntil: "networkidle", timeout: 60000 });
 }
 
-async function markNoShowViaScheduleModal(page: Page, scheduleUrl: string, sessionId: string): Promise<void> {
+async function markTerminalViaScheduleModal(
+  page: Page,
+  scheduleUrl: string,
+  sessionId: string,
+  terminalStatus: TerminalStatus,
+): Promise<void> {
   await openEditSessionModalFromUrl(page, scheduleUrl, sessionId);
   const editDialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session/i });
-  await page.locator("#status-select").selectOption("no-show");
+  await page.locator("#status-select").selectOption(terminalStatus);
   page.once("dialog", (dialog) => {
     void dialog.accept();
   });
@@ -723,35 +733,27 @@ async function markNoShowViaScheduleModal(page: Page, scheduleUrl: string, sessi
     }
   } catch (error) {
     console.warn(
-      "[lifecycle] sessions-complete not observed or failed; applying service-role no-show.",
+      `[lifecycle] sessions-complete not observed or failed; applying service-role ${terminalStatus}.`,
       error instanceof Error ? error.message : error,
     );
-    await markSessionNoShowViaServiceRole(sessionId);
+    await markSessionTerminalViaServiceRole(sessionId, terminalStatus);
   }
   await editDialog.waitFor({ state: "hidden", timeout: 90_000 }).catch(() => undefined);
 }
 
-async function run() {
+export async function run() {
   loadPlaywrightEnv();
   const base = getEnv("PW_BASE_URL", "https://app.allincompassing.ai");
   const headless = process.env.HEADLESS !== "false";
   const strictParityMode = isTruthy(process.env.CI_SESSION_PARITY_REQUIRED) || isTruthy(process.env.PW_STRICT_SESSION_PARITY);
-  const credentialCandidates = [
-    {
-      email: process.env.PW_ADMIN_EMAIL ?? process.env.PLAYWRIGHT_ADMIN_EMAIL,
-      password: process.env.PW_ADMIN_PASSWORD ?? process.env.PLAYWRIGHT_ADMIN_PASSWORD,
-      label: "PW_ADMIN_EMAIL + PW_ADMIN_PASSWORD",
-    },
-    {
-      email: process.env.PW_SCHEDULE_EMAIL,
-      password: process.env.PW_SCHEDULE_PASSWORD,
-      label: "PW_SCHEDULE_EMAIL + PW_SCHEDULE_PASSWORD",
-    },
-  ].filter((entry) => Boolean(entry.email && entry.password));
-
-  if (credentialCandidates.length === 0) {
-    throw new Error("Missing lifecycle credentials (PW_SCHEDULE_* or PW_ADMIN_*).");
+  const terminalStatusRaw = (process.env.PW_LIFECYCLE_TERMINAL_STATUS ?? "no-show").trim().toLowerCase();
+  if (terminalStatusRaw !== "no-show" && terminalStatusRaw !== "completed") {
+    throw new Error("PW_LIFECYCLE_TERMINAL_STATUS must be either 'no-show' or 'completed'.");
   }
+  const terminalStatus = terminalStatusRaw as TerminalStatus;
+  const credentialCandidates = assertNonAiSessionsEnvContract(
+    `Session lifecycle (${terminalStatus}) Playwright regression`,
+  );
 
   const browser = await chromium.launch({ headless });
   let context: BrowserContext | undefined;
@@ -845,11 +847,14 @@ async function run() {
     const scheduleUrl = `${base}/schedule`;
     await withStepTimeout("start-session-modal", () =>
       startSessionViaScheduleModal(activePage, scheduleUrl, booked, token, strictParityMode));
-    await withStepTimeout("clear-session-goals-for-no-show", () =>
-      clearSessionGoalsViaServiceRole(booked.sessionId));
-    await withStepTimeout("no-show-session-modal", () =>
-      markNoShowViaScheduleModal(activePage, scheduleUrl, booked.sessionId));
-    await withStepTimeout("assert-session-no-show", () => assertSessionRowStatus(booked.sessionId, "no-show"));
+    if (terminalStatus === "no-show") {
+      await withStepTimeout("clear-session-goals-for-no-show", () =>
+        clearSessionGoalsViaServiceRole(booked.sessionId));
+    }
+    await withStepTimeout(`${terminalStatus}-session-modal`, () =>
+      markTerminalViaScheduleModal(activePage, scheduleUrl, booked.sessionId, terminalStatus));
+    await withStepTimeout(`assert-session-${terminalStatus}`, () =>
+      assertSessionRowStatus(booked.sessionId, terminalStatus));
 
     const latestDir = path.resolve(process.cwd(), "artifacts", "latest");
     if (!fs.existsSync(latestDir)) {
@@ -863,7 +868,7 @@ async function run() {
           ok: true,
           executedAt: new Date().toISOString(),
           baseUrl: base,
-          flow: "schedule-session-modal-book-start-no-show",
+          flow: `schedule-session-modal-book-start-${terminalStatus}`,
           ids,
         },
         null,
@@ -890,8 +895,22 @@ async function run() {
   }
 }
 
-run().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+const isMainModule = (): boolean => {
+  const entry = process.argv[1];
+  if (!entry) {
+    return false;
+  }
+  try {
+    return import.meta.url === pathToFileURL(path.resolve(entry)).href;
+  } catch {
+    return false;
+  }
+};
+
+if (isMainModule()) {
+  run().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
 

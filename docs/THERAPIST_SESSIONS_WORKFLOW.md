@@ -254,7 +254,9 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
 - [ ] Review route-specific UI components (`/schedule`, `/clients/:clientId`) to ensure they filter via the JWT’s `org_id` and therapist ID, mirroring the policy assumptions.
 
 ## 2026-03 E2E validation findings
-- Added `scripts/playwright-session-lifecycle.ts` to run booking -> start -> notes -> cancel lifecycle checks with artifact output in `artifacts/latest`.
+- Added `scripts/playwright-session-lifecycle.ts` to run booking -> start -> terminal-close lifecycle checks (default no-show) with artifact output in `artifacts/latest`.
+- Added `scripts/playwright-session-complete.ts` to run the same harness with terminal status `completed`.
+- Added `scripts/playwright-schedule-blocked-close.ts` to verify notes-required blocked-close guidance from `/schedule`.
 - Session lifecycle start flow uncovered a database guard mismatch (`scheduled -> in_progress` transition blocked). This is fixed by migration `supabase/migrations/20260316153000_allow_session_in_progress_transitions.sql`.
 - Transcript entities existed in hosted environments but were missing from migration history in this repository. `supabase/migrations/20251005131500_transcription_consent_and_retention.sql` now bootstraps `session_transcripts` and `session_transcript_segments` with idempotent `CREATE TABLE IF NOT EXISTS` and indexes before consent/retention logic runs.
 - Environment gap discovered during E2E: `sessions-start` and `generate-session-notes-pdf` edge endpoints returned `404 NOT_FOUND` in the target shared environment, indicating deployment/config drift despite functions being present in source.

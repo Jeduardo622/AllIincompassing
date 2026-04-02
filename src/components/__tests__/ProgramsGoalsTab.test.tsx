@@ -426,6 +426,92 @@ describe("ProgramsGoalsTab", () => {
     expect(showSuccess).toHaveBeenCalledWith("Goal created");
   });
 
+  it("falls back to same-origin API when program edge calls time out", async () => {
+    let hasProgram = false;
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) {
+        return new Response(
+          JSON.stringify(
+            hasProgram
+              ? [
+                  {
+                    id: "program-fallback-1",
+                    organization_id: ORG_ID,
+                    client_id: "client-1",
+                    name: "Fallback Program",
+                    description: "Saved through API fallback",
+                    status: "active",
+                    created_at: "2026-02-11T00:00:00.000Z",
+                    updated_at: "2026-02-11T00:00:00.000Z",
+                  },
+                ]
+              : [],
+          ),
+          { status: 200 },
+        );
+      }
+      if (method === "POST" && path === "/api/programs") {
+        hasProgram = true;
+        return new Response(
+          JSON.stringify({
+            id: "program-fallback-1",
+            organization_id: ORG_ID,
+            client_id: "client-1",
+            name: "Fallback Program",
+            description: "Saved through API fallback",
+            status: "active",
+            created_at: "2026-02-11T00:00:00.000Z",
+            updated_at: "2026-02-11T00:00:00.000Z",
+          }),
+          { status: 201 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+    vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string, init?: RequestInit) => {
+      if (typeof path === "string" && path.startsWith("programs")) {
+        return Promise.reject(new Error("Programs request timed out. Please retry."));
+      }
+      const callApiImpl = vi.mocked(callApi).getMockImplementation();
+      if (!callApiImpl) {
+        return new Response(JSON.stringify({ error: "API mock missing" }), { status: 500 });
+      }
+      const apiPath = path.startsWith("/api/") ? path : `/api/${path}`;
+      return callApiImpl(apiPath, init);
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    const programNameInput = await screen.findByPlaceholderText("Program name");
+    await userEvent.type(programNameInput, "Fallback Program");
+    await userEvent.click(screen.getByRole("button", { name: "Create Program" }));
+
+    await waitFor(() => {
+      expect(showSuccess).toHaveBeenCalledWith("Program created");
+    });
+    expect(await screen.findByText("Fallback Program")).toBeInTheDocument();
+    expect(callApi).toHaveBeenCalledWith(
+      "/api/programs",
+      expect.objectContaining({
+        method: "POST",
+      }),
+    );
+  });
+
   it("shows goals load error when goals edge returns non-OK", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();

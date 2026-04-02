@@ -66,9 +66,39 @@ const withTimeout = async <T,>(
 const PROGRAMS_EDGE_PATH = "programs";
 const GOALS_EDGE_PATH = "goals";
 const PROGRAM_NOTES_EDGE_PATH = "program-notes";
+const API_BASE_PATH = "/api";
+const PROGRAMS_API_PATH = `${API_BASE_PATH}/programs`;
+const GOALS_API_PATH = `${API_BASE_PATH}/goals`;
+const PROGRAM_NOTES_API_PATH = `${API_BASE_PATH}/program-notes`;
 
 const buildProgramsQueryPath = (clientId: string): string =>
   `${PROGRAMS_EDGE_PATH}?client_id=${encodeURIComponent(clientId)}`;
+
+const shouldFallbackToApi = (error: unknown): boolean => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return message.includes("timed out") || message.includes("failed to fetch") || message.includes("networkerror");
+};
+
+const callEdgeWithApiFallback = async (params: {
+  edgePath: string;
+  apiPath: string;
+  init?: RequestInit;
+  timeoutMs: number;
+  timeoutMessage: string;
+}): Promise<Response> => {
+  const { edgePath, apiPath, init, timeoutMs, timeoutMessage } = params;
+  try {
+    return await withTimeout(callEdgeFunctionHttp(edgePath, init), timeoutMs, timeoutMessage);
+  } catch (error) {
+    if (!shouldFallbackToApi(error)) {
+      throw error;
+    }
+    return callApi(apiPath, init);
+  }
+};
 
 const isSupportedAssessmentFile = (file: File): boolean => {
   const lowerFileName = file.name.trim().toLowerCase();
@@ -157,11 +187,12 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!organizationId) {
         throw new Error("Organization context is required to load programs.");
       }
-      const response = await withTimeout(
-        callEdgeFunctionHttp(buildProgramsQueryPath(client.id)),
-        PROGRAMS_REQUEST_TIMEOUT_MS,
-        "Programs request timed out. Please retry.",
-      );
+      const response = await callEdgeWithApiFallback({
+        edgePath: buildProgramsQueryPath(client.id),
+        apiPath: `${PROGRAMS_API_PATH}?client_id=${encodeURIComponent(client.id)}`,
+        timeoutMs: PROGRAMS_REQUEST_TIMEOUT_MS,
+        timeoutMessage: "Programs request timed out. Please retry.",
+      });
       if (!response.ok) {
         throw new Error("Failed to load programs");
       }
@@ -197,11 +228,12 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
     queryFn: async () => {
       if (!resolvedProgramId) return [];
-      const response = await withTimeout(
-        callEdgeFunctionHttp(`${GOALS_EDGE_PATH}?program_id=${encodeURIComponent(resolvedProgramId)}`),
-        GOALS_REQUEST_TIMEOUT_MS,
-        "Goals request timed out. Please retry.",
-      );
+      const response = await callEdgeWithApiFallback({
+        edgePath: `${GOALS_EDGE_PATH}?program_id=${encodeURIComponent(resolvedProgramId)}`,
+        apiPath: `${GOALS_API_PATH}?program_id=${encodeURIComponent(resolvedProgramId)}`,
+        timeoutMs: GOALS_REQUEST_TIMEOUT_MS,
+        timeoutMessage: "Goals request timed out. Please retry.",
+      });
       if (!response.ok) {
         throw new Error(await parseApiErrorMessage(response, "Failed to load goals."));
       }
@@ -215,11 +247,12 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     queryKey: ["program-notes", resolvedProgramId, organizationId ?? "MISSING_ORG"],
     queryFn: async () => {
       if (!resolvedProgramId) return [];
-      const response = await withTimeout(
-        callEdgeFunctionHttp(`${PROGRAM_NOTES_EDGE_PATH}?program_id=${encodeURIComponent(resolvedProgramId)}`),
-        PROGRAM_NOTES_REQUEST_TIMEOUT_MS,
-        "Program notes request timed out. Please retry.",
-      );
+      const response = await callEdgeWithApiFallback({
+        edgePath: `${PROGRAM_NOTES_EDGE_PATH}?program_id=${encodeURIComponent(resolvedProgramId)}`,
+        apiPath: `${PROGRAM_NOTES_API_PATH}?program_id=${encodeURIComponent(resolvedProgramId)}`,
+        timeoutMs: PROGRAM_NOTES_REQUEST_TIMEOUT_MS,
+        timeoutMessage: "Program notes request timed out. Please retry.",
+      });
       if (!response.ok) {
         throw new Error("Failed to load program notes");
       }
@@ -755,18 +788,21 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
 
   const createProgram = useMutation({
     mutationFn: async () => {
-      const response = await withTimeout(
-        callEdgeFunctionHttp(PROGRAMS_EDGE_PATH, {
+      const payload = JSON.stringify({
+        client_id: client.id,
+        name: programNameValue,
+        description: programDescription.trim() || undefined,
+      });
+      const response = await callEdgeWithApiFallback({
+        edgePath: PROGRAMS_EDGE_PATH,
+        apiPath: PROGRAMS_API_PATH,
+        init: {
           method: "POST",
-          body: JSON.stringify({
-            client_id: client.id,
-            name: programNameValue,
-            description: programDescription.trim() || undefined,
-          }),
-        }),
-        PROGRAM_CREATE_REQUEST_TIMEOUT_MS,
-        "Create program request timed out. Please retry.",
-      );
+          body: payload,
+        },
+        timeoutMs: PROGRAM_CREATE_REQUEST_TIMEOUT_MS,
+        timeoutMessage: "Create program request timed out. Please retry.",
+      });
       if (!response.ok) {
         throw new Error(await parseApiErrorMessage(response, "Failed to create program."));
       }
@@ -790,27 +826,30 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         throw new Error("Select a program first");
       }
       const objectiveDataPoints = parseObjectiveDataPointsInput(goalObjectiveDataPoints);
-      const response = await withTimeout(
-        callEdgeFunctionHttp(GOALS_EDGE_PATH, {
+      const payload = JSON.stringify({
+        client_id: client.id,
+        program_id: resolvedProgramId,
+        title: goalTitleValue,
+        description: goalDescriptionValue,
+        original_text: goalOriginalTextValue,
+        measurement_type: goalMeasurementType || undefined,
+        baseline_data: goalBaselineData || undefined,
+        target_criteria: goalTargetCriteria || undefined,
+        mastery_criteria: goalMasteryCriteria || undefined,
+        maintenance_criteria: goalMaintenanceCriteria || undefined,
+        generalization_criteria: goalGeneralizationCriteria || undefined,
+        objective_data_points: objectiveDataPoints,
+      });
+      const response = await callEdgeWithApiFallback({
+        edgePath: GOALS_EDGE_PATH,
+        apiPath: GOALS_API_PATH,
+        init: {
           method: "POST",
-          body: JSON.stringify({
-            client_id: client.id,
-            program_id: resolvedProgramId,
-            title: goalTitleValue,
-            description: goalDescriptionValue,
-            original_text: goalOriginalTextValue,
-            measurement_type: goalMeasurementType || undefined,
-            baseline_data: goalBaselineData || undefined,
-            target_criteria: goalTargetCriteria || undefined,
-            mastery_criteria: goalMasteryCriteria || undefined,
-            maintenance_criteria: goalMaintenanceCriteria || undefined,
-            generalization_criteria: goalGeneralizationCriteria || undefined,
-            objective_data_points: objectiveDataPoints,
-          }),
-        }),
-        GOAL_CREATE_REQUEST_TIMEOUT_MS,
-        "Create goal request timed out. Please retry.",
-      );
+          body: payload,
+        },
+        timeoutMs: GOAL_CREATE_REQUEST_TIMEOUT_MS,
+        timeoutMessage: "Create goal request timed out. Please retry.",
+      });
       if (!response.ok) {
         throw new Error(await parseApiErrorMessage(response, "Failed to create goal."));
       }
@@ -840,18 +879,21 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!resolvedProgramId) {
         throw new Error("Select a program first");
       }
-      const response = await withTimeout(
-        callEdgeFunctionHttp(PROGRAM_NOTES_EDGE_PATH, {
+      const payload = JSON.stringify({
+        program_id: resolvedProgramId,
+        note_type: noteType,
+        content: { text: noteContent },
+      });
+      const response = await callEdgeWithApiFallback({
+        edgePath: PROGRAM_NOTES_EDGE_PATH,
+        apiPath: PROGRAM_NOTES_API_PATH,
+        init: {
           method: "POST",
-          body: JSON.stringify({
-            program_id: resolvedProgramId,
-            note_type: noteType,
-            content: { text: noteContent },
-          }),
-        }),
-        PROGRAM_NOTE_CREATE_REQUEST_TIMEOUT_MS,
-        "Program note request timed out. Please retry.",
-      );
+          body: payload,
+        },
+        timeoutMs: PROGRAM_NOTE_CREATE_REQUEST_TIMEOUT_MS,
+        timeoutMessage: "Program note request timed out. Please retry.",
+      });
       if (!response.ok) {
         throw new Error("Failed to add program note");
       }

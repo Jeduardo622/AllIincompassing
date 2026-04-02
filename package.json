@@ -67,6 +67,7 @@
     "ci:check:api-boundary": "node scripts/ci/check-api-boundary.mjs",
     "ci:check:startup-canary": "node scripts/ci/check-startup-canary.mjs",
     "ci:check:rls-policy-coverage": "node scripts/ci/check-rls-policy-coverage.mjs",
+    "ci:check:supabase-preview-drift": "node scripts/ci/check-supabase-preview-drift.mjs",
     "ci:check:api-convergence": "node scripts/ci/check-api-convergence.mjs",
     "ci:check:migrations": "node scripts/ci/check-migration-governance.mjs",
     "ci:check:test-reliability": "node scripts/ci/check-test-reliability.mjs",

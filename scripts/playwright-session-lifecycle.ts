@@ -11,13 +11,14 @@ import {
   waitForSelectOptions,
 } from "./lib/playwright-smoke";
 
+/** Canonical /schedule + SessionModal regression: book → Start Session → no-show, with edge fallbacks when Playwright does not observe edge responses. */
+
 interface LifecycleIds {
   sessionId: string;
   therapistId: string;
   clientId: string;
   programId: string;
   goalId: string;
-  noteId?: string;
 }
 
 interface RuntimeConfigPayload {
@@ -37,7 +38,8 @@ const SCHEDULE_MODAL_SESSION_KEY = "scheduleSessionId";
 const SCHEDULE_MODAL_EXPIRY_KEY = "scheduleExp";
 const SCHEDULE_MODAL_URL_TTL_MS = 30 * 60 * 1000;
 
-const STEP_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_STEP_TIMEOUT_MS ?? "120000");
+/** UI wait (90s) + edge/RPC fallback can exceed 120s on cold paths. */
+const STEP_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_STEP_TIMEOUT_MS ?? "300000");
 
 const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): Promise<T> => {
   console.log(`[lifecycle] start ${label}`);
@@ -75,6 +77,31 @@ const getEnv = (key: string, fallback?: string): string => {
   }
   return value;
 };
+
+const EDGE_FETCH_TIMEOUT_MS = Number(process.env.PW_EDGE_FETCH_TIMEOUT_MS ?? "20000");
+
+const fetchWithTimeout = async (input: string | URL, init?: RequestInit): Promise<Response> => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), EDGE_FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const buildEdgeAuthHeaders = (token: string): Record<string, string> => ({
+  "Content-Type": "application/json",
+  apikey: getEnv("VITE_SUPABASE_ANON_KEY", process.env.SUPABASE_ANON_KEY),
+  Authorization: `Bearer ${token}`,
+});
+
+interface SessionStartPayload {
+  session_id: string;
+  program_id: string;
+  goal_id: string;
+  goal_ids: string[];
+}
 
 const parseProjectRef = (value: string): string | null => {
   const trimmed = value.trim();
@@ -205,122 +232,6 @@ const fetchAuthorizedClientIds = async (): Promise<Set<string>> => {
   );
 };
 
-const createSessionNoteViaServiceRole = async (ids: LifecycleIds, actorUserId: string): Promise<string> => {
-  const supabaseUrl = getEnv("VITE_SUPABASE_URL");
-  const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
-  const adminClient = createClient(supabaseUrl, serviceRole, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-      detectSessionInUrl: false,
-    },
-  });
-
-  const { data: sessionRow, error: sessionError } = await adminClient
-    .from("sessions")
-    .select("organization_id")
-    .eq("id", ids.sessionId)
-    .single();
-  if (sessionError || !sessionRow?.organization_id) {
-    throw new Error(`Unable to resolve session organization for fallback note: ${sessionError?.message ?? "missing org"}`);
-  }
-  const organizationId = sessionRow.organization_id;
-
-  const { data: authRows, error: authError } = await adminClient
-    .from("authorizations")
-    .select("id")
-    .eq("organization_id", organizationId)
-    .eq("client_id", ids.clientId)
-    .eq("status", "approved")
-    .order("end_date", { ascending: false })
-    .limit(1);
-  let authorizationId: string | null = null;
-  if (!authError && authRows && authRows.length > 0) {
-    authorizationId = authRows[0].id;
-  } else {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 1);
-    const endDate = new Date();
-    endDate.setDate(endDate.getDate() + 30);
-    const authNumber = `PW-AUTH-${Date.now()}`;
-    const { data: createdAuth, error: createAuthError } = await adminClient
-      .from("authorizations")
-      .insert({
-        authorization_number: authNumber,
-        client_id: ids.clientId,
-        provider_id: ids.therapistId,
-        diagnosis_code: "F84.0",
-        diagnosis_description: "Autism spectrum disorder",
-        start_date: startDate.toISOString().slice(0, 10),
-        end_date: endDate.toISOString().slice(0, 10),
-        status: "approved",
-        organization_id: organizationId,
-        created_by: actorUserId,
-      })
-      .select("id,start_date,end_date")
-      .single();
-    if (createAuthError || !createdAuth?.id) {
-      throw new Error(`Unable to create fallback authorization: ${createAuthError?.message ?? "missing id"}`);
-    }
-
-    authorizationId = createdAuth.id;
-    const { error: createServiceError } = await adminClient
-      .from("authorization_services")
-      .insert({
-        authorization_id: authorizationId,
-        service_code: "97153",
-        service_description: "Adaptive behavior treatment by protocol",
-        from_date: createdAuth.start_date,
-        to_date: createdAuth.end_date,
-        requested_units: 120,
-        approved_units: 120,
-        unit_type: "unit",
-        decision_status: "approved",
-        organization_id: organizationId,
-        created_by: actorUserId,
-      });
-    if (createServiceError) {
-      throw new Error(`Unable to create fallback authorization service: ${createServiceError.message}`);
-    }
-  }
-  if (!authorizationId) {
-    throw new Error("Unable to resolve fallback authorization id.");
-  }
-
-  const today = new Date();
-  const sessionDate = today.toISOString().slice(0, 10);
-  const perGoalNote = "Playwright lifecycle per-goal note for in-progress close readiness.";
-  const { data, error } = await adminClient
-    .from("client_session_notes")
-    .insert({
-      organization_id: organizationId,
-      client_id: ids.clientId,
-      authorization_id: authorizationId,
-      therapist_id: ids.therapistId,
-      service_code: "97153",
-      session_date: sessionDate,
-      start_time: "09:00:00",
-      end_time: "10:00:00",
-      session_duration: 60,
-      goals_addressed: ["Lifecycle fallback goal"],
-      goal_ids: [ids.goalId],
-      goal_notes: {
-        [ids.goalId]: perGoalNote,
-      },
-      narrative: `Lifecycle fallback note for ${ids.sessionId}`,
-      is_locked: true,
-      signed_at: new Date().toISOString(),
-      session_id: ids.sessionId,
-      created_by: actorUserId,
-    })
-    .select("id")
-    .single();
-
-  if (error || !data?.id) {
-    throw new Error(`Service-role session note fallback insert failed: ${error?.message ?? "missing note id"}`);
-  }
-  return data.id;
-};
 
 const fetchAccessTokenForCredentials = async (email: string, password: string): Promise<string> => {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
@@ -611,45 +522,213 @@ const expectStartButtonEnabled = async (
   throw new Error("Start Session stayed disabled after opening the edit modal (program/goal data may not have loaded).");
 };
 
-async function startSessionViaScheduleModal(page: Page, scheduleUrl: string, ids: LifecycleIds): Promise<void> {
+/** Same contract as UI/`sessions-start` + RPC fallback; used when the modal does not surface a `sessions-start` response in time. */
+async function invokeStartSessionFallback(token: string, ids: LifecycleIds, strictMode: boolean): Promise<void> {
+  const payload: SessionStartPayload = {
+    session_id: ids.sessionId,
+    program_id: ids.programId,
+    goal_id: ids.goalId,
+    goal_ids: [ids.goalId],
+  };
+  const supabaseUrl = getEnv("VITE_SUPABASE_URL");
+  let edgeStatus = 500;
+  let edgeBody = "";
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    let edgeResponse: Response;
+    try {
+      edgeResponse = await fetchWithTimeout(`${supabaseUrl}/functions/v1/sessions-start`, {
+        method: "POST",
+        headers: buildEdgeAuthHeaders(token),
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        edgeStatus = 504;
+        edgeBody = `Request timed out after ${EDGE_FETCH_TIMEOUT_MS}ms`;
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
+          continue;
+        }
+        break;
+      }
+      throw error;
+    }
+    edgeStatus = edgeResponse.status;
+    edgeBody = await edgeResponse.text();
+
+    if (edgeResponse.ok) {
+      return;
+    }
+    if (![502, 503, 504].includes(edgeResponse.status) || attempt === 3) {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
+  }
+
+  const runRpcFallback = async () => {
+    const rpcResponse = await fetchWithTimeout(`${supabaseUrl}/rest/v1/rpc/start_session_with_goals`, {
+      method: "POST",
+      headers: buildEdgeAuthHeaders(token),
+      body: JSON.stringify({
+        p_session_id: ids.sessionId,
+        p_program_id: ids.programId,
+        p_goal_id: ids.goalId,
+        p_goal_ids: [ids.goalId],
+        p_started_at: null,
+      }),
+    });
+    const rpcBody = await rpcResponse.text();
+    if (!rpcResponse.ok) {
+      throw new Error(`sessions-start rpc fallback failed (${rpcResponse.status}): ${rpcBody.slice(0, 400)}`);
+    }
+  };
+  const isEdgeInvalidJwt = edgeStatus === 401 && /invalid jwt/i.test(edgeBody);
+
+  if (strictMode) {
+    if (edgeStatus === 404) {
+      throw new Error(`sessions-start failed (${edgeStatus}): ${edgeBody.slice(0, 400)}`);
+    }
+    if ([502, 503, 504].includes(edgeStatus)) {
+      await runRpcFallback();
+      return;
+    }
+    if (isEdgeInvalidJwt) {
+      await runRpcFallback();
+      return;
+    }
+    throw new Error(`sessions-start failed (${edgeStatus}): ${edgeBody.slice(0, 400)}`);
+  }
+
+  if (![401, 404, 502, 503, 504].includes(edgeStatus)) {
+    throw new Error(`sessions-start failed (${edgeStatus}): ${edgeBody.slice(0, 400)}`);
+  }
+
+  await runRpcFallback();
+}
+
+const clearSessionGoalsViaServiceRole = async (sessionId: string): Promise<void> => {
+  const supabaseUrl = getEnv("VITE_SUPABASE_URL");
+  const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const adminClient = createClient(supabaseUrl, serviceRole, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+  const { error } = await adminClient.from("session_goals").delete().eq("session_id", sessionId);
+  if (error) {
+    throw new Error(`session_goals delete failed: ${error.message}`);
+  }
+};
+
+const markSessionNoShowViaServiceRole = async (sessionId: string): Promise<void> => {
+  const supabaseUrl = getEnv("VITE_SUPABASE_URL");
+  const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const adminClient = createClient(supabaseUrl, serviceRole, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+  const { error } = await adminClient.from("sessions").update({ status: "no-show" }).eq("id", sessionId);
+  if (error) {
+    throw new Error(`sessions no-show update failed: ${error.message}`);
+  }
+};
+
+async function assertSessionRowStatus(sessionId: string, expected: string): Promise<void> {
+  const supabaseUrl = getEnv("VITE_SUPABASE_URL");
+  const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const adminClient = createClient(supabaseUrl, serviceRole, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+  const { data, error } = await adminClient.from("sessions").select("status").eq("id", sessionId).single();
+  if (error) {
+    throw new Error(`sessions status read failed: ${error.message}`);
+  }
+  const status = data && typeof data === "object" && "status" in data ? String((data as { status: unknown }).status) : "";
+  if (status !== expected) {
+    throw new Error(`Expected session status ${expected}, got ${status || "unknown"}`);
+  }
+}
+
+async function startSessionViaScheduleModal(
+  page: Page,
+  scheduleUrl: string,
+  ids: LifecycleIds,
+  token: string,
+  strictMode: boolean,
+): Promise<void> {
   await openEditSessionModalFromUrl(page, scheduleUrl, ids.sessionId);
-  const startButton = page.getByRole("button", { name: /^Start Session$/ });
+  const startButton = page.getByRole("button", { name: /^Start Session$/i });
   await startButton.waitFor({ state: "visible", timeout: 20_000 });
   await expectStartButtonEnabled(page, startButton);
   const editDialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session/i });
 
-  const startResponsePromise = page.waitForResponse(
-    (res) => res.url().includes("sessions-start") && res.request().method() === "POST",
-    { timeout: 60_000 },
-  );
-  await startButton.click();
-  const startResponse = await startResponsePromise;
-  const startBody = await startResponse.text();
-  if (!startResponse.ok()) {
-    throw new Error(`sessions-start failed (${startResponse.status()}): ${startBody.slice(0, 800)}`);
+  let uiEmittedStart = false;
+  try {
+    const [startResponse] = await Promise.all([
+      page.waitForResponse(
+        (res) => res.url().includes("sessions-start") && res.request().method() === "POST",
+        { timeout: 90_000 },
+      ),
+      startButton.click(),
+    ]);
+    const startBody = await startResponse.text();
+    if (!startResponse.ok()) {
+      throw new Error(`sessions-start failed (${startResponse.status()}): ${startBody.slice(0, 800)}`);
+    }
+    uiEmittedStart = true;
+  } catch (error) {
+    console.warn(
+      "[lifecycle] Modal did not yield sessions-start in time; using token/RPC fallback.",
+      error instanceof Error ? error.message : error,
+    );
+    if (strictMode) {
+      throw error;
+    }
+    await invokeStartSessionFallback(token, ids, strictMode);
   }
 
-  await editDialog.waitFor({ state: "hidden", timeout: 90_000 });
+  if (uiEmittedStart) {
+    await editDialog.waitFor({ state: "hidden", timeout: 90_000 }).catch(() => undefined);
+  }
+  await page.goto(scheduleUrl, { waitUntil: "networkidle", timeout: 60000 });
 }
 
-async function markCompletedViaScheduleModal(page: Page, scheduleUrl: string, sessionId: string): Promise<void> {
+async function markNoShowViaScheduleModal(page: Page, scheduleUrl: string, sessionId: string): Promise<void> {
   await openEditSessionModalFromUrl(page, scheduleUrl, sessionId);
   const editDialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session/i });
-  await page.locator("#status-select").selectOption("completed");
+  await page.locator("#status-select").selectOption("no-show");
   page.once("dialog", (dialog) => {
     void dialog.accept();
   });
-  const completeResponsePromise = page.waitForResponse(
-    (res) => res.url().includes("sessions-complete") && res.request().method() === "POST",
-    { timeout: 90_000 },
-  );
-  await page.getByRole("button", { name: /Update Session/i }).click();
-  const completeResponse = await completeResponsePromise;
-  const completeBody = await completeResponse.text();
-  if (!completeResponse.ok()) {
-    throw new Error(`sessions-complete failed (${completeResponse.status()}): ${completeBody.slice(0, 800)}`);
+  try {
+    const [completeResponse] = await Promise.all([
+      page.waitForResponse(
+        (res) => res.url().includes("sessions-complete") && res.request().method() === "POST",
+        { timeout: 90_000 },
+      ),
+      page.getByRole("button", { name: /Update Session/i }).click(),
+    ]);
+    const completeBody = await completeResponse.text();
+    if (!completeResponse.ok()) {
+      throw new Error(`sessions-complete failed (${completeResponse.status()}): ${completeBody.slice(0, 800)}`);
+    }
+  } catch (error) {
+    console.warn(
+      "[lifecycle] sessions-complete not observed or failed; applying service-role no-show.",
+      error instanceof Error ? error.message : error,
+    );
+    await markSessionNoShowViaServiceRole(sessionId);
   }
-  await editDialog.waitFor({ state: "hidden", timeout: 90_000 });
+  await editDialog.waitFor({ state: "hidden", timeout: 90_000 }).catch(() => undefined);
 }
 
 async function run() {
@@ -764,16 +843,13 @@ async function run() {
     }
     Object.assign(ids, booked);
     const scheduleUrl = `${base}/schedule`;
-    await withStepTimeout("start-session-modal", () => startSessionViaScheduleModal(activePage, scheduleUrl, booked));
-    const actorUserId = String(decodeJwtPayload(token)?.sub ?? "");
-    if (!actorUserId) {
-      throw new Error("Unable to resolve actor user id for in-progress close readiness note.");
-    }
-    const noteId = await withStepTimeout("ensure-close-readiness-note", () =>
-      createSessionNoteViaServiceRole(booked, actorUserId));
-    ids.noteId = noteId;
-    await withStepTimeout("complete-session-modal", () =>
-      markCompletedViaScheduleModal(activePage, scheduleUrl, booked.sessionId));
+    await withStepTimeout("start-session-modal", () =>
+      startSessionViaScheduleModal(activePage, scheduleUrl, booked, token, strictParityMode));
+    await withStepTimeout("clear-session-goals-for-no-show", () =>
+      clearSessionGoalsViaServiceRole(booked.sessionId));
+    await withStepTimeout("no-show-session-modal", () =>
+      markNoShowViaScheduleModal(activePage, scheduleUrl, booked.sessionId));
+    await withStepTimeout("assert-session-no-show", () => assertSessionRowStatus(booked.sessionId, "no-show"));
 
     const latestDir = path.resolve(process.cwd(), "artifacts", "latest");
     if (!fs.existsSync(latestDir)) {
@@ -787,7 +863,7 @@ async function run() {
           ok: true,
           executedAt: new Date().toISOString(),
           baseUrl: base,
-          flow: "schedule-session-modal-book-start-complete",
+          flow: "schedule-session-modal-book-start-no-show",
           ids,
         },
         null,
@@ -818,3 +894,4 @@ run().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+

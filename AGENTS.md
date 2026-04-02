@@ -1,3 +1,8 @@
+---
+description: 
+alwaysApply: true
+---
+
 # AGENTS.md
 
 ## Mission
@@ -16,6 +21,97 @@ This repository is an AI-assisted engineering lab for a React/Vite app with Supa
 - Use Linear for non-trivial work that should have reviewable execution history. At minimum, high-risk changes should map to a Linear issue before merge.
 - Route non-trivial work using the lane contract in `docs/ai/cto-lane-contract.md` before implementation.
 - For autonomous PR waiting, use bounded polling with explicit timeout; never allow indefinite hangs.
+
+## Autonomous Execution Contract
+
+Tracking updates improve operational control, but they do not replace routing, verification, reviewer/tester scrutiny, or protected-path escalation.
+
+### Core rule
+
+Codex may operate autonomously only within the lane and scope allowed by a fresh `route-task` classification for the current slice.
+
+Tracking updates never override lane rules.
+
+### Lane policy
+
+- `fast`: autonomous execution allowed for explicitly bounded low-risk slices.
+- `standard`: conditional autonomy allowed only when the full autonomous workflow contract is satisfied.
+- `critical`: no autonomy expansion. Human-reviewed flow remains required.
+- `blocked`: no implementation until the ambiguity is resolved.
+
+### What counts as non-trivial
+
+Treat a slice as non-trivial if any of the following are true:
+
+- it changes more than one production file
+- it changes any shared utility, hook, store, query, schema, or config
+- it changes state or data-fetch behavior
+- it requires `verify-change`
+- it requires a PR
+- it affects tests beyond a small local assertion update
+
+### Minimum autonomous workflow contract
+
+For any autonomous slice, Codex must:
+
+1. Run fresh `route-task` for the exact slice and emit:
+
+   - classification
+   - lane
+   - triggering paths / risk rationale
+2. Define scope before coding:
+
+   - allowed files or surfaces
+   - non-goals
+   - stop conditions for scope widening
+3. Follow the required verification path from the verification matrix:
+
+   - run the minimum required commands
+   - use `verify-change` for non-trivial code/config work
+   - say explicitly when a check is not meaningful locally or requires secrets/protected systems
+4. Use the required specialist support:
+
+   - `reviewer` for all non-trivial code/config work
+   - `tester` for standard-lane implementation or when verification planning is non-obvious
+   - security/perf/domain specialists when risk indicates
+   - human review remains mandatory for `critical`
+5. Maintain PR hygiene for non-trivial work:
+
+   - isolated branch
+   - small reviewable diff
+   - accurate PR summary
+   - live check status and merge blockers reported precisely
+6. Maintain tracking artifacts for non-trivial work:
+
+   - update Linear status / next action
+   - update the markdown task or handoff artifact with scope, verification, blockers, and residual risk
+7. Stop and escalate immediately when:
+
+   - the lane changes or the slice touches protected paths
+   - required checks fail outside allowed scope
+   - policy ambiguity requires human judgment
+   - safe containment is no longer possible
+
+### Tracking requirements by lane
+
+- `fast`
+  - trivial docs/process-only slices: tracking updates optional
+  - non-trivial fast slices: markdown update required; Linear recommended
+- `standard`
+  - Linear update required
+  - markdown task/handoff update required
+- `critical`
+  - Linear update required
+  - markdown task/handoff update required
+  - human-reviewed workflow required
+- `blocked`
+  - tracking may be updated, but implementation may not begin
+
+### Merge rule
+
+Autonomous merge is allowed only when live branch protection and required checks allow it and no required human approval is missing.
+
+If approval or protection rules require a human, Codex must stop at review-ready closure and report the exact blocker.
 
 ## Commands
 

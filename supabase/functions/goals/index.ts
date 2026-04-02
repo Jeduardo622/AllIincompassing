@@ -71,7 +71,15 @@ export const handleGoals = async (req: Request) => {
       )
       .eq("program_id", programId)
       .order("created_at", { ascending: false });
-    if (error) return json([], 200);
+    if (error) {
+      return json(
+        {
+          error: error.message ?? "Failed to load goals",
+          code: error.code,
+        },
+        500,
+      );
+    }
     return json(data ?? []);
   }
 
@@ -94,7 +102,15 @@ export const handleGoals = async (req: Request) => {
       .insert([{ ...parsed.data, organization_id: orgId }])
       .select("*")
       .limit(1);
-    if (error) return json({ error: "Failed to create goal" }, 500);
+    if (error) {
+      return json(
+        {
+          error: error.message ?? "Failed to create goal",
+          code: error.code,
+        },
+        500,
+      );
+    }
     return json(data?.[0] ?? null, 201);
   }
 

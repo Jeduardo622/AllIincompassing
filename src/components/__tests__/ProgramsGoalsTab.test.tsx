@@ -321,6 +321,51 @@ describe("ProgramsGoalsTab", () => {
     expect(screen.getByText("No programs yet.")).toBeInTheDocument();
   });
 
+  it("shows goals load error when goals edge returns non-OK", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("programs?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              name: "Live Communication Program",
+              description: "Desc",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) {
+        return new Response(JSON.stringify({ error: "permission denied for table goals" }), { status: 500 });
+      }
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(
+      await screen.findByText(/Could not load goals: permission denied for table goals/i),
+    ).toBeInTheDocument();
+  });
+
   it("generates program/goals proposal and saves it for review", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();

@@ -1,8 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { renderWithProviders, screen, waitFor } from "../../test/utils";
+import { useLocation } from "react-router-dom";
+import { renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
 import { Schedule } from "../Schedule";
 
 // Integration test for event-based scheduling
+function SearchProbe() {
+  const location = useLocation();
+  return <output data-testid="schedule-search">{location.search}</output>;
+}
 
 describe("Schedule page event listener", () => {
   beforeEach(() => {
@@ -12,7 +17,12 @@ describe("Schedule page event listener", () => {
     localStorage.clear();
   });
   it("opens session modal when openScheduleModal event is dispatched", async () => {
-    renderWithProviders(<Schedule />);
+    renderWithProviders(
+      <>
+        <Schedule />
+        <SearchProbe />
+      </>,
+    );
 
     // Wait for the page to finish loading
     await screen.findByRole("heading", { name: /Schedule/i });
@@ -45,12 +55,87 @@ describe("Schedule page event listener", () => {
     };
     localStorage.setItem("pendingSchedule", JSON.stringify(detail));
 
-    renderWithProviders(<Schedule />);
+    renderWithProviders(
+      <>
+        <Schedule />
+        <SearchProbe />
+      </>,
+    );
     await screen.findByRole("heading", { name: /Schedule/i });
 
     await waitFor(async () => {
       expect(await screen.findByText(/New Session/i)).toBeInTheDocument();
       expect(localStorage.getItem("pendingSchedule")).toBeNull();
+    });
+  });
+
+  it("opens create modal when query params request URL-addressable schedule state", async () => {
+    const expiresAtMs = Date.now() + 60_000;
+    const startTime = encodeURIComponent("2025-03-18T10:00:00.000Z");
+    renderWithProviders(
+      <>
+        <Schedule />
+        <SearchProbe />
+      </>,
+      {
+        router: {
+          initialEntries: [
+            `/?scheduleModal=create&scheduleStart=${startTime}&scheduleExp=${expiresAtMs}`,
+          ],
+        },
+      },
+    );
+
+    await screen.findByRole("heading", { name: /Schedule/i });
+    expect(await screen.findByText(/New Session/i)).toBeInTheDocument();
+  });
+
+  it("clears expired URL modal params without opening the modal", async () => {
+    const expiresAtMs = Date.now() - 1_000;
+    const startTime = encodeURIComponent("2025-03-18T10:00:00.000Z");
+    renderWithProviders(
+      <>
+        <Schedule />
+        <SearchProbe />
+      </>,
+      {
+        router: {
+          initialEntries: [
+            `/?scheduleModal=create&scheduleStart=${startTime}&scheduleExp=${expiresAtMs}`,
+          ],
+        },
+      },
+    );
+
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitFor(() => {
+      expect(screen.getByTestId("schedule-search").textContent).toBe("");
+    });
+    expect(screen.queryByText(/New Session/i)).not.toBeInTheDocument();
+  });
+
+  it("removes URL modal params when modal closes", async () => {
+    const expiresAtMs = Date.now() + 60_000;
+    const startTime = encodeURIComponent("2025-03-18T10:00:00.000Z");
+    renderWithProviders(
+      <>
+        <Schedule />
+        <SearchProbe />
+      </>,
+      {
+        router: {
+          initialEntries: [
+            `/?scheduleModal=create&scheduleStart=${startTime}&scheduleExp=${expiresAtMs}`,
+          ],
+        },
+      },
+    );
+
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await screen.findByText(/New Session/i);
+    await userEvent.click(screen.getByLabelText(/Close session modal/i));
+    await waitFor(() => {
+      expect(screen.getByTestId("schedule-search").textContent).toBe("");
     });
   });
 });

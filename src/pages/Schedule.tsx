@@ -11,6 +11,8 @@ import {
   Plus,
   Edit2,
   Wand2,
+  AlertCircle,
+  CalendarX,
 } from "lucide-react";
 import type { Session, Therapist, Client } from "../types";
 import { SessionModal } from "../components/SessionModal";
@@ -216,6 +218,7 @@ const TimeSlot = React.memo(
           return (
             <div
               key={session.id}
+              data-session-id={session.id}
               data-session-status={session.status}
               className={`${statusStyles.card} rounded p-1 text-xs mb-1 group/session relative cursor-pointer transition-colors`}
               role="button"
@@ -671,28 +674,60 @@ export const Schedule = React.memo(() => {
   const debouncedClient = useDebounce(selectedClient, 300);
 
   // PHASE 3 OPTIMIZATION: Use batched schedule data
-  const { data: batchedData, isLoading: isLoadingBatch } = useScheduleDataBatch(
-    weekStart,
-    weekEnd,
-    { enabled: !!activeOrganizationId },
-  );
+  const {
+    data: batchedData,
+    isLoading: isLoadingBatch,
+    refetch: refetchScheduleBatch,
+  } = useScheduleDataBatch(weekStart, weekEnd, { enabled: !!activeOrganizationId });
 
   const hasBatchedSessions = Array.isArray(batchedData?.sessions);
-  const enableFallbackSessionsQuery = !isLoadingBatch && !hasBatchedSessions && !!activeOrganizationId;
+  const enableFallbackSessionsQuery =
+    !isLoadingBatch && !hasBatchedSessions && !!activeOrganizationId;
 
   // Fallback to individual queries if batched data is not available
-  const { data: sessions = [], isLoading: isLoadingSessions } =
-    useSessionsOptimized(
-      weekStart,
-      weekEnd,
-      debouncedTherapist,
-      debouncedClient,
-      enableFallbackSessionsQuery,
-    );
+  const {
+    data: sessions = [],
+    isLoading: isLoadingSessions,
+    isError: isSessionsError,
+    error: sessionsQueryError,
+    refetch: refetchSessions,
+  } = useSessionsOptimized(
+    weekStart,
+    weekEnd,
+    debouncedTherapist,
+    debouncedClient,
+    enableFallbackSessionsQuery,
+  );
 
   // Use dropdown data hook for therapists and clients
-  const { data: dropdownData, isLoading: isLoadingDropdowns } =
-    useDropdownData({ enabled: !!activeOrganizationId });
+  const {
+    data: dropdownData,
+    isLoading: isLoadingDropdowns,
+    isError: isDropdownError,
+    error: dropdownQueryError,
+    refetch: refetchDropdowns,
+  } = useDropdownData({ enabled: !!activeOrganizationId });
+
+  /** Batch RPC returns `null` on failure (see optimizedQueries); dropdowns are required when there is no batch payload. */
+  const sessionsPathFailed = enableFallbackSessionsQuery && isSessionsError;
+  const dropdownPathFailed = !!activeOrganizationId && isDropdownError && !batchedData;
+  const scheduleDataLoadFailed = sessionsPathFailed || dropdownPathFailed;
+
+  const scheduleDataLoadErrorMessage = useMemo(() => {
+    if (sessionsPathFailed && sessionsQueryError) {
+      return toError(sessionsQueryError, "Sessions could not be loaded").message;
+    }
+    if (dropdownPathFailed && dropdownQueryError) {
+      return toError(dropdownQueryError, "Schedule filters could not be loaded").message;
+    }
+    return "Schedule data could not be loaded. Try again in a moment.";
+  }, [sessionsPathFailed, dropdownPathFailed, sessionsQueryError, dropdownQueryError]);
+
+  const handleRetryScheduleDataLoad = useCallback(() => {
+    void refetchScheduleBatch();
+    void refetchSessions();
+    void refetchDropdowns();
+  }, [refetchScheduleBatch, refetchSessions, refetchDropdowns]);
 
   const filteredBatchedSessions = useMemo(() => {
     const candidateSessions = Array.isArray(batchedData?.sessions) ? batchedData.sessions : null;
@@ -713,6 +748,8 @@ export const Schedule = React.memo(() => {
     batchedData,
     dropdownData,
   });
+
+  const showEmptySessionsState = displayData.sessions.length === 0;
 
   useEffect(() => {
     if (selectedTherapist) {
@@ -1408,6 +1445,59 @@ export const Schedule = React.memo(() => {
     );
   }
 
+  if (scheduleDataLoadFailed) {
+    return (
+      <div className="h-full relative">
+        <div
+          className="h-full flex items-center justify-center px-4"
+          data-testid="schedule-data-load-error"
+          role="alert"
+        >
+          <div className="text-center max-w-md">
+            <AlertCircle
+              className="mx-auto h-10 w-10 text-amber-500"
+              aria-hidden="true"
+            />
+            <p className="mt-4 font-medium text-gray-900 dark:text-white">
+              Couldn&apos;t load schedule
+            </p>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              {scheduleDataLoadErrorMessage}
+            </p>
+            <button
+              type="button"
+              onClick={handleRetryScheduleDataLoad}
+              className="mt-6 inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+        {isModalOpen && (
+          <SessionModal
+            isOpen={isModalOpen}
+            onClose={handleCloseSessionModal}
+            onSubmit={handleSubmit}
+            session={selectedSession}
+            selectedDate={selectedTimeSlot?.date}
+            selectedTime={selectedTimeSlot?.time}
+            therapists={displayData.therapists}
+            clients={displayData.clients}
+            existingSessions={displayData.sessions}
+            timeZone={userTimeZone}
+            defaultTherapistId={selectedTherapist}
+            defaultClientId={selectedClient}
+            retryHint={retryHint}
+            onRetryHintDismiss={dismissRetryHint}
+            retryActionLabel={retryActionLabel}
+            onRetryAction={retryActionLabel ? handleOpenLinkedSessionDocumentation : undefined}
+            onSessionStarted={handleSessionStarted}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="h-full">
       <div className="flex items-center justify-between mb-6">
@@ -1654,7 +1744,25 @@ export const Schedule = React.memo(() => {
         )}
       </fieldset>
 
-      {view === "matrix" ? (
+      {showEmptySessionsState ? (
+        <div
+          className="mt-6 flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 py-16 text-center dark:border-gray-600 dark:bg-gray-900/40"
+          data-testid="schedule-empty-sessions"
+          role="status"
+          aria-live="polite"
+        >
+          <CalendarX
+            className="h-12 w-12 text-gray-400 dark:text-gray-500"
+            aria-hidden="true"
+          />
+          <p className="mt-4 text-base font-medium text-gray-900 dark:text-white">
+            No sessions in this period
+          </p>
+          <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+            There are no sessions for this date range and filters. Try another period, adjust filters, or use Auto Schedule.
+          </p>
+        </div>
+      ) : view === "matrix" ? (
         <SchedulingMatrix
           therapists={displayData.therapists}
           clients={displayData.clients}

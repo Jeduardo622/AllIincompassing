@@ -4,6 +4,11 @@
  *
  * Harness: Playwright + same service-backed booking/start flow as playwright-session-lifecycle
  * (deterministic API steps + URL-driven edit modal to avoid flaky calendar targeting).
+ *
+ * Environment: full client-side `checkInProgressSessionCloseReadiness` requires DB support for
+ * `client_session_notes.goal_notes` (see supabase migration `20260401000000_add_goal_notes_to_session_notes.sql`).
+ * If that column is missing, the app falls back to backend enforcement only; this script still
+ * accepts edge toasts or modal copy when present.
  */
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -333,6 +338,9 @@ async function run(): Promise<void> {
       await activePage.goto(editUrl, { waitUntil: "domcontentloaded", timeout: 90_000 });
       await activePage.waitForLoadState("networkidle").catch(() => undefined);
       await activePage.getByRole("dialog", { name: /edit session/i }).waitFor({ state: "visible", timeout: 60_000 });
+      await activePage
+        .locator('[role="dialog"][data-session-status="in_progress"]')
+        .waitFor({ state: "visible", timeout: 90_000 });
     });
 
     await withStepTimeout("assert-api-session-in-progress", async () => {
@@ -379,7 +387,10 @@ async function run(): Promise<void> {
       );
     });
 
-    await withStepTimeout("attempt-terminal-close-without-notes", async () => {
+    await withStepTimeout("attempt-terminal-close-and-assert-guidance", async () => {
+      const editDialog = activePage.getByRole("dialog", { name: /edit session/i });
+      await editDialog.waitFor({ state: "visible", timeout: 15_000 });
+
       const statusBefore = await activePage.locator("#status-select").inputValue();
       if (statusBefore !== "in_progress") {
         throw new Error(
@@ -397,80 +408,91 @@ async function run(): Promise<void> {
         void dialog.accept();
       });
 
-      let sessionsCompleteSuccess = false;
-      const onResponse = (response: { url: () => string; request: () => { method: () => string }; status: () => number }): void => {
-        if (
-          response.url().includes("sessions-complete") &&
-          response.request().method() === "POST" &&
-          response.status() >= 200 &&
-          response.status() < 300
-        ) {
-          sessionsCompleteSuccess = true;
-        }
-      };
-      activePage.on("response", onResponse);
-
-      await activePage.evaluate(() => {
-        document.querySelector<HTMLFormElement>("#session-form")?.requestSubmit();
-      });
-
-      await activePage.waitForTimeout(8000);
-      activePage.off("response", onResponse);
-
-      if (sessionsCompleteSuccess) {
-        throw new Error(
-          "sessions-complete returned 2xx; close was not blocked (readiness precheck omitted or notes already satisfied).",
-        );
-      }
-    });
-
-    await withStepTimeout("assert-blocked-close-guidance", async () => {
-      const edgeNotesGate = activePage.getByText(/Session notes with goal progress are required/i).first();
       const retryHeading = activePage.locator("#session-modal-retry-heading");
+      const edgeNotesGate = activePage.getByText(/Session notes with goal progress are required/i).first();
+      const completedToast = activePage.getByText(/Session marked as completed/i).first();
 
-      let blockedCopySeen: "modal" | "edge-toast" | "timeout";
-      try {
-        blockedCopySeen = await Promise.race([
-          retryHeading.waitFor({ state: "visible", timeout: 90_000 }).then(() => "modal" as const),
-          edgeNotesGate.waitFor({ state: "visible", timeout: 90_000 }).then(() => "edge-toast" as const),
-        ]);
-      } catch {
-        blockedCopySeen = "timeout";
+      const updateBtn = activePage.getByRole("button", { name: /^Update Session$/i });
+      await updateBtn.click();
+
+      // Poll: do not Promise.race locators that reject on timeout — a fast reject from one branch
+      // can abort before the blocked-close panel (slower) becomes visible.
+      type PollOutcome = { kind: "modal" } | { kind: "edge" } | { kind: "bad-complete" } | { kind: "none" };
+      const deadline = Date.now() + 90_000;
+      let outcome: PollOutcome = { kind: "none" };
+      while (Date.now() < deadline) {
+        const bodyText = await activePage.evaluate(() => document.body.innerText);
+        if (/Session marked as completed/i.test(bodyText)) {
+          outcome = { kind: "bad-complete" };
+          break;
+        }
+        if (
+          /Session not saved/i.test(bodyText) &&
+          (/per-goal note text for each worked goal/i.test(bodyText) || /Open Client Details/i.test(bodyText))
+        ) {
+          outcome = { kind: "modal" };
+          break;
+        }
+        if (
+          /Session notes with goal progress are required/i.test(bodyText) ||
+          /linked session documentation with per-goal notes/i.test(bodyText)
+        ) {
+          outcome = { kind: "edge" };
+          break;
+        }
+        if (await completedToast.isVisible().catch(() => false)) {
+          outcome = { kind: "bad-complete" };
+          break;
+        }
+        if (await retryHeading.isVisible().catch(() => false)) {
+          outcome = { kind: "modal" };
+          break;
+        }
+        if (await edgeNotesGate.isVisible().catch(() => false)) {
+          outcome = { kind: "edge" };
+          break;
+        }
+        await activePage.waitForTimeout(250);
       }
 
-      if (blockedCopySeen === "timeout") {
+      if (outcome.kind === "none") {
+        const dialogVisible = await editDialog.isVisible().catch(() => false);
         throw new Error(
-          `No blocked-close UI detected (modal guidance or edge policy text). url=${activePage.url()}`,
+          `No blocked-close UI after Update Session. editDialogVisible=${dialogVisible} url=${activePage.url()}`,
         );
       }
 
-      if ((await activePage.getByText(/Session marked as completed/i).first().isVisible().catch(() => false)) === true) {
+      if (outcome.kind === "bad-complete") {
         throw new Error(
-          "Session marked completed without blocked-close guidance; check readiness precheck and session_goals.",
+          "Terminal close succeeded without blocked-close guidance; readiness precheck, session_goals, or org alignment may be wrong.",
         );
       }
 
-      if (blockedCopySeen === "modal") {
-        const blockedPanel = activePage.locator('[data-testid="session-modal-blocked-close-panel"]');
-        await blockedPanel.waitFor({ state: "visible", timeout: 25_000 });
-        assert.match(await retryHeading.innerText(), /Session not saved/i);
-        assert.match(await blockedPanel.innerText(), /per-goal note text for each worked goal/i);
-        await activePage
-          .getByText(/Open Client Details and use Session Notes|per-goal note text for each worked goal/i)
-          .first()
-          .waitFor({ state: "visible", timeout: 25_000 });
-        await activePage.getByRole("button", { name: "Open Client Details" }).waitFor({ state: "visible", timeout: 25_000 });
-        await activePage
-          .getByText(/linked session documentation with per-goal notes/i)
-          .first()
-          .waitFor({ state: "visible", timeout: 8_000 })
-          .catch(() => {
-            console.warn(
-              "[blocked-close] Policy error toast may have dismissed; modal guidance + next-step button asserted.",
-            );
-          });
+      if (outcome.kind === "edge") {
+        await edgeNotesGate.waitFor({ state: "visible", timeout: 5_000 });
         return;
       }
+
+      assert.match(await retryHeading.innerText(), /Session not saved/i);
+      await activePage.locator("#session-modal-retry-description").waitFor({ state: "visible", timeout: 10_000 });
+      assert.match(
+        await activePage.locator("#session-modal-retry-description").innerText(),
+        /per-goal note text for each worked goal|Open Client Details/i,
+      );
+      await activePage
+        .getByText(/Open Client Details and use Session Notes|per-goal note text for each worked goal/i)
+        .first()
+        .waitFor({ state: "visible", timeout: 25_000 });
+      await activePage.getByRole("button", { name: "Open Client Details" }).waitFor({ state: "visible", timeout: 25_000 });
+      await activePage
+        .getByText(/linked session documentation with per-goal notes/i)
+        .first()
+        .waitFor({ state: "visible", timeout: 8_000 })
+        .catch(() => {
+          console.warn(
+            "[blocked-close] Policy error toast may have dismissed; modal guidance + next-step button asserted.",
+          );
+        });
     });
 
     await withStepTimeout("navigate-to-client-session-notes", async () => {

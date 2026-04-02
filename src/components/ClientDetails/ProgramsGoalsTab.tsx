@@ -34,7 +34,6 @@ import {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SUPPORTED_ASSESSMENT_FILE_EXTENSIONS = [".pdf", ".docx"] as const;
-const PROGRAMS_EDGE_PATH = "programs";
 const PROGRAMS_REQUEST_TIMEOUT_MS = 12_000;
 const GOALS_REQUEST_TIMEOUT_MS = 12_000;
 const PROGRAM_NOTES_REQUEST_TIMEOUT_MS = 12_000;
@@ -63,6 +62,10 @@ const withTimeout = async <T,>(
     }
   }
 };
+
+const PROGRAMS_EDGE_PATH = "/functions/v1/programs";
+const GOALS_EDGE_PATH = "/functions/v1/goals";
+const PROGRAM_NOTES_EDGE_PATH = "/functions/v1/program-notes";
 
 const buildProgramsQueryPath = (clientId: string): string =>
   `${PROGRAMS_EDGE_PATH}?client_id=${encodeURIComponent(clientId)}`;
@@ -195,7 +198,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     queryFn: async () => {
       if (!resolvedProgramId) return [];
       const response = await withTimeout(
-        callEdgeFunctionHttp(`goals?program_id=${encodeURIComponent(resolvedProgramId)}`),
+        callEdgeFunctionHttp(`${GOALS_EDGE_PATH}?program_id=${encodeURIComponent(resolvedProgramId)}`),
         GOALS_REQUEST_TIMEOUT_MS,
         "Goals request timed out. Please retry.",
       );
@@ -213,7 +216,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     queryFn: async () => {
       if (!resolvedProgramId) return [];
       const response = await withTimeout(
-        callEdgeFunctionHttp(`program-notes?program_id=${encodeURIComponent(resolvedProgramId)}`),
+        callEdgeFunctionHttp(`${PROGRAM_NOTES_EDGE_PATH}?program_id=${encodeURIComponent(resolvedProgramId)}`),
         PROGRAM_NOTES_REQUEST_TIMEOUT_MS,
         "Program notes request timed out. Please retry.",
       );
@@ -788,7 +791,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       }
       const objectiveDataPoints = parseObjectiveDataPointsInput(goalObjectiveDataPoints);
       const response = await withTimeout(
-        callEdgeFunctionHttp("goals", {
+        callEdgeFunctionHttp(GOALS_EDGE_PATH, {
           method: "POST",
           body: JSON.stringify({
             client_id: client.id,
@@ -838,7 +841,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         throw new Error("Select a program first");
       }
       const response = await withTimeout(
-        callEdgeFunctionHttp("program-notes", {
+        callEdgeFunctionHttp(PROGRAM_NOTES_EDGE_PATH, {
           method: "POST",
           body: JSON.stringify({
             program_id: resolvedProgramId,

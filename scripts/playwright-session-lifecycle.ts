@@ -712,6 +712,7 @@ async function markTerminalViaScheduleModal(
   scheduleUrl: string,
   sessionId: string,
   terminalStatus: TerminalStatus,
+  strictMode: boolean,
 ): Promise<void> {
   await openEditSessionModalFromUrl(page, scheduleUrl, sessionId);
   const editDialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session/i });
@@ -732,6 +733,9 @@ async function markTerminalViaScheduleModal(
       throw new Error(`sessions-complete failed (${completeResponse.status()}): ${completeBody.slice(0, 800)}`);
     }
   } catch (error) {
+    if (strictMode) {
+      throw error;
+    }
     console.warn(
       `[lifecycle] sessions-complete not observed or failed; applying service-role ${terminalStatus}.`,
       error instanceof Error ? error.message : error,
@@ -753,6 +757,15 @@ export async function run() {
   const terminalStatus = terminalStatusRaw as TerminalStatus;
   const credentialCandidates = assertNonAiSessionsEnvContract(
     `Session lifecycle (${terminalStatus}) Playwright regression`,
+  );
+  console.log(
+    JSON.stringify({
+      ok: true,
+      stage: "lifecycle-start",
+      terminalStatus,
+      preflightContract: "required",
+      credentialCandidateCount: credentialCandidates.length,
+    }),
   );
 
   const browser = await chromium.launch({ headless });
@@ -852,7 +865,7 @@ export async function run() {
         clearSessionGoalsViaServiceRole(booked.sessionId));
     }
     await withStepTimeout(`${terminalStatus}-session-modal`, () =>
-      markTerminalViaScheduleModal(activePage, scheduleUrl, booked.sessionId, terminalStatus));
+      markTerminalViaScheduleModal(activePage, scheduleUrl, booked.sessionId, terminalStatus, strictParityMode));
     await withStepTimeout(`assert-session-${terminalStatus}`, () =>
       assertSessionRowStatus(booked.sessionId, terminalStatus));
 
@@ -882,6 +895,7 @@ export async function run() {
     console.error(JSON.stringify({
       ok: false,
       message: "Session lifecycle flow failed",
+      terminalStatus,
       error: error instanceof Error ? error.message : String(error),
       screenshot: shotPath,
       ids,

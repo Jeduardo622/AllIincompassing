@@ -34,6 +34,7 @@ npm run preview:smoke:remote -- --url https://deploy-preview-123--<yoursite>.net
 - Reliability-first Playwright contract:
   - `npm run playwright:preflight` validates required personas/foreign IDs **and** non-AI session-flow contract requirements (schedule/admin credentials + Supabase runtime keys) before critical Playwright smokes.
   - `npm run ci:playwright` starts with preflight and fails fast with actionable missing-env guidance instead of mid-run browser failures.
+  - CI auth/session browser gate now includes both terminal lifecycle modes (`no-show` and `completed`) before blocked-close guidance validation.
 - Use local smoke commands to troubleshoot runtime config and Supabase boot:
   - `npm run preview:build && npm run preview:smoke`
   - `npm run preview:smoke:remote -- --url <deploy-preview-url>`

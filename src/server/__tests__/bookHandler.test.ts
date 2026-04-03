@@ -593,6 +593,55 @@ describe("bookHandler", () => {
     expect(body.code).toBe("THERAPIST_CONFLICT");
   });
 
+  it("falls back to legacy booking when edge authority returns 401", async () => {
+    process.env.API_AUTHORITY_MODE = "edge";
+    server.use(
+      http.post(`${TEST_SUPABASE_EDGE_URL.replace(/\/$/, "")}/sessions-book`, () =>
+        HttpResponse.json({ success: false, error: "Missing authorization token" }, { status: 401 })),
+    );
+    bookSessionMock.mockResolvedValueOnce({
+      session: {
+        id: "session-edge-401-fallback",
+        client_id: "client-1",
+        therapist_id: "therapist-1",
+        start_time: "2025-01-01T10:00:00Z",
+        end_time: "2025-01-01T11:00:00Z",
+        status: "scheduled",
+        notes: "",
+        created_at: "2025-01-01T09:00:00Z",
+        created_by: "user-1",
+        updated_at: "2025-01-01T09:00:00Z",
+        updated_by: "user-1",
+        duration_minutes: 60,
+      },
+      sessions: [],
+      hold: {
+        holdKey: "hold",
+        holdId: "1",
+        startTime: "2025-01-01T10:00:00Z",
+        endTime: "2025-01-01T11:00:00Z",
+        expiresAt: "2025-01-01T10:05:00Z",
+        holds: [],
+      },
+      cpt: {
+        code: "97153",
+        description: "Adaptive behavior treatment by protocol",
+        modifiers: [],
+        source: "fallback",
+        durationMinutes: 60,
+      },
+    });
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest(validPayload));
+
+    expect(response.status).toBe(200);
+    expect(bookSessionMock).toHaveBeenCalledTimes(1);
+    const body = await response.json();
+    expect(body.success).toBe(true);
+    expect(body.data.session.id).toBe("session-edge-401-fallback");
+  });
+
   it("falls back to legacy booking when edge authority request throws", async () => {
     process.env.API_AUTHORITY_MODE = "edge";
     server.use(

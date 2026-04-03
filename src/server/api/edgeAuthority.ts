@@ -13,6 +13,28 @@ const JSON_HEADERS: Record<string, string> = {
 
 const normalizeBaseUrl = (value: string): string => value.replace(/\/+$/, "");
 
+const resolveRuntimeAnonKey = (): string | undefined => {
+  const explicitCandidates = [
+    getOptionalServerEnv("SUPABASE_PUBLISHABLE_KEY"),
+    getOptionalServerEnv("VITE_SUPABASE_PUBLISHABLE_KEY"),
+    getOptionalServerEnv("SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY"),
+    getOptionalServerEnv("VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY"),
+    getOptionalServerEnv("SUPABASE_ANON_KEY"),
+    getOptionalServerEnv("VITE_SUPABASE_ANON_KEY"),
+  ];
+  const explicit = explicitCandidates.find((value) => typeof value === "string" && value.trim().length > 0);
+  if (explicit) {
+    return explicit.trim();
+  }
+  const generatedPublishable = Object.entries(process.env).find(([key, value]) =>
+    key.includes("PUBLISHABLE") &&
+    key.endsWith("_SUPABASE_ANON_KEY") &&
+    typeof value === "string" &&
+    value.trim().length > 0
+  )?.[1];
+  return typeof generatedPublishable === "string" ? generatedPublishable.trim() : undefined;
+};
+
 export const getEdgeAuthorityBaseUrl = (): string => {
   const explicit = getOptionalServerEnv("SUPABASE_EDGE_URL") ?? getOptionalServerEnv("VITE_SUPABASE_EDGE_URL");
   if (explicit) {
@@ -43,9 +65,15 @@ const buildForwardHeaders = (request: Request, accessToken: string | null): Head
   const authHeader = accessToken
     ? `Bearer ${accessToken}`
     : request.headers.get("Authorization");
+  const apiKey =
+    request.headers.get("apikey") ??
+    resolveRuntimeAnonKey();
 
   if (authHeader) {
     headers.set("Authorization", authHeader);
+  }
+  if (apiKey && apiKey.trim().length > 0) {
+    headers.set("apikey", apiKey.trim());
   }
 
   for (const key of FORWARDED_HEADER_KEYS) {

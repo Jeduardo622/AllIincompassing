@@ -104,11 +104,20 @@ function buildEdgeTraceOptions(payload: {
   };
 }): CallEdgeOptions {
   const options: CallEdgeOptions = {};
+  const generatedPublishable = typeof process !== "undefined" && process?.env
+    ? Object.entries(process.env).find(([key, value]) =>
+      key.includes("PUBLISHABLE") &&
+      key.endsWith("_SUPABASE_ANON_KEY") &&
+      typeof value === "string" &&
+      value.trim().length > 0
+    )?.[1]
+    : undefined;
   const runtimeAnonKey = typeof process !== "undefined" && process?.env
     ? (process.env.SUPABASE_PUBLISHABLE_KEY ||
         process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
         process.env.SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY ||
         process.env.VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY ||
+        generatedPublishable ||
         process.env.SUPABASE_ANON_KEY ||
         process.env.VITE_SUPABASE_ANON_KEY)
     : undefined;

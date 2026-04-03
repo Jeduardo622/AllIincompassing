@@ -26,7 +26,7 @@ const JSON_CONTENT_TYPE_HEADER: Record<string, string> = {
 };
 
 function shouldFallbackToLegacyBooking(status: number): boolean {
-  return status === 404 || status === 408 || status >= 500;
+  return status === 401 || status === 403 || status === 404 || status === 408 || status >= 500;
 }
 
 function normalizePayload(

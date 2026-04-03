@@ -60,6 +60,82 @@ const formatTimeRange = (start: string, end: string) => {
   }
 };
 
+type CanonicalSessionStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | 'no-show';
+
+const STATUS_BADGE_BASE_CLASS =
+  'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium';
+
+/** Tailwind tokens aligned with `SESSION_STATUS_STYLES` in Schedule.tsx for therapist/guardian parity. */
+const STATUS_BADGE_VARIANTS: Record<CanonicalSessionStatus, string> = {
+  scheduled: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200',
+  in_progress: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200',
+  completed: 'bg-gray-100 text-gray-500 dark:bg-gray-700/50 dark:text-gray-400',
+  cancelled: 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300',
+  'no-show': 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300',
+};
+
+const UNKNOWN_STATUS_BADGE_CLASS =
+  'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400';
+
+const normalizeSessionStatus = (value: string | null | undefined): CanonicalSessionStatus | null => {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
+    case 'scheduled':
+      return 'scheduled';
+    case 'in_progress':
+    case 'in progress':
+    case 'in-progress':
+      return 'in_progress';
+    case 'completed':
+      return 'completed';
+    case 'cancelled':
+    case 'canceled':
+      return 'cancelled';
+    case 'no-show':
+    case 'no show':
+    case 'noshow':
+    case 'no_show':
+      return 'no-show';
+    default:
+      return null;
+  }
+};
+
+const getSessionStatusPresentation = (value: string | null | undefined) => {
+  const canonicalStatus = normalizeSessionStatus(value);
+  if (!canonicalStatus) {
+    const raw = typeof value === 'string' ? value.trim() : '';
+    return {
+      canonicalStatus: 'unknown' as const,
+      label: 'Status unavailable',
+      ariaLabel: 'Session status unavailable',
+      badgeClassName: `${STATUS_BADGE_BASE_CLASS} ${UNKNOWN_STATUS_BADGE_CLASS}`,
+      title: raw.length > 0 ? `Reported status: ${raw}` : undefined,
+    };
+  }
+
+  const labelByStatus: Record<CanonicalSessionStatus, string> = {
+    scheduled: 'Scheduled',
+    in_progress: 'In Session',
+    completed: 'Completed',
+    cancelled: 'Cancelled',
+    'no-show': 'No-show',
+  };
+
+  const label = labelByStatus[canonicalStatus];
+  return {
+    canonicalStatus,
+    label,
+    ariaLabel: `Session status: ${label}`,
+    badgeClassName: `${STATUS_BADGE_BASE_CLASS} ${STATUS_BADGE_VARIANTS[canonicalStatus]}`,
+    title: undefined,
+  };
+};
+
 export function FamilyDashboard() {
   const { profile, user } = useAuth();
   const guardianClientsQuery = useGuardianClients();
@@ -186,28 +262,36 @@ export function FamilyDashboard() {
                       </p>
                     ) : (
                       <ul className="space-y-3">
-                        {dependent.upcomingSessions.map((session) => (
-                          <li
-                            key={session.id}
-                            className="rounded-lg border border-gray-200 p-4 text-sm dark:border-gray-700"
-                          >
-                            <div className="flex items-center justify-between text-gray-900 dark:text-white">
-                              <span>{formatDateTime(session.startTime)}</span>
-                              <span className="text-xs font-medium uppercase text-blue-600 dark:text-blue-300">
-                                {session.status}
-                              </span>
-                            </div>
-                            <div className="mt-2 flex items-center gap-2 text-gray-600 dark:text-gray-300">
-                              <Clock className="h-4 w-4" />
-                              <span>{formatTimeRange(session.startTime, session.endTime)}</span>
-                            </div>
-                            {session.therapist?.fullName && (
-                              <div className="mt-1 text-gray-600 dark:text-gray-300">
-                                With {session.therapist.fullName}
+                        {dependent.upcomingSessions.map((session) => {
+                          const statusPresentation = getSessionStatusPresentation(session.status);
+                          return (
+                            <li
+                              key={session.id}
+                              className="rounded-lg border border-gray-200 p-4 text-sm dark:border-gray-700"
+                            >
+                              <div className="flex items-center justify-between text-gray-900 dark:text-white">
+                                <span>{formatDateTime(session.startTime)}</span>
+                                <span
+                                  aria-label={statusPresentation.ariaLabel}
+                                  data-session-status={statusPresentation.canonicalStatus}
+                                  title={statusPresentation.title}
+                                  className={statusPresentation.badgeClassName}
+                                >
+                                  {statusPresentation.label}
+                                </span>
                               </div>
-                            )}
-                          </li>
-                        ))}
+                              <div className="mt-2 flex items-center gap-2 text-gray-600 dark:text-gray-300">
+                                <Clock className="h-4 w-4" />
+                                <span>{formatTimeRange(session.startTime, session.endTime)}</span>
+                              </div>
+                              {session.therapist?.fullName && (
+                                <div className="mt-1 text-gray-600 dark:text-gray-300">
+                                  With {session.therapist.fullName}
+                                </div>
+                              )}
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>

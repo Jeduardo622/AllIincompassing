@@ -20,6 +20,34 @@ const mockGuardianClients = [
         status: 'Scheduled',
         therapist: { id: 'therapist-1', fullName: 'Alex Therapist' },
       },
+      {
+        id: 'session-2',
+        startTime: '2025-01-05T15:00:00.000Z',
+        endTime: '2025-01-05T16:00:00.000Z',
+        status: 'in progress',
+        therapist: { id: 'therapist-1', fullName: 'Alex Therapist' },
+      },
+      {
+        id: 'session-3',
+        startTime: '2025-01-06T15:00:00.000Z',
+        endTime: '2025-01-06T16:00:00.000Z',
+        status: 'canceled',
+        therapist: { id: 'therapist-1', fullName: 'Alex Therapist' },
+      },
+      {
+        id: 'session-4',
+        startTime: '2025-01-07T15:00:00.000Z',
+        endTime: '2025-01-07T16:00:00.000Z',
+        status: 'completed',
+        therapist: { id: 'therapist-1', fullName: 'Alex Therapist' },
+      },
+      {
+        id: 'session-5',
+        startTime: '2025-01-08T15:00:00.000Z',
+        endTime: '2025-01-08T16:00:00.000Z',
+        status: 'no_show',
+        therapist: { id: 'therapist-1', fullName: 'Alex Therapist' },
+      },
     ],
     notes: [
       {
@@ -82,6 +110,15 @@ describe('FamilyDashboard', () => {
     expect(screen.getByText(/Worked on communication goals/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Confirm my contact details/i })).toBeInTheDocument();
     expect(screen.getByText(/Last confirmed/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Session status: Scheduled')).toBeInTheDocument();
+    expect(screen.getByLabelText('Session status: In Session')).toBeInTheDocument();
+    expect(screen.getByLabelText('Session status: Cancelled')).toBeInTheDocument();
+    expect(screen.getByLabelText('Session status: Completed')).toBeInTheDocument();
+    expect(screen.getByLabelText('Session status: No-show')).toBeInTheDocument();
+    expect(screen.getByText('In Session')).toHaveAttribute('data-session-status', 'in_progress');
+    expect(screen.getByText('Cancelled')).toHaveAttribute('data-session-status', 'cancelled');
+    expect(screen.getByText('Completed')).toHaveAttribute('data-session-status', 'completed');
+    expect(screen.getByText('No-show')).toHaveAttribute('data-session-status', 'no-show');
   });
 
   it('allows guardians to confirm their contact details', async () => {
@@ -91,5 +128,35 @@ describe('FamilyDashboard', () => {
     await userEvent.click(confirmButton);
 
     expect(mockConfirm.mutateAsync).toHaveBeenCalledWith('child-1');
+  });
+
+  it('renders a safe fallback when session status is unknown', () => {
+    const originalStatus = mockGuardianClients[0].upcomingSessions[0].status;
+    mockGuardianClients[0].upcomingSessions[0].status = 'unexpected_status';
+    try {
+      renderWithProviders(<FamilyDashboard />);
+
+      const fallbackBadge = screen.getByText('Status unavailable');
+      expect(fallbackBadge).toHaveAttribute('data-session-status', 'unknown');
+      expect(fallbackBadge).toHaveAttribute('aria-label', 'Session status unavailable');
+      expect(fallbackBadge).toHaveAttribute('title', 'Reported status: unexpected_status');
+    } finally {
+      mockGuardianClients[0].upcomingSessions[0].status = originalStatus;
+    }
+  });
+
+  it('renders a safe fallback when session status is missing', () => {
+    const originalStatus = mockGuardianClients[0].upcomingSessions[0].status;
+    mockGuardianClients[0].upcomingSessions[0].status = '   ';
+    try {
+      renderWithProviders(<FamilyDashboard />);
+
+      const fallbackBadge = screen.getByText('Status unavailable');
+      expect(fallbackBadge).toHaveAttribute('data-session-status', 'unknown');
+      expect(fallbackBadge).toHaveAttribute('aria-label', 'Session status unavailable');
+      expect(fallbackBadge).not.toHaveAttribute('title');
+    } finally {
+      mockGuardianClients[0].upcomingSessions[0].status = originalStatus;
+    }
   });
 });

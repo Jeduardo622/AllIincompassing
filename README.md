@@ -185,6 +185,7 @@ Lighthouse CI currently runs in advisory mode (non-blocking) while preview URL a
 
 - **Supabase key drift on Netlify** - If login fails with `Legacy API keys are disabled` or `Unregistered API key`, verify `/api/runtime-config` returns an `sb_publishable_...` key and not a legacy `eyJ...` JWT key. Follow [docs/SECRET_ROTATION_RUNBOOK.md](docs/SECRET_ROTATION_RUNBOOK.md).
 - **Netlify Supabase integration env precedence** - Integration-managed `SUPABASE_ANON_KEY` can remain on a legacy value. Runtime supports publishable overrides (`SUPABASE_PUBLISHABLE_KEY` and generated `*PUBLISHABLE*_SUPABASE_ANON_KEY` names) to unblock production auth.
+- **Booking update-session closure (working now)** - Current status and evidence for the `Edit Session -> Update Session` incident are documented in [docs/THERAPIST_SESSIONS_WORKFLOW.md](docs/THERAPIST_SESSIONS_WORKFLOW.md#2026-04-booking-update-session-incident-closure).
 - **Playwright auth credential drift** - If `npm run playwright:auth` fails with invalid credentials, follow credential recovery in [docs/onboarding-runbook.md](docs/onboarding-runbook.md).
 - **Mobile role smoke verification** - Use `npm run playwright:mobile-role-smoke` to validate admin/therapist access behavior on an iPhone viewport before release.
 - **Netlify extension fetch 504 during deploy** - `Failed retrieving extensions ... 504` is usually transient platform instability; retry deploy before changing repo config.

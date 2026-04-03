@@ -3,13 +3,29 @@ export async function registerServiceWorker(): Promise<void> {
     return;
   }
 
+  const hostname = window.location.hostname;
   const isLocalhost = Boolean(
-    window.location.hostname === 'localhost' ||
-      window.location.hostname === '[::1]' ||
-      window.location.hostname.match(/^127(?:\.(?:25[0-5]|2[0-4]\d|[01]?\d?\d)){3}$/),
+    hostname === 'localhost' ||
+      hostname === '[::1]' ||
+      hostname.match(/^127(?:\.(?:25[0-5]|2[0-4]\d|[01]?\d?\d)){3}$/),
   );
+  const isNetlifyPreviewHost = hostname.endsWith('.netlify.app');
 
   if (!('serviceWorker' in navigator) || import.meta.env.DEV) {
+    return;
+  }
+
+  if (isNetlifyPreviewHost) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister()));
+      if ('caches' in window) {
+        const cacheKeys = await caches.keys();
+        await Promise.all(cacheKeys.map((cacheKey) => caches.delete(cacheKey)));
+      }
+    } catch (error) {
+      console.warn('[PWA] Failed to disable service worker on Netlify preview host', error);
+    }
     return;
   }
 

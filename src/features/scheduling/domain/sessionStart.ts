@@ -1,4 +1,4 @@
-import { callEdgeFunctionHttp } from "../../../lib/api";
+import { callApi } from "../../../lib/api";
 import { parseJsonResponse } from "../../../lib/sdk/contracts";
 import { toNormalizedApiError } from "../../../lib/sdk/errors";
 import {
@@ -26,7 +26,7 @@ export async function startSessionFromModal(request: StartSessionRequest): Promi
     throw new Error("Invalid session start request");
   }
 
-  const response = await callEdgeFunctionHttp("sessions-start", {
+  const response = await callApi("/api/sessions-start", {
     method: "POST",
     body: JSON.stringify(parsedRequest.data),
   });

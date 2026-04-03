@@ -142,6 +142,44 @@ async function bookSessionViaServiceRoleFallback(payload: BookSessionRequest, oc
   };
 
   const insertRows = async (client: ReturnType<typeof createClient>, organizationId: string): Promise<Array<Record<string, unknown>>> => {
+    const existingSessionId = typeof payload.session.id === "string" ? payload.session.id.trim() : "";
+    if (existingSessionId.length > 0 && occurrences.length === 1) {
+      const [occurrence] = occurrences;
+      if (!occurrence) {
+        const fallbackError = new Error("Fallback update missing occurrence payload") as Error & { status?: number };
+        fallbackError.status = 500;
+        throw fallbackError;
+      }
+      const { data: updatedRow, error: updateError } = await client
+        .from("sessions")
+        .update({
+          organization_id: organizationId,
+          therapist_id: payload.session.therapist_id,
+          client_id: payload.session.client_id,
+          program_id: payload.session.program_id,
+          goal_id: payload.session.goal_id,
+          start_time: occurrence.startTime,
+          end_time: occurrence.endTime,
+          status: payload.session.status ?? "scheduled",
+          notes: payload.session.notes ?? null,
+        })
+        .eq("id", existingSessionId)
+        .select("*")
+        .single();
+      if (updateError || !updatedRow) {
+        const message = updateError?.message ?? "missing updated session";
+        const overlap = message.includes("sessions_no_overlap");
+        const bookingError = new Error(`Service-role booking fallback failed: ${message}`) as Error & {
+          status?: number;
+          code?: string;
+        };
+        bookingError.status = overlap ? 409 : 502;
+        bookingError.code = overlap ? "THERAPIST_CONFLICT" : "SERVICE_ROLE_BOOKING_FAILED";
+        throw bookingError;
+      }
+      return [updatedRow as Record<string, unknown>];
+    }
+
     const rows = occurrences.map((occurrence) => ({
       organization_id: organizationId,
       therapist_id: payload.session.therapist_id,

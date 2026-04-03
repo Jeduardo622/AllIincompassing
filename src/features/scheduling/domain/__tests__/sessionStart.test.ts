@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const callEdgeFunctionHttpMock = vi.hoisted(() => vi.fn());
+const callApiMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../../../lib/api", () => ({
-  callEdgeFunctionHttp: callEdgeFunctionHttpMock,
+  callApi: callApiMock,
 }));
 
 describe("startSessionFromModal", () => {
   beforeEach(() => {
-    callEdgeFunctionHttpMock.mockReset();
+    callApiMock.mockReset();
   });
 
   it("throws when request does not satisfy schema constraints", async () => {
@@ -20,11 +20,11 @@ describe("startSessionFromModal", () => {
         goalId: "not-a-uuid",
       }),
     ).rejects.toThrow("Invalid session start request");
-    expect(callEdgeFunctionHttpMock).not.toHaveBeenCalled();
+    expect(callApiMock).not.toHaveBeenCalled();
   });
 
-  it("calls edge function when payload is valid", async () => {
-    callEdgeFunctionHttpMock.mockResolvedValueOnce(
+  it("calls api route when payload is valid", async () => {
+    callApiMock.mockResolvedValueOnce(
       new Response(JSON.stringify({
         success: true,
         data: {
@@ -42,8 +42,8 @@ describe("startSessionFromModal", () => {
       goalIds: ["44444444-4444-4444-4444-444444444444"],
     });
 
-    expect(callEdgeFunctionHttpMock).toHaveBeenCalledWith(
-      "sessions-start",
+    expect(callApiMock).toHaveBeenCalledWith(
+      "/api/sessions-start",
       expect.objectContaining({
         method: "POST",
       }),

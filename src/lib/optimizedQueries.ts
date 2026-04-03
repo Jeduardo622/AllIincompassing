@@ -161,8 +161,6 @@ export const useSessionMetrics = (
  */
 export const fetchDashboardData = async () => {
   const DASHBOARD_REQUEST_TIMEOUT_MS = 10000;
-  const isTransientDashboardFailure = (status?: number) =>
-    status === 429 || status === 502 || status === 503 || status === 504;
 
   const dashboardRouteFallback = async () => {
     const {
@@ -229,48 +227,7 @@ export const fetchDashboardData = async () => {
     return payload;
   };
 
-  const invokePromise = supabase.functions.invoke('get-dashboard-data', {
-    body: {},
-  });
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      const timeoutError = new Error('Dashboard request timed out') as Error & { status?: number };
-      timeoutError.status = 504;
-      reject(timeoutError);
-    }, DASHBOARD_REQUEST_TIMEOUT_MS);
-  });
-
-  try {
-    const { data, error } = await Promise.race([invokePromise, timeoutPromise]).finally(() => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    });
-
-    if (error) {
-      const invokeError = error as Error & { context?: { status?: number }; status?: number };
-      const enriched = new Error(invokeError.message || 'Failed to load dashboard data') as Error & {
-        status?: number;
-      };
-      enriched.status = invokeError.status ?? invokeError.context?.status;
-      throw enriched;
-    }
-
-    const envelope = data as { success?: boolean; data?: unknown; error?: string } | null;
-    if (!envelope || envelope.success !== true) {
-      const message = envelope?.error ?? 'Failed to load dashboard data';
-      throw new Error(message);
-    }
-
-    return envelope.data;
-  } catch (error) {
-    const status = (error as { status?: number } | undefined)?.status;
-    if (!isTransientDashboardFailure(status)) {
-      throw error;
-    }
-    return dashboardRouteFallback();
-  }
+  return dashboardRouteFallback();
 };
 
 export const useDashboardData = (options?: { enabled?: boolean }) => {

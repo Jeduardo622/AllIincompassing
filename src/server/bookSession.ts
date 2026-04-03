@@ -379,6 +379,7 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
     endTimeOffsetMinutes: primaryOccurrence.endOffsetMinutes,
     timeZone: recurrence?.timeZone ?? payload.timeZone,
     accessToken: payload.accessToken,
+    anonKey: payload.anonKey,
     ...(payload.trace ? { trace: payload.trace } : {}),
     occurrences: occurrences.map((occurrence) => ({
       startTime: occurrence.startTime,
@@ -429,6 +430,7 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
       endTimeOffsetMinutes: primaryOccurrence.endOffsetMinutes,
       timeZone: recurrence?.timeZone ?? payload.timeZone,
       accessToken: payload.accessToken,
+      anonKey: payload.anonKey,
       ...(payload.trace ? { trace: payload.trace } : {}),
       occurrences: matchedHeldOccurrences.map(({ heldOccurrence, occurrence }) => ({
         holdKey: heldOccurrence.holdKey,
@@ -462,6 +464,7 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
             holdKey,
             idempotencyKey: `${cancelKeyBase}:${holdKey}`,
             accessToken: payload.accessToken,
+            anonKey: payload.anonKey,
             ...(payload.trace ? { trace: payload.trace } : {}),
           })),
       );

@@ -33,6 +33,7 @@ function normalizePayload(
   body: BookSessionApiRequestBody,
   idempotencyKey: string | undefined,
   accessToken: string,
+  anonKey: string | undefined,
   trace?: {
     requestId?: string;
     correlationId?: string;
@@ -43,6 +44,7 @@ function normalizePayload(
     ...body,
     idempotencyKey,
     accessToken,
+    anonKey,
     trace,
   };
 }
@@ -243,12 +245,14 @@ export async function bookHandler(request: Request): Promise<Response> {
 
   try {
     const idempotencyKey = request.headers.get("Idempotency-Key") ?? undefined;
+    const anonKeyHeader = request.headers.get("apikey");
+    const anonKey = anonKeyHeader && anonKeyHeader.trim().length > 0 ? anonKeyHeader.trim() : undefined;
     const trace = {
       requestId: request.headers.get("x-request-id") ?? undefined,
       correlationId: request.headers.get("x-correlation-id") ?? undefined,
       agentOperationId: request.headers.get("x-agent-operation-id") ?? undefined,
     };
-    const result = await bookSession(normalizePayload(body, idempotencyKey, accessToken, trace));
+    const result = await bookSession(normalizePayload(body, idempotencyKey, accessToken, anonKey, trace));
     const headers = idempotencyKey
       ? { ...JSON_CONTENT_TYPE_HEADER, "Idempotency-Key": idempotencyKey }
       : { ...JSON_CONTENT_TYPE_HEADER };

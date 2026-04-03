@@ -21,6 +21,7 @@ export interface HoldRequest {
   endTimeOffsetMinutes: number;
   timeZone: string;
   accessToken?: string;
+  anonKey?: string;
   occurrences?: HoldOccurrenceRequest[];
   trace?: {
     requestId?: string;
@@ -97,6 +98,7 @@ function toError(message: string | undefined, fallback: string) {
 
 function buildEdgeTraceOptions(payload: {
   accessToken?: string;
+  anonKey?: string;
   trace?: {
     requestId?: string;
     correlationId?: string;
@@ -112,7 +114,10 @@ function buildEdgeTraceOptions(payload: {
       value.trim().length > 0
     )?.[1]
     : undefined;
-  const runtimeAnonKey = typeof process !== "undefined" && process?.env
+  const explicitAnonKey = typeof payload.anonKey === "string" ? payload.anonKey.trim() : "";
+  const runtimeAnonKey = explicitAnonKey.length > 0
+    ? explicitAnonKey
+    : typeof process !== "undefined" && process?.env
     ? (process.env.SUPABASE_PUBLISHABLE_KEY ||
         process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
         process.env.SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY ||
@@ -252,6 +257,7 @@ export interface ConfirmRequest {
   endTimeOffsetMinutes: number;
   timeZone: string;
   accessToken?: string;
+  anonKey?: string;
   occurrences?: ConfirmOccurrenceRequest[];
   trace?: {
     requestId?: string;
@@ -370,6 +376,7 @@ export interface CancelHoldRequest {
   holdKey: string;
   idempotencyKey?: string;
   accessToken?: string;
+  anonKey?: string;
   trace?: {
     requestId?: string;
     correlationId?: string;

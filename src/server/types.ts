@@ -41,6 +41,7 @@ export interface BookSessionRequest {
   idempotencyKey?: string;
   overrides?: BookingOverrides;
   accessToken: string;
+  anonKey?: string;
   recurrence?: SessionRecurrence | null;
   trace?: {
     requestId?: string;

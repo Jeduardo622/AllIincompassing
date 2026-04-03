@@ -79,6 +79,7 @@ const ORIGINAL_ENV = {
   SUPABASE_URL: process.env.SUPABASE_URL,
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
   SUPABASE_EDGE_URL: process.env.SUPABASE_EDGE_URL,
+  API_AUTHORITY_MODE: process.env.API_AUTHORITY_MODE,
   DEFAULT_ORGANIZATION_ID: process.env.DEFAULT_ORGANIZATION_ID,
 };
 
@@ -97,6 +98,7 @@ beforeEach(async () => {
   process.env.SUPABASE_URL = TEST_SUPABASE_URL;
   process.env.SUPABASE_ANON_KEY = TEST_SUPABASE_ANON_KEY;
   process.env.SUPABASE_EDGE_URL = TEST_SUPABASE_EDGE_URL;
+  delete process.env.API_AUTHORITY_MODE;
   process.env.DEFAULT_ORGANIZATION_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
 
   server.use(
@@ -129,6 +131,11 @@ afterAll(() => {
     process.env.SUPABASE_EDGE_URL = ORIGINAL_ENV.SUPABASE_EDGE_URL;
   } else {
     delete process.env.SUPABASE_EDGE_URL;
+  }
+  if (typeof ORIGINAL_ENV.API_AUTHORITY_MODE === "string") {
+    process.env.API_AUTHORITY_MODE = ORIGINAL_ENV.API_AUTHORITY_MODE;
+  } else {
+    delete process.env.API_AUTHORITY_MODE;
   }
   if (typeof ORIGINAL_ENV.DEFAULT_ORGANIZATION_ID === "string") {
     process.env.DEFAULT_ORGANIZATION_ID = ORIGINAL_ENV.DEFAULT_ORGANIZATION_ID;
@@ -511,5 +518,126 @@ describe("bookHandler", () => {
     expect(body.retryAfterSeconds).toBe(120);
     expect(body.hint).toContain("Retry after about 120 seconds");
     expect(body.orchestration).toBeUndefined();
+  });
+
+  it("falls back to legacy booking when edge authority is unavailable", async () => {
+    process.env.API_AUTHORITY_MODE = "edge";
+    server.use(
+      http.post(`${TEST_SUPABASE_EDGE_URL.replace(/\/$/, "")}/sessions-book`, () =>
+        HttpResponse.json({ success: false, error: "gateway unavailable" }, { status: 503 })),
+    );
+    bookSessionMock.mockResolvedValueOnce({
+      session: {
+        id: "session-edge-fallback",
+        client_id: "client-1",
+        therapist_id: "therapist-1",
+        start_time: "2025-01-01T10:00:00Z",
+        end_time: "2025-01-01T11:00:00Z",
+        status: "scheduled",
+        notes: "",
+        created_at: "2025-01-01T09:00:00Z",
+        created_by: "user-1",
+        updated_at: "2025-01-01T09:00:00Z",
+        updated_by: "user-1",
+        duration_minutes: 60,
+      },
+      sessions: [],
+      hold: {
+        holdKey: "hold",
+        holdId: "1",
+        startTime: "2025-01-01T10:00:00Z",
+        endTime: "2025-01-01T11:00:00Z",
+        expiresAt: "2025-01-01T10:05:00Z",
+        holds: [],
+      },
+      cpt: {
+        code: "97153",
+        description: "Adaptive behavior treatment by protocol",
+        modifiers: [],
+        source: "fallback",
+        durationMinutes: 60,
+      },
+    });
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest(validPayload));
+
+    expect(response.status).toBe(200);
+    expect(bookSessionMock).toHaveBeenCalledTimes(1);
+    const body = await response.json();
+    expect(body.success).toBe(true);
+    expect(body.data.session.id).toBe("session-edge-fallback");
+  });
+
+  it("does not fallback to legacy booking for edge conflict responses", async () => {
+    process.env.API_AUTHORITY_MODE = "edge";
+    server.use(
+      http.post(`${TEST_SUPABASE_EDGE_URL.replace(/\/$/, "")}/sessions-book`, () =>
+        HttpResponse.json(
+          {
+            success: false,
+            error: "Booking failed",
+            code: "THERAPIST_CONFLICT",
+            hint: "The selected slot is unavailable.",
+          },
+          { status: 409 },
+        )),
+    );
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest(validPayload));
+
+    expect(response.status).toBe(409);
+    expect(bookSessionMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.code).toBe("THERAPIST_CONFLICT");
+  });
+
+  it("falls back to legacy booking when edge authority request throws", async () => {
+    process.env.API_AUTHORITY_MODE = "edge";
+    server.use(
+      http.post(`${TEST_SUPABASE_EDGE_URL.replace(/\/$/, "")}/sessions-book`, () => HttpResponse.error()),
+    );
+    bookSessionMock.mockResolvedValueOnce({
+      session: {
+        id: "session-edge-error-fallback",
+        client_id: "client-1",
+        therapist_id: "therapist-1",
+        start_time: "2025-01-01T10:00:00Z",
+        end_time: "2025-01-01T11:00:00Z",
+        status: "scheduled",
+        notes: "",
+        created_at: "2025-01-01T09:00:00Z",
+        created_by: "user-1",
+        updated_at: "2025-01-01T09:00:00Z",
+        updated_by: "user-1",
+        duration_minutes: 60,
+      },
+      sessions: [],
+      hold: {
+        holdKey: "hold",
+        holdId: "1",
+        startTime: "2025-01-01T10:00:00Z",
+        endTime: "2025-01-01T11:00:00Z",
+        expiresAt: "2025-01-01T10:05:00Z",
+        holds: [],
+      },
+      cpt: {
+        code: "97153",
+        description: "Adaptive behavior treatment by protocol",
+        modifiers: [],
+        source: "fallback",
+        durationMinutes: 60,
+      },
+    });
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest(validPayload));
+
+    expect(response.status).toBe(200);
+    expect(bookSessionMock).toHaveBeenCalledTimes(1);
+    const body = await response.json();
+    expect(body.success).toBe(true);
+    expect(body.data.session.id).toBe("session-edge-error-fallback");
   });
 });

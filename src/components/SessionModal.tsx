@@ -911,7 +911,7 @@ export function SessionModal({
                 </label>
                 <select
                   id="program-select"
-                  {...register('program_id', { required: 'Program is required' })}
+                  {...register('program_id', { required: session ? false : 'Program is required' })}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                 >
                   <option value="">Select a program</option>
@@ -940,7 +940,7 @@ export function SessionModal({
                 </label>
                 <select
                   id="goal-select"
-                  {...register('goal_id', { required: 'Primary goal is required' })}
+                  {...register('goal_id', { required: session ? false : 'Primary goal is required' })}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                 >
                   <option value="">Select a goal</option>

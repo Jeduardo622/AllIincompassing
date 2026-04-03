@@ -74,79 +74,139 @@ const createServiceRoleClient = () => {
   });
 };
 
+const resolveRuntimeAnonKey = (payloadAnonKey?: string): string => {
+  const explicitPayload = typeof payloadAnonKey === "string" ? payloadAnonKey.trim() : "";
+  if (explicitPayload.length > 0) {
+    return explicitPayload;
+  }
+  return (
+    getOptionalServerEnv("SUPABASE_PUBLISHABLE_KEY") ||
+    getOptionalServerEnv("VITE_SUPABASE_PUBLISHABLE_KEY") ||
+    getOptionalServerEnv("SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY") ||
+    getOptionalServerEnv("VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY") ||
+    getOptionalServerEnv("SUPABASE_ANON_KEY") ||
+    getRequiredServerEnv("VITE_SUPABASE_ANON_KEY")
+  );
+};
+
+const createUserScopedFallbackClient = (payload: BookSessionRequest) => {
+  const supabaseUrl =
+    getOptionalServerEnv("SUPABASE_URL") ||
+    getOptionalServerEnv("SUPABASE_DATABASE_URL") ||
+    getRequiredServerEnv("VITE_SUPABASE_URL");
+  return createClient(supabaseUrl, resolveRuntimeAnonKey(payload.anonKey), {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${payload.accessToken}`,
+      },
+    },
+  });
+};
+
 async function bookSessionViaServiceRoleFallback(payload: BookSessionRequest, occurrences: RecurrenceOccurrence[], cpt: ReturnType<typeof deriveCptMetadata>): Promise<BookSessionResult> {
-  const adminClient = createServiceRoleClient();
-  const { data: therapistRow, error: therapistError } = await adminClient
+  const buildFallbackResponse = (insertedRows: Array<Record<string, unknown>>): BookSessionResult => {
+    const holds = occurrences.map((occurrence, index) => {
+      const sessionId = typeof insertedRows[index]?.id === "string" ? insertedRows[index].id : `fallback-${index + 1}`;
+      return {
+        holdKey: `service-role-fallback:${sessionId}`,
+        holdId: sessionId,
+        startTime: occurrence.startTime,
+        endTime: occurrence.endTime,
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      };
+    });
+    const [primaryHold] = holds;
+    if (!primaryHold) {
+      const fallbackError = new Error("Service-role booking fallback missing hold payload") as Error & { status?: number };
+      fallbackError.status = 500;
+      throw fallbackError;
+    }
+    return {
+      session: insertedRows[0] as BookSessionResult["session"],
+      sessions: insertedRows as BookSessionResult["sessions"],
+      hold: {
+        holdKey: primaryHold.holdKey,
+        holdId: primaryHold.holdId,
+        startTime: primaryHold.startTime,
+        endTime: primaryHold.endTime,
+        expiresAt: primaryHold.expiresAt,
+        holds,
+      },
+      cpt,
+    };
+  };
+
+  const insertRows = async (client: ReturnType<typeof createClient>, organizationId: string): Promise<Array<Record<string, unknown>>> => {
+    const rows = occurrences.map((occurrence) => ({
+      organization_id: organizationId,
+      therapist_id: payload.session.therapist_id,
+      client_id: payload.session.client_id,
+      program_id: payload.session.program_id,
+      goal_id: payload.session.goal_id,
+      start_time: occurrence.startTime,
+      end_time: occurrence.endTime,
+      status: payload.session.status ?? "scheduled",
+      notes: payload.session.notes ?? null,
+    }));
+
+    const { data: insertedRows, error: insertError } = await client
+      .from("sessions")
+      .insert(rows)
+      .select("*");
+    if (insertError || !Array.isArray(insertedRows) || insertedRows.length === 0) {
+      const message = insertError?.message ?? "missing inserted sessions";
+      const overlap = message.includes("sessions_no_overlap");
+      const bookingError = new Error(`Service-role booking fallback failed: ${message}`) as Error & {
+        status?: number;
+        code?: string;
+      };
+      bookingError.status = overlap ? 409 : 502;
+      bookingError.code = overlap ? "THERAPIST_CONFLICT" : "SERVICE_ROLE_BOOKING_FAILED";
+      throw bookingError;
+    }
+    return insertedRows as Array<Record<string, unknown>>;
+  };
+
+  const userClient = createUserScopedFallbackClient(payload);
+  const { data: userTherapistRow, error: userTherapistError } = await userClient
     .from("therapists")
     .select("organization_id")
     .eq("id", payload.session.therapist_id)
     .single();
-  if (therapistError || !therapistRow?.organization_id) {
+  if (!userTherapistError && userTherapistRow?.organization_id) {
+    const inserted = await insertRows(userClient, userTherapistRow.organization_id);
+    return buildFallbackResponse(inserted);
+  }
+
+  const hasServiceRole = Boolean(getOptionalServerEnv("SUPABASE_SERVICE_ROLE_KEY"));
+  if (!hasServiceRole) {
     const organizationError = new Error(
-      `Unable to resolve therapist organization for booking fallback: ${therapistError?.message ?? "missing organization_id"}`,
+      `Unable to resolve therapist organization for booking fallback: ${userTherapistError?.message ?? "missing organization_id"}`,
     ) as Error & { status?: number };
     organizationError.status = 502;
     throw organizationError;
   }
 
-  const rows = occurrences.map((occurrence) => ({
-    organization_id: therapistRow.organization_id,
-    therapist_id: payload.session.therapist_id,
-    client_id: payload.session.client_id,
-    program_id: payload.session.program_id,
-    goal_id: payload.session.goal_id,
-    start_time: occurrence.startTime,
-    end_time: occurrence.endTime,
-    status: payload.session.status ?? "scheduled",
-    notes: payload.session.notes ?? null,
-  }));
-
-  const { data: insertedRows, error: insertError } = await adminClient
-    .from("sessions")
-    .insert(rows)
-    .select("*");
-  if (insertError || !Array.isArray(insertedRows) || insertedRows.length === 0) {
-    const message = insertError?.message ?? "missing inserted sessions";
-    const overlap = message.includes("sessions_no_overlap");
-    const bookingError = new Error(`Service-role booking fallback failed: ${message}`) as Error & {
-      status?: number;
-      code?: string;
-    };
-    bookingError.status = overlap ? 409 : 500;
-    bookingError.code = overlap ? "THERAPIST_CONFLICT" : "SERVICE_ROLE_BOOKING_FAILED";
-    throw bookingError;
+  const adminClient = createServiceRoleClient();
+  const { data: adminTherapistRow, error: adminTherapistError } = await adminClient
+    .from("therapists")
+    .select("organization_id")
+    .eq("id", payload.session.therapist_id)
+    .single();
+  if (adminTherapistError || !adminTherapistRow?.organization_id) {
+    const organizationError = new Error(
+      `Unable to resolve therapist organization for booking fallback: ${adminTherapistError?.message ?? "missing organization_id"}`,
+    ) as Error & { status?: number };
+    organizationError.status = 502;
+    throw organizationError;
   }
-
-  const holds = occurrences.map((occurrence, index) => {
-    const sessionId = typeof insertedRows[index]?.id === "string" ? insertedRows[index].id : `fallback-${index + 1}`;
-    return {
-      holdKey: `service-role-fallback:${sessionId}`,
-      holdId: sessionId,
-      startTime: occurrence.startTime,
-      endTime: occurrence.endTime,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-    };
-  });
-  const [primaryHold] = holds;
-  if (!primaryHold) {
-    const fallbackError = new Error("Service-role booking fallback missing hold payload") as Error & { status?: number };
-    fallbackError.status = 500;
-    throw fallbackError;
-  }
-
-  return {
-    session: insertedRows[0],
-    sessions: insertedRows,
-    hold: {
-      holdKey: primaryHold.holdKey,
-      holdId: primaryHold.holdId,
-      startTime: primaryHold.startTime,
-      endTime: primaryHold.endTime,
-      expiresAt: primaryHold.expiresAt,
-      holds,
-    },
-    cpt,
-  };
+  const insertedRows = await insertRows(adminClient, adminTherapistRow.organization_id);
+  return buildFallbackResponse(insertedRows);
 }
 
 function occurrenceKey(startTime: string, endTime: string): string {

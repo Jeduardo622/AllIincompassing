@@ -498,6 +498,7 @@ export const Schedule = React.memo(() => {
   const [retryActionLabel, setRetryActionLabel] = useState<string | null>(null);
   const lastPendingScheduleKeyRef = useRef<string | null>(null);
   const lastAppliedUrlModalKeyRef = useRef<string | null>(null);
+  const attemptedUrlSessionLookupRef = useRef<Set<string>>(new Set());
   const wasModalOpenRef = useRef(false);
 
   const queryClient = useQueryClient();
@@ -1453,20 +1454,55 @@ export const Schedule = React.memo(() => {
     }
 
     const sessionPool = Array.isArray(batchedData?.sessions) ? batchedData.sessions : displayData.sessions;
-    const session = sessionPool.find((item) => item.id === parsed.state.sessionId);
-    if (!session) {
+    const sessionId = parsed.state.sessionId;
+    const session = sessionPool.find((item) => item.id === sessionId);
+    if (session) {
+      handleEditSession(session, { syncUrl: false });
+      lastAppliedUrlModalKeyRef.current = parsed.key;
+      attemptedUrlSessionLookupRef.current.delete(sessionId);
+      return;
+    }
+
+    if (!activeOrganizationId) {
+      return;
+    }
+
+    if (attemptedUrlSessionLookupRef.current.has(sessionId)) {
       const params = clearScheduleModalSearchParams(searchParams);
       setSearchParams(params, { replace: true });
       lastAppliedUrlModalKeyRef.current = null;
       return;
     }
 
-    handleEditSession(session, { syncUrl: false });
-    lastAppliedUrlModalKeyRef.current = parsed.key;
+    attemptedUrlSessionLookupRef.current.add(sessionId);
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase
+        .from("sessions")
+        .select("*")
+        .eq("id", sessionId)
+        .eq("organization_id", activeOrganizationId)
+        .maybeSingle();
+      if (cancelled) {
+        return;
+      }
+      if (!error && data) {
+        handleEditSession(data as Session, { syncUrl: false });
+        lastAppliedUrlModalKeyRef.current = parsed.key;
+        return;
+      }
+      const params = clearScheduleModalSearchParams(searchParams);
+      setSearchParams(params, { replace: true });
+      lastAppliedUrlModalKeyRef.current = null;
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [
     searchParams,
     setSearchParams,
     isLoading,
+    activeOrganizationId,
     batchedData?.sessions,
     displayData.sessions,
     handleCreateSession,

@@ -25,6 +25,10 @@ const JSON_CONTENT_TYPE_HEADER: Record<string, string> = {
   "Content-Type": "application/json",
 };
 
+function shouldFallbackToLegacyBooking(status: number): boolean {
+  return status === 404 || status === 408 || status >= 500;
+}
+
 function normalizePayload(
   body: BookSessionApiRequestBody,
   idempotencyKey: string | undefined,
@@ -190,30 +194,46 @@ export async function bookHandler(request: Request): Promise<Response> {
   const body: BookSessionApiRequestBody = parseResult.data;
 
   if (getApiAuthorityMode() === "edge") {
-    const forwarded = await proxyToEdgeAuthority(request, {
-      functionName: "sessions-book",
-      accessToken,
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-    const forwardedBody = await forwarded.text();
-    const forwardedHeaders: Record<string, string> = {};
-    const retryAfter = forwarded.headers.get("Retry-After");
-    const returnedIdempotency = forwarded.headers.get("Idempotency-Key");
-    if (retryAfter) {
-      forwardedHeaders["Retry-After"] = retryAfter;
+    try {
+      const forwarded = await proxyToEdgeAuthority(request, {
+        functionName: "sessions-book",
+        accessToken,
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      const forwardedBody = await forwarded.text();
+      if (!shouldFallbackToLegacyBooking(forwarded.status)) {
+        const forwardedHeaders: Record<string, string> = {};
+        const retryAfter = forwarded.headers.get("Retry-After");
+        const returnedIdempotency = forwarded.headers.get("Idempotency-Key");
+        if (retryAfter) {
+          forwardedHeaders["Retry-After"] = retryAfter;
+        }
+        if (returnedIdempotency) {
+          forwardedHeaders["Idempotency-Key"] = returnedIdempotency;
+        }
+        return new Response(forwardedBody, {
+          status: forwarded.status,
+          headers: {
+            ...corsHeadersForRequest(request),
+            ...JSON_CONTENT_TYPE_HEADER,
+            ...forwardedHeaders,
+          },
+        });
+      }
+
+      logger.warn("Edge booking authority unavailable; falling back to legacy booking", {
+        metadata: {
+          status: forwarded.status,
+        },
+        context: { handler: "bookHandler" },
+      });
+    } catch (error) {
+      logger.warn("Edge booking authority request failed; falling back to legacy booking", {
+        error: toError(error, "Edge booking authority request failed"),
+        context: { handler: "bookHandler" },
+      });
     }
-    if (returnedIdempotency) {
-      forwardedHeaders["Idempotency-Key"] = returnedIdempotency;
-    }
-    return new Response(forwardedBody, {
-      status: forwarded.status,
-      headers: {
-        ...corsHeadersForRequest(request),
-        ...JSON_CONTENT_TYPE_HEADER,
-        ...forwardedHeaders,
-      },
-    });
   }
 
   const scopeErrorResponse = await assertBookRequestScope(request, accessToken, body);

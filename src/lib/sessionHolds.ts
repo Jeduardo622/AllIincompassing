@@ -198,6 +198,11 @@ export async function requestSessionHold(payload: HoldRequest): Promise<HoldResp
       retryAfterSeconds?: number | null;
     };
     error.status = response.status;
+    if (response.status === 401) {
+      error.code = "SESSIONS_HOLD_UNAUTHORIZED";
+    } else if (response.status === 403) {
+      error.code = "SESSIONS_HOLD_FORBIDDEN";
+    }
     if (body && !body.success) {
       if (typeof body.code === "string") {
         error.code = body.code;
@@ -312,6 +317,11 @@ export async function confirmSessionBooking(payload: ConfirmRequest): Promise<Co
       retryAfterSeconds?: number | null;
     };
     error.status = response.status;
+    if (response.status === 401) {
+      error.code = "SESSIONS_CONFIRM_UNAUTHORIZED";
+    } else if (response.status === 403) {
+      error.code = "SESSIONS_CONFIRM_FORBIDDEN";
+    }
     if (body && !body.success) {
       if (typeof body.code === "string") {
         error.code = body.code;

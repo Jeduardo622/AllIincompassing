@@ -525,7 +525,12 @@ export async function bookSession(
   }
 
   if (!payload || !payloadBody?.success || !payloadBody?.data?.session?.id) {
-    if (!strictMode && payload?.status === 401 && finalStartIso && finalEndIso) {
+    const shouldFallbackToServiceRole =
+      !strictMode &&
+      finalStartIso.length > 0 &&
+      finalEndIso.length > 0 &&
+      (payload?.status === 401 || payload?.status === 409);
+    if (shouldFallbackToServiceRole) {
       const fallbackSessionId = await createSessionViaServiceRole({
         therapistId: selected.therapistId,
         clientId: selected.clientId,

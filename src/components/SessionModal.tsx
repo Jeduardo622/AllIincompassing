@@ -205,6 +205,12 @@ export function SessionModal({
   const activePrograms = programs.filter((program) => program.status === 'active');
   const activeGoals = goals.filter((goal) => goal.status === 'active');
   const selectedPrimaryGoal = goals.find((goal) => goal.id === goalId);
+  const hasProgramOptionForValue = typeof programId === 'string' && programId.length > 0
+    ? programs.some((program) => program.id === programId)
+    : false;
+  const hasGoalOptionForValue = typeof goalId === 'string' && goalId.length > 0
+    ? goals.some((goal) => goal.id === goalId)
+    : false;
 
   useEffect(() => {
     if (session?.therapist_id) {
@@ -265,6 +271,9 @@ export function SessionModal({
     }
 
     if (!programs.length) {
+      if (session?.id) {
+        return;
+      }
       if (programId) {
         setValue('program_id', '');
       }
@@ -278,6 +287,9 @@ export function SessionModal({
     }
     const programIds = new Set(programs.map((program) => program.id));
     if (programId && programIds.has(programId)) {
+      return;
+    }
+    if (session?.id && programId && !programIds.has(programId)) {
       return;
     }
 
@@ -302,6 +314,9 @@ export function SessionModal({
       return;
     }
     const goalIdsSet = new Set(goals.map((goal) => goal.id));
+    if (session?.id && goalId && !goalIdsSet.has(goalId)) {
+      return;
+    }
     if (!goalId || !goalIdsSet.has(goalId)) {
       const nextGoal = goals.find((goal) => goal.status === 'active') ?? goals[0];
       if (nextGoal?.id) {
@@ -321,6 +336,9 @@ export function SessionModal({
       return;
     }
     const allowed = new Set(goals.map((goal) => goal.id));
+    if (session?.id && goalId) {
+      allowed.add(goalId);
+    }
     const filtered = goalIds.filter((id) => allowed.has(id));
     if (filtered.length !== goalIds.length) {
       setValue('goal_ids', filtered);
@@ -893,10 +911,15 @@ export function SessionModal({
                 </label>
                 <select
                   id="program-select"
-                  {...register('program_id', { required: 'Program is required' })}
+                  {...register('program_id', { required: session ? false : 'Program is required' })}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                 >
                   <option value="">Select a program</option>
+                  {programId && !hasProgramOptionForValue && (
+                    <option value={programId}>
+                      Current program (unavailable in active list)
+                    </option>
+                  )}
                   {programs.map((program) => (
                     <option key={program.id} value={program.id}>
                       {program.name}
@@ -917,10 +940,15 @@ export function SessionModal({
                 </label>
                 <select
                   id="goal-select"
-                  {...register('goal_id', { required: 'Primary goal is required' })}
+                  {...register('goal_id', { required: session ? false : 'Primary goal is required' })}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                 >
                   <option value="">Select a goal</option>
+                  {goalId && !hasGoalOptionForValue && (
+                    <option value={goalId}>
+                      Current goal (unavailable in active list)
+                    </option>
+                  )}
                   {goals.map((goal) => (
                     <option key={goal.id} value={goal.id}>
                       {goal.title}

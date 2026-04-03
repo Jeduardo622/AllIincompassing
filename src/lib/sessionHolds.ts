@@ -21,6 +21,7 @@ export interface HoldRequest {
   endTimeOffsetMinutes: number;
   timeZone: string;
   accessToken?: string;
+  anonKey?: string;
   occurrences?: HoldOccurrenceRequest[];
   trace?: {
     requestId?: string;
@@ -97,6 +98,7 @@ function toError(message: string | undefined, fallback: string) {
 
 function buildEdgeTraceOptions(payload: {
   accessToken?: string;
+  anonKey?: string;
   trace?: {
     requestId?: string;
     correlationId?: string;
@@ -104,11 +106,23 @@ function buildEdgeTraceOptions(payload: {
   };
 }): CallEdgeOptions {
   const options: CallEdgeOptions = {};
-  const runtimeAnonKey = typeof process !== "undefined" && process?.env
+  const generatedPublishable = typeof process !== "undefined" && process?.env
+    ? Object.entries(process.env).find(([key, value]) =>
+      key.includes("PUBLISHABLE") &&
+      key.endsWith("_SUPABASE_ANON_KEY") &&
+      typeof value === "string" &&
+      value.trim().length > 0
+    )?.[1]
+    : undefined;
+  const explicitAnonKey = typeof payload.anonKey === "string" ? payload.anonKey.trim() : "";
+  const runtimeAnonKey = explicitAnonKey.length > 0
+    ? explicitAnonKey
+    : typeof process !== "undefined" && process?.env
     ? (process.env.SUPABASE_PUBLISHABLE_KEY ||
         process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
         process.env.SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY ||
         process.env.VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY ||
+        generatedPublishable ||
         process.env.SUPABASE_ANON_KEY ||
         process.env.VITE_SUPABASE_ANON_KEY)
     : undefined;
@@ -184,6 +198,11 @@ export async function requestSessionHold(payload: HoldRequest): Promise<HoldResp
       retryAfterSeconds?: number | null;
     };
     error.status = response.status;
+    if (response.status === 401) {
+      error.code = "SESSIONS_HOLD_UNAUTHORIZED";
+    } else if (response.status === 403) {
+      error.code = "SESSIONS_HOLD_FORBIDDEN";
+    }
     if (body && !body.success) {
       if (typeof body.code === "string") {
         error.code = body.code;
@@ -243,6 +262,7 @@ export interface ConfirmRequest {
   endTimeOffsetMinutes: number;
   timeZone: string;
   accessToken?: string;
+  anonKey?: string;
   occurrences?: ConfirmOccurrenceRequest[];
   trace?: {
     requestId?: string;
@@ -297,6 +317,11 @@ export async function confirmSessionBooking(payload: ConfirmRequest): Promise<Co
       retryAfterSeconds?: number | null;
     };
     error.status = response.status;
+    if (response.status === 401) {
+      error.code = "SESSIONS_CONFIRM_UNAUTHORIZED";
+    } else if (response.status === 403) {
+      error.code = "SESSIONS_CONFIRM_FORBIDDEN";
+    }
     if (body && !body.success) {
       if (typeof body.code === "string") {
         error.code = body.code;
@@ -361,6 +386,7 @@ export interface CancelHoldRequest {
   holdKey: string;
   idempotencyKey?: string;
   accessToken?: string;
+  anonKey?: string;
   trace?: {
     requestId?: string;
     correlationId?: string;

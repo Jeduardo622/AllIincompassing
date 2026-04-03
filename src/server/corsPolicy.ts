@@ -13,6 +13,11 @@ const STATIC_ALLOWED_ORIGINS = [
   "http://localhost:5173",
 ] as const;
 
+const DYNAMIC_ALLOWED_ORIGIN_PATTERNS = [
+  /^https:\/\/velvety-cendol-dae4d6\.netlify\.app$/i,
+  /^https:\/\/deploy-preview-\d+--velvety-cendol-dae4d6\.netlify\.app$/i,
+] as const;
+
 const parseConfiguredOrigins = (): string[] =>
   (getOptionalServerEnv("API_ALLOWED_ORIGINS") ?? getOptionalServerEnv("CORS_ALLOWED_ORIGINS") ?? "")
     .split(",")
@@ -30,7 +35,13 @@ export const resolveAllowedOriginValue = (origin: string | null): string | null 
   if (!origin) {
     return getDefaultAllowedOrigin();
   }
-  return getAllowedOrigins().includes(origin) ? origin : null;
+  if (getAllowedOrigins().includes(origin)) {
+    return origin;
+  }
+  if (DYNAMIC_ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin))) {
+    return origin;
+  }
+  return null;
 };
 
 export const corsHeadersForOrigin = (origin: string | null): Record<string, string> => {

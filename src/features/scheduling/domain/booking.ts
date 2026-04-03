@@ -8,6 +8,7 @@ import { getTimezoneOffset } from "date-fns-tz";
 import { supabase } from "../../../lib/supabase";
 import { logger } from "../../../lib/logger/logger";
 import { toError } from "../../../lib/logger/normalizeError";
+import { getSupabaseAnonKey } from "../../../lib/runtimeConfig";
 import { callApiRoute } from "../../../lib/sdk/client";
 import { parseJsonResponse } from "../../../lib/sdk/contracts";
 import { toNormalizedApiError, type NormalizedApiError } from "../../../lib/sdk/errors";
@@ -104,6 +105,14 @@ export async function bookSessionViaApi(
   }
 
   const headers: Record<string, string> = {};
+  try {
+    const anonKey = getSupabaseAnonKey().trim();
+    if (anonKey.length > 0) {
+      headers.apikey = anonKey;
+    }
+  } catch {
+    // Runtime config should already be initialized; skip apikey only if unavailable.
+  }
   if (idempotencyKey) {
     headers["Idempotency-Key"] = idempotencyKey;
   }

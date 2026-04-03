@@ -398,3 +398,21 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
 - Rollout controls:
   - Gate activation with `SESSION_NOTES_PDF_ASYNC=true` in edge runtime, enable first in staging, then production after parity + soak checks.
   - Keep `generate-session-notes-pdf` + `session-notes-pdf-status` + `session-notes-pdf-download` in parity/deploy bundle scope to avoid partial rollout drift.
+
+## 2026-04 booking update-session incident closure
+
+- Incident summary:
+  - Therapists/admins could open `Edit Session`, but `Update Session` intermittently failed with `Booking failed` when `/api/book` routed to edge authority and downstream `sessions-book` was temporarily unavailable.
+- Fix shipped:
+  - `src/server/api/book.ts` now falls back to the legacy booking path only when edge authority is unavailable at the transport layer (`404`, `408`, `5xx`) or when the edge request throws.
+  - Conflict/business responses (for example `409` scheduling conflicts) still pass through without fallback so user-facing conflict behavior remains unchanged.
+  - `src/server/__tests__/bookHandler.test.ts` adds regression coverage for:
+    - edge unavailable -> fallback succeeds
+    - edge request throw -> fallback succeeds
+    - edge `409` conflict -> no fallback
+- Verification evidence:
+  - Focused checks passed: booking handler tests, scheduling flow tests, lint, typecheck, policy checks, and build.
+  - Full gates passed before merge: CI workflow checks, `tenant-safety`, `tier0-browser`, Netlify preview checks, and `ci-gate`.
+  - PR: `#361` merged to `main` at commit `7e1f23df1dff8cdd58efb3d1d4e950785f9d7ae8`.
+- Current status:
+  - Working now. As of `2026-04-03` (UTC), `Edit Session -> Update Session` is passing through the restored booking path in production-bound mainline configuration.

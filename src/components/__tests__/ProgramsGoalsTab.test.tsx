@@ -4,6 +4,7 @@ import { ProgramsGoalsTab } from "../ClientDetails/ProgramsGoalsTab";
 import { generateProgramGoalDraft } from "../../lib/ai";
 import { showError, showInfo, showSuccess } from "../../lib/toast";
 import { callApi, callEdgeFunctionHttp } from "../../lib/api";
+import { supabase } from "../../lib/supabase";
 
 const ORG_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
 const ASSESSMENT_ID = "11111111-1111-4111-8111-111111111111";
@@ -68,6 +69,7 @@ vi.mock("../../lib/api", () => ({
 
 vi.mock("../../lib/supabase", () => ({
   supabase: {
+    from: vi.fn(),
     storage: {
       from: () => ({
         upload: vi.fn().mockResolvedValue({ error: null }),
@@ -79,6 +81,53 @@ vi.mock("../../lib/supabase", () => ({
 
 describe("ProgramsGoalsTab", () => {
   beforeEach(() => {
+    vi.mocked(supabase.from).mockImplementation((tableName: string) => {
+      const chain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: [], error: null }),
+        insert: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({
+          data:
+            tableName === "programs"
+              ? {
+                  id: "program-1",
+                  organization_id: ORG_ID,
+                  client_id: "client-1",
+                  name: "Communication Program",
+                  status: "active",
+                  created_at: "2026-02-11T00:00:00.000Z",
+                  updated_at: "2026-02-11T00:00:00.000Z",
+                }
+              : tableName === "goals"
+                ? {
+                    id: "goal-1",
+                    organization_id: ORG_ID,
+                    client_id: "client-1",
+                    program_id: "program-1",
+                    title: "Goal",
+                    description: "Goal description",
+                    original_text: "Original wording",
+                    status: "active",
+                    created_at: "2026-02-11T00:00:00.000Z",
+                    updated_at: "2026-02-11T00:00:00.000Z",
+                  }
+                : {
+                    id: "note-1",
+                    organization_id: ORG_ID,
+                    program_id: "program-1",
+                    author_id: "therapist-user-id",
+                    note_type: "plan_update",
+                    content: { text: "note" },
+                    created_at: "2026-02-11T00:00:00.000Z",
+                    updated_at: "2026-02-11T00:00:00.000Z",
+                  },
+          error: null,
+        }),
+      };
+      return chain as unknown as ReturnType<typeof supabase.from>;
+    });
+
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "GET" && path.startsWith("/api/programs?")) {
@@ -428,53 +477,50 @@ describe("ProgramsGoalsTab", () => {
 
   it("falls back to same-origin API when program edge calls time out", async () => {
     let hasProgram = false;
-    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
-      const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && path.startsWith("/api/programs?")) {
-        return new Response(
-          JSON.stringify(
-            hasProgram
+    vi.mocked(supabase.from).mockImplementation((tableName: string) => {
+      const chain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockImplementation(async () => ({
+          data:
+            tableName === "programs" && hasProgram
               ? [
                   {
                     id: "program-fallback-1",
                     organization_id: ORG_ID,
                     client_id: "client-1",
                     name: "Fallback Program",
-                    description: "Saved through API fallback",
+                    description: "Saved through Supabase fallback",
                     status: "active",
                     created_at: "2026-02-11T00:00:00.000Z",
                     updated_at: "2026-02-11T00:00:00.000Z",
                   },
                 ]
               : [],
-          ),
-          { status: 200 },
-        );
-      }
-      if (method === "POST" && path === "/api/programs") {
-        hasProgram = true;
-        return new Response(
-          JSON.stringify({
-            id: "program-fallback-1",
-            organization_id: ORG_ID,
-            client_id: "client-1",
-            name: "Fallback Program",
-            description: "Saved through API fallback",
-            status: "active",
-            created_at: "2026-02-11T00:00:00.000Z",
-            updated_at: "2026-02-11T00:00:00.000Z",
-          }),
-          { status: 201 },
-        );
-      }
-      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
-      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
-      if (method === "GET" && path.startsWith("/api/assessment-documents?")) return new Response(JSON.stringify([]), { status: 200 });
-      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
-      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
-        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
-      }
-      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+          error: null,
+        })),
+        insert: vi.fn().mockReturnThis(),
+        single: vi.fn().mockImplementation(async () => {
+          if (tableName === "programs") {
+            hasProgram = true;
+            return {
+              data: {
+                id: "program-fallback-1",
+                organization_id: ORG_ID,
+                client_id: "client-1",
+                name: "Fallback Program",
+                description: "Saved through Supabase fallback",
+                status: "active",
+                created_at: "2026-02-11T00:00:00.000Z",
+                updated_at: "2026-02-11T00:00:00.000Z",
+              },
+              error: null,
+            };
+          }
+          return { data: null, error: null };
+        }),
+      };
+      return chain as unknown as ReturnType<typeof supabase.from>;
     });
     vi.mocked(callEdgeFunctionHttp).mockImplementation(async (path: string, init?: RequestInit) => {
       if (typeof path === "string" && path.startsWith("programs")) {
@@ -504,12 +550,7 @@ describe("ProgramsGoalsTab", () => {
       expect(showSuccess).toHaveBeenCalledWith("Program created");
     });
     expect(await screen.findByText("Fallback Program")).toBeInTheDocument();
-    expect(callApi).toHaveBeenCalledWith(
-      "/api/programs",
-      expect.objectContaining({
-        method: "POST",
-      }),
-    );
+    expect(supabase.from).toHaveBeenCalledWith("programs");
   });
 
   it("shows goals load error when goals edge returns non-OK", async () => {

@@ -7,18 +7,27 @@ vi.mock("../api/shared", async () => {
     ...actual,
     getAccessToken: vi.fn(),
     consumeRateLimit: vi.fn(),
-    getSupabaseConfig: vi.fn(),
   };
 });
 
-import { consumeRateLimit, getAccessToken, getSupabaseConfig } from "../api/shared";
+vi.mock("../runtimeConfig", async () => {
+  const actual = await vi.importActual<typeof import("../runtimeConfig")>("../runtimeConfig");
+  return {
+    ...actual,
+    getRuntimeSupabaseConfig: vi.fn(),
+  };
+});
+
+import { consumeRateLimit, getAccessToken } from "../api/shared";
+import { getRuntimeSupabaseConfig } from "../runtimeConfig";
 
 describe("sessionsCompleteHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(getSupabaseConfig).mockReturnValue({
+    vi.mocked(getRuntimeSupabaseConfig).mockReturnValue({
       supabaseUrl: "https://example.supabase.co",
-      anonKey: "anon-key",
+      supabaseAnonKey: "anon-key",
+      defaultOrganizationId: "org-default",
     });
     vi.mocked(consumeRateLimit).mockResolvedValue({
       limited: false,

@@ -3,10 +3,10 @@ import {
   consumeRateLimit,
   corsHeadersForRequest,
   errorResponse,
-  getSupabaseConfig,
   getAccessToken,
   isDisallowedOriginRequest,
 } from "./shared";
+import { getRuntimeSupabaseConfig } from "../runtimeConfig";
 
 const completeSessionSchema = z.object({
   session_id: z.string().uuid(),
@@ -85,11 +85,11 @@ export async function sessionsCompleteHandler(request: Request): Promise<Respons
       });
     }
 
-    const { supabaseUrl, anonKey } = getSupabaseConfig();
+    const { supabaseUrl, supabaseAnonKey } = getRuntimeSupabaseConfig();
     const functionUrl = `${supabaseUrl}/functions/v1/sessions-complete`;
     const forwardHeaders = new Headers({
       "Content-Type": "application/json",
-      apikey: anonKey,
+      apikey: supabaseAnonKey,
       Authorization: `Bearer ${accessToken}`,
     });
     const requestIdHeader = request.headers.get("x-request-id");

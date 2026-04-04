@@ -443,6 +443,7 @@ describe('SessionModal', () => {
     expect(screen.getByTestId('session-modal-in-progress-guidance')).toBeInTheDocument();
     expect(screen.getByTestId('session-modal-notes-guidance')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Save Session Details/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Close Session$/i })).toBeInTheDocument();
   });
 
   it('keeps update-session submit copy when edit session has not started', () => {
@@ -470,6 +471,7 @@ describe('SessionModal', () => {
 
     expect(screen.getByRole('button', { name: /Update Session/i })).toBeInTheDocument();
     expect(screen.queryByTestId('session-modal-in-progress-guidance')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Close Session$/i })).not.toBeInTheDocument();
   });
 
   it('does not show in-progress guidance for completed sessions with started_at', async () => {
@@ -530,6 +532,72 @@ describe('SessionModal', () => {
       expect(screen.queryByTestId('session-modal-in-progress-guidance')).not.toBeInTheDocument();
     });
     expect(screen.getByRole('button', { name: /Update Session/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Close Session$/i })).not.toBeInTheDocument();
+  });
+
+  it('submits completed status when Close Session is clicked', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-close-action',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: '2026-03-01T10:00:00.000Z',
+        } satisfies Session}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /^Close Session$/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'completed',
+      }));
+    });
+  });
+
+  it('blocks Close Session when clinical narrative is present without authorization metadata', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-close-clinical-validation',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: '2026-03-01T10:00:00.000Z',
+        } satisfies Session}
+      />
+    );
+
+    await userEvent.type(screen.getByLabelText(/Clinical Narrative/i), 'Progress details');
+    await userEvent.click(screen.getByRole('button', { name: /^Close Session$/i }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('calls onSessionStarted after a successful Start Session', async () => {

@@ -733,6 +733,16 @@ export function SessionModal({
     }
   };
 
+  const handleCloseSession = () => {
+    setValue('status', 'completed', { shouldDirty: true });
+    void handleSubmit(async (formData) => {
+      await handleFormSubmit({
+        ...formData,
+        status: 'completed',
+      });
+    })();
+  };
+
   // Function to ensure time input is on 15-minute intervals
   const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>, field: 'start_time' | 'end_time') => {
     const value = e.target.value;
@@ -1502,6 +1512,16 @@ export function SessionModal({
                 className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-emerald-600 border border-transparent rounded-md shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Start Session
+              </button>
+            )}
+            {session?.id && isInProgressSession && (
+              <button
+                type="button"
+                onClick={handleCloseSession}
+                disabled={isSubmitting || isDependentDataLoading || isLoadingAlternatives}
+                className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-violet-600 border border-transparent rounded-md shadow-sm hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Close Session
               </button>
             )}
             <button

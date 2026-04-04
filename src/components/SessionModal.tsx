@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
@@ -91,7 +91,15 @@ export function SessionModal({
     return '';
   };
   
-  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm({
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    reset,
+    getValues,
+    formState: { errors, isSubmitting, isDirty },
+  } = useForm({
     defaultValues: {
       therapist_id: session?.therapist_id || defaultTherapistId || '',
       client_id: session?.client_id || defaultClientId || '',
@@ -156,7 +164,13 @@ export function SessionModal({
     enabled: Boolean(session?.id && activeOrganizationId),
   });
 
-  const { data: programs = [], isFetched: isProgramsFetched, isFetching: isProgramsFetching } = useQuery({
+  const {
+    data: programs = [],
+    isFetched: isProgramsFetched,
+    isFetching: isProgramsFetching,
+    isError: isProgramsError,
+    refetch: refetchPrograms,
+  } = useQuery({
     queryKey: ['client-programs', clientId, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
       if (!clientId || !activeOrganizationId) {
@@ -176,7 +190,13 @@ export function SessionModal({
     enabled: Boolean(clientId && activeOrganizationId),
   });
 
-  const { data: goals = [], isFetched: isGoalsFetched, isFetching: isGoalsFetching } = useQuery({
+  const {
+    data: goals = [],
+    isFetched: isGoalsFetched,
+    isFetching: isGoalsFetching,
+    isError: isGoalsError,
+    refetch: refetchGoals,
+  } = useQuery({
     queryKey: ['program-goals', programId, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
       if (!programId || !activeOrganizationId) {
@@ -202,6 +222,7 @@ export function SessionModal({
   const selectedClient = clients.find(c => c.id === clientId);
   const selectedTherapistServices = selectedTherapist?.service_type ?? [];
   const selectedClientServices = selectedClient?.service_preference ?? [];
+  const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
   const activePrograms = programs.filter((program) => program.status === 'active');
   const activeGoals = goals.filter((goal) => goal.status === 'active');
   const selectedPrimaryGoal = goals.find((goal) => goal.id === goalId);
@@ -551,14 +572,33 @@ export function SessionModal({
         end_time: timeZone ? toUtcSessionIsoString(data.end_time, resolvedTimeZone) : data.end_time,
       };
       await onSubmit(transformed);
+      reset(getValues());
+      setSaveState('saved');
     } catch (error) {
       logger.error('Failed to submit session', {
         error,
         context: { component: 'SessionModal', operation: 'handleFormSubmit' }
       });
+      setSaveState('error');
       return;
     }
   };
+
+  const handleAttemptClose = useCallback(() => {
+    if (isSubmitting) {
+      return;
+    }
+    if (!isDirty) {
+      onClose();
+      return;
+    }
+    const shouldDiscard = window.confirm(
+      'You have unsaved changes in this session. Close without saving?'
+    );
+    if (shouldDiscard) {
+      onClose();
+    }
+  }, [isDirty, isSubmitting, onClose]);
 
   const handleStartSession = async () => {
     if (!session?.id) {
@@ -620,6 +660,21 @@ export function SessionModal({
     (session?.status === 'in_progress' || hasStartedSession);
   const isDependentDataLoading = (Boolean(clientId) && isProgramsFetching) || (Boolean(programId) && isGoalsFetching);
   const canStartSession = Boolean(session?.id && !hasStartedSession && programId && goalId);
+  const saveStateMessage = useMemo(() => {
+    if (isSubmitting) {
+      return { tone: 'info' as const, text: 'Saving session details...' };
+    }
+    if (saveState === 'saved') {
+      return { tone: 'success' as const, text: 'Session details saved.' };
+    }
+    if (saveState === 'error') {
+      return { tone: 'error' as const, text: 'Unable to save session details. Try again.' };
+    }
+    if (isDirty) {
+      return { tone: 'warning' as const, text: 'Unsaved changes.' };
+    }
+    return null;
+  }, [isDirty, isSubmitting, saveState]);
   const dialogDescriptionIds = [
     dialogDescriptionId,
     ...(retryHint ? [retryHintDescriptionId] : []),
@@ -655,7 +710,7 @@ export function SessionModal({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        handleAttemptClose();
         return;
       }
 
@@ -701,7 +756,33 @@ export function SessionModal({
       document.removeEventListener('keydown', handleKeyDown);
       previousActiveElementRef.current?.focus();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, handleAttemptClose]);
+
+  useEffect(() => {
+    if (!isOpen || !isDirty || isSubmitting) {
+      return;
+    }
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isOpen, isDirty, isSubmitting]);
+
+  useEffect(() => {
+    if (!isDirty && saveState === 'error') {
+      setSaveState('idle');
+    }
+  }, [isDirty, saveState]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSaveState('idle');
+    }
+  }, [isOpen, session?.id]);
 
   if (!isOpen) return null;
 
@@ -712,7 +793,7 @@ export function SessionModal({
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === overlayRef.current) {
-          onClose();
+          handleAttemptClose();
         }
       }}
     >
@@ -735,10 +816,11 @@ export function SessionModal({
           <button
             ref={closeButtonRef}
             type="button"
-            onClick={onClose}
+            onClick={handleAttemptClose}
+            disabled={isSubmitting}
             aria-label="Close session modal"
             title="Close session modal"
-            className="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+            className="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <X className="w-5 h-5" />
           </button>
@@ -818,6 +900,24 @@ export function SessionModal({
                   You can update program, primary goal, and additional goals while this session is active.
                   Save session details to keep this plan in sync.
                 </p>
+              </div>
+            )}
+            {saveStateMessage && (
+              <div
+                data-testid="session-modal-save-state"
+                role="status"
+                aria-live="polite"
+                className={`rounded-md border px-3 py-2 text-xs ${
+                  saveStateMessage.tone === 'success'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200'
+                    : saveStateMessage.tone === 'error'
+                      ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-200'
+                      : saveStateMessage.tone === 'warning'
+                        ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200'
+                        : 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-200'
+                }`}
+              >
+                {saveStateMessage.text}
               </div>
             )}
 
@@ -931,6 +1031,7 @@ export function SessionModal({
                 <select
                   id="program-select"
                   {...register('program_id', { required: session ? false : 'Program is required' })}
+                  disabled={isProgramsFetching || !clientId}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                 >
                   <option value="">Select a program</option>
@@ -948,6 +1049,23 @@ export function SessionModal({
                 {errors.program_id && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.program_id.message}</p>
                 )}
+                {isProgramsFetching && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Loading programs...</p>
+                )}
+                {isProgramsError && (
+                  <div className="mt-1 flex items-center gap-2 text-xs text-red-600 dark:text-red-300">
+                    <span>Could not load programs.</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void refetchPrograms();
+                      }}
+                      className="font-semibold underline underline-offset-2"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -960,6 +1078,7 @@ export function SessionModal({
                 <select
                   id="goal-select"
                   {...register('goal_id', { required: session ? false : 'Primary goal is required' })}
+                  disabled={isGoalsFetching || !programId}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                 >
                   <option value="">Select a goal</option>
@@ -976,6 +1095,23 @@ export function SessionModal({
                 </select>
                 {errors.goal_id && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.goal_id.message}</p>
+                )}
+                {isGoalsFetching && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Loading goals...</p>
+                )}
+                {isGoalsError && (
+                  <div className="mt-1 flex items-center gap-2 text-xs text-red-600 dark:text-red-300">
+                    <span>Could not load goals.</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void refetchGoals();
+                      }}
+                      className="font-semibold underline underline-offset-2"
+                    >
+                      Retry
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1112,7 +1248,8 @@ export function SessionModal({
           <div className="flex flex-col-reverse sm:flex-row justify-end gap-3">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleAttemptClose}
+              disabled={isSubmitting}
               className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-dark border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
               Cancel

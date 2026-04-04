@@ -315,6 +315,26 @@ describe('SessionModal', () => {
     expect(defaultProps.onClose).toHaveBeenCalled();
   });
 
+  it('shows unsaved state and asks before closing dirty changes', async () => {
+    const onClose = vi.fn();
+    renderWithProviders(<SessionModal {...defaultProps} onClose={onClose} />);
+
+    const notesInput = screen.getByLabelText(/Schedule Notes/i);
+    await userEvent.type(notesInput, 'Therapist working note');
+
+    expect(screen.getByTestId('session-modal-save-state')).toHaveTextContent('Unsaved changes.');
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const closeCountBeforeCancel = onClose.mock.calls.length;
+    await userEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(closeCountBeforeCancel);
+
+    confirmSpy.mockReturnValue(true);
+    await userEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
+    expect(onClose.mock.calls.length).toBeGreaterThan(closeCountBeforeCancel);
+  });
+
   it('uses an accessible close button label and closes on Escape', async () => {
     renderWithProviders(<SessionModal {...defaultProps} />);
 
@@ -628,6 +648,141 @@ describe('SessionModal', () => {
       const select = screen.getByRole('combobox', { name: /Status/i }) as HTMLSelectElement;
       expect(select.value).toBe('in_progress');
     });
+  });
+
+  it('shows saved state after successful update for edit sessions', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-save-success',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'scheduled',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    await screen.findByRole('option', { name: /Default Program/i });
+    await userEvent.selectOptions(screen.getByLabelText(/Program/i), 'program-1');
+    await screen.findByRole('option', { name: /Default Goal/i });
+    await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
+    fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2026-03-01T10:00' } });
+    fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2026-03-01T11:00' } });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalled();
+    });
+    confirmSpy.mockRestore();
+    const saveState = screen.getByTestId('session-modal-save-state');
+    expect(saveState).toHaveTextContent('Session details saved.');
+    expect(saveState).toHaveAttribute('role', 'status');
+    expect(saveState).toHaveAttribute('aria-live', 'polite');
+  });
+
+  it('resets saved status after close and reopen', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const props = {
+      ...defaultProps,
+      onSubmit,
+      session: {
+        id: 'session-save-reset',
+        therapist_id: 'test-therapist-1',
+        client_id: 'test-client-1',
+        program_id: 'program-1',
+        goal_id: 'goal-1',
+        start_time: '2026-03-01T10:00:00.000Z',
+        end_time: '2026-03-01T11:00:00.000Z',
+        status: 'scheduled',
+        notes: '',
+        created_at: '2026-03-01T09:00:00.000Z',
+        created_by: null,
+        updated_at: '2026-03-01T09:00:00.000Z',
+        updated_by: null,
+        started_at: null,
+      } satisfies Session,
+    };
+    const { rerender } = renderWithProviders(<SessionModal {...props} />);
+
+    await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    await screen.findByRole('option', { name: /Default Program/i });
+    await userEvent.selectOptions(screen.getByLabelText(/Program/i), 'program-1');
+    await screen.findByRole('option', { name: /Default Goal/i });
+    await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
+    fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2026-03-01T10:00' } });
+    fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2026-03-01T11:00' } });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalled();
+    });
+    confirmSpy.mockRestore();
+    expect(screen.getByTestId('session-modal-save-state')).toHaveTextContent('Session details saved.');
+
+    rerender(<SessionModal {...props} isOpen={false} />);
+    rerender(<SessionModal {...props} isOpen />);
+
+    expect(screen.queryByTestId('session-modal-save-state')).not.toBeInTheDocument();
+  });
+
+  it('shows save error state when update fails', async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error('Save failed'));
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-save-failure',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'scheduled',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    await screen.findByRole('option', { name: /Default Program/i });
+    await userEvent.selectOptions(screen.getByLabelText(/Program/i), 'program-1');
+    await screen.findByRole('option', { name: /Default Goal/i });
+    await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
+    fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2026-03-01T10:00' } });
+    fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2026-03-01T11:00' } });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalled();
+    });
+    confirmSpy.mockRestore();
+    expect(screen.getByTestId('session-modal-save-state')).toHaveTextContent(
+      'Unable to save session details. Try again.'
+    );
   });
 
   it('does not call onSessionStarted when startSessionFromModal rejects', async () => {

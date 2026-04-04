@@ -1,4 +1,4 @@
-import { callEdgeFunctionHttp } from "../../../lib/api";
+import { callApi } from "../../../lib/api";
 import { toNormalizedApiError } from "../../../lib/sdk/errors";
 import { supabase } from "../../../lib/supabase";
 
@@ -86,7 +86,7 @@ export async function checkInProgressSessionCloseReadiness(
 export async function completeSessionFromModal(
   request: CompleteSessionRequest,
 ): Promise<void> {
-  const response = await callEdgeFunctionHttp("sessions-complete", {
+  const response = await callApi("/api/sessions-complete", {
     method: "POST",
     body: JSON.stringify({
       session_id: request.sessionId,

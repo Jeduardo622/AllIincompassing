@@ -934,7 +934,7 @@ export function SessionModal({
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === overlayRef.current) {
@@ -944,7 +944,7 @@ export function SessionModal({
     >
       <div
         ref={dialogRef}
-        className="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-white dark:bg-dark-lighter rounded-md sm:rounded-lg shadow-xl w-full max-w-2xl h-[100dvh] sm:h-auto sm:max-h-[90vh] overflow-hidden flex flex-col"
         role="dialog"
         aria-modal="true"
         aria-labelledby={dialogTitleId}
@@ -953,9 +953,9 @@ export function SessionModal({
         tabIndex={-1}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
-          <h2 id={dialogTitleId} className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-            <Calendar className="w-6 h-6 mr-2 text-blue-600" />
+        <div className="flex items-center justify-between p-3 sm:p-4 border-b dark:border-gray-700">
+          <h2 id={dialogTitleId} className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white flex items-center">
+            <Calendar className="w-5 h-5 sm:w-6 sm:h-6 mr-2 text-blue-600" />
             {session ? 'Edit Session' : 'New Session'}
           </h2>
           <button
@@ -972,11 +972,11 @@ export function SessionModal({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4">
           <p id={dialogDescriptionId} className="sr-only">
             Use this form to create or update a therapy session.
           </p>
-          <form id="session-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+          <form id="session-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4 sm:space-y-6">
             {retryHint && (
               <div
                 data-testid="session-modal-blocked-close-panel"
@@ -1017,7 +1017,7 @@ export function SessionModal({
                 id={conflictDescriptionId}
                 role="region"
                 aria-labelledby={conflictHeadingId}
-                className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 rounded-lg p-4"
+                className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 rounded-lg p-3 sm:p-4"
               >
                 <div className="flex items-center mb-2">
                   <AlertTriangle className="w-5 h-5 text-amber-500 dark:text-amber-400 mr-2 flex-shrink-0" />
@@ -1038,7 +1038,7 @@ export function SessionModal({
             {isInProgressSession && (
               <div
                 data-testid="session-modal-in-progress-guidance"
-                className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200"
+                className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 sm:p-4 text-sm text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200"
               >
                 <p className="font-medium">Session in progress</p>
                 <p className="mt-1">
@@ -1066,7 +1066,7 @@ export function SessionModal({
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label
                   htmlFor="therapist-select"
@@ -1135,7 +1135,7 @@ export function SessionModal({
             )}
 
             {selectedTherapist && selectedClient && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 p-3 sm:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 <div>
                   <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
                     <User className="w-4 h-4 mr-2 text-blue-500" />
@@ -1165,7 +1165,7 @@ export function SessionModal({
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label
                   htmlFor="program-select"
@@ -1266,14 +1266,14 @@ export function SessionModal({
                 <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Additional Goals</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {goals.map((goal) => (
-                    <label key={goal.id} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                    <label key={goal.id} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 min-w-0">
                       <input
                         type="checkbox"
                         checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
                         onChange={() => toggleGoalSelection(goal.id)}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
-                      <span>{goal.title}</span>
+                      <span className="truncate">{goal.title}</span>
                       <span className="text-[11px] text-gray-500 dark:text-gray-400">
                         ({Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} data points)
                       </span>
@@ -1283,7 +1283,7 @@ export function SessionModal({
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label
                   htmlFor="start-time-input"
@@ -1387,14 +1387,14 @@ export function SessionModal({
             </div>
 
             {session?.id && (
-              <div className="rounded-lg border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/70 dark:bg-indigo-900/10 p-4 space-y-4">
+              <div className="rounded-lg border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/70 dark:bg-indigo-900/10 p-3 sm:p-4 space-y-3 sm:space-y-4">
                 <div>
                   <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">Clinical Session Notes</p>
                   <p className="mt-1 text-xs text-indigo-700 dark:text-indigo-300">
                     Write both narrative and per-goal notes from this schedule session modal.
                   </p>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div>
                     <label
                       htmlFor="session-note-auth-select"
@@ -1484,7 +1484,7 @@ export function SessionModal({
         </div>
 
         {/* Footer */}
-        <div className="border-t dark:border-gray-700 p-4">
+        <div className="border-t dark:border-gray-700 p-3 sm:p-4 bg-white dark:bg-dark-lighter">
           <div className="flex flex-col-reverse sm:flex-row justify-end gap-3">
             <button
               type="button"

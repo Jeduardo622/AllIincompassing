@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getSessionMock = vi.hoisted(() => vi.fn());
 const getUserMock = vi.hoisted(() => vi.fn());
+const refreshSessionMock = vi.hoisted(() => vi.fn());
 const callApiRouteMock = vi.hoisted(() => vi.fn());
 const callEdgeRouteMock = vi.hoisted(() => vi.fn());
 
@@ -10,6 +11,7 @@ vi.mock("../supabase", () => ({
     auth: {
       getSession: getSessionMock,
       getUser: getUserMock,
+      refreshSession: refreshSessionMock,
     },
   },
 }));
@@ -38,6 +40,7 @@ describe("lib/api access token resolution", () => {
     const token = await options.getAccessToken?.();
     expect(token).toBe("token-primary");
     expect(getUserMock).not.toHaveBeenCalled();
+    expect(refreshSessionMock).not.toHaveBeenCalled();
   });
 
   it("rehydrates token when session is initially empty but user exists", async () => {
@@ -53,5 +56,24 @@ describe("lib/api access token resolution", () => {
     const token = await options.getAccessToken?.();
     expect(token).toBe("token-reloaded");
     expect(getUserMock).toHaveBeenCalledTimes(1);
+    expect(refreshSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("refreshes session when token is still missing after user rehydration", async () => {
+    getSessionMock
+      .mockResolvedValueOnce({ data: { session: null } })
+      .mockResolvedValueOnce({ data: { session: null } });
+    getUserMock.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    refreshSessionMock.mockResolvedValue({
+      data: { session: { access_token: "token-refreshed" } },
+    });
+
+    const { callApi } = await import("../api");
+    await callApi("/api/sessions-complete", { method: "POST", body: "{}" });
+
+    const options = callApiRouteMock.mock.calls[0]?.[2] as { getAccessToken?: () => Promise<string | null> };
+    const token = await options.getAccessToken?.();
+    expect(token).toBe("token-refreshed");
+    expect(refreshSessionMock).toHaveBeenCalledTimes(1);
   });
 });

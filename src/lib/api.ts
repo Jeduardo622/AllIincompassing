@@ -18,7 +18,13 @@ const getCurrentAccessToken = async (): Promise<string | null> => {
     }
 
     const { data: reloaded } = await supabase.auth.getSession();
-    return reloaded?.session?.access_token ?? null;
+    const reloadedToken = reloaded?.session?.access_token ?? null;
+    if (reloadedToken) {
+      return reloadedToken;
+    }
+
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    return refreshed?.session?.access_token ?? null;
   } catch {
     return null;
   }

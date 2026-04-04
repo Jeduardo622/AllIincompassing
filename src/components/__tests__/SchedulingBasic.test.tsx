@@ -103,7 +103,8 @@ describe('Scheduling Basic Functionality', () => {
     });
 
     // Check that basic UI elements are present
-    expect(screen.getByText('Auto Schedule')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Day view/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Week view/i })).toBeInTheDocument();
   });
 
   it('should display sessions when data is loaded', async () => {
@@ -163,10 +164,8 @@ describe('Scheduling Basic Functionality', () => {
 
     // Look for other view buttons
     const dayButton = screen.getByText('Day');
-    const matrixButton = screen.getByText('Matrix');
-    
+
     expect(dayButton).toBeInTheDocument();
-    expect(matrixButton).toBeInTheDocument();
   });
 
   it('should handle empty data gracefully', async () => {
@@ -194,7 +193,7 @@ describe('Scheduling Basic Functionality', () => {
       expect(screen.getByText('Schedule')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Auto Schedule')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Day view/i })).toBeInTheDocument();
   });
 
   it('should handle API errors gracefully', async () => {

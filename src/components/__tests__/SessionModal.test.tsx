@@ -785,6 +785,64 @@ describe('SessionModal', () => {
     );
   });
 
+  it('renders clinical notes section for existing sessions', () => {
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        session={{
+          id: 'session-clinical-ui',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    expect(screen.getByText(/Clinical Session Notes/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Clinical Narrative/i)).toBeInTheDocument();
+  });
+
+  it('blocks submit when clinical narrative is filled without authorization metadata', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-clinical-validation',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    await userEvent.type(screen.getByLabelText(/Clinical Narrative/i), 'Progress details');
+    await userEvent.click(screen.getByRole('button', { name: /Save Session Details/i }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it('does not call onSessionStarted when startSessionFromModal rejects', async () => {
     vi.mocked(startSessionFromModal).mockRejectedValue(new Error('RPC failure'));
     const onSessionStarted = vi.fn();

@@ -15,7 +15,11 @@ import {
   CalendarX,
 } from "lucide-react";
 import type { Session, Therapist, Client } from "../types";
-import { SessionModal } from "../components/SessionModal";
+import {
+  SessionModal,
+  type SessionModalSubmitData,
+  type SessionModalClinicalNotesPayload,
+} from "../components/SessionModal";
 import { AutoScheduleModal } from "../components/AutoScheduleModal";
 import { AvailabilityOverlay } from "../components/AvailabilityOverlay";
 import { SessionFilters } from "../components/SessionFilters";
@@ -33,6 +37,7 @@ import { toError } from "../lib/logger/normalizeError";
 import { useAuth } from "../lib/authContext";
 import { useActiveOrganizationId } from "../lib/organization";
 import { supabase } from "../lib/supabase";
+import { upsertClientSessionNoteForSession } from "../lib/session-notes";
 import {
   buildSessionSlotIndex,
   createSessionSlotKey,
@@ -78,7 +83,64 @@ import {
 
 const AUTO_SCHEDULE_CONCURRENCY = 3;
 const MISSING_NOTES_RETRY_HINT =
-  "Before closing this in-progress session, complete a linked client session note for this session and add per-goal note text for each worked goal. Open Client Details and use Session Notes / Physical Auth for this same client session. In Schedule, the Notes field and overall narrative do not satisfy this requirement.";
+  "Before closing this in-progress session, complete a linked clinical session note for this session and add per-goal note text for each worked goal. You can add these in Schedule > Edit Session > Clinical Session Notes, or in Client Details > Session Notes.";
+
+type ScheduleSubmitData = SessionModalSubmitData;
+
+const stripClinicalNoteFields = (data: ScheduleSubmitData): Partial<Session> => {
+  const {
+    session_note_narrative: _sessionNoteNarrative,
+    session_note_goal_notes: _sessionNoteGoalNotes,
+    session_note_goal_ids: _sessionNoteGoalIds,
+    session_note_goals_addressed: _sessionNoteGoalsAddressed,
+    session_note_authorization_id: _sessionNoteAuthorizationId,
+    session_note_service_code: _sessionNoteServiceCode,
+    ...sessionPayload
+  } = data;
+  return sessionPayload;
+};
+
+const buildClinicalNoteDraft = (
+  data: SessionModalClinicalNotesPayload,
+): {
+  narrative: string;
+  goalNotes: Record<string, string>;
+  goalIds: string[];
+  goalsAddressed: string[];
+  authorizationId: string;
+  serviceCode: string;
+} | null => {
+  const narrative = data.session_note_narrative?.trim() ?? "";
+  const goalNotes = Object.fromEntries(
+    Object.entries(data.session_note_goal_notes ?? {})
+      .map(([goalId, noteText]) => [goalId, noteText.trim()])
+      .filter(([, noteText]) => noteText.length > 0),
+  );
+  const goalIds = Array.isArray(data.session_note_goal_ids)
+    ? data.session_note_goal_ids.filter((goalId) => typeof goalId === "string" && goalId.trim().length > 0)
+    : [];
+  const goalsAddressed = Array.isArray(data.session_note_goals_addressed)
+    ? data.session_note_goals_addressed
+        .map((goalLabel) => goalLabel.trim())
+        .filter((goalLabel) => goalLabel.length > 0)
+    : [];
+  const authorizationId = data.session_note_authorization_id?.trim() ?? "";
+  const serviceCode = data.session_note_service_code?.trim() ?? "";
+  if (
+    narrative.length === 0 &&
+    Object.keys(goalNotes).length === 0
+  ) {
+    return null;
+  }
+  return {
+    narrative,
+    goalNotes,
+    goalIds,
+    goalsAddressed,
+    authorizationId,
+    serviceCode,
+  };
+};
 
 export { applyPendingScheduleDetail };
 export type { PendingScheduleTransitionRecorder };
@@ -1198,10 +1260,12 @@ export const Schedule = React.memo(() => {
   );
 
   const handleSubmit = useCallback(
-    async (data: Partial<Session>) => {
+    async (data: ScheduleSubmitData) => {
+      const sessionPayload = stripClinicalNoteFields(data);
+      const clinicalNoteDraft = buildClinicalNoteDraft(data);
       const decision = decideScheduleSubmitBranch({
         selectedSession,
-        data,
+        data: sessionPayload,
       });
 
       switch (decision.kind) {
@@ -1324,11 +1388,40 @@ export const Schedule = React.memo(() => {
           return;
         }
         case "edit-update": {
-          await updateSessionMutation.mutateAsync(data);
+          if (selectedSession && clinicalNoteDraft) {
+            if (!activeOrganizationId) {
+              throw new Error("Organization context is required to save clinical session notes.");
+            }
+            if (!user?.id) {
+              throw new Error("Sign in again before saving clinical session notes.");
+            }
+            if (!clinicalNoteDraft.authorizationId || !clinicalNoteDraft.serviceCode) {
+              throw new Error(
+                "Authorization and service code are required to save clinical session notes from schedule.",
+              );
+            }
+            await upsertClientSessionNoteForSession({
+              sessionId: selectedSession.id,
+              clientId: sessionPayload.client_id ?? selectedSession.client_id,
+              authorizationId: clinicalNoteDraft.authorizationId,
+              therapistId: sessionPayload.therapist_id ?? selectedSession.therapist_id,
+              organizationId: activeOrganizationId,
+              actorUserId: user.id,
+              serviceCode: clinicalNoteDraft.serviceCode,
+              sessionDate: format(parseISO(sessionPayload.start_time ?? selectedSession.start_time), "yyyy-MM-dd"),
+              startTime: format(parseISO(sessionPayload.start_time ?? selectedSession.start_time), "HH:mm:ss"),
+              endTime: format(parseISO(sessionPayload.end_time ?? selectedSession.end_time), "HH:mm:ss"),
+              goalsAddressed: clinicalNoteDraft.goalsAddressed,
+              goalIds: clinicalNoteDraft.goalIds,
+              goalNotes: clinicalNoteDraft.goalNotes,
+              narrative: clinicalNoteDraft.narrative,
+            });
+          }
+          await updateSessionMutation.mutateAsync(sessionPayload);
           return;
         }
         case "create": {
-          await createSessionMutation.mutateAsync(data);
+          await createSessionMutation.mutateAsync(sessionPayload);
           return;
         }
         case "create-blocked": {
@@ -1343,6 +1436,7 @@ export const Schedule = React.memo(() => {
     },
     [
       selectedSession,
+      user?.id,
       activeOrganizationId,
       scheduleResetSetters,
       cancelSessionMutation,

@@ -127,6 +127,23 @@ export interface CreateClientSessionNoteInput {
   readonly sessionId?: string | null;
 }
 
+export interface UpsertClientSessionNoteForSessionInput {
+  readonly sessionId: string;
+  readonly clientId: string;
+  readonly authorizationId: string;
+  readonly therapistId: string;
+  readonly organizationId: string;
+  readonly actorUserId: string;
+  readonly serviceCode: string;
+  readonly sessionDate: string;
+  readonly startTime: string;
+  readonly endTime: string;
+  readonly goalsAddressed: string[];
+  readonly goalIds: string[];
+  readonly goalNotes: Record<string, string>;
+  readonly narrative: string;
+}
+
 export const createClientSessionNote = async (
   payload: CreateClientSessionNoteInput
 ): Promise<SessionNote> => {
@@ -211,6 +228,87 @@ export const createClientSessionNote = async (
   return mapRowToSessionNote(
     data as ClientSessionNoteRow & { therapists: TherapistSummary | null },
     (data as { therapists: TherapistSummary | null }).therapists ?? null
+  );
+};
+
+export const upsertClientSessionNoteForSession = async (
+  payload: UpsertClientSessionNoteForSessionInput,
+): Promise<SessionNote> => {
+  const trimmedNarrative = payload.narrative.trim();
+  const cleanedGoalNotes = Object.fromEntries(
+    Object.entries(payload.goalNotes)
+      .map(([goalId, noteText]) => [goalId, noteText.trim()])
+      .filter(([, noteText]) => noteText.length > 0),
+  );
+  const sessionDuration = calculateSessionDurationMinutes(payload.startTime, payload.endTime);
+  if (sessionDuration <= 0) {
+    throw new Error('End time must be later than start time.');
+  }
+
+  const { data: existingRow, error: existingError } = await supabase
+    .from(TABLE)
+    .select('id, is_locked')
+    .eq('session_id', payload.sessionId)
+    .eq('organization_id', payload.organizationId)
+    .maybeSingle();
+
+  if (existingError) {
+    throw existingError;
+  }
+
+  if (existingRow?.is_locked) {
+    throw new Error('Session note is locked and cannot be edited from schedule.');
+  }
+
+  if (!existingRow?.id) {
+    return createClientSessionNote({
+      authorizationId: payload.authorizationId,
+      clientId: payload.clientId,
+      createdBy: payload.actorUserId,
+      organizationId: payload.organizationId,
+      therapistId: payload.therapistId,
+      serviceCode: payload.serviceCode,
+      sessionDate: payload.sessionDate,
+      startTime: payload.startTime,
+      endTime: payload.endTime,
+      sessionDuration,
+      goalsAddressed: payload.goalsAddressed,
+      goalIds: payload.goalIds,
+      goalNotes: cleanedGoalNotes,
+      narrative: trimmedNarrative,
+      isLocked: false,
+      sessionId: payload.sessionId,
+    });
+  }
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({
+      authorization_id: payload.authorizationId,
+      therapist_id: payload.therapistId,
+      service_code: payload.serviceCode,
+      session_date: payload.sessionDate,
+      start_time: payload.startTime,
+      end_time: payload.endTime,
+      session_duration: sessionDuration,
+      goals_addressed: payload.goalsAddressed,
+      goal_ids: payload.goalIds,
+      goal_notes: Object.keys(cleanedGoalNotes).length > 0 ? cleanedGoalNotes : null,
+      narrative: trimmedNarrative,
+      session_id: payload.sessionId,
+    })
+    .eq('id', existingRow.id)
+    .eq('organization_id', payload.organizationId)
+    .select(SESSION_NOTE_WITH_THERAPIST_SELECT)
+    .single();
+
+  if (error || !data) {
+    throw (error ?? new Error('Unable to update session note'));
+  }
+
+  return mapRowToSessionNote(
+    data as ClientSessionNoteRow & { therapists: TherapistSummary | null },
+    (data as { therapists: TherapistSummary | null }).therapists ?? null,
   );
 };
 

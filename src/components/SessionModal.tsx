@@ -22,6 +22,8 @@ import {
 } from "../features/scheduling/domain/time";
 import { startSessionFromModal } from "../features/scheduling/domain/sessionStart";
 
+const ENABLE_ALTERNATIVE_TIME_SUGGESTIONS = false;
+
 export interface SessionModalClinicalNotesPayload {
   session_note_narrative?: string;
   session_note_goal_notes?: Record<string, string>;
@@ -568,6 +570,12 @@ export function SessionModal({
       setConflicts(newConflicts);
 
       if (newConflicts.length === 0) {
+        setAlternativeTimes([]);
+        setIsLoadingAlternatives(false);
+        return;
+      }
+
+      if (!ENABLE_ALTERNATIVE_TIME_SUGGESTIONS) {
         setAlternativeTimes([]);
         setIsLoadingAlternatives(false);
         return;
@@ -1342,7 +1350,7 @@ export function SessionModal({
             </div>
 
             {/* Alternative Times Section */}
-            {conflicts.length > 0 && (
+            {ENABLE_ALTERNATIVE_TIME_SUGGESTIONS && conflicts.length > 0 && (
               <AlternativeTimes 
                 alternatives={alternativeTimes}
                 isLoading={isLoadingAlternatives}

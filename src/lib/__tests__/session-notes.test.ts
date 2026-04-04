@@ -9,7 +9,7 @@ describe('fetchClientSessionNotes', () => {
   });
 });
 import { describe, expect, it, vi } from 'vitest';
-import { createClientSessionNote } from '../session-notes';
+import { createClientSessionNote, upsertClientSessionNoteForSession } from '../session-notes';
 
 const mockFrom = vi.fn();
 let lastInsertPayload: Record<string, unknown> | null = null;
@@ -195,6 +195,109 @@ describe('createClientSessionNote', () => {
     });
 
     expect(lastInsertPayload?.goal_notes).toBeNull();
+  });
+});
+
+describe('upsertClientSessionNoteForSession', () => {
+  it('updates existing unlocked session notes', async () => {
+    let lastUpdatePayload: Record<string, unknown> | null = null;
+    mockFrom.mockImplementation((table: string) => {
+      if (table !== 'client_session_notes') {
+        return {};
+      }
+      return {
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: { id: 'note-existing', is_locked: false },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+        update: (payload: Record<string, unknown>) => {
+          lastUpdatePayload = payload;
+          return {
+            eq: () => ({
+              eq: () => ({
+                select: () => ({
+                  single: async () => ({
+                    data: {
+                      ...noteRow,
+                      ...payload,
+                      id: 'note-existing',
+                      therapists: null,
+                    },
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          };
+        },
+      };
+    });
+
+    const result = await upsertClientSessionNoteForSession({
+      sessionId: 'session-1',
+      clientId: 'client-1',
+      authorizationId: 'auth-1',
+      therapistId: 'therapist-1',
+      organizationId: 'org-1',
+      actorUserId: 'user-1',
+      serviceCode: '97153',
+      sessionDate: '2025-06-01',
+      startTime: '09:00:00',
+      endTime: '10:00:00',
+      goalsAddressed: ['Goal A'],
+      goalIds: ['goal-1'],
+      goalNotes: { 'goal-1': '  Progress captured  ' },
+      narrative: '  Narrative text  ',
+    });
+
+    expect(result.id).toBe('note-existing');
+    expect(lastUpdatePayload?.goal_notes).toEqual({ 'goal-1': 'Progress captured' });
+    expect(lastUpdatePayload?.narrative).toBe('Narrative text');
+  });
+
+  it('rejects updates for locked session notes', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table !== 'client_session_notes') {
+        return {};
+      }
+      return {
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: { id: 'locked-note', is_locked: true },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      };
+    });
+
+    await expect(
+      upsertClientSessionNoteForSession({
+        sessionId: 'session-1',
+        clientId: 'client-1',
+        authorizationId: 'auth-1',
+        therapistId: 'therapist-1',
+        organizationId: 'org-1',
+        actorUserId: 'user-1',
+        serviceCode: '97153',
+        sessionDate: '2025-06-01',
+        startTime: '09:00:00',
+        endTime: '10:00:00',
+        goalsAddressed: ['Goal A'],
+        goalIds: ['goal-1'],
+        goalNotes: { 'goal-1': 'Progress captured' },
+        narrative: 'Narrative text',
+      }),
+    ).rejects.toThrow(/locked/i);
   });
 });
 

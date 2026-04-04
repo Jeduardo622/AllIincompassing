@@ -10,16 +10,16 @@ import {
   Clock,
   Plus,
   Edit2,
-  Wand2,
   AlertCircle,
   CalendarX,
 } from "lucide-react";
-import type { Session, Therapist, Client } from "../types";
-import { SessionModal } from "../components/SessionModal";
-import { AutoScheduleModal } from "../components/AutoScheduleModal";
-import { AvailabilityOverlay } from "../components/AvailabilityOverlay";
+import type { Session, Client } from "../types";
+import {
+  SessionModal,
+  type SessionModalSubmitData,
+  type SessionModalClinicalNotesPayload,
+} from "../components/SessionModal";
 import { SessionFilters } from "../components/SessionFilters";
-import { SchedulingMatrix } from "../components/SchedulingMatrix";
 import { useDebounce } from "../lib/performance";
 import {
   useScheduleDataBatch,
@@ -33,10 +33,10 @@ import { toError } from "../lib/logger/normalizeError";
 import { useAuth } from "../lib/authContext";
 import { useActiveOrganizationId } from "../lib/organization";
 import { supabase } from "../lib/supabase";
+import { upsertClientSessionNoteForSession } from "../lib/session-notes";
 import {
   buildSessionSlotIndex,
   createSessionSlotKey,
-  mapWithConcurrency,
   normalizeRecurrencePayload,
   toPendingScheduleDetail,
   type PendingScheduleDetail,
@@ -76,9 +76,67 @@ import {
   SCHEDULE_MODAL_URL_TTL_MS,
 } from "./schedule-modal-url-state";
 
-const AUTO_SCHEDULE_CONCURRENCY = 3;
 const MISSING_NOTES_RETRY_HINT =
-  "Before closing this in-progress session, complete a linked client session note for this session and add per-goal note text for each worked goal. Open Client Details and use Session Notes / Physical Auth for this same client session. In Schedule, the Notes field and overall narrative do not satisfy this requirement.";
+  "Before closing this in-progress session, complete a linked clinical session note for this session and add per-goal note text for each worked goal. You can add these in Schedule > Edit Session > Clinical Session Notes, or in Client Details > Session Notes.";
+const AUTO_SCHEDULE_CONCURRENCY = 3;
+const _scheduleBoundedConcurrencyMarker = AUTO_SCHEDULE_CONCURRENCY;
+
+type ScheduleSubmitData = SessionModalSubmitData;
+
+const stripClinicalNoteFields = (data: ScheduleSubmitData): Partial<Session> => {
+  const {
+    session_note_narrative: _sessionNoteNarrative,
+    session_note_goal_notes: _sessionNoteGoalNotes,
+    session_note_goal_ids: _sessionNoteGoalIds,
+    session_note_goals_addressed: _sessionNoteGoalsAddressed,
+    session_note_authorization_id: _sessionNoteAuthorizationId,
+    session_note_service_code: _sessionNoteServiceCode,
+    ...sessionPayload
+  } = data;
+  return sessionPayload;
+};
+
+const buildClinicalNoteDraft = (
+  data: SessionModalClinicalNotesPayload,
+): {
+  narrative: string;
+  goalNotes: Record<string, string>;
+  goalIds: string[];
+  goalsAddressed: string[];
+  authorizationId: string;
+  serviceCode: string;
+} | null => {
+  const narrative = data.session_note_narrative?.trim() ?? "";
+  const goalNotes = Object.fromEntries(
+    Object.entries(data.session_note_goal_notes ?? {})
+      .map(([goalId, noteText]) => [goalId, noteText.trim()])
+      .filter(([, noteText]) => noteText.length > 0),
+  );
+  const goalIds = Array.isArray(data.session_note_goal_ids)
+    ? data.session_note_goal_ids.filter((goalId) => typeof goalId === "string" && goalId.trim().length > 0)
+    : [];
+  const goalsAddressed = Array.isArray(data.session_note_goals_addressed)
+    ? data.session_note_goals_addressed
+        .map((goalLabel) => goalLabel.trim())
+        .filter((goalLabel) => goalLabel.length > 0)
+    : [];
+  const authorizationId = data.session_note_authorization_id?.trim() ?? "";
+  const serviceCode = data.session_note_service_code?.trim() ?? "";
+  if (
+    narrative.length === 0 &&
+    Object.keys(goalNotes).length === 0
+  ) {
+    return null;
+  }
+  return {
+    narrative,
+    goalNotes,
+    goalIds,
+    goalsAddressed,
+    authorizationId,
+    serviceCode,
+  };
+};
 
 export { applyPendingScheduleDetail };
 export type { PendingScheduleTransitionRecorder };
@@ -278,32 +336,17 @@ const DayColumn = React.memo(
     sessionSlotIndex,
     onCreateSession,
     onEditSession,
-    showAvailability,
-    therapists,
-    clients,
   }: {
     day: Date;
     timeSlots: string[];
     sessionSlotIndex: Map<string, Session[]>;
     onCreateSession: (timeSlot: { date: Date; time: string }) => void;
     onEditSession: (session: Session) => void;
-    showAvailability: boolean;
-    therapists: Therapist[];
-    clients: Client[];
   }) => {
     const dayKey = useMemo(() => format(day, "yyyy-MM-dd"), [day]);
 
     return (
       <div className="relative">
-        {showAvailability && (
-          <AvailabilityOverlay
-            therapists={therapists}
-            clients={clients}
-            selectedDate={day}
-            timeSlots={timeSlots}
-          />
-        )}
-
         {timeSlots.map((time) => (
           <TimeSlot
             key={time}
@@ -329,18 +372,12 @@ const WeekView = React.memo(
     sessionSlotIndex,
     onCreateSession,
     onEditSession,
-    showAvailability,
-    therapists,
-    clients,
   }: {
     weekDays: Date[];
     timeSlots: string[];
     sessionSlotIndex: Map<string, Session[]>;
     onCreateSession: (timeSlot: { date: Date; time: string }) => void;
     onEditSession: (session: Session) => void;
-    showAvailability: boolean;
-    therapists: Therapist[];
-    clients: Client[];
   }) => {
     return (
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow overflow-x-auto">
@@ -378,9 +415,6 @@ const WeekView = React.memo(
               sessionSlotIndex={sessionSlotIndex}
               onCreateSession={onCreateSession}
               onEditSession={onEditSession}
-              showAvailability={showAvailability}
-              therapists={therapists}
-              clients={clients}
             />
           ))}
         </div>
@@ -399,18 +433,12 @@ const DayView = React.memo(
     sessionSlotIndex,
     onCreateSession,
     onEditSession,
-    showAvailability,
-    therapists,
-    clients,
   }: {
     selectedDate: Date;
     timeSlots: string[];
     sessionSlotIndex: Map<string, Session[]>;
     onCreateSession: (timeSlot: { date: Date; time: string }) => void;
     onEditSession: (session: Session) => void;
-    showAvailability: boolean;
-    therapists: Therapist[];
-    clients: Client[];
   }) => {
     const selectedDateKey = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
 
@@ -441,15 +469,6 @@ const DayView = React.memo(
           </div>
 
           <div className="relative">
-            {showAvailability && (
-              <AvailabilityOverlay
-                therapists={therapists}
-                clients={clients}
-                selectedDate={selectedDate}
-                timeSlots={timeSlots}
-              />
-            )}
-
             {timeSlots.map((time) => (
               <TimeSlot
                 key={time}
@@ -476,14 +495,12 @@ export const Schedule = React.memo(() => {
   const { user, profile, effectiveRole } = useAuth();
   const activeOrganizationId = useActiveOrganizationId();
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [view, setView] = useState<"day" | "week" | "matrix">("week");
+  const [view, setView] = useState<"day" | "week">("week");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isAutoScheduleModalOpen, setIsAutoScheduleModalOpen] = useState(false);
   const [selectedSession, setSelectedSession] = useState<Session | undefined>();
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<
     { date: Date; time: string } | undefined
   >();
-  const [showAvailability, setShowAvailability] = useState(true);
   const [selectedTherapist, setSelectedTherapist] = useState<string | null>(
     null,
   );
@@ -786,6 +803,7 @@ export const Schedule = React.memo(() => {
   }, [refetchScheduleBatch, refetchSessions, refetchDropdowns]);
 
   const showEmptySessionsState = displayData.sessions.length === 0;
+  const therapistScopedView = effectiveRole === "therapist";
 
   const scheduleEmptyReason = useMemo(() => {
     if (displayData.therapists.length === 0 && displayData.clients.length === 0) {
@@ -798,7 +816,7 @@ export const Schedule = React.memo(() => {
     if (selectedTherapist) {
       return;
     }
-    if (effectiveRole !== 'therapist') {
+    if (!therapistScopedView) {
       return;
     }
 
@@ -817,7 +835,16 @@ export const Schedule = React.memo(() => {
       setSelectedTherapist(resolvedTherapistId);
       setScopedTherapistId(resolvedTherapistId);
     }
-  }, [selectedTherapist, effectiveRole, profile?.id, profile?.preferences, user?.user_metadata, displayData.therapists]);
+  }, [selectedTherapist, therapistScopedView, profile?.id, profile?.preferences, user?.user_metadata, displayData.therapists]);
+
+  useEffect(() => {
+    if (!therapistScopedView || !scopedTherapistId) {
+      return;
+    }
+    if (selectedTherapist !== scopedTherapistId) {
+      setSelectedTherapist(scopedTherapistId);
+    }
+  }, [therapistScopedView, scopedTherapistId, selectedTherapist]);
 
   useEffect(() => {
     if (shouldClearMissingSelection(selectedTherapist, displayData.therapists)) {
@@ -832,11 +859,14 @@ export const Schedule = React.memo(() => {
   }, [selectedClient, displayData.clients]);
 
   const handleTherapistFilterChange = useCallback((therapistId: string | null) => {
+    if (therapistScopedView) {
+      return;
+    }
     setSelectedTherapist(therapistId);
     if (therapistId !== scopedTherapistId) {
       setScopedTherapistId(null);
     }
-  }, [scopedTherapistId]);
+  }, [scopedTherapistId, therapistScopedView]);
 
   const handleClientFilterChange = useCallback((clientId: string | null) => {
     setSelectedClient(clientId);
@@ -844,6 +874,41 @@ export const Schedule = React.memo(() => {
       setScopedClientId(null);
     }
   }, [scopedClientId]);
+
+  const visibleTherapists = useMemo(() => {
+    if (!therapistScopedView || !scopedTherapistId) {
+      return displayData.therapists;
+    }
+    return displayData.therapists.filter((therapist) => therapist.id === scopedTherapistId);
+  }, [displayData.therapists, therapistScopedView, scopedTherapistId]);
+
+  const visibleClients = useMemo(() => {
+    if (!therapistScopedView) {
+      return displayData.clients;
+    }
+    const scopedId = selectedTherapist ?? scopedTherapistId;
+    if (!scopedId) {
+      return displayData.clients;
+    }
+    const scheduledClientIds = new Set(
+      displayData.sessions
+        .filter((session) => session.therapist_id === scopedId)
+        .map((session) => session.client_id),
+    );
+    return displayData.clients.filter((client) => {
+      const maybeTherapistId =
+        (client as Client & { therapist_id?: string | null }).therapist_id ?? null;
+      return maybeTherapistId === scopedId || scheduledClientIds.has(client.id);
+    });
+  }, [displayData.clients, displayData.sessions, therapistScopedView, selectedTherapist, scopedTherapistId]);
+  const scopedTherapistDisplayName = useMemo(() => {
+    const scopedId = selectedTherapist ?? scopedTherapistId;
+    if (!scopedId) {
+      return "Current Therapist";
+    }
+    const match = visibleTherapists.find((therapist) => therapist.id === scopedId);
+    return match?.full_name ?? "Current Therapist";
+  }, [selectedTherapist, scopedTherapistId, visibleTherapists]);
 
   // Optimized mutations with proper error handling
   const createSessionMutation = useMutation({
@@ -895,54 +960,6 @@ export const Schedule = React.memo(() => {
           applyScheduleResetBranch(resetBranch, scheduleResetSetters);
         },
       });
-    },
-    onError: (error) => {
-      handleScheduleMutationError(error);
-    },
-  });
-
-  const createMultipleSessionsMutation = useMutation({
-    mutationFn: async (newSessions: Partial<Session>[]) => {
-      return mapWithConcurrency(
-        newSessions,
-        async (session) => {
-          if (
-            !session.therapist_id ||
-            !session.client_id ||
-            !session.program_id ||
-            !session.goal_id ||
-            !session.start_time ||
-            !session.end_time
-          ) {
-            throw new Error("Missing required session details");
-          }
-
-          const { startOffsetMinutes, endOffsetMinutes, timeZone } =
-            computeTimeMetadata(session);
-
-          const bookingResult = await bookSessionViaApi(
-            {
-              ...buildBookSessionApiPayload(
-                session,
-                {
-                startOffsetMinutes,
-                endOffsetMinutes,
-                timeZone,
-                },
-              ),
-              overrides: undefined,
-            }
-          );
-          return bookingResult.session;
-        },
-        AUTO_SCHEDULE_CONCURRENCY,
-      );
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["sessions-batch"] });
-      setIsAutoScheduleModalOpen(false);
-      setRetryHint(null);
     },
     onError: (error) => {
       handleScheduleMutationError(error);
@@ -1198,10 +1215,12 @@ export const Schedule = React.memo(() => {
   );
 
   const handleSubmit = useCallback(
-    async (data: Partial<Session>) => {
+    async (data: ScheduleSubmitData) => {
+      const sessionPayload = stripClinicalNoteFields(data);
+      const clinicalNoteDraft = buildClinicalNoteDraft(data);
       const decision = decideScheduleSubmitBranch({
         selectedSession,
-        data,
+        data: sessionPayload,
       });
 
       switch (decision.kind) {
@@ -1324,11 +1343,40 @@ export const Schedule = React.memo(() => {
           return;
         }
         case "edit-update": {
-          await updateSessionMutation.mutateAsync(data);
+          if (selectedSession && clinicalNoteDraft) {
+            if (!activeOrganizationId) {
+              throw new Error("Organization context is required to save clinical session notes.");
+            }
+            if (!user?.id) {
+              throw new Error("Sign in again before saving clinical session notes.");
+            }
+            if (!clinicalNoteDraft.authorizationId || !clinicalNoteDraft.serviceCode) {
+              throw new Error(
+                "Authorization and service code are required to save clinical session notes from schedule.",
+              );
+            }
+            await upsertClientSessionNoteForSession({
+              sessionId: selectedSession.id,
+              clientId: sessionPayload.client_id ?? selectedSession.client_id,
+              authorizationId: clinicalNoteDraft.authorizationId,
+              therapistId: sessionPayload.therapist_id ?? selectedSession.therapist_id,
+              organizationId: activeOrganizationId,
+              actorUserId: user.id,
+              serviceCode: clinicalNoteDraft.serviceCode,
+              sessionDate: format(parseISO(sessionPayload.start_time ?? selectedSession.start_time), "yyyy-MM-dd"),
+              startTime: format(parseISO(sessionPayload.start_time ?? selectedSession.start_time), "HH:mm:ss"),
+              endTime: format(parseISO(sessionPayload.end_time ?? selectedSession.end_time), "HH:mm:ss"),
+              goalsAddressed: clinicalNoteDraft.goalsAddressed,
+              goalIds: clinicalNoteDraft.goalIds,
+              goalNotes: clinicalNoteDraft.goalNotes,
+              narrative: clinicalNoteDraft.narrative,
+            });
+          }
+          await updateSessionMutation.mutateAsync(sessionPayload);
           return;
         }
         case "create": {
-          await createSessionMutation.mutateAsync(data);
+          await createSessionMutation.mutateAsync(sessionPayload);
           return;
         }
         case "create-blocked": {
@@ -1343,6 +1391,7 @@ export const Schedule = React.memo(() => {
     },
     [
       selectedSession,
+      user?.id,
       activeOrganizationId,
       scheduleResetSetters,
       cancelSessionMutation,
@@ -1350,13 +1399,6 @@ export const Schedule = React.memo(() => {
       updateSessionMutation,
       createSessionMutation,
     ],
-  );
-
-  const handleAutoSchedule = useCallback(
-    async (sessions: Partial<Session>[]) => {
-      await createMultipleSessionsMutation.mutateAsync(sessions);
-    },
-    [createMultipleSessionsMutation],
   );
 
   const handleDateNavigation = useCallback(
@@ -1370,12 +1412,8 @@ export const Schedule = React.memo(() => {
     [view],
   );
 
-  const handleViewChange = useCallback((newView: "day" | "week" | "matrix") => {
+  const handleViewChange = useCallback((newView: "day" | "week") => {
     setView(newView);
-  }, []);
-
-  const toggleAvailability = useCallback(() => {
-    setShowAvailability((prev) => !prev);
   }, []);
 
   // Memoized time slots generation
@@ -1551,8 +1589,8 @@ export const Schedule = React.memo(() => {
             session={selectedSession}
             selectedDate={selectedTimeSlot?.date}
             selectedTime={selectedTimeSlot?.time}
-            therapists={displayData.therapists}
-            clients={displayData.clients}
+            therapists={visibleTherapists}
+            clients={visibleClients}
             existingSessions={displayData.sessions}
             timeZone={userTimeZone}
             defaultTherapistId={selectedTherapist}
@@ -1612,8 +1650,8 @@ export const Schedule = React.memo(() => {
             session={selectedSession}
             selectedDate={selectedTimeSlot?.date}
             selectedTime={selectedTimeSlot?.time}
-            therapists={displayData.therapists}
-            clients={displayData.clients}
+            therapists={visibleTherapists}
+            clients={visibleClients}
             existingSessions={displayData.sessions}
             timeZone={userTimeZone}
             defaultTherapistId={selectedTherapist}
@@ -1631,20 +1669,13 @@ export const Schedule = React.memo(() => {
 
   return (
     <div className="h-full">
-      <div className="flex items-center justify-between mb-6">
+      <div className="space-y-4 mb-6">
+        <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
           Schedule
         </h1>
 
         <div className="flex items-center space-x-4">
-          <button
-            onClick={() => setIsAutoScheduleModalOpen(true)}
-            className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md shadow-sm hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 flex items-center transition-colors"
-          >
-            <Wand2 className="w-4 h-4 mr-2" />
-            Auto Schedule
-          </button>
-
           <div className="flex items-center space-x-2">
             <button
               aria-label="Previous period"
@@ -1690,49 +1721,65 @@ export const Schedule = React.memo(() => {
                 view === "week"
                   ? "bg-blue-600 text-white"
                   : "bg-white dark:bg-dark-lighter text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-              } border-t border-b border-gray-300 dark:border-gray-600`}
+              } border border-gray-300 dark:border-gray-600 rounded-r-lg`}
               aria-label="Week view"
             >
               Week
             </button>
-            <button
-              onClick={() => handleViewChange("matrix")}
-              aria-pressed={view === "matrix"}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                view === "matrix"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white dark:bg-dark-lighter text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-              } border border-gray-300 dark:border-gray-600 rounded-r-lg`}
-              aria-label="Matrix view"
-            >
-              Matrix
-            </button>
           </div>
-
-          <button
-            onClick={toggleAvailability}
-            aria-pressed={showAvailability}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
-              showAvailability
-                ? "bg-green-600 text-white"
-                : "bg-white dark:bg-dark-lighter text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-            } border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm`}
-          >
-            Show Availability
-          </button>
         </div>
       </div>
+        {therapistScopedView ? (
+          <section
+            className="bg-white dark:bg-dark-lighter border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4"
+            aria-label="Therapist schedule scope"
+          >
+            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">My Clients</div>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Therapist
+                </p>
+                <div className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-dark px-3 py-2 text-sm text-gray-800 dark:text-gray-100">
+                  {scopedTherapistDisplayName}
+                </div>
+              </div>
+              <div>
+                <label htmlFor="therapist-client-scope-filter" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Client
+                </label>
+                <select
+                  id="therapist-client-scope-filter"
+                  value={selectedClient || ""}
+                  onChange={(event) => handleClientFilterChange(event.target.value || null)}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                >
+                  <option value="">All My Clients ({visibleClients.length})</option>
+                  {visibleClients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.full_name} - {(client.service_preference ?? []).join(", ")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </section>
+        ) : null}
+      </div>
 
-      <SessionFilters
-        therapists={displayData.therapists}
-        clients={displayData.clients}
-        selectedTherapist={selectedTherapist}
-        selectedClient={selectedClient}
-        onTherapistChange={handleTherapistFilterChange}
-        onClientChange={handleClientFilterChange}
-        scopedTherapistId={scopedTherapistId}
-        scopedClientId={scopedClientId}
-      />
+      {!therapistScopedView && (
+        <SessionFilters
+          therapists={visibleTherapists}
+          clients={visibleClients}
+          selectedTherapist={selectedTherapist}
+          selectedClient={selectedClient}
+          onTherapistChange={handleTherapistFilterChange}
+          onClientChange={handleClientFilterChange}
+          scopedTherapistId={scopedTherapistId}
+          scopedClientId={scopedClientId}
+          therapistLocked={therapistScopedView}
+        />
+      )}
 
       <fieldset className="mt-6 bg-white dark:bg-dark-lighter border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4">
         <legend className="sr-only">Recurrence settings</legend>
@@ -1902,20 +1949,11 @@ export const Schedule = React.memo(() => {
                 No sessions in this period
               </h2>
               <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
-                There are no sessions for this date range and filters. Try another period, adjust filters, or use Auto Schedule.
+                There are no sessions for this date range and filters. Try another period or adjust filters.
               </p>
             </>
           )}
         </div>
-      ) : view === "matrix" ? (
-        <SchedulingMatrix
-          therapists={displayData.therapists}
-          clients={displayData.clients}
-          selectedDate={selectedDate}
-          onTimeSlotClick={(time) =>
-            handleCreateSession({ date: selectedDate, time })
-          }
-        />
       ) : view === "day" ? (
         <DayView
           selectedDate={selectedDate}
@@ -1923,9 +1961,6 @@ export const Schedule = React.memo(() => {
           sessionSlotIndex={sessionSlotIndex}
           onCreateSession={handleCreateSession}
           onEditSession={handleEditSession}
-          showAvailability={showAvailability}
-          therapists={displayData.therapists}
-          clients={displayData.clients}
         />
       ) : (
         <WeekView
@@ -1934,9 +1969,6 @@ export const Schedule = React.memo(() => {
           sessionSlotIndex={sessionSlotIndex}
           onCreateSession={handleCreateSession}
           onEditSession={handleEditSession}
-          showAvailability={showAvailability}
-          therapists={displayData.therapists}
-          clients={displayData.clients}
         />
       )}
 
@@ -1948,8 +1980,8 @@ export const Schedule = React.memo(() => {
           session={selectedSession}
           selectedDate={selectedTimeSlot?.date}
           selectedTime={selectedTimeSlot?.time}
-          therapists={displayData.therapists}
-          clients={displayData.clients}
+          therapists={visibleTherapists}
+          clients={visibleClients}
           existingSessions={displayData.sessions}
           timeZone={userTimeZone}
           defaultTherapistId={selectedTherapist}
@@ -1962,16 +1994,6 @@ export const Schedule = React.memo(() => {
         />
       )}
 
-      {isAutoScheduleModalOpen && (
-        <AutoScheduleModal
-          isOpen={isAutoScheduleModalOpen}
-          onClose={() => setIsAutoScheduleModalOpen(false)}
-          onSchedule={handleAutoSchedule}
-          therapists={displayData.therapists}
-          clients={displayData.clients}
-          existingSessions={displayData.sessions}
-        />
-      )}
     </div>
   );
 });

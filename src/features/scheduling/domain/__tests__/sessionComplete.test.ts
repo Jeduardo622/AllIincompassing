@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const callEdgeFunctionHttpMock = vi.hoisted(() => vi.fn());
+const callApiMock = vi.hoisted(() => vi.fn());
 const supabaseFromMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../../../lib/api", () => ({
-  callEdgeFunctionHttp: callEdgeFunctionHttpMock,
+  callApi: callApiMock,
 }));
 
 vi.mock("../../../../lib/supabase", () => ({
@@ -15,12 +15,12 @@ vi.mock("../../../../lib/supabase", () => ({
 
 describe("completeSessionFromModal", () => {
   beforeEach(() => {
-    callEdgeFunctionHttpMock.mockReset();
+    callApiMock.mockReset();
     supabaseFromMock.mockReset();
   });
 
   it("calls sessions-complete edge function with completed outcome", async () => {
-    callEdgeFunctionHttpMock.mockResolvedValueOnce(
+    callApiMock.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
           success: true,
@@ -37,8 +37,8 @@ describe("completeSessionFromModal", () => {
       notes: "Session complete",
     });
 
-    expect(callEdgeFunctionHttpMock).toHaveBeenCalledWith(
-      "sessions-complete",
+    expect(callApiMock).toHaveBeenCalledWith(
+      "/api/sessions-complete",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
@@ -51,7 +51,7 @@ describe("completeSessionFromModal", () => {
   });
 
   it("calls sessions-complete edge function with no-show outcome", async () => {
-    callEdgeFunctionHttpMock.mockResolvedValueOnce(
+    callApiMock.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
           success: true,
@@ -67,8 +67,8 @@ describe("completeSessionFromModal", () => {
       outcome: "no-show",
     });
 
-    expect(callEdgeFunctionHttpMock).toHaveBeenCalledWith(
-      "sessions-complete",
+    expect(callApiMock).toHaveBeenCalledWith(
+      "/api/sessions-complete",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
@@ -81,7 +81,7 @@ describe("completeSessionFromModal", () => {
   });
 
   it("sends null notes when notes are not provided", async () => {
-    callEdgeFunctionHttpMock.mockResolvedValueOnce(
+    callApiMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ success: true, data: {} }), { status: 200 }),
     );
 
@@ -89,13 +89,13 @@ describe("completeSessionFromModal", () => {
     await completeSessionFromModal({ sessionId: "session-3", outcome: "completed" });
 
     const calledWith = JSON.parse(
-      callEdgeFunctionHttpMock.mock.calls[0][1].body as string,
+      callApiMock.mock.calls[0][1].body as string,
     ) as Record<string, unknown>;
     expect(calledWith.notes).toBeNull();
   });
 
   it("throws a normalized error on non-ok response", async () => {
-    callEdgeFunctionHttpMock.mockResolvedValueOnce(
+    callApiMock.mockResolvedValueOnce(
       new Response(
         JSON.stringify({ success: false, error: "Session is already in a terminal state: completed", code: "ALREADY_TERMINAL" }),
         { status: 409 },
@@ -109,7 +109,7 @@ describe("completeSessionFromModal", () => {
   });
 
   it("throws on network/parse failure", async () => {
-    callEdgeFunctionHttpMock.mockResolvedValueOnce(
+    callApiMock.mockResolvedValueOnce(
       new Response("not json", { status: 500 }),
     );
 

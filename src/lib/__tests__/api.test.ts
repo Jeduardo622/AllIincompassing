@@ -1,0 +1,100 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const getSessionMock = vi.hoisted(() => vi.fn());
+const getUserMock = vi.hoisted(() => vi.fn());
+const refreshSessionMock = vi.hoisted(() => vi.fn());
+const callApiRouteMock = vi.hoisted(() => vi.fn());
+const callEdgeRouteMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../supabase", () => ({
+  supabase: {
+    auth: {
+      getSession: getSessionMock,
+      getUser: getUserMock,
+      refreshSession: refreshSessionMock,
+    },
+  },
+}));
+
+vi.mock("../sdk/client", () => ({
+  callApiRoute: callApiRouteMock,
+  callEdgeRoute: callEdgeRouteMock,
+}));
+
+describe("lib/api access token resolution", () => {
+  const createJwt = (expSeconds: number) =>
+    `header.${Buffer.from(JSON.stringify({ exp: expSeconds }), "utf8").toString("base64url")}.sig`;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    callApiRouteMock.mockResolvedValue(new Response(null, { status: 204 }));
+    callEdgeRouteMock.mockResolvedValue(new Response(null, { status: 204 }));
+  });
+
+  it("uses existing session access token when available", async () => {
+    getSessionMock.mockResolvedValue({
+      data: { session: { access_token: "token-primary" } },
+    });
+
+    const { callApi } = await import("../api");
+    await callApi("/api/sessions-complete", { method: "POST", body: "{}" });
+
+    const options = callApiRouteMock.mock.calls[0]?.[2] as { getAccessToken?: () => Promise<string | null> };
+    const token = await options.getAccessToken?.();
+    expect(token).toBe("token-primary");
+    expect(getUserMock).not.toHaveBeenCalled();
+    expect(refreshSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("rehydrates token when session is initially empty but user exists", async () => {
+    getSessionMock
+      .mockResolvedValueOnce({ data: { session: null } })
+      .mockResolvedValueOnce({ data: { session: { access_token: "token-reloaded" } } });
+    getUserMock.mockResolvedValue({ data: { user: { id: "user-1" } } });
+
+    const { callApi } = await import("../api");
+    await callApi("/api/sessions-complete", { method: "POST", body: "{}" });
+
+    const options = callApiRouteMock.mock.calls[0]?.[2] as { getAccessToken?: () => Promise<string | null> };
+    const token = await options.getAccessToken?.();
+    expect(token).toBe("token-reloaded");
+    expect(getUserMock).toHaveBeenCalledTimes(1);
+    expect(refreshSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("refreshes session when token is still missing after user rehydration", async () => {
+    getSessionMock
+      .mockResolvedValueOnce({ data: { session: null } })
+      .mockResolvedValueOnce({ data: { session: null } });
+    getUserMock.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    refreshSessionMock.mockResolvedValue({
+      data: { session: { access_token: "token-refreshed" } },
+    });
+
+    const { callApi } = await import("../api");
+    await callApi("/api/sessions-complete", { method: "POST", body: "{}" });
+
+    const options = callApiRouteMock.mock.calls[0]?.[2] as { getAccessToken?: () => Promise<string | null> };
+    const token = await options.getAccessToken?.();
+    expect(token).toBe("token-refreshed");
+    expect(refreshSessionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes when session token is present but expired", async () => {
+    const expiredToken = createJwt(Math.floor(Date.now() / 1000) - 30);
+    getSessionMock.mockResolvedValue({
+      data: { session: { access_token: expiredToken } },
+    });
+    refreshSessionMock.mockResolvedValue({
+      data: { session: { access_token: "token-fresh" } },
+    });
+
+    const { callApi } = await import("../api");
+    await callApi("/api/sessions-complete", { method: "POST", body: "{}" });
+
+    const options = callApiRouteMock.mock.calls[0]?.[2] as { getAccessToken?: () => Promise<string | null> };
+    const token = await options.getAccessToken?.();
+    expect(token).toBe("token-fresh");
+    expect(refreshSessionMock).toHaveBeenCalledTimes(1);
+  });
+});

@@ -298,7 +298,7 @@ describe('Scheduling Integration - End-to-End Flow', () => {
     });
   });
 
-  it('should display availability in matrix view', async () => {
+  it('keeps day and week view controls interactive', async () => {
     // Setup API mocks
     server.use(
       http.post('*/rest/v1/rpc/get_schedule_data_batch', () => {
@@ -323,13 +323,15 @@ describe('Scheduling Integration - End-to-End Flow', () => {
     // Wait for filters to be ready
     await screen.findByRole('combobox', { name: /therapist/i });
 
-    // Switch to matrix view
-    const matrixButton = screen.getByRole('button', { name: /matrix/i });
-    await userEvent.click(matrixButton);
+    const dayButton = screen.getByRole('button', { name: /day view/i });
+    const weekButton = screen.getByRole('button', { name: /week view/i });
+    await userEvent.click(dayButton);
+    await userEvent.click(weekButton);
 
-    // Matrix toggle should remain interactive after loading
+    // View toggles remain interactive after loading
     await waitFor(() => {
-      expect(matrixButton).toBeEnabled();
+      expect(dayButton).toBeEnabled();
+      expect(weekButton).toBeEnabled();
     });
   }, 30000);
 

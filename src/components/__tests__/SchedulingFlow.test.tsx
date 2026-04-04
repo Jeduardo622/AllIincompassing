@@ -271,18 +271,17 @@ describe('Scheduling Flow - Client with Therapist', () => {
 
       await waitFor(() => {
         expect(screen.getAllByRole('button', { name: /week/i }).length).toBeGreaterThan(0);
-        expect(screen.getAllByRole('button', { name: /matrix/i }).length).toBeGreaterThan(0);
+        expect(screen.getAllByRole('button', { name: /day/i }).length).toBeGreaterThan(0);
       });
 
       const weekButton = screen.getAllByRole('button', { name: /week/i })[0];
-      const matrixButton = screen.getAllByRole('button', { name: /matrix/i })[0];
+      const dayButton = screen.getAllByRole('button', { name: /day/i })[0];
 
       await userEvent.click(weekButton);
-      await userEvent.click(matrixButton);
+      await userEvent.click(dayButton);
 
-      // Should show matrix view; allow multiple matches
-      expect(screen.getAllByText(/therapists/i).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/clients/i).length).toBeGreaterThan(0);
+      expect(dayButton).toHaveAttribute('aria-pressed', 'true');
+      expect(weekButton).toHaveAttribute('aria-pressed', 'false');
     }, 60000);
 
     it('exposes selected and toggled state for schedule controls', async () => {
@@ -293,24 +292,13 @@ describe('Scheduling Flow - Client with Therapist', () => {
 
       const dayButton = screen.getByRole('button', { name: /day view/i });
       const weekButton = screen.getByRole('button', { name: /week view/i });
-      const matrixButton = screen.getByRole('button', { name: /matrix view/i });
-      const availabilityButton = screen.getByRole('button', { name: /show availability/i });
 
       expect(dayButton).toHaveAttribute('aria-pressed', 'false');
       expect(weekButton).toHaveAttribute('aria-pressed', 'true');
-      expect(matrixButton).toHaveAttribute('aria-pressed', 'false');
-      expect(availabilityButton).toHaveAttribute('aria-pressed', 'true');
 
       await userEvent.click(dayButton);
       expect(dayButton).toHaveAttribute('aria-pressed', 'true');
       expect(weekButton).toHaveAttribute('aria-pressed', 'false');
-
-      await userEvent.click(matrixButton);
-      expect(matrixButton).toHaveAttribute('aria-pressed', 'true');
-      expect(dayButton).toHaveAttribute('aria-pressed', 'false');
-
-      await userEvent.click(availabilityButton);
-      expect(availabilityButton).toHaveAttribute('aria-pressed', 'false');
     }, 20000);
   });
 
@@ -522,7 +510,7 @@ describe('Scheduling Flow - Client with Therapist', () => {
   });
 
   describe('Alternative Time Suggestions', () => {
-    it('should suggest alternative times when conflicts exist', async () => {
+    it('keeps alternative-time UI hidden when conflicts exist', async () => {
       const props = {
         isOpen: true,
         onClose: vi.fn(),
@@ -544,18 +532,17 @@ describe('Scheduling Flow - Client with Therapist', () => {
       const clientSelect = screen.getByRole('combobox', { name: /client/i });
       await userEvent.selectOptions(clientSelect, 'client-1');
 
-      // Should show alternative times (heading may render after list)
+      // Alternative suggestions are intentionally hidden in this release.
       await waitFor(() => {
-        expect(screen.queryByText(/alternative times/i)).toBeTruthy();
+        expect(screen.queryByText(/alternative times/i)).not.toBeInTheDocument();
       });
     });
 
-    it('should allow selecting alternative time', async () => {
-      const mockOnSubmit = vi.fn();
+    it('does not render selectable alternative time cards', async () => {
       const props = {
         isOpen: true,
         onClose: vi.fn(),
-        onSubmit: mockOnSubmit,
+        onSubmit: vi.fn(),
         therapists: mockTherapists,
         clients: mockClients,
         existingSessions: mockExistingSessions,
@@ -573,19 +560,10 @@ describe('Scheduling Flow - Client with Therapist', () => {
       const clientSelect = screen.getByRole('combobox', { name: /client/i });
       await userEvent.selectOptions(clientSelect, 'client-1');
 
-      // Wait for alternatives to load
+      // Alternative suggestions are intentionally hidden in this release.
       await waitFor(() => {
-        expect(screen.queryByText(/alternative times/i)).toBeTruthy();
+        expect(screen.queryByText(/alternative times/i)).not.toBeInTheDocument();
       });
-
-      // Select an alternative time (first suggestion)
-      // Accept either local or 24h label; our component exposes 24h aria-label
-      const altCard = screen.getByRole('button', { name: /(10:00 - 11:00|10:00\s*-\s*11:00)/i });
-      await userEvent.click(altCard);
-
-      // Should update the form with new time (allow either with Z or without)
-      const startInput = screen.getByLabelText(/start time/i) as HTMLInputElement;
-      expect(startInput.value).toMatch(/2024-03-18T(10:00|03:00)/);
     });
   });
 

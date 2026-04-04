@@ -107,7 +107,7 @@ export async function checkSchedulingConflicts(
   const dayName = weekdayNames[getDay(startLocal)];
 
   // Check therapist availability using minute-level bounds
-  const therapistAvailability = therapist.availability_hours[dayName];
+  const therapistAvailability = therapist.availability_hours?.[dayName];
   const therapistRanges = toMinuteRanges(therapistAvailability, startLocal);
   if (therapistRanges.length > 0) {
     if (!isWithinAnyRange(therapistRanges, sessionStartMinutes, sessionEndMinutes)) {
@@ -135,7 +135,7 @@ export async function checkSchedulingConflicts(
   }
 
   // Check client availability using minute-level bounds
-  const clientAvailability = client.availability_hours[dayName];
+  const clientAvailability = client.availability_hours?.[dayName];
   const clientRanges = toMinuteRanges(clientAvailability, startLocal);
   if (clientRanges.length > 0) {
     if (!isWithinAnyRange(clientRanges, sessionStartMinutes, sessionEndMinutes)) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
@@ -22,10 +22,23 @@ import {
 } from "../features/scheduling/domain/time";
 import { startSessionFromModal } from "../features/scheduling/domain/sessionStart";
 
+const ENABLE_ALTERNATIVE_TIME_SUGGESTIONS = false;
+
+export interface SessionModalClinicalNotesPayload {
+  session_note_narrative?: string;
+  session_note_goal_notes?: Record<string, string>;
+  session_note_goal_ids?: string[];
+  session_note_goals_addressed?: string[];
+  session_note_authorization_id?: string;
+  session_note_service_code?: string;
+}
+
+export type SessionModalSubmitData = Partial<Session> & SessionModalClinicalNotesPayload;
+
 interface SessionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: Partial<Session>) => Promise<void>;
+  onSubmit: (data: SessionModalSubmitData) => Promise<void>;
   session?: Session;
   selectedDate?: Date;
   selectedTime?: string;
@@ -90,8 +103,18 @@ export function SessionModal({
     }
     return '';
   };
+
+  type SessionModalFormValues = Partial<Session> & SessionModalClinicalNotesPayload;
   
-  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm({
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    reset,
+    getValues,
+    formState: { errors, isSubmitting, isDirty },
+  } = useForm<SessionModalFormValues>({
     defaultValues: {
       therapist_id: session?.therapist_id || defaultTherapistId || '',
       client_id: session?.client_id || defaultClientId || '',
@@ -106,6 +129,12 @@ export function SessionModal({
             : ''),
       notes: session?.notes || '',
       status: session?.status || 'scheduled',
+      session_note_narrative: '',
+      session_note_goal_notes: {},
+      session_note_goal_ids: [],
+      session_note_goals_addressed: [],
+      session_note_authorization_id: '',
+      session_note_service_code: '',
     },
   });
 
@@ -116,6 +145,9 @@ export function SessionModal({
   const programId = watch('program_id');
   const goalId = watch('goal_id');
   const goalIds = watch('goal_ids') as string[] | undefined;
+  const sessionNoteNarrative = watch('session_note_narrative') ?? '';
+  const sessionNoteAuthorizationId = watch('session_note_authorization_id') ?? '';
+  const sessionNoteGoalNotes = watch('session_note_goal_notes') as Record<string, string> | undefined;
 
   const { data: sessionDetails } = useQuery({
     queryKey: ['session-details', session?.id, activeOrganizationId ?? 'MISSING_ORG'],
@@ -156,7 +188,13 @@ export function SessionModal({
     enabled: Boolean(session?.id && activeOrganizationId),
   });
 
-  const { data: programs = [], isFetched: isProgramsFetched, isFetching: isProgramsFetching } = useQuery({
+  const {
+    data: programs = [],
+    isFetched: isProgramsFetched,
+    isFetching: isProgramsFetching,
+    isError: isProgramsError,
+    refetch: refetchPrograms,
+  } = useQuery({
     queryKey: ['client-programs', clientId, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
       if (!clientId || !activeOrganizationId) {
@@ -176,7 +214,13 @@ export function SessionModal({
     enabled: Boolean(clientId && activeOrganizationId),
   });
 
-  const { data: goals = [], isFetched: isGoalsFetched, isFetching: isGoalsFetching } = useQuery({
+  const {
+    data: goals = [],
+    isFetched: isGoalsFetched,
+    isFetching: isGoalsFetching,
+    isError: isGoalsError,
+    refetch: refetchGoals,
+  } = useQuery({
     queryKey: ['program-goals', programId, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
       if (!programId || !activeOrganizationId) {
@@ -198,10 +242,60 @@ export function SessionModal({
     enabled: Boolean(programId && activeOrganizationId),
   });
 
+  const { data: approvedAuthorizations = [] } = useQuery({
+    queryKey: ['session-note-authorizations', clientId, activeOrganizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!clientId || !activeOrganizationId) {
+        return [];
+      }
+      const { data, error } = await supabase
+        .from('authorizations')
+        .select('id, authorization_number, services:authorization_services(service_code)')
+        .eq('client_id', clientId)
+        .eq('organization_id', activeOrganizationId)
+        .eq('status', 'approved')
+        .order('start_date', { ascending: false });
+      if (error) {
+        throw error;
+      }
+      return (
+        data as Array<{
+          id: string;
+          authorization_number: string;
+          services?: Array<{ service_code: string | null }> | null;
+        }>
+      ) ?? [];
+    },
+    enabled: Boolean(clientId && activeOrganizationId),
+  });
+
+  const { data: linkedSessionNote } = useQuery({
+    queryKey: ['session-note-linked', session?.id, activeOrganizationId ?? 'MISSING_ORG'],
+    queryFn: async () => {
+      if (!session?.id || !activeOrganizationId) {
+        return null;
+      }
+      const { data, error } = await supabase
+        .from('client_session_notes')
+        .select('id, authorization_id, service_code, narrative, goal_notes, goal_ids, goals_addressed')
+        .eq('session_id', session.id)
+        .eq('organization_id', activeOrganizationId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) {
+        throw error;
+      }
+      return data ?? null;
+    },
+    enabled: Boolean(session?.id && activeOrganizationId),
+  });
+
   const selectedTherapist = therapists.find(t => t.id === therapistId);
   const selectedClient = clients.find(c => c.id === clientId);
   const selectedTherapistServices = selectedTherapist?.service_type ?? [];
   const selectedClientServices = selectedClient?.service_preference ?? [];
+  const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
   const activePrograms = programs.filter((program) => program.status === 'active');
   const activeGoals = goals.filter((goal) => goal.status === 'active');
   const selectedPrimaryGoal = goals.find((goal) => goal.id === goalId);
@@ -481,6 +575,12 @@ export function SessionModal({
         return;
       }
 
+      if (!ENABLE_ALTERNATIVE_TIME_SUGGESTIONS) {
+        setAlternativeTimes([]);
+        setIsLoadingAlternatives(false);
+        return;
+      }
+
       setIsLoadingAlternatives(true);
       try {
         const alternatives = await suggestAlternativeTimes(
@@ -532,33 +632,87 @@ export function SessionModal({
     resolvedTimeZone,
   ]);
 
-  const handleFormSubmit = async (data: Partial<Session>) => {
+  const handleFormSubmit = async (data: SessionModalFormValues) => {
     if (conflicts.length > 0) {
       if (!window.confirm('There are scheduling conflicts. Do you want to proceed anyway?')) {
         return;
       }
     }
     try {
+      const normalizedGoalNoteMap = Object.fromEntries(
+        Object.entries(data.session_note_goal_notes ?? {})
+          .map(([goalKey, noteValue]) => [goalKey, noteValue?.trim() ?? ''])
+          .filter(([, noteValue]) => noteValue.length > 0),
+      );
       const normalizedGoalIds = Array.isArray(data.goal_ids) ? data.goal_ids : [];
       const mergedGoalIds = data.goal_id && !normalizedGoalIds.includes(data.goal_id)
         ? [...normalizedGoalIds, data.goal_id]
         : normalizedGoalIds;
-      const transformed: Partial<Session> = {
+      if (hasAnyClinicalNoteInput) {
+        if (!session?.id) {
+          showError('Clinical session notes can only be saved for existing sessions.');
+          return;
+        }
+        if (!data.session_note_authorization_id) {
+          showError('Select an authorization to save clinical session notes.');
+          return;
+        }
+        if (!data.session_note_service_code) {
+          showError('Select a service code to save clinical session notes.');
+          return;
+        }
+        for (const trackedGoalId of mergedGoalIds) {
+          const goalNoteText = normalizedGoalNoteMap[trackedGoalId]?.trim() ?? '';
+          if (!goalNoteText) {
+            const goalLabel = goals.find((goal) => goal.id === trackedGoalId)?.title ?? trackedGoalId;
+            showError(`Add a note for goal "${goalLabel}" before saving clinical notes.`);
+            return;
+          }
+        }
+      }
+      const transformed: SessionModalSubmitData = {
         ...data,
+        session_note_narrative: data.session_note_narrative?.trim() ?? '',
+        session_note_goal_notes: normalizedGoalNoteMap,
+        session_note_goal_ids: mergedGoalIds,
+        session_note_goals_addressed: mergedGoalIds
+          .map((goalEntryId) => goals.find((goal) => goal.id === goalEntryId)?.title?.trim())
+          .filter((goalLabel): goalLabel is string => Boolean(goalLabel)),
+        session_note_authorization_id: data.session_note_authorization_id ?? '',
+        session_note_service_code: data.session_note_service_code ?? '',
         goal_ids: mergedGoalIds,
         // If a timezone prop is provided, normalize to UTC for consumers expecting Z times
         start_time: timeZone ? toUtcSessionIsoString(data.start_time, resolvedTimeZone) : data.start_time,
         end_time: timeZone ? toUtcSessionIsoString(data.end_time, resolvedTimeZone) : data.end_time,
       };
       await onSubmit(transformed);
+      reset(getValues());
+      setSaveState('saved');
     } catch (error) {
       logger.error('Failed to submit session', {
         error,
         context: { component: 'SessionModal', operation: 'handleFormSubmit' }
       });
+      setSaveState('error');
       return;
     }
   };
+
+  const handleAttemptClose = useCallback(() => {
+    if (isSubmitting) {
+      return;
+    }
+    if (!isDirty) {
+      onClose();
+      return;
+    }
+    const shouldDiscard = window.confirm(
+      'You have unsaved changes in this session. Close without saving?'
+    );
+    if (shouldDiscard) {
+      onClose();
+    }
+  }, [isDirty, isSubmitting, onClose]);
 
   const handleStartSession = async () => {
     if (!session?.id) {
@@ -587,6 +741,16 @@ export function SessionModal({
     }
   };
 
+  const handleCloseSession = () => {
+    setValue('status', 'completed', { shouldDirty: true });
+    void handleSubmit(async (formData) => {
+      await handleFormSubmit({
+        ...formData,
+        status: 'completed',
+      });
+    })();
+  };
+
   // Function to ensure time input is on 15-minute intervals
   const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>, field: 'start_time' | 'end_time') => {
     const value = e.target.value;
@@ -611,8 +775,54 @@ export function SessionModal({
   };
 
   const hasStartedSession = Boolean(sessionDetails?.started_at ?? session?.started_at);
+  const hasTerminalSessionStatus =
+    session?.status === 'completed' ||
+    session?.status === 'cancelled' ||
+    session?.status === 'no-show';
+  const isInProgressSession =
+    !hasTerminalSessionStatus &&
+    (session?.status === 'in_progress' || hasStartedSession);
   const isDependentDataLoading = (Boolean(clientId) && isProgramsFetching) || (Boolean(programId) && isGoalsFetching);
   const canStartSession = Boolean(session?.id && !hasStartedSession && programId && goalId);
+  const sessionNoteGoalIds = useMemo(
+    () => (Array.isArray(goalIds) ? goalIds : []),
+    [goalIds],
+  );
+  const selectedAuthorization = approvedAuthorizations.find(
+    (authorization) => authorization.id === sessionNoteAuthorizationId,
+  );
+  const sessionNoteServiceCodes = useMemo(() => {
+    const services = selectedAuthorization?.services ?? [];
+    return Array.from(
+      new Set(
+        services
+          .map((service) => service.service_code?.trim())
+          .filter((serviceCode): serviceCode is string => Boolean(serviceCode)),
+      ),
+    );
+  }, [selectedAuthorization]);
+  const hasAnyClinicalNoteInput = useMemo(() => {
+    if (sessionNoteNarrative.trim().length > 0) {
+      return true;
+    }
+    const values = Object.values(sessionNoteGoalNotes ?? {});
+    return values.some((value) => value?.trim().length > 0);
+  }, [sessionNoteNarrative, sessionNoteGoalNotes]);
+  const saveStateMessage = useMemo(() => {
+    if (isSubmitting) {
+      return { tone: 'info' as const, text: 'Saving session details...' };
+    }
+    if (saveState === 'saved') {
+      return { tone: 'success' as const, text: 'Session details saved.' };
+    }
+    if (saveState === 'error') {
+      return { tone: 'error' as const, text: 'Unable to save session details. Try again.' };
+    }
+    if (isDirty) {
+      return { tone: 'warning' as const, text: 'Unsaved changes.' };
+    }
+    return null;
+  }, [isDirty, isSubmitting, saveState]);
   const dialogDescriptionIds = [
     dialogDescriptionId,
     ...(retryHint ? [retryHintDescriptionId] : []),
@@ -648,7 +858,7 @@ export function SessionModal({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        handleAttemptClose();
         return;
       }
 
@@ -694,24 +904,65 @@ export function SessionModal({
       document.removeEventListener('keydown', handleKeyDown);
       previousActiveElementRef.current?.focus();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, handleAttemptClose]);
+
+  useEffect(() => {
+    if (!isOpen || !isDirty || isSubmitting) {
+      return;
+    }
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isOpen, isDirty, isSubmitting]);
+
+  useEffect(() => {
+    if (!isDirty && saveState === 'error') {
+      setSaveState('idle');
+    }
+  }, [isDirty, saveState]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSaveState('idle');
+    }
+  }, [isOpen, session?.id]);
+
+  useEffect(() => {
+    if (!linkedSessionNote || !session?.id || isDirty) {
+      return;
+    }
+    setValue('session_note_narrative', linkedSessionNote.narrative ?? '');
+    setValue(
+      'session_note_goal_notes',
+      (linkedSessionNote.goal_notes as Record<string, string> | null) ?? {},
+    );
+    setValue('session_note_goal_ids', linkedSessionNote.goal_ids ?? []);
+    setValue('session_note_goals_addressed', linkedSessionNote.goals_addressed ?? []);
+    setValue('session_note_authorization_id', linkedSessionNote.authorization_id ?? '');
+    setValue('session_note_service_code', linkedSessionNote.service_code ?? '');
+  }, [linkedSessionNote, session?.id, setValue, isDirty]);
 
   if (!isOpen) return null;
 
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === overlayRef.current) {
-          onClose();
+          handleAttemptClose();
         }
       }}
     >
       <div
         ref={dialogRef}
-        className="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-white dark:bg-dark-lighter rounded-md sm:rounded-lg shadow-xl w-full max-w-2xl h-[100dvh] sm:h-auto sm:max-h-[90vh] overflow-hidden flex flex-col"
         role="dialog"
         aria-modal="true"
         aria-labelledby={dialogTitleId}
@@ -720,29 +971,30 @@ export function SessionModal({
         tabIndex={-1}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
-          <h2 id={dialogTitleId} className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-            <Calendar className="w-6 h-6 mr-2 text-blue-600" />
+        <div className="flex items-center justify-between p-3 sm:p-4 border-b dark:border-gray-700">
+          <h2 id={dialogTitleId} className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white flex items-center">
+            <Calendar className="w-5 h-5 sm:w-6 sm:h-6 mr-2 text-blue-600" />
             {session ? 'Edit Session' : 'New Session'}
           </h2>
           <button
             ref={closeButtonRef}
             type="button"
-            onClick={onClose}
+            onClick={handleAttemptClose}
+            disabled={isSubmitting}
             aria-label="Close session modal"
             title="Close session modal"
-            className="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+            className="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4">
           <p id={dialogDescriptionId} className="sr-only">
             Use this form to create or update a therapy session.
           </p>
-          <form id="session-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+          <form id="session-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4 sm:space-y-6">
             {retryHint && (
               <div
                 data-testid="session-modal-blocked-close-panel"
@@ -783,7 +1035,7 @@ export function SessionModal({
                 id={conflictDescriptionId}
                 role="region"
                 aria-labelledby={conflictHeadingId}
-                className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 rounded-lg p-4"
+                className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 rounded-lg p-3 sm:p-4"
               >
                 <div className="flex items-center mb-2">
                   <AlertTriangle className="w-5 h-5 text-amber-500 dark:text-amber-400 mr-2 flex-shrink-0" />
@@ -801,8 +1053,38 @@ export function SessionModal({
                 </ul>
               </div>
             )}
+            {isInProgressSession && (
+              <div
+                data-testid="session-modal-in-progress-guidance"
+                className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 sm:p-4 text-sm text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200"
+              >
+                <p className="font-medium">Session in progress</p>
+                <p className="mt-1">
+                  You can update program, primary goal, and additional goals while this session is active.
+                  Save session details to keep this plan in sync.
+                </p>
+              </div>
+            )}
+            {saveStateMessage && (
+              <div
+                data-testid="session-modal-save-state"
+                role="status"
+                aria-live="polite"
+                className={`rounded-md border px-3 py-2 text-xs ${
+                  saveStateMessage.tone === 'success'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200'
+                    : saveStateMessage.tone === 'error'
+                      ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-200'
+                      : saveStateMessage.tone === 'warning'
+                        ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200'
+                        : 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-200'
+                }`}
+              >
+                {saveStateMessage.text}
+              </div>
+            )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label
                   htmlFor="therapist-select"
@@ -871,7 +1153,7 @@ export function SessionModal({
             )}
 
             {selectedTherapist && selectedClient && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 p-3 sm:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 <div>
                   <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
                     <User className="w-4 h-4 mr-2 text-blue-500" />
@@ -901,7 +1183,7 @@ export function SessionModal({
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label
                   htmlFor="program-select"
@@ -912,6 +1194,7 @@ export function SessionModal({
                 <select
                   id="program-select"
                   {...register('program_id', { required: session ? false : 'Program is required' })}
+                  disabled={isProgramsFetching || !clientId}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                 >
                   <option value="">Select a program</option>
@@ -929,6 +1212,23 @@ export function SessionModal({
                 {errors.program_id && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.program_id.message}</p>
                 )}
+                {isProgramsFetching && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Loading programs...</p>
+                )}
+                {isProgramsError && (
+                  <div className="mt-1 flex items-center gap-2 text-xs text-red-600 dark:text-red-300">
+                    <span>Could not load programs.</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void refetchPrograms();
+                      }}
+                      className="font-semibold underline underline-offset-2"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -941,6 +1241,7 @@ export function SessionModal({
                 <select
                   id="goal-select"
                   {...register('goal_id', { required: session ? false : 'Primary goal is required' })}
+                  disabled={isGoalsFetching || !programId}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                 >
                   <option value="">Select a goal</option>
@@ -958,6 +1259,23 @@ export function SessionModal({
                 {errors.goal_id && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.goal_id.message}</p>
                 )}
+                {isGoalsFetching && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Loading goals...</p>
+                )}
+                {isGoalsError && (
+                  <div className="mt-1 flex items-center gap-2 text-xs text-red-600 dark:text-red-300">
+                    <span>Could not load goals.</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void refetchGoals();
+                      }}
+                      className="font-semibold underline underline-offset-2"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -966,14 +1284,14 @@ export function SessionModal({
                 <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Additional Goals</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {goals.map((goal) => (
-                    <label key={goal.id} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                    <label key={goal.id} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 min-w-0">
                       <input
                         type="checkbox"
                         checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
                         onChange={() => toggleGoalSelection(goal.id)}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
-                      <span>{goal.title}</span>
+                      <span className="truncate">{goal.title}</span>
                       <span className="text-[11px] text-gray-500 dark:text-gray-400">
                         ({Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} data points)
                       </span>
@@ -983,7 +1301,7 @@ export function SessionModal({
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label
                   htmlFor="start-time-input"
@@ -1032,7 +1350,7 @@ export function SessionModal({
             </div>
 
             {/* Alternative Times Section */}
-            {conflicts.length > 0 && (
+            {ENABLE_ALTERNATIVE_TIME_SUGGESTIONS && conflicts.length > 0 && (
               <AlternativeTimes 
                 alternatives={alternativeTimes}
                 isLoading={isLoadingAlternatives}
@@ -1066,7 +1384,7 @@ export function SessionModal({
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
               >
                 <FileText className="w-4 h-4 inline mr-2" />
-                Notes
+                Schedule Notes
               </label>
               <textarea
                 id="notes-input"
@@ -1075,16 +1393,121 @@ export function SessionModal({
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                 placeholder="Add any session notes here..."
               />
+              {isInProgressSession && (
+                <p
+                  data-testid="session-modal-notes-guidance"
+                  className="mt-2 text-xs text-gray-500 dark:text-gray-400"
+                >
+                  These schedule notes are saved with the session. For per-goal documentation needed to close
+                  in-progress sessions, use Client Details &gt; Session Notes.
+                </p>
+              )}
             </div>
+
+            {session?.id && (
+              <div className="rounded-lg border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/70 dark:bg-indigo-900/10 p-3 sm:p-4 space-y-3 sm:space-y-4">
+                <div>
+                  <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">Clinical Session Notes</p>
+                  <p className="mt-1 text-xs text-indigo-700 dark:text-indigo-300">
+                    Write both narrative and per-goal notes from this schedule session modal.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  <div>
+                    <label
+                      htmlFor="session-note-auth-select"
+                      className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    >
+                      Authorization
+                    </label>
+                    <select
+                      id="session-note-auth-select"
+                      {...register('session_note_authorization_id')}
+                      className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                    >
+                      <option value="">Select authorization</option>
+                      {approvedAuthorizations.map((authorization) => (
+                        <option key={authorization.id} value={authorization.id}>
+                          {authorization.authorization_number}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="session-note-service-code-select"
+                      className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    >
+                      Service Code
+                    </label>
+                    <select
+                      id="session-note-service-code-select"
+                      {...register('session_note_service_code')}
+                      className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                      disabled={!sessionNoteAuthorizationId}
+                    >
+                      <option value="">Select service code</option>
+                      {sessionNoteServiceCodes.map((serviceCode) => (
+                        <option key={serviceCode} value={serviceCode}>
+                          {serviceCode}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label
+                    htmlFor="session-note-narrative-input"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
+                    Clinical Narrative
+                  </label>
+                  <textarea
+                    id="session-note-narrative-input"
+                    {...register('session_note_narrative')}
+                    rows={4}
+                    className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                    placeholder="Write a clinical summary for this session..."
+                  />
+                </div>
+                {sessionNoteGoalIds.length > 0 && (
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Per-goal Notes</p>
+                    {sessionNoteGoalIds.map((selectedGoalId) => {
+                      const selectedGoal = goals.find((goal) => goal.id === selectedGoalId);
+                      const fieldKey = `session_note_goal_notes.${selectedGoalId}` as const;
+                      return (
+                        <div key={selectedGoalId}>
+                          <label
+                            htmlFor={`goal-note-${selectedGoalId}`}
+                            className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1"
+                          >
+                            {selectedGoal?.title ?? selectedGoalId}
+                          </label>
+                          <textarea
+                            id={`goal-note-${selectedGoalId}`}
+                            {...register(fieldKey)}
+                            rows={2}
+                            className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                            placeholder="Add progress notes for this goal..."
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </form>
         </div>
 
         {/* Footer */}
-        <div className="border-t dark:border-gray-700 p-4">
+        <div className="border-t dark:border-gray-700 p-3 sm:p-4 bg-white dark:bg-dark-lighter">
           <div className="flex flex-col-reverse sm:flex-row justify-end gap-3">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleAttemptClose}
+              disabled={isSubmitting}
               className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-dark border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
               Cancel
@@ -1097,6 +1520,16 @@ export function SessionModal({
                 className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-emerald-600 border border-transparent rounded-md shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Start Session
+              </button>
+            )}
+            {session?.id && isInProgressSession && (
+              <button
+                type="button"
+                onClick={handleCloseSession}
+                disabled={isSubmitting || isDependentDataLoading || isLoadingAlternatives}
+                className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-violet-600 border border-transparent rounded-md shadow-sm hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Close Session
               </button>
             )}
             <button
@@ -1113,7 +1546,9 @@ export function SessionModal({
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4 mr-2" />
-                  {session ? 'Update Session' : 'Create Session'}
+                  {session
+                    ? (isInProgressSession ? 'Save Session Details' : 'Update Session')
+                    : 'Create Session'}
                 </>
               )}
             </button>

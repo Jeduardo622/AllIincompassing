@@ -199,7 +199,7 @@ describe("Schedule session-close readiness precheck", { timeout: 15_000 }, () =>
     );
     expect(showErrorMock).not.toHaveBeenCalledWith(expect.stringMatching(/slot was just booked/i));
     expect(
-      screen.getByText(/open client details and use session notes/i),
+      screen.getByText(/you can add these in schedule > edit session > clinical session notes/i),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open Client Details" })).toBeInTheDocument();
   });

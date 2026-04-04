@@ -187,7 +187,8 @@ describe("Schedule", () => {
 
     // Check for main heading (more specific selector)
     expect(await screen.findByRole("heading", { name: /Schedule/i })).toBeInTheDocument();
-    expect(await screen.findByText(/Auto Schedule/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Day view/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Week view/i })).toBeInTheDocument();
   });
 
   it("renders schedule interface elements", async () => {
@@ -199,7 +200,6 @@ describe("Schedule", () => {
     });
     
     // Check for key interface elements
-    expect(screen.getByText(/Auto Schedule/i)).toBeInTheDocument();
     expect(screen.getByText(/Jun 30 - Jul 5, 2025/i)).toBeInTheDocument();
   });
 
@@ -228,8 +228,6 @@ describe("Schedule", () => {
     expect(
       screen.queryByRole("heading", { name: /^Schedule$/i }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText(/Auto Schedule/i)).not.toBeInTheDocument();
-
     expect(mockUseScheduleDataBatch).toHaveBeenCalledWith(
       expect.any(Date),
       expect.any(Date),
@@ -259,6 +257,31 @@ describe("Schedule", () => {
       expect(screen.getByTestId("session-modal-sessions")).not.toHaveTextContent("session-1");
       expect(screen.getByTestId("session-modal-sessions")).toHaveTextContent("session-2");
     });
+  });
+
+  it("locks therapist scope and limits clients for therapist users", async () => {
+    mockUseDropdownData.mockReturnValue({
+      data: {
+        therapists: scheduleFixtures.therapists,
+        clients: [
+          { ...scheduleFixtures.clients[0], therapist_id: "therapist-1" },
+          { ...scheduleFixtures.clients[1], therapist_id: "therapist-2" },
+        ],
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "therapist", userId: "therapist-1" },
+    });
+
+    expect(
+      await screen.findByRole("region", { name: /Therapist schedule scope/i }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("Dr. Myles")).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /All Therapists/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Jamie Client/i })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Riley Client/i })).not.toBeInTheDocument();
   });
 
   it("exposes recurrence toggle and labeled recurrence controls when enabled", async () => {

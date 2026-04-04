@@ -10,5 +10,5 @@ export const shouldClearMissingSelection = (
     return false;
   }
 
-  return !entities.some((entity) => entity.id === selectedId);
+  return !entities.some((entity) => entity?.id === selectedId);
 };

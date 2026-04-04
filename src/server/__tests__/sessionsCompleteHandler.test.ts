@@ -7,23 +7,19 @@ vi.mock("../api/shared", async () => {
     ...actual,
     getAccessToken: vi.fn(),
     consumeRateLimit: vi.fn(),
+    getSupabaseConfig: vi.fn(),
   };
 });
 
-vi.mock("../api/edgeAuthority", async () => {
-  const actual = await vi.importActual<typeof import("../api/edgeAuthority")>("../api/edgeAuthority");
-  return {
-    ...actual,
-    proxyToEdgeAuthority: vi.fn(),
-  };
-});
-
-import { consumeRateLimit, getAccessToken } from "../api/shared";
-import { proxyToEdgeAuthority } from "../api/edgeAuthority";
+import { consumeRateLimit, getAccessToken, getSupabaseConfig } from "../api/shared";
 
 describe("sessionsCompleteHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon-key",
+    });
     vi.mocked(consumeRateLimit).mockResolvedValue({
       limited: false,
       retryAfterSeconds: null,
@@ -55,7 +51,7 @@ describe("sessionsCompleteHandler", () => {
 
   it("proxies valid payloads to edge authority", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token-123");
-    vi.mocked(proxyToEdgeAuthority).mockResolvedValue(
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
         JSON.stringify({ success: true, data: { outcome: "completed" } }),
         { status: 200, headers: { "content-type": "application/json" } },
@@ -74,13 +70,17 @@ describe("sessionsCompleteHandler", () => {
     const response = await sessionsCompleteHandler(request);
 
     expect(response.status).toBe(200);
-    expect(proxyToEdgeAuthority).toHaveBeenCalledWith(
-      request,
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.supabase.co/functions/v1/sessions-complete",
       expect.objectContaining({
-        functionName: "sessions-complete",
-        accessToken: "token-123",
         method: "POST",
+        body: JSON.stringify({
+          session_id: "11111111-1111-1111-1111-111111111111",
+          outcome: "completed",
+          notes: "done",
+        }),
       }),
     );
+    fetchMock.mockRestore();
   });
 });

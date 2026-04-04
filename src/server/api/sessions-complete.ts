@@ -3,10 +3,10 @@ import {
   consumeRateLimit,
   corsHeadersForRequest,
   errorResponse,
+  getSupabaseConfig,
   getAccessToken,
   isDisallowedOriginRequest,
 } from "./shared";
-import { proxyToEdgeAuthority } from "./edgeAuthority";
 
 const completeSessionSchema = z.object({
   session_id: z.string().uuid(),
@@ -85,10 +85,28 @@ export async function sessionsCompleteHandler(request: Request): Promise<Respons
       });
     }
 
-    const forwarded = await proxyToEdgeAuthority(request, {
-      functionName: "sessions-complete",
-      accessToken,
+    const { supabaseUrl, anonKey } = getSupabaseConfig();
+    const functionUrl = `${supabaseUrl}/functions/v1/sessions-complete`;
+    const forwardHeaders = new Headers({
+      "Content-Type": "application/json",
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+    });
+    const requestIdHeader = request.headers.get("x-request-id");
+    const correlationIdHeader = request.headers.get("x-correlation-id");
+    const agentOperationIdHeader = request.headers.get("x-agent-operation-id");
+    if (requestIdHeader) {
+      forwardHeaders.set("x-request-id", requestIdHeader);
+    }
+    if (correlationIdHeader) {
+      forwardHeaders.set("x-correlation-id", correlationIdHeader);
+    }
+    if (agentOperationIdHeader) {
+      forwardHeaders.set("x-agent-operation-id", agentOperationIdHeader);
+    }
+    const forwarded = await fetch(functionUrl, {
       method: "POST",
+      headers: forwardHeaders,
       body: JSON.stringify(parsed.data),
     });
     const bodyText = await forwarded.text();

@@ -611,6 +611,13 @@ export function SessionModal({
   };
 
   const hasStartedSession = Boolean(sessionDetails?.started_at ?? session?.started_at);
+  const hasTerminalSessionStatus =
+    session?.status === 'completed' ||
+    session?.status === 'cancelled' ||
+    session?.status === 'no-show';
+  const isInProgressSession =
+    !hasTerminalSessionStatus &&
+    (session?.status === 'in_progress' || hasStartedSession);
   const isDependentDataLoading = (Boolean(clientId) && isProgramsFetching) || (Boolean(programId) && isGoalsFetching);
   const canStartSession = Boolean(session?.id && !hasStartedSession && programId && goalId);
   const dialogDescriptionIds = [
@@ -799,6 +806,18 @@ export function SessionModal({
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+            {isInProgressSession && (
+              <div
+                data-testid="session-modal-in-progress-guidance"
+                className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200"
+              >
+                <p className="font-medium">Session in progress</p>
+                <p className="mt-1">
+                  You can update program, primary goal, and additional goals while this session is active.
+                  Save session details to keep this plan in sync.
+                </p>
               </div>
             )}
 
@@ -1066,7 +1085,7 @@ export function SessionModal({
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
               >
                 <FileText className="w-4 h-4 inline mr-2" />
-                Notes
+                Schedule Notes
               </label>
               <textarea
                 id="notes-input"
@@ -1075,6 +1094,15 @@ export function SessionModal({
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                 placeholder="Add any session notes here..."
               />
+              {isInProgressSession && (
+                <p
+                  data-testid="session-modal-notes-guidance"
+                  className="mt-2 text-xs text-gray-500 dark:text-gray-400"
+                >
+                  These schedule notes are saved with the session. For per-goal documentation needed to close
+                  in-progress sessions, use Client Details &gt; Session Notes.
+                </p>
+              )}
             </div>
           </form>
         </div>
@@ -1113,7 +1141,9 @@ export function SessionModal({
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4 mr-2" />
-                  {session ? 'Update Session' : 'Create Session'}
+                  {session
+                    ? (isInProgressSession ? 'Save Session Details' : 'Update Session')
+                    : 'Create Session'}
                 </>
               )}
             </button>

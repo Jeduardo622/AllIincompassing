@@ -420,6 +420,96 @@ describe('SessionModal', () => {
     await waitFor(() => {
       expect(startButton).toBeDisabled();
     });
+    expect(screen.getByTestId('session-modal-in-progress-guidance')).toBeInTheDocument();
+    expect(screen.getByTestId('session-modal-notes-guidance')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Save Session Details/i })).toBeInTheDocument();
+  });
+
+  it('keeps update-session submit copy when edit session has not started', () => {
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        session={{
+          id: 'session-edit-copy',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'scheduled',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /Update Session/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('session-modal-in-progress-guidance')).not.toBeInTheDocument();
+  });
+
+  it('does not show in-progress guidance for completed sessions with started_at', async () => {
+    const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'sessions') {
+        return buildChain([], {
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          started_at: '2026-01-01T10:00:00.000Z',
+        });
+      }
+      if (table === 'session_goals') {
+        return buildChain([{ goal_id: 'goal-1' }]);
+      }
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        session={{
+          id: 'session-completed',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-01-01T10:00:00.000Z',
+          end_time: '2026-01-01T11:00:00.000Z',
+          status: 'completed',
+          notes: '',
+          created_at: '2026-01-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-01-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: '2026-01-01T10:00:00.000Z',
+        } satisfies Session}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('session-modal-in-progress-guidance')).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /Update Session/i })).toBeInTheDocument();
   });
 
   it('calls onSessionStarted after a successful Start Session', async () => {

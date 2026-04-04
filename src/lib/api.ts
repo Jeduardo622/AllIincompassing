@@ -5,7 +5,20 @@ import { callApiRoute, callEdgeRoute } from "./sdk/client";
 const getCurrentAccessToken = async (): Promise<string | null> => {
   try {
     const { data } = await supabase.auth.getSession();
-    return data?.session?.access_token ?? null;
+    const currentToken = data?.session?.access_token ?? null;
+    if (currentToken) {
+      return currentToken;
+    }
+
+    // In long-lived preview tabs, auth state can lag behind storage restoration.
+    // Triggering getUser hydrates auth state without changing caller behavior.
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user) {
+      return null;
+    }
+
+    const { data: reloaded } = await supabase.auth.getSession();
+    return reloaded?.session?.access_token ?? null;
   } catch {
     return null;
   }

@@ -24,15 +24,38 @@ export type ScheduleDisplayData = {
   clients: Client[];
 };
 
+const hasStringId = (value: unknown): value is { id: string } => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as { id?: unknown };
+  return typeof candidate.id === "string" && candidate.id.trim().length > 0;
+};
+
+const sanitizeById = <T>(items: T[] | null | undefined): T[] => {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items.filter((item): item is T => hasStringId(item));
+};
+
 export const buildScheduleDisplayData = ({
   filteredBatchedSessions,
   fallbackSessions,
   batchedData,
   dropdownData,
 }: BuildScheduleDisplayDataInput): ScheduleDisplayData => {
+  const normalizedSessions = sanitizeById(filteredBatchedSessions ?? fallbackSessions) as Session[];
+  const normalizedTherapists = sanitizeById(
+    batchedData?.therapists || dropdownData?.therapists,
+  ) as Therapist[];
+  const normalizedClients = sanitizeById(
+    batchedData?.clients || dropdownData?.clients,
+  ) as Client[];
+
   return {
-    sessions: filteredBatchedSessions ?? fallbackSessions,
-    therapists: batchedData?.therapists || dropdownData?.therapists || [],
-    clients: batchedData?.clients || dropdownData?.clients || [],
+    sessions: normalizedSessions,
+    therapists: normalizedTherapists,
+    clients: normalizedClients,
   };
 };

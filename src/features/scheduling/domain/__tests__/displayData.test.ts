@@ -85,4 +85,20 @@ describe("displayData", () => {
     expect(result.therapists).toEqual(dropdownTherapists);
     expect(result.clients).toEqual(dropdownClients);
   });
+
+  it("filters malformed rows without string ids from sessions and directory lists", () => {
+    const result = buildScheduleDisplayData({
+      filteredBatchedSessions: [session("s-valid"), undefined as unknown as Session],
+      fallbackSessions: [undefined as unknown as Session, session("s-fallback")],
+      batchedData: {
+        therapists: [therapist("t-valid"), null as unknown as Therapist, { id: "" } as Therapist],
+        clients: [client("c-valid"), { id: 42 } as unknown as Client],
+      },
+      dropdownData: undefined,
+    });
+
+    expect(result.sessions).toEqual([session("s-valid")]);
+    expect(result.therapists).toEqual([therapist("t-valid")]);
+    expect(result.clients).toEqual([client("c-valid")]);
+  });
 });

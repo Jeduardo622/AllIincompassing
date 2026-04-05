@@ -381,26 +381,27 @@ const WeekView = React.memo(
   }) => {
     return (
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow overflow-x-auto">
-        <div className="grid grid-cols-7 border-b dark:border-gray-700 min-w-[800px]">
-          <div className="py-2 px-2 text-center text-sm font-medium text-gray-500 dark:text-gray-400 border-r dark:border-gray-700">
+        <div className="grid grid-cols-[72px_repeat(6,minmax(90px,1fr))] sm:grid-cols-7 border-b dark:border-gray-700 min-w-[620px] sm:min-w-[800px]">
+          <div className="py-2 px-1.5 sm:px-2 text-center text-sm font-medium text-gray-500 dark:text-gray-400 border-r dark:border-gray-700">
             Time
           </div>
           {weekDays.map((day) => (
             <div
               key={day.toISOString()}
-              className="py-2 px-2 text-center text-sm font-medium text-gray-900 dark:text-white"
+              className="py-2 px-1.5 sm:px-2 text-center text-sm font-medium text-gray-900 dark:text-white"
             >
-              {format(day, "EEE MMM d")}
+              <span className="sm:hidden">{format(day, "EEE d")}</span>
+              <span className="hidden sm:inline">{format(day, "EEE MMM d")}</span>
             </div>
           ))}
         </div>
 
-        <div className="grid grid-cols-7 min-w-[800px]">
+        <div className="grid grid-cols-[72px_repeat(6,minmax(90px,1fr))] sm:grid-cols-7 min-w-[620px] sm:min-w-[800px]">
           <div className="border-r dark:border-gray-700">
             {timeSlots.map((time) => (
               <div
                 key={time}
-                className="h-10 border-b dark:border-gray-700 p-2 text-sm text-gray-500 dark:text-gray-400 flex items-center"
+                className="h-10 border-b dark:border-gray-700 p-1.5 sm:p-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400 flex items-center"
               >
                 {time}
               </div>
@@ -517,6 +518,20 @@ export const Schedule = React.memo(() => {
   const lastAppliedUrlModalKeyRef = useRef<string | null>(null);
   const attemptedUrlSessionLookupRef = useRef<Set<string>>(new Set());
   const wasModalOpenRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      setView("day");
+    }
+  }, []);
 
   const queryClient = useQueryClient();
   const scheduleResetSetters = useMemo(

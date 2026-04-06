@@ -3,6 +3,8 @@ BEGIN;
 -- Ensure org-scoped columns exist before defining org-scoped policies in replay environments.
 ALTER TABLE public.clients
   ADD COLUMN IF NOT EXISTS organization_id uuid;
+ALTER TABLE public.clients
+  ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 
 ALTER TABLE public.sessions
   ADD COLUMN IF NOT EXISTS organization_id uuid;

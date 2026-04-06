@@ -17,6 +17,9 @@ function createMockClient(): SupabaseClient {
       }
       return { data: null, error: null };
     },
+    auth: {
+      getUser: async () => ({ data: { user: null }, error: null }),
+    },
     from: () => {
       throw new Error("Unexpected query call");
     },
@@ -63,6 +66,9 @@ Deno.test("resolveDashboardOrganizationId falls back to DEFAULT_ORGANIZATION_ID 
         }
         return { data: null, error: null };
       },
+      auth: {
+        getUser: async () => ({ data: { user: null }, error: null }),
+      },
     } as unknown as SupabaseClient;
 
     const result = await __TESTING__.resolveDashboardOrganizationId(db);
@@ -74,6 +80,37 @@ Deno.test("resolveDashboardOrganizationId falls back to DEFAULT_ORGANIZATION_ID 
       Deno.env.delete("DEFAULT_ORGANIZATION_ID");
     }
   }
+});
+
+Deno.test("resolveDashboardOrganizationId prefers super admin metadata organization", async () => {
+  const db = {
+    rpc: async (fn: string) => {
+      if (fn === "current_user_organization_id") {
+        return { data: null, error: null };
+      }
+      if (fn === "current_user_is_super_admin") {
+        return { data: true, error: null };
+      }
+      return { data: null, error: null };
+    },
+    auth: {
+      getUser: async () => ({
+        data: {
+          user: {
+            id: "user-1",
+            user_metadata: { organization_id: "org-metadata" },
+          },
+        },
+        error: null,
+      }),
+    },
+    from: () => {
+      throw new Error("Profile lookup should not run when metadata provides organization");
+    },
+  } as unknown as SupabaseClient;
+
+  const result = await __TESTING__.resolveDashboardOrganizationId(db);
+  assertEquals(result, "org-metadata");
 });
 
 Deno.test("resolveDashboardOrganizationId throws when org is missing and user is not super admin", async () => {

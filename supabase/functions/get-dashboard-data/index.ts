@@ -48,6 +48,35 @@ const parseDefaultOrganizationId = (): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
+const pickOrganizationId = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const getOrganizationIdFromMetadata = (metadata: unknown): string | null => {
+  const record = asRecord(metadata);
+  if (!record) {
+    return null;
+  }
+  return pickOrganizationId(record.organization_id) ?? pickOrganizationId(record.organizationId);
+};
+
+const getOrganizationIdFromPreferences = (preferences: unknown): string | null => {
+  const record = asRecord(preferences);
+  if (!record) {
+    return null;
+  }
+  return pickOrganizationId(record.organization_id) ?? pickOrganizationId(record.organizationId);
+};
+
 const resolveDashboardOrganizationId = async (db: SupabaseClient): Promise<string> => {
   const resolvedOrg = await resolveOrgId(db);
   if (resolvedOrg) {
@@ -56,6 +85,31 @@ const resolveDashboardOrganizationId = async (db: SupabaseClient): Promise<strin
 
   const { data: isSuperAdmin } = await db.rpc('current_user_is_super_admin');
   if (isSuperAdmin === true) {
+    const { data: authData, error: authError } = await db.auth.getUser();
+    if (!authError && authData?.user) {
+      const metadataOrg = getOrganizationIdFromMetadata(authData.user.user_metadata);
+      if (metadataOrg) {
+        return metadataOrg;
+      }
+
+      const { data: profileRow, error: profileError } = await db
+        .from("profiles")
+        .select("organization_id, preferences")
+        .eq("id", authData.user.id)
+        .maybeSingle();
+
+      if (!profileError && profileRow) {
+        const profileOrg = pickOrganizationId((profileRow as { organization_id?: unknown }).organization_id);
+        if (profileOrg) {
+          return profileOrg;
+        }
+        const preferenceOrg = getOrganizationIdFromPreferences((profileRow as { preferences?: unknown }).preferences);
+        if (preferenceOrg) {
+          return preferenceOrg;
+        }
+      }
+    }
+
     const fallbackOrg = parseDefaultOrganizationId();
     if (fallbackOrg) {
       return fallbackOrg;

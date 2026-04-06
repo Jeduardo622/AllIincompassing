@@ -116,9 +116,10 @@ interface ProgramsGoalsTabProps {
 export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
+  const organizationQueryKey = organizationId ?? "MISSING_ORG";
   const { session } = useAuth();
   const publishSectionRef = useRef<HTMLDivElement | null>(null);
-  const assessmentDocumentsQueryKey = ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"] as const;
+  const assessmentDocumentsQueryKey = ["assessment-documents", client.id, organizationQueryKey] as const;
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [selectedAssessmentId, setSelectedAssessmentId] = useState<string | null>(null);
   const [assessmentFile, setAssessmentFile] = useState<File | null>(null);
@@ -186,7 +187,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     isLoading: programsLoading,
     error: programsQueryError,
   } = useQuery({
-    queryKey: ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
+    queryKey: ["client-programs", client.id, organizationQueryKey],
     queryFn: async () => {
       if (!organizationId) {
         throw new Error("Organization context is required to load programs.");
@@ -240,7 +241,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     isLoading: goalsLoading,
     error: goalsQueryError,
   } = useQuery({
-    queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
+    queryKey: ["program-goals", resolvedProgramId, organizationQueryKey],
     queryFn: async () => {
       if (!resolvedProgramId) return [];
       const response = await callEdgeWithSupabaseFallback({
@@ -272,7 +273,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   });
 
   const { data: programNotes = [] } = useQuery({
-    queryKey: ["program-notes", resolvedProgramId, organizationId ?? "MISSING_ORG"],
+    queryKey: ["program-notes", resolvedProgramId, organizationQueryKey],
     queryFn: async () => {
       if (!resolvedProgramId) return [];
       const response = await callEdgeWithSupabaseFallback({
@@ -322,7 +323,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const canQuerySelectedAssessment = selectedAssessmentIdIsValid && selectedAssessmentInQueue;
 
   const { data: checklistItems = EMPTY_CHECKLIST_ITEMS } = useQuery({
-    queryKey: ["assessment-checklist", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+    queryKey: ["assessment-checklist", selectedAssessmentId, organizationQueryKey],
     queryFn: async () => {
       if (!selectedAssessmentId) return [];
       const response = await callApi(
@@ -337,7 +338,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   });
 
   const { data: assessmentDrafts } = useQuery({
-    queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+    queryKey: ["assessment-drafts", selectedAssessmentId, organizationQueryKey],
     queryFn: async () => {
       if (!selectedAssessmentId) return EMPTY_ASSESSMENT_DRAFTS;
       const response = await callApi(`/api/assessment-drafts?assessment_document_id=${encodeURIComponent(selectedAssessmentId)}`);
@@ -557,10 +558,27 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!response.ok) {
         throw new Error("Failed to update checklist row");
       }
+      return { itemId, edit };
     },
-    onSuccess: () => {
+    onSuccess: ({ itemId, edit }) => {
+      queryClient.setQueryData<AssessmentChecklistItem[]>(
+        ["assessment-checklist", selectedAssessmentId, organizationQueryKey],
+        (current) => {
+          const currentRows = Array.isArray(current) ? current : [];
+          return currentRows.map((row) =>
+            row.id === itemId
+              ? {
+                  ...row,
+                  status: edit.status,
+                  review_notes: edit.reviewNotes,
+                  value_text: edit.valueText,
+                }
+              : row,
+          );
+        },
+      );
       queryClient.invalidateQueries({
-        queryKey: ["assessment-checklist", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+        queryKey: ["assessment-checklist", selectedAssessmentId, organizationQueryKey],
       });
       showSuccess("Checklist row updated.");
     },
@@ -597,19 +615,19 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         return currentRecords.filter((record) => record.id !== document.id);
       });
       queryClient.removeQueries({
-        queryKey: ["assessment-checklist", document.id, organizationId ?? "MISSING_ORG"],
+        queryKey: ["assessment-checklist", document.id, organizationQueryKey],
       });
       queryClient.removeQueries({
-        queryKey: ["assessment-drafts", document.id, organizationId ?? "MISSING_ORG"],
+        queryKey: ["assessment-drafts", document.id, organizationQueryKey],
       });
       queryClient.invalidateQueries({
         queryKey: assessmentDocumentsQueryKey,
       });
       queryClient.invalidateQueries({
-        queryKey: ["assessment-checklist", document.id, organizationId ?? "MISSING_ORG"],
+        queryKey: ["assessment-checklist", document.id, organizationQueryKey],
       });
       queryClient.invalidateQueries({
-        queryKey: ["assessment-drafts", document.id, organizationId ?? "MISSING_ORG"],
+        queryKey: ["assessment-drafts", document.id, organizationQueryKey],
       });
       showSuccess(`Deleted ${document.file_name}.`);
     },
@@ -643,10 +661,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+        queryKey: ["assessment-drafts", selectedAssessmentId, organizationQueryKey],
       });
       queryClient.invalidateQueries({
-        queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
+        queryKey: ["assessment-documents", client.id, organizationQueryKey],
       });
       showSuccess("AI proposal saved to assessment queue for review.");
     },
@@ -671,10 +689,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+        queryKey: ["assessment-drafts", selectedAssessmentId, organizationQueryKey],
       });
       queryClient.invalidateQueries({
-        queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
+        queryKey: ["assessment-documents", client.id, organizationQueryKey],
       });
       showSuccess("AI proposal program and goals generated from uploaded FBA.");
     },
@@ -701,10 +719,33 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!response.ok) {
         throw new Error("Failed to update draft program.");
       }
+      return { programId, edit };
     },
-    onSuccess: () => {
+    onSuccess: ({ programId, edit }) => {
+      queryClient.setQueryData<AssessmentDraftResponse>(
+        ["assessment-drafts", selectedAssessmentId, organizationQueryKey],
+        (current) => {
+          if (!current) {
+            return current;
+          }
+          return {
+            ...current,
+            programs: (current.programs ?? []).map((program) =>
+              program.id === programId
+                ? {
+                    ...program,
+                    accept_state: edit.acceptState,
+                    review_notes: edit.reviewNotes,
+                    name: edit.name,
+                    description: edit.description,
+                  }
+                : program,
+            ),
+          };
+        },
+      );
       queryClient.invalidateQueries({
-        queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+        queryKey: ["assessment-drafts", selectedAssessmentId, organizationQueryKey],
       });
       showSuccess("Program draft saved. Not published yet.");
     },
@@ -741,10 +782,42 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!response.ok) {
         throw new Error("Failed to update draft goal.");
       }
+      return { goalId, edit, objectiveDataPoints };
     },
-    onSuccess: () => {
+    onSuccess: ({ goalId, edit, objectiveDataPoints }) => {
+      queryClient.setQueryData<AssessmentDraftResponse>(
+        ["assessment-drafts", selectedAssessmentId, organizationQueryKey],
+        (current) => {
+          if (!current) {
+            return current;
+          }
+          return {
+            ...current,
+            goals: (current.goals ?? []).map((goal) =>
+              goal.id === goalId
+                ? {
+                    ...goal,
+                    accept_state: edit.acceptState,
+                    review_notes: edit.reviewNotes,
+                    title: edit.title,
+                    description: edit.description,
+                    original_text: edit.originalText,
+                    goal_type: edit.goalType,
+                    measurement_type: edit.measurementType || null,
+                    baseline_data: edit.baselineData || null,
+                    target_criteria: edit.targetCriteria || null,
+                    mastery_criteria: edit.masteryCriteria || null,
+                    maintenance_criteria: edit.maintenanceCriteria || null,
+                    generalization_criteria: edit.generalizationCriteria || null,
+                    objective_data_points: objectiveDataPoints,
+                  }
+                : goal,
+            ),
+          };
+        },
+      );
       queryClient.invalidateQueries({
-        queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+        queryKey: ["assessment-drafts", selectedAssessmentId, organizationQueryKey],
       });
       showSuccess("Goal draft saved. Not published yet.");
     },
@@ -767,13 +840,13 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({
-        queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
+        queryKey: ["assessment-documents", client.id, organizationQueryKey],
       });
       queryClient.invalidateQueries({
-        queryKey: ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
+        queryKey: ["client-programs", client.id, organizationQueryKey],
       });
       queryClient.invalidateQueries({
-        queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
+        queryKey: ["program-goals", resolvedProgramId, organizationQueryKey],
       });
       showSuccess(`Published to live records. Created production program and ${result.created_goal_count} goals.`);
     },
@@ -872,8 +945,16 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       setProgramName("");
       setProgramDescription("");
       setSelectedProgramId(created.id);
+      queryClient.setQueryData<Program[]>(
+        ["client-programs", client.id, organizationQueryKey],
+        (current) => {
+          const currentPrograms = Array.isArray(current) ? current : [];
+          const withoutCreated = currentPrograms.filter((program) => program.id !== created.id);
+          return [created, ...withoutCreated];
+        },
+      );
       queryClient.invalidateQueries({
-        queryKey: ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
+        queryKey: ["client-programs", client.id, organizationQueryKey],
       });
     },
     onError: showError,
@@ -945,7 +1026,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       }
       return parseJson<Goal>(response);
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       showSuccess("Goal created");
       setGoalTitle("");
       setGoalDescription("");
@@ -957,8 +1038,17 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       setGoalMaintenanceCriteria("");
       setGoalGeneralizationCriteria("");
       setGoalObjectiveDataPoints("[]");
+      queryClient.setQueryData<Goal[]>(
+        ["program-goals", created.program_id, organizationQueryKey],
+        (current) => {
+          const currentGoals = Array.isArray(current) ? current : [];
+          const withoutCreated = currentGoals.filter((goal) => goal.id !== created.id);
+          return [created, ...withoutCreated];
+        },
+      );
       queryClient.invalidateQueries({
-        queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
+        queryKey: ["program-goals", created.program_id, organizationQueryKey],
+        refetchType: "none",
       });
     },
     onError: showError,
@@ -1010,11 +1100,20 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       }
       return parseJson<ProgramNote>(response);
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       showSuccess("Program note added");
       setNoteContent("");
+      queryClient.setQueryData<ProgramNote[]>(
+        ["program-notes", created.program_id, organizationQueryKey],
+        (current) => {
+          const currentNotes = Array.isArray(current) ? current : [];
+          const withoutCreated = currentNotes.filter((note) => note.id !== created.id);
+          return [created, ...withoutCreated];
+        },
+      );
       queryClient.invalidateQueries({
-        queryKey: ["program-notes", resolvedProgramId, organizationId ?? "MISSING_ORG"],
+        queryKey: ["program-notes", created.program_id, organizationQueryKey],
+        refetchType: "none",
       });
     },
     onError: showError,

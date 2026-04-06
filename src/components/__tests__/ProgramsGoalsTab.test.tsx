@@ -473,6 +473,70 @@ describe("ProgramsGoalsTab", () => {
       );
     });
     expect(showSuccess).toHaveBeenCalledWith("Goal created");
+    expect(await screen.findByText("Goal A")).toBeInTheDocument();
+  });
+
+  it("shows a newly created program note immediately without page reload", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "program-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              name: "Communication Program",
+              description: "Live program",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "POST" && path === "/api/program-notes") {
+        return new Response(
+          JSON.stringify({
+            id: "note-1",
+            organization_id: ORG_ID,
+            program_id: "program-1",
+            author_id: "therapist-user-id",
+            note_type: "plan_update",
+            content: { text: "Fresh note right away" },
+            created_at: "2026-02-11T00:00:00.000Z",
+            updated_at: "2026-02-11T00:00:00.000Z",
+          }),
+          { status: 201 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "super_admin",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await screen.findByText("Communication Program");
+    await userEvent.type(await screen.findByPlaceholderText("Add a program note"), "Fresh note right away");
+    await userEvent.click(screen.getByRole("button", { name: "Add Note" }));
+
+    await waitFor(() => {
+      expect(showSuccess).toHaveBeenCalledWith("Program note added");
+    });
+    expect(await screen.findByText("Fresh note right away")).toBeInTheDocument();
   });
 
   it("falls back to same-origin API when program edge calls time out", async () => {

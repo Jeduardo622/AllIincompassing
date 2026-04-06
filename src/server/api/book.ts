@@ -66,13 +66,14 @@ async function assertBookRequestScope(
   accessToken: string,
   body: BookSessionApiRequestBody,
 ): Promise<Response | null> {
-  let {
-    organizationId,
+  const roleResolution = await resolveOrgAndRoleWithStatus(accessToken);
+  let organizationId = roleResolution.organizationId;
+  const {
     isTherapist,
     isAdmin,
     isSuperAdmin,
     upstreamError: roleUpstreamError,
-  } = await resolveOrgAndRoleWithStatus(accessToken);
+  } = roleResolution;
   if (roleUpstreamError) {
     return errorResponse(request, "upstream_error", "Unable to validate organization access", { status: 502 });
   }

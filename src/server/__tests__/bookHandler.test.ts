@@ -78,6 +78,7 @@ const TEST_SUPABASE_EDGE_URL = "https://testing.supabase.co/functions/v1/";
 const ORIGINAL_ENV = {
   SUPABASE_URL: process.env.SUPABASE_URL,
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_EDGE_URL: process.env.SUPABASE_EDGE_URL,
   API_AUTHORITY_MODE: process.env.API_AUTHORITY_MODE,
   DEFAULT_ORGANIZATION_ID: process.env.DEFAULT_ORGANIZATION_ID,
@@ -97,6 +98,7 @@ beforeEach(async () => {
 
   process.env.SUPABASE_URL = TEST_SUPABASE_URL;
   process.env.SUPABASE_ANON_KEY = TEST_SUPABASE_ANON_KEY;
+  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
   process.env.SUPABASE_EDGE_URL = TEST_SUPABASE_EDGE_URL;
   delete process.env.API_AUTHORITY_MODE;
   process.env.DEFAULT_ORGANIZATION_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
@@ -126,6 +128,11 @@ afterAll(() => {
     process.env.SUPABASE_ANON_KEY = ORIGINAL_ENV.SUPABASE_ANON_KEY;
   } else {
     delete process.env.SUPABASE_ANON_KEY;
+  }
+  if (typeof ORIGINAL_ENV.SUPABASE_SERVICE_ROLE_KEY === "string") {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = ORIGINAL_ENV.SUPABASE_SERVICE_ROLE_KEY;
+  } else {
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
   }
   if (typeof ORIGINAL_ENV.SUPABASE_EDGE_URL === "string") {
     process.env.SUPABASE_EDGE_URL = ORIGINAL_ENV.SUPABASE_EDGE_URL;
@@ -247,6 +254,86 @@ describe("bookHandler", () => {
     expect(body.code).toBe("upstream_error");
     expect(body.message).toMatch(/unable to validate organization access/i);
     expect(bookSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("uses service-role scope fallback for super-admin booking when user-scoped org lookup has no context", async () => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+
+    server.use(
+      http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/current_user_is_super_admin`, () => HttpResponse.json(true)),
+      http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/current_user_organization_id`, () => HttpResponse.json(null)),
+      http.get(`${TEST_SUPABASE_URL}/rest/v1/therapists`, ({ request }) => {
+        const apikey = request.headers.get("apikey");
+        const select = new URL(request.url).searchParams.get("select");
+        if (apikey === "service-role-key" && select === "organization_id") {
+          return HttpResponse.json([{ organization_id: "5238e88b-6198-4862-80a2-dbe15bbeabdd" }]);
+        }
+        if (apikey === "service-role-key") {
+          return HttpResponse.json([{ id: "therapist-1" }]);
+        }
+        return HttpResponse.json({ error: "forbidden" }, { status: 403 });
+      }),
+      http.get(`${TEST_SUPABASE_URL}/rest/v1/clients`, ({ request }) => {
+        const apikey = request.headers.get("apikey");
+        if (apikey === "service-role-key") {
+          return HttpResponse.json([{ id: "client-1" }]);
+        }
+        return HttpResponse.json({ error: "forbidden" }, { status: 403 });
+      }),
+      http.get(`${TEST_SUPABASE_URL}/rest/v1/programs`, ({ request }) => {
+        const apikey = request.headers.get("apikey");
+        if (apikey === "service-role-key") {
+          return HttpResponse.json([{ id: "program-1", client_id: "client-1" }]);
+        }
+        return HttpResponse.json({ error: "forbidden" }, { status: 403 });
+      }),
+      http.get(`${TEST_SUPABASE_URL}/rest/v1/goals`, ({ request }) => {
+        const apikey = request.headers.get("apikey");
+        if (apikey === "service-role-key") {
+          return HttpResponse.json([{ id: "goal-1", program_id: "program-1" }]);
+        }
+        return HttpResponse.json({ error: "forbidden" }, { status: 403 });
+      }),
+    );
+
+    bookSessionMock.mockResolvedValueOnce({
+      session: {
+        id: "session-super-admin",
+        client_id: "client-1",
+        therapist_id: "therapist-1",
+        start_time: "2025-01-01T10:00:00Z",
+        end_time: "2025-01-01T11:00:00Z",
+        status: "scheduled",
+        notes: "",
+        created_at: "2025-01-01T09:00:00Z",
+        created_by: "user-1",
+        updated_at: "2025-01-01T09:00:00Z",
+        updated_by: "user-1",
+        duration_minutes: 60,
+      },
+      sessions: [],
+      hold: {
+        holdKey: "hold",
+        holdId: "1",
+        startTime: "2025-01-01T10:00:00Z",
+        endTime: "2025-01-01T11:00:00Z",
+        expiresAt: "2025-01-01T10:05:00Z",
+        holds: [],
+      },
+      cpt: {
+        code: "97153",
+        description: "Adaptive behavior treatment by protocol",
+        modifiers: [],
+        source: "fallback",
+        durationMinutes: 60,
+      },
+    });
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest(validPayload));
+
+    expect(response.status).toBe(200);
+    expect(bookSessionMock).toHaveBeenCalledTimes(1);
   });
 
   it("accepts lowercase bearer prefix", async () => {

@@ -26,6 +26,48 @@ interface MinuteRange {
   end: number;
 }
 
+const DAY_KEY_ALIASES: Record<string, string[]> = {
+  sunday: ["sunday", "sun"],
+  monday: ["monday", "mon"],
+  tuesday: ["tuesday", "tue", "tues"],
+  wednesday: ["wednesday", "wed"],
+  thursday: ["thursday", "thu", "thur", "thurs"],
+  friday: ["friday", "fri"],
+  saturday: ["saturday", "sat"],
+};
+
+const normalizeAvailabilityDayKey = (value: string): string =>
+  value.toLowerCase().replace(/[^a-z]/g, "");
+
+const resolveDailyAvailability = (
+  availabilityHours: Therapist["availability_hours"] | Client["availability_hours"] | null | undefined,
+  dayName: string,
+): AvailabilityWindow | undefined => {
+  if (!availabilityHours || typeof availabilityHours !== "object") {
+    return undefined;
+  }
+
+  const aliases = DAY_KEY_ALIASES[dayName] ?? [dayName];
+  for (const alias of aliases) {
+    const direct = availabilityHours[alias as keyof typeof availabilityHours];
+    if (direct) {
+      return direct as AvailabilityWindow;
+    }
+  }
+
+  const normalizedAliases = new Set(aliases.map((alias) => normalizeAvailabilityDayKey(alias)));
+  for (const [key, value] of Object.entries(availabilityHours)) {
+    if (!value) {
+      continue;
+    }
+    if (normalizedAliases.has(normalizeAvailabilityDayKey(key))) {
+      return value as AvailabilityWindow;
+    }
+  }
+
+  return undefined;
+};
+
 export async function checkSchedulingConflicts(
   startTime: string,
   endTime: string,
@@ -107,7 +149,7 @@ export async function checkSchedulingConflicts(
   const dayName = weekdayNames[getDay(startLocal)];
 
   // Check therapist availability using minute-level bounds
-  const therapistAvailability = therapist.availability_hours?.[dayName];
+  const therapistAvailability = resolveDailyAvailability(therapist.availability_hours, dayName);
   const therapistRanges = toMinuteRanges(therapistAvailability, startLocal);
   if (therapistRanges.length > 0) {
     if (!isWithinAnyRange(therapistRanges, sessionStartMinutes, sessionEndMinutes)) {
@@ -123,7 +165,7 @@ export async function checkSchedulingConflicts(
     if (!addedTypes.has('therapist_unavailable')) {
       conflicts.push({
         type: 'therapist_unavailable',
-        message: `Therapist ${therapist.full_name} is not available on ${format(startLocal, 'EEEE')}s`,
+          message: `Therapist ${therapist.full_name} is not available on ${format(startLocal, 'EEEE')}`,
       });
       addedTypes.add('therapist_unavailable');
     }
@@ -135,7 +177,7 @@ export async function checkSchedulingConflicts(
   }
 
   // Check client availability using minute-level bounds
-  const clientAvailability = client.availability_hours?.[dayName];
+  const clientAvailability = resolveDailyAvailability(client.availability_hours, dayName);
   const clientRanges = toMinuteRanges(clientAvailability, startLocal);
   if (clientRanges.length > 0) {
     if (!isWithinAnyRange(clientRanges, sessionStartMinutes, sessionEndMinutes)) {
@@ -151,7 +193,7 @@ export async function checkSchedulingConflicts(
     if (!addedTypes.has('client_unavailable')) {
       conflicts.push({
         type: 'client_unavailable',
-        message: `Client ${client.full_name} is not available on ${format(startLocal, 'EEEE')}s`,
+          message: `Client ${client.full_name} is not available on ${format(startLocal, 'EEEE')}`,
       });
       addedTypes.add('client_unavailable');
     }

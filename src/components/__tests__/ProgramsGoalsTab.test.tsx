@@ -523,7 +523,7 @@ describe("ProgramsGoalsTab", () => {
 
     renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
       auth: {
-        role: "super_admin",
+        role: "admin",
         organizationId: ORG_ID,
         accessToken: "test-access-token",
       },

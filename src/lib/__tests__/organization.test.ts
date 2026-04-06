@@ -21,4 +21,26 @@ describe('resolveOrganizationId', () => {
 
     expect(resolveOrganizationId({ user: user as unknown as User, profile: null })).toBe('org-from-user');
   });
+
+  it('does not use runtime default org fallback for super admins without explicit org context', () => {
+    const user = {
+      user_metadata: {
+        role: 'super_admin',
+      },
+    };
+
+    expect(resolveOrganizationId({ user: user as unknown as User, profile: null })).toBeNull();
+  });
+
+  it('still uses runtime default org fallback for non-super-admin users without explicit org context', () => {
+    const user = {
+      user_metadata: {
+        role: 'admin',
+      },
+    };
+
+    expect(resolveOrganizationId({ user: user as unknown as User, profile: null })).toBe(
+      '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+    );
+  });
 });

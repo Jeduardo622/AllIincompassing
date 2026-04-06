@@ -16,6 +16,14 @@ interface ResolveOrganizationArgs {
   profile?: UserProfile | null;
 }
 
+const normalizeRole = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+};
+
 export const resolveOrganizationId = ({
   user,
   profile,
@@ -26,6 +34,10 @@ export const resolveOrganizationId = ({
   }
 
   const metadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
+  const resolvedRole =
+    normalizeRole((profile as { role?: unknown } | null | undefined)?.role) ??
+    normalizeRole(metadata.role) ??
+    normalizeRole(metadata.user_role);
   const metaSnake = normalizeId(metadata.organization_id);
   const metaCamel = normalizeId(metadata.organizationId);
 
@@ -42,6 +54,11 @@ export const resolveOrganizationId = ({
     if (prefSnake) return prefSnake;
     const prefCamel = normalizeId(prefRecord.organizationId);
     if (prefCamel) return prefCamel;
+  }
+
+  // Super admins should explicitly pick/impersonate a tenant org instead of inheriting a runtime default.
+  if (resolvedRole === "super_admin") {
+    return null;
   }
 
   try {

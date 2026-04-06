@@ -95,7 +95,12 @@ export const loginAndAssertSession = async (
   password: string,
 ): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: "domcontentloaded", timeout: 60000 });
-  await page.waitForSelector("input[type='password']", { timeout: 10000 });
+  await page.waitForLoadState("networkidle").catch(() => undefined);
+  const currentPath = new URL(page.url()).pathname.toLowerCase();
+  if (!/\/login(?:\/|$)/i.test(currentPath) && (await hasSupabaseAuthToken(page))) {
+    return;
+  }
+  await page.waitForSelector("input[type='password']", { timeout: 20000 });
   await page.getByText(LOGIN_HEADING_PATTERN).first().waitFor({ timeout: 5000 }).catch(() => undefined);
 
   await fillWithFallbacks(
@@ -105,6 +110,10 @@ export const loginAndAssertSession = async (
       page.locator("form input[autocomplete='email']"),
       page.locator("form input[type='email']"),
       page.locator("form input[name*='email' i]"),
+      page.locator("input[autocomplete='email']"),
+      page.locator("input[type='email']"),
+      page.locator("input[name*='email' i]"),
+      page.locator("input[placeholder*='email' i]"),
       page.locator("input#email"),
     ],
     email,

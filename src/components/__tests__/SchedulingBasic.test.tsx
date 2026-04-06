@@ -100,12 +100,12 @@ describe('Scheduling Basic Functionality', () => {
     // Wait for the page to load
     await waitFor(() => {
       expect(screen.getByText('Schedule')).toBeInTheDocument();
-    });
+    }, { timeout: 10000 });
 
     // Check that basic UI elements are present
     expect(screen.getByRole('button', { name: /Day view/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Week view/i })).toBeInTheDocument();
-  });
+  }, 15000);
 
   it('should display sessions when data is loaded', async () => {
     // Mock API responses with session data

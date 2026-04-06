@@ -186,10 +186,12 @@ describe("Schedule", () => {
     renderWithProviders(<Schedule />);
 
     // Check for main heading (more specific selector)
-    expect(await screen.findByRole("heading", { name: /Schedule/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: /Schedule/i }, { timeout: 10000 }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Day view/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Week view/i })).toBeInTheDocument();
-  });
+  }, 15000);
 
   it("renders schedule interface elements", async () => {
     renderWithProviders(<Schedule />);

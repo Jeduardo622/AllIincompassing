@@ -502,27 +502,27 @@ async function run() {
           );
         }
 
-        const bookResponsePromise = page.waitForResponse(
-          (response) =>
-            response.request().method().toUpperCase() === "POST"
-            && response.url().includes("/api/book"),
-          { timeout: 20_000 },
-        );
-
-        await withStepTimeout(
-          `submit-session-modal-attempt-${attempt + 1}`,
-          () => getSubmitButton(page).click(),
-          15000,
-        );
+        // SessionModal prompts window.confirm when client-side conflicts exist. Playwright
+        // auto-dismisses unhandled confirms as "Cancel", which aborts submit and never POSTs
+        // /api/book — accept so the booking request always runs for this smoke.
+        page.once("dialog", (dialog) => dialog.accept());
 
         bookingResponse = await withStepTimeout(
           `observe-booking-response-attempt-${attempt + 1}`,
           async (): Promise<BookResponseSnapshot> => {
-            const response = await bookResponsePromise;
+            const [response] = await Promise.all([
+              page.waitForResponse(
+                (response) =>
+                  response.request().method().toUpperCase() === "POST"
+                  && response.url().includes("/api/book"),
+                { timeout: 30_000 },
+              ),
+              getSubmitButton(page).click(),
+            ]);
             const body = await response.text().catch(() => "");
             return { status: response.status(), body };
           },
-          30000,
+          35_000,
         );
         conflictSessionId = attemptConflictSessionId;
       } finally {

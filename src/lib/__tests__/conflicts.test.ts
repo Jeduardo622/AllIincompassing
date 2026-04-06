@@ -157,6 +157,37 @@ describe('checkSchedulingConflicts', () => {
     expect(conflicts).toHaveLength(0);
   });
 
+  it('accepts mixed-case day keys in availability hours', async () => {
+    const therapistWithMixedCaseDays = {
+      ...mockTherapist,
+      availability_hours: {
+        Monday: { start: '09:00', end: '17:00' },
+      },
+    };
+
+    const clientWithMixedCaseDays = {
+      ...mockClient,
+      availability_hours: {
+        MONDAY: { start: '10:00', end: '16:00' },
+      },
+    };
+
+    const startTime = '2025-05-19T11:00:00Z';
+    const endTime = '2025-05-19T12:00:00Z';
+
+    const conflicts = await checkSchedulingConflicts(
+      startTime,
+      endTime,
+      therapistWithMixedCaseDays.id,
+      clientWithMixedCaseDays.id,
+      [],
+      therapistWithMixedCaseDays,
+      clientWithMixedCaseDays
+    );
+
+    expect(conflicts).toHaveLength(0);
+  });
+
   it('rejects bookings that begin before the therapist minute-level availability', async () => {
     const therapistWithLaterStart = {
       ...mockTherapist,

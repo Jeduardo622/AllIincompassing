@@ -26,6 +26,43 @@ interface MinuteRange {
   end: number;
 }
 
+const DAY_KEY_ALIASES: Record<string, string[]> = {
+  sunday: ['sunday', 'sun'],
+  monday: ['monday', 'mon'],
+  tuesday: ['tuesday', 'tue', 'tues'],
+  wednesday: ['wednesday', 'wed'],
+  thursday: ['thursday', 'thu', 'thurs'],
+  friday: ['friday', 'fri'],
+  saturday: ['saturday', 'sat'],
+};
+
+const resolveDailyAvailability = (
+  availabilityHours: Therapist['availability_hours'] | Client['availability_hours'] | null | undefined,
+  dayName: string,
+): AvailabilityWindow | undefined => {
+  if (!availabilityHours || typeof availabilityHours !== 'object') {
+    return undefined;
+  }
+
+  const direct = availabilityHours[dayName as keyof typeof availabilityHours];
+  if (direct) {
+    return direct;
+  }
+
+  const aliases = DAY_KEY_ALIASES[dayName] ?? [dayName];
+  const entries = Object.entries(availabilityHours as Record<string, AvailabilityWindow | null | undefined>);
+  const loweredEntries = new Map(entries.map(([key, value]) => [key.trim().toLowerCase(), value]));
+
+  for (const alias of aliases) {
+    const match = loweredEntries.get(alias);
+    if (match) {
+      return match;
+    }
+  }
+
+  return undefined;
+};
+
 export async function checkSchedulingConflicts(
   startTime: string,
   endTime: string,
@@ -107,7 +144,7 @@ export async function checkSchedulingConflicts(
   const dayName = weekdayNames[getDay(startLocal)];
 
   // Check therapist availability using minute-level bounds
-  const therapistAvailability = therapist.availability_hours?.[dayName];
+  const therapistAvailability = resolveDailyAvailability(therapist.availability_hours, dayName);
   const therapistRanges = toMinuteRanges(therapistAvailability, startLocal);
   if (therapistRanges.length > 0) {
     if (!isWithinAnyRange(therapistRanges, sessionStartMinutes, sessionEndMinutes)) {
@@ -135,7 +172,7 @@ export async function checkSchedulingConflicts(
   }
 
   // Check client availability using minute-level bounds
-  const clientAvailability = client.availability_hours?.[dayName];
+  const clientAvailability = resolveDailyAvailability(client.availability_hours, dayName);
   const clientRanges = toMinuteRanges(clientAvailability, startLocal);
   if (clientRanges.length > 0) {
     if (!isWithinAnyRange(clientRanges, sessionStartMinutes, sessionEndMinutes)) {

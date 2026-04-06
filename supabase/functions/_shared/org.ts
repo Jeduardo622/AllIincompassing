@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
+import { supabaseAdmin } from "./database.ts";
 
 export class MissingOrgContextError extends Error {
   status = 403;
@@ -31,6 +32,55 @@ export async function requireOrg(db: SupabaseClient): Promise<string> {
     throw new MissingOrgContextError();
   }
   return orgId;
+}
+
+/**
+ * Like `requireOrg`, but when the DB has no org for the caller (common for super-admins scoped only
+ * via client runtime-config / UI) and the user is a super admin, resolves org from the booking
+ * therapist row. Matches schedule RPC behavior where tenant context can come from impersonation
+ * without `profiles.organization_id` or JWT-backed `current_user_organization_id`.
+ */
+export async function requireOrgForScheduling(db: SupabaseClient, therapistId: string): Promise<string> {
+  const direct = await resolveOrgId(db);
+  if (direct) {
+    return direct;
+  }
+
+  const { data: isSuper, error: superErr } = await db.rpc("current_user_is_super_admin");
+  if (superErr) {
+    console.error("requireOrgForScheduling current_user_is_super_admin", superErr);
+    throw new MissingOrgContextError();
+  }
+  if (isSuper !== true) {
+    throw new MissingOrgContextError();
+  }
+
+  const trimmed = therapistId.trim();
+  if (trimmed.length === 0) {
+    throw new MissingOrgContextError();
+  }
+
+  const { data: row, error } = await supabaseAdmin
+    .from("therapists")
+    .select("organization_id")
+    .eq("id", trimmed)
+    .maybeSingle();
+
+  if (error) {
+    console.error("requireOrgForScheduling therapist lookup", error);
+    throw new MissingOrgContextError();
+  }
+
+  const org =
+    row && typeof (row as { organization_id?: unknown }).organization_id === "string"
+      ? (row as { organization_id: string }).organization_id.trim()
+      : "";
+
+  if (org.length === 0) {
+    throw new MissingOrgContextError();
+  }
+
+  return org;
 }
 
 type OrgRoleTargets = {

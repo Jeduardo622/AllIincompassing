@@ -223,16 +223,35 @@ export function getSessionStatusClasses(
   return SESSION_STATUS_STYLES[status] ?? SESSION_STATUS_STYLES.scheduled;
 }
 
-/** Prefer batch directory rows when the batch list is non-empty; if the batch returns `[]`, fall back to dropdown data (batch `||` merge would otherwise hide a successful dropdown). */
-function mergeScheduleDirectoryLists<T>(
+/**
+ * Prefer batch directory rows when non-empty (batch drives ordering and membership), but overlay
+ * dropdown rows by id so slim batch RPC shapes (e.g. `get_schedule_data_batch` without
+ * `availability_hours`) do not strip fields required for client-side conflict checks.
+ */
+function mergeScheduleDirectoryLists<T extends { id?: string }>(
   batchList: T[] | null | undefined,
   dropdownList: T[] | null | undefined,
 ): T[] {
   const batch = batchList ?? [];
-  if (batch.length > 0) {
+  const dropdown = dropdownList ?? [];
+  if (batch.length === 0) {
+    return dropdown;
+  }
+  if (dropdown.length === 0) {
     return batch;
   }
-  return dropdownList ?? [];
+  const dropdownById = new Map(
+    dropdown
+      .filter((item): item is T & { id: string } => typeof item.id === "string" && item.id.trim().length > 0)
+      .map((item) => [item.id, item] as const),
+  );
+  return batch.map((row) => {
+    if (typeof row.id !== "string" || row.id.trim().length === 0) {
+      return row;
+    }
+    const rich = dropdownById.get(row.id);
+    return rich ? ({ ...row, ...rich } as T) : row;
+  });
 }
 
 // Memoized time slot component

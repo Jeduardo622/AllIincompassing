@@ -66,11 +66,38 @@ async function assertBookRequestScope(
   accessToken: string,
   body: BookSessionApiRequestBody,
 ): Promise<Response | null> {
-  const { organizationId, isTherapist, isAdmin, isSuperAdmin, upstreamError: roleUpstreamError } =
-    await resolveOrgAndRoleWithStatus(accessToken);
+  let {
+    organizationId,
+    isTherapist,
+    isAdmin,
+    isSuperAdmin,
+    upstreamError: roleUpstreamError,
+  } = await resolveOrgAndRoleWithStatus(accessToken);
   if (roleUpstreamError) {
     return errorResponse(request, "upstream_error", "Unable to validate organization access", { status: 502 });
   }
+
+  const { supabaseUrl, anonKey } = getSupabaseConfig();
+  const headers = {
+    "Content-Type": "application/json",
+    apikey: anonKey,
+    Authorization: `Bearer ${accessToken}`,
+  };
+
+  if (!organizationId && isSuperAdmin) {
+    const encodedTherapistId = encodeURIComponent(body.session.therapist_id);
+    const therapistOrgUrl = `${supabaseUrl}/rest/v1/therapists?select=organization_id&id=eq.${encodedTherapistId}`;
+    const therapistOrgResult = await fetchJson<Array<{ organization_id: string }>>(therapistOrgUrl, {
+      method: "GET",
+      headers,
+    });
+    const therapistRow =
+      therapistOrgResult.ok && Array.isArray(therapistOrgResult.data) ? therapistOrgResult.data[0] : null;
+    if (therapistRow && typeof therapistRow.organization_id === "string" && therapistRow.organization_id.length > 0) {
+      organizationId = therapistRow.organization_id;
+    }
+  }
+
   if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
@@ -87,12 +114,6 @@ async function assertBookRequestScope(
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
 
-  const { supabaseUrl, anonKey } = getSupabaseConfig();
-  const headers = {
-    "Content-Type": "application/json",
-    apikey: anonKey,
-    Authorization: `Bearer ${accessToken}`,
-  };
   const encodedOrgId = encodeURIComponent(organizationId);
   const encodedTherapistId = encodeURIComponent(body.session.therapist_id);
   const encodedClientId = encodeURIComponent(body.session.client_id);

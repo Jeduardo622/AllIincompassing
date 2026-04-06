@@ -9,7 +9,7 @@ const envValues = new Map<string, string>([
 
 const createRequestClientMock = vi.fn();
 const getUserOrThrowMock = vi.fn();
-const requireOrgMock = vi.fn();
+const requireOrgForSchedulingMock = vi.fn();
 const evaluateTherapistAuthorizationMock = vi.fn();
 const createSupabaseIdempotencyServiceMock = vi.fn();
 const buildScopedIdempotencyKeyMock = vi.fn();
@@ -66,7 +66,7 @@ async function loadHandler() {
     );
     return {
       ...actual,
-      requireOrg: requireOrgMock,
+      requireOrgForScheduling: requireOrgForSchedulingMock,
     };
   });
   vi.doMock('../../supabase/functions/_shared/authorization.ts', () => ({
@@ -106,7 +106,7 @@ describe('sessions-hold retry-after contract', () => {
 
     createRequestClientMock.mockReturnValue({});
     getUserOrThrowMock.mockResolvedValue({ id: 'user-1' });
-    requireOrgMock.mockResolvedValue('org-1');
+    requireOrgForSchedulingMock.mockResolvedValue('org-1');
     evaluateTherapistAuthorizationMock.mockResolvedValue({ ok: true });
     buildScopedIdempotencyKeyMock.mockImplementation((key: string) => `scoped:${key}`);
     createSupabaseIdempotencyServiceMock.mockReturnValue({
@@ -151,7 +151,7 @@ describe('sessions-hold retry-after contract', () => {
 
     expect(createRequestClientMock).toHaveBeenCalledTimes(1);
     expect(getUserOrThrowMock).toHaveBeenCalledTimes(1);
-    expect(requireOrgMock).toHaveBeenCalledTimes(1);
+    expect(requireOrgForSchedulingMock).toHaveBeenCalledTimes(1);
     expect(evaluateTherapistAuthorizationMock).toHaveBeenCalledWith({}, 'therapist-1');
     expect(resolveSchedulingRetryAfterMock).toHaveBeenCalledWith(
       expect.objectContaining({ rpc: expect.any(Function), from: expect.any(Function) }),

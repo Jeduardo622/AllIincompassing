@@ -11,7 +11,7 @@ import {
 } from "../_shared/timezone.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 import { evaluateTherapistAuthorization } from "../_shared/authorization.ts";
-import { MissingOrgContextError, requireOrg } from "../_shared/org.ts";
+import { MissingOrgContextError, requireOrgForScheduling } from "../_shared/org.ts";
 import { recordSessionAuditEvent } from "../_shared/audit.ts";
 import { resolveSchedulingRetryAfter } from "../_shared/retry-after.ts";
 import { orchestrateScheduling } from "../_shared/scheduling-orchestrator.ts";
@@ -89,7 +89,18 @@ Deno.serve(async (req) => {
   try {
     const requestClient = createRequestClient(req);
     const user = await getUserOrThrow(requestClient);
-    const orgId = await requireOrg(requestClient);
+
+    let payload: HoldPayload;
+    try {
+      payload = await req.json() as HoldPayload;
+    } catch {
+      return jsonResponse({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    if (!payload?.therapist_id || !payload?.client_id || !payload?.start_time || !payload?.end_time) {
+      return jsonResponse({ success: false, error: "Missing required fields" }, 400);
+    }
+
+    const orgId = await requireOrgForScheduling(requestClient, payload.therapist_id);
     const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
     const normalizedKey = idempotencyKey.length > 0 ? idempotencyKey : null;
     const storageIdempotencyKey = normalizedKey
@@ -136,11 +147,6 @@ Deno.serve(async (req) => {
 
       return jsonResponse(body, status, { ...headers, "Idempotency-Key": normalizedKey });
     };
-
-    const payload = await req.json() as HoldPayload;
-    if (!payload?.therapist_id || !payload?.client_id || !payload?.start_time || !payload?.end_time) {
-      return respond({ success: false, error: "Missing required fields" }, 400);
-    }
 
     const authorization = await evaluateTherapistAuthorization(requestClient, payload.therapist_id);
     if (!authorization.ok) {

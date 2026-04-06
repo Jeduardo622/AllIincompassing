@@ -11,7 +11,7 @@ import {
 } from "../_shared/timezone.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 import { evaluateTherapistAuthorization } from "../_shared/authorization.ts";
-import { MissingOrgContextError, requireOrg } from "../_shared/org.ts";
+import { MissingOrgContextError, requireOrgForScheduling } from "../_shared/org.ts";
 import { recordSessionAuditEvent } from "../_shared/audit.ts";
 import { resolveSchedulingRetryAfter } from "../_shared/retry-after.ts";
 import { orchestrateScheduling } from "../_shared/scheduling-orchestrator.ts";
@@ -73,7 +73,22 @@ Deno.serve(async (req) => {
   try {
     const requestClient = createRequestClient(req);
     const user = await getUserOrThrow(requestClient);
-    const orgId = await requireOrg(requestClient);
+
+    let payload: ConfirmPayload;
+    try {
+      payload = await req.json() as ConfirmPayload;
+    } catch {
+      return jsonResponse({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    if (!payload?.hold_key || !payload?.session) {
+      return jsonResponse({ success: false, error: "Missing required fields" }, 400);
+    }
+    const sessionForOrg = payload.session as { therapist_id?: unknown };
+    if (typeof sessionForOrg.therapist_id !== "string" || sessionForOrg.therapist_id.trim().length === 0) {
+      return jsonResponse({ success: false, error: "Session therapist_id is required" }, 400);
+    }
+
+    const orgId = await requireOrgForScheduling(requestClient, sessionForOrg.therapist_id);
     const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
     const normalizedKey = idempotencyKey.length > 0 ? idempotencyKey : null;
     const storageIdempotencyKey = normalizedKey
@@ -120,11 +135,6 @@ Deno.serve(async (req) => {
 
       return jsonResponse(body, status, { ...headers, "Idempotency-Key": normalizedKey });
     };
-
-    const payload = await req.json() as ConfirmPayload;
-    if (!payload?.hold_key || !payload?.session) {
-      return respond({ success: false, error: "Missing required fields" }, 400);
-    }
 
     const sessionData = payload.session as { start_time?: unknown; end_time?: unknown };
     if (typeof sessionData.start_time !== "string" || typeof sessionData.end_time !== "string") {

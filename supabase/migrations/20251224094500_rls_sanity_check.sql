@@ -33,16 +33,6 @@ BEGIN
   END IF;
 END$$;
 
--- Assert client-documents bucket policies exist (read policy name check)
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'storage'
-      AND tablename = 'objects'
-      AND policyname = 'client_documents_org_read'
-  ) THEN
-    RAISE EXCEPTION 'client_documents_org_read policy missing on storage.objects';
-  END IF;
-END$$;
+-- Canonical client_documents_org_* storage policies are created in 20260313160000_authz_storage_alignment.sql;
+-- asserting them here breaks full replay (policies do not exist yet).
 

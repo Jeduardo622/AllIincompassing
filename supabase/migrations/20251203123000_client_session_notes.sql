@@ -13,6 +13,18 @@
 
 BEGIN;
 
+-- `public.set_updated_at()` is defined canonically in 20251215120000_super_admin_feature_flags.sql;
+-- this migration runs earlier on fresh replays and attaches a trigger, so ensure the helper exists.
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.updated_at := timezone('utc', now());
+  RETURN NEW;
+END;
+$$;
+
 CREATE TABLE IF NOT EXISTS public.client_session_notes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id uuid NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,

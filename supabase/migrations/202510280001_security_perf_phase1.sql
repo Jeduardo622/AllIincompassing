@@ -20,11 +20,27 @@ BEGIN
   END;
 END $$;
 
--- Harden function search_path to avoid role-dependent resolution
-ALTER FUNCTION public.block_role_change_non_admin() SET search_path = pg_catalog, public;
-ALTER FUNCTION public.is_admin() SET search_path = pg_catalog, public;
-ALTER FUNCTION public.enqueue_impersonation_revocation(uuid, text) SET search_path = pg_catalog, public;
-ALTER FUNCTION public.enqueue_impersonation_revocation(uuid, uuid) SET search_path = pg_catalog, public;
+-- Harden function search_path to avoid role-dependent resolution (functions may be absent on replay)
+DO $$ BEGIN
+  IF to_regprocedure('public.block_role_change_non_admin()') IS NOT NULL THEN
+    EXECUTE 'ALTER FUNCTION public.block_role_change_non_admin() SET search_path = pg_catalog, public';
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF to_regprocedure('public.is_admin()') IS NOT NULL THEN
+    EXECUTE 'ALTER FUNCTION public.is_admin() SET search_path = pg_catalog, public';
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF to_regprocedure('public.enqueue_impersonation_revocation(uuid, text)') IS NOT NULL THEN
+    EXECUTE 'ALTER FUNCTION public.enqueue_impersonation_revocation(uuid, text) SET search_path = pg_catalog, public';
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF to_regprocedure('public.enqueue_impersonation_revocation(uuid, uuid)') IS NOT NULL THEN
+    EXECUTE 'ALTER FUNCTION public.enqueue_impersonation_revocation(uuid, uuid) SET search_path = pg_catalog, public';
+  END IF;
+END $$;
 
 -- Add surrogate primary key to table lacking a PK
 ALTER TABLE public.session_cpt_modifiers

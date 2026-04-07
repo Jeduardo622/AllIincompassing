@@ -88,6 +88,8 @@ drop policy if exists "session_holds_select_access" on public.session_holds;
 drop policy if exists "session_holds_insert_access" on public.session_holds;
 drop policy if exists "session_holds_update_access" on public.session_holds;
 drop policy if exists "session_holds_delete_access" on public.session_holds;
+drop policy if exists "Session holds scoped access" on public.session_holds;
+drop policy if exists "Session holds managed in organization" on public.session_holds;
 
 create policy "Session holds scoped access"
   on public.session_holds

@@ -53,6 +53,53 @@ $$;
 
 grant execute on function app.current_user_id() to authenticated;
 
+-- Array overload first shipped in 20251223131500_align_rls_and_grants.sql; phase-2 RLS calls it earlier.
+-- Delegate to legacy app.user_has_role_for_org(text, uuid, ...) from 20250923121500_enforce_org_scope.sql.
+create or replace function app.user_has_role_for_org(
+  target_user_id uuid,
+  target_organization_id uuid,
+  allowed_roles text[]
+)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public, auth, app
+as $$
+declare
+  entry text;
+begin
+  if target_user_id is null or target_organization_id is null or allowed_roles is null then
+    return false;
+  end if;
+  if target_user_id is distinct from auth.uid() then
+    return false;
+  end if;
+
+  foreach entry in array allowed_roles loop
+    if entry = 'org_admin' then
+      if app.user_has_role_for_org('admin'::text, target_organization_id)
+        or app.user_has_role_for_org('super_admin'::text, target_organization_id) then
+        return true;
+      end if;
+    elsif entry = 'org_member' then
+      if app.user_has_role_for_org('therapist'::text, target_organization_id)
+        or app.user_has_role_for_org('client'::text, target_organization_id) then
+        return true;
+      end if;
+    elsif entry = 'org_super_admin' then
+      if app.user_has_role_for_org('super_admin'::text, target_organization_id) then
+        return true;
+      end if;
+    end if;
+  end loop;
+
+  return false;
+end;
+$$;
+
+grant execute on function app.user_has_role_for_org(uuid, uuid, text[]) to authenticated;
+
 -- Consolidate redundant permissive policies on high-traffic tables to satisfy Supabase performance advisories.
 
 -- 1. public.roles

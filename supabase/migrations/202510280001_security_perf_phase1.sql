@@ -57,22 +57,43 @@ BEGIN
   END IF;
 END $$;
 
--- Covering indexes for foreign keys flagged by advisors
-CREATE INDEX IF NOT EXISTS idx_admin_invite_tokens_created_by ON public.admin_invite_tokens (created_by);
-CREATE INDEX IF NOT EXISTS idx_client_guardians_created_by ON public.client_guardians (created_by);
-CREATE INDEX IF NOT EXISTS idx_client_guardians_updated_by ON public.client_guardians (updated_by);
-CREATE INDEX IF NOT EXISTS idx_client_guardians_deleted_by ON public.client_guardians (deleted_by);
-CREATE INDEX IF NOT EXISTS idx_clients_created_by ON public.clients (created_by);
-CREATE INDEX IF NOT EXISTS idx_clients_updated_by ON public.clients (updated_by);
-CREATE INDEX IF NOT EXISTS idx_clients_deleted_by ON public.clients (deleted_by);
-CREATE INDEX IF NOT EXISTS idx_impersonation_revocation_queue_audit_id ON public.impersonation_revocation_queue (audit_id);
-CREATE INDEX IF NOT EXISTS idx_organization_feature_flags_created_by ON public.organization_feature_flags (created_by);
-CREATE INDEX IF NOT EXISTS idx_organization_feature_flags_updated_by ON public.organization_feature_flags (updated_by);
-CREATE INDEX IF NOT EXISTS idx_organizations_created_by ON public.organizations (created_by);
-CREATE INDEX IF NOT EXISTS idx_organizations_updated_by ON public.organizations (updated_by);
-CREATE INDEX IF NOT EXISTS idx_session_cpt_entries_cpt_code_id ON public.session_cpt_entries (cpt_code_id);
-CREATE INDEX IF NOT EXISTS idx_session_holds_session_id ON public.session_holds (session_id);
-CREATE INDEX IF NOT EXISTS idx_therapists_deleted_by ON public.therapists (deleted_by);
+-- Covering indexes for foreign keys flagged by advisors (tables may not exist yet on replay)
+DO $$
+BEGIN
+  IF to_regclass('public.admin_invite_tokens') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_admin_invite_tokens_created_by ON public.admin_invite_tokens (created_by)';
+  END IF;
+  IF to_regclass('public.client_guardians') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_client_guardians_created_by ON public.client_guardians (created_by)';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_client_guardians_updated_by ON public.client_guardians (updated_by)';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_client_guardians_deleted_by ON public.client_guardians (deleted_by)';
+  END IF;
+  IF to_regclass('public.clients') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_clients_created_by ON public.clients (created_by)';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_clients_updated_by ON public.clients (updated_by)';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_clients_deleted_by ON public.clients (deleted_by)';
+  END IF;
+  IF to_regclass('public.impersonation_revocation_queue') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_impersonation_revocation_queue_audit_id ON public.impersonation_revocation_queue (audit_id)';
+  END IF;
+  IF to_regclass('public.organization_feature_flags') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_organization_feature_flags_created_by ON public.organization_feature_flags (created_by)';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_organization_feature_flags_updated_by ON public.organization_feature_flags (updated_by)';
+  END IF;
+  IF to_regclass('public.organizations') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_organizations_created_by ON public.organizations (created_by)';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_organizations_updated_by ON public.organizations (updated_by)';
+  END IF;
+  IF to_regclass('public.session_cpt_entries') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_session_cpt_entries_cpt_code_id ON public.session_cpt_entries (cpt_code_id)';
+  END IF;
+  IF to_regclass('public.session_holds') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_session_holds_session_id ON public.session_holds (session_id)';
+  END IF;
+  IF to_regclass('public.therapists') IS NOT NULL THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_therapists_deleted_by ON public.therapists (deleted_by)';
+  END IF;
+END $$;
 
 -- NOTE:
 -- RLS policy optimizations (wrapping auth.* calls with SELECT to avoid initplan per-row

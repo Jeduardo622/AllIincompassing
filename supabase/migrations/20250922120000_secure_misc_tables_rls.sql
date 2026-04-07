@@ -17,6 +17,11 @@ set search_path = public;
 -- Admin action ownership links
 DO $$
 BEGIN
+  IF to_regclass('public.admin_actions') IS NULL THEN
+    RAISE NOTICE 'Skipping admin_actions ownership links: table does not exist.';
+    RETURN;
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM information_schema.table_constraints
@@ -173,35 +178,44 @@ $$;
 -- Enable RLS and define policies
 
 -- admin_actions policies
-ALTER TABLE public.admin_actions ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public.admin_actions') IS NULL THEN
+    RAISE NOTICE 'Skipping admin_actions policy setup: table does not exist.';
+    RETURN;
+  END IF;
 
-DROP POLICY IF EXISTS admin_actions_service_role_manage ON public.admin_actions;
-DROP POLICY IF EXISTS admin_actions_admin_read ON public.admin_actions;
-DROP POLICY IF EXISTS admin_actions_admin_insert ON public.admin_actions;
+  ALTER TABLE public.admin_actions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY admin_actions_service_role_manage
-  ON public.admin_actions
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+  DROP POLICY IF EXISTS admin_actions_service_role_manage ON public.admin_actions;
+  DROP POLICY IF EXISTS admin_actions_admin_read ON public.admin_actions;
+  DROP POLICY IF EXISTS admin_actions_admin_insert ON public.admin_actions;
 
-CREATE POLICY admin_actions_admin_read
-  ON public.admin_actions
-  FOR SELECT
-  TO authenticated
-  USING (
-    app.user_has_role('admin') OR app.user_has_role('super_admin')
-  );
+  CREATE POLICY admin_actions_service_role_manage
+    ON public.admin_actions
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
 
-CREATE POLICY admin_actions_admin_insert
-  ON public.admin_actions
-  FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    auth.uid() = admin_user_id
-    AND (app.user_has_role('admin') OR app.user_has_role('super_admin'))
-  );
+  CREATE POLICY admin_actions_admin_read
+    ON public.admin_actions
+    FOR SELECT
+    TO authenticated
+    USING (
+      app.user_has_role('admin') OR app.user_has_role('super_admin')
+    );
+
+  CREATE POLICY admin_actions_admin_insert
+    ON public.admin_actions
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (
+      auth.uid() = admin_user_id
+      AND (app.user_has_role('admin') OR app.user_has_role('super_admin'))
+    );
+END
+$$;
 
 -- conversations policies
 ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;

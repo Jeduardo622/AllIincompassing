@@ -2,6 +2,19 @@ begin;
 
 -- Phase 3 RLS consolidation for org-scoped tables.
 
+-- Policies below call app.can_access_client before 20251118120000_restore_access_helpers.sql runs.
+create or replace function app.can_access_client(p_client_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, app, auth
+as $$
+  select false;
+$$;
+
+grant execute on function app.can_access_client(uuid) to authenticated;
+
 -- public.ai_cache (table may be absent on fresh replays; see 20251014_rls_and_functions_hardening.sql)
 do $$
 begin

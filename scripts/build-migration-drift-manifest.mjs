@@ -1,6 +1,10 @@
 /**
  * Regenerate config/migration-drift-manifest.json from reports/migration-triage-inventory.json.
- * Only rows with classification LEDGER_ONLY_DRIFT are included (bulk-approved drift-only queue).
+ * Rows with classification LEDGER_ONLY_DRIFT become the bulk of the manifest.
+ *
+ * Preserves existing entries with classification SUPERSEDED_DO_NOT_APPLY (human-reviewed parity
+ * suppressions that are not in the inventory LEDGER_ONLY set). Dedupes by version: superseded
+ * entry wins over a generated LEDGER row if both exist.
  *
  * Usage: node scripts/build-migration-drift-manifest.mjs
  */
@@ -11,6 +15,17 @@ import process from 'process';
 const projectRoot = process.cwd();
 const inventoryPath = path.join(projectRoot, 'reports', 'migration-triage-inventory.json');
 const outPath = path.join(projectRoot, 'config', 'migration-drift-manifest.json');
+
+async function loadPreservedSupersededEntries() {
+  try {
+    const raw = await readFile(outPath, 'utf8');
+    const doc = JSON.parse(raw);
+    if (!Array.isArray(doc.entries)) return [];
+    return doc.entries.filter((e) => e && e.classification === 'SUPERSEDED_DO_NOT_APPLY');
+  } catch {
+    return [];
+  }
+}
 
 async function main() {
   const raw = await readFile(inventoryPath, 'utf8');
@@ -31,27 +46,40 @@ async function main() {
     );
   }
 
+  const preservedSuperseded = await loadPreservedSupersededEntries();
+  const supersededByVersion = new Map(preservedSuperseded.map((e) => [e.version, e]));
+
+  const ledgerEntries = rows.map((r) => ({
+    version: r.version,
+    filename: r.filename,
+    slug: r.slug,
+    classification: 'LEDGER_ONLY_DRIFT',
+    reason: r.reason,
+    matchRuleSummary: r.match_rule_summary,
+    nearestRemoteVersion: r.nearest_remote_version,
+    nearestRemoteName: r.nearest_remote_name,
+  }));
+
+  const ledgerFiltered = ledgerEntries.filter((e) => !supersededByVersion.has(e.version));
+
+  const mergedEntries = [...ledgerFiltered, ...preservedSuperseded].sort((a, b) =>
+    String(a.version).localeCompare(String(b.version)),
+  );
+
   const manifest = {
     meta: {
       schemaVersion: 1,
-      classification: 'LEDGER_ONLY_DRIFT',
+      classification: 'MIXED',
       sourceArtifact: 'reports/migration-triage-inventory.json',
       sourceInventoryGeneratedAt: inv.meta?.generatedAt ?? null,
       sourceProjectIdExpected: inv.meta?.project_id_expected ?? null,
-      entryCount: rows.length,
+      entryCount: mergedEntries.length,
+      ledgerOnlyDriftEntryCount: ledgerFiltered.length,
+      supersededDoNotApplyEntryCount: preservedSuperseded.length,
       note:
-        'Human-reviewed bulk drift-only suppressions for parity reporting. These versions are not candidates for DDL apply via allowlist; remote ledger filename/version mismatch or substance already present.',
+        'Human-reviewed parity suppressions: bulk LEDGER_ONLY_DRIFT from migration-triage-inventory.json, plus optional SUPERSEDED_DO_NOT_APPLY entries preserved here (not from inventory regen). These versions are excluded from actionable pending in scripts/report-migration-parity.mjs; they are not DDL allowlist guards. Do not replay superseded historical SQL on main without a new reviewed migration.',
     },
-    entries: rows.map((r) => ({
-      version: r.version,
-      filename: r.filename,
-      slug: r.slug,
-      classification: 'LEDGER_ONLY_DRIFT',
-      reason: r.reason,
-      matchRuleSummary: r.match_rule_summary,
-      nearestRemoteVersion: r.nearest_remote_version,
-      nearestRemoteName: r.nearest_remote_name,
-    })),
+    entries: mergedEntries,
   };
 
   if (manifest.entries.length !== manifest.meta.entryCount) {
@@ -60,7 +88,9 @@ async function main() {
 
   await mkdir(path.dirname(outPath), { recursive: true });
   await writeFile(outPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-  console.log(`Wrote ${rows.length} entries to ${path.relative(projectRoot, outPath)}`);
+  console.log(
+    `Wrote ${mergedEntries.length} entries (${ledgerFiltered.length} LEDGER_ONLY_DRIFT + ${preservedSuperseded.length} SUPERSEDED_DO_NOT_APPLY preserved) to ${path.relative(projectRoot, outPath)}`,
+  );
 }
 
 main().catch((e) => {

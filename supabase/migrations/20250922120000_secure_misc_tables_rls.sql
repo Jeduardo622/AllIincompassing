@@ -483,105 +483,133 @@ END
 $$;
 
 -- session_transcripts policies
-ALTER TABLE public.session_transcripts ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public.session_transcripts') IS NULL THEN
+    RAISE NOTICE 'Skipping session_transcripts policy setup: table does not exist.';
+    RETURN;
+  END IF;
 
-DROP POLICY IF EXISTS session_transcripts_service_role_manage ON public.session_transcripts;
-DROP POLICY IF EXISTS session_transcripts_admin_read ON public.session_transcripts;
-DROP POLICY IF EXISTS session_transcripts_therapist_read ON public.session_transcripts;
+  IF to_regprocedure('app.user_has_role_for_org(text,uuid,uuid,uuid,uuid)') IS NULL THEN
+    RAISE NOTICE 'Skipping session_transcripts policy setup: app.user_has_role_for_org(text,uuid,uuid,uuid,uuid) is unavailable.';
+    RETURN;
+  END IF;
 
-CREATE POLICY session_transcripts_service_role_manage
-  ON public.session_transcripts
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+  ALTER TABLE public.session_transcripts ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY session_transcripts_admin_read
-  ON public.session_transcripts
-  FOR SELECT
-  TO authenticated
-  USING (
-    app.user_has_role_for_org('admin', organization_id, NULL, NULL, session_id)
-    OR app.user_has_role_for_org('super_admin', organization_id, NULL, NULL, session_id)
-  );
+  DROP POLICY IF EXISTS session_transcripts_service_role_manage ON public.session_transcripts;
+  DROP POLICY IF EXISTS session_transcripts_admin_read ON public.session_transcripts;
+  DROP POLICY IF EXISTS session_transcripts_therapist_read ON public.session_transcripts;
 
-CREATE POLICY session_transcripts_therapist_read
-  ON public.session_transcripts
-  FOR SELECT
-  TO authenticated
-  USING (
-    app.user_has_role_for_org('therapist', organization_id, NULL, NULL, session_id)
-    AND EXISTS (
-      SELECT 1
-      FROM public.sessions s
-      WHERE s.id = session_id
-        AND s.therapist_id = auth.uid()
-    )
-  );
+  CREATE POLICY session_transcripts_service_role_manage
+    ON public.session_transcripts
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+  CREATE POLICY session_transcripts_admin_read
+    ON public.session_transcripts
+    FOR SELECT
+    TO authenticated
+    USING (
+      app.user_has_role_for_org('admin', organization_id, NULL, NULL, session_id)
+      OR app.user_has_role_for_org('super_admin', organization_id, NULL, NULL, session_id)
+    );
+
+  CREATE POLICY session_transcripts_therapist_read
+    ON public.session_transcripts
+    FOR SELECT
+    TO authenticated
+    USING (
+      app.user_has_role_for_org('therapist', organization_id, NULL, NULL, session_id)
+      AND EXISTS (
+        SELECT 1
+        FROM public.sessions s
+        WHERE s.id = session_id
+          AND s.therapist_id = auth.uid()
+      )
+    );
+END
+$$;
 
 -- session_transcript_segments policies
-ALTER TABLE public.session_transcript_segments ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public.session_transcript_segments') IS NULL THEN
+    RAISE NOTICE 'Skipping session_transcript_segments policy setup: table does not exist.';
+    RETURN;
+  END IF;
 
-DROP POLICY IF EXISTS session_transcript_segments_service_role_manage ON public.session_transcript_segments;
-DROP POLICY IF EXISTS session_transcript_segments_admin_read ON public.session_transcript_segments;
-DROP POLICY IF EXISTS session_transcript_segments_therapist_read ON public.session_transcript_segments;
+  IF to_regprocedure('app.user_has_role_for_org(text,uuid,uuid,uuid,uuid)') IS NULL THEN
+    RAISE NOTICE 'Skipping session_transcript_segments policy setup: app.user_has_role_for_org(text,uuid,uuid,uuid,uuid) is unavailable.';
+    RETURN;
+  END IF;
 
-CREATE POLICY session_transcript_segments_service_role_manage
-  ON public.session_transcript_segments
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+  ALTER TABLE public.session_transcript_segments ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY session_transcript_segments_admin_read
-  ON public.session_transcript_segments
-  FOR SELECT
-  TO authenticated
-  USING (
-    app.user_has_role_for_org(
-      'admin',
-      organization_id,
-      NULL,
-      NULL,
-      COALESCE(
-        (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
-        session_id
-      )
-    )
-    OR app.user_has_role_for_org(
-      'super_admin',
-      organization_id,
-      NULL,
-      NULL,
-      COALESCE(
-        (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
-        session_id
-      )
-    )
-  );
+  DROP POLICY IF EXISTS session_transcript_segments_service_role_manage ON public.session_transcript_segments;
+  DROP POLICY IF EXISTS session_transcript_segments_admin_read ON public.session_transcript_segments;
+  DROP POLICY IF EXISTS session_transcript_segments_therapist_read ON public.session_transcript_segments;
 
-CREATE POLICY session_transcript_segments_therapist_read
-  ON public.session_transcript_segments
-  FOR SELECT
-  TO authenticated
-  USING (
-    app.user_has_role_for_org(
-      'therapist',
-      organization_id,
-      NULL,
-      NULL,
-      COALESCE(
-        (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
-        session_id
-      )
-    )
-    AND EXISTS (
-      SELECT 1
-      FROM public.sessions s
-      WHERE s.id = COALESCE(
+  CREATE POLICY session_transcript_segments_service_role_manage
+    ON public.session_transcript_segments
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+  CREATE POLICY session_transcript_segments_admin_read
+    ON public.session_transcript_segments
+    FOR SELECT
+    TO authenticated
+    USING (
+      app.user_has_role_for_org(
+        'admin',
+        organization_id,
+        NULL,
+        NULL,
+        COALESCE(
           (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
           session_id
         )
-        AND s.therapist_id = auth.uid()
-    )
-  );
+      )
+      OR app.user_has_role_for_org(
+        'super_admin',
+        organization_id,
+        NULL,
+        NULL,
+        COALESCE(
+          (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
+          session_id
+        )
+      )
+    );
+
+  CREATE POLICY session_transcript_segments_therapist_read
+    ON public.session_transcript_segments
+    FOR SELECT
+    TO authenticated
+    USING (
+      app.user_has_role_for_org(
+        'therapist',
+        organization_id,
+        NULL,
+        NULL,
+        COALESCE(
+          (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
+          session_id
+        )
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM public.sessions s
+        WHERE s.id = COALESCE(
+            (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
+            session_id
+          )
+          AND s.therapist_id = auth.uid()
+      )
+    );
+END
+$$;

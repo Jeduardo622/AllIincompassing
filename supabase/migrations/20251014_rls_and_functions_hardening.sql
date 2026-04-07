@@ -52,9 +52,13 @@ DROP POLICY IF EXISTS "Allow authenticated users to upload client documents" ON 
 DROP POLICY IF EXISTS "Allow authenticated users to update client documents" ON storage.objects;
 DROP POLICY IF EXISTS "Allow authenticated users to download client documents" ON storage.objects;
 
--- 5) Restrict ai_processing_logs INSERT
-DROP POLICY IF EXISTS "System can create AI processing logs" ON public.ai_processing_logs;
-DO $$ BEGIN
+-- 5) Restrict ai_processing_logs INSERT (table may be absent on some replay paths; guard policies)
+DO $$
+BEGIN
+  IF to_regclass('public.ai_processing_logs') IS NULL THEN
+    RETURN;
+  END IF;
+  DROP POLICY IF EXISTS "System can create AI processing logs" ON public.ai_processing_logs;
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='ai_processing_logs' AND policyname='ai_proc_logs_authenticated_insert'
   ) THEN

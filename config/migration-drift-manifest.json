@@ -1,0 +1,843 @@
+{
+  "meta": {
+    "schemaVersion": 1,
+    "classification": "LEDGER_ONLY_DRIFT",
+    "sourceArtifact": "reports/migration-triage-inventory.json",
+    "sourceInventoryGeneratedAt": "2026-04-07T16:00:55.714Z",
+    "sourceProjectIdExpected": "wnnjeqheqxxyrgsjmygy",
+    "entryCount": 83,
+    "note": "Human-reviewed bulk drift-only suppressions for parity reporting. These versions are not candidates for DDL apply via allowlist; remote ledger filename/version mismatch or substance already present."
+  },
+  "entries": [
+    {
+      "version": "20251109180000",
+      "filename": "20251109180000_user_roles_grant_tracking_columns.sql",
+      "slug": "user_roles_grant_tracking_columns",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Prior triage: user_roles grant columns exist on main; idempotent ADD COLUMN IF NOT EXISTS would no-op.",
+      "matchRuleSummary": "none",
+      "nearestRemoteVersion": null,
+      "nearestRemoteName": null
+    },
+    {
+      "version": "20251111120000",
+      "filename": "20251111120000_baseline_organizations.sql",
+      "slug": "baseline_organizations",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Prior triage: public.organizations exists; CREATE TABLE IF NOT EXISTS would no-op.",
+      "matchRuleSummary": "none",
+      "nearestRemoteVersion": null,
+      "nearestRemoteName": null
+    },
+    {
+      "version": "20251219000000",
+      "filename": "20251219000000_add_license_number_to_therapists.sql",
+      "slug": "add_license_number_to_therapists",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20251219195404",
+      "nearestRemoteVersion": "20251219195404",
+      "nearestRemoteName": "add_license_number_to_therapists"
+    },
+    {
+      "version": "20251219012000",
+      "filename": "20251219012000_grant_write_to_authenticated_therapists.sql",
+      "slug": "grant_write_to_authenticated_therapists",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Prior triage: authenticated already has INSERT/UPDATE/DELETE on therapists.",
+      "matchRuleSummary": "none",
+      "nearestRemoteVersion": null,
+      "nearestRemoteName": null
+    },
+    {
+      "version": "20251220090000",
+      "filename": "20251220090000_import_west_coast_aba_clients.sql",
+      "slug": "import_west_coast_aba_clients",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20251220204022",
+      "nearestRemoteVersion": "20251220204022",
+      "nearestRemoteName": "20251220090000_import_west_coast_aba_clients"
+    },
+    {
+      "version": "20251220094500",
+      "filename": "20251220094500_import_west_coast_therapists.sql",
+      "slug": "import_west_coast_therapists",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20251222155300",
+      "nearestRemoteVersion": "20251222155300",
+      "nearestRemoteName": "20251220094500_import_west_coast_therapists"
+    },
+    {
+      "version": "20251223170000",
+      "filename": "20251223170000_security_policy_hardening.sql",
+      "slug": "security_policy_hardening",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20251223170244",
+      "nearestRemoteVersion": "20251223170244",
+      "nearestRemoteName": "20251223170000_security_policy_hardening"
+    },
+    {
+      "version": "20251223171000",
+      "filename": "20251223171000_performance_index_cleanup.sql",
+      "slug": "performance_index_cleanup",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20251223170248",
+      "nearestRemoteVersion": "20251223170248",
+      "nearestRemoteName": "20251223171000_performance_index_cleanup"
+    },
+    {
+      "version": "20251223190000",
+      "filename": "20251223190000_view_security_and_indexes.sql",
+      "slug": "view_security_and_indexes",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20251223172543",
+      "nearestRemoteVersion": "20251223172543",
+      "nearestRemoteName": "20251223190000_view_security_and_indexes"
+    },
+    {
+      "version": "20251223211500",
+      "filename": "20251223211500_set_search_path_functions.sql",
+      "slug": "set_search_path_functions",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20251223174200",
+      "nearestRemoteVersion": "20251223174200",
+      "nearestRemoteName": "20251223211500_set_search_path_functions"
+    },
+    {
+      "version": "20251224093500",
+      "filename": "20251224093500_client_flow_rls.sql",
+      "slug": "client_flow_rls",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_slug_prefix_suffix); DDL likely already applied.",
+      "matchRuleSummary": "name_slug_prefix_suffix:20251224174315",
+      "nearestRemoteVersion": "20251224174315",
+      "nearestRemoteName": "client_flow_rls_20251224"
+    },
+    {
+      "version": "20251224094500",
+      "filename": "20251224094500_rls_sanity_check.sql",
+      "slug": "rls_sanity_check",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_slug_prefix_suffix); DDL likely already applied.",
+      "matchRuleSummary": "name_slug_prefix_suffix:20251224184035",
+      "nearestRemoteVersion": "20251224184035",
+      "nearestRemoteName": "rls_sanity_check_20251224"
+    },
+    {
+      "version": "20251224140000",
+      "filename": "20251224140000_authorizations_plan_member.sql",
+      "slug": "authorizations_plan_member",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20251224171629",
+      "nearestRemoteVersion": "20251224171629",
+      "nearestRemoteName": "20251224140000_authorizations_plan_member"
+    },
+    {
+      "version": "20251226123000",
+      "filename": "20251226123000_clients_super_admin_access.sql",
+      "slug": "clients_super_admin_access",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20251205193502",
+      "nearestRemoteVersion": "20251205193502",
+      "nearestRemoteName": "20251226123000_clients_super_admin_access"
+    },
+    {
+      "version": "20251226124500",
+      "filename": "20251226124500_regrant_client_dml.sql",
+      "slug": "regrant_client_dml",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20251205201931",
+      "nearestRemoteVersion": "20251205201931",
+      "nearestRemoteName": "20251226124500_regrant_client_dml"
+    },
+    {
+      "version": "20251226130000",
+      "filename": "20251226130000_create_client_issues.sql",
+      "slug": "create_client_issues",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20251205202753",
+      "nearestRemoteVersion": "20251205202753",
+      "nearestRemoteName": "20251226130000_create_client_issues"
+    },
+    {
+      "version": "20251226133000",
+      "filename": "20251226133000_client_notes_visibility.sql",
+      "slug": "client_notes_visibility",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20251205204311",
+      "nearestRemoteVersion": "20251205204311",
+      "nearestRemoteName": "20251226133000_client_notes_visibility"
+    },
+    {
+      "version": "20251231120000",
+      "filename": "20251231120000_therapists_require_names.sql",
+      "slug": "therapists_require_names",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20251231055147",
+      "nearestRemoteVersion": "20251231055147",
+      "nearestRemoteName": "therapists_require_names"
+    },
+    {
+      "version": "20251231120500",
+      "filename": "20251231120500_therapists_rls_org_admin_only.sql",
+      "slug": "therapists_rls_org_admin_only",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20251231055209",
+      "nearestRemoteVersion": "20251231055209",
+      "nearestRemoteName": "therapists_rls_org_admin_only"
+    },
+    {
+      "version": "20251231121000",
+      "filename": "20251231121000_create_therapist_documents_manifest.sql",
+      "slug": "create_therapist_documents_manifest",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20251231055223",
+      "nearestRemoteVersion": "20251231055223",
+      "nearestRemoteName": "create_therapist_documents_manifest"
+    },
+    {
+      "version": "20251231121200",
+      "filename": "20251231121200_storage_therapist_documents_org_admin.sql",
+      "slug": "storage_therapist_documents_org_admin",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20251231055251",
+      "nearestRemoteVersion": "20251231055251",
+      "nearestRemoteName": "storage_therapist_documents_org_admin"
+    },
+    {
+      "version": "20251231150000",
+      "filename": "20251231150000_lock_down_scheduling_rpcs.sql",
+      "slug": "lock_down_scheduling_rpcs",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20251231062408",
+      "nearestRemoteVersion": "20251231062408",
+      "nearestRemoteName": "20251231150000_lock_down_scheduling_rpcs"
+    },
+    {
+      "version": "20260105120500",
+      "filename": "20260105120500_create_authorization_rpc_allowlist.sql",
+      "slug": "create_authorization_rpc_allowlist",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260105193102",
+      "nearestRemoteVersion": "20260105193102",
+      "nearestRemoteName": "create_authorization_rpc_allowlist"
+    },
+    {
+      "version": "20260105121500",
+      "filename": "20260105121500_authorization_update_rpc_allowlist.sql",
+      "slug": "authorization_update_rpc_allowlist",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260105193802",
+      "nearestRemoteVersion": "20260105193802",
+      "nearestRemoteName": "authorization_update_rpc_allowlist"
+    },
+    {
+      "version": "20260105124500",
+      "filename": "20260105124500_harden_update_client_documents_path_allowlist.sql",
+      "slug": "harden_update_client_documents_path_allowlist",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260105194315",
+      "nearestRemoteVersion": "20260105194315",
+      "nearestRemoteName": "harden_update_client_documents_path_allowlist"
+    },
+    {
+      "version": "20260121130000",
+      "filename": "20260121130000_soft_delete_audit_triggers_refresh.sql",
+      "slug": "soft_delete_audit_triggers_refresh",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260122143519",
+      "nearestRemoteVersion": "20260122143519",
+      "nearestRemoteName": "soft_delete_audit_triggers_refresh"
+    },
+    {
+      "version": "20260122180000",
+      "filename": "20260122180000_fix_org_rpc_exposure.sql",
+      "slug": "fix_org_rpc_exposure",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260122160057",
+      "nearestRemoteVersion": "20260122160057",
+      "nearestRemoteName": "fix_org_rpc_exposure"
+    },
+    {
+      "version": "20260122190000",
+      "filename": "20260122190000_fix_schedule_batch_order.sql",
+      "slug": "fix_schedule_batch_order",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260123021031",
+      "nearestRemoteVersion": "20260123021031",
+      "nearestRemoteName": "fix_schedule_batch_order"
+    },
+    {
+      "version": "20260122193000",
+      "filename": "20260122193000_expose_user_role_rpc.sql",
+      "slug": "expose_user_role_rpc",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260123144815",
+      "nearestRemoteVersion": "20260123144815",
+      "nearestRemoteName": "expose_user_role_rpc"
+    },
+    {
+      "version": "20260123172000",
+      "filename": "20260123172000_fix_auth_admin_seed.sql",
+      "slug": "fix_auth_admin_seed",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260123172701",
+      "nearestRemoteVersion": "20260123172701",
+      "nearestRemoteName": "fix_auth_admin_seed"
+    },
+    {
+      "version": "20260128100000",
+      "filename": "20260128100000_add_aba_cpt_codes.sql",
+      "slug": "add_aba_cpt_codes",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260128170036",
+      "nearestRemoteVersion": "20260128170036",
+      "nearestRemoteName": "add_aba_cpt_codes"
+    },
+    {
+      "version": "20260128101500",
+      "filename": "20260128101500_add_california_aba_payer_codes.sql",
+      "slug": "add_california_aba_payer_codes",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260128170659",
+      "nearestRemoteVersion": "20260128170659",
+      "nearestRemoteName": "add_california_aba_payer_codes"
+    },
+    {
+      "version": "20260128104500",
+      "filename": "20260128104500_create_service_contracts.sql",
+      "slug": "create_service_contracts",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260128172111",
+      "nearestRemoteVersion": "20260128172111",
+      "nearestRemoteName": "create_service_contracts"
+    },
+    {
+      "version": "20260128111500",
+      "filename": "20260128111500_split_h0032_levels.sql",
+      "slug": "split_h0032_levels",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260128174653",
+      "nearestRemoteVersion": "20260128174653",
+      "nearestRemoteName": "split_h0032_levels"
+    },
+    {
+      "version": "20260128113000",
+      "filename": "20260128113000_fix_h0032_suffixes.sql",
+      "slug": "fix_h0032_suffixes",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260128174922",
+      "nearestRemoteVersion": "20260128174922",
+      "nearestRemoteName": "fix_h0032_suffixes"
+    },
+    {
+      "version": "20260129120000",
+      "filename": "20260129120000_ai_performance_org_scope.sql",
+      "slug": "ai_performance_org_scope",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260129155850",
+      "nearestRemoteVersion": "20260129155850",
+      "nearestRemoteName": "ai_performance_org_scope"
+    },
+    {
+      "version": "20260129123000",
+      "filename": "20260129123000_authorizations_approved_at.sql",
+      "slug": "authorizations_approved_at",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260129174219",
+      "nearestRemoteVersion": "20260129174219",
+      "nearestRemoteName": "authorizations_approved_at"
+    },
+    {
+      "version": "20260129130000",
+      "filename": "20260129130000_authorizations_decision_fields.sql",
+      "slug": "authorizations_decision_fields",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260129174620",
+      "nearestRemoteVersion": "20260129174620",
+      "nearestRemoteName": "authorizations_decision_fields"
+    },
+    {
+      "version": "20260129140000",
+      "filename": "20260129140000_therapists_status_default.sql",
+      "slug": "therapists_status_default",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260129180231",
+      "nearestRemoteVersion": "20260129180231",
+      "nearestRemoteName": "therapists_status_default"
+    },
+    {
+      "version": "20260129143000",
+      "filename": "20260129143000_therapists_status_enforce.sql",
+      "slug": "therapists_status_enforce",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260129181146",
+      "nearestRemoteVersion": "20260129181146",
+      "nearestRemoteName": "therapists_status_enforce"
+    },
+    {
+      "version": "20260201120000",
+      "filename": "20260201120000_agent_trace_and_runtime_config.sql",
+      "slug": "agent_trace_and_runtime_config",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260202153234",
+      "nearestRemoteVersion": "20260202153234",
+      "nearestRemoteName": "agent_trace_and_runtime_config"
+    },
+    {
+      "version": "20260201130000",
+      "filename": "20260201130000_agent_prompt_tool_versions.sql",
+      "slug": "agent_prompt_tool_versions",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260202160737",
+      "nearestRemoteVersion": "20260202160737",
+      "nearestRemoteName": "agent_prompt_tool_versions"
+    },
+    {
+      "version": "20260201134500",
+      "filename": "20260201134500_error_taxonomy.sql",
+      "slug": "error_taxonomy",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260202171835",
+      "nearestRemoteVersion": "20260202171835",
+      "nearestRemoteName": "error_taxonomy"
+    },
+    {
+      "version": "20260202120000",
+      "filename": "20260202120000_scheduling_orchestration_runs.sql",
+      "slug": "scheduling_orchestration_runs",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260203194438",
+      "nearestRemoteVersion": "20260203194438",
+      "nearestRemoteName": "scheduling_orchestration_runs"
+    },
+    {
+      "version": "20260202123000",
+      "filename": "20260202123000_fix_super_admin_governance.sql",
+      "slug": "fix_super_admin_governance",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260123221233",
+      "nearestRemoteVersion": "20260123221233",
+      "nearestRemoteName": "fix_super_admin_governance"
+    },
+    {
+      "version": "20260202130000",
+      "filename": "20260202130000_session_holds_hold_key_default.sql",
+      "slug": "session_holds_hold_key_default",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260203204246",
+      "nearestRemoteVersion": "20260203204246",
+      "nearestRemoteName": "session_holds_hold_key_default"
+    },
+    {
+      "version": "20260204193000",
+      "filename": "20260204193000_programs_goals_bank.sql",
+      "slug": "programs_goals_bank",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260204160954",
+      "nearestRemoteVersion": "20260204160954",
+      "nearestRemoteName": "programs_goals_bank"
+    },
+    {
+      "version": "20260204200000",
+      "filename": "20260204200000_goal_versions_triggers.sql",
+      "slug": "goal_versions_triggers",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260204161431",
+      "nearestRemoteVersion": "20260204161431",
+      "nearestRemoteName": "goal_versions_triggers"
+    },
+    {
+      "version": "20260204201000",
+      "filename": "20260204201000_update_schedule_rpcs.sql",
+      "slug": "update_schedule_rpcs",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260204161521",
+      "nearestRemoteVersion": "20260204161521",
+      "nearestRemoteName": "update_schedule_rpcs"
+    },
+    {
+      "version": "20260210101500",
+      "filename": "20260210101500_lock_authorization_rpc_search_path.sql",
+      "slug": "lock_authorization_rpc_search_path",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_slug_prefix_suffix); DDL likely already applied.",
+      "matchRuleSummary": "name_slug_prefix_suffix:20260210151545",
+      "nearestRemoteVersion": "20260210151545",
+      "nearestRemoteName": "lock_authorization_rpc_search_path_20260210"
+    },
+    {
+      "version": "20260219183000",
+      "filename": "20260219183000_assessment_staging_and_storage_access_hotfix.sql",
+      "slug": "assessment_staging_and_storage_access_hotfix",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_slug_prefix_suffix); DDL likely already applied.",
+      "matchRuleSummary": "name_slug_prefix_suffix:20260219181744",
+      "nearestRemoteVersion": "20260219181744",
+      "nearestRemoteName": "assessment_staging_and_storage_access_hotfix_20260219"
+    },
+    {
+      "version": "20260220103000",
+      "filename": "20260220103000_assessment_extraction_lifecycle_fields.sql",
+      "slug": "assessment_extraction_lifecycle_fields",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_slug_prefix_suffix); DDL likely already applied.",
+      "matchRuleSummary": "name_slug_prefix_suffix:20260220161517",
+      "nearestRemoteVersion": "20260220161517",
+      "nearestRemoteName": "assessment_extraction_lifecycle_fields_20260220"
+    },
+    {
+      "version": "20260224190000",
+      "filename": "20260224190000_fix_get_schedule_data_batch_aggregate_order.sql",
+      "slug": "fix_get_schedule_data_batch_aggregate_order",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260224210045",
+      "nearestRemoteVersion": "20260224210045",
+      "nearestRemoteName": "fix_get_schedule_data_batch_aggregate_order"
+    },
+    {
+      "version": "20260225021000",
+      "filename": "20260225021000_create_ai_guidance_documents.sql",
+      "slug": "create_ai_guidance_documents",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260225023025",
+      "nearestRemoteVersion": "20260225023025",
+      "nearestRemoteName": "create_ai_guidance_documents"
+    },
+    {
+      "version": "20260225131000",
+      "filename": "20260225131000_goal_datapoints_and_structured_criteria.sql",
+      "slug": "goal_datapoints_and_structured_criteria",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260320042043",
+      "nearestRemoteVersion": "20260320042043",
+      "nearestRemoteName": "goal_datapoints_and_structured_criteria"
+    },
+    {
+      "version": "20260302120000",
+      "filename": "20260302120000_client_therapist_links.sql",
+      "slug": "client_therapist_links",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20260302175327",
+      "nearestRemoteVersion": "20260302175327",
+      "nearestRemoteName": "20260302120000_client_therapist_links"
+    },
+    {
+      "version": "20260304103000",
+      "filename": "20260304103000_goal_type_minimums.sql",
+      "slug": "goal_type_minimums",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20260304214409",
+      "nearestRemoteVersion": "20260304214409",
+      "nearestRemoteName": "20260304103000_goal_type_minimums"
+    },
+    {
+      "version": "20260305133000",
+      "filename": "20260305133000_add_goal_criteria_columns.sql",
+      "slug": "add_goal_criteria_columns",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260305214043",
+      "nearestRemoteVersion": "20260305214043",
+      "nearestRemoteName": "add_goal_criteria_columns"
+    },
+    {
+      "version": "20260310162000",
+      "filename": "20260310162000_harden_ai_guidance_documents_rls.sql",
+      "slug": "harden_ai_guidance_documents_rls",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_slug_prefix_suffix); DDL likely already applied.",
+      "matchRuleSummary": "name_slug_prefix_suffix:20260310150851",
+      "nearestRemoteVersion": "20260310150851",
+      "nearestRemoteName": "harden_ai_guidance_documents_rls_20260310"
+    },
+    {
+      "version": "20260310170000",
+      "filename": "20260310170000_assessment_fk_index_batch1.sql",
+      "slug": "assessment_fk_index_batch1",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_slug_prefix_suffix); DDL likely already applied.",
+      "matchRuleSummary": "name_slug_prefix_suffix:20260310150907",
+      "nearestRemoteVersion": "20260310150907",
+      "nearestRemoteName": "assessment_fk_index_batch1_20260310"
+    },
+    {
+      "version": "20260310174500",
+      "filename": "20260310174500_fk_index_batch2_remaining.sql",
+      "slug": "fk_index_batch2_remaining",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_slug_prefix_suffix); DDL likely already applied.",
+      "matchRuleSummary": "name_slug_prefix_suffix:20260310151142",
+      "nearestRemoteVersion": "20260310151142",
+      "nearestRemoteName": "fk_index_batch2_remaining_20260310"
+    },
+    {
+      "version": "20260310182500",
+      "filename": "20260310182500_policy_consolidation_batch1.sql",
+      "slug": "policy_consolidation_batch1",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_slug_prefix_suffix); DDL likely already applied.",
+      "matchRuleSummary": "name_slug_prefix_suffix:20260310165612",
+      "nearestRemoteVersion": "20260310165612",
+      "nearestRemoteName": "policy_consolidation_batch1_20260310"
+    },
+    {
+      "version": "20260310184500",
+      "filename": "20260310184500_unused_index_drop_batch1.sql",
+      "slug": "unused_index_drop_batch1",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_slug_prefix_suffix); DDL likely already applied.",
+      "matchRuleSummary": "name_slug_prefix_suffix:20260310165649",
+      "nearestRemoteVersion": "20260310165649",
+      "nearestRemoteName": "unused_index_drop_batch1_20260310"
+    },
+    {
+      "version": "20260310190000",
+      "filename": "20260310190000_auth_access_hardening.sql",
+      "slug": "auth_access_hardening",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20260310181444",
+      "nearestRemoteVersion": "20260310181444",
+      "nearestRemoteName": "20260310190000_auth_access_hardening"
+    },
+    {
+      "version": "20260311173000",
+      "filename": "20260311173000_rls_surface_tightening_batch2.sql",
+      "slug": "rls_surface_tightening_batch2",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260311182450",
+      "nearestRemoteVersion": "20260311182450",
+      "nearestRemoteName": "rls_surface_tightening_batch2"
+    },
+    {
+      "version": "20260311195000",
+      "filename": "20260311195000_auth_profile_and_query_metrics_contract.sql",
+      "slug": "auth_profile_and_query_metrics_contract",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_slug_prefix_suffix); DDL likely already applied.",
+      "matchRuleSummary": "name_slug_prefix_suffix:20260311191137",
+      "nearestRemoteVersion": "20260311191137",
+      "nearestRemoteName": "auth_profile_and_query_metrics_contract_20260311195000"
+    },
+    {
+      "version": "20260311210000",
+      "filename": "20260311210000_harden_privileged_function_grants.sql",
+      "slug": "harden_privileged_function_grants",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_slug_prefix_suffix); DDL likely already applied.",
+      "matchRuleSummary": "name_slug_prefix_suffix:20260311220613",
+      "nearestRemoteVersion": "20260311220613",
+      "nearestRemoteName": "harden_privileged_function_grants_20260311210000"
+    },
+    {
+      "version": "20260311212000",
+      "filename": "20260311212000_cover_unindexed_foreign_keys.sql",
+      "slug": "cover_unindexed_foreign_keys",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_slug_prefix_suffix); DDL likely already applied.",
+      "matchRuleSummary": "name_slug_prefix_suffix:20260311220848",
+      "nearestRemoteVersion": "20260311220848",
+      "nearestRemoteName": "cover_unindexed_foreign_keys_20260311212000"
+    },
+    {
+      "version": "20260313120000",
+      "filename": "20260313120000_onboarding_authz_and_prefill_retention_hardening.sql",
+      "slug": "onboarding_authz_and_prefill_retention_hardening",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260313152730",
+      "nearestRemoteVersion": "20260313152730",
+      "nearestRemoteName": "onboarding_authz_and_prefill_retention_hardening"
+    },
+    {
+      "version": "20260313123000",
+      "filename": "20260313123000_profiles_org_immutability_guard.sql",
+      "slug": "profiles_org_immutability_guard",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260313152740",
+      "nearestRemoteVersion": "20260313152740",
+      "nearestRemoteName": "profiles_org_immutability_guard"
+    },
+    {
+      "version": "20260313124500",
+      "filename": "20260313124500_profiles_insert_authz_guard.sql",
+      "slug": "profiles_insert_authz_guard",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260313152747",
+      "nearestRemoteVersion": "20260313152747",
+      "nearestRemoteName": "profiles_insert_authz_guard"
+    },
+    {
+      "version": "20260313161000",
+      "filename": "20260313161000_performance_hotpath_indexes.sql",
+      "slug": "performance_hotpath_indexes",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260320042100",
+      "nearestRemoteVersion": "20260320042100",
+      "nearestRemoteName": "performance_hotpath_indexes"
+    },
+    {
+      "version": "20260316153000",
+      "filename": "20260316153000_allow_session_in_progress_transitions.sql",
+      "slug": "allow_session_in_progress_transitions",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260316152344",
+      "nearestRemoteVersion": "20260316152344",
+      "nearestRemoteName": "allow_session_in_progress_transitions"
+    },
+    {
+      "version": "20260316160000",
+      "filename": "20260316160000_ensure_transcript_tables_exist.sql",
+      "slug": "ensure_transcript_tables_exist",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260316173242",
+      "nearestRemoteVersion": "20260316173242",
+      "nearestRemoteName": "ensure_transcript_tables_exist"
+    },
+    {
+      "version": "20260318120000",
+      "filename": "20260318120000_session_note_pdf_exports_async.sql",
+      "slug": "session_note_pdf_exports_async",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260318225111",
+      "nearestRemoteVersion": "20260318225111",
+      "nearestRemoteName": "session_note_pdf_exports_async"
+    },
+    {
+      "version": "20260318152000",
+      "filename": "20260318152000_admin_role_state_hardening.sql",
+      "slug": "admin_role_state_hardening",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20260318233523",
+      "nearestRemoteVersion": "20260318233523",
+      "nearestRemoteName": "20260318152000_admin_role_state_hardening"
+    },
+    {
+      "version": "20260319110000",
+      "filename": "20260319110000_priority4_session_query_indexes.sql",
+      "slug": "priority4_session_query_indexes",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_slug); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_slug:20260320042105",
+      "nearestRemoteVersion": "20260320042105",
+      "nearestRemoteName": "priority4_session_query_indexes"
+    },
+    {
+      "version": "20260320120000",
+      "filename": "20260320120000_dashboard_authz_hardening.sql",
+      "slug": "dashboard_authz_hardening",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20260320164310",
+      "nearestRemoteVersion": "20260320164310",
+      "nearestRemoteName": "20260320120000_dashboard_authz_hardening"
+    },
+    {
+      "version": "20260320121500",
+      "filename": "20260320121500_dashboard_hotpath_indexes.sql",
+      "slug": "dashboard_hotpath_indexes",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Single remote equivalent under alternate version/name (rule name_eq_composite); DDL likely already applied.",
+      "matchRuleSummary": "name_eq_composite:20260320164315",
+      "nearestRemoteVersion": "20260320164315",
+      "nearestRemoteName": "20260320121500_dashboard_hotpath_indexes"
+    },
+    {
+      "version": "20260401000000",
+      "filename": "20260401000000_add_goal_notes_to_session_notes.sql",
+      "slug": "add_goal_notes_to_session_notes",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Prior triage: goal_notes column exists; repair 20260402182221 on ledger; raw file ADD COLUMN without IF NOT EXISTS is non-idempotent.",
+      "matchRuleSummary": "none",
+      "nearestRemoteVersion": null,
+      "nearestRemoteName": null
+    },
+    {
+      "version": "20260401120000",
+      "filename": "20260401120000_harden_session_close_notes_boundary.sql",
+      "slug": "harden_session_close_notes_boundary",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Prior triage: trigger/policies present; substance in ledger 20260402182221.",
+      "matchRuleSummary": "none",
+      "nearestRemoteVersion": null,
+      "nearestRemoteName": null
+    },
+    {
+      "version": "20260406203516",
+      "filename": "20260406203516_hotfix_clients_deleted_at_for_preview_replay.sql",
+      "slug": "hotfix_clients_deleted_at_for_preview_replay",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Prior triage: clients.deleted_at exists; ADD COLUMN IF NOT EXISTS no-op.",
+      "matchRuleSummary": "none",
+      "nearestRemoteVersion": null,
+      "nearestRemoteName": null
+    },
+    {
+      "version": "20260406203906",
+      "filename": "20260406203906_hotfix_superadmin_org_context_schedule_runtime_v2.sql",
+      "slug": "hotfix_superadmin_org_context_schedule_runtime_v2",
+      "classification": "LEDGER_ONLY_DRIFT",
+      "reason": "Prior triage: SQL body identical to 20260406203846 after stripping comments; ledger has 03846.",
+      "matchRuleSummary": "none",
+      "nearestRemoteVersion": null,
+      "nearestRemoteName": null
+    }
+  ]
+}

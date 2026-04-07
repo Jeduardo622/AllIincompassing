@@ -65,10 +65,7 @@ create policy therapists_select_scope on public.therapists
       where up.id = (
         select auth.uid()
       )
-        and (
-          r.permissions @> '["*"]'::jsonb
-          or r.permissions @> '["view_clients"]'::jsonb
-        )
+        and r.name in ('admin', 'super_admin', 'therapist')
     )
     or (
       organization_id = app.current_user_organization_id()

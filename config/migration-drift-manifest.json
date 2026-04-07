@@ -5,9 +5,9 @@
     "sourceArtifact": "reports/migration-triage-inventory.json",
     "sourceInventoryGeneratedAt": "2026-04-07T16:00:55.714Z",
     "sourceProjectIdExpected": "wnnjeqheqxxyrgsjmygy",
-    "entryCount": 87,
+    "entryCount": 88,
     "ledgerOnlyDriftEntryCount": 83,
-    "supersededDoNotApplyEntryCount": 4,
+    "supersededDoNotApplyEntryCount": 5,
     "note": "Human-reviewed parity suppressions: bulk LEDGER_ONLY_DRIFT from migration-triage-inventory.json, plus optional SUPERSEDED_DO_NOT_APPLY entries preserved here (not from inventory regen). These versions are excluded from actionable pending in scripts/report-migration-parity.mjs; they are not DDL allowlist guards. Do not replay superseded historical SQL on main without a new reviewed migration."
   },
   "entries": [
@@ -320,6 +320,16 @@
       "matchRuleSummary": "name_eq_slug:20260123172701",
       "nearestRemoteVersion": "20260123172701",
       "nearestRemoteName": "fix_auth_admin_seed"
+    },
+    {
+      "version": "20260123220346",
+      "filename": "20260123220346_fix_admin_users_paged_super_admin_access.sql",
+      "slug": "fix_admin_users_paged_super_admin_access",
+      "classification": "SUPERSEDED_DO_NOT_APPLY",
+      "reason": "Human-reviewed: live public.get_admin_users_paged(uuid,integer,integer) matches forward migration 20260202124000 (forward_fix_admin_users_paged_super_admin_return), not this file (pg_get_functiondef differs on super-admin predicate). Replaying 20260123220346 would downgrade current super-admin logic. Superseded by 20260202124000 on ledger. Parity suppression only — not a DDL safety gate.",
+      "matchRuleSummary": "none",
+      "nearestRemoteVersion": "20260202124000",
+      "nearestRemoteName": "forward_fix_admin_users_paged_super_admin_return"
     },
     {
       "version": "20260128100000",

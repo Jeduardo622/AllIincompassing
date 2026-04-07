@@ -325,8 +325,8 @@ AS $$
   SELECT COALESCE(app.current_user_is_super_admin(), false);
 $$;
 
--- Admin users pagination and counting
-CREATE OR REPLACE FUNCTION public.count_admin_users(organization_id uuid)
+-- Admin users pagination and counting (keep DEFAULT NULL so CREATE OR REPLACE remains compatible with 20251205103000_admin_users_super_admin_access.sql)
+CREATE OR REPLACE FUNCTION public.count_admin_users(organization_id uuid DEFAULT NULL)
 RETURNS integer
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -368,7 +368,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.count_admin_users(uuid) TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.get_admin_users_paged(
-  organization_id uuid,
+  organization_id uuid DEFAULT NULL,
   p_limit integer DEFAULT 50,
   p_offset integer DEFAULT 0
 )

@@ -45,9 +45,10 @@ WHERE s.client_id = c.id
 -- 4) Sessions again (clients may have gained org in step 3)
 UPDATE public.sessions s
 SET organization_id = COALESCE(s.organization_id, t.organization_id, c.organization_id)
-FROM public.therapists t
-JOIN public.clients c ON c.id = s.client_id
+FROM public.therapists t,
+  public.clients c
 WHERE s.therapist_id = t.id
+  AND s.client_id = c.id
   AND s.organization_id IS NULL
   AND (t.organization_id IS NOT NULL OR c.organization_id IS NOT NULL);
 

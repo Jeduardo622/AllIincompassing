@@ -45,8 +45,12 @@ drop index if exists public.feature_flag_audit_logs_action_idx;
 
 -- Add supporting indexes for foreign keys flagged as unindexed.
 
-create index if not exists admin_actions_admin_user_id_idx
-  on public.admin_actions(admin_user_id);
+do $$
+begin
+  if to_regclass('public.admin_actions') is not null then
+    execute 'create index if not exists admin_actions_admin_user_id_idx on public.admin_actions(admin_user_id)';
+  end if;
+end $$;
 
 create index if not exists client_guardians_created_by_idx
   on public.client_guardians(created_by);

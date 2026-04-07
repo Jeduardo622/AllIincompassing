@@ -80,50 +80,71 @@ END $$;
 --);
 
 -- 7) Clamp search_path for flagged SECURITY DEFINER functions
+-- Only ALTER when the target exists; preview replays may omit app_auth (or specific functions).
 DO $$ BEGIN
-  PERFORM 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname='app_auth' AND p.proname='get_user_roles';
-  EXECUTE 'ALTER FUNCTION app_auth.get_user_roles() SECURITY DEFINER SET search_path = public, app, app_auth, pg_temp';
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname='app_auth' AND p.proname='get_user_roles'
+  ) THEN
+    EXECUTE 'ALTER FUNCTION app_auth.get_user_roles() SECURITY DEFINER SET search_path = public, app, app_auth, pg_temp';
+  END IF;
 EXCEPTION WHEN undefined_function THEN
   -- function may take args; adjust manually later
   NULL;
 END $$;
 
 DO $$ BEGIN
-  PERFORM 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname='app_auth' AND p.proname='user_has_role';
-  EXECUTE 'ALTER FUNCTION app_auth.user_has_role(role_name text) SECURITY DEFINER SET search_path = public, app, app_auth, pg_temp';
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname='app_auth' AND p.proname='user_has_role'
+  ) THEN
+    EXECUTE 'ALTER FUNCTION app_auth.user_has_role(role_name text) SECURITY DEFINER SET search_path = public, app, app_auth, pg_temp';
+  END IF;
 EXCEPTION WHEN undefined_function THEN NULL; END $$;
 
 DO $$ BEGIN
-  PERFORM 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname='app_auth' AND p.proname='is_admin';
-  EXECUTE 'ALTER FUNCTION app_auth.is_admin() SECURITY DEFINER SET search_path = public, app, app_auth, pg_temp';
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname='app_auth' AND p.proname='is_admin'
+  ) THEN
+    EXECUTE 'ALTER FUNCTION app_auth.is_admin() SECURITY DEFINER SET search_path = public, app, app_auth, pg_temp';
+  END IF;
 EXCEPTION WHEN undefined_function THEN NULL; END $$;
 
 DO $$ BEGIN
-  PERFORM 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname='public' AND p.proname='_is_admin';
-  EXECUTE 'ALTER FUNCTION public._is_admin(uid uuid) SECURITY INVOKER SET search_path = public, app, app_auth, pg_temp';
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname='public' AND p.proname='_is_admin'
+  ) THEN
+    EXECUTE 'ALTER FUNCTION public._is_admin(uid uuid) SECURITY INVOKER SET search_path = public, app, app_auth, pg_temp';
+  END IF;
 EXCEPTION WHEN undefined_function THEN NULL; END $$;
 
 DO $$ BEGIN
-  PERFORM 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname='public' AND p.proname='_is_therapist';
-  EXECUTE 'ALTER FUNCTION public._is_therapist(uid uuid) SECURITY INVOKER SET search_path = public, app, app_auth, pg_temp';
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname='public' AND p.proname='_is_therapist'
+  ) THEN
+    EXECUTE 'ALTER FUNCTION public._is_therapist(uid uuid) SECURITY INVOKER SET search_path = public, app, app_auth, pg_temp';
+  END IF;
 EXCEPTION WHEN undefined_function THEN NULL; END $$;
 
 DO $$ BEGIN
-  PERFORM 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname='public' AND p.proname='get_organization_id_from_metadata';
-  -- immutable but clamp anyway
-  EXECUTE 'ALTER FUNCTION public.get_organization_id_from_metadata(p_metadata jsonb) SECURITY INVOKER SET search_path = public, pg_temp';
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname='public' AND p.proname='get_organization_id_from_metadata'
+  ) THEN
+    EXECUTE 'ALTER FUNCTION public.get_organization_id_from_metadata(p_metadata jsonb) SECURITY INVOKER SET search_path = public, pg_temp';
+  END IF;
 EXCEPTION WHEN undefined_function THEN NULL; END $$;
 
 DO $$ BEGIN
-  PERFORM 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname='public' AND p.proname='set_updated_at';
-  EXECUTE 'ALTER FUNCTION public.set_updated_at() SECURITY INVOKER SET search_path = public, pg_temp';
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname='public' AND p.proname='set_updated_at'
+  ) THEN
+    EXECUTE 'ALTER FUNCTION public.set_updated_at() SECURITY INVOKER SET search_path = public, pg_temp';
+  END IF;
 EXCEPTION WHEN undefined_function THEN NULL; END $$;
 
 -- 8) (Optional) Move btree_gist out of public if supported

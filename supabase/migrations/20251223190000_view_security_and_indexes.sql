@@ -19,9 +19,8 @@ REVOKE ALL ON public.session_cpt_details_vw FROM anon;
 GRANT SELECT ON public.session_cpt_details_vw TO authenticated;
 GRANT SELECT ON public.session_cpt_details_vw TO service_role;
 
--- Missing FK indexes
-CREATE INDEX IF NOT EXISTS client_issues_created_by_idx
-  ON public.client_issues (created_by);
+-- Missing FK indexes (client_issues: table is created in 20251226130000_create_client_issues.sql;
+-- created_by index is added alongside that table.)
 
 CREATE INDEX IF NOT EXISTS feature_flag_plan_history_actor_id_idx
   ON public.feature_flag_plan_history (actor_id);

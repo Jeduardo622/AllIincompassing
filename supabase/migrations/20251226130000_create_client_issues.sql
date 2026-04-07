@@ -18,6 +18,7 @@ create table if not exists public.client_issues (
 create index if not exists client_issues_client_idx on public.client_issues (client_id);
 create index if not exists client_issues_org_idx on public.client_issues (organization_id);
 create index if not exists client_issues_created_idx on public.client_issues (created_at desc);
+create index if not exists client_issues_created_by_idx on public.client_issues (created_by);
 
 create schema if not exists app;
 

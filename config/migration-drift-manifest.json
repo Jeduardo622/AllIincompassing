@@ -5,9 +5,9 @@
     "sourceArtifact": "reports/migration-triage-inventory.json",
     "sourceInventoryGeneratedAt": "2026-04-07T16:00:55.714Z",
     "sourceProjectIdExpected": "wnnjeqheqxxyrgsjmygy",
-    "entryCount": 84,
+    "entryCount": 85,
     "ledgerOnlyDriftEntryCount": 83,
-    "supersededDoNotApplyEntryCount": 1,
+    "supersededDoNotApplyEntryCount": 2,
     "note": "Human-reviewed parity suppressions: bulk LEDGER_ONLY_DRIFT from migration-triage-inventory.json, plus optional SUPERSEDED_DO_NOT_APPLY entries preserved here (not from inventory regen). These versions are excluded from actionable pending in scripts/report-migration-parity.mjs; they are not DDL allowlist guards. Do not replay superseded historical SQL on main without a new reviewed migration."
   },
   "entries": [
@@ -40,6 +40,16 @@
       "matchRuleSummary": "name_eq_slug:20251219195404",
       "nearestRemoteVersion": "20251219195404",
       "nearestRemoteName": "add_license_number_to_therapists"
+    },
+    {
+      "version": "20251219011000",
+      "filename": "20251219011000_therapists_authenticated_any.sql",
+      "slug": "therapists_authenticated_any",
+      "classification": "SUPERSEDED_DO_NOT_APPLY",
+      "reason": "Human-reviewed: would create therapists_authenticated_any with USING (true) for authenticated role — unacceptable broad RLS regression vs current hardened therapist policies on main. Never allowlist or replay on main; parity suppression only — not a DDL safety gate.",
+      "matchRuleSummary": "none",
+      "nearestRemoteVersion": null,
+      "nearestRemoteName": null
     },
     {
       "version": "20251219012000",

@@ -2,52 +2,64 @@ begin;
 
 -- Phase 3 RLS consolidation for org-scoped tables.
 
--- public.ai_cache
-drop policy if exists admin_all_ai_cache on public.ai_cache;
-drop policy if exists ai_cache_insert_scope on public.ai_cache;
-drop policy if exists ai_cache_select_scope on public.ai_cache;
-drop policy if exists ai_cache_delete_scope on public.ai_cache;
+-- public.ai_cache (table may be absent on fresh replays; see 20251014_rls_and_functions_hardening.sql)
+do $$
+begin
+  if to_regclass('public.ai_cache') is null then
+    return;
+  end if;
+  drop policy if exists admin_all_ai_cache on public.ai_cache;
+  drop policy if exists ai_cache_insert_scope on public.ai_cache;
+  drop policy if exists ai_cache_select_scope on public.ai_cache;
+  drop policy if exists ai_cache_delete_scope on public.ai_cache;
 
-alter policy ai_cache_admin_manage on public.ai_cache
-  to authenticated
-  using (app.is_admin())
-  with check (app.is_admin());
+  alter policy ai_cache_admin_manage on public.ai_cache
+    to authenticated
+    using (app.is_admin())
+    with check (app.is_admin());
 
-create policy ai_cache_insert_scope on public.ai_cache
-  for insert
-  to authenticated
-  with check (app.is_admin());
+  create policy ai_cache_insert_scope on public.ai_cache
+    for insert
+    to authenticated
+    with check (app.is_admin());
 
-create policy ai_cache_select_scope on public.ai_cache
-  for select
-  to authenticated
-  using (app.is_admin());
+  create policy ai_cache_select_scope on public.ai_cache
+    for select
+    to authenticated
+    using (app.is_admin());
 
-create policy ai_cache_delete_scope on public.ai_cache
-  for delete
-  to authenticated
-  using (app.is_admin());
+  create policy ai_cache_delete_scope on public.ai_cache
+    for delete
+    to authenticated
+    using (app.is_admin());
+end $$;
 
--- public.ai_processing_logs
-drop policy if exists admin_all_ai_proc_logs on public.ai_processing_logs;
-drop policy if exists ai_processing_logs_select_scope on public.ai_processing_logs;
+-- public.ai_processing_logs (optional table; guard like ai_cache)
+do $$
+begin
+  if to_regclass('public.ai_processing_logs') is null then
+    return;
+  end if;
+  drop policy if exists admin_all_ai_proc_logs on public.ai_processing_logs;
+  drop policy if exists ai_processing_logs_select_scope on public.ai_processing_logs;
 
-alter policy ai_processing_logs_admin_manage_admin_manage on public.ai_processing_logs
-  to authenticated
-  using (app.is_admin())
-  with check (app.is_admin());
+  alter policy ai_processing_logs_admin_manage_admin_manage on public.ai_processing_logs
+    to authenticated
+    using (app.is_admin())
+    with check (app.is_admin());
 
-create policy ai_processing_logs_select_scope on public.ai_processing_logs
-  for select
-  to authenticated
-  using (
-    app.is_admin()
-    or session_id in (
-      select s.id
-      from sessions s
-      where s.therapist_id = (select auth.uid())
-    )
-  );
+  create policy ai_processing_logs_select_scope on public.ai_processing_logs
+    for select
+    to authenticated
+    using (
+      app.is_admin()
+      or session_id in (
+        select s.id
+        from sessions s
+        where s.therapist_id = (select auth.uid())
+      )
+    );
+end $$;
 
 -- public.billing_records
 drop policy if exists billing_records_modify on public.billing_records;

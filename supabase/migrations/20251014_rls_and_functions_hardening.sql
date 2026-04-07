@@ -2,13 +2,19 @@ set search_path = public;
 
 -- RLS hardening and function search_path fixes
 
--- 1) Tighten ai_cache
-ALTER TABLE IF EXISTS public.ai_cache ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS ai_cache_insert_policy ON public.ai_cache;
-DROP POLICY IF EXISTS ai_cache_update_policy ON public.ai_cache;
-DROP POLICY IF EXISTS ai_cache_select_policy ON public.ai_cache;
-DROP POLICY IF EXISTS ai_cache_admin_manage ON public.ai_cache;
-CREATE POLICY ai_cache_admin_manage ON public.ai_cache FOR ALL TO authenticated USING (app.user_has_role('admin') OR app.user_has_role('super_admin')) WITH CHECK (app.user_has_role('admin') OR app.user_has_role('super_admin'));
+-- 1) Tighten ai_cache (table may be absent on some replay paths; guard policies)
+DO $$
+BEGIN
+  IF to_regclass('public.ai_cache') IS NULL THEN
+    RETURN;
+  END IF;
+  ALTER TABLE public.ai_cache ENABLE ROW LEVEL SECURITY;
+  DROP POLICY IF EXISTS ai_cache_insert_policy ON public.ai_cache;
+  DROP POLICY IF EXISTS ai_cache_update_policy ON public.ai_cache;
+  DROP POLICY IF EXISTS ai_cache_select_policy ON public.ai_cache;
+  DROP POLICY IF EXISTS ai_cache_admin_manage ON public.ai_cache;
+  CREATE POLICY ai_cache_admin_manage ON public.ai_cache FOR ALL TO authenticated USING (app.user_has_role('admin') OR app.user_has_role('super_admin')) WITH CHECK (app.user_has_role('admin') OR app.user_has_role('super_admin'));
+END $$;
 
 -- 2) Restrict company_settings writes to admins
 DROP POLICY IF EXISTS "Allow authenticated users to insert company settings" ON public.company_settings;

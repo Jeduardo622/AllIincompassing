@@ -79,6 +79,11 @@ $$;
 -- User session linkage to auth.users
 DO $$
 BEGIN
+  IF to_regclass('public.user_sessions') IS NULL THEN
+    RAISE NOTICE 'Skipping user_sessions ownership links: table does not exist.';
+    RETURN;
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM information_schema.table_constraints
@@ -259,30 +264,39 @@ END
 $$;
 
 -- user_sessions policies
-ALTER TABLE public.user_sessions ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public.user_sessions') IS NULL THEN
+    RAISE NOTICE 'Skipping user_sessions policy setup: table does not exist.';
+    RETURN;
+  END IF;
 
-DROP POLICY IF EXISTS user_sessions_service_role_manage ON public.user_sessions;
-DROP POLICY IF EXISTS user_sessions_owner_access ON public.user_sessions;
-DROP POLICY IF EXISTS user_sessions_admin_read ON public.user_sessions;
+  ALTER TABLE public.user_sessions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY user_sessions_service_role_manage
-  ON public.user_sessions
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+  DROP POLICY IF EXISTS user_sessions_service_role_manage ON public.user_sessions;
+  DROP POLICY IF EXISTS user_sessions_owner_access ON public.user_sessions;
+  DROP POLICY IF EXISTS user_sessions_admin_read ON public.user_sessions;
 
-CREATE POLICY user_sessions_owner_access
-  ON public.user_sessions
-  FOR SELECT
-  TO authenticated
-  USING (user_id = auth.uid());
+  CREATE POLICY user_sessions_service_role_manage
+    ON public.user_sessions
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
 
-CREATE POLICY user_sessions_admin_read
-  ON public.user_sessions
-  FOR SELECT
-  TO authenticated
-  USING (app.user_has_role('admin') OR app.user_has_role('super_admin'));
+  CREATE POLICY user_sessions_owner_access
+    ON public.user_sessions
+    FOR SELECT
+    TO authenticated
+    USING (user_id = auth.uid());
+
+  CREATE POLICY user_sessions_admin_read
+    ON public.user_sessions
+    FOR SELECT
+    TO authenticated
+    USING (app.user_has_role('admin') OR app.user_has_role('super_admin'));
+END
+$$;
 
 -- ai_cache policies
 ALTER TABLE public.ai_cache ENABLE ROW LEVEL SECURITY;

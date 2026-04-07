@@ -893,7 +893,11 @@ CREATE POLICY "Session CPT entries service role access"
   WITH CHECK (true);
 
 -- 5. Update session CPT details view to surface organization context
-CREATE OR REPLACE VIEW public.session_cpt_details_vw AS
+-- Replace entirely: column order differs from 20250920120200_create_session_cpt_linkages.sql;
+-- CREATE OR REPLACE cannot rename/reorder columns (42P16).
+DROP VIEW IF EXISTS public.session_cpt_details_vw;
+
+CREATE VIEW public.session_cpt_details_vw AS
 SELECT
   sce.id,
   sce.session_id,

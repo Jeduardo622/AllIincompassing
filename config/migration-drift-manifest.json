@@ -5,9 +5,9 @@
     "sourceArtifact": "reports/migration-triage-inventory.json",
     "sourceInventoryGeneratedAt": "2026-04-07T16:00:55.714Z",
     "sourceProjectIdExpected": "wnnjeqheqxxyrgsjmygy",
-    "entryCount": 85,
+    "entryCount": 87,
     "ledgerOnlyDriftEntryCount": 83,
-    "supersededDoNotApplyEntryCount": 2,
+    "supersededDoNotApplyEntryCount": 4,
     "note": "Human-reviewed parity suppressions: bulk LEDGER_ONLY_DRIFT from migration-triage-inventory.json, plus optional SUPERSEDED_DO_NOT_APPLY entries preserved here (not from inventory regen). These versions are excluded from actionable pending in scripts/report-migration-parity.mjs; they are not DDL allowlist guards. Do not replay superseded historical SQL on main without a new reviewed migration."
   },
   "entries": [
@@ -842,6 +842,16 @@
       "nearestRemoteName": null
     },
     {
+      "version": "20260403133000",
+      "filename": "20260403133000_fix_super_admin_schedule_org_context_resolution.sql",
+      "slug": "fix_super_admin_schedule_org_context_resolution",
+      "classification": "SUPERSEDED_DO_NOT_APPLY",
+      "reason": "Human-reviewed: would downgrade app.resolve_user_organization_id versus newer applied schedule/org-resolution logic on main (including 20260406203846). Do not replay on main. Parity suppression only — not a DDL safety gate.",
+      "matchRuleSummary": "none",
+      "nearestRemoteVersion": null,
+      "nearestRemoteName": null
+    },
+    {
       "version": "20260406203516",
       "filename": "20260406203516_hotfix_clients_deleted_at_for_preview_replay.sql",
       "slug": "hotfix_clients_deleted_at_for_preview_replay",
@@ -850,6 +860,16 @@
       "matchRuleSummary": "none",
       "nearestRemoteVersion": null,
       "nearestRemoteName": null
+    },
+    {
+      "version": "20260406203544",
+      "filename": "20260406203544_hotfix_superadmin_org_resolution_for_schedule.sql",
+      "slug": "hotfix_superadmin_org_resolution_for_schedule",
+      "classification": "SUPERSEDED_DO_NOT_APPLY",
+      "reason": "Human-reviewed: older hotfix superseded by ledger migration 20260406203846 (hotfix_superadmin_org_context_schedule_runtime); applying 03544 after 03846 would downgrade app.resolve_user_organization_id. Parity suppression only — not a DDL safety gate.",
+      "matchRuleSummary": "none",
+      "nearestRemoteVersion": "20260406203846",
+      "nearestRemoteName": "hotfix_superadmin_org_context_schedule_runtime"
     },
     {
       "version": "20260406203906",

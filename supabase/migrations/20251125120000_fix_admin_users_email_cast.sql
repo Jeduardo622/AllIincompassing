@@ -2,7 +2,7 @@ begin;
 
 drop function if exists public.get_admin_users(uuid);
 create or replace function public.get_admin_users(organization_id uuid default null)
-returns setof public.admin_user_row
+returns setof admin_users
 language plpgsql
 security definer
 stable
@@ -60,6 +60,7 @@ begin
       ur.id,
       u.id,
       u.email::text,
+      u.raw_user_meta_data,
       u.created_at
     from auth.users u
     join user_roles ur on ur.user_id = u.id
@@ -78,6 +79,7 @@ begin
       ur.id,
       u.id,
       u.email::text,
+      u.raw_user_meta_data,
       u.created_at
     from auth.users u
     join user_roles ur on ur.user_id = u.id
@@ -91,6 +93,7 @@ begin
       ur.id,
       u.id,
       u.email::text,
+      u.raw_user_meta_data,
       u.created_at
     from auth.users u
     join user_roles ur on ur.user_id = u.id

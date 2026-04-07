@@ -1,50 +1,31 @@
 -- Strengthen tenant isolation for client-facing flows.
 
--- Helpers to idempotently drop policies
+-- Helpers to idempotently drop policies (names must match CREATE POLICY below; *_write_* variants are legacy).
 DO $$
 BEGIN
-  -- clients
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'clients' AND policyname = 'clients_select_org') THEN
-    DROP POLICY "clients_select_org" ON public.clients;
-  END IF;
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'clients' AND policyname = 'clients_write_org') THEN
-    DROP POLICY "clients_write_org" ON public.clients;
-  END IF;
+  DROP POLICY IF EXISTS "clients_select_org" ON public.clients;
+  DROP POLICY IF EXISTS "clients_insert_org" ON public.clients;
+  DROP POLICY IF EXISTS "clients_update_org" ON public.clients;
+  DROP POLICY IF EXISTS "clients_write_org" ON public.clients;
 
-  -- authorizations
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'authorizations' AND policyname = 'authorizations_select_org') THEN
-    DROP POLICY "authorizations_select_org" ON public.authorizations;
-  END IF;
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'authorizations' AND policyname = 'authorizations_write_org') THEN
-    DROP POLICY "authorizations_write_org" ON public.authorizations;
-  END IF;
+  DROP POLICY IF EXISTS "authorizations_select_org" ON public.authorizations;
+  DROP POLICY IF EXISTS "authorizations_insert_org" ON public.authorizations;
+  DROP POLICY IF EXISTS "authorizations_update_org" ON public.authorizations;
+  DROP POLICY IF EXISTS "authorizations_write_org" ON public.authorizations;
 
-  -- authorization_services
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'authorization_services' AND policyname = 'authorization_services_select_org') THEN
-    DROP POLICY "authorization_services_select_org" ON public.authorization_services;
-  END IF;
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'authorization_services' AND policyname = 'authorization_services_write_org') THEN
-    DROP POLICY "authorization_services_write_org" ON public.authorization_services;
-  END IF;
+  DROP POLICY IF EXISTS "authorization_services_select_org" ON public.authorization_services;
+  DROP POLICY IF EXISTS "authorization_services_insert_org" ON public.authorization_services;
+  DROP POLICY IF EXISTS "authorization_services_update_org" ON public.authorization_services;
+  DROP POLICY IF EXISTS "authorization_services_write_org" ON public.authorization_services;
 
-  -- client_session_notes
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'client_session_notes' AND policyname = 'client_session_notes_select_org') THEN
-    DROP POLICY "client_session_notes_select_org" ON public.client_session_notes;
-  END IF;
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'client_session_notes' AND policyname = 'client_session_notes_write_org') THEN
-    DROP POLICY "client_session_notes_write_org" ON public.client_session_notes;
-  END IF;
+  DROP POLICY IF EXISTS "client_session_notes_select_org" ON public.client_session_notes;
+  DROP POLICY IF EXISTS "client_session_notes_insert_org" ON public.client_session_notes;
+  DROP POLICY IF EXISTS "client_session_notes_update_org" ON public.client_session_notes;
+  DROP POLICY IF EXISTS "client_session_notes_write_org" ON public.client_session_notes;
 
-  -- client_notes
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'client_notes' AND policyname = 'client_notes_org') THEN
-    DROP POLICY "client_notes_org" ON public.client_notes;
-  END IF;
+  DROP POLICY IF EXISTS "client_notes_org" ON public.client_notes;
 
-  -- client_issues
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'client_issues' AND policyname = 'client_issues_org') THEN
-    DROP POLICY "client_issues_org" ON public.client_issues;
-  END IF;
-
+  DROP POLICY IF EXISTS "client_issues_org" ON public.client_issues;
 END$$;
 
 -- Enable RLS (idempotent; already enabled in schema)

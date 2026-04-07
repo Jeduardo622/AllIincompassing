@@ -17,6 +17,11 @@ set search_path = public;
 -- Admin action ownership links
 DO $$
 BEGIN
+  IF to_regclass('public.admin_actions') IS NULL THEN
+    RAISE NOTICE 'Skipping admin_actions ownership links: table does not exist.';
+    RETURN;
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM information_schema.table_constraints
@@ -50,6 +55,11 @@ $$;
 -- Conversation ownership
 DO $$
 BEGIN
+  IF to_regclass('public.conversations') IS NULL THEN
+    RAISE NOTICE 'Skipping conversations ownership links: table does not exist.';
+    RETURN;
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM information_schema.table_constraints
@@ -69,6 +79,11 @@ $$;
 -- User session linkage to auth.users
 DO $$
 BEGIN
+  IF to_regclass('public.user_sessions') IS NULL THEN
+    RAISE NOTICE 'Skipping user_sessions ownership links: table does not exist.';
+    RETURN;
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM information_schema.table_constraints
@@ -88,6 +103,11 @@ $$;
 -- AI session note relationships
 DO $$
 BEGIN
+  IF to_regclass('public.ai_session_notes') IS NULL THEN
+    RAISE NOTICE 'Skipping ai_session_notes relationship links: table does not exist.';
+    RETURN;
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM information_schema.table_constraints
@@ -135,6 +155,11 @@ $$;
 -- Behavioral pattern ownership
 DO $$
 BEGIN
+  IF to_regclass('public.behavioral_patterns') IS NULL THEN
+    RAISE NOTICE 'Skipping behavioral_patterns ownership links: table does not exist.';
+    RETURN;
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM information_schema.table_constraints
@@ -154,6 +179,11 @@ $$;
 -- Session note template ownership
 DO $$
 BEGIN
+  IF to_regclass('public.session_note_templates') IS NULL THEN
+    RAISE NOTICE 'Skipping session_note_templates ownership links: table does not exist.';
+    RETURN;
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM information_schema.table_constraints
@@ -173,322 +203,413 @@ $$;
 -- Enable RLS and define policies
 
 -- admin_actions policies
-ALTER TABLE public.admin_actions ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public.admin_actions') IS NULL THEN
+    RAISE NOTICE 'Skipping admin_actions policy setup: table does not exist.';
+    RETURN;
+  END IF;
 
-DROP POLICY IF EXISTS admin_actions_service_role_manage ON public.admin_actions;
-DROP POLICY IF EXISTS admin_actions_admin_read ON public.admin_actions;
-DROP POLICY IF EXISTS admin_actions_admin_insert ON public.admin_actions;
+  ALTER TABLE public.admin_actions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY admin_actions_service_role_manage
-  ON public.admin_actions
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+  DROP POLICY IF EXISTS admin_actions_service_role_manage ON public.admin_actions;
+  DROP POLICY IF EXISTS admin_actions_admin_read ON public.admin_actions;
+  DROP POLICY IF EXISTS admin_actions_admin_insert ON public.admin_actions;
 
-CREATE POLICY admin_actions_admin_read
-  ON public.admin_actions
-  FOR SELECT
-  TO authenticated
-  USING (
-    app.user_has_role('admin') OR app.user_has_role('super_admin')
-  );
+  CREATE POLICY admin_actions_service_role_manage
+    ON public.admin_actions
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
 
-CREATE POLICY admin_actions_admin_insert
-  ON public.admin_actions
-  FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    auth.uid() = admin_user_id
-    AND (app.user_has_role('admin') OR app.user_has_role('super_admin'))
-  );
+  CREATE POLICY admin_actions_admin_read
+    ON public.admin_actions
+    FOR SELECT
+    TO authenticated
+    USING (
+      app.user_has_role('admin') OR app.user_has_role('super_admin')
+    );
+
+  CREATE POLICY admin_actions_admin_insert
+    ON public.admin_actions
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (
+      auth.uid() = admin_user_id
+      AND (app.user_has_role('admin') OR app.user_has_role('super_admin'))
+    );
+END
+$$;
 
 -- conversations policies
-ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public.conversations') IS NULL THEN
+    RAISE NOTICE 'Skipping conversations policy setup: table does not exist.';
+    RETURN;
+  END IF;
 
-DROP POLICY IF EXISTS conversations_service_role_manage ON public.conversations;
-DROP POLICY IF EXISTS conversations_owner_access ON public.conversations;
-DROP POLICY IF EXISTS conversations_admin_access ON public.conversations;
+  ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY conversations_service_role_manage
-  ON public.conversations
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+  DROP POLICY IF EXISTS conversations_service_role_manage ON public.conversations;
+  DROP POLICY IF EXISTS conversations_owner_access ON public.conversations;
+  DROP POLICY IF EXISTS conversations_admin_access ON public.conversations;
 
-CREATE POLICY conversations_owner_access
-  ON public.conversations
-  FOR ALL
-  TO authenticated
-  USING (user_id = auth.uid())
-  WITH CHECK (user_id = auth.uid());
+  CREATE POLICY conversations_service_role_manage
+    ON public.conversations
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
 
-CREATE POLICY conversations_admin_access
-  ON public.conversations
-  FOR SELECT
-  TO authenticated
-  USING (app.user_has_role('admin') OR app.user_has_role('super_admin'));
+  CREATE POLICY conversations_owner_access
+    ON public.conversations
+    FOR ALL
+    TO authenticated
+    USING (user_id = auth.uid())
+    WITH CHECK (user_id = auth.uid());
+
+  CREATE POLICY conversations_admin_access
+    ON public.conversations
+    FOR SELECT
+    TO authenticated
+    USING (app.user_has_role('admin') OR app.user_has_role('super_admin'));
+END
+$$;
 
 -- user_sessions policies
-ALTER TABLE public.user_sessions ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public.user_sessions') IS NULL THEN
+    RAISE NOTICE 'Skipping user_sessions policy setup: table does not exist.';
+    RETURN;
+  END IF;
 
-DROP POLICY IF EXISTS user_sessions_service_role_manage ON public.user_sessions;
-DROP POLICY IF EXISTS user_sessions_owner_access ON public.user_sessions;
-DROP POLICY IF EXISTS user_sessions_admin_read ON public.user_sessions;
+  ALTER TABLE public.user_sessions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY user_sessions_service_role_manage
-  ON public.user_sessions
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+  DROP POLICY IF EXISTS user_sessions_service_role_manage ON public.user_sessions;
+  DROP POLICY IF EXISTS user_sessions_owner_access ON public.user_sessions;
+  DROP POLICY IF EXISTS user_sessions_admin_read ON public.user_sessions;
 
-CREATE POLICY user_sessions_owner_access
-  ON public.user_sessions
-  FOR SELECT
-  TO authenticated
-  USING (user_id = auth.uid());
+  CREATE POLICY user_sessions_service_role_manage
+    ON public.user_sessions
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
 
-CREATE POLICY user_sessions_admin_read
-  ON public.user_sessions
-  FOR SELECT
-  TO authenticated
-  USING (app.user_has_role('admin') OR app.user_has_role('super_admin'));
+  CREATE POLICY user_sessions_owner_access
+    ON public.user_sessions
+    FOR SELECT
+    TO authenticated
+    USING (user_id = auth.uid());
+
+  CREATE POLICY user_sessions_admin_read
+    ON public.user_sessions
+    FOR SELECT
+    TO authenticated
+    USING (app.user_has_role('admin') OR app.user_has_role('super_admin'));
+END
+$$;
 
 -- ai_cache policies
-ALTER TABLE public.ai_cache ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public.ai_cache') IS NULL THEN
+    RAISE NOTICE 'Skipping ai_cache policy setup: table does not exist.';
+    RETURN;
+  END IF;
 
-DROP POLICY IF EXISTS ai_cache_service_role_manage ON public.ai_cache;
-DROP POLICY IF EXISTS ai_cache_admin_read ON public.ai_cache;
+  ALTER TABLE public.ai_cache ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY ai_cache_service_role_manage
-  ON public.ai_cache
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+  DROP POLICY IF EXISTS ai_cache_service_role_manage ON public.ai_cache;
+  DROP POLICY IF EXISTS ai_cache_admin_read ON public.ai_cache;
 
-CREATE POLICY ai_cache_admin_read
-  ON public.ai_cache
-  FOR SELECT
-  TO authenticated
-  USING (app.user_has_role('admin') OR app.user_has_role('super_admin'));
+  CREATE POLICY ai_cache_service_role_manage
+    ON public.ai_cache
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+  CREATE POLICY ai_cache_admin_read
+    ON public.ai_cache
+    FOR SELECT
+    TO authenticated
+    USING (app.user_has_role('admin') OR app.user_has_role('super_admin'));
+END
+$$;
 
 -- ai_session_notes policies
-ALTER TABLE public.ai_session_notes ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public.ai_session_notes') IS NULL THEN
+    RAISE NOTICE 'Skipping ai_session_notes policy setup: table does not exist.';
+    RETURN;
+  END IF;
 
-DROP POLICY IF EXISTS ai_session_notes_service_role_manage ON public.ai_session_notes;
-DROP POLICY IF EXISTS ai_session_notes_therapist_access ON public.ai_session_notes;
-DROP POLICY IF EXISTS ai_session_notes_admin_access ON public.ai_session_notes;
+  ALTER TABLE public.ai_session_notes ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY ai_session_notes_service_role_manage
-  ON public.ai_session_notes
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+  DROP POLICY IF EXISTS ai_session_notes_service_role_manage ON public.ai_session_notes;
+  DROP POLICY IF EXISTS ai_session_notes_therapist_access ON public.ai_session_notes;
+  DROP POLICY IF EXISTS ai_session_notes_admin_access ON public.ai_session_notes;
 
-CREATE POLICY ai_session_notes_admin_access
-  ON public.ai_session_notes
-  FOR SELECT
-  TO authenticated
-  USING (app.user_has_role('admin') OR app.user_has_role('super_admin'));
+  CREATE POLICY ai_session_notes_service_role_manage
+    ON public.ai_session_notes
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
 
-CREATE POLICY ai_session_notes_therapist_access
-  ON public.ai_session_notes
-  FOR SELECT
-  TO authenticated
-  USING (therapist_id = auth.uid());
+  CREATE POLICY ai_session_notes_admin_access
+    ON public.ai_session_notes
+    FOR SELECT
+    TO authenticated
+    USING (app.user_has_role('admin') OR app.user_has_role('super_admin'));
 
-CREATE POLICY ai_session_notes_therapist_write
-  ON public.ai_session_notes
-  FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    therapist_id = auth.uid()
-    AND public.user_has_role('therapist')
-  );
+  CREATE POLICY ai_session_notes_therapist_access
+    ON public.ai_session_notes
+    FOR SELECT
+    TO authenticated
+    USING (therapist_id = auth.uid());
 
-CREATE POLICY ai_session_notes_therapist_update
-  ON public.ai_session_notes
-  FOR UPDATE
-  TO authenticated
-  USING (therapist_id = auth.uid())
-  WITH CHECK (therapist_id = auth.uid());
+  CREATE POLICY ai_session_notes_therapist_write
+    ON public.ai_session_notes
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (
+      therapist_id = auth.uid()
+      AND public.user_has_role('therapist')
+    );
+
+  CREATE POLICY ai_session_notes_therapist_update
+    ON public.ai_session_notes
+    FOR UPDATE
+    TO authenticated
+    USING (therapist_id = auth.uid())
+    WITH CHECK (therapist_id = auth.uid());
+END
+$$;
 
 -- behavioral_patterns policies
-ALTER TABLE public.behavioral_patterns ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public.behavioral_patterns') IS NULL THEN
+    RAISE NOTICE 'Skipping behavioral_patterns policy setup: table does not exist.';
+    RETURN;
+  END IF;
 
-DROP POLICY IF EXISTS behavioral_patterns_service_role_manage ON public.behavioral_patterns;
-DROP POLICY IF EXISTS behavioral_patterns_owner_access ON public.behavioral_patterns;
-DROP POLICY IF EXISTS behavioral_patterns_admin_access ON public.behavioral_patterns;
+  ALTER TABLE public.behavioral_patterns ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY behavioral_patterns_service_role_manage
-  ON public.behavioral_patterns
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+  DROP POLICY IF EXISTS behavioral_patterns_service_role_manage ON public.behavioral_patterns;
+  DROP POLICY IF EXISTS behavioral_patterns_owner_access ON public.behavioral_patterns;
+  DROP POLICY IF EXISTS behavioral_patterns_admin_access ON public.behavioral_patterns;
 
-CREATE POLICY behavioral_patterns_admin_access
-  ON public.behavioral_patterns
-  FOR SELECT
-  TO authenticated
-  USING (
-    app.user_has_role_for_org('admin', organization_id, created_by)
-    OR app.user_has_role_for_org('super_admin', organization_id, created_by)
-  );
+  CREATE POLICY behavioral_patterns_service_role_manage
+    ON public.behavioral_patterns
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
 
-CREATE POLICY behavioral_patterns_owner_access
-  ON public.behavioral_patterns
-  FOR ALL
-  TO authenticated
-  USING (
-    created_by = auth.uid()
-    AND app.user_has_role_for_org('therapist', organization_id, created_by)
-  )
-  WITH CHECK (
-    created_by = auth.uid()
-    AND app.user_has_role_for_org('therapist', organization_id, created_by)
-  );
+  CREATE POLICY behavioral_patterns_admin_access
+    ON public.behavioral_patterns
+    FOR SELECT
+    TO authenticated
+    USING (
+      app.user_has_role_for_org('admin', organization_id, created_by)
+      OR app.user_has_role_for_org('super_admin', organization_id, created_by)
+    );
+
+  CREATE POLICY behavioral_patterns_owner_access
+    ON public.behavioral_patterns
+    FOR ALL
+    TO authenticated
+    USING (
+      created_by = auth.uid()
+      AND app.user_has_role_for_org('therapist', organization_id, created_by)
+    )
+    WITH CHECK (
+      created_by = auth.uid()
+      AND app.user_has_role_for_org('therapist', organization_id, created_by)
+    );
+END
+$$;
 
 -- session_note_templates policies
-ALTER TABLE public.session_note_templates ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public.session_note_templates') IS NULL THEN
+    RAISE NOTICE 'Skipping session_note_templates policy setup: table does not exist.';
+    RETURN;
+  END IF;
 
-DROP POLICY IF EXISTS session_note_templates_service_role_manage ON public.session_note_templates;
-DROP POLICY IF EXISTS session_note_templates_owner_access ON public.session_note_templates;
-DROP POLICY IF EXISTS session_note_templates_admin_access ON public.session_note_templates;
+  ALTER TABLE public.session_note_templates ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY session_note_templates_service_role_manage
-  ON public.session_note_templates
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+  DROP POLICY IF EXISTS session_note_templates_service_role_manage ON public.session_note_templates;
+  DROP POLICY IF EXISTS session_note_templates_owner_access ON public.session_note_templates;
+  DROP POLICY IF EXISTS session_note_templates_admin_access ON public.session_note_templates;
 
-CREATE POLICY session_note_templates_admin_access
-  ON public.session_note_templates
-  FOR SELECT
-  TO authenticated
-  USING (
-    app.user_has_role_for_org('admin', organization_id, created_by)
-    OR app.user_has_role_for_org('super_admin', organization_id, created_by)
-  );
+  CREATE POLICY session_note_templates_service_role_manage
+    ON public.session_note_templates
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
 
-CREATE POLICY session_note_templates_owner_access
-  ON public.session_note_templates
-  FOR ALL
-  TO authenticated
-  USING (
-    created_by = auth.uid()
-    AND app.user_has_role_for_org('therapist', organization_id, created_by)
-  )
-  WITH CHECK (
-    created_by = auth.uid()
-    AND app.user_has_role_for_org('therapist', organization_id, created_by)
-  );
+  CREATE POLICY session_note_templates_admin_access
+    ON public.session_note_templates
+    FOR SELECT
+    TO authenticated
+    USING (
+      app.user_has_role_for_org('admin', organization_id, created_by)
+      OR app.user_has_role_for_org('super_admin', organization_id, created_by)
+    );
+
+  CREATE POLICY session_note_templates_owner_access
+    ON public.session_note_templates
+    FOR ALL
+    TO authenticated
+    USING (
+      created_by = auth.uid()
+      AND app.user_has_role_for_org('therapist', organization_id, created_by)
+    )
+    WITH CHECK (
+      created_by = auth.uid()
+      AND app.user_has_role_for_org('therapist', organization_id, created_by)
+    );
+END
+$$;
 
 -- session_transcripts policies
-ALTER TABLE public.session_transcripts ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public.session_transcripts') IS NULL THEN
+    RAISE NOTICE 'Skipping session_transcripts policy setup: table does not exist.';
+    RETURN;
+  END IF;
 
-DROP POLICY IF EXISTS session_transcripts_service_role_manage ON public.session_transcripts;
-DROP POLICY IF EXISTS session_transcripts_admin_read ON public.session_transcripts;
-DROP POLICY IF EXISTS session_transcripts_therapist_read ON public.session_transcripts;
+  IF to_regprocedure('app.user_has_role_for_org(text,uuid,uuid,uuid,uuid)') IS NULL THEN
+    RAISE NOTICE 'Skipping session_transcripts policy setup: app.user_has_role_for_org(text,uuid,uuid,uuid,uuid) is unavailable.';
+    RETURN;
+  END IF;
 
-CREATE POLICY session_transcripts_service_role_manage
-  ON public.session_transcripts
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+  ALTER TABLE public.session_transcripts ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY session_transcripts_admin_read
-  ON public.session_transcripts
-  FOR SELECT
-  TO authenticated
-  USING (
-    app.user_has_role_for_org('admin', organization_id, NULL, NULL, session_id)
-    OR app.user_has_role_for_org('super_admin', organization_id, NULL, NULL, session_id)
-  );
+  DROP POLICY IF EXISTS session_transcripts_service_role_manage ON public.session_transcripts;
+  DROP POLICY IF EXISTS session_transcripts_admin_read ON public.session_transcripts;
+  DROP POLICY IF EXISTS session_transcripts_therapist_read ON public.session_transcripts;
 
-CREATE POLICY session_transcripts_therapist_read
-  ON public.session_transcripts
-  FOR SELECT
-  TO authenticated
-  USING (
-    app.user_has_role_for_org('therapist', organization_id, NULL, NULL, session_id)
-    AND EXISTS (
-      SELECT 1
-      FROM public.sessions s
-      WHERE s.id = session_id
-        AND s.therapist_id = auth.uid()
-    )
-  );
+  CREATE POLICY session_transcripts_service_role_manage
+    ON public.session_transcripts
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+  CREATE POLICY session_transcripts_admin_read
+    ON public.session_transcripts
+    FOR SELECT
+    TO authenticated
+    USING (
+      app.user_has_role_for_org('admin', organization_id, NULL, NULL, session_id)
+      OR app.user_has_role_for_org('super_admin', organization_id, NULL, NULL, session_id)
+    );
+
+  CREATE POLICY session_transcripts_therapist_read
+    ON public.session_transcripts
+    FOR SELECT
+    TO authenticated
+    USING (
+      app.user_has_role_for_org('therapist', organization_id, NULL, NULL, session_id)
+      AND EXISTS (
+        SELECT 1
+        FROM public.sessions s
+        WHERE s.id = session_id
+          AND s.therapist_id = auth.uid()
+      )
+    );
+END
+$$;
 
 -- session_transcript_segments policies
-ALTER TABLE public.session_transcript_segments ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public.session_transcript_segments') IS NULL THEN
+    RAISE NOTICE 'Skipping session_transcript_segments policy setup: table does not exist.';
+    RETURN;
+  END IF;
 
-DROP POLICY IF EXISTS session_transcript_segments_service_role_manage ON public.session_transcript_segments;
-DROP POLICY IF EXISTS session_transcript_segments_admin_read ON public.session_transcript_segments;
-DROP POLICY IF EXISTS session_transcript_segments_therapist_read ON public.session_transcript_segments;
+  IF to_regprocedure('app.user_has_role_for_org(text,uuid,uuid,uuid,uuid)') IS NULL THEN
+    RAISE NOTICE 'Skipping session_transcript_segments policy setup: app.user_has_role_for_org(text,uuid,uuid,uuid,uuid) is unavailable.';
+    RETURN;
+  END IF;
 
-CREATE POLICY session_transcript_segments_service_role_manage
-  ON public.session_transcript_segments
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+  ALTER TABLE public.session_transcript_segments ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY session_transcript_segments_admin_read
-  ON public.session_transcript_segments
-  FOR SELECT
-  TO authenticated
-  USING (
-    app.user_has_role_for_org(
-      'admin',
-      organization_id,
-      NULL,
-      NULL,
-      COALESCE(
-        (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
-        session_id
-      )
-    )
-    OR app.user_has_role_for_org(
-      'super_admin',
-      organization_id,
-      NULL,
-      NULL,
-      COALESCE(
-        (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
-        session_id
-      )
-    )
-  );
+  DROP POLICY IF EXISTS session_transcript_segments_service_role_manage ON public.session_transcript_segments;
+  DROP POLICY IF EXISTS session_transcript_segments_admin_read ON public.session_transcript_segments;
+  DROP POLICY IF EXISTS session_transcript_segments_therapist_read ON public.session_transcript_segments;
 
-CREATE POLICY session_transcript_segments_therapist_read
-  ON public.session_transcript_segments
-  FOR SELECT
-  TO authenticated
-  USING (
-    app.user_has_role_for_org(
-      'therapist',
-      organization_id,
-      NULL,
-      NULL,
-      COALESCE(
-        (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
-        session_id
-      )
-    )
-    AND EXISTS (
-      SELECT 1
-      FROM public.sessions s
-      WHERE s.id = COALESCE(
+  CREATE POLICY session_transcript_segments_service_role_manage
+    ON public.session_transcript_segments
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+  CREATE POLICY session_transcript_segments_admin_read
+    ON public.session_transcript_segments
+    FOR SELECT
+    TO authenticated
+    USING (
+      app.user_has_role_for_org(
+        'admin',
+        organization_id,
+        NULL,
+        NULL,
+        COALESCE(
           (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
           session_id
         )
-        AND s.therapist_id = auth.uid()
-    )
-  );
+      )
+      OR app.user_has_role_for_org(
+        'super_admin',
+        organization_id,
+        NULL,
+        NULL,
+        COALESCE(
+          (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
+          session_id
+        )
+      )
+    );
+
+  CREATE POLICY session_transcript_segments_therapist_read
+    ON public.session_transcript_segments
+    FOR SELECT
+    TO authenticated
+    USING (
+      app.user_has_role_for_org(
+        'therapist',
+        organization_id,
+        NULL,
+        NULL,
+        COALESCE(
+          (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
+          session_id
+        )
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM public.sessions s
+        WHERE s.id = COALESCE(
+            (SELECT st.session_id FROM public.session_transcripts st WHERE st.id = public.session_transcript_segments.session_id),
+            session_id
+          )
+          AND s.therapist_id = auth.uid()
+      )
+    );
+END
+$$;

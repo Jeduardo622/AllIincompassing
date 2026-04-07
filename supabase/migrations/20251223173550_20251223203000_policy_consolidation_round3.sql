@@ -171,7 +171,7 @@ CREATE POLICY session_note_templates_service_role_all
 
 -- Therapist certifications (derive org via therapists)
 ALTER TABLE public.therapist_certifications ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS \"Therapist certifications scoped access\" ON public.therapist_certifications;
+DROP POLICY IF EXISTS "Therapist certifications scoped access" ON public.therapist_certifications;
 DROP POLICY IF EXISTS therapist_certifications_access_optimized ON public.therapist_certifications;
 
 CREATE POLICY org_read_therapist_certifications
@@ -220,8 +220,8 @@ CREATE POLICY therapist_certifications_service_role_all
 
 -- Therapist availability (derive org via therapists)
 ALTER TABLE public.therapist_availability ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS \"Therapist availability managed in organization\" ON public.therapist_availability;
-DROP POLICY IF EXISTS \"Therapist availability scoped access\" ON public.therapist_availability;
+DROP POLICY IF EXISTS "Therapist availability managed in organization" ON public.therapist_availability;
+DROP POLICY IF EXISTS "Therapist availability scoped access" ON public.therapist_availability;
 
 CREATE POLICY org_read_therapist_availability
   ON public.therapist_availability

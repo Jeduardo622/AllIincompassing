@@ -11,6 +11,7 @@ import {
   jsonForRequest,
   resolveOrgAndRoleWithStatus,
 } from "./shared";
+import { getOptionalServerEnv } from "../env";
 import { getApiAuthorityMode, proxyToEdgeAuthority } from "./edgeAuthority";
 import {
   bookSessionApiRequestBodySchema,
@@ -66,11 +67,66 @@ async function assertBookRequestScope(
   accessToken: string,
   body: BookSessionApiRequestBody,
 ): Promise<Response | null> {
-  const { organizationId, isTherapist, isAdmin, isSuperAdmin, upstreamError: roleUpstreamError } =
-    await resolveOrgAndRoleWithStatus(accessToken);
+  const roleResolution = await resolveOrgAndRoleWithStatus(accessToken);
+  let organizationId = roleResolution.organizationId;
+  const {
+    isTherapist,
+    isAdmin,
+    isSuperAdmin,
+    upstreamError: roleUpstreamError,
+  } = roleResolution;
   if (roleUpstreamError) {
     return errorResponse(request, "upstream_error", "Unable to validate organization access", { status: 502 });
   }
+
+  const { supabaseUrl, anonKey } = getSupabaseConfig();
+  const userHeaders = {
+    "Content-Type": "application/json",
+    apikey: anonKey,
+    Authorization: `Bearer ${accessToken}`,
+  };
+  const serviceRoleKey = getOptionalServerEnv("SUPABASE_SERVICE_ROLE_KEY")?.trim();
+  const serviceRoleHeaders = serviceRoleKey
+    ? {
+        "Content-Type": "application/json",
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+      }
+    : null;
+  const canUseServiceRoleScopeFallback = isSuperAdmin && serviceRoleHeaders !== null;
+  let usingServiceRoleScope = false;
+
+  if (!organizationId && isSuperAdmin) {
+    const encodedTherapistId = encodeURIComponent(body.session.therapist_id);
+    const therapistOrgUrl = `${supabaseUrl}/rest/v1/therapists?select=organization_id&id=eq.${encodedTherapistId}`;
+    const therapistOrgResult = await fetchJson<Array<{ organization_id: string }>>(therapistOrgUrl, {
+      method: "GET",
+      headers: userHeaders,
+    });
+    const therapistRow =
+      therapistOrgResult.ok && Array.isArray(therapistOrgResult.data) ? therapistOrgResult.data[0] : null;
+    if (therapistRow && typeof therapistRow.organization_id === "string" && therapistRow.organization_id.length > 0) {
+      organizationId = therapistRow.organization_id;
+    } else if (canUseServiceRoleScopeFallback && serviceRoleHeaders) {
+      const serviceTherapistOrgResult = await fetchJson<Array<{ organization_id: string }>>(therapistOrgUrl, {
+        method: "GET",
+        headers: serviceRoleHeaders,
+      });
+      const serviceTherapistRow =
+        serviceTherapistOrgResult.ok && Array.isArray(serviceTherapistOrgResult.data)
+          ? serviceTherapistOrgResult.data[0]
+          : null;
+      if (
+        serviceTherapistRow &&
+        typeof serviceTherapistRow.organization_id === "string" &&
+        serviceTherapistRow.organization_id.length > 0
+      ) {
+        organizationId = serviceTherapistRow.organization_id;
+        usingServiceRoleScope = true;
+      }
+    }
+  }
+
   if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
@@ -87,12 +143,6 @@ async function assertBookRequestScope(
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
 
-  const { supabaseUrl, anonKey } = getSupabaseConfig();
-  const headers = {
-    "Content-Type": "application/json",
-    apikey: anonKey,
-    Authorization: `Bearer ${accessToken}`,
-  };
   const encodedOrgId = encodeURIComponent(organizationId);
   const encodedTherapistId = encodeURIComponent(body.session.therapist_id);
   const encodedClientId = encodeURIComponent(body.session.client_id);
@@ -104,12 +154,33 @@ async function assertBookRequestScope(
   const programUrl = `${supabaseUrl}/rest/v1/programs?select=id,client_id&organization_id=eq.${encodedOrgId}&id=eq.${encodedProgramId}`;
   const goalUrl = `${supabaseUrl}/rest/v1/goals?select=id,program_id&organization_id=eq.${encodedOrgId}&id=eq.${encodedGoalId}`;
 
-  const [therapistResult, clientResult, programResult, goalResult] = await Promise.all([
-    fetchJson<Array<{ id: string }>>(therapistUrl, { method: "GET", headers }),
-    fetchJson<Array<{ id: string }>>(clientUrl, { method: "GET", headers }),
-    fetchJson<Array<{ id: string; client_id: string }>>(programUrl, { method: "GET", headers }),
-    fetchJson<Array<{ id: string; program_id: string }>>(goalUrl, { method: "GET", headers }),
-  ]);
+  const queryEntities = async (headers: Record<string, string>) => {
+    const [therapistResult, clientResult, programResult, goalResult] = await Promise.all([
+      fetchJson<Array<{ id: string }>>(therapistUrl, { method: "GET", headers }),
+      fetchJson<Array<{ id: string }>>(clientUrl, { method: "GET", headers }),
+      fetchJson<Array<{ id: string; client_id: string }>>(programUrl, { method: "GET", headers }),
+      fetchJson<Array<{ id: string; program_id: string }>>(goalUrl, { method: "GET", headers }),
+    ]);
+    return {
+      therapistResult,
+      clientResult,
+      programResult,
+      goalResult,
+    };
+  };
+
+  let { therapistResult, clientResult, programResult, goalResult } = await queryEntities(
+    usingServiceRoleScope && serviceRoleHeaders ? serviceRoleHeaders : userHeaders,
+  );
+
+  if (
+    !usingServiceRoleScope &&
+    canUseServiceRoleScopeFallback &&
+    serviceRoleHeaders &&
+    (!therapistResult.ok || !clientResult.ok || !programResult.ok || !goalResult.ok)
+  ) {
+    ({ therapistResult, clientResult, programResult, goalResult } = await queryEntities(serviceRoleHeaders));
+  }
 
   if (!therapistResult.ok || !clientResult.ok || !programResult.ok || !goalResult.ok) {
     return errorResponse(request, "upstream_error", "Unable to verify booking entities", { status: 502 });

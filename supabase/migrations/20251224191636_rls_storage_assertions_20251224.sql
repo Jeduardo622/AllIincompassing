@@ -21,31 +21,7 @@ BEGIN
   END IF;
 END$$;
 
--- Assert client-documents policies exist for all verbs.
-DO $$
-DECLARE
-  missing_policies text[];
-BEGIN
-  SELECT array_agg(policyname)
-  INTO missing_policies
-  FROM (
-    VALUES
-      ('client_documents_org_read'),
-      ('client_documents_org_insert'),
-      ('client_documents_org_update'),
-      ('client_documents_org_delete')
-  ) AS p(policyname)
-  WHERE NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'storage'
-      AND tablename = 'objects'
-      AND policyname = p.policyname
-  );
-
-  IF missing_policies IS NOT NULL THEN
-    RAISE EXCEPTION 'Missing storage.objects policies: %', missing_policies;
-  END IF;
-END$$;
+-- client_documents_org_* policies are created in 20260313160000; do not assert them here on replay.
 
 -- Ensure helper functions exist.
 DO $$

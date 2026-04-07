@@ -131,7 +131,7 @@ create policy profiles_insert_self_client
   to authenticated
   with check (
     id = (select auth.uid())
-    and role = 'client'::role_type
+    and (role)::text = 'client'
   );
 
 create policy profiles_update_self

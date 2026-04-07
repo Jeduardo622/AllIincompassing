@@ -2,13 +2,19 @@ set search_path = public;
 
 -- RLS hardening and function search_path fixes
 
--- 1) Tighten ai_cache
-ALTER TABLE IF EXISTS public.ai_cache ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS ai_cache_insert_policy ON public.ai_cache;
-DROP POLICY IF EXISTS ai_cache_update_policy ON public.ai_cache;
-DROP POLICY IF EXISTS ai_cache_select_policy ON public.ai_cache;
-DROP POLICY IF EXISTS ai_cache_admin_manage ON public.ai_cache;
-CREATE POLICY ai_cache_admin_manage ON public.ai_cache FOR ALL TO authenticated USING (app.user_has_role('admin') OR app.user_has_role('super_admin')) WITH CHECK (app.user_has_role('admin') OR app.user_has_role('super_admin'));
+-- 1) Tighten ai_cache (table may be absent on some replay paths; guard policies)
+DO $$
+BEGIN
+  IF to_regclass('public.ai_cache') IS NULL THEN
+    RETURN;
+  END IF;
+  ALTER TABLE public.ai_cache ENABLE ROW LEVEL SECURITY;
+  DROP POLICY IF EXISTS ai_cache_insert_policy ON public.ai_cache;
+  DROP POLICY IF EXISTS ai_cache_update_policy ON public.ai_cache;
+  DROP POLICY IF EXISTS ai_cache_select_policy ON public.ai_cache;
+  DROP POLICY IF EXISTS ai_cache_admin_manage ON public.ai_cache;
+  CREATE POLICY ai_cache_admin_manage ON public.ai_cache FOR ALL TO authenticated USING (app.user_has_role('admin') OR app.user_has_role('super_admin')) WITH CHECK (app.user_has_role('admin') OR app.user_has_role('super_admin'));
+END $$;
 
 -- 2) Restrict company_settings writes to admins
 DROP POLICY IF EXISTS "Allow authenticated users to insert company settings" ON public.company_settings;
@@ -46,9 +52,13 @@ DROP POLICY IF EXISTS "Allow authenticated users to upload client documents" ON 
 DROP POLICY IF EXISTS "Allow authenticated users to update client documents" ON storage.objects;
 DROP POLICY IF EXISTS "Allow authenticated users to download client documents" ON storage.objects;
 
--- 5) Restrict ai_processing_logs INSERT
-DROP POLICY IF EXISTS "System can create AI processing logs" ON public.ai_processing_logs;
-DO $$ BEGIN
+-- 5) Restrict ai_processing_logs INSERT (table may be absent on some replay paths; guard policies)
+DO $$
+BEGIN
+  IF to_regclass('public.ai_processing_logs') IS NULL THEN
+    RETURN;
+  END IF;
+  DROP POLICY IF EXISTS "System can create AI processing logs" ON public.ai_processing_logs;
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='ai_processing_logs' AND policyname='ai_proc_logs_authenticated_insert'
   ) THEN
@@ -70,50 +80,71 @@ END $$;
 --);
 
 -- 7) Clamp search_path for flagged SECURITY DEFINER functions
+-- Only ALTER when the target exists; preview replays may omit app_auth (or specific functions).
 DO $$ BEGIN
-  PERFORM 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname='app_auth' AND p.proname='get_user_roles';
-  EXECUTE 'ALTER FUNCTION app_auth.get_user_roles() SECURITY DEFINER SET search_path = public, app, app_auth, pg_temp';
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname='app_auth' AND p.proname='get_user_roles'
+  ) THEN
+    EXECUTE 'ALTER FUNCTION app_auth.get_user_roles() SECURITY DEFINER SET search_path = public, app, app_auth, pg_temp';
+  END IF;
 EXCEPTION WHEN undefined_function THEN
   -- function may take args; adjust manually later
   NULL;
 END $$;
 
 DO $$ BEGIN
-  PERFORM 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname='app_auth' AND p.proname='user_has_role';
-  EXECUTE 'ALTER FUNCTION app_auth.user_has_role(role_name text) SECURITY DEFINER SET search_path = public, app, app_auth, pg_temp';
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname='app_auth' AND p.proname='user_has_role'
+  ) THEN
+    EXECUTE 'ALTER FUNCTION app_auth.user_has_role(role_name text) SECURITY DEFINER SET search_path = public, app, app_auth, pg_temp';
+  END IF;
 EXCEPTION WHEN undefined_function THEN NULL; END $$;
 
 DO $$ BEGIN
-  PERFORM 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname='app_auth' AND p.proname='is_admin';
-  EXECUTE 'ALTER FUNCTION app_auth.is_admin() SECURITY DEFINER SET search_path = public, app, app_auth, pg_temp';
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname='app_auth' AND p.proname='is_admin'
+  ) THEN
+    EXECUTE 'ALTER FUNCTION app_auth.is_admin() SECURITY DEFINER SET search_path = public, app, app_auth, pg_temp';
+  END IF;
 EXCEPTION WHEN undefined_function THEN NULL; END $$;
 
 DO $$ BEGIN
-  PERFORM 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname='public' AND p.proname='_is_admin';
-  EXECUTE 'ALTER FUNCTION public._is_admin(uid uuid) SECURITY INVOKER SET search_path = public, app, app_auth, pg_temp';
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname='public' AND p.proname='_is_admin'
+  ) THEN
+    EXECUTE 'ALTER FUNCTION public._is_admin(uid uuid) SECURITY INVOKER SET search_path = public, app, app_auth, pg_temp';
+  END IF;
 EXCEPTION WHEN undefined_function THEN NULL; END $$;
 
 DO $$ BEGIN
-  PERFORM 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname='public' AND p.proname='_is_therapist';
-  EXECUTE 'ALTER FUNCTION public._is_therapist(uid uuid) SECURITY INVOKER SET search_path = public, app, app_auth, pg_temp';
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname='public' AND p.proname='_is_therapist'
+  ) THEN
+    EXECUTE 'ALTER FUNCTION public._is_therapist(uid uuid) SECURITY INVOKER SET search_path = public, app, app_auth, pg_temp';
+  END IF;
 EXCEPTION WHEN undefined_function THEN NULL; END $$;
 
 DO $$ BEGIN
-  PERFORM 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname='public' AND p.proname='get_organization_id_from_metadata';
-  -- immutable but clamp anyway
-  EXECUTE 'ALTER FUNCTION public.get_organization_id_from_metadata(p_metadata jsonb) SECURITY INVOKER SET search_path = public, pg_temp';
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname='public' AND p.proname='get_organization_id_from_metadata'
+  ) THEN
+    EXECUTE 'ALTER FUNCTION public.get_organization_id_from_metadata(p_metadata jsonb) SECURITY INVOKER SET search_path = public, pg_temp';
+  END IF;
 EXCEPTION WHEN undefined_function THEN NULL; END $$;
 
 DO $$ BEGIN
-  PERFORM 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname='public' AND p.proname='set_updated_at';
-  EXECUTE 'ALTER FUNCTION public.set_updated_at() SECURITY INVOKER SET search_path = public, pg_temp';
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname='public' AND p.proname='set_updated_at'
+  ) THEN
+    EXECUTE 'ALTER FUNCTION public.set_updated_at() SECURITY INVOKER SET search_path = public, pg_temp';
+  END IF;
 EXCEPTION WHEN undefined_function THEN NULL; END $$;
 
 -- 8) (Optional) Move btree_gist out of public if supported

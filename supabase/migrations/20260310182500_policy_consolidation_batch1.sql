@@ -6,13 +6,21 @@ begin;
 
 set search_path = public;
 
--- ai_cache: keep ai_cache_select_scope and remove redundant consolidated select policy
-drop policy if exists consolidated_select_700633 on public.ai_cache;
-
--- ai_processing_logs: keep ai_processing_logs_select_scope and remove legacy duplicate select policy
-drop policy if exists "Users can view AI processing logs for their sessions" on public.ai_processing_logs;
-
--- ai_response_cache: keep explicit admin/service-role policies and remove broad consolidated overlap
-drop policy if exists consolidated_all_4c9184 on public.ai_response_cache;
+-- Tables may be absent on full replay (see rls_phase3 / secure_misc_tables guards).
+do $$
+begin
+  if to_regclass('public.ai_cache') is not null then
+    execute 'drop policy if exists consolidated_select_700633 on public.ai_cache';
+  end if;
+  if to_regclass('public.ai_processing_logs') is not null then
+    execute format(
+      'drop policy if exists %I on public.ai_processing_logs',
+      'Users can view AI processing logs for their sessions'
+    );
+  end if;
+  if to_regclass('public.ai_response_cache') is not null then
+    execute 'drop policy if exists consolidated_all_4c9184 on public.ai_response_cache';
+  end if;
+end $$;
 
 commit;

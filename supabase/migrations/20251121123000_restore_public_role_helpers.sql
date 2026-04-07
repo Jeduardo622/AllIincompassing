@@ -21,7 +21,7 @@ RETURNS boolean
 LANGUAGE sql
 STABLE
 AS $$
-  SELECT app.has_role(target_role);
+  SELECT app.user_has_role(target_role);
 $$;
 
 GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;

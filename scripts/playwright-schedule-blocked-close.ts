@@ -400,8 +400,10 @@ async function run(): Promise<void> {
       const edgeNotesGate = activePage.getByText(/Session notes with goal progress are required/i).first();
       const completedToast = activePage.getByText(/Session marked as completed/i).first();
 
-      const updateBtn = activePage.getByRole("button", { name: /^Update Session$/i });
-      await updateBtn.click();
+      const submitButton = activePage
+        .locator('form#session-form button[type="submit"], button[type="submit"][form="session-form"]')
+        .first();
+      await submitButton.click();
 
       // Poll: do not Promise.race locators that reject on timeout — a fast reject from one branch
       // can abort before the blocked-close panel (slower) becomes visible.

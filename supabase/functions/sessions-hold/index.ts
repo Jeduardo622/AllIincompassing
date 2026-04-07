@@ -1,5 +1,5 @@
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
-import { resolveAllowedOrigin } from "../_shared/cors.ts";
+import { corsHeadersForRequest } from "../_shared/cors.ts";
 import {
   buildScopedIdempotencyKey,
   createSupabaseIdempotencyService,
@@ -11,16 +11,10 @@ import {
 } from "../_shared/timezone.ts";
 import { getUserOrThrow } from "../_shared/auth.ts";
 import { evaluateTherapistAuthorization } from "../_shared/authorization.ts";
-import { MissingOrgContextError, requireOrg } from "../_shared/org.ts";
+import { MissingOrgContextError, requireOrgForScheduling } from "../_shared/org.ts";
 import { recordSessionAuditEvent } from "../_shared/audit.ts";
 import { resolveSchedulingRetryAfter } from "../_shared/retry-after.ts";
 import { orchestrateScheduling } from "../_shared/scheduling-orchestrator.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
 
 interface HoldOccurrencePayload {
   start_time: string;
@@ -63,6 +57,7 @@ const conflictDimensions: Record<ConflictCode, Array<"therapist" | "client">> = 
 };
 
 function jsonResponse(
+  req: Request,
   body: Record<string, unknown>,
   status = 200,
   extraHeaders: Record<string, string> = {},
@@ -71,7 +66,7 @@ function jsonResponse(
     status,
     headers: {
       "Content-Type": "application/json",
-      ...corsHeaders,
+      ...corsHeadersForRequest(req),
       ...extraHeaders,
     },
   });
@@ -79,17 +74,28 @@ function jsonResponse(
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeadersForRequest(req) });
   }
 
   if (req.method !== "POST") {
-    return jsonResponse({ success: false, error: "Method not allowed" }, 405);
+    return jsonResponse(req, { success: false, error: "Method not allowed" }, 405);
   }
 
   try {
     const requestClient = createRequestClient(req);
     const user = await getUserOrThrow(requestClient);
-    const orgId = await requireOrg(requestClient);
+
+    let payload: HoldPayload;
+    try {
+      payload = await req.json() as HoldPayload;
+    } catch {
+      return jsonResponse(req, { success: false, error: "Invalid JSON body" }, 400);
+    }
+    if (!payload?.therapist_id || !payload?.client_id || !payload?.start_time || !payload?.end_time) {
+      return jsonResponse(req, { success: false, error: "Missing required fields" }, 400);
+    }
+
+    const orgId = await requireOrgForScheduling(requestClient, payload.therapist_id);
     const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
     const normalizedKey = idempotencyKey.length > 0 ? idempotencyKey : null;
     const storageIdempotencyKey = normalizedKey
@@ -106,6 +112,7 @@ Deno.serve(async (req) => {
       const existing = await idempotencyService.find(storageIdempotencyKey, "sessions-hold");
       if (existing) {
         return jsonResponse(
+          req,
           existing.responseBody as Record<string, unknown>,
           existing.statusCode,
           { "Idempotent-Replay": "true", "Idempotency-Key": normalizedKey },
@@ -119,7 +126,7 @@ Deno.serve(async (req) => {
       headers: Record<string, string> = {},
     ) => {
       if (!storageIdempotencyKey) {
-        return jsonResponse(body, status, headers);
+        return jsonResponse(req, body, status, headers);
       }
 
       try {
@@ -127,6 +134,7 @@ Deno.serve(async (req) => {
       } catch (error) {
         if (error instanceof IdempotencyConflictError) {
           return jsonResponse(
+            req,
             { success: false, error: error.message },
             409,
           );
@@ -134,13 +142,8 @@ Deno.serve(async (req) => {
         throw error;
       }
 
-      return jsonResponse(body, status, { ...headers, "Idempotency-Key": normalizedKey });
+      return jsonResponse(req, body, status, { ...headers, "Idempotency-Key": normalizedKey });
     };
-
-    const payload = await req.json() as HoldPayload;
-    if (!payload?.therapist_id || !payload?.client_id || !payload?.start_time || !payload?.end_time) {
-      return respond({ success: false, error: "Missing required fields" }, 400);
-    }
 
     const authorization = await evaluateTherapistAuthorization(requestClient, payload.therapist_id);
     if (!authorization.ok) {
@@ -323,10 +326,10 @@ Deno.serve(async (req) => {
   } catch (error) {
     if (error instanceof Response) return error;
     if (error instanceof MissingOrgContextError) {
-      return jsonResponse({ success: false, error: error.message }, 403);
+      return jsonResponse(req, { success: false, error: error.message }, 403);
     }
     console.error("sessions-hold error", error);
     const message = error instanceof Error ? error.message : "Internal server error";
-    return jsonResponse({ success: false, error: message }, 500);
+    return jsonResponse(req, { success: false, error: message }, 500);
   }
 });

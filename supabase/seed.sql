@@ -48,8 +48,8 @@ SET
 DO $$
 DECLARE
   user_record RECORD;
-  role_id UUID;
-  user_id UUID;
+  v_role_id UUID;
+  v_user_id UUID;
   metadata JSONB;
 BEGIN
   FOR user_record IN
@@ -71,12 +71,12 @@ BEGIN
       'default_role', user_record.role_name
     );
 
-    SELECT id INTO user_id
+    SELECT id INTO v_user_id
     FROM auth.users
     WHERE email = user_record.email;
 
-    IF user_id IS NULL THEN
-      user_id := gen_random_uuid();
+    IF v_user_id IS NULL THEN
+      v_user_id := gen_random_uuid();
 
       INSERT INTO auth.users (
         id,
@@ -97,7 +97,7 @@ BEGIN
         is_super_admin,
         is_sso_user
       ) VALUES (
-        user_id,
+        v_user_id,
         '00000000-0000-0000-0000-000000000000',
         'authenticated',
         'authenticated',
@@ -123,7 +123,7 @@ BEGIN
         is_super_admin = user_record.is_super_admin,
         updated_at = NOW(),
         email_confirmed_at = COALESCE(email_confirmed_at, NOW())
-      WHERE id = user_id;
+      WHERE id = v_user_id;
     END IF;
 
     INSERT INTO auth.identities (
@@ -135,8 +135,8 @@ BEGIN
       created_at,
       updated_at
     ) VALUES (
-      user_id,
-      jsonb_build_object('sub', user_id::text, 'email', user_record.email),
+      v_user_id,
+      jsonb_build_object('sub', v_user_id::text, 'email', user_record.email),
       'email',
       user_record.email,
       NOW(),
@@ -150,13 +150,13 @@ BEGIN
       last_sign_in_at = EXCLUDED.last_sign_in_at,
       updated_at = NOW();
 
-    SELECT id INTO role_id
+    SELECT id INTO v_role_id
     FROM public.roles
     WHERE name = user_record.role_name;
 
-    IF role_id IS NOT NULL THEN
+    IF v_role_id IS NOT NULL THEN
       INSERT INTO public.user_roles (user_id, role_id)
-      VALUES (user_id, role_id)
+      VALUES (v_user_id, v_role_id)
       ON CONFLICT (user_id, role_id) DO NOTHING;
     END IF;
 
@@ -171,7 +171,7 @@ BEGIN
       created_at,
       updated_at
     ) VALUES (
-      user_id,
+      v_user_id,
       user_record.email,
       user_record.role_name::public.role_type,
       user_record.first_name,
@@ -181,14 +181,13 @@ BEGIN
       NOW(),
       NOW()
     )
+    -- On conflict, skip role/is_active: enforce_profile_authz_field_immutability blocks updates without super-admin.
     ON CONFLICT (id) DO UPDATE
     SET
       email = EXCLUDED.email,
-      role = EXCLUDED.role,
       first_name = EXCLUDED.first_name,
       last_name = EXCLUDED.last_name,
       phone = EXCLUDED.phone,
-      is_active = true,
       updated_at = NOW();
 
     IF user_record.role_name = 'therapist' THEN
@@ -228,7 +227,7 @@ BEGIN
         practitioner_id,
         created_at
       ) VALUES (
-        user_id,
+        v_user_id,
         user_record.email,
         user_record.first_name || ' ' || user_record.last_name,
         user_record.first_name,
@@ -305,7 +304,7 @@ BEGIN
         practitioner_id = EXCLUDED.practitioner_id;
 
       INSERT INTO public.user_therapist_links (user_id, therapist_id, created_at)
-      VALUES (user_id, user_id, NOW())
+      VALUES (v_user_id, v_user_id, NOW())
       ON CONFLICT (user_id, therapist_id) DO NOTHING;
     ELSIF user_record.role_name = 'client' THEN
       INSERT INTO public.clients (
@@ -349,7 +348,7 @@ BEGIN
         notes,
         created_at
       ) VALUES (
-        user_id,
+        v_user_id,
         user_record.email,
         user_record.first_name || ' ' || user_record.last_name,
         user_record.first_name,
@@ -435,11 +434,79 @@ BEGIN
     END IF;
   END LOOP;
 
+  -- Deterministic org/program/goal so sessions satisfy NOT NULL program_id/goal_id (see 20260204193000_programs_goals_bank.sql).
+  INSERT INTO public.organizations (id, name, slug)
+  VALUES (
+    '00000000-0000-0000-0000-000000000001'::uuid,
+    'Seed Preview Org',
+    'seed-preview-org'
+  )
+  ON CONFLICT (id) DO NOTHING;
+
+  UPDATE public.therapists
+  SET organization_id = '00000000-0000-0000-0000-000000000001'::uuid
+  WHERE email = 'therapist@test.com';
+
+  UPDATE public.clients
+  SET organization_id = '00000000-0000-0000-0000-000000000001'::uuid
+  WHERE email = 'client@test.com';
+
+  INSERT INTO public.programs (id, organization_id, client_id, name, description, status, created_at, updated_at)
+  SELECT
+    '00000000-0000-0000-0000-000000000201'::uuid,
+    '00000000-0000-0000-0000-000000000001'::uuid,
+    c.id,
+    'Seed Program',
+    'Preview seed program.',
+    'active',
+    NOW(),
+    NOW()
+  FROM public.clients c
+  WHERE c.email = 'client@test.com'
+  ON CONFLICT (id) DO UPDATE SET
+    organization_id = EXCLUDED.organization_id,
+    client_id = EXCLUDED.client_id,
+    updated_at = NOW();
+
+  INSERT INTO public.goals (
+    id,
+    organization_id,
+    client_id,
+    program_id,
+    title,
+    description,
+    original_text,
+    status,
+    created_at,
+    updated_at
+  )
+  SELECT
+    '00000000-0000-0000-0000-000000000202'::uuid,
+    '00000000-0000-0000-0000-000000000001'::uuid,
+    c.id,
+    '00000000-0000-0000-0000-000000000201'::uuid,
+    'Seed Goal',
+    'Preview goal for seeded session.',
+    'seed',
+    'active',
+    NOW(),
+    NOW()
+  FROM public.clients c
+  WHERE c.email = 'client@test.com'
+  ON CONFLICT (id) DO UPDATE SET
+    organization_id = EXCLUDED.organization_id,
+    client_id = EXCLUDED.client_id,
+    program_id = EXCLUDED.program_id,
+    updated_at = NOW();
+
   -- Seed a representative session pairing the development client and therapist.
   INSERT INTO public.sessions (
     id,
+    organization_id,
     client_id,
     therapist_id,
+    program_id,
+    goal_id,
     start_time,
     end_time,
     status,
@@ -454,8 +521,11 @@ BEGIN
   )
   SELECT
     '00000000-0000-0000-0000-000000000101'::uuid,
+    '00000000-0000-0000-0000-000000000001'::uuid,
     client_rec.id,
     therapist_rec.id,
+    '00000000-0000-0000-0000-000000000201'::uuid,
+    '00000000-0000-0000-0000-000000000202'::uuid,
     '2025-01-01T15:00:00Z',
     '2025-01-01T16:00:00Z',
     'scheduled',
@@ -473,8 +543,11 @@ BEGIN
     AND therapist_rec.email = 'therapist@test.com'
   ON CONFLICT (id) DO UPDATE
   SET
+    organization_id = EXCLUDED.organization_id,
     client_id = EXCLUDED.client_id,
     therapist_id = EXCLUDED.therapist_id,
+    program_id = EXCLUDED.program_id,
+    goal_id = EXCLUDED.goal_id,
     start_time = EXCLUDED.start_time,
     end_time = EXCLUDED.end_time,
     status = EXCLUDED.status,

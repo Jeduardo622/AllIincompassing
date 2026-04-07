@@ -27,7 +27,8 @@ SET
   updated_at = NOW()
 FROM metadata_roles AS mr
 WHERE p.id = mr.id
-  AND p.role IS DISTINCT FROM mr.meta_role::role_type;
+  -- Match alignment migration: avoid text vs role_type operator errors on replay
+  AND p.role::text IS DISTINCT FROM mr.meta_role;
 
 -- Demote any profiles that still claim admin privileges without metadata support.
 WITH metadata_admins AS (
@@ -82,7 +83,7 @@ BEGIN
       role = v_default_role,
       updated_at = NOW()
     WHERE id = NEW.id
-      AND role IS DISTINCT FROM v_default_role;
+      AND role::text IS DISTINCT FROM v_default_role::text;
 
     RETURN NEW;
   END IF;
@@ -107,7 +108,7 @@ BEGIN
     role = v_target_role::role_type,
     updated_at = NOW()
   WHERE id = NEW.id
-    AND role IS DISTINCT FROM v_target_role::role_type;
+    AND role::text IS DISTINCT FROM v_target_role;
 
   RETURN NEW;
 END;

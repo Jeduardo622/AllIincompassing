@@ -9,7 +9,7 @@ const envValues = new Map<string, string>([
 
 const createRequestClientMock = vi.fn();
 const getUserOrThrowMock = vi.fn();
-const requireOrgMock = vi.fn();
+const requireOrgForSchedulingMock = vi.fn();
 const evaluateTherapistAuthorizationMock = vi.fn();
 const createSupabaseIdempotencyServiceMock = vi.fn();
 const buildScopedIdempotencyKeyMock = vi.fn();
@@ -77,7 +77,7 @@ async function loadHandler() {
     );
     return {
       ...actual,
-      requireOrg: requireOrgMock,
+      requireOrgForScheduling: requireOrgForSchedulingMock,
     };
   });
   vi.doMock('../../supabase/functions/_shared/authorization.ts', () => ({
@@ -117,7 +117,7 @@ describe('sessions-confirm retry-after contract', () => {
 
     createRequestClientMock.mockReturnValue({});
     getUserOrThrowMock.mockResolvedValue({ id: 'user-1' });
-    requireOrgMock.mockResolvedValue('org-1');
+    requireOrgForSchedulingMock.mockResolvedValue('org-1');
     evaluateTherapistAuthorizationMock.mockResolvedValue({ ok: true });
     buildScopedIdempotencyKeyMock.mockImplementation((key: string) => `scoped:${key}`);
     createSupabaseIdempotencyServiceMock.mockReturnValue({
@@ -151,6 +151,7 @@ describe('sessions-confirm retry-after contract', () => {
         body: JSON.stringify({
           hold_key: 'hold-1',
           session: {
+            therapist_id: 'therapist-1',
             start_time: '2026-03-30T05:00:00.000Z',
             end_time: '2026-03-30T05:30:00.000Z',
           },
@@ -163,7 +164,7 @@ describe('sessions-confirm retry-after contract', () => {
 
     expect(createRequestClientMock).toHaveBeenCalledTimes(1);
     expect(getUserOrThrowMock).toHaveBeenCalledTimes(1);
-    expect(requireOrgMock).toHaveBeenCalledTimes(1);
+    expect(requireOrgForSchedulingMock).toHaveBeenCalledTimes(1);
     expect(evaluateTherapistAuthorizationMock).toHaveBeenCalledWith({}, 'therapist-1');
     expect(resolveSchedulingRetryAfterMock).toHaveBeenCalledWith(
       expect.objectContaining({ rpc: expect.any(Function), from: expect.any(Function) }),
@@ -179,7 +180,7 @@ describe('sessions-confirm retry-after contract', () => {
     expect(response.status).toBe(409);
     expect(response.headers.get('Retry-After')).toBe('37');
     expect(response.headers.get('Content-Type')).toContain('application/json');
-    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.example.com');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://preview.example.com');
 
     await expect(response.json()).resolves.toEqual({
       success: false,

@@ -11,7 +11,7 @@ CREATE POLICY profiles_insert_self_client
   TO authenticated
   WITH CHECK (
     id = (select auth.uid())
-    AND role = 'client'::role_type
+    AND (role)::text = 'client'
     AND organization_id IS NULL
     AND COALESCE(is_active, true) = true
   );

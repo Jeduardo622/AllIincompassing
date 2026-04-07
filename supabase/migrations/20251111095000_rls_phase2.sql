@@ -3,27 +3,77 @@ begin;
 -- Phase 2 RLS consolidation for therapists, AI session notes, and AI performance metrics.
 
 -- public.ai_session_notes
-drop policy if exists "Therapists can update their AI session notes" on public.ai_session_notes;
+do $$
+begin
+  if to_regclass('public.ai_session_notes') is not null then
+    drop policy if exists "Therapists can update their AI session notes" on public.ai_session_notes;
 
-alter policy ai_session_notes_update_scope on public.ai_session_notes
-  to authenticated
-  using (app.is_admin() or app.can_access_session(session_id))
-  with check (app.is_admin() or app.can_access_session(session_id));
+    if exists (
+      select 1
+      from pg_policy pol
+      join pg_class cls on cls.oid = pol.polrelid
+      join pg_namespace nsp on nsp.oid = cls.relnamespace
+      where nsp.nspname = 'public'
+        and cls.relname = 'ai_session_notes'
+        and pol.polname = 'ai_session_notes_update_scope'
+    ) then
+      alter policy ai_session_notes_update_scope on public.ai_session_notes
+        to authenticated
+        using (app.is_admin() or app.can_access_session(session_id))
+        with check (app.is_admin() or app.can_access_session(session_id));
+    end if;
 
-alter policy ai_session_notes_delete_scope on public.ai_session_notes
-  to authenticated;
+    if exists (
+      select 1
+      from pg_policy pol
+      join pg_class cls on cls.oid = pol.polrelid
+      join pg_namespace nsp on nsp.oid = cls.relnamespace
+      where nsp.nspname = 'public'
+        and cls.relname = 'ai_session_notes'
+        and pol.polname = 'ai_session_notes_delete_scope'
+    ) then
+      alter policy ai_session_notes_delete_scope on public.ai_session_notes
+        to authenticated;
+    end if;
+  end if;
+end $$;
 
 -- public.ai_performance_metrics
-drop policy if exists ai_performance_metrics_admin_manage_admin_manage on public.ai_performance_metrics;
+do $$
+begin
+  if to_regclass('public.ai_performance_metrics') is not null then
+    drop policy if exists ai_performance_metrics_admin_manage_admin_manage on public.ai_performance_metrics;
 
-alter policy ai_performance_metrics_update_admin on public.ai_performance_metrics
-  to authenticated
-  using (app.is_admin())
-  with check (app.is_admin());
+    if exists (
+      select 1
+      from pg_policy pol
+      join pg_class cls on cls.oid = pol.polrelid
+      join pg_namespace nsp on nsp.oid = cls.relnamespace
+      where nsp.nspname = 'public'
+        and cls.relname = 'ai_performance_metrics'
+        and pol.polname = 'ai_performance_metrics_update_admin'
+    ) then
+      alter policy ai_performance_metrics_update_admin on public.ai_performance_metrics
+        to authenticated
+        using (app.is_admin())
+        with check (app.is_admin());
+    end if;
 
-alter policy ai_performance_metrics_delete_admin on public.ai_performance_metrics
-  to authenticated
-  using (app.is_admin());
+    if exists (
+      select 1
+      from pg_policy pol
+      join pg_class cls on cls.oid = pol.polrelid
+      join pg_namespace nsp on nsp.oid = cls.relnamespace
+      where nsp.nspname = 'public'
+        and cls.relname = 'ai_performance_metrics'
+        and pol.polname = 'ai_performance_metrics_delete_admin'
+    ) then
+      alter policy ai_performance_metrics_delete_admin on public.ai_performance_metrics
+        to authenticated
+        using (app.is_admin());
+    end if;
+  end if;
+end $$;
 
 -- public.therapists
 drop policy if exists therapists_admin_write on public.therapists;
@@ -59,17 +109,13 @@ create policy therapists_select_scope on public.therapists
     or (id = app.current_therapist_id())
     or exists (
       select 1
-      from user_profiles up
+      from profiles up
       join user_roles ur on up.id = ur.user_id
       join roles r on ur.role_id = r.id
       where up.id = (
         select auth.uid()
       )
-        and ur.is_active = true
-        and (
-          r.permissions @> '["*"]'::jsonb
-          or r.permissions @> '["view_clients"]'::jsonb
-        )
+        and r.name in ('admin', 'super_admin', 'therapist')
     )
     or (
       organization_id = app.current_user_organization_id()

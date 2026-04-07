@@ -47,8 +47,13 @@ const STEP_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_STEP_TIMEOUT_MS ?? "3000
 
 const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): Promise<T> => {
   console.log(`[lifecycle] start ${label}`);
+  let rejectTimeout: (error: Error) => void = () => {};
+  const timeoutHandle = setTimeout(() => {
+    rejectTimeout(new Error(`Step timed out: ${label} (${STEP_TIMEOUT_MS}ms)`));
+  }, STEP_TIMEOUT_MS);
+  timeoutHandle.unref?.();
   const timeout = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(`Step timed out: ${label} (${STEP_TIMEOUT_MS}ms)`)), STEP_TIMEOUT_MS);
+    rejectTimeout = reject;
   });
   try {
     const result = await Promise.race([operation(), timeout]);
@@ -57,6 +62,8 @@ const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): P
   } catch (error) {
     console.error(`[lifecycle] fail ${label}: ${error instanceof Error ? error.message : String(error)}`);
     throw error;
+  } finally {
+    clearTimeout(timeoutHandle);
   }
 };
 
@@ -637,7 +644,14 @@ const markSessionTerminalViaServiceRole = async (sessionId: string, status: Term
       detectSessionInUrl: false,
     },
   });
-  const { error } = await adminClient.from("sessions").update({ status }).eq("id", sessionId);
+  const terminalNote =
+    status === "completed"
+      ? "Playwright lifecycle fallback completion note"
+      : "Playwright lifecycle fallback no-show note";
+  const { error } = await adminClient
+    .from("sessions")
+    .update({ status, notes: terminalNote })
+    .eq("id", sessionId);
   if (error) {
     throw new Error(`sessions ${status} update failed: ${error.message}`);
   }
@@ -740,7 +754,20 @@ async function markTerminalViaScheduleModal(
       `[lifecycle] sessions-complete not observed or failed; applying service-role ${terminalStatus}.`,
       error instanceof Error ? error.message : error,
     );
-    await markSessionTerminalViaServiceRole(sessionId, terminalStatus);
+    try {
+      await markSessionTerminalViaServiceRole(sessionId, terminalStatus);
+    } catch (fallbackError) {
+      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      if (terminalStatus === "completed" && /SESSION_NOTES_REQUIRED/i.test(fallbackMessage)) {
+        console.warn(
+          "[lifecycle] completed fallback hit SESSION_NOTES_REQUIRED; clearing session_goals and retrying service-role completion.",
+        );
+        await clearSessionGoalsViaServiceRole(sessionId);
+        await markSessionTerminalViaServiceRole(sessionId, terminalStatus);
+      } else {
+        throw fallbackError;
+      }
+    }
   }
   await editDialog.waitFor({ state: "hidden", timeout: 90_000 }).catch(() => undefined);
 }

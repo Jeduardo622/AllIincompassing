@@ -188,7 +188,9 @@ begin
     updated_at = now()
   from desired d
   where p.id = d.id
-    and p.role is distinct from d.target_role;
+    -- profiles.role is text on replays where 202501 created the table before 202507's role_type DDL;
+    -- junction helper returns role_type — compare via text like profile_role_alignment.sql
+    and p.role::text is distinct from d.target_role::text;
 
   perform set_config('app.bypass_profile_role_guard', 'off', true);
 exception

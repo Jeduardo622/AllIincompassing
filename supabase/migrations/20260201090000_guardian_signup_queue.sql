@@ -29,6 +29,8 @@ COMMENT ON COLUMN public.guardian_link_queue.approved_client_ids IS 'Client ids 
 CREATE INDEX IF NOT EXISTS guardian_link_queue_status_idx ON public.guardian_link_queue (status);
 CREATE INDEX IF NOT EXISTS guardian_link_queue_guardian_idx ON public.guardian_link_queue (guardian_id);
 CREATE INDEX IF NOT EXISTS guardian_link_queue_org_idx ON public.guardian_link_queue (organization_id);
+CREATE INDEX IF NOT EXISTS guardian_link_queue_created_by_idx ON public.guardian_link_queue (created_by);
+CREATE INDEX IF NOT EXISTS guardian_link_queue_processed_by_idx ON public.guardian_link_queue (processed_by);
 
 ALTER TABLE public.guardian_link_queue ENABLE ROW LEVEL SECURITY;
 

@@ -11,12 +11,24 @@ ALTER FUNCTION public.handle_new_user() SET search_path = public;
 
 -- 2) RLS consolidation on ai_performance_metrics
 -- Ensure RLS is enabled
-ALTER TABLE public.ai_performance_metrics ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public.ai_performance_metrics') IS NOT NULL THEN
+    ALTER TABLE public.ai_performance_metrics ENABLE ROW LEVEL SECURITY;
+  ELSE
+    RAISE NOTICE 'Skipping ai_performance_metrics RLS consolidation: table does not exist.';
+  END IF;
+END$$;
 
 -- Create consolidated policies (v2). These cover both regular users and admins in a single policy per action.
 -- Select policy: allow owner or admin/super_admin via profiles.role
 DO $$
 BEGIN
+  IF to_regclass('public.ai_performance_metrics') IS NULL THEN
+    RAISE NOTICE 'Skipping ai_performance_metrics select policy: table does not exist.';
+    RETURN;
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1 FROM pg_policy pol
     JOIN pg_class cls ON cls.oid = pol.polrelid
@@ -40,6 +52,11 @@ END$$;
 -- Insert policy: allow self-owned rows or admins
 DO $$
 BEGIN
+  IF to_regclass('public.ai_performance_metrics') IS NULL THEN
+    RAISE NOTICE 'Skipping ai_performance_metrics insert policy: table does not exist.';
+    RETURN;
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1 FROM pg_policy pol
     JOIN pg_class cls ON cls.oid = pol.polrelid
@@ -66,6 +83,11 @@ DECLARE
   has_select_v2 boolean;
   has_insert_v2 boolean;
 BEGIN
+  IF to_regclass('public.ai_performance_metrics') IS NULL THEN
+    RAISE NOTICE 'Skipping legacy ai_performance_metrics policy cleanup: table does not exist.';
+    RETURN;
+  END IF;
+
   SELECT EXISTS (
     SELECT 1 FROM pg_policy pol
     JOIN pg_class cls ON cls.oid = pol.polrelid

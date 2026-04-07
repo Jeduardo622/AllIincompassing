@@ -33,15 +33,15 @@ CREATE INDEX IF NOT EXISTS billing_modifiers_active_idx ON public.billing_modifi
 
 ALTER TABLE public.billing_modifiers ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS \"Authenticated users can read billing modifiers\" ON public.billing_modifiers;
-CREATE POLICY \"Authenticated users can read billing modifiers\"
+DROP POLICY IF EXISTS "Authenticated users can read billing modifiers" ON public.billing_modifiers;
+CREATE POLICY "Authenticated users can read billing modifiers"
   ON public.billing_modifiers
   FOR SELECT
   TO authenticated
   USING (true);
 
-DROP POLICY IF EXISTS \"Service role can manage billing modifiers\" ON public.billing_modifiers;
-CREATE POLICY \"Service role can manage billing modifiers\"
+DROP POLICY IF EXISTS "Service role can manage billing modifiers" ON public.billing_modifiers;
+CREATE POLICY "Service role can manage billing modifiers"
   ON public.billing_modifiers
   FOR ALL
   TO service_role
@@ -73,15 +73,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS cpt_modifier_default_unique ON public.cpt_modi
 
 ALTER TABLE public.cpt_modifier_mappings ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS \"Authenticated users can read CPT modifier mappings\" ON public.cpt_modifier_mappings;
-CREATE POLICY \"Authenticated users can read CPT modifier mappings\"
+DROP POLICY IF EXISTS "Authenticated users can read CPT modifier mappings" ON public.cpt_modifier_mappings;
+CREATE POLICY "Authenticated users can read CPT modifier mappings"
   ON public.cpt_modifier_mappings
   FOR SELECT
   TO authenticated
   USING (true);
 
-DROP POLICY IF EXISTS \"Service role can manage CPT modifier mappings\" ON public.cpt_modifier_mappings;
-CREATE POLICY \"Service role can manage CPT modifier mappings\"
+DROP POLICY IF EXISTS "Service role can manage CPT modifier mappings" ON public.cpt_modifier_mappings;
+CREATE POLICY "Service role can manage CPT modifier mappings"
   ON public.cpt_modifier_mappings
   FOR ALL
   TO service_role

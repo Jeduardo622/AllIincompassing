@@ -40,6 +40,19 @@ $$;
 
 grant execute on function app.can_access_session(uuid) to authenticated;
 
+-- Stub until 20251118120000_restore_access_helpers.sql; 20251111103000_rls_phase3 references it earlier.
+create or replace function app.can_access_client(p_client_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, app, auth
+as $$
+  select false;
+$$;
+
+grant execute on function app.can_access_client(uuid) to authenticated;
+
 -- Stub until 20251223131500_align_rls_and_grants.sql; RLS policies reference it before that migration.
 create or replace function app.current_user_id()
 returns uuid

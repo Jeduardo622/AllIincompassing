@@ -62,7 +62,8 @@ FROM (
   WHERE LOWER(u.raw_user_meta_data ->> 'role') IN ('admin', 'super_admin')
 ) AS mr
 WHERE p.id = mr.id
-  AND p.role IS DISTINCT FROM mr.meta_role::role_type;
+  -- Avoid text vs role_type operator issues on some replay Postgres builds
+  AND p.role::text IS DISTINCT FROM mr.meta_role;
 
 -- Guardrail: keep high-privilege roles aligned with auth metadata.
 CREATE OR REPLACE FUNCTION sync_admin_roles_from_auth_metadata()

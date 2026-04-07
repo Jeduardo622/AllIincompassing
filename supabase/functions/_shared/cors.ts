@@ -11,6 +11,11 @@ const STATIC_ALLOWED_ORIGINS = [
   "http://localhost:5173",
 ] as const;
 
+const DYNAMIC_ALLOWED_ORIGIN_PATTERNS = [
+  /^https:\/\/velvety-cendol-dae4d6\.netlify\.app$/i,
+  /^https:\/\/deploy-preview-\d+--velvety-cendol-dae4d6\.netlify\.app$/i,
+] as const;
+
 const parseAllowedOrigins = (): string[] =>
   (Deno.env.get("CORS_ALLOWED_ORIGINS") ?? Deno.env.get("API_ALLOWED_ORIGINS") ?? "")
     .split(",")
@@ -29,7 +34,13 @@ export function resolveAllowedOrigin(requestOrigin?: string | null): string {
   if (!requestOrigin || requestOrigin.trim().length === 0) {
     return defaultOrigin;
   }
-  return origins.includes(requestOrigin) ? requestOrigin : defaultOrigin;
+  if (origins.includes(requestOrigin)) {
+    return requestOrigin;
+  }
+  if (DYNAMIC_ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(requestOrigin))) {
+    return requestOrigin;
+  }
+  return defaultOrigin;
 }
 
 export function resolveAllowedOriginForRequest(req: Request): string | null {
@@ -38,7 +49,13 @@ export function resolveAllowedOriginForRequest(req: Request): string | null {
     return resolveAllowedOrigin(null);
   }
   const origins = getAllowedOrigins();
-  return origins.includes(requestOrigin) ? requestOrigin : null;
+  if (origins.includes(requestOrigin)) {
+    return requestOrigin;
+  }
+  if (DYNAMIC_ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(requestOrigin))) {
+    return requestOrigin;
+  }
+  return null;
 }
 
 export function corsHeadersForRequest(req: Request): Record<string, string> {

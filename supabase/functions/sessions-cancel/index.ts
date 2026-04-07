@@ -1,5 +1,5 @@
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
-import { resolveAllowedOrigin } from "../_shared/cors.ts";
+import { corsHeadersForRequest, resolveAllowedOrigin } from "../_shared/cors.ts";
 import {
   buildScopedIdempotencyKey,
   createSupabaseIdempotencyService,
@@ -18,12 +18,6 @@ import { increment } from "../_shared/metrics.ts";
 import { recordSessionAuditEvent } from "../_shared/audit.ts";
 import { orchestrateScheduling } from "../_shared/scheduling-orchestrator.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
 
 interface CancelPayload {
   hold_key?: unknown;
@@ -68,6 +62,7 @@ class BadRequestError extends Error {
 }
 
 function jsonResponse(
+  req: Request,
   body: Record<string, unknown>,
   status = 200,
   extraHeaders: Record<string, string> = {},
@@ -76,16 +71,23 @@ function jsonResponse(
     status,
     headers: {
       "Content-Type": "application/json",
-      ...corsHeaders,
+      ...corsHeadersForRequest(req),
       ...extraHeaders,
     },
   });
 }
 
-async function ensureAuthenticated(db: SupabaseClient) {
+const buildFallbackRequest = (): Request =>
+  new Request("https://edge.internal.local", {
+    headers: {
+      origin: resolveAllowedOrigin(null),
+    },
+  });
+
+async function ensureAuthenticated(req: Request, db: SupabaseClient) {
   const { data, error } = await db.auth.getUser();
   if (error || !data?.user) {
-    throw jsonResponse({ success: false, error: "Unauthorized" }, 401);
+    throw jsonResponse(req, { success: false, error: "Unauthorized" }, 401);
   }
   return data.user;
 }
@@ -285,18 +287,19 @@ async function handleHoldRelease(
     authorization: { ok: true },
   });
 
-  return respondSuccess({
+  return respondSuccess(req, {
     released: true,
     hold: releasedHold,
     orchestration,
   });
 }
 
-function respondSuccess(data: Record<string, unknown>) {
-  return jsonResponse({ success: true, data });
+function respondSuccess(req: Request, data: Record<string, unknown>) {
+  return jsonResponse(req, { success: true, data });
 }
 
-async function handleSessionCancellation(
+async function handleSessionCancellationForRequest(
+  req: Request,
   db: SupabaseClient,
   orgId: string,
   payload: {
@@ -363,7 +366,7 @@ async function handleSessionCancellation(
 
   if (sessions.length === 0) {
     logger.info("session.cancel.noop", { reason: "no-sessions" });
-    return respondSuccess({
+    return respondSuccess(req, {
       summary: {
         cancelledCount: 0,
         alreadyCancelledCount: 0,
@@ -463,16 +466,42 @@ async function handleSessionCancellation(
     cancelled: summary.cancelledCount,
   });
 
-  return respondSuccess({ summary });
+  return respondSuccess(req, { summary });
+}
+
+async function handleSessionCancellation(
+  db: SupabaseClient,
+  orgId: string,
+  payload: {
+    sessionIds: string[];
+    dateRange: { start: string; end: string } | null;
+    therapistId: string | null;
+    reason: string | null;
+  },
+  userId: string,
+  role: CancellationRole,
+  logger: Logger,
+  traceMeta: TraceMeta = { requestId: null, correlationId: null, agentOperationId: null },
+) {
+  return handleSessionCancellationForRequest(
+    buildFallbackRequest(),
+    db,
+    orgId,
+    payload,
+    userId,
+    role,
+    logger,
+    traceMeta,
+  );
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeadersForRequest(req) });
   }
 
   if (req.method !== "POST") {
-    return jsonResponse({ success: false, error: "Method not allowed" }, 405);
+    return jsonResponse(req, { success: false, error: "Method not allowed" }, 405);
   }
 
   const db = createRequestClient(req);
@@ -482,7 +511,7 @@ Deno.serve(async (req) => {
   let currentOrgId: string | null = null;
 
   try {
-    const user = await ensureAuthenticated(db);
+    const user = await ensureAuthenticated(req, db);
     userLogger = baseLogger.with({ userId: user.id });
     userLogger.info("request.authenticated");
     const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || "";
@@ -518,6 +547,7 @@ Deno.serve(async (req) => {
       const existing = await idempotencyService.find(storageIdempotencyKey, "sessions-cancel");
       if (existing) {
         return jsonResponse(
+          req,
           existing.responseBody as Record<string, unknown>,
           existing.statusCode,
           { "Idempotent-Replay": "true", "Idempotency-Key": normalizedKey },
@@ -540,7 +570,7 @@ Deno.serve(async (req) => {
           orgId,
           reason: "therapist-authorization",
         });
-        return jsonResponse(authorization.failure.body, authorization.failure.status);
+        return jsonResponse(req, authorization.failure.body, authorization.failure.status);
       }
     }
 
@@ -559,7 +589,8 @@ Deno.serve(async (req) => {
         traceMeta,
       );
     } else {
-      response = await handleSessionCancellation(
+      response = await handleSessionCancellationForRequest(
+        req,
         db,
         orgId,
         {
@@ -581,7 +612,7 @@ Deno.serve(async (req) => {
         await idempotencyService.persist(storageIdempotencyKey, "sessions-cancel", body, response.status);
       } catch (error) {
         if (error instanceof IdempotencyConflictError) {
-          return jsonResponse({ success: false, error: error.message }, 409);
+          return jsonResponse(req, { success: false, error: error.message }, 409);
         }
         throw error;
       }
@@ -597,7 +628,7 @@ Deno.serve(async (req) => {
         function: "sessions-cancel",
         reason: "missing-org",
       });
-      return jsonResponse({ success: false, error: error.message }, 403);
+      return jsonResponse(req, { success: false, error: error.message }, 403);
     }
 
     if (error instanceof ForbiddenError) {
@@ -607,11 +638,11 @@ Deno.serve(async (req) => {
         orgId: currentOrgId ?? undefined,
         reason: "forbidden-error",
       });
-      return jsonResponse({ success: false, error: error.message }, 403);
+      return jsonResponse(req, { success: false, error: error.message }, 403);
     }
 
     if (error instanceof BadRequestError) {
-      return jsonResponse({ success: false, error: error.message }, error.status);
+      return jsonResponse(req, { success: false, error: error.message }, error.status);
     }
 
     if (error instanceof Response) {
@@ -619,7 +650,7 @@ Deno.serve(async (req) => {
     }
 
     errorLogger.error("request.failed", { error: (error as Error).message ?? "unknown" });
-    return jsonResponse({ success: false, error: "Internal server error" }, 500);
+    return jsonResponse(req, { success: false, error: "Internal server error" }, 500);
   }
 });
 

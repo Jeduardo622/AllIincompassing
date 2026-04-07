@@ -1,5 +1,5 @@
 import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
-import { resolveAllowedOrigin } from "../_shared/cors.ts";
+import { corsHeadersForRequest, resolveAllowedOrigin } from "../_shared/cors.ts";
 import {
   buildScopedIdempotencyKey,
   createSupabaseIdempotencyService,
@@ -16,12 +16,6 @@ import { getLogger, type Logger } from "../_shared/logging.ts";
 import { increment } from "../_shared/metrics.ts";
 import { recordSessionAuditEvent } from "../_shared/audit.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": resolveAllowedOrigin(),
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
 
 // Statuses from which a session may be moved to a terminal outcome.
 // Symmetric with CANCELLABLE_STATUSES in sessions-cancel.
@@ -62,6 +56,7 @@ class BadRequestError extends Error {
 }
 
 function jsonResponse(
+  req: Request,
   body: Record<string, unknown>,
   status = 200,
   extraHeaders: Record<string, string> = {},
@@ -70,20 +65,27 @@ function jsonResponse(
     status,
     headers: {
       "Content-Type": "application/json",
-      ...corsHeaders,
+      ...corsHeadersForRequest(req),
       ...extraHeaders,
     },
   });
 }
 
-function respondSuccess(data: Record<string, unknown>) {
-  return jsonResponse({ success: true, data });
+const buildFallbackRequest = (): Request =>
+  new Request("https://edge.internal.local", {
+    headers: {
+      origin: resolveAllowedOrigin(null),
+    },
+  });
+
+function respondSuccess(req: Request, data: Record<string, unknown>) {
+  return jsonResponse(req, { success: true, data });
 }
 
-async function ensureAuthenticated(db: SupabaseClient) {
+async function ensureAuthenticated(req: Request, db: SupabaseClient) {
   const { data, error } = await db.auth.getUser();
   if (error || !data?.user) {
-    throw jsonResponse({ success: false, error: "Unauthorized" }, 401);
+    throw jsonResponse(req, { success: false, error: "Unauthorized" }, 401);
   }
   return data.user;
 }
@@ -146,7 +148,8 @@ export async function resolveCompletionRole(
 // Returns a 409 Response when the check fails.
 // ---------------------------------------------------------------------------
 
-export async function checkSessionNotesPresent(
+async function checkSessionNotesPresentForRequest(
+  req: Request,
   sessionId: string,
   orgId: string,
   logger: Logger,
@@ -208,6 +211,7 @@ export async function checkSessionNotesPresent(
       orgId,
     });
     return jsonResponse(
+      req,
       {
         success: false,
         error: "Session notes with goal progress are required before closing this session.",
@@ -221,7 +225,16 @@ export async function checkSessionNotesPresent(
   return null;
 }
 
-export async function handleSessionCompletion(
+export async function checkSessionNotesPresent(
+  sessionId: string,
+  orgId: string,
+  logger: Logger,
+): Promise<Response | null> {
+  return checkSessionNotesPresentForRequest(buildFallbackRequest(), sessionId, orgId, logger);
+}
+
+async function handleSessionCompletionForRequest(
+  req: Request,
   db: SupabaseClient,
   orgId: string,
   payload: CompletionPayload,
@@ -259,6 +272,7 @@ export async function handleSessionCompletion(
       reason: "session-not-found",
     });
     return jsonResponse(
+      req,
       { success: false, error: "Session not found", code: "SESSION_NOT_FOUND" },
       404,
     );
@@ -277,13 +291,14 @@ export async function handleSessionCompletion(
       orgId,
       reason: "therapist-mismatch",
     });
-    return jsonResponse({ success: false, error: "Forbidden", code: "FORBIDDEN" }, 403);
+    return jsonResponse(req, { success: false, error: "Forbidden", code: "FORBIDDEN" }, 403);
   }
 
   // Already-terminal sessions must be rejected with a clear error — do not silently skip.
   if (TERMINAL_STATUSES.has(session.status)) {
     logger.info("session.already-terminal", { sessionId, status: session.status });
     return jsonResponse(
+      req,
       {
         success: false,
         error: `Session is already in a terminal state: ${session.status}`,
@@ -296,6 +311,7 @@ export async function handleSessionCompletion(
   if (!COMPLETABLE_STATUSES.has(session.status)) {
     logger.warn("session.invalid-status", { sessionId, status: session.status });
     return jsonResponse(
+      req,
       {
         success: false,
         error: `Session status '${session.status}' cannot be transitioned to ${outcome}`,
@@ -311,7 +327,7 @@ export async function handleSessionCompletion(
   // row with non-empty goal_notes covering every session_goal before the
   // session can be closed.
   if (session.status === "in_progress") {
-    const notesCheckFailure = await checkSessionNotesPresent(sessionId, orgId, logger);
+    const notesCheckFailure = await checkSessionNotesPresentForRequest(req, sessionId, orgId, logger);
     if (notesCheckFailure) {
       return notesCheckFailure;
     }
@@ -347,6 +363,7 @@ export async function handleSessionCompletion(
         orgId,
       });
       return jsonResponse(
+        req,
         {
           success: false,
           error: "Session notes with goal progress are required before closing this session.",
@@ -369,6 +386,7 @@ export async function handleSessionCompletion(
       orgId,
     });
     return jsonResponse(
+      req,
       {
         success: false,
         error: "Session was modified concurrently. Refresh and try again.",
@@ -406,16 +424,37 @@ export async function handleSessionCompletion(
 
   logger.info("session.complete.success", { sessionId, outcome });
 
-  return respondSuccess({ session: updatedSession, outcome });
+  return respondSuccess(req, { session: updatedSession, outcome });
+}
+
+export async function handleSessionCompletion(
+  db: SupabaseClient,
+  orgId: string,
+  payload: CompletionPayload,
+  userId: string,
+  role: CompletionRole,
+  logger: Logger,
+  traceMeta: TraceMeta = { requestId: null, correlationId: null, agentOperationId: null },
+): Promise<Response> {
+  return handleSessionCompletionForRequest(
+    buildFallbackRequest(),
+    db,
+    orgId,
+    payload,
+    userId,
+    role,
+    logger,
+    traceMeta,
+  );
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeadersForRequest(req) });
   }
 
   if (req.method !== "POST") {
-    return jsonResponse({ success: false, error: "Method not allowed" }, 405);
+    return jsonResponse(req, { success: false, error: "Method not allowed" }, 405);
   }
 
   const db = createRequestClient(req);
@@ -425,7 +464,7 @@ Deno.serve(async (req) => {
   let currentOrgId: string | null = null;
 
   try {
-    const user = await ensureAuthenticated(db);
+    const user = await ensureAuthenticated(req, db);
     userLogger = baseLogger.with({ userId: user.id });
     userLogger.info("request.authenticated");
 
@@ -462,7 +501,8 @@ Deno.serve(async (req) => {
     if (storageIdempotencyKey) {
       const existing = await idempotencyService.find(storageIdempotencyKey, "sessions-complete");
       if (existing) {
-        return jsonResponse(
+          return jsonResponse(
+            req,
           existing.responseBody as Record<string, unknown>,
           existing.statusCode,
           { "Idempotent-Replay": "true", "Idempotency-Key": normalizedKey! },
@@ -473,7 +513,8 @@ Deno.serve(async (req) => {
     const payload = parseCompletionPayload(await req.json());
     const activeLogger = scopedLogger ?? userLogger;
 
-    const response = await handleSessionCompletion(
+    const response = await handleSessionCompletionForRequest(
+      req,
       db,
       orgId,
       payload,
@@ -494,7 +535,7 @@ Deno.serve(async (req) => {
         );
       } catch (error) {
         if (error instanceof IdempotencyConflictError) {
-          return jsonResponse({ success: false, error: error.message }, 409);
+          return jsonResponse(req, { success: false, error: error.message }, 409);
         }
         throw error;
       }
@@ -511,7 +552,7 @@ Deno.serve(async (req) => {
         function: "sessions-complete",
         reason: "missing-org",
       });
-      return jsonResponse({ success: false, error: error.message }, 403);
+      return jsonResponse(req, { success: false, error: error.message }, 403);
     }
 
     if (error instanceof ForbiddenError) {
@@ -521,11 +562,11 @@ Deno.serve(async (req) => {
         orgId: currentOrgId ?? undefined,
         reason: "forbidden-error",
       });
-      return jsonResponse({ success: false, error: error.message }, 403);
+      return jsonResponse(req, { success: false, error: error.message }, 403);
     }
 
     if (error instanceof BadRequestError) {
-      return jsonResponse({ success: false, error: error.message }, error.status);
+      return jsonResponse(req, { success: false, error: error.message }, error.status);
     }
 
     if (error instanceof Response) {
@@ -533,7 +574,7 @@ Deno.serve(async (req) => {
     }
 
     errorLogger.error("request.failed", { error: (error as Error).message ?? "unknown" });
-    return jsonResponse({ success: false, error: "Internal server error" }, 500);
+    return jsonResponse(req, { success: false, error: "Internal server error" }, 500);
   }
 });
 

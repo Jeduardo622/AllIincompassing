@@ -24,11 +24,8 @@ CREATE INDEX IF NOT EXISTS client_session_notes_session_id_idx
 CREATE INDEX IF NOT EXISTS client_session_notes_created_by_idx
   ON public.client_session_notes (created_by);
 
-CREATE INDEX IF NOT EXISTS guardian_link_queue_created_by_idx
-  ON public.guardian_link_queue (created_by);
-
-CREATE INDEX IF NOT EXISTS guardian_link_queue_processed_by_idx
-  ON public.guardian_link_queue (processed_by);
+-- guardian_link_queue FK indexes: table is created in 20260201090000_guardian_signup_queue.sql
+-- (after this migration on full replay); indexes are added alongside that table.
 
 CREATE INDEX IF NOT EXISTS session_audit_logs_therapist_id_idx
   ON public.session_audit_logs (therapist_id);

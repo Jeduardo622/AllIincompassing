@@ -167,7 +167,7 @@ describe('sessions-hold retry-after contract', () => {
     expect(response.status).toBe(409);
     expect(response.headers.get('Retry-After')).toBe('37');
     expect(response.headers.get('Content-Type')).toContain('application/json');
-    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.example.com');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://preview.example.com');
 
     await expect(response.json()).resolves.toEqual({
       success: false,

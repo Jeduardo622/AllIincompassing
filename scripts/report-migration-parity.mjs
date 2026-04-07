@@ -4,7 +4,8 @@
  * Env: BRANCH_DB_URL | SUPABASE_DB_URL | DIRECT_URL | DATABASE_URL (same resolution as apply-remote-migrations.mjs)
  *
  * Suppression: actionable pending excludes versions listed in config/migration-drift-manifest.json
- * (LEDGER_ONLY_DRIFT — see scripts/build-migration-drift-manifest.mjs). Raw pending count is unchanged.
+ * (bulk LEDGER_ONLY_DRIFT from triage + optional SUPERSEDED_DO_NOT_APPLY preserved entries;
+ * see scripts/build-migration-drift-manifest.mjs). Raw pending count is unchanged.
  */
 import { readdir, readFile } from 'fs/promises';
 import path from 'path';

@@ -1,12 +1,14 @@
 {
   "meta": {
     "schemaVersion": 1,
-    "classification": "LEDGER_ONLY_DRIFT",
+    "classification": "MIXED",
     "sourceArtifact": "reports/migration-triage-inventory.json",
     "sourceInventoryGeneratedAt": "2026-04-07T16:00:55.714Z",
     "sourceProjectIdExpected": "wnnjeqheqxxyrgsjmygy",
-    "entryCount": 83,
-    "note": "Human-reviewed bulk drift-only suppressions for parity reporting. These versions are not candidates for DDL apply via allowlist; remote ledger filename/version mismatch or substance already present."
+    "entryCount": 84,
+    "ledgerOnlyDriftEntryCount": 83,
+    "supersededDoNotApplyEntryCount": 1,
+    "note": "Human-reviewed parity suppressions: bulk LEDGER_ONLY_DRIFT from migration-triage-inventory.json, plus optional SUPERSEDED_DO_NOT_APPLY entries preserved here (not from inventory regen). These versions are excluded from actionable pending in scripts/report-migration-parity.mjs; they are not DDL allowlist guards. Do not replay superseded historical SQL on main without a new reviewed migration."
   },
   "entries": [
     {
@@ -508,6 +510,16 @@
       "matchRuleSummary": "name_slug_prefix_suffix:20260210151545",
       "nearestRemoteVersion": "20260210151545",
       "nearestRemoteName": "lock_authorization_rpc_search_path_20260210"
+    },
+    {
+      "version": "20260212120000",
+      "filename": "20260212120000_caloptima_assessment_staging.sql",
+      "slug": "caloptima_assessment_staging",
+      "classification": "SUPERSEDED_DO_NOT_APPLY",
+      "reason": "Human-reviewed 2026: main assessment staging exists via applied migrations 20260219181744 (assessment_staging_and_storage_access_hotfix) and 20260220161517 (assessment_extraction_lifecycle_fields); live schema/RLS/policy surface does not match this historical file. Do not replay on main: DROP/CREATE policies on several assessment_* tables would change authz. Parity suppression only — not an allowlist safety gate.",
+      "matchRuleSummary": "none",
+      "nearestRemoteVersion": "20260219181744",
+      "nearestRemoteName": "assessment_staging_and_storage_access_hotfix_20260219"
     },
     {
       "version": "20260219183000",

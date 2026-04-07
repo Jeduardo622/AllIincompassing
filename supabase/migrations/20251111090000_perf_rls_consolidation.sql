@@ -57,7 +57,7 @@ create policy therapists_select
     or (id = app.current_therapist_id())
     or exists (
       select 1
-      from user_profiles up
+      from profiles up
         join user_roles ur on up.id = ur.user_id
         join roles r on ur.role_id = r.id
       where up.id = auth.uid()

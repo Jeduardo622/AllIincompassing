@@ -55,6 +55,11 @@ $$;
 -- Conversation ownership
 DO $$
 BEGIN
+  IF to_regclass('public.conversations') IS NULL THEN
+    RAISE NOTICE 'Skipping conversations ownership links: table does not exist.';
+    RETURN;
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM information_schema.table_constraints
@@ -218,31 +223,40 @@ END
 $$;
 
 -- conversations policies
-ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public.conversations') IS NULL THEN
+    RAISE NOTICE 'Skipping conversations policy setup: table does not exist.';
+    RETURN;
+  END IF;
 
-DROP POLICY IF EXISTS conversations_service_role_manage ON public.conversations;
-DROP POLICY IF EXISTS conversations_owner_access ON public.conversations;
-DROP POLICY IF EXISTS conversations_admin_access ON public.conversations;
+  ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY conversations_service_role_manage
-  ON public.conversations
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+  DROP POLICY IF EXISTS conversations_service_role_manage ON public.conversations;
+  DROP POLICY IF EXISTS conversations_owner_access ON public.conversations;
+  DROP POLICY IF EXISTS conversations_admin_access ON public.conversations;
 
-CREATE POLICY conversations_owner_access
-  ON public.conversations
-  FOR ALL
-  TO authenticated
-  USING (user_id = auth.uid())
-  WITH CHECK (user_id = auth.uid());
+  CREATE POLICY conversations_service_role_manage
+    ON public.conversations
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
 
-CREATE POLICY conversations_admin_access
-  ON public.conversations
-  FOR SELECT
-  TO authenticated
-  USING (app.user_has_role('admin') OR app.user_has_role('super_admin'));
+  CREATE POLICY conversations_owner_access
+    ON public.conversations
+    FOR ALL
+    TO authenticated
+    USING (user_id = auth.uid())
+    WITH CHECK (user_id = auth.uid());
+
+  CREATE POLICY conversations_admin_access
+    ON public.conversations
+    FOR SELECT
+    TO authenticated
+    USING (app.user_has_role('admin') OR app.user_has_role('super_admin'));
+END
+$$;
 
 -- user_sessions policies
 ALTER TABLE public.user_sessions ENABLE ROW LEVEL SECURITY;

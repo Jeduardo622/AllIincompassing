@@ -71,7 +71,13 @@ BEGIN
   IF to_regclass('public.clients') IS NOT NULL THEN
     EXECUTE 'CREATE INDEX IF NOT EXISTS idx_clients_created_by ON public.clients (created_by)';
     EXECUTE 'CREATE INDEX IF NOT EXISTS idx_clients_updated_by ON public.clients (updated_by)';
-    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_clients_deleted_by ON public.clients (deleted_by)';
+    -- deleted_by is added in a later migration (soft delete); skip if not replayed yet
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'clients' AND column_name = 'deleted_by'
+    ) THEN
+      EXECUTE 'CREATE INDEX IF NOT EXISTS idx_clients_deleted_by ON public.clients (deleted_by)';
+    END IF;
   END IF;
   IF to_regclass('public.impersonation_revocation_queue') IS NOT NULL THEN
     EXECUTE 'CREATE INDEX IF NOT EXISTS idx_impersonation_revocation_queue_audit_id ON public.impersonation_revocation_queue (audit_id)';
@@ -90,7 +96,11 @@ BEGIN
   IF to_regclass('public.session_holds') IS NOT NULL THEN
     EXECUTE 'CREATE INDEX IF NOT EXISTS idx_session_holds_session_id ON public.session_holds (session_id)';
   END IF;
-  IF to_regclass('public.therapists') IS NOT NULL THEN
+  IF to_regclass('public.therapists') IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'therapists' AND column_name = 'deleted_by'
+    ) THEN
     EXECUTE 'CREATE INDEX IF NOT EXISTS idx_therapists_deleted_by ON public.therapists (deleted_by)';
   END IF;
 END $$;

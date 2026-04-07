@@ -434,11 +434,79 @@ BEGIN
     END IF;
   END LOOP;
 
+  -- Deterministic org/program/goal so sessions satisfy NOT NULL program_id/goal_id (see 20260204193000_programs_goals_bank.sql).
+  INSERT INTO public.organizations (id, name, slug)
+  VALUES (
+    '00000000-0000-0000-0000-000000000001'::uuid,
+    'Seed Preview Org',
+    'seed-preview-org'
+  )
+  ON CONFLICT (id) DO NOTHING;
+
+  UPDATE public.therapists
+  SET organization_id = '00000000-0000-0000-0000-000000000001'::uuid
+  WHERE email = 'therapist@test.com';
+
+  UPDATE public.clients
+  SET organization_id = '00000000-0000-0000-0000-000000000001'::uuid
+  WHERE email = 'client@test.com';
+
+  INSERT INTO public.programs (id, organization_id, client_id, name, description, status, created_at, updated_at)
+  SELECT
+    '00000000-0000-0000-0000-000000000201'::uuid,
+    '00000000-0000-0000-0000-000000000001'::uuid,
+    c.id,
+    'Seed Program',
+    'Preview seed program.',
+    'active',
+    NOW(),
+    NOW()
+  FROM public.clients c
+  WHERE c.email = 'client@test.com'
+  ON CONFLICT (id) DO UPDATE SET
+    organization_id = EXCLUDED.organization_id,
+    client_id = EXCLUDED.client_id,
+    updated_at = NOW();
+
+  INSERT INTO public.goals (
+    id,
+    organization_id,
+    client_id,
+    program_id,
+    title,
+    description,
+    original_text,
+    status,
+    created_at,
+    updated_at
+  )
+  SELECT
+    '00000000-0000-0000-0000-000000000202'::uuid,
+    '00000000-0000-0000-0000-000000000001'::uuid,
+    c.id,
+    '00000000-0000-0000-0000-000000000201'::uuid,
+    'Seed Goal',
+    'Preview goal for seeded session.',
+    'seed',
+    'active',
+    NOW(),
+    NOW()
+  FROM public.clients c
+  WHERE c.email = 'client@test.com'
+  ON CONFLICT (id) DO UPDATE SET
+    organization_id = EXCLUDED.organization_id,
+    client_id = EXCLUDED.client_id,
+    program_id = EXCLUDED.program_id,
+    updated_at = NOW();
+
   -- Seed a representative session pairing the development client and therapist.
   INSERT INTO public.sessions (
     id,
+    organization_id,
     client_id,
     therapist_id,
+    program_id,
+    goal_id,
     start_time,
     end_time,
     status,
@@ -453,8 +521,11 @@ BEGIN
   )
   SELECT
     '00000000-0000-0000-0000-000000000101'::uuid,
+    '00000000-0000-0000-0000-000000000001'::uuid,
     client_rec.id,
     therapist_rec.id,
+    '00000000-0000-0000-0000-000000000201'::uuid,
+    '00000000-0000-0000-0000-000000000202'::uuid,
     '2025-01-01T15:00:00Z',
     '2025-01-01T16:00:00Z',
     'scheduled',
@@ -472,8 +543,11 @@ BEGIN
     AND therapist_rec.email = 'therapist@test.com'
   ON CONFLICT (id) DO UPDATE
   SET
+    organization_id = EXCLUDED.organization_id,
     client_id = EXCLUDED.client_id,
     therapist_id = EXCLUDED.therapist_id,
+    program_id = EXCLUDED.program_id,
+    goal_id = EXCLUDED.goal_id,
     start_time = EXCLUDED.start_time,
     end_time = EXCLUDED.end_time,
     status = EXCLUDED.status,

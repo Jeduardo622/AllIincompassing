@@ -181,14 +181,13 @@ BEGIN
       NOW(),
       NOW()
     )
+    -- On conflict, skip role/is_active: enforce_profile_authz_field_immutability blocks updates without super-admin.
     ON CONFLICT (id) DO UPDATE
     SET
       email = EXCLUDED.email,
-      role = EXCLUDED.role,
       first_name = EXCLUDED.first_name,
       last_name = EXCLUDED.last_name,
       phone = EXCLUDED.phone,
-      is_active = true,
       updated_at = NOW();
 
     IF user_record.role_name = 'therapist' THEN

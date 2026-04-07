@@ -11,7 +11,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select app.has_role('super_admin');
+  select app.user_has_role('super_admin');
 $$;
 
 grant execute on function app.is_super_admin() to authenticated;
@@ -23,7 +23,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select app.is_super_admin() or app.has_role('admin');
+  select app.is_super_admin() or app.user_has_role('admin');
 $$;
 
 grant execute on function app.is_admin() to authenticated;
@@ -36,8 +36,8 @@ create policy clients_accessible_read
   using (
     app.is_admin()
     or app.can_access_client(id)
-    or app.has_role('therapist')
-    or app.has_role('staff')
+    or app.user_has_role('therapist')
+    or app.user_has_role('staff')
   );
 
 commit;

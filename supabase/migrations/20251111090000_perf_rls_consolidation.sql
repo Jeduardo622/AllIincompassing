@@ -1,5 +1,45 @@
 begin;
 
+-- Replay ordering: this file runs before 20251113100000_super_admin_admin_helpers.sql, which
+-- defines app.is_admin(). Policies below require it; delegate to public.is_admin() until replaced.
+create or replace function app.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, app, auth
+as $$
+  select public.is_admin();
+$$;
+
+grant execute on function app.is_admin() to authenticated;
+
+-- Same ordering gap as app.is_admin: helpers are (re)defined in 20251118120000_restore_access_helpers.sql.
+-- Stub so CREATE POLICY can compile; that migration replaces with full implementations.
+create or replace function app.current_therapist_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public, app, auth
+as $$
+  select null::uuid;
+$$;
+
+grant execute on function app.current_therapist_id() to authenticated;
+
+create or replace function app.can_access_session(p_session_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, app, auth
+as $$
+  select false;
+$$;
+
+grant execute on function app.can_access_session(uuid) to authenticated;
+
 -- Consolidate redundant permissive policies on high-traffic tables to satisfy Supabase performance advisories.
 
 -- 1. public.roles

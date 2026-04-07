@@ -18,7 +18,8 @@
 
 -- Create the therapist-documents storage bucket
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('therapist-documents', 'therapist-documents', false);
+VALUES ('therapist-documents', 'therapist-documents', false)
+ON CONFLICT (id) DO NOTHING;
 
 -- Enable RLS on storage.objects (skip when ownership is restricted in preview replay).
 DO $$

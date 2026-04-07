@@ -5,9 +5,9 @@
     "sourceArtifact": "reports/migration-triage-inventory.json",
     "sourceInventoryGeneratedAt": "2026-04-07T16:00:55.714Z",
     "sourceProjectIdExpected": "wnnjeqheqxxyrgsjmygy",
-    "entryCount": 88,
+    "entryCount": 91,
     "ledgerOnlyDriftEntryCount": 83,
-    "supersededDoNotApplyEntryCount": 5,
+    "supersededDoNotApplyEntryCount": 8,
     "note": "Human-reviewed parity suppressions: bulk LEDGER_ONLY_DRIFT from migration-triage-inventory.json, plus optional SUPERSEDED_DO_NOT_APPLY entries preserved here (not from inventory regen). These versions are excluded from actionable pending in scripts/report-migration-parity.mjs; they are not DDL allowlist guards. Do not replay superseded historical SQL on main without a new reviewed migration."
   },
   "entries": [
@@ -270,6 +270,16 @@
       "matchRuleSummary": "name_eq_slug:20260105194315",
       "nearestRemoteVersion": "20260105194315",
       "nearestRemoteName": "harden_update_client_documents_path_allowlist"
+    },
+    {
+      "version": "20260120120000",
+      "filename": "20260120120000_soft_delete_audit_triggers.sql",
+      "slug": "soft_delete_audit_triggers",
+      "classification": "SUPERSEDED_DO_NOT_APPLY",
+      "reason": "Human-reviewed ALREADY_PRESENT_DRIFT: app.log_soft_delete_action and soft-delete audit triggers already on main (live matches this file’s function body); substance landed under ledger 20260121023725 (soft_delete_audit_triggers) and 20260122143519 (soft_delete_audit_triggers_refresh). Local version never on ledger — ordering/duplicate-history only. Parity suppression only — not a DDL safety gate.",
+      "matchRuleSummary": "none",
+      "nearestRemoteVersion": "20260122143519",
+      "nearestRemoteName": "soft_delete_audit_triggers_refresh"
     },
     {
       "version": "20260121130000",
@@ -722,6 +732,16 @@
       "nearestRemoteName": "cover_unindexed_foreign_keys_20260311212000"
     },
     {
+      "version": "20260313103000",
+      "filename": "20260313103000_client_onboarding_prefills.sql",
+      "slug": "client_onboarding_prefills",
+      "classification": "SUPERSEDED_DO_NOT_APPLY",
+      "reason": "Human-reviewed ALREADY_PRESENT_DRIFT: public.client_onboarding_prefills and deny-all policies already on main; duplicate-history ledger rows 20260313074718 and 20260313152705 (same slug). Local 20260313103000 never on ledger — ordering drift only. Parity suppression only — not a DDL safety gate.",
+      "matchRuleSummary": "none",
+      "nearestRemoteVersion": "20260313152705",
+      "nearestRemoteName": "client_onboarding_prefills"
+    },
+    {
       "version": "20260313120000",
       "filename": "20260313120000_onboarding_authz_and_prefill_retention_hardening.sql",
       "slug": "onboarding_authz_and_prefill_retention_hardening",
@@ -790,6 +810,16 @@
       "matchRuleSummary": "name_eq_slug:20260318225111",
       "nearestRemoteVersion": "20260318225111",
       "nearestRemoteName": "session_note_pdf_exports_async"
+    },
+    {
+      "version": "20260318150000",
+      "filename": "20260318150000_batch_confirm_financial_hardening.sql",
+      "slug": "batch_confirm_financial_hardening",
+      "classification": "SUPERSEDED_DO_NOT_APPLY",
+      "reason": "Human-reviewed ALREADY_PRESENT_DRIFT: sessions financial CHECK constraints and confirm_session_hold / confirm_session_holds_batch_with_enrichment already on main; substance represented by ledger 20260318233353 and 20260318233455 (batch_confirm_financial_hardening v1/v2). Local monolithic filename not on ledger — duplicate-history / split apply. Do not replay full file on main. Parity suppression only — not a DDL safety gate.",
+      "matchRuleSummary": "none",
+      "nearestRemoteVersion": "20260318233455",
+      "nearestRemoteName": "20260318150000_batch_confirm_financial_hardening_v2"
     },
     {
       "version": "20260318152000",

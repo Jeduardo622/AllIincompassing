@@ -87,7 +87,7 @@ BEGIN
     EXCEPTION
       WHEN insufficient_privilege THEN
         RAISE NOTICE 'Skipping privileged index due to insufficient privileges: %', stmt;
-      WHEN undefined_schema OR undefined_table OR undefined_column THEN
+      WHEN invalid_schema_name OR undefined_table OR undefined_column THEN
         RAISE NOTICE 'Skipping privileged index due to missing dependency: %', stmt;
     END;
   END LOOP;

@@ -40,6 +40,19 @@ $$;
 
 grant execute on function app.can_access_session(uuid) to authenticated;
 
+-- Stub until 20251223131500_align_rls_and_grants.sql; RLS policies reference it before that migration.
+create or replace function app.current_user_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = auth, public, app
+as $$
+  select auth.uid();
+$$;
+
+grant execute on function app.current_user_id() to authenticated;
+
 -- Consolidate redundant permissive policies on high-traffic tables to satisfy Supabase performance advisories.
 
 -- 1. public.roles

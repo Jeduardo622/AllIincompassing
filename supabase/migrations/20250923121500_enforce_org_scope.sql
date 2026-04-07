@@ -666,6 +666,7 @@ CREATE POLICY "Therapists scoped access"
 -- Clients
 DROP POLICY IF EXISTS "Clients are viewable by authenticated users" ON public.clients;
 DROP POLICY IF EXISTS "Clients access control" ON public.clients;
+DROP POLICY IF EXISTS "Clients scoped access" ON public.clients;
 
 CREATE POLICY "Clients scoped access"
   ON public.clients
@@ -701,6 +702,7 @@ CREATE POLICY "Clients scoped access"
 -- Sessions
 DROP POLICY IF EXISTS "Sessions are viewable by authenticated users" ON public.sessions;
 DROP POLICY IF EXISTS "Sessions access control" ON public.sessions;
+DROP POLICY IF EXISTS "Sessions scoped access" ON public.sessions;
 
 CREATE POLICY "Sessions scoped access"
   ON public.sessions
@@ -725,6 +727,7 @@ CREATE POLICY "Sessions scoped access"
 
 -- Billing records
 DROP POLICY IF EXISTS "Billing records are viewable by authenticated users" ON public.billing_records;
+DROP POLICY IF EXISTS "Billing records scoped access" ON public.billing_records;
 
 CREATE POLICY "Billing records scoped access"
   ON public.billing_records

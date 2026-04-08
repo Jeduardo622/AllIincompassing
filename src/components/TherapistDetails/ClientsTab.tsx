@@ -11,36 +11,19 @@ import { CLIENT_LIST_SELECT } from '../../lib/clients/select';
 import { showSuccess, showError } from '../../lib/toast';
 import { useAuth } from '../../lib/authContext';
 import type { Client } from '../../types';
+import {
+  getMissingClientIds,
+  isAlreadyLinkedToTherapist,
+  fetchLinkedClientIdsForTherapist,
+  type LinkableClient,
+} from '../../lib/clients/therapistClientScope';
 
 interface ClientsTabProps {
   therapist: { id: string };
 }
 
-interface LinkableClient {
-  id: string;
-  full_name: string;
-  email: string | null;
-  primary_therapist_id: string | null;
-  primary_therapist_name: string | null;
-  linked_therapist_ids: string[];
-  linked_therapist_names: string[];
-}
-
-export const getMissingClientIds = (
-  directAssignmentIds: string[],
-  linkedClientIds: string[],
-  sessionClientIds: string[],
-): string[] => {
-  const directSet = new Set(directAssignmentIds);
-  return [...new Set([...linkedClientIds, ...sessionClientIds])].filter((clientId) => !directSet.has(clientId));
-};
-
-export const isAlreadyLinkedToTherapist = (
-  client: LinkableClient,
-  therapistId: string,
-): boolean => (
-  client.linked_therapist_ids.includes(therapistId) || client.primary_therapist_id === therapistId
-);
+export { getMissingClientIds, isAlreadyLinkedToTherapist };
+export type { LinkableClient };
 
 export function ClientsTab({ therapist }: ClientsTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -64,12 +47,7 @@ export function ClientsTab({ therapist }: ClientsTabProps) {
 
       if (directError) throw directError;
 
-      const { data: linkRows, error: linksError } = await supabase
-        .from('client_therapist_links')
-        .select('client_id')
-        .eq('therapist_id', therapist.id);
-
-      if (linksError) throw linksError;
+      const linkedClientIds = await fetchLinkedClientIdsForTherapist(supabase, therapist.id);
 
       // Get unique client IDs from sessions
       const { data: sessions, error: sessionsError } = await supabase
@@ -83,14 +61,6 @@ export function ClientsTab({ therapist }: ClientsTabProps) {
       const directAssignmentsList = (directAssignments ?? []) as Client[];
       const directAssignmentsMap = new Map<string, Client>(
         directAssignmentsList.map((client) => [client.id, client]),
-      );
-
-      const linkedClientIds = Array.from(
-        new Set(
-          (linkRows ?? [])
-            .map((row) => row.client_id)
-            .filter((clientId): clientId is string => typeof clientId === 'string' && clientId.length > 0),
-        ),
       );
 
       const sessionClientIds = Array.from(
@@ -205,6 +175,7 @@ export function ClientsTab({ therapist }: ClientsTabProps) {
 
       if (error) throw error;
 
+      // Full link rows (not only IDs) — needed for linked therapist names in the picker; see fetchLinkedClientIdsForTherapist for ID-only reads elsewhere.
       const { data: linkRows, error: linkError } = await supabase
         .from('client_therapist_links')
         .select(`

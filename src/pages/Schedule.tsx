@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useLayoutEffect, useEffect, useRef } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, startOfWeek, addDays, endOfWeek } from "date-fns";
 import { getTimezoneOffset } from "date-fns-tz";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -33,6 +33,7 @@ import { toError } from "../lib/logger/normalizeError";
 import { useAuth } from "../lib/authContext";
 import { useActiveOrganizationId } from "../lib/organization";
 import { supabase } from "../lib/supabase";
+import { fetchLinkedClientIdsForTherapist } from "../lib/clients/therapistClientScope";
 import { upsertClientSessionNoteForSession } from "../lib/session-notes";
 import {
   buildSessionSlotIndex,
@@ -917,6 +918,17 @@ export const Schedule = React.memo(() => {
     return displayData.therapists.filter((therapist) => therapist.id === scopedTherapistId);
   }, [displayData.therapists, therapistScopedView, scopedTherapistId]);
 
+  const therapistLinkedClientIdsQuery = useQuery({
+    queryKey: ["therapist-linked-client-ids", scopedTherapistId, activeOrganizationId],
+    queryFn: async () => {
+      if (!scopedTherapistId) {
+        return [];
+      }
+      return fetchLinkedClientIdsForTherapist(supabase, scopedTherapistId);
+    },
+    enabled: therapistScopedView && !!scopedTherapistId && !!activeOrganizationId,
+  });
+
   const visibleClients = useMemo(() => {
     if (!therapistScopedView) {
       return displayData.clients;
@@ -930,12 +942,23 @@ export const Schedule = React.memo(() => {
         .filter((session) => session.therapist_id === scopedId)
         .map((session) => session.client_id),
     );
+    // Until link IDs resolve, keep prior behavior (primary + sessions) so the dropdown does not flash empty.
+    const linkedIds = therapistLinkedClientIdsQuery.data;
+    const linkedSet = linkedIds ? new Set(linkedIds) : null;
     return displayData.clients.filter((client) => {
       const maybeTherapistId =
         (client as Client & { therapist_id?: string | null }).therapist_id ?? null;
-      return maybeTherapistId === scopedId || scheduledClientIds.has(client.id);
+      const linkedMatch = linkedSet ? linkedSet.has(client.id) : false;
+      return maybeTherapistId === scopedId || scheduledClientIds.has(client.id) || linkedMatch;
     });
-  }, [displayData.clients, displayData.sessions, therapistScopedView, selectedTherapist, scopedTherapistId]);
+  }, [
+    displayData.clients,
+    displayData.sessions,
+    therapistScopedView,
+    selectedTherapist,
+    scopedTherapistId,
+    therapistLinkedClientIdsQuery.data,
+  ]);
   const scopedTherapistDisplayName = useMemo(() => {
     const scopedId = selectedTherapist ?? scopedTherapistId;
     if (!scopedId) {

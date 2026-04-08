@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PostgrestSingleResponse } from '@supabase/supabase-js';
 import type { Client } from '../../../types';
 import { CLIENT_DETAIL_SELECT, CLIENT_LIST_SELECT } from '../select';
+import type { ClientsSupabaseClient } from '../fetchers';
 import {
   fetchClientById,
   fetchClientNotes,
@@ -35,6 +36,71 @@ describe('clients fetchers', () => {
     expect(from).toHaveBeenCalledWith('clients');
     expect(select).toHaveBeenCalledWith(CLIENT_LIST_SELECT);
     expect(order).toHaveBeenCalledWith('full_name', { ascending: true });
+  });
+
+  it('merges primary-assigned and link-only clients for therapist scope', async () => {
+    const primaryClient = {
+      id: 'client-primary',
+      full_name: 'Primary',
+      organization_id: 'org-1',
+      therapist_id: 'therapist-1',
+    } as Client;
+    const linkOnlyClient = {
+      id: 'client-link-only',
+      full_name: 'Linked Only',
+      organization_id: 'org-1',
+      therapist_id: null,
+    } as Client;
+
+    const linkSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ data: [{ client_id: 'client-link-only' }], error: null }),
+    });
+
+    let clientsInvocation = 0;
+    const clientsFrom = vi.fn().mockImplementation(() => {
+      clientsInvocation += 1;
+      // 1st from('clients'): initial query = .select().eq('organization_id') only (lines 189–194).
+      if (clientsInvocation === 1) {
+        const select = vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({ order: vi.fn() }),
+        });
+        return { select };
+      }
+      // 2nd: therapist primary rows — .select().eq('organization_id').eq('therapist_id').order()
+      if (clientsInvocation === 2) {
+        const orderPrimary = vi.fn().mockResolvedValue({ data: [primaryClient], error: null });
+        const afterTherapistEq = { order: orderPrimary };
+        const afterOrgEq = {
+          eq: vi.fn().mockReturnValue(afterTherapistEq),
+        };
+        const select = vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue(afterOrgEq),
+        });
+        return { select };
+      }
+      // 3rd: link-only rows — .select().eq('organization_id').in('id', …).order()
+      const orderLinked = vi.fn().mockResolvedValue({ data: [linkOnlyClient], error: null });
+      const inIds = vi.fn().mockReturnValue({ order: orderLinked });
+      const eqOrg2 = vi.fn().mockReturnValue({ in: inIds });
+      return { select: vi.fn().mockReturnValue({ eq: eqOrg2 }) };
+    });
+
+    const from = vi.fn().mockImplementation((table: string) => {
+      if (table === 'client_therapist_links') {
+        return { select: linkSelect };
+      }
+      return clientsFrom();
+    });
+
+    const result = await fetchClients({
+      organizationId: 'org-1',
+      therapistId: 'therapist-1',
+      client: { from } as ClientsSupabaseClient,
+    });
+
+    expect(from).toHaveBeenCalledWith('client_therapist_links');
+    expect(from).toHaveBeenCalledWith('clients');
+    expect(result.map((c) => c.id).sort()).toEqual(['client-link-only', 'client-primary'].sort());
   });
 
   it('loads an individual client with the sanitized clause', async () => {

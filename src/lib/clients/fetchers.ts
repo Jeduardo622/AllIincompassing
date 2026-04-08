@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Client } from '../../types';
+import { fetchLinkedClientIdsForTherapist } from './therapistClientScope';
 import type { Database } from '../generated/database.types';
 import { supabase } from '../supabase';
 import { CLIENT_DETAIL_SELECT, CLIENT_LIST_SELECT } from './select';
@@ -196,7 +197,50 @@ export const fetchClients = async (
   }
 
   if (therapistId) {
-    query = query.eq('therapist_id', therapistId);
+    const linkIds = await fetchLinkedClientIdsForTherapist(clientRef, therapistId);
+
+    const { data: primaryRows, error: primaryError } = await clientRef
+      .from('clients')
+      .select(CLIENT_LIST_SELECT)
+      .eq('organization_id', organizationId as string)
+      .eq('therapist_id', therapistId)
+      .order(DEFAULT_ORDER_COLUMN, { ascending: true });
+
+    if (primaryError) {
+      throw primaryError;
+    }
+
+    const byId = new Map<string, Client>();
+    for (const row of primaryRows ?? []) {
+      const c = row as Client;
+      byId.set(c.id, c);
+    }
+
+    const missingLinkOnly = linkIds.filter((id) => !byId.has(id));
+    if (missingLinkOnly.length > 0) {
+      const { data: linkedRows, error: linkedError } = await clientRef
+        .from('clients')
+        .select(CLIENT_LIST_SELECT)
+        .eq('organization_id', organizationId as string)
+        .in('id', missingLinkOnly)
+        .order(DEFAULT_ORDER_COLUMN, { ascending: true });
+
+      if (linkedError) {
+        throw linkedError;
+      }
+      for (const row of linkedRows ?? []) {
+        const c = row as Client;
+        byId.set(c.id, c);
+      }
+    }
+
+    const merged = Array.from(byId.values());
+    merged.sort((a, b) => {
+      const an = (a.full_name ?? '').toLowerCase();
+      const bn = (b.full_name ?? '').toLowerCase();
+      return an.localeCompare(bn);
+    });
+    return merged;
   }
 
   const { data, error } = await query.order(DEFAULT_ORDER_COLUMN, { ascending: true });

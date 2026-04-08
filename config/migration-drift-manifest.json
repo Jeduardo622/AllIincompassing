@@ -5,9 +5,9 @@
     "sourceArtifact": "reports/migration-triage-inventory.json",
     "sourceInventoryGeneratedAt": "2026-04-07T16:00:55.714Z",
     "sourceProjectIdExpected": "wnnjeqheqxxyrgsjmygy",
-    "entryCount": 91,
+    "entryCount": 92,
     "ledgerOnlyDriftEntryCount": 83,
-    "supersededDoNotApplyEntryCount": 8,
+    "supersededDoNotApplyEntryCount": 9,
     "note": "Human-reviewed parity suppressions: bulk LEDGER_ONLY_DRIFT from migration-triage-inventory.json, plus optional SUPERSEDED_DO_NOT_APPLY entries preserved here (not from inventory regen). These versions are excluded from actionable pending in scripts/report-migration-parity.mjs; they are not DDL allowlist guards. Do not replay superseded historical SQL on main without a new reviewed migration."
   },
   "entries": [
@@ -40,6 +40,16 @@
       "matchRuleSummary": "name_eq_slug:20251219195404",
       "nearestRemoteVersion": "20251219195404",
       "nearestRemoteName": "add_license_number_to_therapists"
+    },
+    {
+      "version": "20251219010000",
+      "filename": "20251219010000_therapists_org_access_policy.sql",
+      "slug": "therapists_org_access_policy",
+      "classification": "SUPERSEDED_DO_NOT_APPLY",
+      "reason": "Human-reviewed: would create policy therapists_org_access_easy (FOR ALL TO authenticated) broadening org-wide therapist access beyond current main model (org_admin / admin-gated policies only; therapists_org_access_easy absent on main). Replaying would OR-expand RLS and weaken intentional restrictions. Do not replay historical RLS on main. Parity suppression only — not a DDL safety gate.",
+      "matchRuleSummary": "none",
+      "nearestRemoteVersion": null,
+      "nearestRemoteName": null
     },
     {
       "version": "20251219011000",

@@ -17,7 +17,7 @@ vi.mock("../supabase", () => ({
   },
 }));
 
-describe("useDashboardData dashboard route fetch", () => {
+describe("useDashboardData get-dashboard-data edge fetch", () => {
   afterEach(() => {
     getSessionMock.mockReset();
     getUserMock.mockReset();
@@ -26,7 +26,7 @@ describe("useDashboardData dashboard route fetch", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns dashboard payload from /api/dashboard when auth token exists", async () => {
+  it("returns dashboard payload from get-dashboard-data when auth token exists", async () => {
     const payload = { ok: true };
     getSessionMock.mockResolvedValue({
       data: { session: { access_token: "token" } },
@@ -39,13 +39,15 @@ describe("useDashboardData dashboard route fetch", () => {
     const { fetchDashboardData } = await import("../optimizedQueries");
     const result = await fetchDashboardData();
     expect(result).toEqual(payload);
+    const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    expect(url).toContain("get-dashboard-data");
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
     const headers = init?.headers as Headers | undefined;
     expect(init?.method).toBe("GET");
     expect(headers?.get("Authorization")).toBe("Bearer token");
   });
 
-  it("refreshes an expired access token before calling /api/dashboard", async () => {
+  it("refreshes an expired access token before calling get-dashboard-data", async () => {
     const exp = Math.floor(Date.now() / 1000) - 120;
     const expiredToken = `x.${Buffer.from(JSON.stringify({ exp }), "utf8").toString("base64url")}.y`;
     getSessionMock.mockResolvedValue({
@@ -68,7 +70,7 @@ describe("useDashboardData dashboard route fetch", () => {
     expect(headers?.get("Authorization")).toBe("Bearer fresh-token");
   });
 
-  it("surfaces 401 when no access token can be resolved for dashboard route", async () => {
+  it("surfaces 401 when no access token can be resolved", async () => {
     getSessionMock.mockResolvedValue({
       data: { session: null },
       error: null,
@@ -80,10 +82,8 @@ describe("useDashboardData dashboard route fetch", () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          success: false,
-          error: "Missing authorization token",
+          error: "Unauthorized",
           code: "unauthorized",
-          message: "Missing authorization token",
         }),
         { status: 401 },
       ),
@@ -92,5 +92,6 @@ describe("useDashboardData dashboard route fetch", () => {
     const { fetchDashboardData } = await import("../optimizedQueries");
     await expect(fetchDashboardData()).rejects.toMatchObject({ status: 401 });
     expect(fetchMock).toHaveBeenCalled();
+    expect(String(fetchMock.mock.calls[0]?.[0] ?? "")).toContain("get-dashboard-data");
   });
 });

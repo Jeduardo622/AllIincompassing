@@ -17,7 +17,7 @@ vi.mock("../supabase", () => ({
   },
 }));
 
-describe("useDashboardData get-dashboard-data edge fetch", () => {
+describe("useDashboardData /api/dashboard fetch", () => {
   afterEach(() => {
     getSessionMock.mockReset();
     getUserMock.mockReset();
@@ -26,7 +26,7 @@ describe("useDashboardData get-dashboard-data edge fetch", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns dashboard payload from get-dashboard-data when auth token exists", async () => {
+  it("returns dashboard payload from /api/dashboard when auth token exists", async () => {
     const payload = { ok: true };
     getSessionMock.mockResolvedValue({
       data: { session: { access_token: "token" } },
@@ -40,14 +40,15 @@ describe("useDashboardData get-dashboard-data edge fetch", () => {
     const result = await fetchDashboardData();
     expect(result).toEqual(payload);
     const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
-    expect(url).toContain("get-dashboard-data");
+    expect(url).toContain("/api/dashboard");
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
     const headers = init?.headers as Headers | undefined;
     expect(init?.method).toBe("GET");
     expect(headers?.get("Authorization")).toBe("Bearer token");
+    expect(headers?.get("apikey")).toBe("test-anon-key");
   });
 
-  it("refreshes an expired access token before calling get-dashboard-data", async () => {
+  it("refreshes an expired access token before calling /api/dashboard", async () => {
     const exp = Math.floor(Date.now() / 1000) - 120;
     const expiredToken = `x.${Buffer.from(JSON.stringify({ exp }), "utf8").toString("base64url")}.y`;
     getSessionMock.mockResolvedValue({
@@ -68,6 +69,7 @@ describe("useDashboardData get-dashboard-data edge fetch", () => {
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
     const headers = init?.headers as Headers | undefined;
     expect(headers?.get("Authorization")).toBe("Bearer fresh-token");
+    expect(headers?.get("apikey")).toBe("test-anon-key");
   });
 
   it("surfaces 401 when no access token can be resolved", async () => {
@@ -92,6 +94,6 @@ describe("useDashboardData get-dashboard-data edge fetch", () => {
     const { fetchDashboardData } = await import("../optimizedQueries");
     await expect(fetchDashboardData()).rejects.toMatchObject({ status: 401 });
     expect(fetchMock).toHaveBeenCalled();
-    expect(String(fetchMock.mock.calls[0]?.[0] ?? "")).toContain("get-dashboard-data");
+    expect(String(fetchMock.mock.calls[0]?.[0] ?? "")).toContain("/api/dashboard");
   });
 });

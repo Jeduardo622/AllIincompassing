@@ -6,7 +6,8 @@ import type { Session } from '../types';
 import { logger } from './logger/logger';
 import { toError } from './logger/normalizeError';
 import { useDashboardLiveRefresh } from './dashboardLiveRefresh';
-import { callEdgeFunctionHttp } from './api';
+import { callApi } from './api';
+import { ensureRuntimeSupabaseConfig, getSupabaseAnonKey } from './runtimeConfig';
 
 // ============================================================================
 // BATCHED SCHEDULE QUERIES (Replaces N+1 queries)
@@ -164,10 +165,14 @@ export const fetchDashboardData = async () => {
   const DASHBOARD_REQUEST_TIMEOUT_MS = 10000;
 
   const dashboardRouteFallback = async () => {
-    // Call the edge function directly (same Supabase project + getCurrentAccessToken as other
-    // callEdgeFunctionHttp paths). Netlify GET /api/dashboard proxies to this function but can
-    // 401 when server-side anon key / edge URL env does not match the browser client; REST
-    // (profiles, user_roles) then still succeeds, which matches production reports.
+    // Same-origin GET /api/dashboard (no browser CORS). Wait for runtime config so URL/key
+    // match the live Supabase project; forward anon apikey so Netlify can proxy to the
+    // same project even if server env keys drift (edgeAuthority prefers request apikey).
+    await ensureRuntimeSupabaseConfig();
+    const anonKey = getSupabaseAnonKey();
+
+    // callApi + getCurrentAccessToken (see ./api): non-expired JWT; stale getSession()
+    // alone can 401 the edge auth middleware.
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
@@ -178,7 +183,12 @@ export const fetchDashboardData = async () => {
     });
 
     const response = await Promise.race([
-      callEdgeFunctionHttp('get-dashboard-data', { method: 'GET' }),
+      callApi('/api/dashboard', {
+        method: 'GET',
+        headers: {
+          apikey: anonKey,
+        },
+      }),
       timeoutPromise,
     ]).finally(() => {
       if (timeoutId) {

@@ -9,6 +9,8 @@ The matrix below summarizes how we manage credentials, deployments, and rollback
 | Staging     | `develop`  | Netlify staging context | Same hosted project (single-tenant) | Netlify staging env vars synced from 1Password | GitHub Actions staging smoke (`preview:smoke:remote`) |
 | Production  | `main`     | Netlify production | Same hosted project | Netlify production env vars | Manual post-deploy checks + monitoring |
 
+For Netlify environment parity with the hosted Supabase project (`/api/runtime-config`, `/api/dashboard`), see [Netlify / Supabase API parity](./ops/netlify-supabase-api-parity.md).
+
 ## Single-clinic mode configuration
 
 - All environments must define `DEFAULT_ORGANIZATION_ID` (the UUID of the active clinic). The runtime config endpoint exposes this value to the browser, and the edge functions refuse writes for any other organization.

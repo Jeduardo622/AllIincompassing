@@ -60,6 +60,7 @@ import { applyScheduleResetBranch } from "../features/scheduling/domain/schedule
 import { decideScheduleSubmitBranch } from "../features/scheduling/domain/submitBranchDecision";
 import { adaptScheduleMutationError } from "../features/scheduling/domain/mutationErrorAdapter";
 import { applyScheduleMutationSuccessLifecycle } from "../features/scheduling/domain/mutationSuccessLifecycle";
+import { invalidateSessionNoteCachesAfterSessionWrite } from "../features/scheduling/domain/sessionNoteQueryInvalidation";
 import {
   checkInProgressSessionCloseReadiness,
   completeSessionFromModal,
@@ -1041,6 +1042,13 @@ export const Schedule = React.memo(() => {
       return bookingResult.session;
     },
     onSuccess: () => {
+      if (selectedSession?.id && selectedSession.client_id) {
+        invalidateSessionNoteCachesAfterSessionWrite(queryClient, {
+          sessionId: selectedSession.id,
+          clientId: selectedSession.client_id,
+          organizationId: activeOrganizationId,
+        });
+      }
       applyScheduleMutationSuccessLifecycle({
         kind: "update-success",
         invalidateQuery: (queryKey) => {

@@ -62,7 +62,21 @@ If the drift manifest is **missing or invalid** (`driftManifestWarning` in the r
 
 ### Canonical apply path
 
-Apply migrations only through the **normal Supabase / pipeline workflow** (e.g. CLI against the intended database, hosted promotion, or **`scripts/apply-remote-migrations.mjs`** when explicitly used for a controlled host). **Do not** use the parity report as a batch apply driver.
+Apply migrations only through the **normal Supabase / pipeline workflow** (e.g. CLI against the intended database, hosted promotion, or **`scripts/apply-remote-migrations.mjs`** when explicitly used for a controlled host). **Do not** use the parity report as a batch apply driver, run one-off DDL against shared environments without a matching repo migration, or rely on tools that insert **non-canonical** rows into `supabase_migrations.schema_migrations`.
+
+### When triage changes, regenerate the manifest
+
+If **`reports/migration-triage-inventory.json`** (or human **`SUPERSEDED_DO_NOT_APPLY`** decisions) change in a material way, run **`node scripts/build-migration-drift-manifest.mjs`** and **commit** the resulting **`config/migration-drift-manifest.json`** so **`actionablePendingVersions`** stays aligned with reviewed intent.
+
+### Avoiding future drift (checklist)
+
+- **No ad hoc shared DB changes:** do not apply SQL manually to shared/staging/production without an immediate repo follow-up (new forward-fix migration or an explicitly documented, reviewed exception path).
+- **Canonical ledger writes only:** avoid workflows that record migrations under ad hoc version strings; keep applies on the **approved** Supabase / pipeline path so `schema_migrations` stays reconcilable with `supabase/migrations/*.sql`.
+- **Manifest in sync:** when triage or suppression decisions change, follow **When triage changes, regenerate the manifest** above (single source for the command and paths).
+- **Separate preview vs main signals:** local/preview replay succeeding does **not** replace hosted **ledger parity** checks; use the right script/CI gate for each environment.
+- **Small reviewed slices:** prefer narrow migrations with governance headers over large catch-up dumps that are hard to review and easy to mis-apply.
+
+Changelog-style summary of the completed cleanup: [`RELEASE_NOTES.md`](../../RELEASE_NOTES.md#migration-ledger-parity-cleanup-operational-complete).
 
 ### Optional future work (out of scope for parity cleanup)
 

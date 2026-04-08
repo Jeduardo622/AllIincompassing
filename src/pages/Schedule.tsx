@@ -226,8 +226,8 @@ export function getSessionStatusClasses(
 
 /**
  * Prefer batch directory rows when non-empty (batch drives ordering and membership), but overlay
- * dropdown rows by id so slim batch RPC shapes (e.g. `get_schedule_data_batch` without
- * `availability_hours`) do not strip fields required for client-side conflict checks.
+ * dropdown rows by id so richer dropdown fields (e.g. `availability_hours` from
+ * `get_dropdown_data`) win for client-side conflict checks when batch rows omit or duplicate keys.
  */
 function mergeScheduleDirectoryLists<T extends { id?: string }>(
   batchList: T[] | null | undefined,

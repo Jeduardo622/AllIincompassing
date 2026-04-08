@@ -39,6 +39,24 @@ const DAY_KEY_ALIASES: Record<string, string[]> = {
 const normalizeAvailabilityDayKey = (value: string): string =>
   value.toLowerCase().replace(/[^a-z]/g, "");
 
+/** True if the window can produce at least one minute range (non-empty objects are otherwise truthy but unusable). */
+const isUsableAvailabilityWindow = (w: AvailabilityWindow | undefined): boolean => {
+  if (!w || typeof w !== "object") {
+    return false;
+  }
+  const hasPrimary =
+    typeof w.start === "string" &&
+    w.start.length > 0 &&
+    typeof w.end === "string" &&
+    w.end.length > 0;
+  const hasSecondary =
+    typeof w.start2 === "string" &&
+    w.start2.length > 0 &&
+    typeof w.end2 === "string" &&
+    w.end2.length > 0;
+  return hasPrimary || hasSecondary;
+};
+
 const resolveDailyAvailability = (
   availabilityHours: Therapist["availability_hours"] | Client["availability_hours"] | null | undefined,
   dayName: string,
@@ -50,14 +68,14 @@ const resolveDailyAvailability = (
   const aliases = DAY_KEY_ALIASES[dayName] ?? [dayName];
   for (const alias of aliases) {
     const direct = availabilityHours[alias as keyof typeof availabilityHours];
-    if (direct) {
+    if (direct && isUsableAvailabilityWindow(direct as AvailabilityWindow)) {
       return direct as AvailabilityWindow;
     }
   }
 
   const normalizedAliases = new Set(aliases.map((alias) => normalizeAvailabilityDayKey(alias)));
   for (const [key, value] of Object.entries(availabilityHours)) {
-    if (!value) {
+    if (!value || !isUsableAvailabilityWindow(value as AvailabilityWindow)) {
       continue;
     }
     if (normalizedAliases.has(normalizeAvailabilityDayKey(key))) {

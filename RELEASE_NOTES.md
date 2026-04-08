@@ -1,3 +1,14 @@
+### Migration ledger parity cleanup (operational complete)
+
+**Highlights**
+- Parity cleanup for the primary hosted database is **operationally complete**: success is **`actionablePendingVersions === 0`** on `scripts/report-migration-parity.mjs`, not zero **raw** pending (`pendingVersions`). Details: [`docs/migrations/MIGRATION_GOVERNANCE.md`](docs/migrations/MIGRATION_GOVERNANCE.md#parity-reporting-raw-vs-actionable).
+- **Raw** pending may stay non-zero because local migration **filenames** and remote **`schema_migrations.version`** strings diverge historically; reviewed non-actionable gaps are recorded in **`config/migration-drift-manifest.json`** (regenerate with `node scripts/build-migration-drift-manifest.mjs` when triage changes).
+- All future schema work must use the **canonical migration apply path** (Supabase CLI / hosted pipeline, or `scripts/apply-remote-migrations.mjs` only when explicitly used for a controlled host). Do **not** drive applies from the parity report, ad hoc SQL against shared DBs, or non-canonical workflows that write odd ledger rows.
+
+**Risks & Assumptions**
+- If the drift manifest is missing, invalid, or stale relative to triage, **`actionablePendingVersions` is misleading** until the manifest is fixed or regenerated and committed.
+- CI **`runtime-migration-parity`** (new versions in the merge range) answers a different question than the **full-repo** ad hoc parity script; see [`docs/DATABASE_PIPELINE.md`](docs/DATABASE_PIPELINE.md#ad-hoc-ledger-parity-report).
+
 ### Therapist Status Enforcement
 
 **Highlights**

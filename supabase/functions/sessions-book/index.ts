@@ -78,6 +78,12 @@ const parseEdgeJson = async (response: Response): Promise<Record<string, unknown
   }
 };
 
+/** Plain objects for bookSessionEnvelopeSchema (z.record); never null — matches legacy bookSession shape. */
+const asBookingRecord = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: corsHeadersForRequest(req) });
@@ -176,13 +182,18 @@ Deno.serve(async (req) => {
   }
 
   const confirmData = (confirmBody.data as Record<string, unknown> | undefined) ?? {};
+  const sessionsRaw = confirmData["sessions"];
+  const sessionsNormalized = Array.isArray(sessionsRaw)
+    ? sessionsRaw.map((row) => asBookingRecord(row))
+    : [];
+
   return json(req, 200, {
     success: true,
     data: {
-      session: confirmData.session ?? null,
-      sessions: confirmData.sessions ?? [],
-      hold: holdBody.data ?? null,
-      cpt: payload.overrides ?? null,
+      session: asBookingRecord(confirmData["session"]),
+      sessions: sessionsNormalized,
+      hold: asBookingRecord(holdBody.data),
+      cpt: asBookingRecord(payload.overrides),
     },
   });
 });

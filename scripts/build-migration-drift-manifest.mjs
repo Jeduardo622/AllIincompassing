@@ -6,6 +6,8 @@
  * suppressions that are not in the inventory LEDGER_ONLY set). Dedupes by version: superseded
  * entry wins over a generated LEDGER row if both exist.
  *
+ * Parity semantics (raw vs actionable pending): docs/migrations/MIGRATION_GOVERNANCE.md#parity-reporting-raw-vs-actionable
+ *
  * Usage: node scripts/build-migration-drift-manifest.mjs
  */
 import { readFile, writeFile, mkdir } from 'fs/promises';

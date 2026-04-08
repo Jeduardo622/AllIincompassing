@@ -3,6 +3,9 @@
  * Usage: node --env-file=.env scripts/report-migration-parity.mjs
  * Env: BRANCH_DB_URL | SUPABASE_DB_URL | DIRECT_URL | DATABASE_URL (same resolution as apply-remote-migrations.mjs)
  *
+ * Semantics: see docs/migrations/MIGRATION_GOVERNANCE.md#parity-reporting-raw-vs-actionable
+ * — raw pending = filename-vs-ledger gap; actionable pending = subset not manifest-suppressed (apply/triage queue).
+ *
  * Suppression: actionable pending excludes versions listed in config/migration-drift-manifest.json
  * (bulk LEDGER_ONLY_DRIFT from triage + optional SUPERSEDED_DO_NOT_APPLY preserved entries;
  * see scripts/build-migration-drift-manifest.mjs). Raw pending count is unchanged.
@@ -184,12 +187,27 @@ async function main() {
           }
         : triageSnap;
 
+    const parityInterpretation = {
+      documentation: 'docs/migrations/MIGRATION_GOVERNANCE.md#parity-reporting-raw-vs-actionable',
+      driftManifestLoaded: driftLoad.ok,
+      rawPendingMeaning:
+        'Local migration version not present as a row in supabase_migrations.schema_migrations (filename vs ledger string gap; not an automatic bulk-apply list).',
+      actionablePendingMeaning:
+        'Raw pending minus versions in config/migration-drift-manifest.json — operational apply/triage queue for this report (when driftManifestLoaded is true).',
+      whenDriftManifestUnreadable: driftLoad.ok
+        ? null
+        : 'Manifest missing or invalid: actionablePendingVersions equals raw pending until the manifest loads successfully.',
+      actionableQueueOperationalComplete:
+        actionablePending.length === 0 && (driftLoad.ok || pending.length === 0),
+    };
+
     console.log(
       JSON.stringify(
         {
           summary,
           driftSuppression,
           triageSnapshot,
+          parityInterpretation,
           pendingMin: pending[0]?.version ?? null,
           pendingMax: pending[pending.length - 1]?.version ?? null,
           pendingSample: slicePending(pending, 15),

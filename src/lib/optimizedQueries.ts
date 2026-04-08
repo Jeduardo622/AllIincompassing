@@ -7,6 +7,7 @@ import { logger } from './logger/logger';
 import { toError } from './logger/normalizeError';
 import { useDashboardLiveRefresh } from './dashboardLiveRefresh';
 import { callApi } from './api';
+import { ensureRuntimeSupabaseConfig, getSupabaseAnonKey } from './runtimeConfig';
 
 // ============================================================================
 // BATCHED SCHEDULE QUERIES (Replaces N+1 queries)
@@ -164,9 +165,14 @@ export const fetchDashboardData = async () => {
   const DASHBOARD_REQUEST_TIMEOUT_MS = 10000;
 
   const dashboardRouteFallback = async () => {
-    // Use callApi + getCurrentAccessToken (see ./api) so we send a non-expired JWT:
-    // raw getSession() can return a stale access_token while the UI still looks signed-in,
-    // which makes /api/dashboard and the edge auth middleware return 401.
+    // Same-origin GET /api/dashboard (no browser CORS). Wait for runtime config so URL/key
+    // match the live Supabase project; forward anon apikey so Netlify can proxy to the
+    // same project even if server env keys drift (edgeAuthority prefers request apikey).
+    await ensureRuntimeSupabaseConfig();
+    const anonKey = getSupabaseAnonKey();
+
+    // callApi + getCurrentAccessToken (see ./api): non-expired JWT; stale getSession()
+    // alone can 401 the edge auth middleware.
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
@@ -177,7 +183,12 @@ export const fetchDashboardData = async () => {
     });
 
     const response = await Promise.race([
-      callApi('/api/dashboard', { method: 'GET' }),
+      callApi('/api/dashboard', {
+        method: 'GET',
+        headers: {
+          apikey: anonKey,
+        },
+      }),
       timeoutPromise,
     ]).finally(() => {
       if (timeoutId) {

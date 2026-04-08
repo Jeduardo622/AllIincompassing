@@ -38,6 +38,10 @@ The repository does not create per-PR Supabase branches automatically. Branch cr
 5. Manual preview run.
    - `supabase-preview.yml` can be triggered with `workflow_dispatch` to run local Supabase startup/reset plus preview build/smoke checks.
 
+## Ad-hoc ledger parity report
+
+`scripts/report-migration-parity.mjs` compares **every** local migration version to `supabase_migrations.schema_migrations` and reports **raw** pending (`pendingVersions`) and **actionable** pending (`actionablePendingVersions`, i.e. raw minus versions listed in `config/migration-drift-manifest.json`). This is **not** the same gate as CI `runtime-migration-parity` (which checks **new** versions from a merge range). Do not treat a large **raw** pending count as a bulk-apply backlog when **actionable** pending is zero. See [Migration governance — parity reporting](./migrations/MIGRATION_GOVERNANCE.md#parity-reporting-raw-vs-actionable).
+
 ## GitHub Actions Workflows
 
 ### `supabase-validate.yml`

@@ -22,10 +22,9 @@ describe("scheduling time domain helpers", () => {
     expect(endTime).toBe("2026-03-20T11:30");
   });
 
-  it("rounds start input to nearest quarter hour and updates end", () => {
+  it("rounds local input to nearest quarter hour", () => {
     const normalized = normalizeQuarterHourLocalInput("2026-03-20T10:07", "America/New_York");
-    expect(normalized.normalizedStart.endsWith(":00") || normalized.normalizedStart.endsWith(":15")).toBe(true);
-    expect(normalized.normalizedEnd).not.toBe(normalized.normalizedStart);
+    expect(normalized.endsWith(":00") || normalized.endsWith(":15")).toBe(true);
   });
 });
 

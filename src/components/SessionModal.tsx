@@ -14,6 +14,8 @@ import { supabase } from '../lib/supabase';
 import { useActiveOrganizationId } from '../lib/organization';
 import { showError, showSuccess } from '../lib/toast';
 import {
+  addMinutesToLocalInput,
+  diffMinutesBetweenLocalInputs,
   formatSessionLocalInput,
   getDefaultSessionEndTime,
   normalizeQuarterHourLocalInput,
@@ -485,12 +487,6 @@ export function SessionModal({
   }, [startTime, therapistId, clientId, onRetryHintDismiss]);
 
   useEffect(() => {
-    if (startTime && therapistId && clientId) {
-      setValue('end_time', getDefaultSessionEndTime(startTime));
-    }
-  }, [startTime, therapistId, clientId, setValue]);
-
-  useEffect(() => {
     const requestId = conflictCheckRequestIdRef.current + 1;
     conflictCheckRequestIdRef.current = requestId;
     let cancelled = false;
@@ -760,12 +756,23 @@ export function SessionModal({
     }
 
     const normalized = normalizeQuarterHourLocalInput(value, resolvedTimeZone);
-    setValue(field, normalized.normalizedStart);
 
-    // If changing start time, also update end time
     if (field === 'start_time') {
-      setValue('end_time', normalized.normalizedEnd);
+      const previousStart = getValues('start_time');
+      const previousEnd = getValues('end_time');
+      setValue('start_time', normalized);
+      let durationMinutes = 60;
+      if (previousStart && previousEnd) {
+        const d = diffMinutesBetweenLocalInputs(previousStart, previousEnd, resolvedTimeZone);
+        if (d != null && d > 0) {
+          durationMinutes = d;
+        }
+      }
+      setValue('end_time', addMinutesToLocalInput(normalized, durationMinutes, resolvedTimeZone));
+      return;
     }
+
+    setValue('end_time', normalized);
   };
 
   const handleSelectAlternativeTime = (newStartTime: string, newEndTime: string) => {

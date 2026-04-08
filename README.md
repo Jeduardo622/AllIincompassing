@@ -138,7 +138,9 @@ Lighthouse CI currently runs in advisory mode (non-blocking) while preview URL a
 
 - Audit Supabase routes against expected edge and RPC functions: `npm run audit:routes`
 - Generate stubs for missing routes and functions when scaffolding new APIs: `npm run fix:routes`
+- CI deploy bundle (`npm run ci:deploy:session-edge-bundle`) pushes session lifecycle functions plus `programs`, `goals`, `program-notes`, and `emails` to the linked Supabase project when `SUPABASE_ACCESS_TOKEN` and project ref secrets are present.
 - Deploy updates with the Supabase CLI: `supabase functions deploy <name> --project-ref wnnjeqheqxxyrgsjmygy`
+- Optional `emails` edge proxy: set Supabase Edge secret `EMAILS_HTTP_PROXY_URL` (HTTPS URL) on the `emails` function; see `docs/api/EMAILS_EDGE_FUNCTION.md`.
 - Authentication utilities:
   - `npm run verify-auth` – ensure required auth functions and policies exist.
   - `npm run auth:fix` and `npm run auth:test` – apply and validate auth repairs.

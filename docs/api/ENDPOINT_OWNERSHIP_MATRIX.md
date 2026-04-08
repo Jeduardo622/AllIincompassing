@@ -20,6 +20,7 @@ Machine-readable source: `docs/api/endpoint-convergence-status.json`
 | `/api/goal-data-points` | Retired Netlify shim | Supabase edge goals domain | B | retired | Backend Platform | N/A |
 
 Notes:
+- Direct edge-only routes (no `/api/*` shim row) include optional `POST /functions/v1/emails` for outbound email proxying; configuration and CORS expectations are documented in `docs/api/EMAILS_EDGE_FUNCTION.md`.
 - Matrix is source-of-truth for wave planning and ownership.
 - During migration waves, compatibility shims may preserve `/api/*` while backend authority shifts to edge functions.
 - `status`, `owner`, and `exception expiry` must stay in sync with:

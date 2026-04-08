@@ -6,6 +6,8 @@ Define the canonical Programs endpoint target and browser preflight contract use
 
 This document is a planning/spec artifact for `WIN-45` and does not authorize runtime implementation changes.
 
+**Related:** Goals edge CORS contract: `docs/api/GOALS_ENDPOINT_CORS_CONTRACT.md`. Optional `emails` proxy: `docs/api/EMAILS_EDGE_FUNCTION.md`.
+
 ## Canonical Endpoint and Ownership
 
 - Public usage in client code: `callEdgeFunctionHttp("programs", ...)` and `callEdgeFunctionHttp("programs?client_id=...")`

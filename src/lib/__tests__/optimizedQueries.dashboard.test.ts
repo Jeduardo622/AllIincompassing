@@ -17,7 +17,7 @@ vi.mock("../supabase", () => ({
   },
 }));
 
-describe("useDashboardData dashboard route fetch", () => {
+describe("useDashboardData /api/dashboard fetch", () => {
   afterEach(() => {
     getSessionMock.mockReset();
     getUserMock.mockReset();
@@ -39,6 +39,8 @@ describe("useDashboardData dashboard route fetch", () => {
     const { fetchDashboardData } = await import("../optimizedQueries");
     const result = await fetchDashboardData();
     expect(result).toEqual(payload);
+    const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    expect(url).toContain("/api/dashboard");
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
     const headers = init?.headers as Headers | undefined;
     expect(init?.method).toBe("GET");
@@ -70,7 +72,7 @@ describe("useDashboardData dashboard route fetch", () => {
     expect(headers?.get("apikey")).toBe("test-anon-key");
   });
 
-  it("surfaces 401 when no access token can be resolved for dashboard route", async () => {
+  it("surfaces 401 when no access token can be resolved", async () => {
     getSessionMock.mockResolvedValue({
       data: { session: null },
       error: null,
@@ -82,10 +84,8 @@ describe("useDashboardData dashboard route fetch", () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          success: false,
-          error: "Missing authorization token",
+          error: "Unauthorized",
           code: "unauthorized",
-          message: "Missing authorization token",
         }),
         { status: 401 },
       ),
@@ -94,5 +94,6 @@ describe("useDashboardData dashboard route fetch", () => {
     const { fetchDashboardData } = await import("../optimizedQueries");
     await expect(fetchDashboardData()).rejects.toMatchObject({ status: 401 });
     expect(fetchMock).toHaveBeenCalled();
+    expect(String(fetchMock.mock.calls[0]?.[0] ?? "")).toContain("/api/dashboard");
   });
 });

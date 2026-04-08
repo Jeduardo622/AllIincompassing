@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
-import { fireEvent, within } from "@testing-library/react";
+import { fireEvent } from "@testing-library/react";
 import { server } from "../../test/setup";
 import { supabase } from "../../lib/supabase";
 
@@ -280,7 +280,10 @@ describe("Schedule", () => {
     expect(
       await screen.findByRole("region", { name: /Therapist schedule scope/i }),
     ).toBeInTheDocument();
-    expect(await screen.findByText("Dr. Myles")).toBeInTheDocument();
+    // Therapist display may fall back to "Current Therapist" until profile scope resolves; the locked
+    // therapist still appears on session cards, so "Dr. Myles" can exist more than once.
+    const myles = await screen.findAllByText("Dr. Myles");
+    expect(myles.length).toBeGreaterThan(0);
     expect(screen.queryByRole("option", { name: /All Therapists/i })).not.toBeInTheDocument();
     expect(screen.getByRole("option", { name: /Jamie Client/i })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /Riley Client/i })).not.toBeInTheDocument();

@@ -74,7 +74,7 @@ CI policy checks currently validate branch protection for `main` via `CI_PROTECT
 For CI policy strict mode, ensure the `SUPABASE_DB_URL` secret is configured so RLS overlap checks do not get skipped.
 
 For API authority convergence checks, `scripts/ci/check-api-adapter-boundary.mjs` now enforces that converged routes remain adapter-only and point to canonical edge functions.
-For session lifecycle edge contracts, `scripts/ci/deploy-session-edge-bundle.mjs` enforces `verify_jwt=true` for all lifecycle functions.
+For session lifecycle edge contracts, `scripts/ci/deploy-session-edge-bundle.mjs` deploys the full required bundle (session lifecycle routes, `programs`, `goals`, `program-notes`, `emails`, and related session-notes PDF functions) and enforces `verify_jwt=true` for every function in that list unless `CI_EXPECT_VERIFY_JWT` is overridden.
 The `policy` job now runs `npm run ci:deploy:session-edge-bundle` on push and pull-request events before policy checks so parity is verified against freshly deployed lifecycle functions.
 `lighthouse-ci` currently runs as an advisory (non-blocking) signal while preview URL detection is stabilized; retain artifact review in release checklists even though it does not block merge.
 

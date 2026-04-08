@@ -78,6 +78,10 @@ const API_ENDPOINTS = {
   '/functions/v1/ai-transcription': { type: 'edge_function', name: 'ai-transcription', path: 'supabase/functions/ai-transcription' },
   '/functions/v1/ai-session-note-generator': { type: 'edge_function', name: 'ai-session-note-generator', path: 'supabase/functions/ai-session-note-generator' },
   '/functions/v1/ai-agent-optimized': { type: 'edge_function', name: 'ai-agent-optimized', path: 'supabase/functions/ai-agent-optimized' },
+  '/functions/v1/emails': { type: 'edge_function', name: 'emails', path: 'supabase/functions/emails' },
+  '/functions/v1/goals': { type: 'edge_function', name: 'goals', path: 'supabase/functions/goals' },
+  '/functions/v1/program-notes': { type: 'edge_function', name: 'program-notes', path: 'supabase/functions/program-notes' },
+  '/functions/v1/programs': { type: 'edge_function', name: 'programs', path: 'supabase/functions/programs' },
 };
 
 // Test roles for authentication
@@ -233,7 +237,11 @@ class RouteAuditor {
       'supabase/functions/vet-dashboard-data',
       'supabase/functions/ai-transcription',
       'supabase/functions/ai-session-note-generator',
-      'supabase/functions/ai-agent-optimized'
+      'supabase/functions/ai-agent-optimized',
+      'supabase/functions/emails',
+      'supabase/functions/goals',
+      'supabase/functions/program-notes',
+      'supabase/functions/programs'
     ];
     
     for (const functionPath of functionPaths) {

@@ -1,5 +1,6 @@
 import { z } from "npm:zod@3.23.8";
 import { createRequestClient } from "../_shared/database.ts";
+import { corsHeadersForRequest } from "../_shared/cors.ts";
 import { createProtectedRoute, RouteOptions } from "../_shared/auth-middleware.ts";
 import { assertUserHasOrgRole, orgScopedQuery, requireOrg } from "../_shared/org.ts";
 
@@ -27,8 +28,14 @@ const goalUpdateSchema = goalSchema.partial().extend({
   program_id: z.string().uuid().optional(),
 });
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+const json = (req: Request, body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeadersForRequest(req),
+      "Content-Type": "application/json",
+    },
+  });
 
 const hasAllowedRole = async (orgId: string, userId: string, db: ReturnType<typeof createRequestClient>) => {
   const [isTherapist, isAdmin, isSuperAdmin] = await Promise.all([
@@ -53,17 +60,17 @@ export const handleGoals = async (req: Request) => {
   const orgId = await requireOrg(db);
   const { data: authData, error: authError } = await db.auth.getUser();
   if (authError || !authData?.user) {
-    return json({ error: "Missing authorization token" }, 401);
+    return json(req, { error: "Missing authorization token" }, 401);
   }
   const userId = authData.user.id;
   const allowed = await hasAllowedRole(orgId, userId, db);
-  if (!allowed) return json({ error: "Forbidden" }, 403);
+  if (!allowed) return json(req, { error: "Forbidden" }, 403);
 
   if (req.method === "GET") {
     const url = new URL(req.url);
     const programId = url.searchParams.get("program_id");
-    if (!programId) return json({ error: "program_id is required" }, 400);
-    if (!z.string().uuid().safeParse(programId).success) return json({ error: "program_id must be a valid UUID" }, 400);
+    if (!programId) return json(req, { error: "program_id is required" }, 400);
+    if (!z.string().uuid().safeParse(programId).success) return json(req, { error: "program_id must be a valid UUID" }, 400);
 
     const { data, error } = await orgScopedQuery(db, "goals", orgId)
       .select(
@@ -72,7 +79,7 @@ export const handleGoals = async (req: Request) => {
       .eq("program_id", programId)
       .order("created_at", { ascending: false });
     if (error) {
-      return json(
+      return json(req,
         {
           error: error.message ?? "Failed to load goals",
           code: error.code,
@@ -80,7 +87,7 @@ export const handleGoals = async (req: Request) => {
         500,
       );
     }
-    return json(data ?? []);
+    return json(req, data ?? []);
   }
 
   if (req.method === "POST") {
@@ -88,14 +95,14 @@ export const handleGoals = async (req: Request) => {
     try {
       payload = await req.json();
     } catch {
-      return json({ error: "Invalid JSON body" }, 400);
+      return json(req, { error: "Invalid JSON body" }, 400);
     }
     const parsed = goalSchema.safeParse(payload);
-    if (!parsed.success) return json({ error: "Invalid request body" }, 400);
+    if (!parsed.success) return json(req, { error: "Invalid request body" }, 400);
 
     const program = await loadProgram(db, orgId, parsed.data.program_id);
-    if (!program) return json({ error: "program_id is not in scope for this organization" }, 403);
-    if (program.client_id !== parsed.data.client_id) return json({ error: "program_id does not belong to client_id" }, 400);
+    if (!program) return json(req, { error: "program_id is not in scope for this organization" }, 403);
+    if (program.client_id !== parsed.data.client_id) return json(req, { error: "program_id does not belong to client_id" }, 400);
 
     const { data, error } = await db
       .from("goals")
@@ -103,7 +110,7 @@ export const handleGoals = async (req: Request) => {
       .select("*")
       .limit(1);
     if (error) {
-      return json(
+      return json(req,
         {
           error: error.message ?? "Failed to create goal",
           code: error.code,
@@ -111,23 +118,23 @@ export const handleGoals = async (req: Request) => {
         500,
       );
     }
-    return json(data?.[0] ?? null, 201);
+    return json(req, data?.[0] ?? null, 201);
   }
 
   if (req.method === "PATCH") {
     const url = new URL(req.url);
     const goalId = url.searchParams.get("goal_id");
-    if (!goalId) return json({ error: "goal_id is required" }, 400);
-    if (!z.string().uuid().safeParse(goalId).success) return json({ error: "goal_id must be a valid UUID" }, 400);
+    if (!goalId) return json(req, { error: "goal_id is required" }, 400);
+    if (!z.string().uuid().safeParse(goalId).success) return json(req, { error: "goal_id must be a valid UUID" }, 400);
 
     let payload: unknown;
     try {
       payload = await req.json();
     } catch {
-      return json({ error: "Invalid JSON body" }, 400);
+      return json(req, { error: "Invalid JSON body" }, 400);
     }
     const parsed = goalUpdateSchema.safeParse(payload);
-    if (!parsed.success || Object.keys(parsed.data).length === 0) return json({ error: "Invalid request body" }, 400);
+    if (!parsed.success || Object.keys(parsed.data).length === 0) return json(req, { error: "Invalid request body" }, 400);
 
     if (parsed.data.program_id || parsed.data.client_id) {
       const { data: currentGoal, error: goalLookupError } = await orgScopedQuery(db, "goals", orgId)
@@ -135,14 +142,14 @@ export const handleGoals = async (req: Request) => {
         .eq("id", goalId)
         .limit(1);
       if (goalLookupError || !currentGoal || currentGoal.length === 0) {
-        return json({ error: "Goal not found in organization scope" }, 404);
+        return json(req, { error: "Goal not found in organization scope" }, 404);
       }
       const existing = currentGoal[0] as { id: string; client_id: string; program_id: string };
       const effectiveProgramId = parsed.data.program_id ?? existing.program_id;
       const effectiveClientId = parsed.data.client_id ?? existing.client_id;
       const program = await loadProgram(db, orgId, effectiveProgramId);
-      if (!program) return json({ error: "program_id is not in scope for this organization" }, 403);
-      if (program.client_id !== effectiveClientId) return json({ error: "program_id does not belong to client_id" }, 400);
+      if (!program) return json(req, { error: "program_id is not in scope for this organization" }, 403);
+      if (program.client_id !== effectiveClientId) return json(req, { error: "program_id does not belong to client_id" }, 400);
     }
 
     const { data, error } = await orgScopedQuery(db, "goals", orgId)
@@ -150,14 +157,14 @@ export const handleGoals = async (req: Request) => {
       .eq("id", goalId)
       .select("*")
       .limit(1);
-    if (error) return json({ error: "Failed to update goal" }, 500);
+    if (error) return json(req, { error: "Failed to update goal" }, 500);
     if (!data || data.length === 0) {
-      return json({ error: "goal_id is not in scope for this organization" }, 403);
+      return json(req, { error: "goal_id is not in scope for this organization" }, 403);
     }
-    return json(data[0]);
+    return json(req, data[0]);
   }
 
-  return json({ error: "Method not allowed" }, 405);
+  return json(req, { error: "Method not allowed" }, 405);
 };
 
 export default createProtectedRoute((req) => handleGoals(req), RouteOptions.therapist);

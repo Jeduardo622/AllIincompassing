@@ -6,6 +6,7 @@ import type { Session } from '../types';
 import { logger } from './logger/logger';
 import { toError } from './logger/normalizeError';
 import { useDashboardLiveRefresh } from './dashboardLiveRefresh';
+import { callApi } from './api';
 
 // ============================================================================
 // BATCHED SCHEDULE QUERIES (Replaces N+1 queries)
@@ -163,16 +164,9 @@ export const fetchDashboardData = async () => {
   const DASHBOARD_REQUEST_TIMEOUT_MS = 10000;
 
   const dashboardRouteFallback = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    const accessToken = session?.access_token;
-    if (!accessToken) {
-      const authError = new Error('Missing access token for dashboard route fallback') as Error & { status?: number };
-      authError.status = 401;
-      throw authError;
-    }
-
+    // Use callApi + getCurrentAccessToken (see ./api) so we send a non-expired JWT:
+    // raw getSession() can return a stale access_token while the UI still looks signed-in,
+    // which makes /api/dashboard and the edge auth middleware return 401.
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
@@ -183,12 +177,7 @@ export const fetchDashboardData = async () => {
     });
 
     const response = await Promise.race([
-      fetch('/api/dashboard', {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      }),
+      callApi('/api/dashboard', { method: 'GET' }),
       timeoutPromise,
     ]).finally(() => {
       if (timeoutId) {

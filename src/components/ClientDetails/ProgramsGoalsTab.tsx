@@ -166,6 +166,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [noteType, setNoteType] = useState<ProgramNote["note_type"]>("plan_update");
   const [noteContent, setNoteContent] = useState("");
   const [deletingAssessmentId, setDeletingAssessmentId] = useState<string | null>(null);
+  const [archivingProgramId, setArchivingProgramId] = useState<string | null>(null);
+  const [archivingGoalId, setArchivingGoalId] = useState<string | null>(null);
   const [isUploadProcessing, setIsUploadProcessing] = useState(false);
 
   const applyDraftGoal = (goal: ProgramGoalDraftResponse["goals"][number]) => {
@@ -217,10 +219,17 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     retry: false,
   });
 
+  const livePrograms = useMemo(
+    () => programs.filter((program) => program.status !== "archived"),
+    [programs],
+  );
+
   const resolvedProgramId = useMemo(() => {
-    if (selectedProgramId) return selectedProgramId;
-    return programs.find((program) => program.status === "active")?.id ?? programs[0]?.id ?? null;
-  }, [programs, selectedProgramId]);
+    if (selectedProgramId && livePrograms.some((program) => program.id === selectedProgramId)) {
+      return selectedProgramId;
+    }
+    return livePrograms.find((program) => program.status === "active")?.id ?? livePrograms[0]?.id ?? null;
+  }, [livePrograms, selectedProgramId]);
   const programNameValue = programName.trim();
   const goalTitleValue = goalTitle.trim();
   const goalDescriptionValue = goalDescription.trim();
@@ -270,6 +279,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     enabled: Boolean(resolvedProgramId),
     retry: false,
   });
+
+  const liveGoals = useMemo(
+    () => goals.filter((goal) => goal.status !== "archived"),
+    [goals],
+  );
 
   const { data: programNotes = [] } = useQuery({
     queryKey: ["program-notes", resolvedProgramId, organizationId ?? "MISSING_ORG"],
@@ -384,7 +398,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const hasRequiredAcceptedGoalMix =
     acceptedDraftChildGoalCount >= MIN_CHILD_GOALS && acceptedDraftParentGoalCount >= MIN_PARENT_GOALS;
   const hasStagedDraftChanges = hasExistingDrafts;
-  const hasDraftsButNoLivePrograms = hasExistingDrafts && programs.length === 0;
+  const hasDraftsButNoLivePrograms = hasExistingDrafts && livePrograms.length === 0;
   const canPromoteAssessment =
     canQuerySelectedAssessment &&
     !hasPendingRequiredChecklistItems &&
@@ -964,6 +978,97 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     onError: showError,
   });
 
+  const archiveProgram = useMutation({
+    mutationFn: async (program: Program) => {
+      const response = await callEdgeWithSupabaseFallback({
+        edgePath: `${PROGRAMS_EDGE_PATH}?program_id=${encodeURIComponent(program.id)}`,
+        fallback: async () => {
+          if (!organizationId) {
+            return jsonResponse({ error: "Organization context is required." }, 400);
+          }
+          const { error } = await supabase
+            .from("programs")
+            .update({ status: "archived" })
+            .eq("id", program.id)
+            .eq("organization_id", organizationId);
+          if (error) {
+            return jsonResponse({ error: error.message }, 500);
+          }
+          return jsonResponse({ ok: true });
+        },
+        init: {
+          method: "PATCH",
+          body: JSON.stringify({ status: "archived" }),
+        },
+        timeoutMs: PROGRAM_CREATE_REQUEST_TIMEOUT_MS,
+        timeoutMessage: "Archive program request timed out. Please retry.",
+      });
+      if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, "Failed to remove program."));
+      }
+    },
+    onMutate: (program) => {
+      setArchivingProgramId(program.id);
+    },
+    onSuccess: (_, program) => {
+      showSuccess(`Program "${program.name}" removed from active care plan.`);
+      if (selectedProgramId === program.id) {
+        setSelectedProgramId(null);
+      }
+      queryClient.invalidateQueries({
+        queryKey: ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
+      });
+    },
+    onError: showError,
+    onSettled: () => {
+      setArchivingProgramId(null);
+    },
+  });
+
+  const archiveGoal = useMutation({
+    mutationFn: async (goal: Goal) => {
+      const response = await callEdgeWithSupabaseFallback({
+        edgePath: `${GOALS_EDGE_PATH}?goal_id=${encodeURIComponent(goal.id)}`,
+        fallback: async () => {
+          if (!organizationId) {
+            return jsonResponse({ error: "Organization context is required." }, 400);
+          }
+          const { error } = await supabase
+            .from("goals")
+            .update({ status: "archived" })
+            .eq("id", goal.id)
+            .eq("organization_id", organizationId);
+          if (error) {
+            return jsonResponse({ error: error.message }, 500);
+          }
+          return jsonResponse({ ok: true });
+        },
+        init: {
+          method: "PATCH",
+          body: JSON.stringify({ status: "archived" }),
+        },
+        timeoutMs: GOAL_CREATE_REQUEST_TIMEOUT_MS,
+        timeoutMessage: "Archive goal request timed out. Please retry.",
+      });
+      if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, "Failed to remove goal."));
+      }
+    },
+    onMutate: (goal) => {
+      setArchivingGoalId(goal.id);
+    },
+    onSuccess: (_, goal) => {
+      showSuccess(`Goal "${goal.title}" removed from active care plan.`);
+      queryClient.invalidateQueries({
+        queryKey: ["program-goals", goal.program_id, organizationId ?? "MISSING_ORG"],
+      });
+    },
+    onError: showError,
+    onSettled: () => {
+      setArchivingGoalId(null);
+    },
+  });
+
   const createNote = useMutation({
     mutationFn: async () => {
       if (!resolvedProgramId) {
@@ -1070,8 +1175,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-4 py-3 text-sm text-sky-900 dark:border-sky-700/60 dark:bg-sky-900/20 dark:text-sky-100">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p>
-            Live care plan: <span className="font-semibold">{programs.length}</span> program(s) and{" "}
-            <span className="font-semibold">{goals.length}</span> goal(s) in the selected program.
+            Live care plan: <span className="font-semibold">{livePrograms.length}</span> program(s) and{" "}
+            <span className="font-semibold">{liveGoals.length}</span> active goal(s) in the selected program.
           </p>
           {hasDraftsButNoLivePrograms && (
             <button
@@ -1325,25 +1430,46 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               Live records only. Uploaded assessment drafts appear here after you publish.
             </p>
             <div className="space-y-2">
-              {programs.length === 0 && (
+              {livePrograms.length === 0 && (
                 <p className="text-sm text-gray-500">No programs yet.</p>
               )}
-              {programs.map((program) => (
-                <button
-                  key={program.id}
-                  type="button"
-                  onClick={() => setSelectedProgramId(program.id)}
-                  className={`w-full text-left rounded-md px-3 py-2 text-sm border ${
-                    resolvedProgramId === program.id
-                      ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200"
-                      : "border-transparent hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-                  }`}
-                >
-                  <div className="font-medium">{program.name}</div>
-                  {program.description && (
-                    <div className="text-xs text-gray-500 mt-1 line-clamp-2">{program.description}</div>
-                  )}
-                </button>
+              {livePrograms.map((program) => (
+                <div key={program.id} className="flex items-stretch gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProgramId(program.id)}
+                    className={`min-w-0 flex-1 text-left rounded-md px-3 py-2 text-sm border ${
+                      resolvedProgramId === program.id
+                        ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200"
+                        : "border-transparent hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    }`}
+                  >
+                    <div className="font-medium">{program.name}</div>
+                    {program.description && (
+                      <div className="text-xs text-gray-500 mt-1 line-clamp-2">{program.description}</div>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${program.name}`}
+                    title="Remove from active care plan"
+                    onClick={() => {
+                      if (typeof window !== "undefined") {
+                        const confirmed = window.confirm(
+                          `Remove "${program.name}" from the active care plan? You can add programs again later.`,
+                        );
+                        if (!confirmed) {
+                          return;
+                        }
+                      }
+                      archiveProgram.mutate(program);
+                    }}
+                    disabled={archivingProgramId === program.id && archiveProgram.isLoading}
+                    className="shrink-0 rounded-md border border-transparent px-2 py-2 text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
               ))}
             </div>
           </div>
@@ -1853,16 +1979,40 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               </div>
             ) : (
               <div className="space-y-3">
-                {goals.length === 0 && (
+                {liveGoals.length === 0 && (
                   <p className="text-sm text-gray-500">No goals in this program yet.</p>
                 )}
-                {goals.map((goal) => (
+                {liveGoals.map((goal) => (
                   <div key={goal.id} className="rounded-md border border-gray-200 dark:border-gray-700 p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium text-gray-800 dark:text-gray-200">{goal.title}</div>
-                      <span className="text-xs uppercase text-gray-500">{goal.status}</span>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-medium text-gray-800 dark:text-gray-200">{goal.title}</div>
+                          <span className="text-xs uppercase text-gray-500 shrink-0">{goal.status}</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{goal.description}</p>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${goal.title}`}
+                        title="Remove from active care plan"
+                        onClick={() => {
+                          if (typeof window !== "undefined") {
+                            const confirmed = window.confirm(
+                              `Remove goal "${goal.title}" from the active care plan?`,
+                            );
+                            if (!confirmed) {
+                              return;
+                            }
+                          }
+                          archiveGoal.mutate(goal);
+                        }}
+                        disabled={archivingGoalId === goal.id && archiveGoal.isLoading}
+                        className="shrink-0 rounded-md border border-transparent p-1.5 text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-900/30 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </button>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">{goal.description}</p>
                     <div className="mt-2 space-y-1 text-xs text-gray-500">
                       {goal.measurement_type && <p>Measurement: {goal.measurement_type}</p>}
                       {goal.baseline_data && <p>Baseline: {goal.baseline_data}</p>}

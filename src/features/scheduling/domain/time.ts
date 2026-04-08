@@ -1,4 +1,4 @@
-import { addMinutes, format, parseISO } from "date-fns";
+import { addMinutes, differenceInMinutes, format, parseISO } from "date-fns";
 import {
   fromZonedTime as zonedTimeToUtc,
   toZonedTime as utcToZonedTime,
@@ -56,10 +56,38 @@ export const getDefaultSessionEndTime = (startTimeStr: string): string => {
   return format(endTime, "yyyy-MM-dd'T'HH:mm");
 };
 
-export const normalizeQuarterHourLocalInput = (
-  value: string,
+/** Minutes between two local datetime-local values in the scheduling timezone; null if invalid. */
+export const diffMinutesBetweenLocalInputs = (
+  startLocal: string,
+  endLocal: string,
   resolvedTimeZone: string,
-): { normalizedStart: string; normalizedEnd: string } => {
+): number | null => {
+  if (!startLocal?.trim() || !endLocal?.trim()) {
+    return null;
+  }
+  try {
+    const startUtc = zonedTimeToUtc(startLocal, resolvedTimeZone);
+    const endUtc = zonedTimeToUtc(endLocal, resolvedTimeZone);
+    const diff = differenceInMinutes(endUtc, startUtc);
+    return Number.isFinite(diff) ? diff : null;
+  } catch {
+    return null;
+  }
+};
+
+export const addMinutesToLocalInput = (
+  localInput: string,
+  minutes: number,
+  resolvedTimeZone: string,
+): string => {
+  const utc = zonedTimeToUtc(localInput, resolvedTimeZone);
+  const shifted = addMinutes(utc, minutes);
+  const local = utcToZonedTime(shifted, resolvedTimeZone);
+  return format(local, "yyyy-MM-dd'T'HH:mm");
+};
+
+/** Rounds a single local datetime-local value to the nearest 15 minutes (scheduling timezone). */
+export const normalizeQuarterHourLocalInput = (value: string, resolvedTimeZone: string): string => {
   const utcDate = zonedTimeToUtc(value, resolvedTimeZone);
   const minutes = utcDate.getUTCMinutes();
   const roundedMinutes = Math.round(minutes / 15) * 15;
@@ -71,12 +99,6 @@ export const normalizeQuarterHourLocalInput = (
   }
 
   const adjustedLocal = utcToZonedTime(adjustedUtc, resolvedTimeZone);
-  const endUtc = addMinutes(adjustedUtc, 60);
-  const endLocal = utcToZonedTime(endUtc, resolvedTimeZone);
-
-  return {
-    normalizedStart: format(adjustedLocal, "yyyy-MM-dd'T'HH:mm"),
-    normalizedEnd: format(endLocal, "yyyy-MM-dd'T'HH:mm"),
-  };
+  return format(adjustedLocal, "yyyy-MM-dd'T'HH:mm");
 };
 

@@ -63,7 +63,8 @@ export function corsHeadersForRequest(req: Request): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Client-Info, x-client-info, apikey, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id",
+    "Access-Control-Allow-Headers":
+      "Authorization, Content-Type, X-Client-Info, x-client-info, apikey, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id, x-supabase-authorization",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
   };

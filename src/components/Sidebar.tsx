@@ -169,7 +169,7 @@ export function Sidebar() {
     <button
       type="button"
       onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-      className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-white dark:bg-dark-lighter shadow-lg border border-gray-200 dark:border-gray-700"
+      className="lg:hidden fixed z-50 flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-dark-lighter top-[max(0.75rem,env(safe-area-inset-top))] left-[max(0.75rem,env(safe-area-inset-left))]"
       aria-label={isMobileMenuOpen ? 'Close navigation' : 'Open navigation'}
       aria-expanded={isMobileMenuOpen}
       aria-controls="app-sidebar"
@@ -213,7 +213,7 @@ export function Sidebar() {
         w-64 bg-white dark:bg-dark-lighter border-r border-gray-200 dark:border-dark-border
         transform lg:transform-none transition-transform duration-200 ease-in-out
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-        flex flex-col h-dvh lg:h-screen overflow-y-auto overscroll-contain
+        flex flex-col h-dvh lg:h-dvh overflow-y-auto overscroll-contain
       `}>
         <div className="flex items-center p-6">
           <Calendar aria-hidden="true" className="h-8 w-8 text-blue-600" />

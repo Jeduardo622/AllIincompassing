@@ -133,7 +133,7 @@ function App() {
     <ErrorBoundary>
       <QueryClientProvider client={appQueryClient}>
         <AuthProvider>
-          <div className="min-h-screen bg-gray-50 dark:bg-dark text-gray-900 dark:text-gray-100 transition-colors">
+          <div className="min-h-dvh bg-gray-50 dark:bg-dark text-gray-900 dark:text-gray-100 transition-colors">
             <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
               <RouteTelemetry />
               <Suspense fallback={<LoadingSpinner />}>

@@ -79,4 +79,27 @@ describe("sdk client", () => {
     expect(fetchWithRetryMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("does not set Content-Type on GET requests", async () => {
+    const { authenticatedFetch } = await import("../sdk/client");
+    await authenticatedFetch("/api/runtime-config", { method: "GET" }, { accessToken: "tok" });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const headers = new Headers(init?.headers);
+    expect(headers.get("content-type")).toBeNull();
+  });
+
+  it("sets X-Supabase-Authorization when duplicateAuthorizationHeader is true", async () => {
+    const { authenticatedFetch } = await import("../sdk/client");
+    await authenticatedFetch(
+      "/api/dashboard",
+      { method: "GET" },
+      { accessToken: "tok", duplicateAuthorizationHeader: true },
+    );
+
+    const [, init] = fetchMock.mock.calls[0];
+    const headers = new Headers(init?.headers);
+    expect(headers.get("authorization")).toBe("Bearer tok");
+    expect(headers.get("x-supabase-authorization")).toBe("Bearer tok");
+  });
 });

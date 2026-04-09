@@ -34,7 +34,8 @@ export async function dashboardHandler(request: Request): Promise<Response> {
     });
   }
 
-  const authHeader = request.headers.get("Authorization");
+  const authHeader =
+    request.headers.get("Authorization") ?? request.headers.get("X-Supabase-Authorization") ?? "";
   const accessToken = typeof authHeader === "string" ? authHeader.replace(/^Bearer\s+/i, "").trim() : "";
   if (!authHeader || accessToken.length === 0) {
     return errorResponse(request, "unauthorized", "Missing authorization token", {

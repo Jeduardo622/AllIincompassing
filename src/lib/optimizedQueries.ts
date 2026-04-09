@@ -183,12 +183,19 @@ export const fetchDashboardData = async () => {
     });
 
     const response = await Promise.race([
-      callApi('/api/dashboard', {
-        method: 'GET',
-        headers: {
-          apikey: anonKey,
+      callApi(
+        '/api/dashboard',
+        {
+          method: 'GET',
+          headers: {
+            apikey: anonKey,
+          },
         },
-      }),
+        {
+          duplicateAuthorizationHeader: true,
+          forceJsonContentType: false,
+        },
+      ),
       timeoutPromise,
     ]).finally(() => {
       if (timeoutId) {

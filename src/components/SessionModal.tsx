@@ -1019,7 +1019,7 @@ export function SessionModal({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 pb-28 sm:p-5 sm:pb-6">
+        <div className="flex-1 overflow-y-auto px-4 py-4 pb-24 sm:p-5 sm:pb-6 max-sm:pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]">
           <p id={dialogDescriptionId} className="sr-only">
             Use this form to create or update a therapy session.
           </p>
@@ -1064,36 +1064,35 @@ export function SessionModal({
                 id={conflictDescriptionId}
                 role="region"
                 aria-labelledby={conflictHeadingId}
-                className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/30 dark:bg-amber-900/20 max-sm:border-l-[3px] max-sm:border-l-amber-500/70 max-sm:bg-amber-50/90 max-sm:p-2 sm:p-4"
+                className="max-sm:mb-2 max-sm:bg-transparent max-sm:p-0 sm:rounded-lg sm:border sm:border-amber-200 sm:bg-amber-50 sm:p-4 dark:sm:border-amber-900/30 dark:sm:bg-amber-900/20"
               >
-                <div className="mb-2 flex items-center justify-between gap-2 max-sm:mb-1.5">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <AlertTriangle className="h-5 w-5 flex-shrink-0 text-amber-500 dark:text-amber-400 max-sm:h-4 max-sm:w-4" />
-                    <h3
-                      id={conflictHeadingId}
-                      className="font-medium text-amber-800 dark:text-amber-200 max-sm:text-sm max-sm:leading-tight"
-                    >
-                      Scheduling Conflicts
-                    </h3>
-                  </div>
-                  <span className="hidden shrink-0 rounded bg-amber-100/90 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-amber-900 max-sm:inline-flex dark:bg-amber-900/50 dark:text-amber-100">
-                    {conflicts.length}
-                  </span>
-                </div>
-                {/* Narrow screens: messages behind disclosure to reduce vertical dominance */}
+                <h3
+                  id={conflictHeadingId}
+                  className="sr-only sm:mb-2 sm:flex sm:items-center sm:gap-2 sm:not-sr-only sm:text-base sm:font-medium sm:text-amber-800 dark:sm:text-amber-200"
+                >
+                  <AlertTriangle className="hidden h-5 w-5 sm:block" aria-hidden />
+                  Scheduling Conflicts
+                </h3>
+                {/* Mobile: single compact row + expand; demoted vs large alert card */}
                 <details className="group sm:hidden">
-                  <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-amber-800/95 dark:text-amber-200/95 [&::-webkit-details-marker]:hidden">
-                    <span>View messages</span>
+                  <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-amber-200/35 bg-amber-50/35 px-2.5 py-2 text-left shadow-none dark:border-amber-800/25 dark:bg-amber-950/20 [&::-webkit-details-marker]:hidden">
+                    <AlertTriangle
+                      className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+                      aria-hidden
+                    />
+                    <span className="min-w-0 flex-1 text-[13px] font-medium leading-tight text-amber-950/90 dark:text-amber-100">
+                      {conflicts.length} scheduling issue{conflicts.length === 1 ? '' : 's'} — details
+                    </span>
                     <ChevronDown
-                      className="h-3.5 w-3.5 shrink-0 text-amber-700 transition-transform group-open:rotate-180 dark:text-amber-300"
+                      className="h-4 w-4 shrink-0 text-amber-700/80 transition-transform group-open:rotate-180 dark:text-amber-300/90"
                       aria-hidden
                     />
                   </summary>
-                  <ul className="mt-1.5 max-h-32 space-y-1.5 overflow-y-auto border-t border-amber-200/40 pt-1.5 text-xs leading-snug text-amber-700 dark:text-amber-300">
+                  <ul className="mt-1.5 max-h-36 space-y-2 overflow-y-auto rounded-md border border-amber-200/30 bg-white/70 px-2.5 py-2 text-[13px] leading-snug text-amber-900 dark:border-amber-800/30 dark:bg-amber-950/35 dark:text-amber-100/95">
                     {conflicts.map((conflict, index) => (
-                      <li key={index} className="flex items-start gap-1.5">
+                      <li key={index} className="flex items-start gap-2">
                         <AlertCircle
-                          className="mt-0.5 h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400"
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400"
                           aria-hidden
                         />
                         <span>{conflict.message}</span>
@@ -1711,43 +1710,53 @@ export function SessionModal({
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 z-10 border-t bg-white/95 px-4 py-2.5 pb-[max(1rem,env(safe-area-inset-bottom,0px))] backdrop-blur dark:border-gray-700 dark:bg-dark-lighter/95 max-sm:pt-2 sm:px-5 sm:py-4 sm:pb-4">
+        <div className="sticky bottom-0 z-10 border-t border-gray-200/80 bg-white/90 px-4 py-2 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] backdrop-blur-md dark:border-gray-700 dark:bg-dark-lighter/90 sm:px-5 sm:py-4 sm:pb-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
-            <div className="grid grid-cols-1 gap-1.5 sm:flex sm:flex-wrap sm:justify-end sm:gap-2 max-sm:grid-cols-2 max-sm:gap-2">
+            <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-1 sm:flex sm:flex-wrap sm:justify-end sm:gap-2">
             <button
               type="button"
               onClick={handleAttemptClose}
               disabled={isSubmitting}
-              className={`min-h-11 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-none hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-gray-600 dark:bg-dark dark:text-gray-300 dark:hover:bg-gray-800 sm:w-auto sm:px-4 sm:shadow-sm ${!session?.id ? 'max-sm:col-span-2' : ''}`}
+              className="min-h-11 shrink-0 rounded-full px-4 text-sm font-medium text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-gray-300 sm:bg-white sm:px-4 sm:text-gray-700 sm:shadow-sm sm:hover:bg-gray-50"
             >
               Cancel
             </button>
             {session?.id && (
-              <button
-                type="button"
-                onClick={handleStartSession}
-                disabled={!canStartSession || isDependentDataLoading}
-                className="min-h-11 w-full rounded-md border border-emerald-200 bg-emerald-50/90 px-3 py-2 text-sm font-medium text-emerald-800 shadow-none hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-900/40 dark:bg-emerald-900/25 dark:text-emerald-200 dark:hover:bg-emerald-900/35 sm:w-auto sm:px-4 sm:shadow-sm"
-              >
-                Start Session
-              </button>
+              <>
+                <span className="hidden text-gray-300 dark:text-gray-600 max-sm:inline" aria-hidden>
+                  ·
+                </span>
+                <button
+                  type="button"
+                  onClick={handleStartSession}
+                  disabled={!canStartSession || isDependentDataLoading}
+                  className="min-h-11 shrink-0 rounded-full px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-emerald-200 sm:bg-emerald-50/90 sm:px-4 sm:font-medium sm:text-emerald-800 sm:shadow-sm sm:hover:bg-emerald-100"
+                >
+                  Start Session
+                </button>
+              </>
             )}
             {session?.id && isInProgressSession && (
-              <button
-                type="button"
-                onClick={handleCloseSession}
-                disabled={isSubmitting || isDependentDataLoading || isLoadingAlternatives}
-                className="min-h-11 w-full rounded-md border border-violet-200 bg-violet-50/90 px-3 py-2 text-sm font-medium text-violet-800 shadow-none hover:bg-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-900/40 dark:bg-violet-900/25 dark:text-violet-200 dark:hover:bg-violet-900/35 sm:w-auto sm:px-4 sm:shadow-sm max-sm:col-span-2"
-              >
-                Close Session
-              </button>
+              <>
+                <span className="hidden text-gray-300 dark:text-gray-600 max-sm:inline" aria-hidden>
+                  ·
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCloseSession}
+                  disabled={isSubmitting || isDependentDataLoading || isLoadingAlternatives}
+                  className="min-h-11 shrink-0 rounded-full px-3 text-sm font-semibold text-violet-700 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-violet-300 dark:hover:bg-violet-950/40 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-violet-200 sm:bg-violet-50/90 sm:px-4 sm:font-medium sm:text-violet-800 sm:shadow-sm sm:hover:bg-violet-100"
+                >
+                  Close Session
+                </button>
+              </>
             )}
             </div>
             <button
               type="submit"
               form="session-form"
               disabled={isSubmitting || isDependentDataLoading || isLoadingAlternatives}
-              className="flex min-h-11 w-full items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[12rem] sm:font-medium sm:shadow-sm max-sm:shadow-md"
+              className="flex min-h-12 w-full items-center justify-center rounded-xl border border-transparent bg-blue-600 px-4 py-2.5 text-base font-semibold text-white shadow-lg shadow-blue-600/25 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-11 sm:w-auto sm:min-w-[12rem] sm:rounded-md sm:py-2 sm:text-sm sm:font-medium sm:shadow-sm sm:shadow-none max-sm:mt-0.5"
             >
               {isSubmitting ? (
                 <>

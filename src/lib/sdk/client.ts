@@ -14,6 +14,8 @@ export type AuthenticatedRequestOptions = {
   retry?: RetryOptions;
   forceJsonContentType?: boolean;
   allowCrossOriginAuth?: boolean;
+  /** Duplicate bearer on X-Supabase-Authorization (some hosts mishandle Authorization on GET). */
+  duplicateAuthorizationHeader?: boolean;
 };
 
 const isFormDataBody = (body: RequestInit["body"]): boolean => {
@@ -95,12 +97,23 @@ export async function authenticatedFetch(
   const canAttachAuthorization = shouldAttachAuthorization(input, options.allowCrossOriginAuth ?? false);
 
   if (token && canAttachAuthorization) {
-    headers.set("Authorization", `Bearer ${token}`);
+    const bearer = `Bearer ${token}`;
+    headers.set("Authorization", bearer);
+    if (options.duplicateAuthorizationHeader) {
+      headers.set("X-Supabase-Authorization", bearer);
+    }
   }
   if (typeof options.anonKey === "string" && options.anonKey.trim().length > 0) {
     headers.set("apikey", options.anonKey.trim());
   }
-  if ((options.forceJsonContentType ?? true) && !headers.has("Content-Type") && !isFormDataBody(init.body)) {
+  const methodUpper = String(init.method ?? "GET").toUpperCase();
+  const shouldForceJsonContentType =
+    (options.forceJsonContentType ?? true) &&
+    !headers.has("Content-Type") &&
+    !isFormDataBody(init.body) &&
+    methodUpper !== "GET" &&
+    methodUpper !== "HEAD";
+  if (shouldForceJsonContentType) {
     headers.set("Content-Type", "application/json");
   }
 

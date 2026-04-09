@@ -45,7 +45,9 @@ describe("useDashboardData /api/dashboard fetch", () => {
     const headers = init?.headers as Headers | undefined;
     expect(init?.method).toBe("GET");
     expect(headers?.get("Authorization")).toBe("Bearer token");
+    expect(headers?.get("X-Supabase-Authorization")).toBe("Bearer token");
     expect(headers?.get("apikey")).toBe("test-anon-key");
+    expect(headers?.get("Content-Type")).toBeNull();
   });
 
   it("refreshes an expired access token before calling /api/dashboard", async () => {
@@ -69,6 +71,7 @@ describe("useDashboardData /api/dashboard fetch", () => {
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
     const headers = init?.headers as Headers | undefined;
     expect(headers?.get("Authorization")).toBe("Bearer fresh-token");
+    expect(headers?.get("X-Supabase-Authorization")).toBe("Bearer fresh-token");
     expect(headers?.get("apikey")).toBe("test-anon-key");
   });
 

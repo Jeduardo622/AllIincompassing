@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import { buildSupabaseEdgeUrl } from "./runtimeConfig";
-import { callApiRoute, callEdgeRoute } from "./sdk/client";
+import { callApiRoute, callEdgeRoute, type AuthenticatedRequestOptions } from "./sdk/client";
 
 const decodeBase64Url = (value: string): string | null => {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -75,9 +75,19 @@ const getCurrentAccessToken = async (): Promise<string | null> => {
   }
 };
 
-export async function callApi(path: string, init: RequestInit = {}): Promise<Response> {
+type CallApiSdkOptions = Pick<
+  AuthenticatedRequestOptions,
+  "duplicateAuthorizationHeader" | "forceJsonContentType"
+>;
+
+export async function callApi(
+  path: string,
+  init: RequestInit = {},
+  sdkOptions?: CallApiSdkOptions,
+): Promise<Response> {
   return callApiRoute(path, init, {
     getAccessToken: getCurrentAccessToken,
+    ...sdkOptions,
   });
 }
 

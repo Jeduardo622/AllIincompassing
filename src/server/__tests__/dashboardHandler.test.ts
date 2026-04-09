@@ -54,6 +54,25 @@ describe("dashboardHandler", () => {
     expect(response.status).toBe(401);
   });
 
+  it("accepts X-Supabase-Authorization when Authorization is absent", async () => {
+    const fetchSpy = mockFetch();
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: { ok: true } }), { status: 200, headers: { "content-type": "application/json" } }));
+
+    const { dashboardHandler } = await import("../api/dashboard");
+    const response = await dashboardHandler(
+      new Request("http://localhost/api/dashboard", {
+        method: "GET",
+        headers: {
+          "X-Supabase-Authorization": "Bearer token-from-fallback",
+          Origin: "http://localhost:3000",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("accepts lowercase bearer prefix", async () => {
     const fetchSpy = mockFetch();
     fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: { ok: true } }), { status: 200, headers: { "content-type": "application/json" } }));

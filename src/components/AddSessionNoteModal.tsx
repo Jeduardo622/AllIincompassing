@@ -33,6 +33,25 @@ export interface SessionNoteFormValues {
 
 const MAX_GOAL_NOTE_LENGTH = 5000;
 
+function useMinWidthSm(): boolean {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === 'undefined') {
+      return true;
+    }
+    return window.matchMedia('(min-width: 640px)').matches;
+  });
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 640px)');
+    const onChange = () => setMatches(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  return matches;
+}
+
 export function AddSessionNoteModal({
   isOpen,
   onClose,
@@ -43,6 +62,7 @@ export function AddSessionNoteModal({
   isSaving = false
 }: AddSessionNoteModalProps) {
   const organizationId = useActiveOrganizationId();
+  const isMinWidthSm = useMinWidthSm();
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('10:00');
@@ -53,6 +73,8 @@ export function AddSessionNoteModal({
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
   const [narrative, setNarrative] = useState('');
   const [isLocked, setIsLocked] = useState(false);
+  /** Mobile goals bank disclosure; default open for scannability and test environments without CSS breakpoints. */
+  const [mobileGoalsDisclosureOpen, setMobileGoalsDisclosureOpen] = useState(true);
 
   // ---------------------------------------------------------------------------
   // Programs — still loaded for goal group headers (display only).
@@ -299,6 +321,8 @@ export function AddSessionNoteModal({
   useEffect(() => {
     if (!isOpen) {
       resetForm();
+    } else {
+      setMobileGoalsDisclosureOpen(true);
     }
   }, [isOpen]);
 
@@ -392,11 +416,147 @@ export function AddSessionNoteModal({
     });
   };
 
+  const renderGoalsBankBody = () => (
+    <div className="space-y-4">
+      {programsWithGoals.map((program) => {
+        const programGoals = goalsByProgram.get(program.id) ?? [];
+        return (
+          <div key={program.id}>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              {program.name}
+            </p>
+            <div className="space-y-3">
+              {programGoals.map((goal) => {
+                const isSelected = selectedGoalIds.includes(goal.id);
+                const noteText = goalNotes[goal.id] ?? '';
+                const remaining = MAX_GOAL_NOTE_LENGTH - noteText.length;
+                return (
+                  <div key={goal.id} className="rounded-md border border-gray-200 p-2 dark:border-gray-700">
+                    <label className="flex cursor-pointer items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleGoalSelection(goal.id)}
+                        className="mt-0.5 h-5 w-5 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        aria-label={goal.title}
+                      />
+                      <span className="min-w-0 flex-1 font-medium">{goal.title}</span>
+                      <span className="ml-auto shrink-0 whitespace-nowrap text-[11px] text-gray-400 dark:text-gray-500">
+                        ({Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} data pts)
+                      </span>
+                    </label>
+                    {isSelected && (
+                      <div className="mt-2 pl-7 sm:pl-6">
+                        <label
+                          htmlFor={`goal-note-${goal.id}`}
+                          className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                        >
+                          Note for this goal <span className="text-red-500">*</span>
+                        </label>
+                        <textarea
+                          id={`goal-note-${goal.id}`}
+                          value={noteText}
+                          onChange={(e) => updateGoalNote(goal.id, e.target.value)}
+                          rows={3}
+                          maxLength={MAX_GOAL_NOTE_LENGTH}
+                          placeholder={`Describe progress on "${goal.title}"…`}
+                          className="w-full rounded-md border border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                        />
+                        <p
+                          className={`mt-0.5 text-right text-[11px] ${remaining < 100 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'}`}
+                        >
+                          {remaining.toLocaleString()} characters remaining
+                        </p>
+                        {(goal.measurement_type || goal.target_criteria || goal.mastery_criteria) && (
+                          <details className="mt-2 rounded-md border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] text-blue-800 open:border-blue-200 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-100">
+                            <summary className="cursor-pointer font-medium text-blue-900 dark:text-blue-100">
+                              Goal criteria
+                            </summary>
+                            <div className="mt-1 space-y-0.5">
+                              {goal.measurement_type && <p>Measurement: {goal.measurement_type}</p>}
+                              {goal.target_criteria && <p>Target: {goal.target_criteria}</p>}
+                              {goal.mastery_criteria && <p>Mastery: {goal.mastery_criteria}</p>}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      {goalsByProgram.has('__unknown__') && (
+        <div>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            Uncategorized
+          </p>
+          <div className="space-y-3">
+            {(goalsByProgram.get('__unknown__') ?? []).map((goal) => {
+              const isSelected = selectedGoalIds.includes(goal.id);
+              const noteText = goalNotes[goal.id] ?? '';
+              const remaining = MAX_GOAL_NOTE_LENGTH - noteText.length;
+              return (
+                <div key={goal.id} className="rounded-md border border-gray-200 p-2 dark:border-gray-700">
+                  <label className="flex cursor-pointer items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleGoalSelection(goal.id)}
+                      className="mt-0.5 h-5 w-5 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      aria-label={goal.title}
+                    />
+                    <span className="min-w-0 flex-1 font-medium">{goal.title}</span>
+                  </label>
+                  {isSelected && (
+                    <div className="mt-2 pl-7 sm:pl-6">
+                      <label
+                        htmlFor={`goal-note-${goal.id}`}
+                        className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                      >
+                        Note for this goal <span className="text-red-500">*</span>
+                      </label>
+                      <textarea
+                        id={`goal-note-${goal.id}`}
+                        value={noteText}
+                        onChange={(e) => updateGoalNote(goal.id, e.target.value)}
+                        rows={3}
+                        maxLength={MAX_GOAL_NOTE_LENGTH}
+                        placeholder={`Describe progress on "${goal.title}"…`}
+                        className="w-full rounded-md border border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                      />
+                      <p
+                        className={`mt-0.5 text-right text-[11px] ${remaining < 100 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'}`}
+                      >
+                        {remaining.toLocaleString()} characters remaining
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black bg-opacity-50 sm:items-center sm:p-4"
+      role="presentation"
+    >
+      <div
+        className="flex h-[100dvh] max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl dark:bg-dark-lighter sm:h-auto sm:max-h-[90vh] sm:rounded-lg"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-session-note-modal-title"
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700 sm:px-6">
+          <h2 id="add-session-note-modal-title" className="text-lg font-semibold text-gray-900 dark:text-white sm:text-xl">
             Add Session Note
           </h2>
           <button
@@ -404,13 +564,14 @@ export function AddSessionNoteModal({
             onClick={onClose}
             aria-label="Close add session note modal"
             title="Close add session note modal"
-            className="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="space-y-6">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex-1 space-y-5 overflow-y-auto px-4 py-4 pb-28 sm:space-y-6 sm:px-6 sm:pb-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label htmlFor="session-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -529,136 +690,34 @@ export function AddSessionNoteModal({
             )}
           </div>
 
-          {/* Goals Addressed — grouped by program, with per-goal note textareas */}
           <div>
-            <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Goals Addressed
-            </p>
+            <p className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Goals Addressed</p>
             {isLoadingGoals || isLoadingPrograms ? (
               <div className="text-sm text-gray-500 dark:text-gray-400">Loading goals…</div>
             ) : availableGoals.length === 0 ? (
               <div className="text-sm text-gray-500 dark:text-gray-400">
                 No goals available for this client. Add goals in Programs &amp; Goals before logging.
               </div>
+            ) : isMinWidthSm ? (
+              <div>{renderGoalsBankBody()}</div>
             ) : (
-              <div className="space-y-4">
-                {programsWithGoals.map((program) => {
-                  const programGoals = goalsByProgram.get(program.id) ?? [];
-                  return (
-                    <div key={program.id}>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
-                        {program.name}
-                      </p>
-                      <div className="space-y-3">
-                        {programGoals.map((goal) => {
-                          const isSelected = selectedGoalIds.includes(goal.id);
-                          const noteText = goalNotes[goal.id] ?? '';
-                          const remaining = MAX_GOAL_NOTE_LENGTH - noteText.length;
-                          return (
-                            <div key={goal.id} className="rounded-md border border-gray-200 dark:border-gray-700 p-2">
-                              <label className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => toggleGoalSelection(goal.id)}
-                                  className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                  aria-label={goal.title}
-                                />
-                                <span className="font-medium">{goal.title}</span>
-                                <span className="ml-auto text-[11px] text-gray-400 dark:text-gray-500 whitespace-nowrap">
-                                  ({Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} data pts)
-                                </span>
-                              </label>
-                              {isSelected && (
-                                <div className="mt-2 pl-6">
-                                  <label
-                                    htmlFor={`goal-note-${goal.id}`}
-                                    className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1"
-                                  >
-                                    Note for this goal <span className="text-red-500">*</span>
-                                  </label>
-                                  <textarea
-                                    id={`goal-note-${goal.id}`}
-                                    value={noteText}
-                                    onChange={(e) => updateGoalNote(goal.id, e.target.value)}
-                                    rows={3}
-                                    maxLength={MAX_GOAL_NOTE_LENGTH}
-                                    placeholder={`Describe progress on "${goal.title}"…`}
-                                    className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 text-sm"
-                                  />
-                                  <p className={`text-right text-[11px] mt-0.5 ${remaining < 100 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                                    {remaining.toLocaleString()} characters remaining
-                                  </p>
-                                  {/* Inline criteria summary */}
-                                  {(goal.measurement_type || goal.target_criteria || goal.mastery_criteria) && (
-                                    <div className="mt-1 rounded-md border border-blue-100 bg-blue-50 dark:border-blue-900/40 dark:bg-blue-900/20 px-2 py-1 text-[11px] text-blue-800 dark:text-blue-100 space-y-0.5">
-                                      {goal.measurement_type && <p>Measurement: {goal.measurement_type}</p>}
-                                      {goal.target_criteria && <p>Target: {goal.target_criteria}</p>}
-                                      {goal.mastery_criteria && <p>Mastery: {goal.mastery_criteria}</p>}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* Goals whose program is not in the programs list (edge case) */}
-                {goalsByProgram.has('__unknown__') && (
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
-                      Uncategorized
-                    </p>
-                    <div className="space-y-3">
-                      {(goalsByProgram.get('__unknown__') ?? []).map((goal) => {
-                        const isSelected = selectedGoalIds.includes(goal.id);
-                        const noteText = goalNotes[goal.id] ?? '';
-                        const remaining = MAX_GOAL_NOTE_LENGTH - noteText.length;
-                        return (
-                          <div key={goal.id} className="rounded-md border border-gray-200 dark:border-gray-700 p-2">
-                            <label className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => toggleGoalSelection(goal.id)}
-                                className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                aria-label={goal.title}
-                              />
-                              <span className="font-medium">{goal.title}</span>
-                            </label>
-                            {isSelected && (
-                              <div className="mt-2 pl-6">
-                                <label
-                                  htmlFor={`goal-note-${goal.id}`}
-                                  className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1"
-                                >
-                                  Note for this goal <span className="text-red-500">*</span>
-                                </label>
-                                <textarea
-                                  id={`goal-note-${goal.id}`}
-                                  value={noteText}
-                                  onChange={(e) => updateGoalNote(goal.id, e.target.value)}
-                                  rows={3}
-                                  maxLength={MAX_GOAL_NOTE_LENGTH}
-                                  placeholder={`Describe progress on "${goal.title}"…`}
-                                  className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 text-sm"
-                                />
-                                <p className={`text-right text-[11px] mt-0.5 ${remaining < 100 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                                  {remaining.toLocaleString()} characters remaining
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+              <details
+                className="rounded-lg border border-gray-200 dark:border-gray-700"
+                open={mobileGoalsDisclosureOpen}
+                onToggle={(event) => setMobileGoalsDisclosureOpen(event.currentTarget.open)}
+              >
+                <summary className="cursor-pointer list-none px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+                  <div className="flex min-h-11 items-center justify-between gap-2 text-sm font-medium text-gray-800 dark:text-gray-100">
+                    <span>Goals &amp; per-goal notes</span>
+                    <span className="shrink-0 text-xs font-normal text-gray-500 dark:text-gray-400">
+                      {selectedGoalIds.length} selected
+                    </span>
                   </div>
-                )}
-              </div>
+                </summary>
+                <div className="border-t border-gray-200 px-3 pb-3 pt-3 dark:border-gray-700">
+                  {renderGoalsBankBody()}
+                </div>
+              </details>
             )}
           </div>
 
@@ -691,11 +750,11 @@ export function AddSessionNoteModal({
           </div>
         </div>
 
-        <div className="flex justify-end space-x-3 mt-6">
+        <div className="sticky bottom-0 z-10 flex shrink-0 flex-col gap-2 border-t border-gray-200 bg-white/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] backdrop-blur dark:border-gray-700 dark:bg-dark-lighter/95 sm:flex-row sm:justify-end sm:gap-3 sm:px-6 sm:pb-4">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-dark border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className="min-h-11 w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-gray-600 dark:bg-dark dark:text-gray-300 dark:hover:bg-gray-800 sm:w-auto"
           >
             Cancel
           </button>
@@ -703,10 +762,11 @@ export function AddSessionNoteModal({
             type="button"
             onClick={handleSubmit}
             disabled={isSaving}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className="flex min-h-11 w-full items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[10rem]"
           >
             {isSaving ? 'Saving…' : 'Save Note'}
           </button>
+        </div>
         </div>
       </div>
     </div>

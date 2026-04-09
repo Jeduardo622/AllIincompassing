@@ -48,7 +48,8 @@ export const corsHeadersForOrigin = (origin: string | null): Record<string, stri
   const resolvedOrigin = resolveAllowedOriginValue(origin) ?? getDefaultAllowedOrigin();
   return {
     "Access-Control-Allow-Origin": resolvedOrigin,
-    "Access-Control-Allow-Headers": "authorization, content-type, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id",
+    "Access-Control-Allow-Headers":
+      "authorization, apikey, content-type, idempotency-key, x-request-id, x-correlation-id, x-agent-operation-id, x-supabase-authorization",
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     Vary: "Origin",
   };

@@ -1,4 +1,12 @@
-import React, { useState, useMemo, useCallback, useLayoutEffect, useEffect, useRef } from "react";
+import React, {
+  useState,
+  useMemo,
+  useCallback,
+  useLayoutEffect,
+  useEffect,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, startOfWeek, addDays, endOfWeek } from "date-fns";
 import { getTimezoneOffset } from "date-fns-tz";
@@ -7,6 +15,7 @@ import {
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Clock,
   Plus,
   Edit2,
@@ -968,6 +977,56 @@ export const Schedule = React.memo(() => {
     return match?.full_name ?? "Current Therapist";
   }, [selectedTherapist, scopedTherapistId, visibleTherapists]);
 
+  const isScheduleShellNarrow = useSyncExternalStore(
+    (onStoreChange) => {
+      if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+        return () => {};
+      }
+      const mq = window.matchMedia("(max-width: 639px)");
+      mq.addEventListener("change", onStoreChange);
+      return () => mq.removeEventListener("change", onStoreChange);
+    },
+    () =>
+      typeof window !== "undefined" && typeof window.matchMedia === "function"
+        ? window.matchMedia("(max-width: 639px)").matches
+        : false,
+    () => false,
+  );
+
+  const mobileScheduleOptionsSummary = useMemo(() => {
+    const tzShort = recurrenceTimeZone.includes("/")
+      ? recurrenceTimeZone.split("/").slice(-2).join("/")
+      : recurrenceTimeZone;
+    const parts: string[] = [];
+    parts.push(view === "day" ? "Day view" : "Week view");
+    parts.push(tzShort);
+    if (recurrenceEnabled) {
+      parts.push("Recurrence on");
+    }
+    if (therapistScopedView) {
+      parts.push("My clients");
+    } else {
+      const t = selectedTherapist
+        ? (visibleTherapists.find((x) => x.id === selectedTherapist)?.full_name ?? "Therapist")
+        : "All therapists";
+      const c = selectedClient
+        ? (visibleClients.find((x) => x.id === selectedClient)?.full_name ?? "Client")
+        : "All clients";
+      parts.push(t);
+      parts.push(c);
+    }
+    return parts.join(" · ");
+  }, [
+    view,
+    recurrenceTimeZone,
+    recurrenceEnabled,
+    therapistScopedView,
+    selectedTherapist,
+    selectedClient,
+    visibleTherapists,
+    visibleClients,
+  ]);
+
   // Optimized mutations with proper error handling
   const createSessionMutation = useMutation({
     mutationFn: async (newSession: Partial<Session>) => {
@@ -1732,40 +1791,36 @@ export const Schedule = React.memo(() => {
     );
   }
 
-  return (
-    <div className="h-full">
-      <div className="space-y-4 mb-6">
-        <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          Schedule
-        </h1>
+  const schedulePageHeader = (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Schedule</h1>
+      <div className="flex flex-col gap-3 min-[400px]:flex-row min-[400px]:items-center min-[400px]:space-x-4">
+        <div className="flex items-center justify-center space-x-2">
+          <button
+            aria-label="Previous period"
+            onClick={() => handleDateNavigation("prev")}
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+          >
+            <ChevronLeft aria-hidden="true" className="w-5 h-5" />
+          </button>
 
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <button
-              aria-label="Previous period"
-              onClick={() => handleDateNavigation("prev")}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
-            >
-              <ChevronLeft aria-hidden="true" className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center space-x-2">
-              <CalendarIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-              <span className="font-medium text-gray-900 dark:text-white min-w-[200px] text-center">
-                {dateRangeDisplay}
-              </span>
-            </div>
-
-            <button
-              aria-label="Next period"
-              onClick={() => handleDateNavigation("next")}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
-            >
-              <ChevronRight aria-hidden="true" className="w-5 h-5" />
-            </button>
+          <div className="flex min-w-0 items-center space-x-2">
+            <CalendarIcon className="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" />
+            <span className="min-w-0 text-center text-sm font-medium text-gray-900 dark:text-white sm:min-w-[200px] sm:text-base">
+              {dateRangeDisplay}
+            </span>
           </div>
 
+          <button
+            aria-label="Next period"
+            onClick={() => handleDateNavigation("next")}
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+          >
+            <ChevronRight aria-hidden="true" className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex justify-center min-[400px]:justify-end">
           <div className="flex rounded-lg shadow-sm">
             <button
               onClick={() => handleViewChange("day")}
@@ -1794,59 +1849,68 @@ export const Schedule = React.memo(() => {
           </div>
         </div>
       </div>
-        {therapistScopedView ? (
-          <section
-            className="bg-white dark:bg-dark-lighter border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4"
-            aria-label="Therapist schedule scope"
-          >
-            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">My Clients</div>
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Therapist
-                </p>
-                <div className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-dark px-3 py-2 text-sm text-gray-800 dark:text-gray-100">
-                  {scopedTherapistDisplayName}
-                </div>
-              </div>
-              <div>
-                <label htmlFor="therapist-client-scope-filter" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Client
-                </label>
-                <select
-                  id="therapist-client-scope-filter"
-                  value={selectedClient || ""}
-                  onChange={(event) => handleClientFilterChange(event.target.value || null)}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
-                >
-                  <option value="">All My Clients ({visibleClients.length})</option>
-                  {visibleClients.map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.full_name} - {(client.service_preference ?? []).join(", ")}
-                    </option>
-                  ))}
-                </select>
-              </div>
+    </div>
+  );
+
+  const therapistScopeSection =
+    therapistScopedView ? (
+      <section
+        className="bg-white dark:bg-dark-lighter border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4"
+        aria-label="Therapist schedule scope"
+      >
+        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          My Clients
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <p className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Therapist</p>
+            <div className="w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-dark dark:text-gray-100">
+              {scopedTherapistDisplayName}
             </div>
-          </section>
-        ) : null}
-      </div>
+          </div>
+          <div>
+            <label
+              htmlFor="therapist-client-scope-filter"
+              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              Client
+            </label>
+            <select
+              id="therapist-client-scope-filter"
+              value={selectedClient || ""}
+              onChange={(event) => handleClientFilterChange(event.target.value || null)}
+              className="w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+            >
+              <option value="">All My Clients ({visibleClients.length})</option>
+              {visibleClients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.full_name} - {(client.service_preference ?? []).join(", ")}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </section>
+    ) : null;
 
-      {!therapistScopedView && (
-        <SessionFilters
-          therapists={visibleTherapists}
-          clients={visibleClients}
-          selectedTherapist={selectedTherapist}
-          selectedClient={selectedClient}
-          onTherapistChange={handleTherapistFilterChange}
-          onClientChange={handleClientFilterChange}
-          scopedTherapistId={scopedTherapistId}
-          scopedClientId={scopedClientId}
-          therapistLocked={therapistScopedView}
-        />
-      )}
+  const sessionFiltersBlock = !therapistScopedView ? (
+    <SessionFilters
+      therapists={visibleTherapists}
+      clients={visibleClients}
+      selectedTherapist={selectedTherapist}
+      selectedClient={selectedClient}
+      onTherapistChange={handleTherapistFilterChange}
+      onClientChange={handleClientFilterChange}
+      scopedTherapistId={scopedTherapistId}
+      scopedClientId={scopedClientId}
+      therapistLocked={therapistScopedView}
+    />
+  ) : null;
 
-      <fieldset className="mt-6 bg-white dark:bg-dark-lighter border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4">
+  const renderScheduleRecurrenceFieldset = (marginClass: string) => (
+    <fieldset
+      className={`${marginClass ? `${marginClass} ` : ""}bg-white dark:bg-dark-lighter border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4`}
+    >
         <legend className="sr-only">Recurrence settings</legend>
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <label className="inline-flex items-center text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -1986,6 +2050,43 @@ export const Schedule = React.memo(() => {
           </div>
         )}
       </fieldset>
+  );
+
+  return (
+    <div className="h-full">
+      {isScheduleShellNarrow ? (
+        <>
+          <div className="mb-3">{schedulePageHeader}</div>
+          <details className="group mb-4 rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-dark-lighter">
+            <summary className="flex cursor-pointer list-none items-start gap-2 px-3 py-2.5 text-left [&::-webkit-details-marker]:hidden">
+              <ChevronDown
+                className="mt-0.5 h-5 w-5 shrink-0 text-gray-500 transition-transform group-open:rotate-180 dark:text-gray-400"
+                aria-hidden
+              />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-gray-900 dark:text-white">Filters & schedule options</div>
+                <p className="mt-0.5 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">
+                  {mobileScheduleOptionsSummary}
+                </p>
+              </div>
+            </summary>
+            <div className="space-y-4 border-t border-gray-200 px-3 pb-4 pt-3 dark:border-gray-700">
+              {therapistScopeSection}
+              {sessionFiltersBlock}
+              {renderScheduleRecurrenceFieldset("")}
+            </div>
+          </details>
+        </>
+      ) : (
+        <>
+          <div className="mb-6 space-y-4">
+            {schedulePageHeader}
+            {therapistScopeSection}
+          </div>
+          {sessionFiltersBlock}
+          {renderScheduleRecurrenceFieldset("mt-6")}
+        </>
+      )}
 
       {showEmptySessionsState ? (
         <div

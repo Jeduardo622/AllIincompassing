@@ -76,6 +76,8 @@ export function SessionModal({
   onRetryAction,
   onSessionStarted,
 }: SessionModalProps) {
+  const [isPlanSummaryExpanded, setIsPlanSummaryExpanded] = useState(false);
+  const [isClinicalSummaryExpanded, setIsClinicalSummaryExpanded] = useState(false);
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [alternativeTimes, setAlternativeTimes] = useState<AlternativeTime[]>([]);
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
@@ -954,12 +956,19 @@ export function SessionModal({
     setValue('session_note_service_code', linkedSessionNote.service_code ?? '');
   }, [linkedSessionNote, session?.id, setValue, isDirty]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      setIsPlanSummaryExpanded(false);
+      setIsClinicalSummaryExpanded(false);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black bg-opacity-50 sm:items-center p-0 sm:p-4"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === overlayRef.current) {
@@ -969,7 +978,7 @@ export function SessionModal({
     >
       <div
         ref={dialogRef}
-        className="bg-white dark:bg-dark-lighter rounded-md sm:rounded-lg shadow-xl w-full max-w-2xl h-[100dvh] sm:h-auto sm:max-h-[90vh] overflow-hidden flex flex-col"
+        className="flex h-[100dvh] w-full max-w-2xl flex-col overflow-hidden bg-white shadow-xl dark:bg-dark-lighter sm:h-auto sm:max-h-[90vh] sm:rounded-xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby={dialogTitleId}
@@ -978,11 +987,23 @@ export function SessionModal({
         tabIndex={-1}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-3 sm:p-4 border-b dark:border-gray-700">
-          <h2 id={dialogTitleId} className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-            <Calendar className="w-5 h-5 sm:w-6 sm:h-6 mr-2 text-blue-600" />
-            {session ? 'Edit Session' : 'New Session'}
-          </h2>
+        <div className="border-b bg-white px-4 py-3 dark:border-gray-700 dark:bg-dark-lighter sm:px-5 sm:py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                Schedule
+              </p>
+              <h2
+                id={dialogTitleId}
+                className="mt-1 flex items-center text-lg font-semibold text-gray-900 dark:text-white sm:text-xl"
+              >
+                <Calendar className="mr-2 h-5 w-5 text-blue-600 sm:h-6 sm:w-6" />
+                {session ? 'Edit Session' : 'New Session'}
+              </h2>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Review core details first, then add notes before saving.
+              </p>
+            </div>
           <button
             ref={closeButtonRef}
             type="button"
@@ -990,18 +1011,19 @@ export function SessionModal({
             disabled={isSubmitting}
             aria-label="Close session modal"
             title="Close session modal"
-            className="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-500 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <X className="w-5 h-5" />
           </button>
+          </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+        <div className="flex-1 overflow-y-auto px-4 py-4 pb-28 sm:p-5 sm:pb-6">
           <p id={dialogDescriptionId} className="sr-only">
             Use this form to create or update a therapy session.
           </p>
-          <form id="session-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4 sm:space-y-6">
+          <form id="session-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-5 sm:space-y-6">
             {retryHint && (
               <div
                 data-testid="session-modal-blocked-close-panel"
@@ -1091,6 +1113,41 @@ export function SessionModal({
               </div>
             )}
 
+            <section className="space-y-4 rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-900/30">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">People &amp; Plan</h3>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Pick the therapist, client, and care-plan details for this session.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsPlanSummaryExpanded((current) => !current)}
+                  aria-expanded={isPlanSummaryExpanded}
+                  className="rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-white dark:border-gray-700 dark:text-gray-300 dark:hover:bg-dark"
+                >
+                  {isPlanSummaryExpanded ? 'Hide summary' : 'Show summary'}
+                </button>
+              </div>
+
+              {isPlanSummaryExpanded && (selectedTherapist || selectedClient || selectedPrimaryGoal) && (
+                <div className="grid gap-2 rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-dark-lighter dark:text-gray-300 sm:grid-cols-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-900 dark:text-white">Therapist</p>
+                    <p className="mt-1 truncate">{selectedTherapist?.full_name ?? 'Not selected'}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-900 dark:text-white">Client</p>
+                    <p className="mt-1 truncate">{selectedClient?.full_name ?? 'Not selected'}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-900 dark:text-white">Primary goal</p>
+                    <p className="mt-1 truncate">{selectedPrimaryGoal?.title ?? 'Not selected'}</p>
+                  </div>
+                </div>
+              )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label
@@ -1102,7 +1159,7 @@ export function SessionModal({
                 <select
                   id="therapist-select"
                   {...register('therapist_id', { required: 'Therapist is required' })}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                  className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                 >
                   <option value="">Select a therapist</option>
                   {therapists.map(therapist => (
@@ -1126,7 +1183,7 @@ export function SessionModal({
                 <select
                   id="client-select"
                   {...register('client_id', { required: 'Client is required' })}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                  className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                 >
                   <option value="">Select a client</option>
                   {clients.map(client => (
@@ -1164,7 +1221,7 @@ export function SessionModal({
                 <div>
                   <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
                     <User className="w-4 h-4 mr-2 text-blue-500" />
-                    <span>{selectedTherapist.full_name}</span>
+                    <span className="truncate">{selectedTherapist.full_name}</span>
                   </div>
                   <div className="mt-1 text-xs text-gray-500">
                     {selectedTherapistServices.join(', ') || 'No service types'}
@@ -1173,7 +1230,7 @@ export function SessionModal({
                 <div>
                   <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
                     <User className="w-4 h-4 mr-2 text-green-500" />
-                    <span>{selectedClient.full_name}</span>
+                    <span className="truncate">{selectedClient.full_name}</span>
                   </div>
                   <div className="mt-1 text-xs text-gray-500">
                     {selectedClientServices.join(', ') || 'No service preferences'}
@@ -1202,7 +1259,7 @@ export function SessionModal({
                   id="program-select"
                   {...register('program_id', { required: session ? false : 'Program is required' })}
                   disabled={isProgramsFetching || !clientId}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                  className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                 >
                   <option value="">Select a program</option>
                   {programId && !hasProgramOptionForValue && (
@@ -1249,7 +1306,7 @@ export function SessionModal({
                   id="goal-select"
                   {...register('goal_id', { required: session ? false : 'Primary goal is required' })}
                   disabled={isGoalsFetching || !programId}
-                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                  className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                 >
                   <option value="">Select a goal</option>
                   {goalId && !hasGoalOptionForValue && (
@@ -1296,7 +1353,7 @@ export function SessionModal({
                         type="checkbox"
                         checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
                         onChange={() => toggleGoalSelection(goal.id)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
                       <span className="truncate">{goal.title}</span>
                       <span className="text-[11px] text-gray-500 dark:text-gray-400">
@@ -1307,7 +1364,15 @@ export function SessionModal({
                 </div>
               </div>
             )}
+            </section>
 
+            <section className="space-y-4 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Timing &amp; Status</h3>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Keep the timeline and status fields easy to review before saving.
+              </p>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label
@@ -1322,7 +1387,7 @@ export function SessionModal({
                     type="datetime-local"
                     id="start-time-input"
                     {...register('start_time', { required: 'Start time is required' })}
-                    className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                    className="min-h-11 w-full rounded-md border-gray-300 bg-white pl-10 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                     onChange={(e) => handleTimeChange(e, 'start_time')}
                     step="900" // 15 minutes in seconds
                   />
@@ -1345,7 +1410,7 @@ export function SessionModal({
                     type="datetime-local"
                     id="end-time-input"
                     {...register('end_time', { required: 'End time is required' })}
-                    className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                    className="min-h-11 w-full rounded-md border-gray-300 bg-white pl-10 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                     onChange={(e) => handleTimeChange(e, 'end_time')}
                     step="900" // 15 minutes in seconds
                   />
@@ -1375,7 +1440,7 @@ export function SessionModal({
               <select
                 id="status-select"
                 {...register('status')}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
               >
                 <option value="scheduled">Scheduled</option>
                 <option value="in_progress" disabled>In Progress</option>
@@ -1384,7 +1449,15 @@ export function SessionModal({
                 <option value="no-show" disabled={!session}>No Show</option>
               </select>
             </div>
+            </section>
 
+            <section className="space-y-4 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Session Notes</h3>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Add schedule-only notes here. Clinical note fields stay separate below.
+              </p>
+            </div>
             <div>
               <label
                 htmlFor="notes-input"
@@ -1410,15 +1483,34 @@ export function SessionModal({
                 </p>
               )}
             </div>
+            </section>
 
             {session?.id && (
-              <div className="rounded-lg border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/70 dark:bg-indigo-900/10 p-3 sm:p-4 space-y-3 sm:space-y-4">
+              <section className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 space-y-4 dark:border-indigo-900/40 dark:bg-indigo-900/10">
+                <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">Clinical Session Notes</p>
                   <p className="mt-1 text-xs text-indigo-700 dark:text-indigo-300">
                     Write both narrative and per-goal notes from this schedule session modal.
                   </p>
                 </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsClinicalSummaryExpanded((current) => !current)}
+                    aria-expanded={isClinicalSummaryExpanded}
+                    className="rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-dark-lighter dark:text-indigo-200 dark:hover:bg-indigo-900/30"
+                  >
+                    {isClinicalSummaryExpanded ? 'Hide details' : 'Show details'}
+                  </button>
+                </div>
+                {isClinicalSummaryExpanded && (
+                  <div className="rounded-lg border border-indigo-200 bg-white/90 p-3 text-xs text-indigo-800 dark:border-indigo-800 dark:bg-dark-lighter dark:text-indigo-200">
+                    <p className="font-medium">Linked note requirements</p>
+                    <p className="mt-1">
+                      Authorization, service code, narrative, and per-goal notes stay unchanged. This toggle only reduces mobile scrolling.
+                    </p>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div>
                     <label
@@ -1430,7 +1522,7 @@ export function SessionModal({
                     <select
                       id="session-note-auth-select"
                       {...register('session_note_authorization_id')}
-                      className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                      className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                     >
                       <option value="">Select authorization</option>
                       {approvedAuthorizations.map((authorization) => (
@@ -1450,7 +1542,7 @@ export function SessionModal({
                     <select
                       id="session-note-service-code-select"
                       {...register('session_note_service_code')}
-                      className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                      className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                       disabled={!sessionNoteAuthorizationId}
                     >
                       <option value="">Select service code</option>
@@ -1473,7 +1565,7 @@ export function SessionModal({
                     id="session-note-narrative-input"
                     {...register('session_note_narrative')}
                     rows={4}
-                    className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                    className="w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                     placeholder="Write a clinical summary for this session..."
                   />
                 </div>
@@ -1495,7 +1587,7 @@ export function SessionModal({
                             id={`goal-note-${selectedGoalId}`}
                             {...register(fieldKey)}
                             rows={2}
-                            className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                            className="w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                             placeholder="Add progress notes for this goal..."
                           />
                         </div>
@@ -1503,19 +1595,20 @@ export function SessionModal({
                     })}
                   </div>
                 )}
-              </div>
+              </section>
             )}
           </form>
         </div>
 
         {/* Footer */}
-        <div className="border-t dark:border-gray-700 p-3 sm:p-4 bg-white dark:bg-dark-lighter">
-          <div className="flex flex-col-reverse sm:flex-row justify-end gap-3">
+        <div className="sticky bottom-0 z-10 border-t bg-white/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] backdrop-blur dark:border-gray-700 dark:bg-dark-lighter/95 sm:px-5 sm:py-4 sm:pb-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+            <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:justify-end">
             <button
               type="button"
               onClick={handleAttemptClose}
               disabled={isSubmitting}
-              className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-dark border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              className="min-h-11 w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-gray-600 dark:bg-dark dark:text-gray-300 dark:hover:bg-gray-800 sm:w-auto"
             >
               Cancel
             </button>
@@ -1524,7 +1617,7 @@ export function SessionModal({
                 type="button"
                 onClick={handleStartSession}
                 disabled={!canStartSession || isDependentDataLoading}
-                className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-emerald-600 border border-transparent rounded-md shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="min-h-11 w-full rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200 dark:hover:bg-emerald-900/30 sm:w-auto"
               >
                 Start Session
               </button>
@@ -1534,16 +1627,17 @@ export function SessionModal({
                 type="button"
                 onClick={handleCloseSession}
                 disabled={isSubmitting || isDependentDataLoading || isLoadingAlternatives}
-                className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-violet-600 border border-transparent rounded-md shadow-sm hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="min-h-11 w-full rounded-md border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-700 shadow-sm hover:bg-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-900/40 dark:bg-violet-900/20 dark:text-violet-200 dark:hover:bg-violet-900/30 sm:w-auto"
               >
                 Close Session
               </button>
             )}
+            </div>
             <button
               type="submit"
               form="session-form"
               disabled={isSubmitting || isDependentDataLoading || isLoadingAlternatives}
-              className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              className="flex min-h-11 w-full items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[12rem]"
             >
               {isSubmitting ? (
                 <>

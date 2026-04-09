@@ -96,11 +96,36 @@ export function ClientDetails() {
   });
 
   const tabs = [
-    { id: 'profile' as TabType, name: 'Profile / Notes & Issues', icon: User },
-    { id: 'session-notes' as TabType, name: 'Session Notes / Physical Auth', icon: FileText },
-    { id: 'programs-goals' as TabType, name: 'Programs & Goals', icon: FileText },
-    { id: 'pre-auth' as TabType, name: 'Pre-Authorizations', icon: ClipboardCheck },
-    { id: 'contracts' as TabType, name: 'Service Contracts', icon: FileContract },
+    {
+      id: 'profile' as TabType,
+      name: 'Profile / Notes & Issues',
+      mobileName: 'Profile',
+      icon: User,
+    },
+    {
+      id: 'session-notes' as TabType,
+      name: 'Session Notes / Physical Auth',
+      mobileName: 'Notes',
+      icon: FileText,
+    },
+    {
+      id: 'programs-goals' as TabType,
+      name: 'Programs & Goals',
+      mobileName: 'Programs',
+      icon: FileText,
+    },
+    {
+      id: 'pre-auth' as TabType,
+      name: 'Pre-Authorizations',
+      mobileName: 'Pre-Auth',
+      icon: ClipboardCheck,
+    },
+    {
+      id: 'contracts' as TabType,
+      name: 'Service Contracts',
+      mobileName: 'Contracts',
+      icon: FileContract,
+    },
   ];
 
   if (!activeOrganizationId) {
@@ -210,50 +235,65 @@ export function ClientDetails() {
 
   return (
     <div className="h-full">
-      <div className="flex items-center mb-6">
+      <div className="mb-4 flex items-start gap-3 sm:mb-6 sm:items-center">
         <button
           onClick={() => navigate('/clients')}
-          className="mr-4 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+          className="mt-0.5 rounded-full p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 sm:mt-0"
+          aria-label="Back to clients"
         >
           <ArrowLeft className="h-5 w-5 text-gray-500 dark:text-gray-400" />
         </button>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          Client Records: {client.full_name}
-        </h1>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+            Client record
+          </p>
+          <h1 className="mt-1 text-xl font-bold leading-tight text-gray-900 dark:text-white sm:text-2xl">
+            {client.full_name}
+          </h1>
+        </div>
       </div>
 
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow mb-6">
-        <div className="flex items-center px-4 border-b dark:border-gray-700 overflow-x-auto">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`
-                  group inline-flex items-center px-6 py-4 border-b-2 font-medium text-sm
-                  ${
-                    activeTab === tab.id
-                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                  }
-                `}
-              >
-                <Icon className={`
-                  -ml-1 mr-2 h-5 w-5
-                  ${
-                    activeTab === tab.id
-                      ? 'text-blue-500 dark:text-blue-400'
-                      : 'text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400'
-                  }
-                `} />
-                {tab.name}
-              </button>
-            );
-          })}
+        <div className="border-b dark:border-gray-700 px-3 py-2 sm:px-4">
+          <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  aria-label={tab.name}
+                  aria-pressed={isActive}
+                  className={`
+                    group inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition-colors sm:min-h-0 sm:rounded-none sm:border-x-0 sm:border-t-0 sm:border-b-2 sm:px-5 sm:py-4
+                    ${
+                      isActive
+                        ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 sm:bg-transparent'
+                        : 'border-transparent bg-gray-50 text-gray-600 hover:text-gray-700 hover:border-gray-300 dark:bg-gray-800/70 dark:text-gray-300 dark:hover:text-gray-200 sm:bg-transparent'
+                    }
+                  `}
+                >
+                  <Icon
+                    className={`
+                      h-4 w-4 shrink-0 sm:h-5 sm:w-5
+                      ${
+                        isActive
+                          ? 'text-blue-500 dark:text-blue-400'
+                          : 'text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400'
+                      }
+                    `}
+                  />
+                  <span className="sm:hidden">{tab.mobileName}</span>
+                  <span className="hidden sm:inline">{tab.name}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {activeTab === 'profile' && <ProfileTab client={client} viewerRole={effectiveRole} />}
           {activeTab === 'session-notes' && <SessionNotesTab client={client} />}
           {activeTab === 'programs-goals' && <ProgramsGoalsTab client={client} />}

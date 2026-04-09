@@ -1199,21 +1199,63 @@ export function SessionModal({
             </div>
 
             {selectedPrimaryGoal && (
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-100">
-                <p className="font-semibold">{selectedPrimaryGoal.title}</p>
-                {selectedPrimaryGoal.measurement_type && <p>Measurement: {selectedPrimaryGoal.measurement_type}</p>}
-                {selectedPrimaryGoal.baseline_data && <p>Baseline: {selectedPrimaryGoal.baseline_data}</p>}
-                {selectedPrimaryGoal.target_criteria && <p>Target: {selectedPrimaryGoal.target_criteria}</p>}
-                {selectedPrimaryGoal.mastery_criteria && <p>Mastery: {selectedPrimaryGoal.mastery_criteria}</p>}
-                {selectedPrimaryGoal.maintenance_criteria && <p>Maintenance: {selectedPrimaryGoal.maintenance_criteria}</p>}
-                {selectedPrimaryGoal.generalization_criteria && <p>Generalization: {selectedPrimaryGoal.generalization_criteria}</p>}
-                <p>
-                  Objective data points:{" "}
-                  {Array.isArray(selectedPrimaryGoal.objective_data_points)
-                    ? selectedPrimaryGoal.objective_data_points.length
-                    : 0}
-                </p>
-              </div>
+              <>
+                <details className="rounded-lg border border-blue-200 bg-blue-50 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-100 sm:hidden">
+                  <summary className="cursor-pointer list-none px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+                    <div className="flex min-h-11 items-center justify-between gap-2">
+                      <span className="truncate text-sm font-semibold text-blue-900 dark:text-blue-100">
+                        {selectedPrimaryGoal.title}
+                      </span>
+                      <span className="shrink-0 text-[11px] font-medium text-blue-700/90 dark:text-blue-200/90">
+                        Goal criteria
+                      </span>
+                    </div>
+                  </summary>
+                  <div className="space-y-1 border-t border-blue-200/70 px-3 pb-3 pt-2 dark:border-blue-800/40">
+                    {selectedPrimaryGoal.measurement_type && (
+                      <p className="truncate">Measurement: {selectedPrimaryGoal.measurement_type}</p>
+                    )}
+                    {selectedPrimaryGoal.baseline_data && (
+                      <p className="break-words">Baseline: {selectedPrimaryGoal.baseline_data}</p>
+                    )}
+                    {selectedPrimaryGoal.target_criteria && (
+                      <p className="break-words">Target: {selectedPrimaryGoal.target_criteria}</p>
+                    )}
+                    {selectedPrimaryGoal.mastery_criteria && (
+                      <p className="break-words">Mastery: {selectedPrimaryGoal.mastery_criteria}</p>
+                    )}
+                    {selectedPrimaryGoal.maintenance_criteria && (
+                      <p className="break-words">Maintenance: {selectedPrimaryGoal.maintenance_criteria}</p>
+                    )}
+                    {selectedPrimaryGoal.generalization_criteria && (
+                      <p className="break-words">Generalization: {selectedPrimaryGoal.generalization_criteria}</p>
+                    )}
+                    <p>
+                      Objective data points:{" "}
+                      {Array.isArray(selectedPrimaryGoal.objective_data_points)
+                        ? selectedPrimaryGoal.objective_data_points.length
+                        : 0}
+                    </p>
+                  </div>
+                </details>
+                <div className="hidden rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-100 sm:block">
+                  <p className="font-semibold">{selectedPrimaryGoal.title}</p>
+                  {selectedPrimaryGoal.measurement_type && <p>Measurement: {selectedPrimaryGoal.measurement_type}</p>}
+                  {selectedPrimaryGoal.baseline_data && <p>Baseline: {selectedPrimaryGoal.baseline_data}</p>}
+                  {selectedPrimaryGoal.target_criteria && <p>Target: {selectedPrimaryGoal.target_criteria}</p>}
+                  {selectedPrimaryGoal.mastery_criteria && <p>Mastery: {selectedPrimaryGoal.mastery_criteria}</p>}
+                  {selectedPrimaryGoal.maintenance_criteria && <p>Maintenance: {selectedPrimaryGoal.maintenance_criteria}</p>}
+                  {selectedPrimaryGoal.generalization_criteria && (
+                    <p>Generalization: {selectedPrimaryGoal.generalization_criteria}</p>
+                  )}
+                  <p>
+                    Objective data points:{" "}
+                    {Array.isArray(selectedPrimaryGoal.objective_data_points)
+                      ? selectedPrimaryGoal.objective_data_points.length
+                      : 0}
+                  </p>
+                </div>
+              </>
             )}
 
             {selectedTherapist && selectedClient && (
@@ -1240,14 +1282,18 @@ export function SessionModal({
             )}
 
             {(programs.length === 0 || activePrograms.length === 0 || activeGoals.length === 0) && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200 sm:p-4">
                 {programs.length === 0 || activePrograms.length === 0
                   ? 'No active programs found for this client. Create or activate a program before starting a session.'
                   : 'No active goals found for the selected program. Add or activate a goal before starting a session.'}
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div className="space-y-2 sm:space-y-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 sm:sr-only">
+                Program &amp; goals
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4">
               <div>
                 <label
                   htmlFor="program-select"
@@ -1342,27 +1388,62 @@ export function SessionModal({
                 )}
               </div>
             </div>
+            </div>
 
             {goals.length > 0 && (
-              <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Additional Goals</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {goals.map((goal) => (
-                    <label key={goal.id} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 min-w-0">
-                      <input
-                        type="checkbox"
-                        checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
-                        onChange={() => toggleGoalSelection(goal.id)}
-                        className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                      <span className="truncate">{goal.title}</span>
-                      <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                        ({Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} data points)
+              <>
+                <details className="rounded-lg border border-gray-200 dark:border-gray-700 sm:hidden">
+                  <summary className="cursor-pointer list-none px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+                    <div className="flex min-h-11 items-center justify-between gap-2 text-sm font-medium text-gray-800 dark:text-gray-100">
+                      <span>Additional goals</span>
+                      <span className="shrink-0 text-xs font-normal text-gray-500 dark:text-gray-400">
+                        {(Array.isArray(goalIds) ? goalIds.length : 0)} selected
                       </span>
-                    </label>
-                  ))}
+                    </div>
+                  </summary>
+                  <div className="border-t border-gray-200 px-3 pb-3 pt-2 dark:border-gray-700">
+                    <div className="grid grid-cols-1 gap-2">
+                      {goals.map((goal) => (
+                        <label
+                          key={`m-${goal.id}`}
+                          className="flex min-w-0 items-center gap-2 text-sm text-gray-600 dark:text-gray-300"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
+                            onChange={() => toggleGoalSelection(goal.id)}
+                            className="h-5 w-5 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="min-w-0 flex-1 truncate">{goal.title}</span>
+                          <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-400">
+                            (
+                            {Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} pts)
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+                <div className="hidden rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:block">
+                  <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">Additional Goals</p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {goals.map((goal) => (
+                      <label key={goal.id} className="flex min-w-0 items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
+                          onChange={() => toggleGoalSelection(goal.id)}
+                          className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="truncate">{goal.title}</span>
+                        <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                          ({Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} data points)
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
             </section>
 

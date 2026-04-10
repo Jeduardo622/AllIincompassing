@@ -22,7 +22,7 @@ import {
   AlertCircle,
   CalendarX,
 } from "lucide-react";
-import type { Session, Client } from "../types";
+import type { Session, SessionGoalMeasurementEntry, Client } from "../types";
 import {
   SessionModal,
   type SessionModalSubmitData,
@@ -113,7 +113,7 @@ const buildClinicalNoteDraft = (
 ): {
   narrative: string;
   goalNotes: Record<string, string>;
-  goalMeasurements: Record<string, unknown>;
+  goalMeasurements: Record<string, SessionGoalMeasurementEntry>;
   goalIds: string[];
   goalsAddressed: string[];
   authorizationId: string;
@@ -130,7 +130,7 @@ const buildClinicalNoteDraft = (
     : [];
   const goalMeasurements =
     data.session_note_goal_measurements && typeof data.session_note_goal_measurements === "object"
-      ? data.session_note_goal_measurements
+      ? (data.session_note_goal_measurements as Record<string, SessionGoalMeasurementEntry>)
       : {};
   const goalsAddressed = Array.isArray(data.session_note_goals_addressed)
     ? data.session_note_goals_addressed

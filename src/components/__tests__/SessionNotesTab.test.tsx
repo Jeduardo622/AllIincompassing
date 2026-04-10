@@ -56,6 +56,38 @@ const noteWithGoalNotes: SessionNote = {
   client_id: 'client-1',
 };
 
+const noteWithGoalMeasurements: SessionNote = {
+  ...noteWithGoalNotes,
+  id: 'note-measurements',
+  goal_measurements: {
+    'goal-aa11-1234': {
+      version: 1,
+      data: {
+        measurement_type: 'frequency',
+        metric_label: 'Count',
+        metric_unit: 'responses',
+        metric_value: 4,
+        opportunities: 5,
+        prompt_level: 'Gestural',
+        note: 'Needed one reminder at the start',
+      },
+    },
+  },
+};
+
+const noteWithLegacyGoalMeasurements: SessionNote = {
+  ...noteWithGoalNotes,
+  id: 'note-legacy-measurements',
+  goal_measurements: {
+    'goal-aa11-1234': {
+      count: 4,
+      trials: 5,
+      promptLevel: 'Gestural',
+      comment: 'Legacy payload still loads',
+    },
+  } as unknown as SessionNote['goal_measurements'],
+};
+
 /** Note where goal_ids.length (2) !== goals_addressed.length (1) — label fallback. */
 const noteWithMismatchedLengths: SessionNote = {
   id: 'note-mismatch',
@@ -197,6 +229,46 @@ describe('SessionNotesTab — goal notes display', () => {
       expect(
         screen.getByText(/demonstrated improved eye contact across 3 trials/i),
       ).toBeInTheDocument();
+    });
+  });
+
+  it('renders saved goal measurement details when a goal row is expanded', async () => {
+    vi.mocked(fetchClientSessionNotes).mockResolvedValue([noteWithGoalMeasurements]);
+
+    renderWithProviders(<SessionNotesTab client={CLIENT} />, AUTH_OPTS);
+
+    const entryButton = await screen.findByRole('button', { name: /eye contact goal/i });
+    fireEvent.click(entryButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('Count')).toBeInTheDocument();
+      expect(screen.getByText('4 responses')).toBeInTheDocument();
+      expect(screen.getByText('Opportunities')).toBeInTheDocument();
+      expect(screen.getByText('5')).toBeInTheDocument();
+      expect(screen.getByText('Prompt level')).toBeInTheDocument();
+      expect(screen.getByText('Gestural')).toBeInTheDocument();
+      expect(screen.getByText('Measurement note')).toBeInTheDocument();
+      expect(screen.getByText('Needed one reminder at the start')).toBeInTheDocument();
+    });
+  });
+
+  it('renders legacy flat goal measurement payloads without crashing', async () => {
+    vi.mocked(fetchClientSessionNotes).mockResolvedValue([noteWithLegacyGoalMeasurements]);
+
+    renderWithProviders(<SessionNotesTab client={CLIENT} />, AUTH_OPTS);
+
+    const entryButton = await screen.findByRole('button', { name: /eye contact goal/i });
+    fireEvent.click(entryButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('Count')).toBeInTheDocument();
+      expect(screen.getByText('4')).toBeInTheDocument();
+      expect(screen.getByText('Opportunities')).toBeInTheDocument();
+      expect(screen.getByText('5')).toBeInTheDocument();
+      expect(screen.getByText('Prompt level')).toBeInTheDocument();
+      expect(screen.getByText('Gestural')).toBeInTheDocument();
+      expect(screen.getByText('Measurement note')).toBeInTheDocument();
+      expect(screen.getByText('Legacy payload still loads')).toBeInTheDocument();
     });
   });
 

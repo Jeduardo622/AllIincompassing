@@ -2,7 +2,7 @@
 
 **Status:** Research complete — Track 1 and Track 1b shipped on `main` (see **Implementation status** below). Further phases follow product and Phase 0 doc.  
 **Audience:** Implementing agents, tech lead, clinical/product reviewer  
-**Last updated:** 2026-04-09  
+**Last updated:** 2026-04-10  
 **Related:** `AGENTS.md`, `docs/ai/high-risk-paths.md`, `docs/ai/verification-matrix.md`, `docs/THERAPIST_SESSIONS_WORKFLOW.md`, `docs/SESSION_START_NOTES_UPDATES_2026_02.md`, `docs/SESSION_DATA_COLLECTION_2.0_PHASE_0_SPEC_LOCK.md`
 
 ---
@@ -15,12 +15,13 @@
 |-------|-----|----------------|
 | **Track 1** | [#402](https://github.com/Jeduardo622/AllIincompassing/pull/402) | **SessionModal:** per-goal measurement snapshot UI; normalized `session_note_goal_measurements` → **`client_session_notes.goal_measurements`**. **SessionNotesTab:** read/display of saved measurements; **`session-notes`** normalization on fetch. |
 | **Track 1b** | [#403](https://github.com/Jeduardo622/AllIincompassing/pull/403) | **AddSessionNoteModal:** create + **edit** parity for `goal_measurements` (hydrate, submit). **`updateClientSessionNote`** in `src/lib/session-notes.ts`. **SessionNotesTab** wires edits through update path. **ProgramsGoalsTab** test: scoped **15s** timeout for CI stability (hygiene guard, not a root async fix). |
+| **Track 1c** | [#405](https://github.com/Jeduardo622/AllIincompassing/pull/405) | Shared goal measurement helpers extracted into `src/lib/goal-measurements.ts`; `SessionModal`, `AddSessionNoteModal`, and `session-notes` now share envelope/meta normalization without intended behavior change. |
 
 **Schema reference:** `client_session_notes.goal_measurements` (jsonb, object check) — migration `supabase/migrations/20260409103000_session_data_collection_2_goal_measurements.sql`.
 
 **Unchanged (per Phase 0 lock):** In-progress session **completion** still requires **non-empty `goal_notes`** text for each `session_goals` goal; structured measurements **supplement** notes, they do not replace that gate.
 
-**Suggested follow-ups (not committed here):** Extract shared measurement-field helpers used by **SessionModal** and **AddSessionNoteModal** to avoid drift; replace ProgramsGoalsTab timeout band-aid with faster deterministic setup when prioritized; optional Playwright smoke: Schedule save → Client Session Notes → measurement visible.
+**Suggested follow-ups (not committed here):** Replace ProgramsGoalsTab timeout band-aid with faster deterministic setup when prioritized; optional Playwright smoke: Schedule save → Client Session Notes → measurement visible.
 
 ---
 

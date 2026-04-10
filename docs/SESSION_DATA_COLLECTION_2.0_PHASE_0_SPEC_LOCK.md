@@ -37,3 +37,5 @@ Phase 0 remains the place to record future scope decisions that would widen beha
 ## Current Execution Note
 
 Agents should treat the missing-one-pager block as resolved. Re-run `route-task` for the exact slice being implemented and route by the highest-risk touched path.
+
+**Rolling delivery log:** See `docs/SESSION_DATA_COLLECTION_2.0_RESEARCH_ONE_PAGER.md` §0 (implementation status) for merged PRs and verification notes.

@@ -2,8 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Calendar, Clock, FileText, CheckCircle } from 'lucide-react';
 import type { Goal, Program, SessionGoalMeasurementEntry, SessionNote, Therapist } from '../types';
+import {
+  buildGoalMeasurementEntry,
+  getGoalMeasurementFieldMeta,
+  mergeGoalMeasurementEntry,
+  mergeUniqueGoalIds,
+} from '../lib/goal-measurements';
 import { useActiveOrganizationId } from '../lib/organization';
-import { normalizeSessionGoalMeasurementEntry } from '../lib/session-notes';
 import { showError } from '../lib/toast';
 import { supabase } from '../lib/supabase';
 
@@ -36,91 +41,6 @@ export interface SessionNoteFormValues {
 }
 
 const MAX_GOAL_NOTE_LENGTH = 5000;
-const GOAL_MEASUREMENT_VERSION = 1;
-
-const mergeUniqueGoalIds = (...goalIdLists: Array<string[] | null | undefined>): string[] => {
-  const merged = new Set<string>();
-
-  goalIdLists.forEach((goalIds) => {
-    goalIds?.forEach((goalId) => {
-      const trimmed = goalId?.trim();
-      if (trimmed) {
-        merged.add(trimmed);
-      }
-    });
-  });
-
-  return Array.from(merged);
-};
-
-interface GoalMeasurementFieldMeta {
-  readonly primaryLabel: string;
-  readonly primaryUnit: string | null;
-  readonly secondaryLabel: string | null;
-  readonly helperText: string;
-  readonly min?: number;
-  readonly max?: number;
-  readonly step: number;
-}
-
-const normalizeMeasurementTypeToken = (value: string | null | undefined): string =>
-  value?.trim().toLowerCase() ?? '';
-
-const getGoalMeasurementFieldMeta = (goal: Goal | undefined): GoalMeasurementFieldMeta => {
-  const measurementType = normalizeMeasurementTypeToken(goal?.measurement_type);
-
-  if (
-    measurementType.includes('percent') ||
-    measurementType.includes('%') ||
-    measurementType.includes('accuracy') ||
-    measurementType.includes('fidelity')
-  ) {
-    return {
-      primaryLabel: 'Percent',
-      primaryUnit: '%',
-      secondaryLabel: 'Opportunities',
-      helperText: 'Capture the observed percentage and, if known, the number of opportunities.',
-      min: 0,
-      max: 100,
-      step: 1,
-    };
-  }
-
-  if (
-    measurementType.includes('duration') ||
-    measurementType.includes('minute') ||
-    measurementType.includes('time')
-  ) {
-    return {
-      primaryLabel: 'Duration',
-      primaryUnit: 'minutes',
-      secondaryLabel: 'Occurrences',
-      helperText: 'Capture how long the skill or behavior was observed during the session.',
-      min: 0,
-      step: 1,
-    };
-  }
-
-  if (measurementType.includes('rate')) {
-    return {
-      primaryLabel: 'Rate',
-      primaryUnit: 'per hour',
-      secondaryLabel: 'Observation minutes',
-      helperText: 'Capture the observed rate and how long the observation window lasted.',
-      min: 0,
-      step: 0.1,
-    };
-  }
-
-  return {
-    primaryLabel: 'Count',
-    primaryUnit: 'responses',
-    secondaryLabel: 'Opportunities',
-    helperText: 'Capture the observed count for this goal during the session.',
-    min: 0,
-    step: 1,
-  };
-};
 
 const toOptionalNumber = (value: string): number | null => {
   if (value.trim().length === 0) {
@@ -134,44 +54,6 @@ const toOptionalNumber = (value: string): number | null => {
 const toOptionalString = (value: string): string | null => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
-};
-
-const hasMeaningfulMeasurementEntry = (
-  entry: SessionGoalMeasurementEntry | null | undefined,
-): boolean => {
-  if (!entry) {
-    return false;
-  }
-
-  const { data } = entry;
-  return (
-    (data.metric_value !== null && data.metric_value !== undefined) ||
-    (data.opportunities !== null && data.opportunities !== undefined) ||
-    (data.prompt_level?.trim().length ?? 0) > 0 ||
-    (data.note?.trim().length ?? 0) > 0
-  );
-};
-
-const buildGoalMeasurementEntry = (
-  goal: Goal | undefined,
-  rawValue: unknown,
-): SessionGoalMeasurementEntry | null => {
-  const fieldMeta = getGoalMeasurementFieldMeta(goal);
-  const normalizedExisting = normalizeSessionGoalMeasurementEntry(rawValue);
-  const nextEntry: SessionGoalMeasurementEntry = {
-    version: GOAL_MEASUREMENT_VERSION,
-    data: {
-      measurement_type: goal?.measurement_type ?? normalizedExisting?.data.measurement_type ?? null,
-      metric_label: normalizedExisting?.data.metric_label ?? fieldMeta.primaryLabel,
-      metric_unit: normalizedExisting?.data.metric_unit ?? fieldMeta.primaryUnit,
-      metric_value: normalizedExisting?.data.metric_value ?? null,
-      opportunities: normalizedExisting?.data.opportunities ?? null,
-      prompt_level: normalizedExisting?.data.prompt_level ?? null,
-      note: normalizedExisting?.data.note ?? null,
-    },
-  };
-
-  return hasMeaningfulMeasurementEntry(nextEntry) ? nextEntry : null;
 };
 
 function useMinWidthSm(): boolean {
@@ -406,30 +288,9 @@ export function AddSessionNoteModal({
     updates: Partial<SessionGoalMeasurementEntry['data']>,
   ) => {
     setGoalMeasurements((prev) => {
-      const fieldMeta = getGoalMeasurementFieldMeta(goal);
-      const existing = buildGoalMeasurementEntry(goal, prev[goal.id]);
-      const nextEntry: SessionGoalMeasurementEntry = {
-        version: GOAL_MEASUREMENT_VERSION,
-        data: {
-          measurement_type: goal.measurement_type ?? existing?.data.measurement_type ?? null,
-          metric_label: existing?.data.metric_label ?? fieldMeta.primaryLabel,
-          metric_unit: existing?.data.metric_unit ?? fieldMeta.primaryUnit,
-          metric_value: updates.metric_value !== undefined
-            ? updates.metric_value ?? null
-            : existing?.data.metric_value ?? null,
-          opportunities: updates.opportunities !== undefined
-            ? updates.opportunities ?? null
-            : existing?.data.opportunities ?? null,
-          prompt_level: updates.prompt_level !== undefined
-            ? updates.prompt_level ?? null
-            : existing?.data.prompt_level ?? null,
-          note: updates.note !== undefined
-            ? updates.note ?? null
-            : existing?.data.note ?? null,
-        },
-      };
+      const nextEntry = mergeGoalMeasurementEntry(goal, prev[goal.id], updates);
 
-      if (!hasMeaningfulMeasurementEntry(nextEntry)) {
+      if (!nextEntry) {
         const next = { ...prev };
         delete next[goal.id];
         return next;
@@ -529,6 +390,7 @@ export function AddSessionNoteModal({
       existingNote.goal_ids ?? [],
       Object.keys(hydratedGoalNotes),
       Object.keys(hydratedGoalMeasurements),
+      { trimValues: true },
     );
 
     setDate(existingNote.date ?? new Date().toISOString().split('T')[0]);
@@ -612,6 +474,7 @@ export function AddSessionNoteModal({
       selectedGoalIds,
       Object.keys(goalNotes),
       Object.keys(goalMeasurements),
+      { trimValues: true },
     );
     const selectedTherapist = therapists.find((t) => t.id === therapistId);
     const existingGoalLabelsById = new Map(

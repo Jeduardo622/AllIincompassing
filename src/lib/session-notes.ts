@@ -1,6 +1,7 @@
 import type { PostgrestError } from '@supabase/supabase-js';
 import type { SessionGoalMeasurementEntry, SessionNote } from '../types';
 import type { Database } from './generated/database.types';
+import { normalizeGoalMeasurementEntry } from './goal-measurements';
 import { supabase } from './supabase';
 
 type ClientSessionNoteRow = Database['public']['Tables']['client_session_notes']['Row'];
@@ -11,66 +12,10 @@ interface TherapistSummary {
   readonly title: string | null;
 }
 
-const toOptionalNumber = (value: unknown): number | null => {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-
-  const parsed = typeof value === 'number' ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-const toOptionalString = (value: unknown): string | null => {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-};
-
 export const normalizeSessionGoalMeasurementEntry = (
   rawValue: unknown,
 ): SessionGoalMeasurementEntry | null => {
-  if (!rawValue || typeof rawValue !== 'object') {
-    return null;
-  }
-
-  const candidate = rawValue as {
-    version?: unknown;
-    data?: Record<string, unknown>;
-  } & Record<string, unknown>;
-  const sourceData =
-    candidate.data && typeof candidate.data === 'object'
-      ? candidate.data
-      : candidate;
-  const normalized: SessionGoalMeasurementEntry = {
-    version: 1,
-    data: {
-      measurement_type: toOptionalString(sourceData.measurement_type),
-      metric_label: toOptionalString(sourceData.metric_label) ?? 'Count',
-      metric_unit: toOptionalString(sourceData.metric_unit),
-      metric_value: toOptionalNumber(
-        sourceData.metric_value ?? sourceData.count ?? sourceData.value,
-      ),
-      opportunities: toOptionalNumber(
-        sourceData.opportunities ?? sourceData.trials,
-      ),
-      prompt_level: toOptionalString(
-        sourceData.prompt_level ?? sourceData.promptLevel,
-      ),
-      note: toOptionalString(sourceData.note ?? sourceData.comment),
-    },
-  };
-
-  const { data } = normalized;
-  const hasMeaningfulValue =
-    (data.metric_value !== null && data.metric_value !== undefined) ||
-    (data.opportunities !== null && data.opportunities !== undefined) ||
-    Boolean(data.prompt_level) ||
-    Boolean(data.note);
-
-  return hasMeaningfulValue ? normalized : null;
+  return normalizeGoalMeasurementEntry(rawValue, undefined, { fallbackMetricUnit: null });
 };
 
 export const normalizeSessionGoalMeasurementMap = (

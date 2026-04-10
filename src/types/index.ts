@@ -335,6 +335,7 @@ export interface SessionNote {
   goals_addressed: string[];
   goal_ids?: string[];
   goal_notes?: Record<string, string> | null;
+  goal_measurements?: Record<string, unknown> | null;
   session_id?: string | null;
   narrative: string;
   is_locked: boolean;

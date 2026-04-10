@@ -1820,6 +1820,7 @@ export type Database = {
           created_by: string
           end_time: string
           goal_ids: string[] | null
+          goal_measurements: Record<string, unknown> | null
           goal_notes: Record<string, unknown> | null
           goals_addressed: string[]
           id: string
@@ -1842,6 +1843,7 @@ export type Database = {
           created_by: string
           end_time: string
           goal_ids?: string[] | null
+          goal_measurements?: Record<string, unknown> | null
           goal_notes?: Record<string, unknown> | null
           goals_addressed?: string[]
           id?: string
@@ -1864,6 +1866,7 @@ export type Database = {
           created_by?: string
           end_time?: string
           goal_ids?: string[] | null
+          goal_measurements?: Record<string, unknown> | null
           goal_notes?: Record<string, unknown> | null
           goals_addressed?: string[]
           id?: string

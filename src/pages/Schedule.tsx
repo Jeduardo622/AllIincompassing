@@ -98,6 +98,7 @@ const stripClinicalNoteFields = (data: ScheduleSubmitData): Partial<Session> => 
   const {
     session_note_narrative: _sessionNoteNarrative,
     session_note_goal_notes: _sessionNoteGoalNotes,
+    session_note_goal_measurements: _sessionNoteGoalMeasurements,
     session_note_goal_ids: _sessionNoteGoalIds,
     session_note_goals_addressed: _sessionNoteGoalsAddressed,
     session_note_authorization_id: _sessionNoteAuthorizationId,
@@ -112,6 +113,7 @@ const buildClinicalNoteDraft = (
 ): {
   narrative: string;
   goalNotes: Record<string, string>;
+  goalMeasurements: Record<string, unknown>;
   goalIds: string[];
   goalsAddressed: string[];
   authorizationId: string;
@@ -126,6 +128,10 @@ const buildClinicalNoteDraft = (
   const goalIds = Array.isArray(data.session_note_goal_ids)
     ? data.session_note_goal_ids.filter((goalId) => typeof goalId === "string" && goalId.trim().length > 0)
     : [];
+  const goalMeasurements =
+    data.session_note_goal_measurements && typeof data.session_note_goal_measurements === "object"
+      ? data.session_note_goal_measurements
+      : {};
   const goalsAddressed = Array.isArray(data.session_note_goals_addressed)
     ? data.session_note_goals_addressed
         .map((goalLabel) => goalLabel.trim())
@@ -135,13 +141,15 @@ const buildClinicalNoteDraft = (
   const serviceCode = data.session_note_service_code?.trim() ?? "";
   if (
     narrative.length === 0 &&
-    Object.keys(goalNotes).length === 0
+    Object.keys(goalNotes).length === 0 &&
+    Object.keys(goalMeasurements).length === 0
   ) {
     return null;
   }
   return {
     narrative,
     goalNotes,
+    goalMeasurements,
     goalIds,
     goalsAddressed,
     authorizationId,
@@ -1492,6 +1500,7 @@ export const Schedule = React.memo(() => {
               endTime: format(parseISO(sessionPayload.end_time ?? selectedSession.end_time), "HH:mm:ss"),
               goalsAddressed: clinicalNoteDraft.goalsAddressed,
               goalIds: clinicalNoteDraft.goalIds,
+              goalMeasurements: clinicalNoteDraft.goalMeasurements,
               goalNotes: clinicalNoteDraft.goalNotes,
               narrative: clinicalNoteDraft.narrative,
             });

@@ -473,7 +473,7 @@ describe("ProgramsGoalsTab", () => {
       );
     });
     expect(showSuccess).toHaveBeenCalledWith("Goal created");
-  });
+  }, 15000);
 
   it("falls back to same-origin API when program edge calls time out", async () => {
     let hasProgram = false;

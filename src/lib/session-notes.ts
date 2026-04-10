@@ -224,6 +224,27 @@ export interface UpsertClientSessionNoteForSessionInput {
   readonly narrative: string;
 }
 
+export interface UpdateClientSessionNoteInput {
+  readonly noteId: string;
+  readonly clientId: string;
+  readonly authorizationId: string;
+  readonly therapistId: string;
+  readonly organizationId: string;
+  readonly actorUserId: string;
+  readonly serviceCode: string;
+  readonly sessionDate: string;
+  readonly startTime: string;
+  readonly endTime: string;
+  readonly sessionDuration: number;
+  readonly goalsAddressed: string[];
+  readonly goalIds?: string[];
+  readonly goalMeasurements?: Record<string, SessionGoalMeasurementEntry> | null;
+  readonly goalNotes?: Record<string, string> | null;
+  readonly narrative: string;
+  readonly isLocked: boolean;
+  readonly sessionId?: string | null;
+}
+
 export const createClientSessionNote = async (
   payload: CreateClientSessionNoteInput
 ): Promise<SessionNote> => {
@@ -313,6 +334,120 @@ export const createClientSessionNote = async (
   return mapRowToSessionNote(
     data as ClientSessionNoteRow & { therapists: TherapistSummary | null },
     (data as { therapists: TherapistSummary | null }).therapists ?? null
+  );
+};
+
+export const updateClientSessionNote = async (
+  payload: UpdateClientSessionNoteInput,
+): Promise<SessionNote> => {
+  const { data: existingRow, error: existingError } = await supabase
+    .from(TABLE)
+    .select('id, is_locked')
+    .eq('id', payload.noteId)
+    .eq('organization_id', payload.organizationId)
+    .maybeSingle();
+
+  if (existingError) {
+    throw existingError;
+  }
+
+  if (!existingRow?.id) {
+    throw new Error('Session note not found.');
+  }
+
+  if (existingRow.is_locked) {
+    throw new Error('Session note is locked and cannot be edited.');
+  }
+
+  const { data: authorization, error: authError } = await supabase
+    .from('authorizations')
+    .select(
+      `
+        id,
+        organization_id,
+        status,
+        start_date,
+        end_date,
+        services:authorization_services (
+          service_code,
+          approved_units
+        )
+      `
+    )
+    .eq('id', payload.authorizationId)
+    .single();
+
+  if (authError || !authorization) {
+    throw (authError ?? new Error('Authorization not found.'));
+  }
+
+  if (authorization.organization_id !== payload.organizationId) {
+    throw new Error('Authorization does not belong to the active organization.');
+  }
+
+  if (authorization.status !== 'approved') {
+    throw new Error('Authorization must be approved before editing session notes.');
+  }
+
+  const sessionDate = new Date(payload.sessionDate);
+  if (sessionDate < new Date(authorization.start_date) || sessionDate > new Date(authorization.end_date)) {
+    throw new Error('Session date must be within the authorization date range.');
+  }
+
+  const matchedService = (authorization.services ?? []).find(
+    (service) => service.service_code === payload.serviceCode
+  );
+
+  if (!matchedService) {
+    throw new Error('Selected service code is not part of this authorization.');
+  }
+
+  const goalNotesValue =
+    payload.goalNotes && Object.keys(payload.goalNotes).length > 0
+      ? Object.fromEntries(
+          Object.entries(payload.goalNotes)
+            .map(([goalId, noteText]) => [goalId, noteText.trim()])
+            .filter(([, noteText]) => noteText.length > 0),
+        )
+      : null;
+  const goalMeasurementsValue =
+    payload.goalMeasurements && Object.keys(payload.goalMeasurements).length > 0
+      ? payload.goalMeasurements
+      : null;
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update({
+      authorization_id: payload.authorizationId,
+      client_id: payload.clientId,
+      therapist_id: payload.therapistId,
+      organization_id: payload.organizationId,
+      service_code: payload.serviceCode,
+      session_date: payload.sessionDate,
+      start_time: payload.startTime,
+      end_time: payload.endTime,
+      session_duration: payload.sessionDuration,
+      goals_addressed: payload.goalsAddressed,
+      goal_ids: payload.goalIds ?? null,
+      goal_measurements: goalMeasurementsValue,
+      goal_notes: goalNotesValue,
+      narrative: payload.narrative.trim(),
+      is_locked: payload.isLocked,
+      signed_at: payload.isLocked ? new Date().toISOString() : null,
+      session_id: payload.sessionId ?? null,
+    })
+    .eq('id', payload.noteId)
+    .eq('organization_id', payload.organizationId)
+    .select(SESSION_NOTE_WITH_THERAPIST_SELECT)
+    .single();
+
+  if (error || !data) {
+    throw (error ?? new Error('Unable to update session note'));
+  }
+
+  return mapRowToSessionNote(
+    data as ClientSessionNoteRow & { therapists: TherapistSummary | null },
+    (data as { therapists: TherapistSummary | null }).therapists ?? null,
   );
 };
 

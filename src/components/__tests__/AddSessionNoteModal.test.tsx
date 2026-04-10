@@ -46,6 +46,12 @@ const mockSession = {
   therapist: { full_name: 'Test Therapist' },
 };
 
+const mockTherapist = {
+  id: 'therapist-1',
+  full_name: 'Test Therapist',
+  title: 'BCBA',
+};
+
 // ---------------------------------------------------------------------------
 // Chain builders — mirrors the pattern used in SessionModal.test.tsx.
 //
@@ -280,5 +286,250 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
     await screen.findByText(/default program/i);
     // Goal checkbox still reachable.
     expect(screen.getByRole('checkbox', { name: /default goal/i })).toBeInTheDocument();
+  });
+
+  it('shows measurement snapshot controls when a goal is checked', async () => {
+    renderWithProviders(<AddSessionNoteModal {...defaultProps} />);
+
+    const goalCheckbox = await screen.findByRole('checkbox', { name: /default goal/i });
+    fireEvent.click(goalCheckbox);
+
+    expect(screen.getByText(/measurement snapshot/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/count \(responses\)/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/opportunities/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/prompt level/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/measurement note/i)).toBeInTheDocument();
+  });
+
+  it('submits normalized goal_measurements when provided', async () => {
+    const onSubmit = vi.fn();
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') return buildChain([mockProgram]) as any;
+      if (table === 'goals') {
+        return buildChain([{ ...mockGoal, measurement_type: 'frequency' }]) as any;
+      }
+      if (table === 'sessions') return buildChainWithLimit([]) as any;
+      if (table === 'session_goals') return buildChain([]) as any;
+      return buildChain([]) as any;
+    });
+
+    renderWithProviders(
+      <AddSessionNoteModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        therapists={[mockTherapist] as any}
+        selectedAuth="auth-1"
+      />
+    );
+
+    fireEvent.change(await screen.findByLabelText(/therapist/i), {
+      target: { value: 'therapist-1' },
+    });
+
+    const goalCheckbox = await screen.findByRole('checkbox', { name: /default goal/i });
+    fireEvent.click(goalCheckbox);
+
+    fireEvent.change(screen.getByLabelText(/note for this goal/i), {
+      target: { value: 'Observed steady progress' },
+    });
+    fireEvent.change(screen.getByLabelText(/count \(responses\)/i), {
+      target: { value: '4' },
+    });
+    fireEvent.change(screen.getByLabelText(/opportunities/i), {
+      target: { value: '5' },
+    });
+    fireEvent.change(screen.getByLabelText(/prompt level/i), {
+      target: { value: 'Gestural' },
+    });
+    fireEvent.change(screen.getByLabelText(/measurement note/i), {
+      target: { value: 'Needed one reminder at the start' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /save note/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        therapist_id: 'therapist-1',
+        goal_notes: {
+          'goal-1': 'Observed steady progress',
+        },
+        goal_measurements: {
+          'goal-1': {
+            version: 1,
+            data: {
+              measurement_type: 'frequency',
+              metric_label: 'Count',
+              metric_unit: 'responses',
+              metric_value: 4,
+              opportunities: 5,
+              prompt_level: 'Gestural',
+              note: 'Needed one reminder at the start',
+            },
+          },
+        },
+      }));
+    });
+  });
+
+  it('hydrates existing goal_measurements for editing', async () => {
+    renderWithProviders(
+      <AddSessionNoteModal
+        {...defaultProps}
+        therapists={[mockTherapist] as any}
+        selectedAuth="auth-1"
+        existingNote={{
+          id: 'note-1',
+          date: '2026-03-31',
+          start_time: '09:00:00',
+          end_time: '10:00:00',
+          service_code: '97153',
+          therapist_id: 'therapist-1',
+          therapist_name: 'Test Therapist',
+          goals_addressed: ['Default Goal'],
+          goal_ids: ['goal-1'],
+          goal_notes: { 'goal-1': 'Existing goal note' },
+          goal_measurements: {
+            'goal-1': {
+              version: 1,
+              data: {
+                measurement_type: 'frequency',
+                metric_label: 'Count',
+                metric_unit: 'responses',
+                metric_value: 4,
+                opportunities: 5,
+                prompt_level: 'Gestural',
+                note: 'Existing measurement note',
+              },
+            },
+          },
+          session_id: null,
+          narrative: 'Existing narrative',
+          is_locked: false,
+          client_id: 'client-1',
+          authorization_id: 'auth-1',
+        }}
+      />
+    );
+
+    expect(await screen.findByDisplayValue('Existing goal note')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('4')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('5')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Gestural')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Existing measurement note')).toBeInTheDocument();
+  });
+
+  it('preserves an unlinked existing note without auto-attaching a session', async () => {
+    const onSubmit = vi.fn();
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') return buildChain([mockProgram]) as any;
+      if (table === 'goals') return buildChain([mockGoal]) as any;
+      if (table === 'sessions') return buildChainWithLimit([mockSession]) as any;
+      if (table === 'session_goals') return buildChain([]) as any;
+      return buildChain([]) as any;
+    });
+
+    renderWithProviders(
+      <AddSessionNoteModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        therapists={[mockTherapist] as any}
+        selectedAuth="auth-1"
+        existingNote={{
+          id: 'note-unlinked',
+          date: '2026-03-31',
+          start_time: '09:00:00',
+          end_time: '10:00:00',
+          service_code: '97153',
+          therapist_id: 'therapist-1',
+          therapist_name: 'Test Therapist',
+          goals_addressed: ['Default Goal'],
+          goal_ids: ['goal-1'],
+          goal_notes: { 'goal-1': 'Existing goal note' },
+          goal_measurements: null,
+          session_id: null,
+          narrative: 'Existing narrative',
+          is_locked: false,
+          client_id: 'client-1',
+          authorization_id: 'auth-1',
+        }}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /save note/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'note-unlinked',
+        session_id: null,
+      }));
+    });
+  });
+
+  it('preserves goal note and measurement entries that were stored outside goal_ids', async () => {
+    const onSubmit = vi.fn();
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') return buildChain([mockProgram]) as any;
+      if (table === 'goals') return buildChain([mockGoal]) as any;
+      if (table === 'sessions') return buildChainWithLimit([]) as any;
+      if (table === 'session_goals') return buildChain([]) as any;
+      return buildChain([]) as any;
+    });
+
+    renderWithProviders(
+      <AddSessionNoteModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        therapists={[mockTherapist] as any}
+        selectedAuth="auth-1"
+        existingNote={{
+          id: 'note-misaligned',
+          date: '2026-03-31',
+          start_time: '09:00:00',
+          end_time: '10:00:00',
+          service_code: '97153',
+          therapist_id: 'therapist-1',
+          therapist_name: 'Test Therapist',
+          goals_addressed: [],
+          goal_ids: [],
+          goal_notes: { 'goal-1': 'Legacy stored goal note' },
+          goal_measurements: {
+            'goal-1': {
+              version: 1,
+              data: {
+                measurement_type: 'frequency',
+                metric_label: 'Count',
+                metric_unit: 'responses',
+                metric_value: 6,
+                opportunities: 8,
+              },
+            },
+          },
+          session_id: null,
+          narrative: 'Existing narrative',
+          is_locked: false,
+          client_id: 'client-1',
+          authorization_id: 'auth-1',
+        }}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /save note/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        goal_ids: ['goal-1'],
+        goal_notes: {
+          'goal-1': 'Legacy stored goal note',
+        },
+        goal_measurements: {
+          'goal-1': expect.objectContaining({
+            version: 1,
+          }),
+        },
+      }));
+    });
   });
 });

@@ -30,6 +30,12 @@ import {
   toUtcSessionIsoString,
 } from "../features/scheduling/domain/time";
 import { startSessionFromModal } from "../features/scheduling/domain/sessionStart";
+import {
+  getGoalMeasurementFieldMeta,
+  hasMeaningfulGoalMeasurementEntry,
+  mergeUniqueGoalIds,
+  normalizeGoalMeasurementEntry,
+} from '../lib/goal-measurements';
 
 const ENABLE_ALTERNATIVE_TIME_SUGGESTIONS = false;
 
@@ -45,77 +51,6 @@ export interface SessionModalClinicalNotesPayload {
 
 export type SessionModalSubmitData = Partial<Session> & SessionModalClinicalNotesPayload;
 
-const GOAL_MEASUREMENT_VERSION = 1;
-
-interface GoalMeasurementFieldMeta {
-  readonly primaryLabel: string;
-  readonly primaryUnit: string | null;
-  readonly secondaryLabel: string | null;
-  readonly helperText: string;
-  readonly min?: number;
-  readonly max?: number;
-  readonly step: number;
-}
-
-const normalizeMeasurementTypeToken = (value: string | null | undefined): string =>
-  value?.trim().toLowerCase() ?? '';
-
-const getGoalMeasurementFieldMeta = (goal: Goal | undefined): GoalMeasurementFieldMeta => {
-  const measurementType = normalizeMeasurementTypeToken(goal?.measurement_type);
-
-  if (
-    measurementType.includes('percent') ||
-    measurementType.includes('%') ||
-    measurementType.includes('accuracy') ||
-    measurementType.includes('fidelity')
-  ) {
-    return {
-      primaryLabel: 'Percent',
-      primaryUnit: '%',
-      secondaryLabel: 'Opportunities',
-      helperText: 'Capture the observed percentage and, if known, the number of opportunities.',
-      min: 0,
-      max: 100,
-      step: 1,
-    };
-  }
-
-  if (
-    measurementType.includes('duration') ||
-    measurementType.includes('minute') ||
-    measurementType.includes('time')
-  ) {
-    return {
-      primaryLabel: 'Duration',
-      primaryUnit: 'minutes',
-      secondaryLabel: 'Occurrences',
-      helperText: 'Capture how long the skill or behavior was observed during the session.',
-      min: 0,
-      step: 1,
-    };
-  }
-
-  if (measurementType.includes('rate')) {
-    return {
-      primaryLabel: 'Rate',
-      primaryUnit: 'per hour',
-      secondaryLabel: 'Observation minutes',
-      helperText: 'Capture the observed rate and how long the observation window lasted.',
-      min: 0,
-      step: 0.1,
-    };
-  }
-
-  return {
-    primaryLabel: 'Count',
-    primaryUnit: 'responses',
-    secondaryLabel: 'Opportunities',
-    helperText: 'Capture the observed count for this goal during the session.',
-    min: 0,
-    step: 1,
-  };
-};
-
 const toOptionalNumber = (value: unknown): number | null => {
   if (value === null || value === undefined || value === '') {
     return null;
@@ -125,82 +60,10 @@ const toOptionalNumber = (value: unknown): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const toOptionalString = (value: unknown): string | null => {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-};
-
 const toFormNumber = (value: unknown): number | undefined => {
   const normalized = toOptionalNumber(value);
   return normalized ?? undefined;
 };
-
-const hasMeaningfulMeasurementEntry = (
-  entry: SessionGoalMeasurementEntry | null | undefined,
-): boolean => {
-  if (!entry) {
-    return false;
-  }
-
-  const { data } = entry;
-  return (
-    (data.metric_value !== null && data.metric_value !== undefined) ||
-    (data.opportunities !== null && data.opportunities !== undefined) ||
-    (data.prompt_level?.trim().length ?? 0) > 0 ||
-    (data.note?.trim().length ?? 0) > 0
-  );
-};
-
-const normalizeGoalMeasurementEntry = (
-  goal: Goal | undefined,
-  rawValue: unknown,
-): SessionGoalMeasurementEntry | null => {
-  if (!rawValue || typeof rawValue !== 'object') {
-    return null;
-  }
-
-  const candidate = rawValue as {
-    data?: Record<string, unknown>;
-  } & Record<string, unknown>;
-  const sourceData =
-    candidate.data && typeof candidate.data === 'object'
-      ? candidate.data
-      : candidate;
-  const fieldMeta = getGoalMeasurementFieldMeta(goal);
-  const normalizedEntry: SessionGoalMeasurementEntry = {
-    version: GOAL_MEASUREMENT_VERSION,
-    data: {
-      measurement_type: goal?.measurement_type ?? toOptionalString(sourceData.measurement_type),
-      metric_label: toOptionalString(sourceData.metric_label) ?? fieldMeta.primaryLabel,
-      metric_unit: toOptionalString(sourceData.metric_unit) ?? fieldMeta.primaryUnit,
-      metric_value: toOptionalNumber(
-        sourceData.metric_value ?? sourceData.count ?? sourceData.value,
-      ),
-      opportunities: toOptionalNumber(
-        sourceData.opportunities ?? sourceData.trials,
-      ),
-      prompt_level: toOptionalString(
-        sourceData.prompt_level ?? sourceData.promptLevel,
-      ),
-      note: toOptionalString(sourceData.note ?? sourceData.comment),
-    },
-  };
-
-  return hasMeaningfulMeasurementEntry(normalizedEntry) ? normalizedEntry : null;
-};
-
-const mergeUniqueGoalIds = (...goalIdLists: Array<Array<string | undefined> | undefined>): string[] =>
-  Array.from(
-    new Set(
-      goalIdLists
-        .flatMap((goalIds) => goalIds ?? [])
-        .filter((goalId): goalId is string => typeof goalId === 'string' && goalId.trim().length > 0),
-    ),
-  );
 
 interface SessionModalProps {
   isOpen: boolean;
@@ -836,8 +699,8 @@ export function SessionModal({
         mergedGoalIds
           .map((goalEntryId) => {
             const entry = normalizeGoalMeasurementEntry(
-              goals.find((goal) => goal.id === goalEntryId),
               data.session_note_goal_measurements?.[goalEntryId],
+              goals.find((goal) => goal.id === goalEntryId),
             );
             return entry ? [goalEntryId, entry] : null;
           })
@@ -1025,10 +888,10 @@ export function SessionModal({
       return true;
     }
     return Object.entries(sessionNoteGoalMeasurements ?? {}).some(([goalId, rawValue]) =>
-      hasMeaningfulMeasurementEntry(
+      hasMeaningfulGoalMeasurementEntry(
         normalizeGoalMeasurementEntry(
-          goals.find((goal) => goal.id === goalId),
           rawValue,
+          goals.find((goal) => goal.id === goalId),
         ),
       ),
     );
@@ -1905,8 +1768,8 @@ export function SessionModal({
                       const selectedGoal = goals.find((goal) => goal.id === selectedGoalId);
                       const measurementFieldMeta = getGoalMeasurementFieldMeta(selectedGoal);
                       const existingMeasurementEntry = normalizeGoalMeasurementEntry(
-                        selectedGoal,
                         sessionNoteGoalMeasurements?.[selectedGoalId],
+                        selectedGoal,
                       );
                       const fieldKey = `session_note_goal_notes.${selectedGoalId}` as const;
                       const metricValueFieldKey =

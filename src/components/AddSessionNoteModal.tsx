@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Calendar, Clock, FileText, CheckCircle } from 'lucide-react';
-import type { Goal, Program, Therapist } from '../types';
+import type { Goal, Program, SessionGoalMeasurementEntry, SessionNote, Therapist } from '../types';
 import { useActiveOrganizationId } from '../lib/organization';
+import { normalizeSessionGoalMeasurementEntry } from '../lib/session-notes';
 import { showError } from '../lib/toast';
 import { supabase } from '../lib/supabase';
 
@@ -14,9 +15,11 @@ interface AddSessionNoteModalProps {
   clientId: string;
   selectedAuth?: string;
   isSaving?: boolean;
+  existingNote?: SessionNote | null;
 }
 
 export interface SessionNoteFormValues {
+  id?: string;
   date: string;
   start_time: string;
   end_time: string;
@@ -26,12 +29,150 @@ export interface SessionNoteFormValues {
   goals_addressed: string[];
   goal_ids: string[];
   goal_notes?: Record<string, string> | null;
+  goal_measurements?: Record<string, SessionGoalMeasurementEntry> | null;
   session_id?: string | null;
   narrative: string;
   is_locked: boolean;
 }
 
 const MAX_GOAL_NOTE_LENGTH = 5000;
+const GOAL_MEASUREMENT_VERSION = 1;
+
+const mergeUniqueGoalIds = (...goalIdLists: Array<string[] | null | undefined>): string[] => {
+  const merged = new Set<string>();
+
+  goalIdLists.forEach((goalIds) => {
+    goalIds?.forEach((goalId) => {
+      const trimmed = goalId?.trim();
+      if (trimmed) {
+        merged.add(trimmed);
+      }
+    });
+  });
+
+  return Array.from(merged);
+};
+
+interface GoalMeasurementFieldMeta {
+  readonly primaryLabel: string;
+  readonly primaryUnit: string | null;
+  readonly secondaryLabel: string | null;
+  readonly helperText: string;
+  readonly min?: number;
+  readonly max?: number;
+  readonly step: number;
+}
+
+const normalizeMeasurementTypeToken = (value: string | null | undefined): string =>
+  value?.trim().toLowerCase() ?? '';
+
+const getGoalMeasurementFieldMeta = (goal: Goal | undefined): GoalMeasurementFieldMeta => {
+  const measurementType = normalizeMeasurementTypeToken(goal?.measurement_type);
+
+  if (
+    measurementType.includes('percent') ||
+    measurementType.includes('%') ||
+    measurementType.includes('accuracy') ||
+    measurementType.includes('fidelity')
+  ) {
+    return {
+      primaryLabel: 'Percent',
+      primaryUnit: '%',
+      secondaryLabel: 'Opportunities',
+      helperText: 'Capture the observed percentage and, if known, the number of opportunities.',
+      min: 0,
+      max: 100,
+      step: 1,
+    };
+  }
+
+  if (
+    measurementType.includes('duration') ||
+    measurementType.includes('minute') ||
+    measurementType.includes('time')
+  ) {
+    return {
+      primaryLabel: 'Duration',
+      primaryUnit: 'minutes',
+      secondaryLabel: 'Occurrences',
+      helperText: 'Capture how long the skill or behavior was observed during the session.',
+      min: 0,
+      step: 1,
+    };
+  }
+
+  if (measurementType.includes('rate')) {
+    return {
+      primaryLabel: 'Rate',
+      primaryUnit: 'per hour',
+      secondaryLabel: 'Observation minutes',
+      helperText: 'Capture the observed rate and how long the observation window lasted.',
+      min: 0,
+      step: 0.1,
+    };
+  }
+
+  return {
+    primaryLabel: 'Count',
+    primaryUnit: 'responses',
+    secondaryLabel: 'Opportunities',
+    helperText: 'Capture the observed count for this goal during the session.',
+    min: 0,
+    step: 1,
+  };
+};
+
+const toOptionalNumber = (value: string): number | null => {
+  if (value.trim().length === 0) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const toOptionalString = (value: string): string | null => {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const hasMeaningfulMeasurementEntry = (
+  entry: SessionGoalMeasurementEntry | null | undefined,
+): boolean => {
+  if (!entry) {
+    return false;
+  }
+
+  const { data } = entry;
+  return (
+    (data.metric_value !== null && data.metric_value !== undefined) ||
+    (data.opportunities !== null && data.opportunities !== undefined) ||
+    (data.prompt_level?.trim().length ?? 0) > 0 ||
+    (data.note?.trim().length ?? 0) > 0
+  );
+};
+
+const buildGoalMeasurementEntry = (
+  goal: Goal | undefined,
+  rawValue: unknown,
+): SessionGoalMeasurementEntry | null => {
+  const fieldMeta = getGoalMeasurementFieldMeta(goal);
+  const normalizedExisting = normalizeSessionGoalMeasurementEntry(rawValue);
+  const nextEntry: SessionGoalMeasurementEntry = {
+    version: GOAL_MEASUREMENT_VERSION,
+    data: {
+      measurement_type: goal?.measurement_type ?? normalizedExisting?.data.measurement_type ?? null,
+      metric_label: normalizedExisting?.data.metric_label ?? fieldMeta.primaryLabel,
+      metric_unit: normalizedExisting?.data.metric_unit ?? fieldMeta.primaryUnit,
+      metric_value: normalizedExisting?.data.metric_value ?? null,
+      opportunities: normalizedExisting?.data.opportunities ?? null,
+      prompt_level: normalizedExisting?.data.prompt_level ?? null,
+      note: normalizedExisting?.data.note ?? null,
+    },
+  };
+
+  return hasMeaningfulMeasurementEntry(nextEntry) ? nextEntry : null;
+};
 
 function useMinWidthSm(): boolean {
   const [matches, setMatches] = useState(() => {
@@ -59,7 +200,8 @@ export function AddSessionNoteModal({
   therapists,
   clientId,
   selectedAuth,
-  isSaving = false
+  isSaving = false,
+  existingNote = null,
 }: AddSessionNoteModalProps) {
   const organizationId = useActiveOrganizationId();
   const isMinWidthSm = useMinWidthSm();
@@ -70,11 +212,13 @@ export function AddSessionNoteModal({
   const [therapistId, setTherapistId] = useState('');
   const [selectedGoalIds, setSelectedGoalIds] = useState<string[]>([]);
   const [goalNotes, setGoalNotes] = useState<Record<string, string>>({});
+  const [goalMeasurements, setGoalMeasurements] = useState<Record<string, SessionGoalMeasurementEntry>>({});
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
   const [narrative, setNarrative] = useState('');
   const [isLocked, setIsLocked] = useState(false);
   /** Mobile goals bank disclosure; default open for scannability and test environments without CSS breakpoints. */
   const [mobileGoalsDisclosureOpen, setMobileGoalsDisclosureOpen] = useState(true);
+  const isEditingUnlinkedNote = Boolean(existingNote?.id) && !existingNote?.session_id;
 
   // ---------------------------------------------------------------------------
   // Programs — still loaded for goal group headers (display only).
@@ -242,6 +386,11 @@ export function AddSessionNoteModal({
           delete next[goalId];
           return next;
         });
+        setGoalMeasurements((measurements) => {
+          const next = { ...measurements };
+          delete next[goalId];
+          return next;
+        });
         return prev.filter((id) => id !== goalId);
       }
       return [...prev, goalId];
@@ -252,8 +401,46 @@ export function AddSessionNoteModal({
     setGoalNotes((prev) => ({ ...prev, [goalId]: text }));
   };
 
+  const updateGoalMeasurement = (
+    goal: Goal,
+    updates: Partial<SessionGoalMeasurementEntry['data']>,
+  ) => {
+    setGoalMeasurements((prev) => {
+      const fieldMeta = getGoalMeasurementFieldMeta(goal);
+      const existing = buildGoalMeasurementEntry(goal, prev[goal.id]);
+      const nextEntry: SessionGoalMeasurementEntry = {
+        version: GOAL_MEASUREMENT_VERSION,
+        data: {
+          measurement_type: goal.measurement_type ?? existing?.data.measurement_type ?? null,
+          metric_label: existing?.data.metric_label ?? fieldMeta.primaryLabel,
+          metric_unit: existing?.data.metric_unit ?? fieldMeta.primaryUnit,
+          metric_value: updates.metric_value !== undefined
+            ? updates.metric_value ?? null
+            : existing?.data.metric_value ?? null,
+          opportunities: updates.opportunities !== undefined
+            ? updates.opportunities ?? null
+            : existing?.data.opportunities ?? null,
+          prompt_level: updates.prompt_level !== undefined
+            ? updates.prompt_level ?? null
+            : existing?.data.prompt_level ?? null,
+          note: updates.note !== undefined
+            ? updates.note ?? null
+            : existing?.data.note ?? null,
+        },
+      };
+
+      if (!hasMeaningfulMeasurementEntry(nextEntry)) {
+        const next = { ...prev };
+        delete next[goal.id];
+        return next;
+      }
+
+      return { ...prev, [goal.id]: nextEntry };
+    });
+  };
+
   useEffect(() => {
-    if (!hasSessions || selectedSessionId) {
+    if (!hasSessions || selectedSessionId || isEditingUnlinkedNote) {
       return;
     }
 
@@ -302,7 +489,7 @@ export function AddSessionNoteModal({
     if (nextSessionId) {
       setSelectedSessionId(nextSessionId);
     }
-  }, [date, endTime, hasSessions, sessions, selectedSessionId, startTime, therapistId]);
+  }, [date, endTime, hasSessions, isEditingUnlinkedNote, sessions, selectedSessionId, startTime, therapistId]);
 
   const resetForm = () => {
     setDate(new Date().toISOString().split('T')[0]);
@@ -312,6 +499,7 @@ export function AddSessionNoteModal({
     setTherapistId('');
     setSelectedGoalIds([]);
     setGoalNotes({});
+    setGoalMeasurements({});
     setSelectedSessionId('');
     setNarrative('');
     setIsLocked(false);
@@ -325,6 +513,37 @@ export function AddSessionNoteModal({
       setMobileGoalsDisclosureOpen(true);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    if (!existingNote) {
+      return;
+    }
+
+    const hydratedGoalNotes = existingNote.goal_notes ?? {};
+    const hydratedGoalMeasurements = existingNote.goal_measurements ?? {};
+    const hydratedGoalIds = mergeUniqueGoalIds(
+      existingNote.goal_ids ?? [],
+      Object.keys(hydratedGoalNotes),
+      Object.keys(hydratedGoalMeasurements),
+    );
+
+    setDate(existingNote.date ?? new Date().toISOString().split('T')[0]);
+    setStartTime(existingNote.start_time?.slice(0, 5) ?? '09:00');
+    setEndTime(existingNote.end_time?.slice(0, 5) ?? '10:00');
+    setServiceCode(existingNote.service_code ?? '97153');
+    setTherapistId(existingNote.therapist_id ?? '');
+    setSelectedGoalIds(hydratedGoalIds);
+    setGoalNotes(hydratedGoalNotes);
+    setGoalMeasurements(hydratedGoalMeasurements);
+    setSelectedSessionId(existingNote.session_id ?? '');
+    setNarrative(existingNote.narrative ?? '');
+    setIsLocked(Boolean(existingNote.is_locked));
+    appliedForSession.current = existingNote.session_id ?? null;
+  }, [existingNote, isOpen]);
 
   if (!isOpen) return null;
 
@@ -359,7 +578,7 @@ export function AddSessionNoteModal({
       return;
     }
 
-    if (hasSessions && !selectedSessionId) {
+    if (hasSessions && !selectedSessionId && !isEditingUnlinkedNote) {
       showError('Select a scheduled session to link this note.');
       return;
     }
@@ -389,18 +608,40 @@ export function AddSessionNoteModal({
       }
     }
 
+    const submittedGoalIds = mergeUniqueGoalIds(
+      selectedGoalIds,
+      Object.keys(goalNotes),
+      Object.keys(goalMeasurements),
+    );
     const selectedTherapist = therapists.find((t) => t.id === therapistId);
-    const selectedGoalTitles = availableGoals
-      .filter((goal) => selectedGoalIds.includes(goal.id))
-      .map((goal) => goal.title);
+    const existingGoalLabelsById = new Map(
+      (existingNote?.goal_ids ?? []).map((goalId, index) => [goalId, existingNote?.goals_addressed?.[index] ?? goalId]),
+    );
+    const selectedGoalTitles = submittedGoalIds.map((goalId) => {
+      const availableGoal = availableGoals.find((goal) => goal.id === goalId);
+      return availableGoal?.title ?? existingGoalLabelsById.get(goalId) ?? goalId;
+    });
 
-    // Build goal_notes map — only include trimmed values for selected goals.
+    // Build goal_notes map — preserve any hydrated note content unless the therapist explicitly removed it.
     const submittedGoalNotes: Record<string, string> = {};
-    for (const goalId of selectedGoalIds) {
-      submittedGoalNotes[goalId] = (goalNotes[goalId] ?? '').trim();
+    for (const goalId of submittedGoalIds) {
+      const trimmedNote = (goalNotes[goalId] ?? '').trim();
+      if (trimmedNote) {
+        submittedGoalNotes[goalId] = trimmedNote;
+      }
     }
+    const submittedGoalMeasurements = Object.fromEntries(
+      submittedGoalIds
+        .map((goalId) => {
+          const goal = availableGoals.find((entry) => entry.id === goalId);
+          const entry = buildGoalMeasurementEntry(goal, goalMeasurements[goalId]);
+          return entry ? [goalId, entry] : null;
+        })
+        .filter((entry): entry is [string, SessionGoalMeasurementEntry] => Boolean(entry)),
+    );
 
     onSubmit({
+      id: existingNote?.id,
       date,
       start_time: startTime,
       end_time: endTime,
@@ -408,8 +649,9 @@ export function AddSessionNoteModal({
       therapist_id: therapistId,
       therapist_name: selectedTherapist?.full_name || 'Unknown Therapist',
       goals_addressed: selectedGoalTitles,
-      goal_ids: selectedGoalIds,
-      goal_notes: submittedGoalNotes,
+      goal_ids: submittedGoalIds,
+      goal_notes: Object.keys(submittedGoalNotes).length > 0 ? submittedGoalNotes : null,
+      goal_measurements: Object.keys(submittedGoalMeasurements).length > 0 ? submittedGoalMeasurements : null,
       session_id: selectedSessionId || null,
       narrative,
       is_locked: isLocked,
@@ -429,6 +671,8 @@ export function AddSessionNoteModal({
               {programGoals.map((goal) => {
                 const isSelected = selectedGoalIds.includes(goal.id);
                 const noteText = goalNotes[goal.id] ?? '';
+                const measurementEntry = buildGoalMeasurementEntry(goal, goalMeasurements[goal.id]);
+                const measurementFieldMeta = getGoalMeasurementFieldMeta(goal);
                 const remaining = MAX_GOAL_NOTE_LENGTH - noteText.length;
                 return (
                   <div key={goal.id} className="rounded-md border border-gray-200 p-2 dark:border-gray-700">
@@ -467,6 +711,97 @@ export function AddSessionNoteModal({
                         >
                           {remaining.toLocaleString()} characters remaining
                         </p>
+                        <div className="mt-3 rounded-md border border-indigo-100 bg-indigo-50/70 p-3 dark:border-indigo-900/40 dark:bg-indigo-900/10">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-200">
+                                Measurement snapshot
+                              </p>
+                              <p className="mt-1 text-[11px] text-indigo-700/90 dark:text-indigo-200/80">
+                                {measurementFieldMeta.helperText}
+                              </p>
+                            </div>
+                            {goal.measurement_type && (
+                              <span className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-indigo-700 shadow-sm dark:bg-dark dark:text-indigo-200">
+                                {goal.measurement_type}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div>
+                              <label
+                                htmlFor={`goal-measurement-value-${goal.id}`}
+                                className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300"
+                              >
+                                {measurementFieldMeta.primaryLabel}
+                                {measurementFieldMeta.primaryUnit ? ` (${measurementFieldMeta.primaryUnit})` : ''}
+                              </label>
+                              <input
+                                id={`goal-measurement-value-${goal.id}`}
+                                type="number"
+                                min={measurementFieldMeta.min}
+                                max={measurementFieldMeta.max}
+                                step={measurementFieldMeta.step}
+                                value={measurementEntry?.data.metric_value ?? ''}
+                                onChange={(e) => updateGoalMeasurement(goal, { metric_value: toOptionalNumber(e.target.value) })}
+                                className="w-full rounded-md border border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                                placeholder={measurementFieldMeta.primaryLabel}
+                              />
+                            </div>
+                            {measurementFieldMeta.secondaryLabel && (
+                              <div>
+                                <label
+                                  htmlFor={`goal-measurement-opportunities-${goal.id}`}
+                                  className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300"
+                                >
+                                  {measurementFieldMeta.secondaryLabel}
+                                </label>
+                                <input
+                                  id={`goal-measurement-opportunities-${goal.id}`}
+                                  type="number"
+                                  min={0}
+                                  step={1}
+                                  value={measurementEntry?.data.opportunities ?? ''}
+                                  onChange={(e) => updateGoalMeasurement(goal, { opportunities: toOptionalNumber(e.target.value) })}
+                                  className="w-full rounded-md border border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                                  placeholder={measurementFieldMeta.secondaryLabel}
+                                />
+                              </div>
+                            )}
+                            <div>
+                              <label
+                                htmlFor={`goal-measurement-prompt-${goal.id}`}
+                                className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300"
+                              >
+                                Prompt level
+                              </label>
+                              <input
+                                id={`goal-measurement-prompt-${goal.id}`}
+                                type="text"
+                                value={measurementEntry?.data.prompt_level ?? ''}
+                                onChange={(e) => updateGoalMeasurement(goal, { prompt_level: toOptionalString(e.target.value) })}
+                                className="w-full rounded-md border border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                                placeholder="Independent, verbal, gestural..."
+                              />
+                            </div>
+                            <div>
+                              <label
+                                htmlFor={`goal-measurement-note-${goal.id}`}
+                                className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300"
+                              >
+                                Measurement note
+                              </label>
+                              <input
+                                id={`goal-measurement-note-${goal.id}`}
+                                type="text"
+                                value={measurementEntry?.data.note ?? ''}
+                                onChange={(e) => updateGoalMeasurement(goal, { note: toOptionalString(e.target.value) })}
+                                className="w-full rounded-md border border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                                placeholder="Optional qualifier for the observed data"
+                              />
+                            </div>
+                          </div>
+                        </div>
                         {(goal.measurement_type || goal.target_criteria || goal.mastery_criteria) && (
                           <details className="mt-2 rounded-md border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] text-blue-800 open:border-blue-200 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-100">
                             <summary className="cursor-pointer font-medium text-blue-900 dark:text-blue-100">
@@ -498,6 +833,8 @@ export function AddSessionNoteModal({
             {(goalsByProgram.get('__unknown__') ?? []).map((goal) => {
               const isSelected = selectedGoalIds.includes(goal.id);
               const noteText = goalNotes[goal.id] ?? '';
+              const measurementEntry = buildGoalMeasurementEntry(goal, goalMeasurements[goal.id]);
+              const measurementFieldMeta = getGoalMeasurementFieldMeta(goal);
               const remaining = MAX_GOAL_NOTE_LENGTH - noteText.length;
               return (
                 <div key={goal.id} className="rounded-md border border-gray-200 p-2 dark:border-gray-700">
@@ -533,6 +870,97 @@ export function AddSessionNoteModal({
                       >
                         {remaining.toLocaleString()} characters remaining
                       </p>
+                      <div className="mt-3 rounded-md border border-indigo-100 bg-indigo-50/70 p-3 dark:border-indigo-900/40 dark:bg-indigo-900/10">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-200">
+                              Measurement snapshot
+                            </p>
+                            <p className="mt-1 text-[11px] text-indigo-700/90 dark:text-indigo-200/80">
+                              {measurementFieldMeta.helperText}
+                            </p>
+                          </div>
+                          {goal.measurement_type && (
+                            <span className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-indigo-700 shadow-sm dark:bg-dark dark:text-indigo-200">
+                              {goal.measurement_type}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <label
+                              htmlFor={`goal-measurement-value-${goal.id}`}
+                              className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300"
+                            >
+                              {measurementFieldMeta.primaryLabel}
+                              {measurementFieldMeta.primaryUnit ? ` (${measurementFieldMeta.primaryUnit})` : ''}
+                            </label>
+                            <input
+                              id={`goal-measurement-value-${goal.id}`}
+                              type="number"
+                              min={measurementFieldMeta.min}
+                              max={measurementFieldMeta.max}
+                              step={measurementFieldMeta.step}
+                              value={measurementEntry?.data.metric_value ?? ''}
+                              onChange={(e) => updateGoalMeasurement(goal, { metric_value: toOptionalNumber(e.target.value) })}
+                              className="w-full rounded-md border border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                              placeholder={measurementFieldMeta.primaryLabel}
+                            />
+                          </div>
+                          {measurementFieldMeta.secondaryLabel && (
+                            <div>
+                              <label
+                                htmlFor={`goal-measurement-opportunities-${goal.id}`}
+                                className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300"
+                              >
+                                {measurementFieldMeta.secondaryLabel}
+                              </label>
+                              <input
+                                id={`goal-measurement-opportunities-${goal.id}`}
+                                type="number"
+                                min={0}
+                                step={1}
+                                value={measurementEntry?.data.opportunities ?? ''}
+                                onChange={(e) => updateGoalMeasurement(goal, { opportunities: toOptionalNumber(e.target.value) })}
+                                className="w-full rounded-md border border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                                placeholder={measurementFieldMeta.secondaryLabel}
+                              />
+                            </div>
+                          )}
+                          <div>
+                            <label
+                              htmlFor={`goal-measurement-prompt-${goal.id}`}
+                              className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300"
+                            >
+                              Prompt level
+                            </label>
+                            <input
+                              id={`goal-measurement-prompt-${goal.id}`}
+                              type="text"
+                              value={measurementEntry?.data.prompt_level ?? ''}
+                              onChange={(e) => updateGoalMeasurement(goal, { prompt_level: toOptionalString(e.target.value) })}
+                              className="w-full rounded-md border border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                              placeholder="Independent, verbal, gestural..."
+                            />
+                          </div>
+                          <div>
+                            <label
+                              htmlFor={`goal-measurement-note-${goal.id}`}
+                              className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300"
+                            >
+                              Measurement note
+                            </label>
+                            <input
+                              id={`goal-measurement-note-${goal.id}`}
+                              type="text"
+                              value={measurementEntry?.data.note ?? ''}
+                              onChange={(e) => updateGoalMeasurement(goal, { note: toOptionalString(e.target.value) })}
+                              className="w-full rounded-md border border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                              placeholder="Optional qualifier for the observed data"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

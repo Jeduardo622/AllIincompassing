@@ -9,7 +9,7 @@ describe('fetchClientSessionNotes', () => {
   });
 });
 import { describe, expect, it, vi } from 'vitest';
-import { createClientSessionNote, upsertClientSessionNoteForSession } from '../session-notes';
+import { createClientSessionNote, updateClientSessionNote, upsertClientSessionNoteForSession } from '../session-notes';
 
 const mockFrom = vi.fn();
 let lastInsertPayload: Record<string, unknown> | null = null;
@@ -379,6 +379,126 @@ describe('upsertClientSessionNoteForSession', () => {
         goalMeasurements: { 'goal-1': { version: 1, data: { count: 2 } } },
         goalNotes: { 'goal-1': 'Progress captured' },
         narrative: 'Narrative text',
+      }),
+    ).rejects.toThrow(/locked/i);
+  });
+});
+
+describe('updateClientSessionNote', () => {
+  it('updates an unlocked existing note with goal_measurements', async () => {
+    let lastUpdatePayload: Record<string, unknown> | null = null;
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'client_session_notes') {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: { id: 'note-existing', is_locked: false },
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+          update: (payload: Record<string, unknown>) => {
+            lastUpdatePayload = payload;
+            return {
+              eq: () => ({
+                eq: () => ({
+                  select: () => ({
+                    single: async () => ({
+                      data: {
+                        ...noteRow,
+                        ...payload,
+                        id: 'note-existing',
+                        therapists: null,
+                      },
+                      error: null,
+                    }),
+                  }),
+                }),
+              }),
+            };
+          },
+        };
+      }
+
+      if (table === 'authorizations') {
+        return {
+          select: () => ({
+            eq: () => buildSelectSingle({ ...authRecord, status: 'approved' }),
+          }),
+        };
+      }
+
+      return {};
+    });
+
+    const result = await updateClientSessionNote({
+      noteId: 'note-existing',
+      authorizationId: authRecord.id,
+      clientId: 'client-1',
+      therapistId: 'therapist-1',
+      organizationId: authRecord.organization_id,
+      actorUserId: 'user-1',
+      serviceCode: '97153',
+      sessionDate: '2025-06-01',
+      startTime: '09:00',
+      endTime: '10:00',
+      sessionDuration: 60,
+      goalsAddressed: ['Goal A'],
+      goalIds: ['goal-1'],
+      goalMeasurements: { 'goal-1': { version: 1, data: { count: 4 } as any } },
+      goalNotes: { 'goal-1': 'Updated note' },
+      narrative: 'Updated narrative',
+      isLocked: false,
+      sessionId: 'session-1',
+    });
+
+    expect(result.id).toBe('note-existing');
+    expect(lastUpdatePayload?.goal_measurements).toEqual({ 'goal-1': { version: 1, data: { count: 4 } } });
+    expect(lastUpdatePayload?.goal_notes).toEqual({ 'goal-1': 'Updated note' });
+  });
+
+  it('rejects edits for locked existing notes', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table !== 'client_session_notes') {
+        return {};
+      }
+
+      return {
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: { id: 'note-locked', is_locked: true },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      };
+    });
+
+    await expect(
+      updateClientSessionNote({
+        noteId: 'note-locked',
+        authorizationId: authRecord.id,
+        clientId: 'client-1',
+        therapistId: 'therapist-1',
+        organizationId: authRecord.organization_id,
+        actorUserId: 'user-1',
+        serviceCode: '97153',
+        sessionDate: '2025-06-01',
+        startTime: '09:00',
+        endTime: '10:00',
+        sessionDuration: 60,
+        goalsAddressed: ['Goal A'],
+        goalIds: ['goal-1'],
+        goalNotes: { 'goal-1': 'Updated note' },
+        narrative: 'Updated narrative',
+        isLocked: false,
       }),
     ).rejects.toThrow(/locked/i);
   });

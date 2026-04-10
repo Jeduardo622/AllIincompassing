@@ -14,6 +14,7 @@ import {
 } from '../../lib/supabase';
 import type {
   SessionGoalMeasurementEntry,
+  SessionNote,
   Therapist,
 } from '../../types';
 import { AddSessionNoteModal, type SessionNoteFormValues  } from '../AddSessionNoteModal';
@@ -26,6 +27,7 @@ import {
   fetchClientSessionNotes,
   isSupabaseError,
   normalizeSessionGoalMeasurementEntry,
+  updateClientSessionNote,
 } from '../../lib/session-notes';
 
 // ---------------------------------------------------------------------------
@@ -147,6 +149,7 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
   const { user } = useAuth();
   const organizationId = useActiveOrganizationId();
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
+  const [editingNote, setEditingNote] = useState<SessionNote | null>(null);
   const [selectedAuth, setSelectedAuth] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedNotes, setSelectedNotes] = useState<string[]>([]);
@@ -227,6 +230,29 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
         throw new Error('End time must be later than start time.');
       }
 
+      if (note.id) {
+        return updateClientSessionNote({
+          noteId: note.id,
+          authorizationId: selectedAuth,
+          clientId: client.id,
+          actorUserId: user.id,
+          organizationId,
+          therapistId: note.therapist_id,
+          serviceCode: note.service_code,
+          sessionDate: note.date,
+          startTime: note.start_time,
+          endTime: note.end_time,
+          sessionDuration: durationMinutes,
+          goalsAddressed: note.goals_addressed,
+          goalIds: note.goal_ids,
+          goalMeasurements: note.goal_measurements ?? null,
+          goalNotes: note.goal_notes ?? null,
+          sessionId: note.session_id ?? null,
+          narrative: note.narrative,
+          isLocked: note.is_locked,
+        });
+      }
+
       return createClientSessionNote({
         authorizationId: selectedAuth,
         clientId: client.id,
@@ -240,6 +266,7 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
         sessionDuration: durationMinutes,
         goalsAddressed: note.goals_addressed,
         goalIds: note.goal_ids,
+        goalMeasurements: note.goal_measurements ?? null,
         goalNotes: note.goal_notes ?? null,
         sessionId: note.session_id ?? null,
         narrative: note.narrative,
@@ -249,6 +276,7 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
     onSuccess: () => {
       showSuccess('Session note saved.');
       setIsAddNoteModalOpen(false);
+      setEditingNote(null);
       queryClient.invalidateQueries({
         queryKey: ['client-session-notes', client.id, organizationId ?? 'MISSING_ORG'],
       }).catch(() => {});
@@ -360,6 +388,12 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
     createNoteMutation.mutate(values);
   };
 
+  const handleEditSessionNote = (note: SessionNote) => {
+    setSelectedAuth(note.authorization_id ?? null);
+    setEditingNote(note);
+    setIsAddNoteModalOpen(true);
+  };
+
   const isCreateDisabled = !selectedAuth || !organizationId || !user?.id;
   const isNotesLoading = isLoadingNotes || isRefetchingNotes;
   
@@ -432,7 +466,10 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
             </div>
             <div className="flex space-x-2">
               <button
-                onClick={() => setIsAddNoteModalOpen(true)}
+                onClick={() => {
+                  setEditingNote(null);
+                  setIsAddNoteModalOpen(true);
+                }}
                 className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
                 disabled={isCreateDisabled}
                 type="button"
@@ -579,6 +616,7 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
                         
                         {!note.is_locked && (
                           <button 
+                            onClick={() => handleEditSessionNote(note)}
                             className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm"
                             type="button"
                           >
@@ -654,12 +692,16 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
       {/* Add Session Note Modal */}
       <AddSessionNoteModal
         isOpen={isAddNoteModalOpen}
-        onClose={() => setIsAddNoteModalOpen(false)}
+        onClose={() => {
+          setIsAddNoteModalOpen(false);
+          setEditingNote(null);
+        }}
         onSubmit={handleAddSessionNote}
         therapists={therapists}
         clientId={client.id}
         selectedAuth={selectedAuth || undefined}
         isSaving={createNoteMutation.isLoading}
+        existingNote={editingNote}
       />
     </div>
   );

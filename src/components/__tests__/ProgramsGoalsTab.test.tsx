@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
+import { fireEvent, renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
 import { ProgramsGoalsTab } from "../ClientDetails/ProgramsGoalsTab";
 import { generateProgramGoalDraft } from "../../lib/ai";
 import { showError, showInfo, showSuccess } from "../../lib/toast";
@@ -447,16 +447,16 @@ describe("ProgramsGoalsTab", () => {
     });
 
     const programNameInput = await screen.findByPlaceholderText("Program name");
-    await userEvent.type(programNameInput, "Communication Program");
+    fireEvent.change(programNameInput, { target: { value: "Communication Program" } });
     await userEvent.click(screen.getByRole("button", { name: "Create Program" }));
 
     await waitFor(() => {
       expect(showSuccess).toHaveBeenCalledWith("Program created");
     });
 
-    await userEvent.type(await screen.findByPlaceholderText("Goal title"), "Goal A");
-    await userEvent.type(await screen.findByPlaceholderText("Goal description"), "Goal description");
-    await userEvent.type(await screen.findByPlaceholderText("Original clinical wording"), "Original wording");
+    fireEvent.change(await screen.findByPlaceholderText("Goal title"), { target: { value: "Goal A" } });
+    fireEvent.change(await screen.findByPlaceholderText("Goal description"), { target: { value: "Goal description" } });
+    fireEvent.change(await screen.findByPlaceholderText("Original clinical wording"), { target: { value: "Original wording" } });
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Create Goal" })).toBeEnabled();
@@ -473,7 +473,7 @@ describe("ProgramsGoalsTab", () => {
       );
     });
     expect(showSuccess).toHaveBeenCalledWith("Goal created");
-  }, 15000);
+  });
 
   it("falls back to same-origin API when program edge calls time out", async () => {
     let hasProgram = false;
@@ -648,10 +648,11 @@ describe("ProgramsGoalsTab", () => {
     const assessmentInput = await screen.findByPlaceholderText(
       /Paste assessment summary or White Bible-aligned notes/i,
     );
-    await userEvent.type(
-      assessmentInput,
-      "Assessment shows deficits in functional communication and WH-question responding with moderate prompt dependence.",
-    );
+    fireEvent.change(assessmentInput, {
+      target: {
+        value: "Assessment shows deficits in functional communication and WH-question responding with moderate prompt dependence.",
+      },
+    });
     await userEvent.click(screen.getByRole("button", { name: /Generate AI Proposal Program \+ Goals/i }));
 
     await waitFor(() => {
@@ -670,7 +671,7 @@ describe("ProgramsGoalsTab", () => {
       );
     });
     expect(showSuccess).toHaveBeenCalledWith("AI proposal saved to assessment queue for review.");
-  }, 15000);
+  });
 
   it("uses canonical programs array values when generating a draft proposal", async () => {
     vi.mocked(generateProgramGoalDraft).mockResolvedValueOnce({

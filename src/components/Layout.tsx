@@ -1,8 +1,26 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { useAuth } from '../lib/authContext';
 import { useRouteQueryRefetch } from '../lib/useRouteQueryRefetch';
+
+const RouteContentFallback: React.FC = () => (
+  <div
+    className="rounded-2xl border border-gray-200/80 bg-white/70 p-6 shadow-sm backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/40"
+    role="status"
+    aria-live="polite"
+    aria-label="Loading page content"
+  >
+    <div className="animate-pulse space-y-4">
+      <div className="h-6 w-40 rounded-full bg-gray-200 dark:bg-slate-800" />
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="h-28 rounded-xl bg-gray-200/80 dark:bg-slate-800/80" />
+        <div className="h-28 rounded-xl bg-gray-200/80 dark:bg-slate-800/80" />
+      </div>
+      <div className="h-56 rounded-2xl bg-gray-200/80 dark:bg-slate-800/80" />
+    </div>
+  </div>
+);
 
 export function Layout() {
   const { user, effectiveRole } = useAuth();
@@ -19,7 +37,11 @@ export function Layout() {
             <span className="ml-2 font-medium">Role:</span> {effectiveRole}
           </div>
         )}
-        <Outlet />
+        <Suspense fallback={<RouteContentFallback />}>
+          <div className="min-h-[24rem]">
+            <Outlet />
+          </div>
+        </Suspense>
       </main>
     </div>
   );

@@ -1,9 +1,26 @@
 # Session Data Collection 2.0 — Research Handoff (One-Pager)
 
-**Status:** Research complete — ready for specification and phased implementation  
+**Status:** Research complete — Track 1 and Track 1b shipped on `main` (see **Implementation status** below). Further phases follow product and Phase 0 doc.  
 **Audience:** Implementing agents, tech lead, clinical/product reviewer  
 **Last updated:** 2026-04-09  
-**Related:** `AGENTS.md`, `docs/ai/high-risk-paths.md`, `docs/ai/verification-matrix.md`, `docs/THERAPIST_SESSIONS_WORKFLOW.md`, `docs/SESSION_START_NOTES_UPDATES_2026_02.md`
+**Related:** `AGENTS.md`, `docs/ai/high-risk-paths.md`, `docs/ai/verification-matrix.md`, `docs/THERAPIST_SESSIONS_WORKFLOW.md`, `docs/SESSION_START_NOTES_UPDATES_2026_02.md`, `docs/SESSION_DATA_COLLECTION_2.0_PHASE_0_SPEC_LOCK.md`
+
+---
+
+## 0. Implementation status (rolling)
+
+**Last verified (local):** 2026-04-09 — `git pull origin main`; targeted Vitest: `AddSessionNoteModal.test.tsx`, `SessionNotesTab.test.tsx`, `session-notes.test.ts`, `ProgramsGoalsTab.test.tsx` — all passed.
+
+| Track | PR | What shipped |
+|-------|-----|----------------|
+| **Track 1** | [#402](https://github.com/Jeduardo622/AllIincompassing/pull/402) | **SessionModal:** per-goal measurement snapshot UI; normalized `session_note_goal_measurements` → **`client_session_notes.goal_measurements`**. **SessionNotesTab:** read/display of saved measurements; **`session-notes`** normalization on fetch. |
+| **Track 1b** | [#403](https://github.com/Jeduardo622/AllIincompassing/pull/403) | **AddSessionNoteModal:** create + **edit** parity for `goal_measurements` (hydrate, submit). **`updateClientSessionNote`** in `src/lib/session-notes.ts`. **SessionNotesTab** wires edits through update path. **ProgramsGoalsTab** test: scoped **15s** timeout for CI stability (hygiene guard, not a root async fix). |
+
+**Schema reference:** `client_session_notes.goal_measurements` (jsonb, object check) — migration `supabase/migrations/20260409103000_session_data_collection_2_goal_measurements.sql`.
+
+**Unchanged (per Phase 0 lock):** In-progress session **completion** still requires **non-empty `goal_notes`** text for each `session_goals` goal; structured measurements **supplement** notes, they do not replace that gate.
+
+**Suggested follow-ups (not committed here):** Extract shared measurement-field helpers used by **SessionModal** and **AddSessionNoteModal** to avoid drift; replace ProgramsGoalsTab timeout band-aid with faster deterministic setup when prioritized; optional Playwright smoke: Schedule save → Client Session Notes → measurement visible.
 
 ---
 
@@ -152,3 +169,4 @@ Any “real” 2.0 delivery **must** include explicit **data ownership** and **c
 | Date | Change |
 |------|--------|
 | 2026-04-09 | Initial research one-pager for agent handoff |
+| 2026-04-09 | §0 implementation status: PR #402 / #403, local test verification note, follow-ups |

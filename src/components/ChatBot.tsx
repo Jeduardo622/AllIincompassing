@@ -43,6 +43,11 @@ interface Message {
     | "action_failed";
 }
 
+interface ChatBotProps {
+  isOpen?: boolean;
+  onOpenChange?: (isOpen: boolean) => void;
+}
+
 const MODIFIABLE_SESSION_FIELDS: Array<keyof Session> = [
   "therapist_id",
   "client_id",
@@ -77,8 +82,8 @@ const getModifySessionUserMessage = (error: unknown): string => {
     : adapted.userMessage.message;
 };
 
-export function ChatBot() {
-  const [isOpen, setIsOpen] = useState(false);
+export function ChatBot({ isOpen, onOpenChange }: ChatBotProps = {}) {
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -88,6 +93,8 @@ export function ChatBot() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { session, profile } = useAuth();
+  const resolvedIsOpen = isOpen ?? internalIsOpen;
+  const setResolvedIsOpen = onOpenChange ?? setInternalIsOpen;
 
   // Load conversation ID from localStorage on component mount
   useEffect(() => {
@@ -925,12 +932,12 @@ export function ChatBot() {
     <>
       <button
         id="chat-trigger"
-        onClick={() => setIsOpen(true)}
+        onClick={() => setResolvedIsOpen(true)}
         className="hidden"
         aria-label="Open chat assistant"
       />
 
-      {isOpen && (
+      {resolvedIsOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-dark-lighter rounded-t-lg sm:rounded-lg shadow-xl w-full max-w-lg flex flex-col h-[80vh] sm:h-[600px]">
             <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
@@ -939,7 +946,7 @@ export function ChatBot() {
                 AI Assistant
               </h3>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={() => setResolvedIsOpen(false)}
                 className="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400"
               >
                 <span className="sr-only">Close</span>

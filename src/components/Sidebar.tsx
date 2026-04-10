@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { 
   Calendar, Users, FileText, CreditCard, LayoutDashboard,
@@ -8,9 +8,22 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/theme';
-import { ChatBot } from './ChatBot';
 // Theme is toggled directly via context; no hidden proxy button
 import { logger } from '../lib/logger/logger';
+
+const LazyChatBot = lazy(() =>
+  import('./ChatBot').then(({ ChatBot }) => ({ default: ChatBot })),
+);
+
+const ChatAssistantFallback = () => (
+  <div
+    className="fixed bottom-4 right-4 z-50 rounded-full border border-gray-200 bg-white px-4 py-2 text-xs text-gray-500 shadow-lg dark:border-gray-700 dark:bg-dark-lighter dark:text-gray-300"
+    role="status"
+    aria-live="polite"
+  >
+    Loading assistant...
+  </div>
+);
 
 export function Sidebar() {
   const { signOut, hasRole, hasAnyRole, user, profile, isGuardian, effectiveRole } = useAuth();
@@ -18,6 +31,8 @@ export function Sidebar() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isChatAssistantOpen, setIsChatAssistantOpen] = useState(false);
+  const [hasLoadedChatAssistant, setHasLoadedChatAssistant] = useState(false);
   const navigate = useNavigate();
 
   // Check if user is a therapist
@@ -188,6 +203,11 @@ export function Sidebar() {
     'super_admin'
   ]);
 
+  const openChatAssistant = () => {
+    setHasLoadedChatAssistant(true);
+    setIsChatAssistantOpen(true);
+  };
+
   useEffect(() => {
     if (!isMobileMenuOpen) {
       return;
@@ -310,7 +330,7 @@ export function Sidebar() {
           {canAccessChatAssistant && (
             <button
               onClick={() => {
-                document.getElementById('chat-trigger')?.click();
+                openChatAssistant();
                 setIsMobileMenuOpen(false);
               }}
               className="flex items-center w-full px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
@@ -346,7 +366,14 @@ export function Sidebar() {
           </button>
         </div>
         
-        {canAccessChatAssistant && <ChatBot />}
+        {canAccessChatAssistant && hasLoadedChatAssistant && (
+          <Suspense fallback={<ChatAssistantFallback />}>
+            <LazyChatBot
+              isOpen={isChatAssistantOpen}
+              onOpenChange={setIsChatAssistantOpen}
+            />
+          </Suspense>
+        )}
       </aside>
 
       {/* Overlay for mobile menu */}

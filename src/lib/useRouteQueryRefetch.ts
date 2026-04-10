@@ -2,24 +2,31 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 
-const ROUTE_QUERY_KEYS: Array<{ prefix: string; keys: readonly unknown[][] }> = [
-  { prefix: '/schedule', keys: [['sessions'], ['sessions-batch'], ['dropdowns']] },
-  { prefix: '/reports', keys: [['session-metrics'], ['dropdowns'], ['sessions']] },
-  // Keep dashboard invalidation targeted; broad 'sessions' invalidation causes expensive refetch storms.
-  { prefix: '/dashboard', keys: [['dashboard'], ['session-metrics'], ['dropdowns']] },
-  { prefix: '/clients', keys: [['clients'], ['dropdowns']] },
-  { prefix: '/therapists', keys: [['therapists'], ['dropdowns']] },
-  { prefix: '/authorizations', keys: [['authorizations']] },
-  { prefix: '/billing', keys: [['billing']] },
-  { prefix: '/monitoring', keys: [['monitoring']] },
-  { prefix: '/settings', keys: [['settings']] },
+type RouteQueryEntry = {
+  matches: (pathname: string) => boolean;
+  keys: readonly unknown[][];
+};
+
+const matchesRoutePath = (pathname: string, routePath: string): boolean =>
+  pathname === routePath || pathname.startsWith(`${routePath}/`);
+
+const ROUTE_QUERY_KEYS: readonly RouteQueryEntry[] = [
+  { matches: (pathname) => pathname === '/', keys: [['dashboard'], ['session-metrics'], ['dropdowns']] },
+  { matches: (pathname) => matchesRoutePath(pathname, '/schedule'), keys: [['sessions'], ['sessions-batch'], ['dropdowns']] },
+  { matches: (pathname) => matchesRoutePath(pathname, '/reports'), keys: [['session-metrics'], ['dropdowns']] },
+  { matches: (pathname) => matchesRoutePath(pathname, '/clients'), keys: [['clients'], ['dropdowns']] },
+  { matches: (pathname) => matchesRoutePath(pathname, '/therapists'), keys: [['therapists'], ['dropdowns']] },
+  { matches: (pathname) => matchesRoutePath(pathname, '/authorizations'), keys: [['authorizations']] },
+  { matches: (pathname) => matchesRoutePath(pathname, '/billing'), keys: [['billing']] },
+  { matches: (pathname) => matchesRoutePath(pathname, '/monitoring'), keys: [['monitoring']] },
+  { matches: (pathname) => matchesRoutePath(pathname, '/settings'), keys: [['settings']] },
 ];
 
-const DEFAULT_ROUTE_QUERY_KEYS: readonly unknown[][] = [['dashboard']];
+const DEFAULT_ROUTE_QUERY_KEYS: readonly unknown[][] = [];
 
 export const getRouteInvalidationKeys = (pathname: string): readonly unknown[][] => {
   for (const routeEntry of ROUTE_QUERY_KEYS) {
-    if (pathname.startsWith(routeEntry.prefix)) {
+    if (routeEntry.matches(pathname)) {
       return routeEntry.keys;
     }
   }

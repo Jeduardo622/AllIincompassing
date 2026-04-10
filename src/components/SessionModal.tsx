@@ -29,6 +29,7 @@ const ENABLE_ALTERNATIVE_TIME_SUGGESTIONS = false;
 export interface SessionModalClinicalNotesPayload {
   session_note_narrative?: string;
   session_note_goal_notes?: Record<string, string>;
+  session_note_goal_measurements?: Record<string, unknown>;
   session_note_goal_ids?: string[];
   session_note_goals_addressed?: string[];
   session_note_authorization_id?: string;
@@ -135,6 +136,7 @@ export function SessionModal({
       status: session?.status || 'scheduled',
       session_note_narrative: '',
       session_note_goal_notes: {},
+      session_note_goal_measurements: {},
       session_note_goal_ids: [],
       session_note_goals_addressed: [],
       session_note_authorization_id: '',
@@ -281,7 +283,7 @@ export function SessionModal({
       }
       const { data, error } = await supabase
         .from('client_session_notes')
-        .select('id, authorization_id, service_code, narrative, goal_notes, goal_ids, goals_addressed')
+        .select('id, authorization_id, service_code, narrative, goal_notes, goal_measurements, goal_ids, goals_addressed')
         .eq('session_id', session.id)
         .eq('organization_id', activeOrganizationId)
         .order('updated_at', { ascending: false })
@@ -672,6 +674,7 @@ export function SessionModal({
         ...data,
         session_note_narrative: data.session_note_narrative?.trim() ?? '',
         session_note_goal_notes: normalizedGoalNoteMap,
+        session_note_goal_measurements: data.session_note_goal_measurements ?? {},
         session_note_goal_ids: mergedGoalIds,
         session_note_goals_addressed: mergedGoalIds
           .map((goalEntryId) => goals.find((goal) => goal.id === goalEntryId)?.title?.trim())
@@ -949,6 +952,10 @@ export function SessionModal({
     setValue(
       'session_note_goal_notes',
       (linkedSessionNote.goal_notes as Record<string, string> | null) ?? {},
+    );
+    setValue(
+      'session_note_goal_measurements',
+      (linkedSessionNote.goal_measurements as Record<string, unknown> | null) ?? {},
     );
     setValue('session_note_goal_ids', linkedSessionNote.goal_ids ?? []);
     setValue('session_note_goals_addressed', linkedSessionNote.goals_addressed ?? []);

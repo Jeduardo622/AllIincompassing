@@ -19,6 +19,7 @@ const SESSION_NOTE_SELECT_COLUMNS = `
   created_at,
   end_time,
   goal_ids,
+  goal_measurements,
   goal_notes,
   goals_addressed,
   is_locked,
@@ -55,6 +56,7 @@ const mapRowToSessionNote = (
   therapist_name: therapist?.full_name ?? 'Unknown Therapist',
   goals_addressed: row.goals_addressed ?? [],
   goal_ids: row.goal_ids ?? [],
+  goal_measurements: row.goal_measurements as Record<string, unknown> | null ?? null,
   goal_notes: row.goal_notes as Record<string, string> | null ?? null,
   session_id: row.session_id ?? null,
   narrative: row.narrative,
@@ -121,6 +123,7 @@ export interface CreateClientSessionNoteInput {
   readonly sessionDuration: number;
   readonly goalsAddressed: string[];
   readonly goalIds?: string[];
+  readonly goalMeasurements?: Record<string, unknown> | null;
   readonly goalNotes?: Record<string, string> | null;
   readonly narrative: string;
   readonly isLocked: boolean;
@@ -140,6 +143,7 @@ export interface UpsertClientSessionNoteForSessionInput {
   readonly endTime: string;
   readonly goalsAddressed: string[];
   readonly goalIds: string[];
+  readonly goalMeasurements?: Record<string, unknown> | null;
   readonly goalNotes: Record<string, string>;
   readonly narrative: string;
 }
@@ -194,6 +198,10 @@ export const createClientSessionNote = async (
     payload.goalNotes && Object.keys(payload.goalNotes).length > 0
       ? payload.goalNotes
       : null;
+  const goalMeasurementsValue =
+    payload.goalMeasurements && Object.keys(payload.goalMeasurements).length > 0
+      ? payload.goalMeasurements
+      : null;
 
   const insertPayload: ClientSessionNoteInsert = {
     authorization_id: payload.authorizationId,
@@ -208,6 +216,7 @@ export const createClientSessionNote = async (
     session_duration: payload.sessionDuration,
     goals_addressed: payload.goalsAddressed,
     goal_ids: payload.goalIds ?? null,
+    goal_measurements: goalMeasurementsValue,
     goal_notes: goalNotesValue,
     narrative: payload.narrative,
     is_locked: payload.isLocked,
@@ -240,6 +249,10 @@ export const upsertClientSessionNoteForSession = async (
       .map(([goalId, noteText]) => [goalId, noteText.trim()])
       .filter(([, noteText]) => noteText.length > 0),
   );
+  const cleanedGoalMeasurements =
+    payload.goalMeasurements && Object.keys(payload.goalMeasurements).length > 0
+      ? payload.goalMeasurements
+      : null;
   const sessionDuration = calculateSessionDurationMinutes(payload.startTime, payload.endTime);
   if (sessionDuration <= 0) {
     throw new Error('End time must be later than start time.');
@@ -274,6 +287,7 @@ export const upsertClientSessionNoteForSession = async (
       sessionDuration,
       goalsAddressed: payload.goalsAddressed,
       goalIds: payload.goalIds,
+      goalMeasurements: cleanedGoalMeasurements,
       goalNotes: cleanedGoalNotes,
       narrative: trimmedNarrative,
       isLocked: false,
@@ -293,6 +307,7 @@ export const upsertClientSessionNoteForSession = async (
       session_duration: sessionDuration,
       goals_addressed: payload.goalsAddressed,
       goal_ids: payload.goalIds,
+      goal_measurements: cleanedGoalMeasurements,
       goal_notes: Object.keys(cleanedGoalNotes).length > 0 ? cleanedGoalNotes : null,
       narrative: trimmedNarrative,
       session_id: payload.sessionId,
@@ -336,4 +351,3 @@ export const calculateSessionDurationMinutes = (startTime: string, endTime: stri
 export const isSupabaseError = (error: unknown): error is PostgrestError => {
   return Boolean(error && typeof error === 'object' && 'message' in error && 'code' in error);
 };
-

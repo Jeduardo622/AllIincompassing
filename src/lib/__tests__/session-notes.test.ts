@@ -42,6 +42,7 @@ const noteRow = {
   session_duration: 60,
   goals_addressed: [],
   goal_ids: [],
+  goal_measurements: null,
   narrative: 'test',
   is_locked: false,
   signed_at: null,
@@ -150,6 +151,32 @@ describe('createClientSessionNote', () => {
     expect(lastInsertPayload?.goal_notes).toEqual({ 'goal-1': 'Good progress on this goal.' });
   });
 
+  it('persists goal_measurements when provided', async () => {
+    setupMocks('approved');
+
+    await createClientSessionNote({
+      authorizationId: authRecord.id,
+      clientId: 'client-1',
+      therapistId: 'therapist-1',
+      organizationId: authRecord.organization_id,
+      createdBy: 'user-1',
+      serviceCode: '97153',
+      sessionDate: '2025-06-01',
+      startTime: '09:00',
+      endTime: '10:00',
+      sessionDuration: 60,
+      goalsAddressed: ['Goal A'],
+      goalIds: ['goal-1'],
+      goalMeasurements: { 'goal-1': { version: 1, data: { count: 4 } } },
+      narrative: '',
+      isLocked: false,
+    });
+
+    expect(lastInsertPayload?.goal_measurements).toEqual({
+      'goal-1': { version: 1, data: { count: 4 } },
+    });
+  });
+
   it('stores goal_notes as null when an empty object is provided', async () => {
     setupMocks('approved');
 
@@ -252,12 +279,14 @@ describe('upsertClientSessionNoteForSession', () => {
       endTime: '10:00:00',
       goalsAddressed: ['Goal A'],
       goalIds: ['goal-1'],
+      goalMeasurements: { 'goal-1': { version: 1, data: { count: 2 } } },
       goalNotes: { 'goal-1': '  Progress captured  ' },
       narrative: '  Narrative text  ',
     });
 
     expect(result.id).toBe('note-existing');
     expect(lastUpdatePayload?.goal_notes).toEqual({ 'goal-1': 'Progress captured' });
+    expect(lastUpdatePayload?.goal_measurements).toEqual({ 'goal-1': { version: 1, data: { count: 2 } } });
     expect(lastUpdatePayload?.narrative).toBe('Narrative text');
   });
 
@@ -294,10 +323,10 @@ describe('upsertClientSessionNoteForSession', () => {
         endTime: '10:00:00',
         goalsAddressed: ['Goal A'],
         goalIds: ['goal-1'],
+        goalMeasurements: { 'goal-1': { version: 1, data: { count: 2 } } },
         goalNotes: { 'goal-1': 'Progress captured' },
         narrative: 'Narrative text',
       }),
     ).rejects.toThrow(/locked/i);
   });
 });
-

@@ -38,10 +38,23 @@ describe("getRouteInvalidationKeys", () => {
     ]);
   });
 
+  it("matches nested client routes to client-owned invalidations", () => {
+    expect(getRouteInvalidationKeys("/clients/123")).toEqual([
+      ["clients"],
+      ["dropdowns"],
+    ]);
+  });
+
   it("returns scoped keys for reports route", () => {
     expect(getRouteInvalidationKeys("/reports/monthly")).toEqual([
       ["session-metrics"],
       ["dropdowns"],
+    ]);
+  });
+
+  it("matches nested settings routes to settings-owned invalidations", () => {
+    expect(getRouteInvalidationKeys("/settings/organizations")).toEqual([
+      ["settings"],
     ]);
   });
 

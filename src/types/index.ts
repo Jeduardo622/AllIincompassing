@@ -324,6 +324,21 @@ export interface Note {
   status: 'resolved' | 'open' | 'follow-up';
 }
 
+export interface SessionGoalMeasurementData {
+  measurement_type?: string | null;
+  metric_label?: string | null;
+  metric_unit?: string | null;
+  metric_value?: number | null;
+  opportunities?: number | null;
+  prompt_level?: string | null;
+  note?: string | null;
+}
+
+export interface SessionGoalMeasurementEntry {
+  version: 1;
+  data: SessionGoalMeasurementData;
+}
+
 export interface SessionNote {
   id: string;
   date: string;
@@ -335,7 +350,7 @@ export interface SessionNote {
   goals_addressed: string[];
   goal_ids?: string[];
   goal_notes?: Record<string, string> | null;
-  goal_measurements?: Record<string, unknown> | null;
+  goal_measurements?: Record<string, SessionGoalMeasurementEntry> | null;
   session_id?: string | null;
   narrative: string;
   is_locked: boolean;

@@ -12,7 +12,10 @@ import {
   supabase,
   type SessionNotesPdfExportStatus,
 } from '../../lib/supabase';
-import type { Therapist } from '../../types';
+import type {
+  SessionGoalMeasurementEntry,
+  Therapist,
+} from '../../types';
 import { AddSessionNoteModal, type SessionNoteFormValues  } from '../AddSessionNoteModal';
 import { useAuth } from '../../lib/authContext';
 import { useActiveOrganizationId } from '../../lib/organization';
@@ -22,6 +25,7 @@ import {
   createClientSessionNote,
   fetchClientSessionNotes,
   isSupabaseError,
+  normalizeSessionGoalMeasurementEntry,
 } from '../../lib/session-notes';
 
 // ---------------------------------------------------------------------------
@@ -29,14 +33,64 @@ import {
 // ---------------------------------------------------------------------------
 
 interface GoalNoteEntryProps {
-  /** Human-readable goal label (title or truncated UUID). */
   label: string;
-  /** The stored note text for this goal. */
-  noteText: string;
+  noteText?: string | null;
+  measurement?: SessionGoalMeasurementEntry | null;
 }
 
-function GoalNoteEntry({ label, noteText }: GoalNoteEntryProps) {
+const formatMeasurementValue = (value: number): string =>
+  Number.isInteger(value) ? value.toString() : value.toFixed(1);
+
+const buildMeasurementSummary = (
+  measurement: SessionGoalMeasurementEntry | Record<string, unknown> | null | undefined,
+): Array<{ label: string; value: string }> => {
+  const normalizedMeasurement = normalizeSessionGoalMeasurementEntry(measurement);
+
+  if (!normalizedMeasurement) {
+    return [];
+  }
+
+  const { data } = normalizedMeasurement;
+  const summary: Array<{ label: string; value: string }> = [];
+
+  if (typeof data.metric_value === 'number') {
+    const unitSuffix = data.metric_unit ? ` ${data.metric_unit}` : '';
+    summary.push({
+      label: data.metric_label ?? 'Observed value',
+      value: `${formatMeasurementValue(data.metric_value)}${unitSuffix}`,
+    });
+  }
+
+  if (typeof data.opportunities === 'number') {
+    summary.push({
+      label: 'Opportunities',
+      value: formatMeasurementValue(data.opportunities),
+    });
+  }
+
+  if (data.prompt_level?.trim()) {
+    summary.push({
+      label: 'Prompt level',
+      value: data.prompt_level,
+    });
+  }
+
+  if (data.note?.trim()) {
+    summary.push({
+      label: 'Measurement note',
+      value: data.note,
+    });
+  }
+
+  return summary;
+};
+
+function GoalNoteEntry({ label, noteText, measurement }: GoalNoteEntryProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const measurementSummary = useMemo(
+    () => buildMeasurementSummary(measurement),
+    [measurement],
+  );
 
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden">
@@ -54,7 +108,24 @@ function GoalNoteEntry({ label, noteText }: GoalNoteEntryProps) {
 
       {isExpanded && (
         <div className="px-3 py-2 bg-white dark:bg-dark-lighter border-t border-gray-200 dark:border-gray-700">
-          <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{noteText}</p>
+          {noteText?.trim() && (
+            <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{noteText}</p>
+          )}
+          {measurementSummary.length > 0 && (
+            <dl className={`${noteText?.trim() ? 'mt-3' : ''} grid grid-cols-1 gap-2 sm:grid-cols-2`}>
+              {measurementSummary.map((item) => (
+                <div
+                  key={`${label}-${item.label}`}
+                  className="rounded-md border border-indigo-100 bg-indigo-50/70 px-3 py-2 dark:border-indigo-900/30 dark:bg-indigo-900/10"
+                >
+                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-200">
+                    {item.label}
+                  </dt>
+                  <dd className="mt-1 text-sm text-indigo-900 dark:text-indigo-100">{item.value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
         </div>
       )}
     </div>
@@ -463,6 +534,19 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
                     />
                     
                     <div className="ml-3 flex-1">
+                      {(() => {
+                        const goalMeasurementMap = note.goal_measurements ?? {};
+                        const goalEntryIds = Array.from(new Set([
+                          ...(note.goal_ids ?? []),
+                          ...Object.keys(note.goal_notes ?? {}),
+                          ...Object.keys(goalMeasurementMap),
+                        ]));
+                        const hasStructuredGoalDetails = goalEntryIds.some((goalId) =>
+                          Boolean(note.goal_notes?.[goalId]) || Boolean(goalMeasurementMap[goalId]),
+                        );
+
+                        return (
+                          <>
                       <div className="flex justify-between items-start">
                         <div>
                           <div className="flex items-center">
@@ -510,18 +594,23 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
                           Goals Addressed:
                         </div>
 
-                        {note.goal_notes && Object.keys(note.goal_notes).length > 0 ? (
-                          // Per-goal expandable entries (Slice 4+)
+                        {hasStructuredGoalDetails ? (
                           <div className="space-y-1">
-                            {(note.goal_ids ?? []).map((goalId, index) => {
-                              const noteText = note.goal_notes![goalId];
-                              if (!noteText) return null; // goal in goal_ids but not in goal_notes
+                            {goalEntryIds.map((goalId, index) => {
+                              const noteText = note.goal_notes?.[goalId] ?? null;
+                              const measurement = goalMeasurementMap[goalId] ?? null;
+                              if (!noteText && !measurement) return null;
                               const label =
-                                note.goal_ids!.length === note.goals_addressed.length
+                                goalEntryIds.length === note.goals_addressed.length
                                   ? note.goals_addressed[index]
                                   : `Goal ${goalId.slice(0, 8)}…`;
                               return (
-                                <GoalNoteEntry key={goalId} label={label} noteText={noteText} />
+                                <GoalNoteEntry
+                                  key={goalId}
+                                  label={label}
+                                  noteText={noteText}
+                                  measurement={measurement}
+                                />
                               );
                             })}
                           </div>
@@ -550,6 +639,9 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
                           </p>
                         </div>
                       )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

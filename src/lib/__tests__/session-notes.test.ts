@@ -79,6 +79,59 @@ const setupMocks = (authStatus: string) => {
   });
 };
 
+describe('fetchClientSessionNotes', () => {
+  it('normalizes legacy goal_measurements payloads returned from Supabase', async () => {
+    const rows = [
+      {
+        ...noteRow,
+        goal_ids: ['goal-1'],
+        goals_addressed: ['Goal A'],
+        goal_measurements: {
+          'goal-1': {
+            count: 4,
+            trials: 5,
+            promptLevel: 'Gestural',
+            comment: 'Legacy payload still loads',
+          },
+        },
+        therapists: { full_name: 'Test Therapist', title: 'BCBA' },
+      },
+    ];
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table !== 'client_session_notes') {
+        return {};
+      }
+
+      const chain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(() => chain),
+        limit: vi.fn(async () => ({ data: rows, error: null })),
+      };
+
+      return chain;
+    });
+
+    const result = await fetchClientSessionNotes('client-1', 'org-1');
+
+    expect(result[0]?.goal_measurements).toEqual({
+      'goal-1': {
+        version: 1,
+        data: {
+          measurement_type: null,
+          metric_label: 'Count',
+          metric_unit: null,
+          metric_value: 4,
+          opportunities: 5,
+          prompt_level: 'Gestural',
+          note: 'Legacy payload still loads',
+        },
+      },
+    });
+  });
+});
+
 describe('createClientSessionNote', () => {
   it('rejects when authorization is not approved', async () => {
     setupMocks('pending');

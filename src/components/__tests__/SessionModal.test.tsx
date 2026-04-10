@@ -41,6 +41,7 @@ describe('SessionModal', () => {
       title: 'Default Goal',
       description: 'Default goal for tests',
       original_text: 'Default clinical wording',
+      measurement_type: 'frequency',
       status: 'active',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
@@ -880,6 +881,368 @@ describe('SessionModal', () => {
     expect(screen.getByLabelText(/Clinical Narrative/i)).toBeInTheDocument();
   });
 
+  it('submits normalized per-goal measurements with clinical session notes', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const buildChain = (rows: unknown[]) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals);
+      }
+      if (table === 'authorizations') {
+        return buildChain([
+          {
+            id: 'auth-1',
+            authorization_number: 'AUTH-001',
+            services: [{ service_code: '97153' }],
+          },
+        ]);
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-clinical-measurements',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    await screen.findByRole('option', { name: /AUTH-001/i });
+    await userEvent.selectOptions(screen.getByLabelText(/Authorization/i), 'auth-1');
+    await userEvent.selectOptions(screen.getByLabelText(/Service Code/i), '97153');
+    fireEvent.change(screen.getByLabelText(/^Default Goal$/i), {
+      target: { value: 'Observed steady progress' },
+    });
+    fireEvent.change(screen.getByLabelText(/Count \(responses\)/i), { target: { value: '4' } });
+    fireEvent.change(screen.getByLabelText(/Opportunities/i), { target: { value: '5' } });
+    fireEvent.change(screen.getByLabelText(/Prompt level/i), {
+      target: { value: 'Gestural' },
+    });
+    fireEvent.change(screen.getByLabelText(/Measurement note/i), {
+      target: { value: 'Needed one reminder at the start' },
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /Save Session Details/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        session_note_goal_measurements: {
+          'goal-1': {
+            version: 1,
+            data: {
+              measurement_type: 'frequency',
+              metric_label: 'Count',
+              metric_unit: 'responses',
+              metric_value: 4,
+              opportunities: 5,
+              prompt_level: 'Gestural',
+              note: 'Needed one reminder at the start',
+            },
+          },
+        },
+      }));
+    });
+  }, 10000);
+
+  it('normalizes linked legacy goal_measurements payloads on save', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const linkedSessionNote = {
+      id: 'linked-note-1',
+      authorization_id: 'auth-1',
+      service_code: '97153',
+      narrative: '',
+      goal_notes: {
+        'goal-1': 'Observed steady progress',
+      },
+      goal_measurements: {
+        'goal-1': {
+          count: 4,
+          trials: 5,
+          promptLevel: 'Gestural',
+        },
+      },
+      goal_ids: ['goal-1'],
+      goals_addressed: ['Default Goal'],
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: mockPrograms, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      }
+      if (table === 'goals') {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: mockGoals, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      }
+      if (table === 'authorizations') {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          order: vi.fn(async () => ({
+            data: [{ id: 'auth-1', authorization_number: 'AUTH-001', services: [{ service_code: '97153' }] }],
+            error: null,
+          })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      }
+      if (table === 'client_session_notes') {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                order: () => ({
+                  limit: () => ({
+                    maybeSingle: async () => ({ data: linkedSessionNote, error: null }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+        };
+      }
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: [], error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-linked-legacy-measurements',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Observed steady progress')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /Save Session Details/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        session_note_goal_measurements: {
+          'goal-1': {
+            version: 1,
+            data: expect.objectContaining({
+              metric_label: 'Count',
+              metric_value: 4,
+              opportunities: 5,
+              prompt_level: 'Gestural',
+            }),
+          },
+        },
+      }));
+    });
+  }, 10000);
+
+  it('preserves linked note measurements for drifted saved goals when saving', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const linkedSessionNote = {
+      id: 'linked-note-drifted-goals',
+      authorization_id: 'auth-1',
+      service_code: '97153',
+      narrative: '',
+      goal_notes: {
+        'goal-1': 'Observed steady progress',
+        'goal-legacy': 'Maintained prior skill with faded prompts',
+      },
+      goal_measurements: {
+        'goal-1': {
+          version: 1,
+          data: {
+            measurement_type: 'frequency',
+            metric_label: 'Count',
+            metric_unit: 'responses',
+            metric_value: 4,
+          },
+        },
+        'goal-legacy': {
+          count: 2,
+          promptLevel: 'Independent',
+          note: 'Legacy goal stayed stable',
+        },
+      },
+      goal_ids: ['goal-1', 'goal-legacy'],
+      goals_addressed: ['Default Goal', 'Legacy Goal'],
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: mockPrograms, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      }
+      if (table === 'goals') {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          order: vi.fn(async () => ({ data: mockGoals, error: null })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      }
+      if (table === 'authorizations') {
+        const chain: SupabaseQueryChain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn(() => chain),
+          order: vi.fn(async () => ({
+            data: [{ id: 'auth-1', authorization_number: 'AUTH-001', services: [{ service_code: '97153' }] }],
+            error: null,
+          })),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          limit: vi.fn(async () => ({ data: [], error: null })),
+        };
+        return chain;
+      }
+      if (table === 'client_session_notes') {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                order: () => ({
+                  limit: () => ({
+                    maybeSingle: async () => ({ data: linkedSessionNote, error: null }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+        };
+      }
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: [], error: null })),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-linked-drifted-goals',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T10:00:00.000Z',
+          end_time: '2026-03-01T11:00:00.000Z',
+          status: 'in_progress',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Maintained prior skill with faded prompts')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /Save Session Details/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        goal_ids: ['goal-1'],
+        session_note_goal_ids: ['goal-1', 'goal-legacy'],
+        session_note_goal_measurements: {
+          'goal-1': {
+            version: 1,
+            data: expect.objectContaining({
+              metric_value: 4,
+            }),
+          },
+          'goal-legacy': {
+            version: 1,
+            data: expect.objectContaining({
+              metric_label: 'Count',
+              metric_value: 2,
+              prompt_level: 'Independent',
+              note: 'Legacy goal stayed stable',
+            }),
+          },
+        },
+      }));
+    });
+  }, 10000);
+
   it('blocks submit when clinical narrative is filled without authorization metadata', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     renderWithProviders(
@@ -905,7 +1268,9 @@ describe('SessionModal', () => {
       />
     );
 
-    await userEvent.type(screen.getByLabelText(/Clinical Narrative/i), 'Progress details');
+    fireEvent.change(screen.getByLabelText(/Clinical Narrative/i), {
+      target: { value: 'Progress details' },
+    });
     await userEvent.click(screen.getByRole('button', { name: /Save Session Details/i }));
 
     expect(onSubmit).not.toHaveBeenCalled();

@@ -421,7 +421,6 @@ export const updateClientSessionNote = async (
       authorization_id: payload.authorizationId,
       client_id: payload.clientId,
       therapist_id: payload.therapistId,
-      updated_by: payload.actorUserId,
       organization_id: payload.organizationId,
       service_code: payload.serviceCode,
       session_date: payload.sessionDate,

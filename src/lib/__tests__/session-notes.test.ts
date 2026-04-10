@@ -459,6 +459,7 @@ describe('updateClientSessionNote', () => {
     expect(result.id).toBe('note-existing');
     expect(lastUpdatePayload?.goal_measurements).toEqual({ 'goal-1': { version: 1, data: { count: 4 } } });
     expect(lastUpdatePayload?.goal_notes).toEqual({ 'goal-1': 'Updated note' });
+    expect(lastUpdatePayload).not.toHaveProperty('updated_by');
   });
 
   it('rejects edits for locked existing notes', async () => {

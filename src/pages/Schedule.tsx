@@ -17,9 +17,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Clock,
-  Plus,
-  Edit2,
   AlertCircle,
   CalendarX,
 } from "lucide-react";
@@ -47,7 +44,6 @@ import { fetchLinkedClientIdsForTherapist } from "../lib/clients/therapistClient
 import { upsertClientSessionNoteForSession } from "../lib/session-notes";
 import {
   buildSessionSlotIndex,
-  createSessionSlotKey,
   normalizeRecurrencePayload,
   toPendingScheduleDetail,
   type PendingScheduleDetail,
@@ -87,6 +83,7 @@ import {
   parseScheduleModalSearchParams,
   SCHEDULE_MODAL_URL_TTL_MS,
 } from "./schedule-modal-url-state";
+import { getSessionStatusClasses } from "./ScheduleCalendarViewShared";
 
 const MISSING_NOTES_RETRY_HINT =
   "Before closing this in-progress session, complete a linked clinical session note for this session and add per-goal note text for each worked goal. You can add these in Schedule > Edit Session > Clinical Session Notes, or in Client Details > Session Notes.";
@@ -94,6 +91,12 @@ const AUTO_SCHEDULE_CONCURRENCY = 3;
 const _scheduleBoundedConcurrencyMarker = AUTO_SCHEDULE_CONCURRENCY;
 const LazySessionModal = React.lazy(() =>
   import("../components/SessionModal").then((module) => ({ default: module.SessionModal })),
+);
+const LazyScheduleWeekView = React.lazy(() =>
+  import("./ScheduleWeekView").then((module) => ({ default: module.ScheduleWeekView })),
+);
+const LazyScheduleDayView = React.lazy(() =>
+  import("./ScheduleDayView").then((module) => ({ default: module.ScheduleDayView })),
 );
 
 type ScheduleSubmitData = SessionModalSubmitData;
@@ -209,42 +212,7 @@ export const createOpenScheduleModalHandler = (
   };
 };
 
-const SESSION_STATUS_STYLES: Record<
-  Session["status"],
-  { card: string; secondary: string; time: string }
-> = {
-  scheduled: {
-    card: "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-900/50",
-    secondary: "text-blue-600 dark:text-blue-300",
-    time: "text-blue-500 dark:text-blue-400",
-  },
-  in_progress: {
-    card: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-200 dark:hover:bg-emerald-900/50",
-    secondary: "text-emerald-600 dark:text-emerald-300",
-    time: "text-emerald-500 dark:text-emerald-400",
-  },
-  completed: {
-    card: "bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700",
-    secondary: "text-gray-400 dark:text-gray-500",
-    time: "text-gray-400 dark:text-gray-500",
-  },
-  cancelled: {
-    card: "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30",
-    secondary: "text-red-500 dark:text-red-400",
-    time: "text-red-400 dark:text-red-500",
-  },
-  "no-show": {
-    card: "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/30",
-    secondary: "text-amber-600 dark:text-amber-400",
-    time: "text-amber-500 dark:text-amber-500",
-  },
-};
-
-export function getSessionStatusClasses(
-  status: Session["status"],
-): { card: string; secondary: string; time: string } {
-  return SESSION_STATUS_STYLES[status] ?? SESSION_STATUS_STYLES.scheduled;
-}
+export { getSessionStatusClasses };
 
 /**
  * Prefer batch directory rows when non-empty (batch drives ordering and membership), but overlay
@@ -302,259 +270,24 @@ const ScheduleModalLoadingState: React.FC = () => (
   </div>
 );
 
-// Memoized time slot component
-const TimeSlot = React.memo(
-  ({
-    time,
-    day,
-    slotSessions,
-    onCreateSession,
-    onEditSession,
-  }: {
-    time: string;
-    day: Date;
-    slotSessions: Session[];
-    onCreateSession: (timeSlot: { date: Date; time: string }) => void;
-    onEditSession: (session: Session) => void;
-  }) => {
-    const handleTimeSlotClick = useCallback(() => {
-      onCreateSession({ date: day, time });
-    }, [day, time, onCreateSession]);
-
-    const handleSessionClick = useCallback(
-      (e: React.MouseEvent, session: Session) => {
-        e.stopPropagation();
-        onEditSession(session);
-      },
-      [onEditSession],
-    );
-
-    return (
-      <div
-        className="h-10 border-b dark:border-gray-700 border-r dark:border-gray-700 p-2 relative group cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
-        role="button"
-        tabIndex={0}
-        aria-label="Add session"
-        title="Add session"
-        onClick={handleTimeSlotClick}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            handleTimeSlotClick();
-          }
-        }}
-      >
-        <span
-          aria-hidden="true"
-          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 rounded-full text-gray-500 dark:text-gray-400 transition-opacity"
-        >
-          <Plus className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-        </span>
-
-        {slotSessions.map((session) => {
-          const statusStyles = getSessionStatusClasses(session.status);
-          return (
-            <div
-              key={session.id}
-              data-session-status={session.status}
-              className={`${statusStyles.card} rounded p-1 text-xs mb-1 group/session relative cursor-pointer transition-colors`}
-              role="button"
-              tabIndex={0}
-              onClick={(e) => handleSessionClick(e, session)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onEditSession(session);
-                }
-              }}
-            >
-              <div className="font-medium truncate">
-                {session.client?.full_name}
-              </div>
-              <div className={`${statusStyles.secondary} truncate`}>
-                {session.therapist?.full_name}
-              </div>
-              <div className={`flex items-center ${statusStyles.time}`}>
-                <Clock className="w-3 h-3 mr-1" />
-                {format(parseISO(session.start_time), "h:mm a")}
-              </div>
-
-              <span
-                aria-hidden="true"
-                className="absolute top-1 right-1 opacity-0 group-hover/session:opacity-100"
-              >
-                <Edit2 className="w-3 h-3" />
-              </span>
-            </div>
-          );
-        })}
+const ScheduleViewLoadingState: React.FC = () => (
+  <div
+    className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-dark-lighter"
+    role="status"
+    aria-live="polite"
+    aria-label="Loading calendar view"
+    data-testid="schedule-view-loading"
+  >
+    <div className="animate-pulse space-y-4">
+      <div className="h-6 w-40 rounded-full bg-gray-200 dark:bg-gray-700" />
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="h-32 rounded-2xl bg-gray-200/80 dark:bg-gray-800/80" />
+        <div className="h-32 rounded-2xl bg-gray-200/80 dark:bg-gray-800/80" />
       </div>
-    );
-  },
+      <div className="h-80 rounded-3xl bg-gray-200/80 dark:bg-gray-800/80" />
+    </div>
+  </div>
 );
-
-TimeSlot.displayName = "TimeSlot";
-
-// Memoized day column component
-const DayColumn = React.memo(
-  ({
-    day,
-    timeSlots,
-    sessionSlotIndex,
-    onCreateSession,
-    onEditSession,
-  }: {
-    day: Date;
-    timeSlots: string[];
-    sessionSlotIndex: Map<string, Session[]>;
-    onCreateSession: (timeSlot: { date: Date; time: string }) => void;
-    onEditSession: (session: Session) => void;
-  }) => {
-    const dayKey = useMemo(() => format(day, "yyyy-MM-dd"), [day]);
-
-    return (
-      <div className="relative">
-        {timeSlots.map((time) => (
-          <TimeSlot
-            key={time}
-            time={time}
-            day={day}
-            slotSessions={sessionSlotIndex.get(createSessionSlotKey(dayKey, time)) ?? []}
-            onCreateSession={onCreateSession}
-            onEditSession={onEditSession}
-          />
-        ))}
-      </div>
-    );
-  },
-);
-
-DayColumn.displayName = "DayColumn";
-
-// Memoized week view component
-const WeekView = React.memo(
-  ({
-    weekDays,
-    timeSlots,
-    sessionSlotIndex,
-    onCreateSession,
-    onEditSession,
-  }: {
-    weekDays: Date[];
-    timeSlots: string[];
-    sessionSlotIndex: Map<string, Session[]>;
-    onCreateSession: (timeSlot: { date: Date; time: string }) => void;
-    onEditSession: (session: Session) => void;
-  }) => {
-    return (
-      <div className="bg-white dark:bg-dark-lighter rounded-lg shadow overflow-x-auto">
-        <div className="grid grid-cols-[72px_repeat(6,minmax(90px,1fr))] sm:grid-cols-7 border-b dark:border-gray-700 min-w-[620px] sm:min-w-[800px]">
-          <div className="py-2 px-1.5 sm:px-2 text-center text-sm font-medium text-gray-500 dark:text-gray-400 border-r dark:border-gray-700">
-            Time
-          </div>
-          {weekDays.map((day) => (
-            <div
-              key={day.toISOString()}
-              className="py-2 px-1.5 sm:px-2 text-center text-sm font-medium text-gray-900 dark:text-white"
-            >
-              <span className="sm:hidden">{format(day, "EEE d")}</span>
-              <span className="hidden sm:inline">{format(day, "EEE MMM d")}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-[72px_repeat(6,minmax(90px,1fr))] sm:grid-cols-7 min-w-[620px] sm:min-w-[800px]">
-          <div className="border-r dark:border-gray-700">
-            {timeSlots.map((time) => (
-              <div
-                key={time}
-                className="h-10 border-b dark:border-gray-700 p-1.5 sm:p-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400 flex items-center"
-              >
-                {time}
-              </div>
-            ))}
-          </div>
-
-          {weekDays.map((day) => (
-            <DayColumn
-              key={day.toISOString()}
-              day={day}
-              timeSlots={timeSlots}
-              sessionSlotIndex={sessionSlotIndex}
-              onCreateSession={onCreateSession}
-              onEditSession={onEditSession}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  },
-);
-
-WeekView.displayName = "WeekView";
-
-// Memoized day view component
-const DayView = React.memo(
-  ({
-    selectedDate,
-    timeSlots,
-    sessionSlotIndex,
-    onCreateSession,
-    onEditSession,
-  }: {
-    selectedDate: Date;
-    timeSlots: string[];
-    sessionSlotIndex: Map<string, Session[]>;
-    onCreateSession: (timeSlot: { date: Date; time: string }) => void;
-    onEditSession: (session: Session) => void;
-  }) => {
-    const selectedDateKey = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
-
-    return (
-      <div
-        className="bg-white dark:bg-dark-lighter rounded-lg shadow overflow-x-auto"
-        data-testid="day-view"
-      >
-        <div className="grid grid-cols-2 border-b dark:border-gray-700">
-          <div className="py-4 px-2 text-center text-sm font-medium text-gray-500 dark:text-gray-400 border-r dark:border-gray-700">
-            Time
-          </div>
-          <div className="py-4 px-2 text-center text-sm font-medium text-gray-900 dark:text-white">
-            {format(selectedDate, "EEEE, MMMM d, yyyy")}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2">
-          <div className="border-r dark:border-gray-700">
-            {timeSlots.map((time) => (
-              <div
-                key={time}
-                className="h-10 border-b dark:border-gray-700 p-2 text-sm text-gray-500 dark:text-gray-400 flex items-center"
-              >
-                {time}
-              </div>
-            ))}
-          </div>
-
-          <div className="relative">
-            {timeSlots.map((time) => (
-              <TimeSlot
-                key={time}
-                time={time}
-                day={selectedDate}
-                slotSessions={sessionSlotIndex.get(createSessionSlotKey(selectedDateKey, time)) ?? []}
-                onCreateSession={onCreateSession}
-                onEditSession={onEditSession}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  },
-);
-
-DayView.displayName = "DayView";
 
 export const Schedule = React.memo(() => {
   const navigate = useNavigate();
@@ -2192,22 +1925,26 @@ export const Schedule = React.memo(() => {
             </>
           )}
         </div>
-      ) : view === "day" ? (
-        <DayView
-          selectedDate={selectedDate}
-          timeSlots={timeSlots}
-          sessionSlotIndex={sessionSlotIndex}
-          onCreateSession={handleCreateSession}
-          onEditSession={handleEditSession}
-        />
       ) : (
-        <WeekView
-          weekDays={weekDays}
-          timeSlots={timeSlots}
-          sessionSlotIndex={sessionSlotIndex}
-          onCreateSession={handleCreateSession}
-          onEditSession={handleEditSession}
-        />
+        <Suspense fallback={<ScheduleViewLoadingState />}>
+          {view === "day" ? (
+            <LazyScheduleDayView
+              selectedDate={selectedDate}
+              timeSlots={timeSlots}
+              sessionSlotIndex={sessionSlotIndex}
+              onCreateSession={handleCreateSession}
+              onEditSession={handleEditSession}
+            />
+          ) : (
+            <LazyScheduleWeekView
+              weekDays={weekDays}
+              timeSlots={timeSlots}
+              sessionSlotIndex={sessionSlotIndex}
+              onCreateSession={handleCreateSession}
+              onEditSession={handleEditSession}
+            />
+          )}
+        </Suspense>
       )}
 
       {sessionModal}

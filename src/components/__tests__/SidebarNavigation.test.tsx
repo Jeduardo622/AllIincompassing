@@ -2,11 +2,13 @@ import React from "react";
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { render, screen } from "@testing-library/react";
+import { fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Sidebar } from "../Sidebar";
 
 const mockUseAuth = vi.fn();
 const mockUseTheme = vi.fn();
+const mockPreloadRouteModule = vi.fn();
 
 vi.mock("../../lib/authContext", () => ({
   useAuth: () => mockUseAuth(),
@@ -14,6 +16,10 @@ vi.mock("../../lib/authContext", () => ({
 
 vi.mock("../../lib/theme", () => ({
   useTheme: () => mockUseTheme(),
+}));
+
+vi.mock("../../lib/routeModulePrefetch", () => ({
+  preloadRouteModule: (...args: unknown[]) => mockPreloadRouteModule(...args),
 }));
 
 vi.mock("../ChatBot", () => ({
@@ -29,6 +35,7 @@ describe("Sidebar navigation active styling", () => {
   beforeEach(() => {
     mockUseAuth.mockReset();
     mockUseTheme.mockReset();
+    mockPreloadRouteModule.mockReset();
     mockUseAuth.mockReturnValue({
       signOut: vi.fn(),
       hasRole: vi.fn(() => true),
@@ -182,6 +189,33 @@ describe("Sidebar navigation active styling", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /chat assistant/i }));
     expect(await screen.findByTestId("chatbot-mock")).toBeInTheDocument();
+  });
+
+  it("prefetches a route module on hover intent without preloading on initial render", async () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Sidebar />
+      </MemoryRouter>
+    );
+
+    expect(mockPreloadRouteModule).not.toHaveBeenCalled();
+
+    await userEvent.hover(screen.getByRole("link", { name: /schedule/i }));
+
+    expect(mockPreloadRouteModule).toHaveBeenCalledTimes(1);
+    expect(mockPreloadRouteModule).toHaveBeenCalledWith("/schedule");
+  });
+
+  it("prefetches a route module on keyboard focus intent", async () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Sidebar />
+      </MemoryRouter>
+    );
+
+    fireEvent.focus(screen.getByRole("link", { name: /schedule/i }));
+
+    expect(mockPreloadRouteModule).toHaveBeenCalledWith("/schedule");
   });
 
   it("hides family navigation for non-guardian clients", () => {

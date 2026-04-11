@@ -18,6 +18,11 @@ vi.mock("../../lib/optimizedQueries", () => ({
   useScheduleDataBatch: vi.fn(() => ({ data: null, isLoading: false })),
   useSessionsOptimized: vi.fn(() => ({ data: [], isLoading: false })),
   useDropdownData: vi.fn(() => ({ data: null, isLoading: false })),
+  useSmartPrefetch: vi.fn(() => ({
+    prefetchScheduleRange: vi.fn(),
+    prefetchNextWeek: vi.fn(),
+    prefetchReportData: vi.fn(),
+  })),
 }));
 
 const batchMock = vi.mocked(useScheduleDataBatch);
@@ -58,7 +63,7 @@ describe("Schedule org-context guard", () => {
       expect(batchMock).toHaveBeenCalledWith(
         expect.any(Date),
         expect.any(Date),
-        { enabled: false },
+        { enabled: false, organizationId: null },
       );
     });
 
@@ -99,7 +104,7 @@ describe("Schedule org-context guard", () => {
       expect(batchMock).toHaveBeenCalledWith(
         expect.any(Date),
         expect.any(Date),
-        { enabled: true },
+        { enabled: true, organizationId: "org-abc-123" },
       );
     });
 

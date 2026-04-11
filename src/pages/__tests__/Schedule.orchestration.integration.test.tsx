@@ -54,6 +54,11 @@ vi.mock("../../lib/optimizedQueries", () => ({
     data: { therapists: scheduleFixtures.therapists, clients: scheduleFixtures.clients },
     isLoading: false,
   }),
+  useSmartPrefetch: () => ({
+    prefetchScheduleRange: vi.fn(),
+    prefetchNextWeek: vi.fn(),
+    prefetchReportData: vi.fn(),
+  }),
 }));
 
 vi.mock("../../features/scheduling/domain/booking", () => ({

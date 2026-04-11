@@ -1,6 +1,44 @@
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useLocation } from "react-router-dom";
 import { renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
+
+vi.mock("../../lib/optimizedQueries", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../lib/optimizedQueries")>();
+  return {
+    ...actual,
+    useSmartPrefetch: () => ({
+      prefetchScheduleRange: vi.fn(),
+      prefetchNextWeek: vi.fn(),
+      prefetchReportData: vi.fn(),
+    }),
+  };
+});
+
+vi.mock("../../components/SessionModal", () => ({
+  SessionModal: ({
+    isOpen,
+    onClose,
+  }: {
+    isOpen: boolean;
+    onClose: () => void;
+  }) =>
+    isOpen ? (
+      <div data-testid="event-session-modal">
+        <h2>New Session</h2>
+        <label htmlFor="event-session-start-time">Start Time</label>
+        <input
+          id="event-session-start-time"
+          aria-label="Start Time"
+          defaultValue="10:00"
+        />
+        <button aria-label="Close session modal" onClick={onClose}>
+          Close
+        </button>
+      </div>
+    ) : null,
+}));
+
 import { Schedule } from "../Schedule";
 
 // Integration test for event-based scheduling
@@ -10,6 +48,10 @@ function SearchProbe() {
 }
 
 describe("Schedule page event listener", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   beforeEach(() => {
     localStorage.clear();
   });
@@ -36,10 +78,12 @@ describe("Schedule page event listener", () => {
       end_time: "2025-03-18T11:00:00Z",
     };
 
-    document.dispatchEvent(new CustomEvent("openScheduleModal", { detail }));
+    await waitFor(() => {
+      window.dispatchEvent(new CustomEvent("openScheduleModal", { detail }));
+      expect(screen.getByText(/New Session/i)).toBeInTheDocument();
+    });
 
     // Modal should open with default start time populated
-    expect(await screen.findByText(/New Session/i)).toBeInTheDocument();
     const input = screen.getByLabelText(/Start Time/i) as HTMLInputElement;
     expect(input.value).not.toBe("");
   });

@@ -75,6 +75,16 @@ vi.mock("../../lib/optimizedQueries", () => ({
     },
     isLoading: false,
   }),
+  useSmartPrefetch: () => ({
+    prefetchScheduleRange: vi.fn(),
+    prefetchNextWeek: vi.fn(),
+    prefetchReportData: vi.fn(),
+  }),
+}));
+
+vi.mock("../../components/SessionModal", () => ({
+  SessionModal: ({ isOpen }: { isOpen: boolean }) =>
+    isOpen ? <div>Edit Session</div> : null,
 }));
 
 describe("Schedule URL edit deep links", () => {

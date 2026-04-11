@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { http, HttpResponse } from "msw";
+import { addDays, endOfWeek, startOfWeek } from "date-fns";
 import { renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
 import { fireEvent } from "@testing-library/react";
 import { server } from "../../test/setup";
@@ -12,6 +13,8 @@ const mockUseDropdownData = vi.fn(() => ({
   isLoading: false,
 }));
 const mockUseActiveOrganizationId = vi.fn(() => "org-1");
+const mockPrefetchScheduleRange = vi.fn();
+let sessionModalModuleLoads = 0;
 
 const scheduleFixtures = {
   sessions: [
@@ -112,6 +115,11 @@ vi.mock("../../lib/optimizedQueries", () => ({
   useScheduleDataBatch: (...args: unknown[]) => mockUseScheduleDataBatch(...args),
   useSessionsOptimized: (...args: unknown[]) => mockUseSessionsOptimized(...args),
   useDropdownData: (...args: unknown[]) => mockUseDropdownData(...args),
+  useSmartPrefetch: () => ({
+    prefetchScheduleRange: mockPrefetchScheduleRange,
+    prefetchNextWeek: vi.fn(),
+    prefetchReportData: vi.fn(),
+  }),
 }));
 
 vi.mock("../../lib/organization", () => ({
@@ -119,6 +127,7 @@ vi.mock("../../lib/organization", () => ({
 }));
 
 vi.mock("../../components/SessionModal", () => ({
+  ...(sessionModalModuleLoads++, {}),
   SessionModal: ({
     isOpen,
     existingSessions,
@@ -138,7 +147,9 @@ const defaultRpcImplementation = vi.mocked(supabase.rpc as any).getMockImplement
 
 describe("Schedule", () => {
   beforeEach(() => {
+    sessionModalModuleLoads = 0;
     mockUseActiveOrganizationId.mockReturnValue("org-1");
+    mockPrefetchScheduleRange.mockReset();
     mockUseScheduleDataBatch.mockReset();
     mockUseScheduleDataBatch.mockReturnValue({ data: scheduleFixtures, isLoading: false });
     mockUseSessionsOptimized.mockReset();
@@ -233,7 +244,7 @@ describe("Schedule", () => {
     expect(mockUseScheduleDataBatch).toHaveBeenCalledWith(
       expect.any(Date),
       expect.any(Date),
-      { enabled: false },
+      { enabled: false, organizationId: null },
     );
     expect(mockUseSessionsOptimized).toHaveBeenCalledWith(
       expect.any(Date),
@@ -243,6 +254,44 @@ describe("Schedule", () => {
       false,
     );
     expect(mockUseDropdownData).toHaveBeenCalledWith({ enabled: false });
+  });
+
+  it("lazy-loads the session modal only when the user opens it", async () => {
+    renderWithProviders(<Schedule />);
+
+    await screen.findByRole("heading", { name: /Schedule/i });
+    expect(sessionModalModuleLoads).toBe(0);
+
+    const addButtons = await screen.findAllByLabelText("Add session");
+    fireEvent.click(addButtons[0]);
+
+    await waitFor(() => {
+      expect(sessionModalModuleLoads).toBe(1);
+    });
+    expect(await screen.findByTestId("session-modal-sessions")).toHaveTextContent("session-1");
+  });
+
+  it("prefetches the next schedule batch when the next-period control is hovered", async () => {
+    renderWithProviders(<Schedule />);
+
+    await screen.findByRole("heading", { name: /Schedule/i });
+
+    fireEvent.mouseEnter(screen.getByRole("button", { name: /Next period/i }));
+
+    await waitFor(() => {
+      expect(mockPrefetchScheduleRange).toHaveBeenCalledTimes(1);
+    });
+
+    const [targetStart, targetEnd, options] = mockPrefetchScheduleRange.mock.calls[0];
+    const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+    const expectedStart = addDays(currentWeekStart, 7);
+    const expectedEnd = endOfWeek(expectedStart, { weekStartsOn: 1 });
+
+    expect(targetStart).toBeInstanceOf(Date);
+    expect(targetEnd).toBeInstanceOf(Date);
+    expect((targetStart as Date).toISOString()).toBe(expectedStart.toISOString());
+    expect((targetEnd as Date).toISOString()).toBe(expectedEnd.toISOString());
+    expect(options).toEqual({ organizationId: "org-1" });
   });
 
   it("applies therapist filters to batched sessions", async () => {

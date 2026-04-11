@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/authContext';
+import { RouteGuardPending } from './RouteGuardPending';
 
 interface PrivateRouteProps {
   children: React.ReactNode;
@@ -21,11 +22,7 @@ export const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
 
   // Show loading while auth is being determined
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    );
+    return <RouteGuardPending fullScreen label="Restoring your secure session..." />;
   }
 
   // Redirect to login if not authenticated

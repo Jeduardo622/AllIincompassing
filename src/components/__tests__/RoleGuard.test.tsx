@@ -94,6 +94,7 @@ describe('RoleGuard route guard behaviour', () => {
 
     renderProtectedRoute();
 
+    expect(screen.getByLabelText('Checking role access...')).toBeInTheDocument();
     expect(screen.queryByText('unauthorized-page')).not.toBeInTheDocument();
     expect(screen.queryByText('login-page')).not.toBeInTheDocument();
   });

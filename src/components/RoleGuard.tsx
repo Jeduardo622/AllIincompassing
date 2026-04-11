@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/authContext';
 import { logger } from '../lib/logger/logger';
+import { RouteGuardPending } from './RouteGuardPending';
 
 interface RoleGuardProps {
   children: React.ReactNode;
@@ -30,11 +31,7 @@ export const RoleGuard: React.FC<RoleGuardProps> = ({
 
   // Show loading while auth is being determined
   if (loading || (user && profileLoading && !profile)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    );
+    return <RouteGuardPending label="Checking role access..." />;
   }
 
   // Redirect to login if not authenticated

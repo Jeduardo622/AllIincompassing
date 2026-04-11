@@ -49,6 +49,11 @@ vi.mock("../../lib/optimizedQueries", () => ({
   useScheduleDataBatch: (...args: unknown[]) => mockUseScheduleDataBatch(...args),
   useSessionsOptimized: (...args: unknown[]) => mockUseSessionsOptimized(...args),
   useDropdownData: (...args: unknown[]) => mockUseDropdownData(...args),
+  useSmartPrefetch: () => ({
+    prefetchScheduleRange: vi.fn(),
+    prefetchNextWeek: vi.fn(),
+    prefetchReportData: vi.fn(),
+  }),
 }));
 
 vi.mock("../../lib/organization", () => ({

@@ -112,6 +112,11 @@ vi.mock("../../lib/optimizedQueries", () => ({
       isLoading: false,
     };
   },
+  useSmartPrefetch: () => ({
+    prefetchScheduleRange: vi.fn(),
+    prefetchNextWeek: vi.fn(),
+    prefetchReportData: vi.fn(),
+  }),
 }));
 
 vi.mock("../../components/SessionModal", () => ({
@@ -185,7 +190,7 @@ describe("Schedule session-close readiness precheck", { timeout: 15_000 }, () =>
     renderWithProviders(<Schedule />);
 
     fireEvent.click(await screen.findByText("Jamie Client"));
-    fireEvent.click(screen.getByRole("button", { name: "Submit terminal" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Submit terminal" }));
 
     await waitFor(() => {
       expect(checkInProgressSessionCloseReadinessMock).toHaveBeenCalledWith({
@@ -214,7 +219,7 @@ describe("Schedule session-close readiness precheck", { timeout: 15_000 }, () =>
     renderWithProviders(<Schedule />);
 
     fireEvent.click(await screen.findByText("Jamie Client"));
-    fireEvent.click(screen.getByRole("button", { name: "Submit terminal" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Submit terminal" }));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Open Client Details" })).toBeInTheDocument();
@@ -229,7 +234,7 @@ describe("Schedule session-close readiness precheck", { timeout: 15_000 }, () =>
     renderWithProviders(<Schedule />);
 
     fireEvent.click(await screen.findByText("Jamie Client"));
-    fireEvent.click(screen.getByRole("button", { name: "Submit terminal" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Submit terminal" }));
 
     await waitFor(() => {
       expect(checkInProgressSessionCloseReadinessMock).toHaveBeenCalledTimes(1);
@@ -247,7 +252,7 @@ describe("Schedule session-close readiness precheck", { timeout: 15_000 }, () =>
     renderWithProviders(<Schedule />);
 
     fireEvent.click(await screen.findByText("Jamie Client"));
-    fireEvent.click(screen.getByRole("button", { name: "Submit terminal" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Submit terminal" }));
 
     await waitFor(() => {
       expect(completeSessionFromModalMock).toHaveBeenCalledWith({

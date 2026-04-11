@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useRef,
   useSyncExternalStore,
+  Suspense,
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, startOfWeek, addDays, endOfWeek } from "date-fns";
@@ -24,7 +25,6 @@ import {
 } from "lucide-react";
 import type { Session, SessionGoalMeasurementEntry, Client } from "../types";
 import {
-  SessionModal,
   type SessionModalSubmitData,
   type SessionModalClinicalNotesPayload,
 } from "../components/SessionModal";
@@ -34,6 +34,7 @@ import {
   useScheduleDataBatch,
   useSessionsOptimized,
   useDropdownData,
+  useSmartPrefetch,
 } from "../lib/optimizedQueries";
 import { cancelSessions } from "../lib/sessionCancellation";
 import { showError, showSuccess } from "../lib/toast";
@@ -91,6 +92,9 @@ const MISSING_NOTES_RETRY_HINT =
   "Before closing this in-progress session, complete a linked clinical session note for this session and add per-goal note text for each worked goal. You can add these in Schedule > Edit Session > Clinical Session Notes, or in Client Details > Session Notes.";
 const AUTO_SCHEDULE_CONCURRENCY = 3;
 const _scheduleBoundedConcurrencyMarker = AUTO_SCHEDULE_CONCURRENCY;
+const LazySessionModal = React.lazy(() =>
+  import("../components/SessionModal").then((module) => ({ default: module.SessionModal })),
+);
 
 type ScheduleSubmitData = SessionModalSubmitData;
 
@@ -272,6 +276,31 @@ function mergeScheduleDirectoryLists<T extends { id?: string }>(
     return rich ? ({ ...row, ...rich } as T) : row;
   });
 }
+
+const ScheduleModalLoadingState: React.FC = () => (
+  <div
+    className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/30 px-4 backdrop-blur-[1px]"
+    role="status"
+    aria-live="polite"
+    aria-label="Loading session editor..."
+    data-testid="schedule-modal-loading"
+  >
+    <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-xl dark:border-gray-700 dark:bg-dark-lighter">
+      <div className="flex items-center gap-3">
+        <div
+          className="h-8 w-8 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600 dark:border-blue-900 dark:border-t-blue-400"
+          aria-hidden="true"
+        />
+        <div>
+          <p className="text-sm font-medium text-gray-900 dark:text-white">Loading session editor...</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Preparing scheduling tools without blocking the rest of the page.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+);
 
 // Memoized time slot component
 const TimeSlot = React.memo(
@@ -572,6 +601,7 @@ export const Schedule = React.memo(() => {
   }, []);
 
   const queryClient = useQueryClient();
+  const { prefetchScheduleRange } = useSmartPrefetch();
   const scheduleResetSetters = useMemo(
     () => ({
       setIsModalOpen,
@@ -761,7 +791,10 @@ export const Schedule = React.memo(() => {
     data: batchedData,
     isLoading: isLoadingBatch,
     refetch: refetchScheduleBatch,
-  } = useScheduleDataBatch(weekStart, weekEnd, { enabled: !!activeOrganizationId });
+  } = useScheduleDataBatch(weekStart, weekEnd, {
+    enabled: !!activeOrganizationId,
+    organizationId: activeOrganizationId,
+  });
 
   const hasBatchedSessions = Array.isArray(batchedData?.sessions);
   const enableFallbackSessionsQuery =
@@ -1549,6 +1582,49 @@ export const Schedule = React.memo(() => {
     setView(newView);
   }, []);
 
+  const prefetchAdjacentScheduleRange = useCallback(
+    (direction: "prev" | "next") => {
+      if (!activeOrganizationId) {
+        return;
+      }
+
+      const daysToAdd = view === "day" ? 1 : 7;
+      const targetDate = addDays(
+        selectedDate,
+        direction === "prev" ? -daysToAdd : daysToAdd,
+      );
+      const targetWeekStart = startOfWeek(targetDate, { weekStartsOn: 1 });
+      const targetWeekEnd = endOfWeek(targetDate, { weekStartsOn: 1 });
+
+      if (
+        targetWeekStart.getTime() === weekStart.getTime() &&
+        targetWeekEnd.getTime() === weekEnd.getTime()
+      ) {
+        return;
+      }
+
+      void prefetchScheduleRange(targetWeekStart, targetWeekEnd, {
+        organizationId: activeOrganizationId,
+      });
+    },
+    [
+      activeOrganizationId,
+      prefetchScheduleRange,
+      selectedDate,
+      view,
+      weekEnd,
+      weekStart,
+    ],
+  );
+
+  const handlePrefetchPreviousPeriod = useCallback(() => {
+    prefetchAdjacentScheduleRange("prev");
+  }, [prefetchAdjacentScheduleRange]);
+
+  const handlePrefetchNextPeriod = useCallback(() => {
+    prefetchAdjacentScheduleRange("next");
+  }, [prefetchAdjacentScheduleRange]);
+
   // Memoized time slots generation
   const timeSlots = useMemo(() => {
     const slots = [];
@@ -1588,6 +1664,29 @@ export const Schedule = React.memo(() => {
 
   const hasBatchedData = Boolean(batchedData);
   const isLoading = isLoadingBatch || (!hasBatchedData && (isLoadingSessions || isLoadingDropdowns));
+  const sessionModal = isModalOpen ? (
+    <Suspense fallback={<ScheduleModalLoadingState />}>
+      <LazySessionModal
+        isOpen={isModalOpen}
+        onClose={handleCloseSessionModal}
+        onSubmit={handleSubmit}
+        session={selectedSession}
+        selectedDate={selectedTimeSlot?.date}
+        selectedTime={selectedTimeSlot?.time}
+        therapists={visibleTherapists}
+        clients={visibleClients}
+        existingSessions={displayData.sessions}
+        timeZone={userTimeZone}
+        defaultTherapistId={selectedTherapist}
+        defaultClientId={selectedClient}
+        retryHint={retryHint}
+        onRetryHintDismiss={dismissRetryHint}
+        retryActionLabel={retryActionLabel}
+        onRetryAction={retryActionLabel ? handleOpenLinkedSessionDocumentation : undefined}
+        onSessionStarted={handleSessionStarted}
+      />
+    </Suspense>
+  ) : null;
 
   useEffect(() => {
     const parsed = parseScheduleModalSearchParams(searchParams);
@@ -1714,27 +1813,7 @@ export const Schedule = React.memo(() => {
             aria-hidden="true"
           />
         </div>
-        {isModalOpen && (
-          <SessionModal
-            isOpen={isModalOpen}
-            onClose={handleCloseSessionModal}
-            onSubmit={handleSubmit}
-            session={selectedSession}
-            selectedDate={selectedTimeSlot?.date}
-            selectedTime={selectedTimeSlot?.time}
-            therapists={visibleTherapists}
-            clients={visibleClients}
-            existingSessions={displayData.sessions}
-            timeZone={userTimeZone}
-            defaultTherapistId={selectedTherapist}
-            defaultClientId={selectedClient}
-            retryHint={retryHint}
-            onRetryHintDismiss={dismissRetryHint}
-            retryActionLabel={retryActionLabel}
-            onRetryAction={retryActionLabel ? handleOpenLinkedSessionDocumentation : undefined}
-            onSessionStarted={handleSessionStarted}
-          />
-        )}
+        {sessionModal}
       </div>
     );
   }
@@ -1775,27 +1854,7 @@ export const Schedule = React.memo(() => {
             </button>
           </div>
         </div>
-        {isModalOpen && (
-          <SessionModal
-            isOpen={isModalOpen}
-            onClose={handleCloseSessionModal}
-            onSubmit={handleSubmit}
-            session={selectedSession}
-            selectedDate={selectedTimeSlot?.date}
-            selectedTime={selectedTimeSlot?.time}
-            therapists={visibleTherapists}
-            clients={visibleClients}
-            existingSessions={displayData.sessions}
-            timeZone={userTimeZone}
-            defaultTherapistId={selectedTherapist}
-            defaultClientId={selectedClient}
-            retryHint={retryHint}
-            onRetryHintDismiss={dismissRetryHint}
-            retryActionLabel={retryActionLabel}
-            onRetryAction={retryActionLabel ? handleOpenLinkedSessionDocumentation : undefined}
-            onSessionStarted={handleSessionStarted}
-          />
-        )}
+        {sessionModal}
       </div>
     );
   }
@@ -1808,6 +1867,8 @@ export const Schedule = React.memo(() => {
           <button
             aria-label="Previous period"
             onClick={() => handleDateNavigation("prev")}
+            onFocus={handlePrefetchPreviousPeriod}
+            onMouseEnter={handlePrefetchPreviousPeriod}
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
           >
             <ChevronLeft aria-hidden="true" className="w-5 h-5" />
@@ -1823,6 +1884,8 @@ export const Schedule = React.memo(() => {
           <button
             aria-label="Next period"
             onClick={() => handleDateNavigation("next")}
+            onFocus={handlePrefetchNextPeriod}
+            onMouseEnter={handlePrefetchNextPeriod}
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
           >
             <ChevronRight aria-hidden="true" className="w-5 h-5" />
@@ -2147,27 +2210,7 @@ export const Schedule = React.memo(() => {
         />
       )}
 
-      {isModalOpen && (
-        <SessionModal
-          isOpen={isModalOpen}
-          onClose={handleCloseSessionModal}
-          onSubmit={handleSubmit}
-          session={selectedSession}
-          selectedDate={selectedTimeSlot?.date}
-          selectedTime={selectedTimeSlot?.time}
-          therapists={visibleTherapists}
-          clients={visibleClients}
-          existingSessions={displayData.sessions}
-          timeZone={userTimeZone}
-          defaultTherapistId={selectedTherapist}
-          defaultClientId={selectedClient}
-          retryHint={retryHint}
-          onRetryHintDismiss={dismissRetryHint}
-          retryActionLabel={retryActionLabel}
-          onRetryAction={retryActionLabel ? handleOpenLinkedSessionDocumentation : undefined}
-          onSessionStarted={handleSessionStarted}
-        />
-      )}
+      {sessionModal}
 
     </div>
   );

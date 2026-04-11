@@ -9,6 +9,17 @@ import { useDashboardLiveRefresh } from './dashboardLiveRefresh';
 import { callApi } from './api';
 import { ensureRuntimeSupabaseConfig, getSupabaseAnonKey } from './runtimeConfig';
 
+const buildOrgScopedScheduleBatchKey = (
+  startDateIso: string,
+  endDateIso: string,
+  organizationId?: string | null,
+) => [
+  'sessions-batch',
+  organizationId || 'org:none',
+  startDateIso,
+  endDateIso,
+];
+
 // ============================================================================
 // BATCHED SCHEDULE QUERIES (Replaces N+1 queries)
 // ============================================================================
@@ -17,28 +28,39 @@ import { ensureRuntimeSupabaseConfig, getSupabaseAnonKey } from './runtimeConfig
  * Optimized schedule data fetching - replaces 3 separate queries with 1 RPC call
  * Reduces API calls by ~60% on Schedule page
  */
-export const useScheduleDataBatch = (startDate: Date, endDate: Date, options?: { enabled?: boolean }) => {
-  return useQuery({
-    queryKey: generateCacheKey.sessionsBatch(startDate.toISOString(), endDate.toISOString()),
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_schedule_data_batch', {
-        p_start_date: startDate.toISOString(),
-        p_end_date: endDate.toISOString()
-      });
+const fetchScheduleDataBatch = async (startDate: Date, endDate: Date) => {
+  const { data, error } = await supabase.rpc('get_schedule_data_batch', {
+    p_start_date: startDate.toISOString(),
+    p_end_date: endDate.toISOString()
+  });
 
-      if (error) {
-        // Gracefully fall back to the non-batched queries when the RPC is unavailable/misconfigured.
-        logger.warn('Schedule batch RPC failed; falling back to individual queries', {
-          metadata: {
-            rpc: 'get_schedule_data_batch',
-            code: (error as { code?: string }).code ?? null,
-            message: (error as { message?: string }).message ?? 'Unknown RPC error',
-          },
-        });
-        return null;
-      }
-      return data;
-    },
+  if (error) {
+    // Gracefully fall back to the non-batched queries when the RPC is unavailable/misconfigured.
+    logger.warn('Schedule batch RPC failed; falling back to individual queries', {
+      metadata: {
+        rpc: 'get_schedule_data_batch',
+        code: (error as { code?: string }).code ?? null,
+        message: (error as { message?: string }).message ?? 'Unknown RPC error',
+      },
+    });
+    return null;
+  }
+
+  return data;
+};
+
+export const useScheduleDataBatch = (
+  startDate: Date,
+  endDate: Date,
+  options?: { enabled?: boolean; organizationId?: string | null },
+) => {
+  return useQuery({
+    queryKey: buildOrgScopedScheduleBatchKey(
+      startDate.toISOString(),
+      endDate.toISOString(),
+      options?.organizationId,
+    ),
+    queryFn: () => fetchScheduleDataBatch(startDate, endDate),
     retry: false,
     staleTime: CACHE_STRATEGIES.SESSIONS.schedule_batch,
     gcTime: CACHE_STRATEGIES.SESSIONS.schedule_batch * 2,
@@ -454,42 +476,79 @@ export const useQueryPerformanceMonitor = () => {
  */
 export const useSmartPrefetch = () => {
   const queryClient = useQueryClient();
-  
-  const prefetchNextWeek = async (currentWeekStart: Date) => {
-    const nextWeekStart = new Date(currentWeekStart);
-    nextWeekStart.setDate(nextWeekStart.getDate() + 7);
-    
-    const nextWeekEnd = new Date(nextWeekStart);
-    nextWeekEnd.setDate(nextWeekEnd.getDate() + 6);
-    
+  const canPrefetch = (options?: { enabled?: boolean; organizationId?: string | null }) =>
+    (options?.enabled ?? true) && typeof options?.organizationId === 'string' && options.organizationId.length > 0;
+
+  const prefetchScheduleRange = async (
+    startDate: Date,
+    endDate: Date,
+    options?: { enabled?: boolean; organizationId?: string | null },
+  ) => {
+    if (!canPrefetch(options)) {
+      return;
+    }
+
     try {
       await queryClient.prefetchQuery({
-        queryKey: generateCacheKey.sessionsBatch(
-          nextWeekStart.toISOString(),
-          nextWeekEnd.toISOString()
+        queryKey: buildOrgScopedScheduleBatchKey(
+          startDate.toISOString(),
+          endDate.toISOString(),
+          options?.organizationId,
         ),
+        queryFn: () => fetchScheduleDataBatch(startDate, endDate),
         staleTime: CACHE_STRATEGIES.SESSIONS.future_weeks,
       });
     } catch (error) {
-      logger.warn('Failed to prefetch next week data', {
+      logger.warn('Failed to prefetch schedule range data', {
         metadata: {
-          scope: 'smartPrefetch.nextWeek',
-          failure: toError(error, 'Next week prefetch failed').message,
+          scope: 'smartPrefetch.scheduleRange',
+          failure: toError(error, 'Schedule range prefetch failed').message,
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
         },
       });
     }
   };
   
-  const prefetchReportData = async (currentMonth: Date) => {
+  const prefetchNextWeek = async (
+    currentWeekStart: Date,
+    options?: { enabled?: boolean; organizationId?: string | null },
+  ) => {
+    const nextWeekStart = new Date(currentWeekStart);
+    nextWeekStart.setDate(nextWeekStart.getDate() + 7);
+    
+    const nextWeekEnd = new Date(nextWeekStart);
+    nextWeekEnd.setDate(nextWeekEnd.getDate() + 6);
+    await prefetchScheduleRange(nextWeekStart, nextWeekEnd, options);
+  };
+  
+  const prefetchReportData = async (
+    currentMonth: Date,
+    options?: { enabled?: boolean; organizationId?: string | null },
+  ) => {
+    if (!canPrefetch(options)) {
+      return;
+    }
+
     const nextMonth = new Date(currentMonth);
     nextMonth.setMonth(nextMonth.getMonth() + 1);
+    const startDate = nextMonth.toISOString().split('T')[0];
+    const endDate = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0).toISOString().split('T')[0];
     
     try {
       await queryClient.prefetchQuery({
-        queryKey: generateCacheKey.sessionMetrics(
-          nextMonth.toISOString().split('T')[0],
-          new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0).toISOString().split('T')[0]
-        ),
+        queryKey: generateCacheKey.sessionMetrics(startDate, endDate),
+        queryFn: async () => {
+          const { data, error } = await supabase.rpc('get_session_metrics', {
+            p_start_date: startDate,
+            p_end_date: endDate,
+            p_therapist_id: null,
+            p_client_id: null
+          });
+
+          if (error) throw error;
+          return data;
+        },
         staleTime: CACHE_STRATEGIES.REPORTS.past_months,
       });
     } catch (error) {
@@ -502,5 +561,5 @@ export const useSmartPrefetch = () => {
     }
   };
   
-  return { prefetchNextWeek, prefetchReportData };
+  return { prefetchScheduleRange, prefetchNextWeek, prefetchReportData };
 };

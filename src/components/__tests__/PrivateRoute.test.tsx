@@ -54,7 +54,10 @@ describe('PrivateRoute access behaviour', () => {
     renderProtectedRoute();
 
     expect(screen.getByLabelText('Restoring your secure session...')).toBeInTheDocument();
+    expect(screen.getByTestId('protected-shell-pending')).toBeInTheDocument();
     expect(screen.queryByText('protected')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('login-page')).not.toBeInTheDocument();
+    expect(screen.getByTestId('protected-shell-pending').querySelector('main')).not.toHaveClass('lg:ml-64');
   });
 
   it('redirects unauthenticated users to login', async () => {

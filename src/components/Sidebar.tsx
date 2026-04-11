@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 import { useTheme } from '../lib/theme';
+import { preloadRouteModule } from '../lib/routeModulePrefetch';
 // Theme is toggled directly via context; no hidden proxy button
 import { logger } from '../lib/logger/logger';
 
@@ -208,6 +209,10 @@ export function Sidebar() {
     setIsChatAssistantOpen(true);
   };
 
+  const handleNavIntent = (path: string) => {
+    preloadRouteModule(path);
+  };
+
   useEffect(() => {
     if (!isMobileMenuOpen) {
       return;
@@ -296,6 +301,8 @@ export function Sidebar() {
                 key={path}
                 to={path}
                 onClick={() => setIsMobileMenuOpen(false)}
+                onMouseEnter={() => handleNavIntent(path)}
+                onFocus={() => handleNavIntent(path)}
                 className={({ isActive }) =>
                   `group inline-flex items-center px-6 py-4 border-b-2 font-medium text-sm
                   ${

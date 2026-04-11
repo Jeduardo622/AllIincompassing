@@ -2,6 +2,7 @@ import React from "react";
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Sidebar } from "../Sidebar";
 
 const mockUseAuth = vi.fn();
@@ -16,7 +17,8 @@ vi.mock("../../lib/theme", () => ({
 }));
 
 vi.mock("../ChatBot", () => ({
-  ChatBot: () => <div data-testid="chatbot-mock" />,
+  ChatBot: ({ isOpen }: { isOpen?: boolean }) =>
+    isOpen ? <div data-testid="chatbot-mock" /> : null,
 }));
 
 vi.mock("../ThemeToggle", () => ({
@@ -168,7 +170,7 @@ describe("Sidebar navigation active styling", () => {
     expect(screen.queryByTestId("chatbot-mock")).not.toBeInTheDocument();
   });
 
-  it("shows the chat assistant for therapist users", () => {
+  it("lazily loads the chat assistant only when opened", async () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
         <Sidebar />
@@ -176,7 +178,10 @@ describe("Sidebar navigation active styling", () => {
     );
 
     expect(screen.getByRole("button", { name: /chat assistant/i })).toBeInTheDocument();
-    expect(screen.getByTestId("chatbot-mock")).toBeInTheDocument();
+    expect(screen.queryByTestId("chatbot-mock")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /chat assistant/i }));
+    expect(await screen.findByTestId("chatbot-mock")).toBeInTheDocument();
   });
 
   it("hides family navigation for non-guardian clients", () => {

@@ -81,11 +81,16 @@ const buildQuery = (table: keyof typeof tableData) => {
   return builder;
 };
 
+const authMockState = {
+  user: { id: 'user-1', email: 'user@example.com' },
+  profile: { id: 'user-1', email: 'user@example.com', role: 'admin' as const },
+  profileLoading: false,
+  effectiveRole: 'admin' as const,
+  isGuardian: false,
+};
+
 vi.mock('../../lib/authContext', () => ({
-  useAuth: () => ({
-    user: { id: 'user-1', email: 'user@example.com' },
-    profile: { id: 'user-1', email: 'user@example.com' },
-  }),
+  useAuth: () => authMockState,
 }));
 
 vi.mock('../../lib/supabase', () => ({
@@ -114,6 +119,10 @@ describe('Documentation page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setTableData();
+    authMockState.profile = { id: 'user-1', email: 'user@example.com', role: 'admin' };
+    authMockState.profileLoading = false;
+    authMockState.effectiveRole = 'admin';
+    authMockState.isGuardian = false;
   });
 
   it('renders sections and filters results by search', async () => {
@@ -226,5 +235,38 @@ describe('Documentation page', () => {
     });
 
     expect(screen.getByText('Date unknown • Size unknown')).toBeInTheDocument();
+  });
+
+  it('for client role loads only client uploads section and copy', async () => {
+    authMockState.profile = { id: 'user-1', email: 'user@example.com', role: 'client' };
+    authMockState.effectiveRole = 'client';
+
+    renderWithProviders(<Documentation />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Client Uploads')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Therapist Uploads')).not.toBeInTheDocument();
+    expect(screen.queryByText('AI Session Notes')).not.toBeInTheDocument();
+    expect(screen.getByText('Documents from your onboarding and care profile.')).toBeInTheDocument();
+  });
+
+  it('keeps guardians on the full documentation mode even though their effective role is client', async () => {
+    authMockState.profile = { id: 'user-1', email: 'user@example.com', role: 'client' };
+    authMockState.effectiveRole = 'client';
+    authMockState.isGuardian = true;
+
+    renderWithProviders(<Documentation />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Therapist Uploads')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('AI Session Notes')).toBeInTheDocument();
+    expect(screen.queryByText('Documents from your onboarding and care profile.')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('All documents you have uploaded or generated, organized by category.'),
+    ).toBeInTheDocument();
   });
 });

@@ -10,6 +10,7 @@ import { canAccessStaffDashboard } from './lib/dashboardAccess';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PrivateRoute } from './components/PrivateRoute';
 import { RoleGuard } from './components/RoleGuard';
+import { RouteLoadingSkeleton } from './components/RouteLoadingSkeleton';
 import { logger } from './lib/logger/logger';
 
 // Lazy load components
@@ -73,7 +74,13 @@ const DashboardLanding: React.FC = () => {
   const { user, profile, loading, profileLoading, isGuardian, effectiveRole } = useAuth();
 
   if (loading || (user && profileLoading && !profile)) {
-    return <LoadingSpinner />;
+    return (
+      <div className="flex min-h-[16rem] w-full items-center justify-center p-4">
+        <div className="w-full max-w-2xl">
+          <RouteLoadingSkeleton label="Loading your workspace" />
+        </div>
+      </div>
+    );
   }
 
   if (isGuardian) {
@@ -147,7 +154,9 @@ function App() {
                   {/* Protected Routes */}
                   <Route path="/" element={
                     <PrivateRoute>
-                      <Layout />
+                      <Suspense fallback={<RouteLoadingSkeleton label="Loading app layout" />}>
+                        <Layout />
+                      </Suspense>
                     </PrivateRoute>
                   }>
                     {/* Dashboard - accessible to all authenticated users */}

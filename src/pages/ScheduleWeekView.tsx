@@ -11,7 +11,7 @@ interface ScheduleWeekViewProps {
   onEditSession: ScheduleEditSessionHandler;
 }
 
-export const ScheduleWeekView: React.FC<ScheduleWeekViewProps> = ({
+const ScheduleWeekViewComponent: React.FC<ScheduleWeekViewProps> = ({
   weekDays,
   timeSlots,
   sessionSlotIndex,
@@ -61,3 +61,6 @@ export const ScheduleWeekView: React.FC<ScheduleWeekViewProps> = ({
     </div>
   );
 };
+
+export const ScheduleWeekView = React.memo(ScheduleWeekViewComponent);
+ScheduleWeekView.displayName = 'ScheduleWeekView';

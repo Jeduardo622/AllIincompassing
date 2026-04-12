@@ -83,7 +83,7 @@ import {
   parseScheduleModalSearchParams,
   SCHEDULE_MODAL_URL_TTL_MS,
 } from "./schedule-modal-url-state";
-import { getSessionStatusClasses } from "./ScheduleCalendarViewShared";
+import { getSessionStatusClasses } from "./ScheduleSessionStatusStyles";
 
 const MISSING_NOTES_RETRY_HINT =
   "Before closing this in-progress session, complete a linked clinical session note for this session and add per-goal note text for each worked goal. You can add these in Schedule > Edit Session > Clinical Session Notes, or in Client Details > Session Notes.";

@@ -16,8 +16,8 @@ vi.mock("@tanstack/react-query", () => ({
   }),
 }));
 
-const HookHarness: React.FC<{ invalidateIndexStaffQueries?: boolean }> = (props) => {
-  useRouteQueryRefetch(props);
+const HookHarness: React.FC = () => {
+  useRouteQueryRefetch();
   return null;
 };
 
@@ -28,10 +28,6 @@ describe("getRouteInvalidationKeys", () => {
       ["session-metrics"],
       ["dropdowns"],
     ]);
-  });
-
-  it("returns no keys for index when staff index invalidation is disabled", () => {
-    expect(getRouteInvalidationKeys("/", { invalidateIndexStaffQueries: false })).toEqual([]);
   });
 
   it("returns scoped keys for schedule route", () => {
@@ -95,13 +91,6 @@ describe("useRouteQueryRefetch", () => {
     pathname = "/documentation";
 
     render(<HookHarness />);
-
-    expect(invalidateQueries).not.toHaveBeenCalled();
-  });
-
-  it("skips dashboard invalidation on index when staff index invalidation is disabled", () => {
-    pathname = "/";
-    render(<HookHarness invalidateIndexStaffQueries={false} />);
 
     expect(invalidateQueries).not.toHaveBeenCalled();
   });

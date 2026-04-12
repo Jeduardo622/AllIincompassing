@@ -24,21 +24,7 @@ const ROUTE_QUERY_KEYS: readonly RouteQueryEntry[] = [
 
 const DEFAULT_ROUTE_QUERY_KEYS: readonly unknown[][] = [];
 
-export type UseRouteQueryRefetchOptions = {
-  /**
-   * When false, the index route (`/`) does not invalidate staff dashboard query keys.
-   * Use for client-role users who only pass through `/` before redirect.
-   */
-  readonly invalidateIndexStaffQueries?: boolean;
-};
-
-export const getRouteInvalidationKeys = (
-  pathname: string,
-  options?: UseRouteQueryRefetchOptions,
-): readonly unknown[][] => {
-  if (pathname === '/' && options?.invalidateIndexStaffQueries === false) {
-    return DEFAULT_ROUTE_QUERY_KEYS;
-  }
+export const getRouteInvalidationKeys = (pathname: string): readonly unknown[][] => {
   for (const routeEntry of ROUTE_QUERY_KEYS) {
     if (routeEntry.matches(pathname)) {
       return routeEntry.keys;
@@ -47,15 +33,14 @@ export const getRouteInvalidationKeys = (
   return DEFAULT_ROUTE_QUERY_KEYS;
 };
 
-export const useRouteQueryRefetch = (options?: UseRouteQueryRefetchOptions) => {
+export const useRouteQueryRefetch = () => {
   const location = useLocation();
   const queryClient = useQueryClient();
-  const invalidateIndexStaffQueries = options?.invalidateIndexStaffQueries;
 
   useEffect(() => {
-    const keys = getRouteInvalidationKeys(location.pathname, options);
+    const keys = getRouteInvalidationKeys(location.pathname);
     for (const queryKey of keys) {
       queryClient.invalidateQueries({ queryKey, refetchType: 'active' });
     }
-  }, [location.pathname, queryClient, invalidateIndexStaffQueries]);
+  }, [location.pathname, queryClient]);
 };

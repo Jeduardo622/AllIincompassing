@@ -12,7 +12,7 @@ interface ScheduleDayViewProps {
   onEditSession: ScheduleEditSessionHandler;
 }
 
-export const ScheduleDayView: React.FC<ScheduleDayViewProps> = ({
+const ScheduleDayViewComponent: React.FC<ScheduleDayViewProps> = ({
   selectedDate,
   timeSlots,
   sessionSlotIndex,
@@ -63,3 +63,6 @@ export const ScheduleDayView: React.FC<ScheduleDayViewProps> = ({
     </div>
   );
 };
+
+export const ScheduleDayView = React.memo(ScheduleDayViewComponent);
+ScheduleDayView.displayName = 'ScheduleDayView';

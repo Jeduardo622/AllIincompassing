@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getSessionStatusClasses } from "../Schedule";
+import { getSessionStatusClasses } from "../ScheduleSessionStatusStyles";
 
 describe("getSessionStatusClasses", () => {
   it("returns distinct card classes for all five statuses", () => {

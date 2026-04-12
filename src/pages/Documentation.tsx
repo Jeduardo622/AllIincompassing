@@ -41,6 +41,13 @@ interface DocumentationData {
   aiSessionNotes: DocumentEntry[];
 }
 
+const emptyDocumentationData = (): DocumentationData => ({
+  therapistDocuments: [],
+  clientDocuments: [],
+  authorizationDocuments: [],
+  aiSessionNotes: [],
+});
+
 const parseDocumentArray = (value: unknown): StoredDocumentMetadata[] => {
   if (!Array.isArray(value)) {
     return [];
@@ -110,7 +117,67 @@ const buildTherapistDocumentTitle = (objectPath: string, documentKey: string) =>
   return documentKey ? `${documentKey.replace(/_/g, ' ')} • ${filename}` : filename;
 };
 
-const fetchDocumentationData = async (
+const mapClientRowsToDocuments = (
+  rows: ReadonlyArray<{
+    id: string;
+    full_name: string | null;
+    created_at: string | null;
+    documents: unknown;
+  }>,
+): DocumentEntry[] =>
+  rows.flatMap((client) =>
+    parseDocumentArray(client.documents).map((doc) => ({
+      id: `${client.id}-${doc.path}`,
+      title: doc.name,
+      description: client.full_name ? `Client: ${client.full_name}` : `Client ID: ${client.id}`,
+      createdAt: client.created_at,
+      size: doc.size ?? null,
+      fileType: doc.type ?? null,
+      source: 'client_document' as const,
+      bucketId: 'client-documents',
+      objectPath: doc.path,
+    })),
+  );
+
+/** Client / guardian portal: only client-record documents (RLS-scoped); avoids staff-only parallel queries. */
+const fetchDocumentationDataForClientRole = async (
+  userId: string,
+  fallbackEmail?: string | null,
+): Promise<DocumentationData> => {
+  const clientResult = await supabase
+    .from('clients')
+    .select('id, full_name, created_at, documents, created_by, email')
+    .eq('created_by', userId)
+    .order('created_at', { ascending: false });
+
+  if (clientResult.error) {
+    throw clientResult.error instanceof Error
+      ? clientResult.error
+      : new Error('Failed to load documentation data');
+  }
+
+  const clientDocuments = mapClientRowsToDocuments(clientResult.data ?? []);
+
+  if ((!clientDocuments.length || !clientResult.data?.length) && fallbackEmail) {
+    const clientEmailResult = await supabase
+      .from('clients')
+      .select('id, full_name, created_at, documents, email')
+      .eq('email', fallbackEmail)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (!clientEmailResult.error && Array.isArray(clientEmailResult.data)) {
+      clientDocuments.push(...mapClientRowsToDocuments(clientEmailResult.data));
+    }
+  }
+
+  return {
+    ...emptyDocumentationData(),
+    clientDocuments,
+  };
+};
+
+/** Therapist / admin documentation: parallel staff-scoped sources. */
+const fetchDocumentationDataForStaffRoles = async (
   userId: string,
   fallbackEmail?: string | null,
 ): Promise<DocumentationData> => {
@@ -164,19 +231,7 @@ const fetchDocumentationData = async (
     sessionNoteId: note.id,
   }));
 
-  const clientDocuments = (clientResult.data ?? []).flatMap((client) =>
-    parseDocumentArray(client.documents).map((doc) => ({
-      id: `${client.id}-${doc.path}`,
-      title: doc.name,
-      description: client.full_name ? `Client: ${client.full_name}` : `Client ID: ${client.id}`,
-      createdAt: client.created_at,
-      size: doc.size ?? null,
-      fileType: doc.type ?? null,
-      source: 'client_document' as const,
-      bucketId: 'client-documents',
-      objectPath: doc.path,
-    })),
-  );
+  const clientDocuments = mapClientRowsToDocuments(clientResult.data ?? []);
 
   const authorizationDocuments = (authorizationResult.data ?? []).flatMap((authorization) =>
     parseDocumentArray(authorization.documents).map((doc) => ({
@@ -202,20 +257,7 @@ const fetchDocumentationData = async (
       .order('created_at', { ascending: false })
       .limit(1);
     if (!clientEmailResult.error && Array.isArray(clientEmailResult.data)) {
-      const fallbackDocs = clientEmailResult.data.flatMap((client) =>
-        parseDocumentArray(client.documents).map((doc) => ({
-          id: `${client.id}-${doc.path}`,
-          title: doc.name,
-          description: client.full_name ? `Client: ${client.full_name}` : `Client ID: ${client.id}`,
-          createdAt: client.created_at,
-          size: doc.size ?? null,
-          fileType: doc.type ?? null,
-          source: 'client_document' as const,
-          bucketId: 'client-documents',
-          objectPath: doc.path,
-        })),
-      );
-      clientDocuments.push(...fallbackDocs);
+      clientDocuments.push(...mapClientRowsToDocuments(clientEmailResult.data));
     }
   }
 
@@ -228,14 +270,20 @@ const fetchDocumentationData = async (
 };
 
 export function Documentation() {
-  const { user, profile } = useAuth();
+  const { user, profile, profileLoading, effectiveRole } = useAuth();
   const [search, setSearch] = useState('');
   const [activeDownloadId, setActiveDownloadId] = useState<string | null>(null);
 
+  const isClientDocumentationMode = effectiveRole === 'client';
+  const documentationFetchMode = isClientDocumentationMode ? 'client' : 'staff';
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['documentation', user?.id],
-    enabled: Boolean(user?.id),
-    queryFn: () => fetchDocumentationData(user?.id ?? '', profile?.email ?? null),
+    queryKey: ['documentation', user?.id, documentationFetchMode],
+    enabled: Boolean(user?.id) && !profileLoading,
+    queryFn: () =>
+      isClientDocumentationMode
+        ? fetchDocumentationDataForClientRole(user?.id ?? '', profile?.email ?? null)
+        : fetchDocumentationDataForStaffRoles(user?.id ?? '', profile?.email ?? null),
   });
 
   const sections = useMemo(() => {
@@ -244,13 +292,14 @@ export function Documentation() {
     const therapistDocuments = data?.therapistDocuments ?? [];
     const clientDocuments = data?.clientDocuments ?? [];
     const authorizationDocuments = data?.authorizationDocuments ?? [];
-    return [
+    const allSections = [
       {
         id: 'ai-session-notes',
         title: 'AI Session Notes',
         description: 'AI-generated documentation linked to your sessions.',
         documents: aiSessionNotes.filter((entry) => matchesSearch(entry, query)),
         emptyMessage: buildSectionEmptyMessage('No AI session notes yet.', query, aiSessionNotes.length > 0),
+        clientPortal: false,
       },
       {
         id: 'therapist-uploads',
@@ -262,6 +311,7 @@ export function Documentation() {
           query,
           therapistDocuments.length > 0,
         ),
+        clientPortal: false,
       },
       {
         id: 'client-uploads',
@@ -269,6 +319,7 @@ export function Documentation() {
         description: 'Documents you uploaded during client onboarding.',
         documents: clientDocuments.filter((entry) => matchesSearch(entry, query)),
         emptyMessage: buildSectionEmptyMessage('No client documents found.', query, clientDocuments.length > 0),
+        clientPortal: true,
       },
       {
         id: 'authorization-uploads',
@@ -280,9 +331,15 @@ export function Documentation() {
           query,
           authorizationDocuments.length > 0,
         ),
+        clientPortal: false,
       },
     ];
-  }, [data, search]);
+
+    if (isClientDocumentationMode) {
+      return allSections.filter((s) => s.clientPortal);
+    }
+    return allSections;
+  }, [data, search, isClientDocumentationMode]);
 
   const handleDownload = async (entry: DocumentEntry) => {
     if (activeDownloadId) {
@@ -342,7 +399,9 @@ export function Documentation() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Documentation</h1>
           <p className="text-sm text-gray-600 dark:text-gray-300">
-            All documents you have uploaded or generated, organized by category.
+            {isClientDocumentationMode
+              ? 'Documents from your onboarding and care profile.'
+              : 'All documents you have uploaded or generated, organized by category.'}
           </p>
         </div>
         <div className="w-full lg:max-w-sm">

@@ -12,6 +12,9 @@ vi.mock('../../lib/authContext', () => ({
   useAuth: () => ({
     user: { email: 'user@example.com' },
     effectiveRole: 'admin',
+    profileLoading: false,
+    hasAnyRole: (roles: string[]) => roles.includes('admin'),
+    isGuardian: false,
   }),
 }));
 

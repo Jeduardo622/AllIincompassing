@@ -45,6 +45,7 @@ export const useGuardianClients = () => {
       return fetchGuardianClients();
     },
     enabled: Boolean(isGuardian),
+    refetchOnWindowFocus: false,
   });
 };
 
@@ -137,5 +138,6 @@ export const useGuardianContactMetadata = () => {
       return fetchGuardianContactMetadata(user.id);
     },
     enabled: Boolean(user?.id) && Boolean(isGuardian),
+    refetchOnWindowFocus: false,
   });
 };

@@ -106,7 +106,7 @@ export const ROUTES: readonly RouteDefinition[] = [
     roles: ['therapist', 'admin', 'super_admin'],
     permissions: ['view_clients'],
   },
-  { path: '/clients/new', component: 'ClientOnboarding', roles: ['therapist', 'admin', 'super_admin'], permissions: [] },
+  { path: '/clients/new', component: 'ClientOnboarding', roles: ['admin', 'super_admin'], permissions: [] },
   { path: '/therapists', component: 'Therapists', roles: ['admin', 'super_admin'], permissions: [] },
   {
     path: '/therapists/:therapistId',

@@ -12,8 +12,8 @@ const expectedPaths = [
   '/',
   '/schedule',
   '/clients',
-  '/clients/:clientId',
   '/clients/new',
+  '/clients/:clientId',
   '/therapists',
   '/therapists/:therapistId',
   '/therapists/new',
@@ -56,6 +56,10 @@ describe('route guard matchers', () => {
     const match = findGuardForPath('/therapists/abc123');
     expect(match?.path).toBe('/therapists/:therapistId');
   });
+
+  it('route guard matcher resolves client onboarding before dynamic client id', () => {
+    expect(findGuardForPath('/clients/new')?.path).toBe('/clients/new');
+  });
 });
 
 describe('route guard access controls', () => {
@@ -69,6 +73,12 @@ describe('route guard access controls', () => {
     expect(hasRoleAccess('/therapists', 'admin')).toBe(true);
     expect(hasRoleAccess('/therapists', 'therapist')).toBe(false);
     expect(hasRoleAccess('/therapists/new', 'super_admin')).toBe(true);
+  });
+
+  it('restricts client onboarding to admin roles', () => {
+    expect(hasRoleAccess('/clients/new', 'therapist')).toBe(false);
+    expect(hasRoleAccess('/clients/new', 'admin')).toBe(true);
+    expect(hasRoleAccess('/clients/new', 'super_admin')).toBe(true);
   });
 
   it('route guard allows elevated roles to inherit lower privileges', () => {

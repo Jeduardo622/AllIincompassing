@@ -158,13 +158,14 @@ describe('App navigation landing', () => {
     expect(payload.metadata).not.toHaveProperty('hash');
   });
 
-  it('allows therapist access to client onboarding route', async () => {
+  it('blocks therapists from client onboarding route', async () => {
     authRole = 'therapist';
     window.history.pushState({}, '', '/clients/new');
     renderApp();
 
-    expect(await screen.findByText('ClientOnboardingPage')).toBeInTheDocument();
-    expect(screen.queryByText('ClientDetailsPage')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/unauthorized');
+    });
   });
 
   it('blocks clients from client onboarding route', async () => {

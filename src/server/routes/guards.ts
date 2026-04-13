@@ -39,6 +39,13 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
     requiredPermissions: ['view_clients'],
     supabasePolicies: ['public.clients: role_scoped_select'],
   }),
+  // Static segment must precede `/clients/:clientId` or `new` is treated as a UUID-like id.
+  createGuard({
+    path: '/clients/new',
+    allowedRoles: ['admin', 'super_admin'],
+    requiredPermissions: [],
+    supabasePolicies: ['app.set_client_archive_state: admin_super_admin_execute'],
+  }),
   createGuard({
     path: '/clients/:clientId',
     allowedRoles: ['therapist', 'admin', 'super_admin'],
@@ -47,12 +54,6 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
       'public.clients: role_scoped_select',
       'public.sessions: sessions_scoped_access',
     ],
-  }),
-  createGuard({
-    path: '/clients/new',
-    allowedRoles: ['therapist', 'admin', 'super_admin'],
-    requiredPermissions: [],
-    supabasePolicies: ['app.set_client_archive_state: admin_super_admin_execute'],
   }),
   createGuard({
     path: '/therapists',

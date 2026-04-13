@@ -176,9 +176,9 @@ function App() {
                       </RoleGuard>
                     } />
                     
-                    {/* Client Onboarding - accessible to therapists and above */}
+                    {/* Client Onboarding - admin and super_admin only */}
                     <Route path="clients/new" element={
-                      <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                      <RoleGuard roles={['admin', 'super_admin']}>
                         <ClientOnboardingPage />
                       </RoleGuard>
                     } />

@@ -1,7 +1,7 @@
 import {
-  collectAddedMigrationVersions,
-  fetchAppliedVersions,
-  resolveMissingVersions,
+  collectAddedMigrations,
+  fetchAppliedMigrations,
+  resolveMissingMigrations,
 } from "./runtime-migration-parity.mjs";
 
 const baseSha = process.env.MIGRATION_PARITY_BASE_SHA ?? process.env.GITHUB_EVENT_BEFORE ?? "";
@@ -14,9 +14,9 @@ const fail = (message) => {
 };
 
 const run = async () => {
-  const requiredVersions = collectAddedMigrationVersions({ baseSha, headSha });
+  const required = collectAddedMigrations({ baseSha, headSha });
 
-  if (requiredVersions.length === 0) {
+  if (required.length === 0) {
     console.log("Runtime migration parity check passed (no newly added migrations in merge range).");
     return;
   }
@@ -25,17 +25,18 @@ const run = async () => {
     fail("SUPABASE_DB_URL is required when newly added migrations are detected.");
   }
 
-  const appliedVersions = await fetchAppliedVersions({ connectionString });
-  const missingVersions = resolveMissingVersions(requiredVersions, appliedVersions);
+  const applied = await fetchAppliedMigrations({ connectionString });
+  const missing = resolveMissingMigrations(required, applied);
 
-  if (missingVersions.length > 0) {
+  if (missing.length > 0) {
+    const detail = missing.map((m) => `${m.version}/${m.name}`).join(", ");
     fail(
-      `missing migration version(s) in runtime DB: ${missingVersions.join(", ")}; required from merge range: ${requiredVersions.join(", ")}`,
+      `missing migration(s) in runtime DB: ${detail}; required from merge range (version or logical name must match schema_migrations).`,
     );
   }
 
   console.log(
-    `Runtime migration parity check passed (${requiredVersions.length} version(s) verified in runtime DB).`,
+    `Runtime migration parity check passed (${required.length} migration(s) verified in runtime DB by version or name).`,
   );
 };
 

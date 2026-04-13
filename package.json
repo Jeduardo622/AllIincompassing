@@ -25,6 +25,7 @@
     "playwright:schedule-conflict": "tsx scripts/playwright-schedule-conflict.ts",
     "playwright:therapist-onboarding": "tsx scripts/playwright-therapist-onboarding.ts",
     "playwright:therapist-authorization": "tsx scripts/playwright-therapist-authorization.ts",
+    "playwright:authorizations-read-scope": "tsx scripts/playwright-authorizations-read-scope-smoke.ts",
     "playwright:mobile-role-smoke": "tsx scripts/playwright-mobile-role-smoke.ts",
     "playwright:preflight": "tsx scripts/playwright-preflight.ts",
     "playwright:session-lifecycle": "tsx scripts/playwright-session-lifecycle.ts",

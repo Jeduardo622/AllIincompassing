@@ -554,8 +554,10 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
               </div>
             ) : (
               filteredNotes.map(note => (
-                <div 
-                  key={note.id} 
+                <div
+                  key={note.id}
+                  data-testid="session-note-card"
+                  data-note-id={note.id}
                   className={`p-4 rounded-lg border ${
                     selectedNotes.includes(note.id)
                       ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/10'

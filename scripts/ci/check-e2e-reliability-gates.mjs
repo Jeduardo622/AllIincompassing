@@ -19,6 +19,7 @@ const CRITICAL_PLAYWRIGHT_SCRIPTS = [
   path.join(ROOT, "scripts", "playwright-session-lifecycle.ts"),
   path.join(ROOT, "scripts", "playwright-session-complete.ts"),
   path.join(ROOT, "scripts", "playwright-schedule-blocked-close.ts"),
+  path.join(ROOT, "scripts", "playwright-session-note-measurement-roundtrip.ts"),
 ];
 
 const readJson = async (filePath) => JSON.parse(await readFile(filePath, "utf8"));
@@ -68,6 +69,23 @@ const run = async () => {
     ciPlaywright.indexOf("playwright:session-complete") < ciPlaywright.indexOf("playwright:session-lifecycle")
   ) {
     errors.push("package.json script ci:playwright must run playwright:session-lifecycle before playwright:session-complete.");
+  }
+  if (!ciPlaywright.includes("playwright:session-note-measurement-roundtrip")) {
+    errors.push("package.json script ci:playwright must include playwright:session-note-measurement-roundtrip.");
+  }
+  if (
+    ciPlaywright.includes("playwright:session-complete") &&
+    ciPlaywright.includes("playwright:session-note-measurement-roundtrip") &&
+    ciPlaywright.indexOf("playwright:session-note-measurement-roundtrip") < ciPlaywright.indexOf("playwright:session-complete")
+  ) {
+    errors.push("package.json script ci:playwright must run playwright:session-complete before playwright:session-note-measurement-roundtrip.");
+  }
+  if (
+    ciPlaywright.includes("playwright:schedule-blocked-close") &&
+    ciPlaywright.includes("playwright:session-note-measurement-roundtrip") &&
+    ciPlaywright.indexOf("playwright:session-note-measurement-roundtrip") < ciPlaywright.indexOf("playwright:schedule-blocked-close")
+  ) {
+    errors.push("package.json script ci:playwright must run playwright:schedule-blocked-close before playwright:session-note-measurement-roundtrip.");
   }
   if (!scripts["playwright:preflight"]) {
     errors.push("package.json is missing playwright:preflight script.");
@@ -119,12 +137,22 @@ const run = async () => {
   if (!ciWorkflow.includes("npm run playwright:session-complete")) {
     errors.push(".github/workflows/ci.yml auth-browser-smoke gate must run playwright:session-complete.");
   }
+  if (!ciWorkflow.includes("npm run playwright:session-note-measurement-roundtrip")) {
+    errors.push(".github/workflows/ci.yml auth-browser-smoke gate must run playwright:session-note-measurement-roundtrip.");
+  }
   if (
     ciWorkflow.includes("npm run playwright:session-lifecycle") &&
     ciWorkflow.includes("npm run playwright:session-complete") &&
     ciWorkflow.indexOf("npm run playwright:session-complete") < ciWorkflow.indexOf("npm run playwright:session-lifecycle")
   ) {
     errors.push(".github/workflows/ci.yml must run playwright:session-lifecycle before playwright:session-complete.");
+  }
+  if (
+    ciWorkflow.includes("npm run playwright:schedule-blocked-close") &&
+    ciWorkflow.includes("npm run playwright:session-note-measurement-roundtrip") &&
+    ciWorkflow.indexOf("npm run playwright:session-note-measurement-roundtrip") < ciWorkflow.indexOf("npm run playwright:schedule-blocked-close")
+  ) {
+    errors.push(".github/workflows/ci.yml must run playwright:schedule-blocked-close before playwright:session-note-measurement-roundtrip.");
   }
   if (!ciWorkflow.includes("if: always()")) {
     errors.push(".github/workflows/ci.yml must retain artifacts with if: always() for deterministic evidence collection.");

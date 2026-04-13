@@ -435,7 +435,7 @@ jobs:
             exit 1
           fi
           export CI_SESSION_PARITY_REQUIRED=true
-          echo "Running non-AI sessions browser gates (preflight -> auth -> lifecycle:no-show -> lifecycle:completed -> blocked-close)"
+          echo "Running non-AI sessions browser gates (preflight -> auth -> lifecycle:no-show -> lifecycle:completed -> blocked-close -> session-note-measurement-roundtrip)"
           npm run playwright:preflight
           echo "Preflight passed. Running auth smoke."
           npm run playwright:auth
@@ -445,6 +445,8 @@ jobs:
           npm run playwright:session-complete
           echo "Running blocked-close notes-required regression"
           npm run playwright:schedule-blocked-close
+          echo "Running session note measurement roundtrip regression"
+          npm run playwright:session-note-measurement-roundtrip
 
       - name: Record auth smoke evidence
         if: always()

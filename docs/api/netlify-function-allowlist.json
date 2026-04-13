@@ -15,6 +15,7 @@
     "sessions-start.ts"
   ],
   "boundaryExceptions": [
-    "sessions-complete.ts"
+    "sessions-complete.ts",
+    "session-notes-upsert.ts"
   ]
 }

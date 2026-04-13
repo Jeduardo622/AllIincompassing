@@ -65,6 +65,10 @@ vi.mock('../../pages/ClientOnboardingPage', () => ({
   ClientOnboardingPage: () => <div>ClientOnboardingPage</div>,
 }));
 
+vi.mock('../../pages/ClientDetails', () => ({
+  ClientDetails: () => <div>ClientDetailsPage</div>,
+}));
+
 vi.mock('../../pages/TherapistOnboardingPage', () => ({
   TherapistOnboardingPage: () => <div>TherapistOnboardingPage</div>,
 }));
@@ -160,6 +164,7 @@ describe('App navigation landing', () => {
     renderApp();
 
     expect(await screen.findByText('ClientOnboardingPage')).toBeInTheDocument();
+    expect(screen.queryByText('ClientDetailsPage')).not.toBeInTheDocument();
   });
 
   it('blocks clients from client onboarding route', async () => {

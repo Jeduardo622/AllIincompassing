@@ -461,6 +461,9 @@ export const Schedule = React.memo(() => {
   );
 
   const openFromPendingSchedule = useCallback((detail: PendingScheduleDetail | null) => {
+    if (effectiveRole === "therapist") {
+      return;
+    }
     const transition = applyPendingScheduleDetail({
       detail,
       lastDetailKeyRef: lastPendingScheduleKeyRef,
@@ -483,7 +486,7 @@ export const Schedule = React.memo(() => {
         startTimeIso: transition.prefill.date.toISOString(),
       });
     }
-  }, [writeModalUrlState]);
+  }, [effectiveRole, writeModalUrlState]);
 
   const consumePendingSchedule = useCallback(() => {
     consumePendingScheduleFromStorage({
@@ -623,9 +626,17 @@ export const Schedule = React.memo(() => {
 
   const therapistScopedView = effectiveRole === "therapist";
 
-  /** Keep the week/day grid when sessions are empty so admins and therapists can create bookings from empty slots. */
-  const showEmptySessionsState =
+  const showOrgDirectoryEmpty =
     displayData.therapists.length === 0 && displayData.clients.length === 0;
+  /** Therapists view assigned work only: show the read-only empty state instead of an empty booking grid. */
+  const showTherapistReadOnlyEmptyPeriod =
+    therapistScopedView && !showOrgDirectoryEmpty && displayData.sessions.length === 0;
+
+  useEffect(() => {
+    if (therapistScopedView) {
+      setView("day");
+    }
+  }, [therapistScopedView]);
 
   useEffect(() => {
     if (selectedTherapist) {
@@ -738,15 +749,6 @@ export const Schedule = React.memo(() => {
     scopedTherapistId,
     therapistLinkedClientIdsQuery.data,
   ]);
-  const scopedTherapistDisplayName = useMemo(() => {
-    const scopedId = selectedTherapist ?? scopedTherapistId;
-    if (!scopedId) {
-      return "Current Therapist";
-    }
-    const match = visibleTherapists.find((therapist) => therapist.id === scopedId);
-    return match?.full_name ?? "Current Therapist";
-  }, [selectedTherapist, scopedTherapistId, visibleTherapists]);
-
   const isScheduleShellNarrow = useSyncExternalStore(
     (onStoreChange) => {
       if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -762,6 +764,7 @@ export const Schedule = React.memo(() => {
         : false,
     () => false,
   );
+  const scheduleShellUsesCollapsibleFilters = isScheduleShellNarrow || therapistScopedView;
 
   const mobileScheduleOptionsSummary = useMemo(() => {
     const tzShort = recurrenceTimeZone.includes("/")
@@ -770,11 +773,16 @@ export const Schedule = React.memo(() => {
     const parts: string[] = [];
     parts.push(view === "day" ? "Day view" : "Week view");
     parts.push(tzShort);
-    if (recurrenceEnabled) {
+    if (!therapistScopedView && recurrenceEnabled) {
       parts.push("Recurrence on");
     }
     if (therapistScopedView) {
-      parts.push("My clients");
+      parts.push("All therapists");
+      parts.push(
+        selectedClient
+          ? (visibleClients.find((x) => x.id === selectedClient)?.full_name ?? "Client")
+          : "All clients",
+      );
     } else {
       const t = selectedTherapist
         ? (visibleTherapists.find((x) => x.id === selectedTherapist)?.full_name ?? "Therapist")
@@ -967,6 +975,9 @@ export const Schedule = React.memo(() => {
       timeSlot: { date: Date; time: string },
       options?: { syncUrl?: boolean },
     ) => {
+      if (therapistScopedView) {
+        return;
+      }
       const plan = buildScheduleModalOpenResetPlan({
         mode: "create",
         timeSlot,
@@ -1003,7 +1014,7 @@ export const Schedule = React.memo(() => {
         });
       }
     },
-    [writeModalUrlState],
+    [therapistScopedView, writeModalUrlState],
   );
 
   const handleEditSession = useCallback((
@@ -1436,6 +1447,12 @@ export const Schedule = React.memo(() => {
     }
 
     if (parsed.state.mode === "create") {
+      if (therapistScopedView) {
+        const params = clearScheduleModalSearchParams(searchParams);
+        setSearchParams(params, { replace: true });
+        lastAppliedUrlModalKeyRef.current = null;
+        return;
+      }
       const date = parseISO(parsed.state.startTimeIso);
       handleCreateSession(
         {
@@ -1506,6 +1523,7 @@ export const Schedule = React.memo(() => {
     displayData.sessions,
     handleCreateSession,
     handleEditSession,
+    therapistScopedView,
   ]);
 
   if (!activeOrganizationId) {
@@ -1653,48 +1671,7 @@ export const Schedule = React.memo(() => {
     </div>
   );
 
-  const therapistScopeSection =
-    therapistScopedView ? (
-      <section
-        className="bg-white dark:bg-dark-lighter border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm p-4"
-        aria-label="Therapist schedule scope"
-      >
-        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-          My Clients
-        </div>
-        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div>
-            <p className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Therapist</p>
-            <div className="w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-800 dark:border-gray-600 dark:bg-dark dark:text-gray-100">
-              {scopedTherapistDisplayName}
-            </div>
-          </div>
-          <div>
-            <label
-              htmlFor="therapist-client-scope-filter"
-              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
-            >
-              Client
-            </label>
-            <select
-              id="therapist-client-scope-filter"
-              value={selectedClient || ""}
-              onChange={(event) => handleClientFilterChange(event.target.value || null)}
-              className="w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-            >
-              <option value="">All My Clients ({visibleClients.length})</option>
-              {visibleClients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.full_name} - {(client.service_preference ?? []).join(", ")}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </section>
-    ) : null;
-
-  const sessionFiltersBlock = !therapistScopedView ? (
+  const sessionFiltersBlock = (
     <SessionFilters
       therapists={visibleTherapists}
       clients={visibleClients}
@@ -1706,7 +1683,7 @@ export const Schedule = React.memo(() => {
       scopedClientId={scopedClientId}
       therapistLocked={therapistScopedView}
     />
-  ) : null;
+  );
 
   const renderScheduleRecurrenceFieldset = (marginClass: string) => (
     <fieldset
@@ -1855,7 +1832,7 @@ export const Schedule = React.memo(() => {
 
   return (
     <div className="h-full">
-      {isScheduleShellNarrow ? (
+      {scheduleShellUsesCollapsibleFilters ? (
         <>
           <div className="mb-3">{schedulePageHeader}</div>
           <details className="group mb-4 rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-dark-lighter">
@@ -1872,9 +1849,8 @@ export const Schedule = React.memo(() => {
               </div>
             </summary>
             <div className="space-y-4 border-t border-gray-200 px-3 pb-4 pt-3 dark:border-gray-700">
-              {therapistScopeSection}
               {sessionFiltersBlock}
-              {renderScheduleRecurrenceFieldset("")}
+              {!therapistScopedView ? renderScheduleRecurrenceFieldset("") : null}
             </div>
           </details>
         </>
@@ -1882,14 +1858,13 @@ export const Schedule = React.memo(() => {
         <>
           <div className="mb-6 space-y-4">
             {schedulePageHeader}
-            {therapistScopeSection}
           </div>
           {sessionFiltersBlock}
-          {renderScheduleRecurrenceFieldset("mt-6")}
+          {!therapistScopedView ? renderScheduleRecurrenceFieldset("mt-6") : null}
         </>
       )}
 
-      {showEmptySessionsState ? (
+      {showOrgDirectoryEmpty ? (
         <div
           className="mt-6 flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 py-16 text-center dark:border-gray-600 dark:bg-gray-900/40"
           data-testid="schedule-empty-sessions"
@@ -1908,6 +1883,25 @@ export const Schedule = React.memo(() => {
             There are no therapists or clients for this organization. Add team members and clients, then book sessions from the schedule.
           </p>
         </div>
+      ) : showTherapistReadOnlyEmptyPeriod ? (
+        <div
+          className="mt-6 flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 py-16 text-center dark:border-gray-600 dark:bg-gray-900/40"
+          data-testid="schedule-empty-sessions"
+          data-schedule-empty-reason="no-sessions-in-period"
+          role="status"
+          aria-live="polite"
+        >
+          <CalendarX
+            className="h-12 w-12 text-gray-400 dark:text-gray-500"
+            aria-hidden="true"
+          />
+          <h2 className="mt-4 text-base font-medium text-gray-900 dark:text-white">
+            No sessions in this period
+          </h2>
+          <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+            There are no sessions for this date range and filters. Try another period or adjust filters.
+          </p>
+        </div>
       ) : (
         <Suspense fallback={<ScheduleViewLoadingState />}>
           {view === "day" ? (
@@ -1917,6 +1911,7 @@ export const Schedule = React.memo(() => {
               sessionSlotIndex={sessionSlotIndex}
               onCreateSession={handleCreateSession}
               onEditSession={handleEditSession}
+              allowCreateInEmptySlot={!therapistScopedView}
             />
           ) : (
             <LazyScheduleWeekView
@@ -1925,6 +1920,7 @@ export const Schedule = React.memo(() => {
               sessionSlotIndex={sessionSlotIndex}
               onCreateSession={handleCreateSession}
               onEditSession={handleEditSession}
+              allowCreateInEmptySlot={!therapistScopedView}
             />
           )}
         </Suspense>

@@ -15,12 +15,14 @@ export const TimeSlot = React.memo(
     slotSessions,
     onCreateSession,
     onEditSession,
+    allowCreateInEmptySlot = true,
   }: {
     time: string;
     day: Date;
     slotSessions: Session[];
     onCreateSession: ScheduleTimeSlotHandler;
     onEditSession: ScheduleEditSessionHandler;
+    allowCreateInEmptySlot?: boolean;
   }) => {
     const handleTimeSlotClick = useCallback(() => {
       onCreateSession({ date: day, time });
@@ -34,27 +36,45 @@ export const TimeSlot = React.memo(
       [onEditSession],
     );
 
+    const enableSlotCreateChrome = allowCreateInEmptySlot;
+
     return (
       <div
-        className="h-10 border-b border-r p-2 relative group cursor-pointer hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
-        role="button"
-        tabIndex={0}
-        aria-label="Add session"
-        title="Add session"
-        onClick={handleTimeSlotClick}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            handleTimeSlotClick();
-          }
-        }}
+        className={`h-10 border-b border-r p-2 relative group dark:border-gray-700 ${
+          enableSlotCreateChrome
+            ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
+            : "cursor-default"
+        }`}
+        role={enableSlotCreateChrome ? "button" : undefined}
+        tabIndex={enableSlotCreateChrome ? 0 : undefined}
+        aria-label={
+          enableSlotCreateChrome
+            ? "Add session"
+            : slotSessions.length === 0
+              ? "Empty time slot"
+              : undefined
+        }
+        title={enableSlotCreateChrome ? "Add session" : undefined}
+        {...(enableSlotCreateChrome
+          ? {
+              onClick: handleTimeSlotClick,
+              onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  handleTimeSlotClick();
+                }
+              },
+            }
+          : {})}
       >
-        <span
-          aria-hidden="true"
-          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 rounded-full text-gray-500 transition-opacity dark:text-gray-400"
-        >
-          <Plus className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-        </span>
+        {enableSlotCreateChrome ? (
+          <span
+            aria-hidden="true"
+            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 rounded-full text-gray-500 transition-opacity dark:text-gray-400"
+          >
+            <Plus className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+          </span>
+        ) : null}
 
         {slotSessions.map((session) => {
           const statusStyles = getSessionStatusClasses(session.status);
@@ -103,12 +123,14 @@ export const DayColumn = React.memo(
     sessionSlotIndex,
     onCreateSession,
     onEditSession,
+    allowCreateInEmptySlot = true,
   }: {
     day: Date;
     timeSlots: string[];
     sessionSlotIndex: Map<string, Session[]>;
     onCreateSession: ScheduleTimeSlotHandler;
     onEditSession: ScheduleEditSessionHandler;
+    allowCreateInEmptySlot?: boolean;
   }) => {
     const dayKey = useMemo(() => format(day, 'yyyy-MM-dd'), [day]);
 
@@ -122,6 +144,7 @@ export const DayColumn = React.memo(
             slotSessions={sessionSlotIndex.get(createSessionSlotKey(dayKey, time)) ?? []}
             onCreateSession={onCreateSession}
             onEditSession={onEditSession}
+            allowCreateInEmptySlot={allowCreateInEmptySlot}
           />
         ))}
       </div>

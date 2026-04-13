@@ -23,7 +23,7 @@ const ROUTES = [
   { path: '/schedule', component: 'Schedule', roles: ['client', 'therapist', 'admin', 'super_admin'], permissions: [] },
   { path: '/clients', component: 'Clients', roles: ['therapist', 'admin', 'super_admin'], permissions: ['view_clients'] },
   { path: '/clients/:clientId', component: 'ClientDetails', roles: ['therapist', 'admin', 'super_admin'], permissions: ['view_clients'] },
-  { path: '/clients/new', component: 'ClientOnboarding', roles: ['therapist', 'admin', 'super_admin'], permissions: [] },
+  { path: '/clients/new', component: 'ClientOnboarding', roles: ['admin', 'super_admin'], permissions: [] },
   { path: '/therapists', component: 'Therapists', roles: ['admin', 'super_admin'], permissions: [] },
   { path: '/therapists/:therapistId', component: 'TherapistDetails', roles: ['client', 'therapist', 'admin', 'super_admin'], permissions: [] },
   { path: '/therapists/new', component: 'TherapistOnboarding', roles: ['admin', 'super_admin'], permissions: [] },

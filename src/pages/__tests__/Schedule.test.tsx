@@ -327,15 +327,21 @@ describe("Schedule", () => {
     });
 
     expect(
-      await screen.findByRole("region", { name: /Therapist schedule scope/i }),
+      await screen.findByRole("heading", { name: /^Schedule$/i }),
     ).toBeInTheDocument();
-    // Therapist display may fall back to "Current Therapist" until profile scope resolves; the locked
-    // therapist still appears on session cards, so "Dr. Myles" can exist more than once.
+
+    await userEvent.click(screen.getByText("Filters & schedule options"));
+
     const myles = await screen.findAllByText("Dr. Myles");
     expect(myles.length).toBeGreaterThan(0);
     expect(screen.queryByRole("option", { name: /All Therapists/i })).not.toBeInTheDocument();
     expect(screen.getByRole("option", { name: /Jamie Client/i })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /Riley Client/i })).not.toBeInTheDocument();
+
+    expect(
+      screen.queryByRole("checkbox", { name: /Enable recurrence \(RRULE\)/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryAllByLabelText("Add session")).toHaveLength(0);
   });
 
   it("exposes recurrence toggle and labeled recurrence controls when enabled", async () => {

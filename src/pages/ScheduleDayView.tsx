@@ -10,6 +10,7 @@ interface ScheduleDayViewProps {
   sessionSlotIndex: Map<string, Session[]>;
   onCreateSession: ScheduleTimeSlotHandler;
   onEditSession: ScheduleEditSessionHandler;
+  allowCreateInEmptySlot?: boolean;
 }
 
 const ScheduleDayViewComponent: React.FC<ScheduleDayViewProps> = ({
@@ -18,6 +19,7 @@ const ScheduleDayViewComponent: React.FC<ScheduleDayViewProps> = ({
   sessionSlotIndex,
   onCreateSession,
   onEditSession,
+  allowCreateInEmptySlot = true,
 }) => {
   const selectedDateKey = format(selectedDate, 'yyyy-MM-dd');
 
@@ -56,6 +58,7 @@ const ScheduleDayViewComponent: React.FC<ScheduleDayViewProps> = ({
               slotSessions={sessionSlotIndex.get(createSessionSlotKey(selectedDateKey, time)) ?? []}
               onCreateSession={onCreateSession}
               onEditSession={onEditSession}
+              allowCreateInEmptySlot={allowCreateInEmptySlot}
             />
           ))}
         </div>

@@ -9,6 +9,7 @@ interface ScheduleWeekViewProps {
   sessionSlotIndex: Map<string, Session[]>;
   onCreateSession: ScheduleTimeSlotHandler;
   onEditSession: ScheduleEditSessionHandler;
+  allowCreateInEmptySlot?: boolean;
 }
 
 const ScheduleWeekViewComponent: React.FC<ScheduleWeekViewProps> = ({
@@ -17,6 +18,7 @@ const ScheduleWeekViewComponent: React.FC<ScheduleWeekViewProps> = ({
   sessionSlotIndex,
   onCreateSession,
   onEditSession,
+  allowCreateInEmptySlot = true,
 }) => {
   return (
     <div className="bg-white dark:bg-dark-lighter rounded-lg shadow overflow-x-auto">
@@ -55,6 +57,7 @@ const ScheduleWeekViewComponent: React.FC<ScheduleWeekViewProps> = ({
             sessionSlotIndex={sessionSlotIndex}
             onCreateSession={onCreateSession}
             onEditSession={onEditSession}
+            allowCreateInEmptySlot={allowCreateInEmptySlot}
           />
         ))}
       </div>

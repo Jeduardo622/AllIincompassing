@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { 
@@ -10,12 +10,42 @@ import {
   Calendar
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import type { Authorization, AuthorizationService } from '../types';
+import type { Authorization, AuthorizationService, Client } from '../types';
 import { AuthorizationModal } from '../components/AuthorizationModal';
 import { showSuccess, showError } from '../lib/toast';
 import { logger } from '../lib/logger/logger';
 import { fetchClients } from '../lib/clients/fetchers';
 import { createAuthorizationWithServices, updateAuthorizationWithServices } from '../lib/authorizations/mutations';
+import { useAuth } from '../lib/authContext';
+import { useActiveOrganizationId } from '../lib/organization';
+
+const emptyAvailabilityHours = (): Client['availability_hours'] => ({
+  monday: { start: null, end: null },
+  tuesday: { start: null, end: null },
+  wednesday: { start: null, end: null },
+  thursday: { start: null, end: null },
+  friday: { start: null, end: null },
+  saturday: { start: null, end: null },
+  sunday: { start: null, end: null },
+});
+
+/** Picker-only stub when editing a row whose client is outside the scoped therapist caseload list. */
+const minimalClientForPicker = (row: { id: string; full_name: string }): Client => ({
+  id: row.id,
+  full_name: row.full_name,
+  email: '',
+  date_of_birth: '',
+  insurance_info: {},
+  service_preference: [],
+  one_to_one_units: 0,
+  supervision_units: 0,
+  parent_consult_units: 0,
+  assessment_units: 0,
+  auth_units: 0,
+  availability_hours: emptyAvailabilityHours(),
+  created_at: '',
+  updated_at: '',
+});
 
 export function Authorizations() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -23,6 +53,9 @@ export function Authorizations() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedAuthorization, setSelectedAuthorization] = useState<Authorization | undefined>();
   const queryClient = useQueryClient();
+  const { effectiveRole, profile } = useAuth();
+  const resolvedOrganizationId = useActiveOrganizationId();
+  const isTherapistViewer = effectiveRole === 'therapist';
 
   const { data: authorizations = [], isLoading } = useQuery({
     queryKey: ['authorizations'],
@@ -46,22 +79,79 @@ export function Authorizations() {
     },
   });
 
-  const { data: clients = [] } = useQuery({
-    queryKey: ['clients', 'authorizations'],
-    queryFn: () => fetchClients({ allowAll: true }),
+  const { data: clientsFromQuery = [] } = useQuery({
+    queryKey: isTherapistViewer
+      ? ['clients', 'authorizations', 'scoped', resolvedOrganizationId ?? 'MISSING_ORG', profile?.id ?? 'MISSING_PROFILE']
+      : ['clients', 'authorizations'],
+    queryFn: () =>
+      isTherapistViewer
+        ? fetchClients({
+            organizationId: resolvedOrganizationId ?? undefined,
+            therapistId: profile?.id ?? null,
+            allowAll: false,
+          })
+        : fetchClients({ allowAll: true }),
+    enabled: isTherapistViewer ? Boolean(resolvedOrganizationId && profile?.id) : true,
   });
 
+  const therapistProviderIds = useMemo(() => {
+    if (!isTherapistViewer || !profile?.id) {
+      return null;
+    }
+    const ids = new Set<string>([profile.id]);
+    for (const row of authorizations) {
+      if (typeof row.provider_id === 'string' && row.provider_id.length > 0) {
+        ids.add(row.provider_id);
+      }
+    }
+    return Array.from(ids).sort();
+  }, [isTherapistViewer, profile?.id, authorizations]);
+
+  const clientsForModal = useMemo(() => {
+    if (!isTherapistViewer) {
+      return clientsFromQuery;
+    }
+    const byId = new Map(clientsFromQuery.map((c) => [c.id, c]));
+    if (selectedAuthorization) {
+      const embedded = selectedAuthorization.client;
+      if (
+        embedded &&
+        typeof embedded.id === 'string' &&
+        typeof embedded.full_name === 'string' &&
+        !byId.has(embedded.id)
+      ) {
+        byId.set(embedded.id, minimalClientForPicker({ id: embedded.id, full_name: embedded.full_name }));
+      }
+    }
+    return [...byId.values()];
+  }, [isTherapistViewer, clientsFromQuery, selectedAuthorization]);
+
   const { data: providers = [] } = useQuery({
-    queryKey: ['therapists'],
+    queryKey:
+      isTherapistViewer && therapistProviderIds
+        ? ['therapists', 'authorizations', 'scoped', ...therapistProviderIds]
+        : ['therapists'],
     queryFn: async () => {
+      if (isTherapistViewer && therapistProviderIds && therapistProviderIds.length > 0) {
+        const { data, error } = await supabase
+          .from('therapists')
+          .select('*')
+          .in('id', therapistProviderIds)
+          .order('full_name');
+
+        if (error) throw error;
+        return data ?? [];
+      }
+
       const { data, error } = await supabase
         .from('therapists')
         .select('*')
         .order('full_name');
-      
+
       if (error) throw error;
       return data;
     },
+    enabled: !isTherapistViewer || Boolean(therapistProviderIds?.length),
   });
 
   const createAuthorizationMutation = useMutation({
@@ -463,7 +553,7 @@ export function Authorizations() {
           }}
           onSubmit={handleSubmit}
           authorization={selectedAuthorization}
-          clients={clients}
+          clients={clientsForModal}
           providers={providers}
         />
       )}

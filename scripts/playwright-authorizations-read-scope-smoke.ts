@@ -108,9 +108,15 @@ async function run(): Promise<void> {
             note:
               admin.authorizationsRows >= therapist.authorizationsRows
                 ? "admin visible count >= therapist (consistent with broader admin read where data exists)"
-                : "admin returned fewer rows than therapist (unexpected for org-wide admin; verify fixtures/data)",
+                : "admin returned fewer rows than therapist (regression: org_admin read narrower than therapist)",
           }
         : {};
+
+    if (therapist && admin && admin.authorizationsRows < therapist.authorizationsRows) {
+      throw new Error(
+        `authorizations read-scope smoke failed: org_admin rows (${admin.authorizationsRows}) < therapist rows (${therapist.authorizationsRows}); expected admin org-wide read >= therapist caseload read.`,
+      );
+    }
 
     // eslint-disable-next-line no-console
     console.log(

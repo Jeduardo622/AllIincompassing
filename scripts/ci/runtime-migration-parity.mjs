@@ -67,18 +67,70 @@ export const resolveMissingVersions = (requiredVersions, appliedVersions) => {
   return requiredVersions.filter((version) => !applied.has(version));
 };
 
+const countName = (/** @type {MigrationEntry[]} */ entries, /** @type {string} */ name) =>
+  entries.filter((e) => e.name === name).length;
+
 /**
- * Required migration is satisfied if runtime has the same version, or the same logical name
- * (covers MCP/Dashboard apply timestamps differing from repo filename prefix).
+ * Numeric compare for migration version strings (timestamps). Returns null if either is non-numeric.
+ * @returns {number | null} negative if a < b, 0 if equal, positive if a > b
+ */
+export const compareMigrationVersionStrings = (a, b) => {
+  const ta = String(a ?? "").trim();
+  const tb = String(b ?? "").trim();
+  if (!/^\d+$/.test(ta) || !/^\d+$/.test(tb)) {
+    return null;
+  }
+  try {
+    const diff = BigInt(ta) - BigInt(tb);
+    if (diff < 0n) {
+      return -1;
+    }
+    if (diff > 0n) {
+      return 1;
+    }
+    return 0;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Required migration is satisfied if runtime has the same version.
+ * Otherwise, name-based match is allowed only when unambiguous:
+ * - exactly one required entry and exactly one applied row share that `name` (guards slug reuse),
+ * - and the applied row's version is >= the required filename version (numeric), so an older
+ *   applied row cannot satisfy a newer required migration with the same slug.
+ * Hosted timestamps that differ from the repo filename but are >= the filename still pass (MCP/Dashboard drift).
  */
 export const resolveMissingMigrations = (/** @type {MigrationEntry[]} */ required, /** @type {MigrationEntry[]} */ applied) => {
   return required.filter((r) => {
-    const satisfied = applied.some(
-      (a) =>
-        a.version === r.version ||
-        (r.name.length > 0 && a.name.length > 0 && a.name === r.name),
-    );
-    return !satisfied;
+    if (applied.some((a) => a.version === r.version)) {
+      return false;
+    }
+
+    const name = r.name.trim();
+    if (!name) {
+      return true;
+    }
+
+    if (countName(required, name) !== 1 || countName(applied, name) !== 1) {
+      return true;
+    }
+
+    const appliedWithName = applied.filter((a) => a.name === name);
+    const a = appliedWithName[0];
+    if (!a || a.name !== name) {
+      return true;
+    }
+
+    const ord = compareMigrationVersionStrings(a.version, r.version);
+    if (ord === null) {
+      return true;
+    }
+    if (ord >= 0) {
+      return false;
+    }
+    return true;
   });
 };
 

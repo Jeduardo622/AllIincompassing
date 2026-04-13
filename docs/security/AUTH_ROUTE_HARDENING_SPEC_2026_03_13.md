@@ -30,6 +30,12 @@ Edge auth routes (`auth-login`, `auth-signup`, `profiles-me`) remain supported f
 - Per-request CORS allowlist resolution + `Vary: Origin` in shared middleware.
 - Auth logging PII reduction.
 
+**Design status (WIN-39, 2026-04-13):** Review-only work for **distributed rate limiting**, **auth log minimization**, and **pre-implementation observability acceptance criteria** is captured in:
+
+- `docs/security/AUTH_P2_DISTRIBUTED_RATE_LIMIT_AND_LOGGING_DESIGN_2026_04_13.md`
+
+P2 **implementation** remains open until child issues ship code against that document.
+
 ## Non-Goals
 
 - Replacing Supabase auth provider behavior.

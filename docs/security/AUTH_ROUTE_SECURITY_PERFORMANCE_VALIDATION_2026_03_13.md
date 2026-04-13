@@ -43,9 +43,11 @@
 
 1. **Distributed rate limiting (P2):**
    - Current limiter is in-memory and per-instance.
-   - Follow-up: migrate to shared store (Redis/KV/Postgres-backed counters) with backoff/CAPTCHA hooks.
+   - **Design:** `docs/security/AUTH_P2_DISTRIBUTED_RATE_LIMIT_AND_LOGGING_DESIGN_2026_04_13.md` (WIN-39 closure).
+   - **Implementation:** migrate to shared store per that design (Redis/KV/Postgres-backed counters) with agreed fail-open/fail-closed behavior and alerting.
 2. **Auth logging minimization (P2):**
-   - Continue reducing sensitive metadata in auth logs.
+   - **Design:** field rules and `logApiAccess` evolution in `AUTH_P2_DISTRIBUTED_RATE_LIMIT_AND_LOGGING_DESIGN_2026_04_13.md`.
+   - **Implementation:** continue reducing sensitive metadata in auth logs per contract.
 3. **Runtime preflight 504 investigation (separate):**
    - Track and fix `OPTIONS` failures for `get-dashboard-data`.
 

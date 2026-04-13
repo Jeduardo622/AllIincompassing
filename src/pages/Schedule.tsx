@@ -621,15 +621,11 @@ export const Schedule = React.memo(() => {
     void refetchDropdowns();
   }, [refetchScheduleBatch, refetchSessions, refetchDropdowns]);
 
-  const showEmptySessionsState = displayData.sessions.length === 0;
   const therapistScopedView = effectiveRole === "therapist";
 
-  const scheduleEmptyReason = useMemo(() => {
-    if (displayData.therapists.length === 0 && displayData.clients.length === 0) {
-      return "no-schedule-data" as const;
-    }
-    return "no-sessions-in-period" as const;
-  }, [displayData.therapists.length, displayData.clients.length]);
+  /** Keep the week/day grid when sessions are empty so admins and therapists can create bookings from empty slots. */
+  const showEmptySessionsState =
+    displayData.therapists.length === 0 && displayData.clients.length === 0;
 
   useEffect(() => {
     if (selectedTherapist) {
@@ -1897,7 +1893,7 @@ export const Schedule = React.memo(() => {
         <div
           className="mt-6 flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 py-16 text-center dark:border-gray-600 dark:bg-gray-900/40"
           data-testid="schedule-empty-sessions"
-          data-schedule-empty-reason={scheduleEmptyReason}
+          data-schedule-empty-reason="no-schedule-data"
           role="status"
           aria-live="polite"
         >
@@ -1905,25 +1901,12 @@ export const Schedule = React.memo(() => {
             className="h-12 w-12 text-gray-400 dark:text-gray-500"
             aria-hidden="true"
           />
-          {scheduleEmptyReason === "no-schedule-data" ? (
-            <>
-              <h2 className="mt-4 text-base font-medium text-gray-900 dark:text-white">
-                No schedule data yet
-              </h2>
-              <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
-                There are no therapists or clients for this organization. Add team members and clients, then book sessions from the schedule.
-              </p>
-            </>
-          ) : (
-            <>
-              <h2 className="mt-4 text-base font-medium text-gray-900 dark:text-white">
-                No sessions in this period
-              </h2>
-              <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
-                There are no sessions for this date range and filters. Try another period or adjust filters.
-              </p>
-            </>
-          )}
+          <h2 className="mt-4 text-base font-medium text-gray-900 dark:text-white">
+            No schedule data yet
+          </h2>
+          <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+            There are no therapists or clients for this organization. Add team members and clients, then book sessions from the schedule.
+          </p>
         </div>
       ) : (
         <Suspense fallback={<ScheduleViewLoadingState />}>

@@ -89,6 +89,11 @@ const buildProgramGoalQuery = (data: unknown[]) => {
 describe('Scheduling Integration - End-to-End Flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    try {
+      window.localStorage.removeItem('pendingSchedule');
+    } catch {
+      // Ignore environments without localStorage.
+    }
     vi.mocked(supabase.from).mockImplementation((table: string) => {
       if (table === 'programs') {
         return buildProgramGoalQuery([mockProgram]) as ReturnType<typeof baseFrom>;
@@ -197,10 +202,8 @@ describe('Scheduling Integration - End-to-End Flow', () => {
     const start = '2025-07-01T10:00';
     document.dispatchEvent(new CustomEvent('openScheduleModal', { detail: { start_time: start } }));
 
-    // Session modal should open
-    await waitFor(() => {
-      expect(screen.getByText('New Session')).toBeInTheDocument();
-    });
+    // Session modal is lazy-loaded; week grid also lazy-loads now, so allow extra time in CI.
+    expect(await screen.findByText(/New Session/i, {}, { timeout: 20_000 })).toBeInTheDocument();
 
     // Fill out the session form
     const therapistSelect = document.getElementById('therapist-select') as HTMLSelectElement;

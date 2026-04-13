@@ -178,7 +178,7 @@ describe("Schedule data-load UX", () => {
     expect(screen.getByText(/get_dropdown_data failed/i)).toBeInTheDocument();
   });
 
-  it("shows an explicit empty state when schedule loads successfully but there are no sessions", async () => {
+  it("renders the schedule grid when therapists and clients exist but there are no sessions", async () => {
     mockUseScheduleDataBatch.mockReturnValue({
       data: {
         sessions: [],
@@ -191,10 +191,8 @@ describe("Schedule data-load UX", () => {
 
     renderWithProviders(<Schedule />);
 
-    const empty = await screen.findByTestId("schedule-empty-sessions");
-    expect(empty).toBeInTheDocument();
-    expect(empty).toHaveAttribute("data-schedule-empty-reason", "no-sessions-in-period");
-    expect(screen.getByText(/No sessions in this period/i)).toBeInTheDocument();
+    expect(await screen.findByText(/^Time$/)).toBeInTheDocument();
+    expect(screen.queryByTestId("schedule-empty-sessions")).not.toBeInTheDocument();
     expect(screen.queryByTestId("schedule-data-load-error")).not.toBeInTheDocument();
   });
 
@@ -271,9 +269,8 @@ describe("Schedule data-load UX", () => {
 
     renderWithProviders(<Schedule />);
 
-    const empty = await screen.findByTestId("schedule-empty-sessions");
-    expect(empty).toHaveAttribute("data-schedule-empty-reason", "no-sessions-in-period");
-    expect(screen.getByText(/No sessions in this period/i)).toBeInTheDocument();
+    expect(await screen.findByText(/^Time$/)).toBeInTheDocument();
+    expect(screen.queryByTestId("schedule-empty-sessions")).not.toBeInTheDocument();
   });
 
   it("uses generic copy when sessions query is in error but no error object is present", async () => {
@@ -318,7 +315,8 @@ describe("Schedule data-load UX", () => {
 
     renderWithProviders(<Schedule />);
 
-    expect(await screen.findByTestId("schedule-empty-sessions")).toBeInTheDocument();
+    expect(await screen.findByText(/^Time$/)).toBeInTheDocument();
+    expect(screen.queryByTestId("schedule-empty-sessions")).not.toBeInTheDocument();
     expect(screen.queryByTestId("schedule-data-load-error")).not.toBeInTheDocument();
   });
 });

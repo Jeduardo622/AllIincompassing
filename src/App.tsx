@@ -176,17 +176,17 @@ function App() {
                       </RoleGuard>
                     } />
                     
-                    {/* Client Details - accessible to therapists and above */}
-                    <Route path="clients/:clientId" element={
-                      <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
-                        <ClientDetails />
-                      </RoleGuard>
-                    } />
-
                     {/* Client Onboarding - accessible to therapists and above */}
                     <Route path="clients/new" element={
                       <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
                         <ClientOnboardingPage />
+                      </RoleGuard>
+                    } />
+
+                    {/* Client Details - accessible to therapists and above */}
+                    <Route path="clients/:clientId" element={
+                      <RoleGuard roles={['therapist', 'admin', 'super_admin']}>
+                        <ClientDetails />
                       </RoleGuard>
                     } />
 
@@ -319,4 +319,3 @@ function App() {
 }
 
 export { App };
-

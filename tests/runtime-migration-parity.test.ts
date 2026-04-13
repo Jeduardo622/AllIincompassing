@@ -6,6 +6,8 @@ import path from "node:path";
 
 import {
   collectAddedMigrationVersions,
+  collectAddedMigrations,
+  resolveMissingMigrations,
   resolveMissingVersions,
 } from "../scripts/ci/runtime-migration-parity.mjs";
 
@@ -45,6 +47,15 @@ describe("runtime migration parity helpers", () => {
       });
 
       expect(versions).toContain("20260401143000");
+
+      const entries = collectAddedMigrations({
+        baseSha,
+        headSha,
+        cwd: repoDir,
+      });
+      expect(entries.some((e) => e.version === "20260401143000" && e.name === "fix_user_roles_policy_recursion")).toBe(
+        true,
+      );
     } finally {
       rmSync(repoDir, { recursive: true, force: true });
     }
@@ -66,5 +77,19 @@ describe("runtime migration parity helpers", () => {
     );
 
     expect(missing).toEqual(["20260402120000"]);
+  });
+
+  it("treats runtime as satisfied when logical migration name matches but hosted version differs", () => {
+    const required = [{ version: "20260413120000", name: "authorizations_therapist_read_caseload" }];
+    const applied = [{ version: "20260413142741", name: "authorizations_therapist_read_caseload" }];
+
+    expect(resolveMissingMigrations(required, applied)).toEqual([]);
+  });
+
+  it("still reports missing when neither version nor name matches", () => {
+    const required = [{ version: "20260413120000", name: "authorizations_therapist_read_caseload" }];
+    const applied = [{ version: "20260408142721", name: "schedule_rpc_include_availability_hours" }];
+
+    expect(resolveMissingMigrations(required, applied)).toEqual(required);
   });
 });

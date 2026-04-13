@@ -61,7 +61,7 @@ We currently run all environments (preview, staging, production) against the sam
 
 1. Resolve all review comments and ensure the preview branch tests pass.
 2. Merge the PR into `main`. Supabase automatically deploys migrations in `supabase/migrations/` to the production project because “Deploy to production” is enabled for `main`.
-3. The `runtime-migration-parity` GitHub Actions job validates that newly merged migration versions are recorded in `supabase_migrations.schema_migrations` for the runtime DB using `SUPABASE_DB_URL`. If this gate fails, treat it as drift and remediate before considering the release healthy.
+3. The `runtime-migration-parity` GitHub Actions job validates that newly merged migrations appear in `supabase_migrations.schema_migrations` for the runtime DB (`SUPABASE_DB_URL` secret). The check matches either the **filename timestamp** or the **logical migration name** (the `*_name.sql` suffix). That way, applies done via the Supabase Dashboard or MCP—where the hosted `version` may differ from the repo filename prefix—still satisfy parity when the **name** column matches. If this gate fails, confirm the secret points at production and that the migration row exists; use `supabase migration repair` only when you intentionally need to align history after a partial apply.
 4. Deploy edge functions explicitly after migration promotion. Migration deploys do not guarantee edge function parity:
    ```bash
    npm run ci:deploy:session-edge-bundle

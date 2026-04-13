@@ -2,10 +2,10 @@ import type { PostgrestError } from '@supabase/supabase-js';
 import type { SessionGoalMeasurementEntry, SessionNote } from '../types';
 import type { Database } from './generated/database.types';
 import { normalizeGoalMeasurementEntry } from './goal-measurements';
+import { callApi } from './api';
 import { supabase } from './supabase';
 
 type ClientSessionNoteRow = Database['public']['Tables']['client_session_notes']['Row'];
-type ClientSessionNoteInsert = Database['public']['Tables']['client_session_notes']['Insert'];
 
 interface TherapistSummary {
   readonly full_name: string | null;
@@ -190,297 +190,120 @@ export interface UpdateClientSessionNoteInput {
   readonly sessionId?: string | null;
 }
 
+export interface SessionNoteUpsertApiPayload {
+  readonly noteId?: string;
+  readonly sessionId?: string | null;
+  readonly clientId: string;
+  readonly authorizationId: string;
+  readonly therapistId: string;
+  readonly serviceCode: string;
+  readonly sessionDate: string;
+  readonly startTime: string;
+  readonly endTime: string;
+  readonly goalIds: string[];
+  readonly goalsAddressed?: string[];
+  readonly goalNotes: Record<string, string>;
+  readonly goalMeasurements?: Record<string, SessionGoalMeasurementEntry> | null;
+  readonly narrative: string;
+  readonly isLocked: boolean;
+}
+
+const invokeSessionNoteUpsertApi = async (
+  payload: SessionNoteUpsertApiPayload,
+): Promise<SessionNote> => {
+  const response = await callApi('/api/session-notes/upsert', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const fallbackMessage = 'Failed to save session note.';
+    try {
+      const errorBody = await response.json() as { error?: unknown; message?: unknown };
+      const message = typeof errorBody.error === 'string'
+        ? errorBody.error
+        : typeof errorBody.message === 'string'
+          ? errorBody.message
+          : fallbackMessage;
+      throw new Error(message);
+    } catch (error) {
+      if (error instanceof Error && error.message !== fallbackMessage) {
+        throw error;
+      }
+      throw new Error(fallbackMessage);
+    }
+  }
+
+  return await response.json() as SessionNote;
+};
+
 export const createClientSessionNote = async (
   payload: CreateClientSessionNoteInput
 ): Promise<SessionNote> => {
-  const { data: authorization, error: authError } = await supabase
-    .from('authorizations')
-    .select(
-      `
-        id,
-        organization_id,
-        status,
-        start_date,
-        end_date,
-        services:authorization_services (
-          service_code,
-          approved_units
-        )
-      `
-    )
-    .eq('id', payload.authorizationId)
-    .single();
-
-  if (authError || !authorization) {
-    throw (authError ?? new Error('Authorization not found.'));
-  }
-
-  if (authorization.organization_id !== payload.organizationId) {
-    throw new Error('Authorization does not belong to the active organization.');
-  }
-
-  if (authorization.status !== 'approved') {
-    throw new Error('Authorization must be approved before creating session notes.');
-  }
-
-  const sessionDate = new Date(payload.sessionDate);
-  if (sessionDate < new Date(authorization.start_date) || sessionDate > new Date(authorization.end_date)) {
-    throw new Error('Session date must be within the authorization date range.');
-  }
-
-  const matchedService = (authorization.services ?? []).find(
-    (service) => service.service_code === payload.serviceCode
-  );
-
-  if (!matchedService) {
-    throw new Error('Selected service code is not part of this authorization.');
-  }
-
-  const goalNotesValue =
-    payload.goalNotes && Object.keys(payload.goalNotes).length > 0
-      ? payload.goalNotes
-      : null;
-  const goalMeasurementsValue =
-    payload.goalMeasurements && Object.keys(payload.goalMeasurements).length > 0
-      ? payload.goalMeasurements
-      : null;
-
-  const insertPayload: ClientSessionNoteInsert = {
-    authorization_id: payload.authorizationId,
-    client_id: payload.clientId,
-    therapist_id: payload.therapistId,
-    created_by: payload.createdBy,
-    organization_id: payload.organizationId,
-    service_code: payload.serviceCode,
-    session_date: payload.sessionDate,
-    start_time: payload.startTime,
-    end_time: payload.endTime,
-    session_duration: payload.sessionDuration,
-    goals_addressed: payload.goalsAddressed,
-    goal_ids: payload.goalIds ?? null,
-    goal_measurements: goalMeasurementsValue,
-    goal_notes: goalNotesValue,
+  return invokeSessionNoteUpsertApi({
+    sessionId: payload.sessionId ?? null,
+    clientId: payload.clientId,
+    authorizationId: payload.authorizationId,
+    therapistId: payload.therapistId,
+    serviceCode: payload.serviceCode,
+    sessionDate: payload.sessionDate,
+    startTime: payload.startTime,
+    endTime: payload.endTime,
+    goalIds: payload.goalIds ?? [],
+    goalsAddressed: payload.goalsAddressed,
+    goalNotes: payload.goalNotes ?? {},
+    goalMeasurements: payload.goalMeasurements ?? null,
     narrative: payload.narrative,
-    is_locked: payload.isLocked,
-    signed_at: payload.isLocked ? new Date().toISOString() : null,
-    session_id: payload.sessionId ?? null,
-  };
-
-  const { data, error } = await supabase
-    .from(TABLE)
-    .insert(insertPayload)
-    .select(SESSION_NOTE_WITH_THERAPIST_SELECT)
-    .single();
-
-  if (error || !data) {
-    throw (error ?? new Error('Unable to create session note'));
-  }
-
-  return mapRowToSessionNote(
-    data as ClientSessionNoteRow & { therapists: TherapistSummary | null },
-    (data as { therapists: TherapistSummary | null }).therapists ?? null
-  );
+    isLocked: payload.isLocked,
+  });
 };
 
 export const updateClientSessionNote = async (
   payload: UpdateClientSessionNoteInput,
 ): Promise<SessionNote> => {
-  const { data: existingRow, error: existingError } = await supabase
-    .from(TABLE)
-    .select('id, is_locked')
-    .eq('id', payload.noteId)
-    .eq('organization_id', payload.organizationId)
-    .maybeSingle();
-
-  if (existingError) {
-    throw existingError;
-  }
-
-  if (!existingRow?.id) {
-    throw new Error('Session note not found.');
-  }
-
-  if (existingRow.is_locked) {
-    throw new Error('Session note is locked and cannot be edited.');
-  }
-
-  const { data: authorization, error: authError } = await supabase
-    .from('authorizations')
-    .select(
-      `
-        id,
-        organization_id,
-        status,
-        start_date,
-        end_date,
-        services:authorization_services (
-          service_code,
-          approved_units
-        )
-      `
-    )
-    .eq('id', payload.authorizationId)
-    .single();
-
-  if (authError || !authorization) {
-    throw (authError ?? new Error('Authorization not found.'));
-  }
-
-  if (authorization.organization_id !== payload.organizationId) {
-    throw new Error('Authorization does not belong to the active organization.');
-  }
-
-  if (authorization.status !== 'approved') {
-    throw new Error('Authorization must be approved before editing session notes.');
-  }
-
-  const sessionDate = new Date(payload.sessionDate);
-  if (sessionDate < new Date(authorization.start_date) || sessionDate > new Date(authorization.end_date)) {
-    throw new Error('Session date must be within the authorization date range.');
-  }
-
-  const matchedService = (authorization.services ?? []).find(
-    (service) => service.service_code === payload.serviceCode
-  );
-
-  if (!matchedService) {
-    throw new Error('Selected service code is not part of this authorization.');
-  }
-
-  const goalNotesValue =
-    payload.goalNotes && Object.keys(payload.goalNotes).length > 0
-      ? Object.fromEntries(
-          Object.entries(payload.goalNotes)
-            .map(([goalId, noteText]) => [goalId, noteText.trim()])
-            .filter(([, noteText]) => noteText.length > 0),
-        )
-      : null;
-  const goalMeasurementsValue =
-    payload.goalMeasurements && Object.keys(payload.goalMeasurements).length > 0
-      ? payload.goalMeasurements
-      : null;
-
-  const { data, error } = await supabase
-    .from(TABLE)
-    .update({
-      authorization_id: payload.authorizationId,
-      client_id: payload.clientId,
-      therapist_id: payload.therapistId,
-      organization_id: payload.organizationId,
-      service_code: payload.serviceCode,
-      session_date: payload.sessionDate,
-      start_time: payload.startTime,
-      end_time: payload.endTime,
-      session_duration: payload.sessionDuration,
-      goals_addressed: payload.goalsAddressed,
-      goal_ids: payload.goalIds ?? null,
-      goal_measurements: goalMeasurementsValue,
-      goal_notes: goalNotesValue,
-      narrative: payload.narrative.trim(),
-      is_locked: payload.isLocked,
-      signed_at: payload.isLocked ? new Date().toISOString() : null,
-      session_id: payload.sessionId ?? null,
-    })
-    .eq('id', payload.noteId)
-    .eq('organization_id', payload.organizationId)
-    .select(SESSION_NOTE_WITH_THERAPIST_SELECT)
-    .single();
-
-  if (error || !data) {
-    throw (error ?? new Error('Unable to update session note'));
-  }
-
-  return mapRowToSessionNote(
-    data as ClientSessionNoteRow & { therapists: TherapistSummary | null },
-    (data as { therapists: TherapistSummary | null }).therapists ?? null,
-  );
+  return invokeSessionNoteUpsertApi({
+    noteId: payload.noteId,
+    sessionId: payload.sessionId ?? null,
+    clientId: payload.clientId,
+    authorizationId: payload.authorizationId,
+    therapistId: payload.therapistId,
+    serviceCode: payload.serviceCode,
+    sessionDate: payload.sessionDate,
+    startTime: payload.startTime,
+    endTime: payload.endTime,
+    goalIds: payload.goalIds ?? [],
+    goalsAddressed: payload.goalsAddressed,
+    goalNotes: payload.goalNotes ?? {},
+    goalMeasurements: payload.goalMeasurements ?? null,
+    narrative: payload.narrative,
+    isLocked: payload.isLocked,
+  });
 };
 
 export const upsertClientSessionNoteForSession = async (
   payload: UpsertClientSessionNoteForSessionInput,
 ): Promise<SessionNote> => {
-  const trimmedNarrative = payload.narrative.trim();
-  const cleanedGoalNotes = Object.fromEntries(
-    Object.entries(payload.goalNotes)
-      .map(([goalId, noteText]) => [goalId, noteText.trim()])
-      .filter(([, noteText]) => noteText.length > 0),
-  );
-  const cleanedGoalMeasurements =
-    payload.goalMeasurements && Object.keys(payload.goalMeasurements).length > 0
-      ? payload.goalMeasurements
-      : null;
   const sessionDuration = calculateSessionDurationMinutes(payload.startTime, payload.endTime);
   if (sessionDuration <= 0) {
     throw new Error('End time must be later than start time.');
   }
 
-  const { data: existingRow, error: existingError } = await supabase
-    .from(TABLE)
-    .select('id, is_locked')
-    .eq('session_id', payload.sessionId)
-    .eq('organization_id', payload.organizationId)
-    .maybeSingle();
-
-  if (existingError) {
-    throw existingError;
-  }
-
-  if (existingRow?.is_locked) {
-    throw new Error('Session note is locked and cannot be edited from schedule.');
-  }
-
-  if (!existingRow?.id) {
-    return createClientSessionNote({
-      authorizationId: payload.authorizationId,
-      clientId: payload.clientId,
-      createdBy: payload.actorUserId,
-      organizationId: payload.organizationId,
-      therapistId: payload.therapistId,
-      serviceCode: payload.serviceCode,
-      sessionDate: payload.sessionDate,
-      startTime: payload.startTime,
-      endTime: payload.endTime,
-      sessionDuration,
-      goalsAddressed: payload.goalsAddressed,
-      goalIds: payload.goalIds,
-      goalMeasurements: cleanedGoalMeasurements,
-      goalNotes: cleanedGoalNotes,
-      narrative: trimmedNarrative,
-      isLocked: false,
-      sessionId: payload.sessionId,
-    });
-  }
-
-  const { data, error } = await supabase
-    .from(TABLE)
-    .update({
-      authorization_id: payload.authorizationId,
-      therapist_id: payload.therapistId,
-      service_code: payload.serviceCode,
-      session_date: payload.sessionDate,
-      start_time: payload.startTime,
-      end_time: payload.endTime,
-      session_duration: sessionDuration,
-      goals_addressed: payload.goalsAddressed,
-      goal_ids: payload.goalIds,
-      goal_measurements: cleanedGoalMeasurements,
-      goal_notes: Object.keys(cleanedGoalNotes).length > 0 ? cleanedGoalNotes : null,
-      narrative: trimmedNarrative,
-      session_id: payload.sessionId,
-    })
-    .eq('id', existingRow.id)
-    .eq('organization_id', payload.organizationId)
-    .select(SESSION_NOTE_WITH_THERAPIST_SELECT)
-    .single();
-
-  if (error || !data) {
-    throw (error ?? new Error('Unable to update session note'));
-  }
-
-  return mapRowToSessionNote(
-    data as ClientSessionNoteRow & { therapists: TherapistSummary | null },
-    (data as { therapists: TherapistSummary | null }).therapists ?? null,
-  );
+  return invokeSessionNoteUpsertApi({
+    sessionId: payload.sessionId,
+    clientId: payload.clientId,
+    authorizationId: payload.authorizationId,
+    therapistId: payload.therapistId,
+    serviceCode: payload.serviceCode,
+    sessionDate: payload.sessionDate,
+    startTime: payload.startTime,
+    endTime: payload.endTime,
+    goalIds: payload.goalIds,
+    goalsAddressed: payload.goalsAddressed,
+    goalNotes: payload.goalNotes,
+    goalMeasurements: payload.goalMeasurements ?? null,
+    narrative: payload.narrative,
+    isLocked: false,
+  });
 };
 
 const normalizeTime = (value: string): string => {

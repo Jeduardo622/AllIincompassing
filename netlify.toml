@@ -45,6 +45,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/session-notes/upsert"
+  to = "/.netlify/functions/session-notes-upsert"
+  status = 200
+
+[[redirects]]
   from = "/api/dashboard"
   to = "/.netlify/functions/dashboard"
   status = 200

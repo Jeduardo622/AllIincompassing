@@ -5,6 +5,7 @@ Target project: `wnnjeqheqxxyrgsjmygy`
 ## PR closure
 
 - [PR #431](https://github.com/Jeduardo622/AllIincompassing/pull/431) merged to `main` before this wave (four-stream slice + prior parallel migrations).
+- Ledger/repo alignment: [PR #432](https://github.com/Jeduardo622/AllIincompassing/pull/432) (this throughput wave; migrations were applied on hosted before merge).
 
 ## `route-task` (per stream)
 

@@ -252,3 +252,28 @@ psql $DATABASE_URL -f scripts/investigate-advisor-warnings.sql
 - Stream B: `validate:tenant` passed after apply.
 - Version ordering: `20260415100000` before `20260415110000` to keep a single merge-safe ledger sequence.
 
+## 2026-04-16 WIN-35 four-stream wave (S1/S2 unused indexes + S3 `ai_cache` policy)
+
+### Evidence
+
+- Wave triage + disjoint picks: [win-35-four-stream-wave-2026-04-16.md](./supabase/win-35-four-stream-wave-2026-04-16.md).
+- Pre-apply performance export: [advisors-2026-04-16-win35-four-stream-performance.json](./supabase/advisors-2026-04-16-win35-four-stream-performance.json).
+- Post-apply performance export: [advisors-2026-04-16-win35-four-stream-performance-post-apply.json](./supabase/advisors-2026-04-16-win35-four-stream-performance-post-apply.json).
+
+### Migrations
+
+- `supabase/migrations/20260416100000_unused_index_drop_alpha_win35.sql` — S1: `client_guardians_{created_by,deleted_by,updated_by}_idx`, `clients_deleted_by_idx`.
+- `supabase/migrations/20260416110000_unused_index_drop_beta_win35.sql` — S2: `feature_flags_{created_by,updated_by}_idx`, `organization_plans_assigned_by_idx`, `function_idempotency_keys_endpoint_created_idx`.
+- `supabase/migrations/20260416120000_ai_cache_admin_manage_policy_drop.sql` — S3: drop redundant `ai_cache_admin_manage` when `ai_cache_*_scope` policies cover the same admin-only predicates.
+
+### Advisor delta (pre-wave vs post-apply MCP)
+
+- `unused_index` **175 → 167** (−8).
+- `multiple_permissive_policies` **110 → 107** (−3).
+- `unindexed_foreign_keys` **8 → 15** (+7); treated as advisor churn (no FK DDL in this wave), consistent with prior parallel-wave notes.
+
+### Safety notes
+
+- S3: `npm run validate:tenant` passed after apply.
+- Ledger order: `20260416100000` → `20260416110000` → `20260416120000`.
+

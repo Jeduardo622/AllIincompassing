@@ -232,3 +232,23 @@ psql $DATABASE_URL -f scripts/investigate-advisor-warnings.sql
 - No RLS or policy changes; no `validate:tenant` gate required for this slice.
 - Hosted apply: `node scripts/apply-single-migration.mjs supabase/migrations/20260414153000_unused_index_drop_batch3.sql` (ledger row inserted).
 
+## 2026-04-15 WIN-35 parallel streams (index batch 4 + admin_actions policy overlap)
+
+### Evidence
+
+- Post-apply summary: [advisors-2026-04-15-parallel-win35.md](./supabase/advisors-2026-04-15-parallel-win35.md) (raw JSON: [`advisors-2026-04-15-performance-post-parallel.json`](./supabase/advisors-2026-04-15-performance-post-parallel.json)).
+
+### Migrations
+
+- `supabase/migrations/20260415100000_unused_index_drop_batch4.sql` — Stream A: drops `feature_flag_plan_history_actor_id_idx`, `feature_flag_plan_history_plan_code_idx`.
+- `supabase/migrations/20260415110000_admin_actions_consolidated_policy_drop.sql` — Stream B: drops legacy `consolidated_insert_700633` / `consolidated_select_700633` on `public.admin_actions` when present; scoped policies `admin_actions_insert_only` / `admin_actions_select_scoped` remain authoritative.
+
+### Advisor delta (vs 2026-04-14 post-apply doc)
+
+- `unused_index` **177 → 175** (−2); `multiple_permissive_policies` **112 → 110** (−2).
+
+### Safety notes
+
+- Stream B: `validate:tenant` passed after apply.
+- Version ordering: `20260415100000` before `20260415110000` to keep a single merge-safe ledger sequence.
+

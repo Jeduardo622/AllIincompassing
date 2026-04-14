@@ -38,7 +38,7 @@ Track remediation work from the executive audit report to close production-readi
 | --- | --- | --- | --- |
 | Security / Tenant Safety | Org-scoped validation missing in critical edge endpoints | Backend | In progress |
 | Security / Data Safety | `ai_guidance_documents` RLS-without-policy exposure fixed via `20260310162000_harden_ai_guidance_documents_rls.sql` | Backend / DB | Completed |
-| Data Integrity | Soft-delete audit triggers for client/therapist archives | Backend / DB | In progress |
+| Data Integrity | Soft-delete audit triggers for client/therapist archives | Backend / DB | Completed — migrations `20260120120000_soft_delete_audit_triggers.sql` and `20260121130000_soft_delete_audit_triggers_refresh.sql`; optional audit read coverage when `TEST_JWT_ORG_A_ADMIN` is set (`tests/admins/archive_soft_delete.spec.ts`) |
 | Reliability | Documented test failures | QA / Eng | In progress |
 | Reliability | Schedule data batch RPC 400s (aggregation ORDER BY) | Backend / DB | Applied migration (verify in prod) |
 | Admin Governance | Admin users + guardian queue RPC access broken | Backend / DB | Applied migrations (verify in prod) |
@@ -182,3 +182,8 @@ Track remediation work from the executive audit report to close production-readi
   - `docs/STAGING_OPERATIONS.md`
   - `docs/ENVIRONMENT_MATRIX.md`
   - Added `docs/PHASE3_EXECUTION_STATUS_2026_03_12.md` for execution evidence and residual risks.
+
+## Documentation change log (2026-04-14, WIN-34 / WIN-38 / WIN-35 triage execution)
+- **WIN-34 (soft-delete audit):** Marked must-have row **Completed** in this tracker. Canonical migrations implement `app.log_soft_delete_action` and `AFTER INSERT OR UPDATE OF deleted_at` triggers on `clients`, `therapists`, and `client_guardians` writing to `public.admin_actions`. `admin_actions` SELECT remains **admin-scoped** (`admin_actions_select_scoped`); integration coverage for audit rows is optional behind `TEST_JWT_ORG_A_ADMIN` in `tests/admins/archive_soft_delete.spec.ts`.
+- **WIN-38 (org-scoped edge):** No change to must-have row status; **programs** edge/API org deny matrix is already covered by `tests/edge/programs.cors.contract.test.ts` (`programs route org-scope deny matrix`) and `src/server/__tests__/programsHandler.test.ts`. Remaining endpoints per `docs/ai/WIN-38I-parity-scenario-execution-index.md` (goals, dashboard, sessions-start, MCP).
+- **WIN-35 (advisor backlog):** No migration in this change set. Next permissive-policy / unused-index batches require a **fresh Supabase advisor export** and table-by-table review before SQL (see advisor backlog section above).

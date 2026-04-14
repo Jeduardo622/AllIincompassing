@@ -69,7 +69,7 @@ Track remediation work from the executive audit report to close production-readi
 - Focused hardening pass applied via:
   - `20260310182500_policy_consolidation_batch1.sql`
   - `20260310184500_unused_index_drop_batch1.sql`
-- Current advisor state: `272` findings (`166` `unused_index`, `105` `multiple_permissive_policies`, `1` `auth_db_connections_absolute`).
+- Current advisor state: `272` findings (`166` `unused_index`, `105` `multiple_permissive_policies`, `1` `auth_db_connections_absolute`) — pre-2026-04-13 batch; expect a small `unused_index` decrement after `20260413140000_unused_index_drop_batch2.sql` is applied to hosted environments.
 - Remaining backlog plan:
   1. Continue table-by-table permissive-policy consolidation with role-safety validation.
   2. Continue conservative unused-index retirement in small reversible batches.
@@ -183,7 +183,31 @@ Track remediation work from the executive audit report to close production-readi
   - `docs/ENVIRONMENT_MATRIX.md`
   - Added `docs/PHASE3_EXECUTION_STATUS_2026_03_12.md` for execution evidence and residual risks.
 
+## Documentation change log (2026-04-14, P06 MCP Vitest + handler extract)
+- **P06 implementation:** `supabase/functions/mcp/mcpHandler.ts` exports `createMcpHandler`, `resolveMcpRoute`, and `RPC_ALLOWLIST` for testable parity; `index.ts` wires production Supabase clients. `tests/edge/mcp.parity.contract.test.ts` covers **A11-01**…**A11-05** per `docs/ai/P06-mcp-edge-contract-spec.md`. Gateway-style pathnames (`/functions/v1/mcp/health`, `/rpc`, `/table/...`) are supported.
+- **Planning rows:** `WIN-38I` / `WIN-38G` / `WIN-38C` / `WIN-38H` / `WIN-38J` updated to **closed** for **P06** baseline.
+
+## Documentation change log (2026-04-14, P05 closure + P06 MCP spec)
+- **P05 (RPC org/role equivalence):** Marked **closed** in `docs/ai/P05-rpc-org-role-equivalence.md` and parity planning rows (`WIN-38I` / `WIN-38G` `A10` / `WIN-38H` / `WIN-38C` RPC row). Evidence is existing Vitest contracts only; optional live smoke remains out-of-band.
+- **P06 (MCP edge):** Added authoritative product/security contract `docs/ai/P06-mcp-edge-contract-spec.md` (AuthN, CORS, RPC allowlist, table deny, audit events, `A11-01`…`A11-05` assertion IDs). Next executable slice is **Vitest** `tests/edge/mcp.parity.contract.test.ts` per spec §9; **`WIN-38G` `A11`** renamed to **`A11-mcp-edge-contract`** in the ledger.
+
+## Documentation change log (2026-04-14, WIN-38D / WIN-38 parity baseline closure)
+- **WIN-38D / WIN-38 children:** Refreshed `docs/ai/WIN-38I-parity-scenario-execution-index.md`, `docs/ai/WIN-38G-assertion-ledger.md`, `docs/ai/WIN-38C-assertion-evidence-parity-checklist.md`, `docs/ai/WIN-38H-parity-test-plan.md`, and `docs/ai/WIN-38J-parity-naming-fixture-dictionary.md` per `docs/ai/WIN-38D-evidence-analysis.md`. **P01** and **P07** readiness upgraded from **blocked** to **partial**; canonical test files documented (`programs.cors.contract.test.ts` + `programsHandler.test.ts`, `goalsHandler.test.ts`, `assessmentDocumentsHandler.test.ts`). Recorded **baseline closure** for **WIN-38D** (programs/goals/assessment-docs Vitest matrix), **WIN-38E** (sessions-start), and **WIN-38F** (dashboard), with optional integration/E2E; **P05/P06** tracking superseded by later 2026-04-14 P05 close + P06 spec entries.
+
+## Documentation change log (2026-04-14, WIN-38 planning doc hygiene)
+- **WIN-38:** Refreshed `docs/ai/WIN-38I-parity-scenario-execution-index.md`, `docs/ai/WIN-38J-parity-naming-fixture-dictionary.md`, `docs/ai/WIN-38H-parity-test-plan.md`, and `docs/ai/WIN-38G-assertion-ledger.md` so **P02** reflects shipped **goals** edge contract tests (`tests/edge/goals.parity.contract.test.ts`) and defers API/linkage work to **WIN-38D**. **P03** dashboard parity remains **WIN-38F** (see execution index).
+
+## Documentation change log (2026-04-14, WIN-38F dashboard parity)
+- **WIN-38F:** Added `tests/edge/dashboard.parity.contract.test.ts` (org fail-closed, super-admin metadata org resolution, RPC `42501` → 403) and `src/server/__tests__/dashboardParity.contract.test.ts` (proxy pass-through for 403 body and 429 `Retry-After`). Updated **P03** / **A03** / **A07** rows in WIN-38I, WIN-38J, WIN-38H, and WIN-38G to **partial** with evidence pointers. **Auth ordering:** dashboard remains **admin middleware first**, then org resolution inside the handler (differs from goals’ org-before-`getUser` pattern by design).
+
+## Documentation change log (2026-04-14, WIN-38E sessions-start parity)
+- **WIN-38E:** `supabase/functions/sessions-start/index.ts` uses org-context fail-closed handling (`MissingOrgContextError` / shallow 403 before `auth.getUser`) consistent with goals/programs. Legacy `src/server/api/sessions-start.ts` RPC `statusMap` includes `FORBIDDEN` / `UNAUTHORIZED` aligned with the edge handler. Contract coverage: `tests/edge/sessionsStart.parity.contract.test.ts` (missing org, wrong-owner 403, out-of-org 404, RPC `FORBIDDEN` → 403), `src/server/__tests__/sessionsStartParity.contract.test.ts` (edge authority proxy 403 body and 429 `Retry-After`), and `src/server/__tests__/sessionsStartHandler.test.ts` (legacy RPC `FORBIDDEN` / `UNAUTHORIZED`). **P04** / **A04** / **A08** rows in WIN-38I, WIN-38J, WIN-38H, and WIN-38G set to **partial** with evidence pointers.
+
 ## Documentation change log (2026-04-14, WIN-34 / WIN-38 / WIN-35 triage execution)
 - **WIN-34 (soft-delete audit):** Marked must-have row **Completed** in this tracker. Canonical migrations implement `app.log_soft_delete_action` and `AFTER INSERT OR UPDATE OF deleted_at` triggers on `clients`, `therapists`, and `client_guardians` writing to `public.admin_actions`. `admin_actions` SELECT remains **admin-scoped** (`admin_actions_select_scoped`); integration coverage for audit rows is optional behind `TEST_JWT_ORG_A_ADMIN` in `tests/admins/archive_soft_delete.spec.ts`.
-- **WIN-38 (org-scoped edge):** No change to must-have row status; **programs** edge/API org deny matrix is already covered by `tests/edge/programs.cors.contract.test.ts` (`programs route org-scope deny matrix`) and `src/server/__tests__/programsHandler.test.ts`. Remaining endpoints per `docs/ai/WIN-38I-parity-scenario-execution-index.md` (goals, dashboard, sessions-start, MCP).
-- **WIN-35 (advisor backlog):** No migration in this change set. Next permissive-policy / unused-index batches require a **fresh Supabase advisor export** and table-by-table review before SQL (see advisor backlog section above).
+- **WIN-38 (org-scoped edge):** No change to must-have row status; **programs**, **goals**, **dashboard** (WIN-38F), and **sessions-start** (WIN-38E) baseline parity is covered by the Vitest contract files named in `docs/ai/WIN-38I-parity-scenario-execution-index.md`. **MCP (`P06`):** contract in `docs/ai/P06-mcp-edge-contract-spec.md`; Vitest parity tests are the remaining implementation slice. Follow-on **WIN-38D** API/matrix work where rows stay partial.
+- **WIN-35 (advisor backlog):** Unused-index batch 2 landed 2026-04-13 (`20260413140000_unused_index_drop_batch2.sql`); further permissive-policy consolidation still requires a **fresh Supabase advisor export** and table-by-table review (see advisor backlog section above).
+
+## Documentation change log (2026-04-13, WIN-38 goals parity + WIN-35 index batch 2)
+- **WIN-38:** `supabase/functions/goals/index.ts` now matches **programs** org-context handling (`MissingOrgContextError` / 403-shallow catch before `auth.getUser`), and goal **POST** inserts use `orgScopedQuery` for defensive org depth. Contract coverage: `tests/edge/goals.parity.contract.test.ts` (missing-org GET, invalid-token + missing-org ordering, out-of-org POST program_id matrix, existing PATCH matrix).
+- **WIN-35:** Added `supabase/migrations/20260413140000_unused_index_drop_batch2.sql` (drops `referring_providers_name_idx`, `organization_plans_plan_code_idx`) with rationale in `docs/advisors-migration-summary.md`.

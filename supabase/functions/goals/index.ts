@@ -2,7 +2,7 @@ import { z } from "npm:zod@3.23.8";
 import { createRequestClient } from "../_shared/database.ts";
 import { corsHeadersForRequest } from "../_shared/cors.ts";
 import { createProtectedRoute, RouteOptions } from "../_shared/auth-middleware.ts";
-import { assertUserHasOrgRole, orgScopedQuery, requireOrg } from "../_shared/org.ts";
+import { assertUserHasOrgRole, MissingOrgContextError, orgScopedQuery, requireOrg } from "../_shared/org.ts";
 
 const goalSchema = z.object({
   client_id: z.string().uuid(),
@@ -57,7 +57,15 @@ const loadProgram = async (db: ReturnType<typeof createRequestClient>, orgId: st
 
 export const handleGoals = async (req: Request) => {
   const db = createRequestClient(req);
-  const orgId = await requireOrg(db);
+  let orgId: string;
+  try {
+    orgId = await requireOrg(db);
+  } catch (error) {
+    if (error instanceof MissingOrgContextError || (typeof error === "object" && error !== null && "status" in error && (error as { status?: number }).status === 403)) {
+      return json(req, { error: "Forbidden" }, 403);
+    }
+    throw error;
+  }
   const { data: authData, error: authError } = await db.auth.getUser();
   if (authError || !authData?.user) {
     return json(req, { error: "Missing authorization token" }, 401);
@@ -104,8 +112,7 @@ export const handleGoals = async (req: Request) => {
     if (!program) return json(req, { error: "program_id is not in scope for this organization" }, 403);
     if (program.client_id !== parsed.data.client_id) return json(req, { error: "program_id does not belong to client_id" }, 400);
 
-    const { data, error } = await db
-      .from("goals")
+    const { data, error } = await orgScopedQuery(db, "goals", orgId)
       .insert([{ ...parsed.data, organization_id: orgId }])
       .select("*")
       .limit(1);

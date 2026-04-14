@@ -190,3 +190,19 @@ psql $DATABASE_URL -f scripts/investigate-advisor-warnings.sql
 - Policy batch removed redundant permissive overlap only; no new broad access predicates were introduced.
 - Index-drop batch excluded PK/unique/FK-supporting indexes and targeted only low-traffic lookup-oriented indexes.
 
+## 2026-04-13 advisor backlog slice (unused index batch 2)
+
+### Migration
+- `supabase/migrations/20260413140000_unused_index_drop_batch2.sql`
+
+### Objective
+- Continue conservative `unused_index` retirement in the same spirit as `20260310184500_unused_index_drop_batch1.sql`, without touching RLS or permissive-policy overlap.
+
+### Indexes dropped
+- `referring_providers_name_idx` — expression index on concatenated name fields for ad-hoc search; safe to recreate if roster search latency regresses.
+- `organization_plans_plan_code_idx` — secondary lookup on `organization_plans(plan_code)`; org/plan flows remain keyed by primary keys and existing constraints.
+
+### Safety notes
+- `DROP INDEX IF EXISTS` only; no table or policy changes.
+- Roll forward is compatible with branches that never created these indexes (no-op).
+

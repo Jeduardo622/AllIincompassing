@@ -119,7 +119,7 @@ describe("sessionsStartHandler", () => {
 
     expect(response.status).toBe(409);
     const body = await response.json() as { message: string };
-    expect(body.message).toBe("Session could not be started");
+    expect(body.message).toBe("Session already started");
   });
 
   it("returns 403 when therapist attempts to start another therapist session", async () => {
@@ -216,6 +216,120 @@ describe("sessionsStartHandler", () => {
     );
 
     expect(response.status).toBe(409);
+  });
+
+  it("returns 403 when RPC reports FORBIDDEN (legacy parity with edge statusMap)", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "session-1",
+            client_id: "client-1",
+            organization_id: "org-1",
+            therapist_id: "therapist-1",
+            status: "scheduled",
+            started_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: {
+          success: false,
+          error_code: "FORBIDDEN",
+          error_message: "Not allowed to start this session",
+        },
+      });
+
+    const response = await sessionsStartHandler(
+      new Request("http://localhost/api/sessions-start", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken("therapist-1")}` },
+        body: JSON.stringify({
+          session_id: "11111111-1111-1111-1111-111111111111",
+          program_id: "22222222-2222-2222-2222-222222222222",
+          goal_id: "33333333-3333-3333-3333-333333333333",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    const body = await response.json() as { code: string; message: string; rpcCode?: string };
+    expect(body.code).toBe("forbidden");
+    expect(body.message).toBe("Not allowed to start this session");
+    expect(body.rpcCode).toBe("FORBIDDEN");
+  });
+
+  it("returns 401 when RPC reports UNAUTHORIZED (legacy parity with edge statusMap)", async () => {
+    vi.mocked(getAccessToken).mockReturnValue(createAuthToken("therapist-1"));
+    vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+      upstreamError: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "session-1",
+            client_id: "client-1",
+            organization_id: "org-1",
+            therapist_id: "therapist-1",
+            status: "scheduled",
+            started_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: {
+          success: false,
+          error_code: "UNAUTHORIZED",
+          error_message: "Actor not authorized",
+        },
+      });
+
+    const response = await sessionsStartHandler(
+      new Request("http://localhost/api/sessions-start", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken("therapist-1")}` },
+        body: JSON.stringify({
+          session_id: "11111111-1111-1111-1111-111111111111",
+          program_id: "22222222-2222-2222-2222-222222222222",
+          goal_id: "33333333-3333-3333-3333-333333333333",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    const body = await response.json() as { code: string; message: string; rpcCode?: string };
+    expect(body.code).toBe("unauthorized");
+    expect(body.message).toBe("Actor not authorized");
+    expect(body.rpcCode).toBe("UNAUTHORIZED");
   });
 
   it("returns 404 when RPC reports missing goal", async () => {

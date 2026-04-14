@@ -44,9 +44,42 @@ async function fetchRow(
   });
 
   const json = (await response.json()) as unknown;
-  const row = Array.isArray(json) ? json[0] as { id: string; organization_id: string | null; deleted_at: string | null } : null;
+  const row = Array.isArray(json)
+    ? (json[0] as { id: string; organization_id: string | null; deleted_at: string | null })
+    : null;
 
   return { status: response.status, row };
+}
+
+type AdminActionRow = { action_type: string; action_details: Record<string, unknown> | null; created_at: string };
+
+function maxArchivedCreatedAtForClient(rows: AdminActionRow[], clientId: string): number {
+  let maxMs = 0;
+  for (const r of rows) {
+    if (r.action_type !== 'client_archived' || !r.action_details) continue;
+    const tid = (r.action_details as { target_id?: string }).target_id;
+    if (String(tid) !== clientId) continue;
+    const ms = Date.parse(r.created_at);
+    if (Number.isFinite(ms) && ms > maxMs) maxMs = ms;
+  }
+  return maxMs;
+}
+
+async function fetchRecentAdminActions(orgId: string, token: string) {
+  const response = await fetch(
+    `${SUPABASE_URL}/rest/v1/admin_actions?select=action_type,action_details,created_at&organization_id=eq.${orgId}&order=created_at.desc&limit=50`,
+    {
+      method: 'GET',
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+    },
+  );
+  const json = (await response.json()) as unknown;
+  const rows = Array.isArray(json) ? (json as AdminActionRow[]) : [];
+  return { status: response.status, rows };
 }
 
 describe('Soft delete archive controls', () => {
@@ -117,5 +150,55 @@ describe('Soft delete archive controls', () => {
 
     const { row: restoredRow } = await fetchRow('therapists', tokenOrgA, `id=eq.${therapist.id}`);
     expect(restoredRow?.deleted_at).toBeNull();
+  });
+
+  it('records client_archived in admin_actions when an org admin JWT can read the audit log', async () => {
+    const adminReadToken = process.env.TEST_JWT_ORG_A_ADMIN as string;
+    if (!adminReadToken || !tokenOrgA) return;
+
+    const { row: client } = await fetchRow('clients', tokenOrgA, 'deleted_at=is.null&limit=1');
+    expect(client).toBeTruthy();
+    if (!client?.organization_id) return;
+
+    const { status: preStatus, rows: preRows } = await fetchRecentAdminActions(
+      client.organization_id,
+      adminReadToken,
+    );
+    if (preStatus === 403 || preStatus === 401) {
+      return;
+    }
+    expect(preStatus).toBe(200);
+    const baselineMs = maxArchivedCreatedAtForClient(preRows, client.id);
+
+    const archiveResult = await callRpc('set_client_archive_state', tokenOrgA, {
+      p_client_id: client.id,
+      p_restore: false,
+    });
+    expect([200, 204]).toContain(archiveResult.status);
+
+    const { status, rows } = await fetchRecentAdminActions(client.organization_id, adminReadToken);
+    if (status === 403 || status === 401) {
+      // RLS: reader token is not org admin; skip without failing default CI secrets.
+      await callRpc('set_client_archive_state', tokenOrgA, {
+        p_client_id: client.id,
+        p_restore: true,
+      });
+      return;
+    }
+    expect(status).toBe(200);
+
+    const archivedEvent = rows.find((r) => {
+      if (r.action_type !== 'client_archived' || !r.action_details) return false;
+      if (String((r.action_details as { target_id?: string }).target_id) !== client.id) return false;
+      const rowMs = Date.parse(r.created_at);
+      return Number.isFinite(rowMs) && rowMs > baselineMs;
+    });
+    expect(archivedEvent).toBeTruthy();
+
+    const restoreFinal = await callRpc('set_client_archive_state', tokenOrgA, {
+      p_client_id: client.id,
+      p_restore: true,
+    });
+    expect([200, 204]).toContain(restoreFinal.status);
   });
 });

@@ -69,7 +69,9 @@ Track remediation work from the executive audit report to close production-readi
 - Focused hardening pass applied via:
   - `20260310182500_policy_consolidation_batch1.sql`
   - `20260310184500_unused_index_drop_batch1.sql`
-- Current advisor state: `272` findings (`166` `unused_index`, `105` `multiple_permissive_policies`, `1` `auth_db_connections_absolute`) — pre-2026-04-13 batch; expect a small `unused_index` decrement after `20260413140000_unused_index_drop_batch2.sql` is applied to hosted environments.
+- Legacy advisor snapshot (pre-2026-04-13 narrative): `272` findings (`166` `unused_index`, `105` `multiple_permissive_policies`, `1` `auth_db_connections_absolute`) after the 2026-03-10 hardening pass; batch 2 (`20260413140000_unused_index_drop_batch2.sql`) applied on hosted **2026-04-13** (confirmed in ledger).
+- **2026-04-14 MCP baseline** (Supabase `get_advisors`, performance type): see [docs/supabase/advisors-2026-04-14-mcp-baseline.md](supabase/advisors-2026-04-14-mcp-baseline.md) — `unused_index` **179**, `multiple_permissive_policies` **112**, `auth_db_connections_absolute` **1**, performance-type total **304**; security type returned `function_search_path_mutable` **2** (same raw export set as [docs/supabase/advisors-2026-04-14-security.json](supabase/advisors-2026-04-14-security.json)).
+- **2026-04-14 post-apply** after `20260414153000_unused_index_drop_batch3.sql`: `unused_index` **177** (net **-2**); details in [docs/supabase/advisors-2026-04-14-post-apply.md](supabase/advisors-2026-04-14-post-apply.md).
 - Remaining backlog plan:
   1. Continue table-by-table permissive-policy consolidation with role-safety validation.
   2. Continue conservative unused-index retirement in small reversible batches.
@@ -202,6 +204,9 @@ Track remediation work from the executive audit report to close production-readi
 
 ## Documentation change log (2026-04-14, WIN-38E sessions-start parity)
 - **WIN-38E:** `supabase/functions/sessions-start/index.ts` uses org-context fail-closed handling (`MissingOrgContextError` / shallow 403 before `auth.getUser`) consistent with goals/programs. Legacy `src/server/api/sessions-start.ts` RPC `statusMap` includes `FORBIDDEN` / `UNAUTHORIZED` aligned with the edge handler. Contract coverage: `tests/edge/sessionsStart.parity.contract.test.ts` (missing org, wrong-owner 403, out-of-org 404, RPC `FORBIDDEN` → 403), `src/server/__tests__/sessionsStartParity.contract.test.ts` (edge authority proxy 403 body and 429 `Retry-After`), and `src/server/__tests__/sessionsStartHandler.test.ts` (legacy RPC `FORBIDDEN` / `UNAUTHORIZED`). **P04** / **A04** / **A08** rows in WIN-38I, WIN-38J, WIN-38H, and WIN-38G set to **partial** with evidence pointers.
+
+## Documentation change log (2026-04-14, WIN-35 MCP advisor E2E)
+- **WIN-35:** Captured MCP advisor exports under `docs/supabase/` (`advisors-2026-04-14-mcp-baseline.md`, performance/security JSON, post-apply performance JSON + delta doc). Applied `supabase/migrations/20260414153000_unused_index_drop_batch3.sql` on hosted (`admin_actions_admin_user_id_idx`, `impersonation_audit_actor_user_id_idx`). Updated advisor backlog bullets above and `docs/advisors-migration-summary.md`. **Linear:** paste the WIN-35 blurb from [docs/supabase/advisors-2026-04-14-post-apply.md](supabase/advisors-2026-04-14-post-apply.md#linear-win-35-paste-as-comment) if the Linear MCP client is not connected in this environment.
 
 ## Documentation change log (2026-04-14, WIN-34 / WIN-38 / WIN-35 triage execution)
 - **WIN-34 (soft-delete audit):** Marked must-have row **Completed** in this tracker. Canonical migrations implement `app.log_soft_delete_action` and `AFTER INSERT OR UPDATE OF deleted_at` triggers on `clients`, `therapists`, and `client_guardians` writing to `public.admin_actions`. `admin_actions` SELECT remains **admin-scoped** (`admin_actions_select_scoped`); integration coverage for audit rows is optional behind `TEST_JWT_ORG_A_ADMIN` in `tests/admins/archive_soft_delete.spec.ts`.

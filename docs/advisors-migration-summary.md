@@ -206,3 +206,29 @@ psql $DATABASE_URL -f scripts/investigate-advisor-warnings.sql
 - `DROP INDEX IF EXISTS` only; no table or policy changes.
 - Roll forward is compatible with branches that never created these indexes (no-op).
 
+## 2026-04-14 WIN-35 E2E slice (MCP advisor export + unused index batch 3)
+
+### Evidence (MCP `get_advisors`, project `wnnjeqheqxxyrgsjmygy`)
+
+- Baseline summary: [advisors-2026-04-14-mcp-baseline.md](./supabase/advisors-2026-04-14-mcp-baseline.md) (raw JSON: [`advisors-2026-04-14-performance.json`](./supabase/advisors-2026-04-14-performance.json), [`advisors-2026-04-14-security.json`](./supabase/advisors-2026-04-14-security.json)).
+- Post-apply summary + delta table: [advisors-2026-04-14-post-apply.md](./supabase/advisors-2026-04-14-post-apply.md) (raw JSON: [`advisors-2026-04-14-performance-post.json`](./supabase/advisors-2026-04-14-performance-post.json)).
+
+### Migration
+
+- `supabase/migrations/20260414153000_unused_index_drop_batch3.sql`
+
+### Indexes dropped
+
+- `admin_actions_admin_user_id_idx` — secondary lookup on `admin_actions(admin_user_id)`; table remains keyed by PK; advisor reported zero scans.
+- `impersonation_audit_actor_user_id_idx` — secondary lookup on `impersonation_audit(actor_user_id)`; same rationale.
+
+### Advisor delta (performance lint counts)
+
+- Baseline (pre-batch-3): `unused_index` **179**, `multiple_permissive_policies` **112**, performance-type rows totaling **304** (see baseline doc).
+- Post-apply: `unused_index` **177** (net **-2** on unused-index category). Other categories unchanged except `unindexed_foreign_keys` (+1 vs baseline), noted as possible advisor churn in post-apply doc.
+
+### Safety notes
+
+- No RLS or policy changes; no `validate:tenant` gate required for this slice.
+- Hosted apply: `node scripts/apply-single-migration.mjs supabase/migrations/20260414153000_unused_index_drop_batch3.sql` (ledger row inserted).
+

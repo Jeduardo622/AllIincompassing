@@ -1,0 +1,38 @@
+{
+  "result": {
+    "lints": [
+      {
+        "name": "function_search_path_mutable",
+        "title": "Function Search Path Mutable",
+        "level": "WARN",
+        "facing": "EXTERNAL",
+        "categories": ["SECURITY"],
+        "description": "Detects functions where the search_path parameter is not set.",
+        "detail": "Function `public.manage_admin_users` has a role mutable search_path",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable",
+        "metadata": {
+          "name": "manage_admin_users",
+          "type": "function",
+          "schema": "public"
+        },
+        "cache_key": "function_search_path_mutable_public_manage_admin_users_07c9ed78d4496926f12f41015e79cf6c"
+      },
+      {
+        "name": "function_search_path_mutable",
+        "title": "Function Search Path Mutable",
+        "level": "WARN",
+        "facing": "EXTERNAL",
+        "categories": ["SECURITY"],
+        "description": "Detects functions where the search_path parameter is not set.",
+        "detail": "Function `public.get_dashboard_data` has a role mutable search_path",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable",
+        "metadata": {
+          "name": "get_dashboard_data",
+          "type": "function",
+          "schema": "public"
+        },
+        "cache_key": "function_search_path_mutable_public_get_dashboard_data_6d4bd33ebe4dde38c0d9df4de7da619e"
+      }
+    ]
+  }
+}

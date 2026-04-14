@@ -51,11 +51,23 @@ async function fetchRow(
   return { status: response.status, row };
 }
 
-type AdminActionRow = { action_type: string; action_details: Record<string, unknown> | null };
+type AdminActionRow = { action_type: string; action_details: Record<string, unknown> | null; created_at: string };
+
+function maxArchivedCreatedAtForClient(rows: AdminActionRow[], clientId: string): number {
+  let maxMs = 0;
+  for (const r of rows) {
+    if (r.action_type !== 'client_archived' || !r.action_details) continue;
+    const tid = (r.action_details as { target_id?: string }).target_id;
+    if (String(tid) !== clientId) continue;
+    const ms = Date.parse(r.created_at);
+    if (Number.isFinite(ms) && ms > maxMs) maxMs = ms;
+  }
+  return maxMs;
+}
 
 async function fetchRecentAdminActions(orgId: string, token: string) {
   const response = await fetch(
-    `${SUPABASE_URL}/rest/v1/admin_actions?select=action_type,action_details,created_at&organization_id=eq.${orgId}&order=created_at.desc&limit=15`,
+    `${SUPABASE_URL}/rest/v1/admin_actions?select=action_type,action_details,created_at&organization_id=eq.${orgId}&order=created_at.desc&limit=50`,
     {
       method: 'GET',
       headers: {
@@ -148,6 +160,16 @@ describe('Soft delete archive controls', () => {
     expect(client).toBeTruthy();
     if (!client?.organization_id) return;
 
+    const { status: preStatus, rows: preRows } = await fetchRecentAdminActions(
+      client.organization_id,
+      adminReadToken,
+    );
+    if (preStatus === 403 || preStatus === 401) {
+      return;
+    }
+    expect(preStatus).toBe(200);
+    const baselineMs = maxArchivedCreatedAtForClient(preRows, client.id);
+
     const archiveResult = await callRpc('set_client_archive_state', tokenOrgA, {
       p_client_id: client.id,
       p_restore: false,
@@ -165,12 +187,12 @@ describe('Soft delete archive controls', () => {
     }
     expect(status).toBe(200);
 
-    const archivedEvent = rows.find(
-      (r) =>
-        r.action_type === 'client_archived' &&
-        r.action_details &&
-        String((r.action_details as { target_id?: string }).target_id) === client.id,
-    );
+    const archivedEvent = rows.find((r) => {
+      if (r.action_type !== 'client_archived' || !r.action_details) return false;
+      if (String((r.action_details as { target_id?: string }).target_id) !== client.id) return false;
+      const rowMs = Date.parse(r.created_at);
+      return Number.isFinite(rowMs) && rowMs > baselineMs;
+    });
     expect(archivedEvent).toBeTruthy();
 
     const restoreFinal = await callRpc('set_client_archive_state', tokenOrgA, {

@@ -186,6 +186,7 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
     }
 
     if (!rpcResult.data.success) {
+      // Keep aligned with `supabase/functions/sessions-start/index.ts` edge RPC statusMap (post-legacy parity).
       const statusMap: Record<string, number> = {
         MISSING_FIELDS: 400,
         SESSION_NOT_FOUND: 404,
@@ -193,24 +194,37 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
         INVALID_STATUS: 409,
         GOAL_NOT_FOUND: 404,
         INVALID_GOALS: 400,
+        FORBIDDEN: 403,
+        UNAUTHORIZED: 401,
       };
       const errorCode = rpcResult.data.error_code ?? "FAILED";
       const resolvedStatus = statusMap[errorCode] ?? 409;
-      const safeMessage = resolvedStatus === 404
-        ? "Session not found"
-        : resolvedStatus === 400
-          ? "Invalid session start request"
-          : "Session could not be started";
-      return errorResponse(
-        request,
-        resolvedStatus === 404 ? "not_found" : resolvedStatus === 400 ? "validation_error" : "conflict",
-        safeMessage,
-        {
-          status: resolvedStatus,
-          headers: traceHeaders,
-          extra: { rpcCode: errorCode },
-        },
-      );
+      const rpcMessage = typeof rpcResult.data.error_message === "string" ? rpcResult.data.error_message.trim() : "";
+      const safeMessage =
+        resolvedStatus === 404
+          ? "Session not found"
+          : resolvedStatus === 400
+            ? "Invalid session start request"
+            : resolvedStatus === 401
+              ? rpcMessage || "Unauthorized"
+              : resolvedStatus === 403
+                ? rpcMessage || "Forbidden"
+                : rpcMessage || "Session could not be started";
+      const errorKey =
+        resolvedStatus === 404
+          ? "not_found"
+          : resolvedStatus === 400
+            ? "validation_error"
+            : resolvedStatus === 401
+              ? "unauthorized"
+              : resolvedStatus === 403
+                ? "forbidden"
+                : "conflict";
+      return errorResponse(request, errorKey, safeMessage, {
+        status: resolvedStatus,
+        headers: traceHeaders,
+        extra: { rpcCode: errorCode },
+      });
     }
 
     if (!rpcResult.data.session) {

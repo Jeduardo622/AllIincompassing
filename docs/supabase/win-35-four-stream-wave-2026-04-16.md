@@ -96,3 +96,5 @@ After applying S1–S3 in numeric order (`node scripts/apply-single-migration.mj
 Raw export: [advisors-2026-04-16-win35-four-stream-performance-post-apply.json](./advisors-2026-04-16-win35-four-stream-performance-post-apply.json)
 
 Delta vs wave-start table above: `unused_index` **−8**, `multiple_permissive_policies` **−3**; `unindexed_foreign_keys` churn documented in [advisors-migration-summary.md](../advisors-migration-summary.md).
+
+**PR:** https://github.com/Jeduardo622/AllIincompassing/pull/431

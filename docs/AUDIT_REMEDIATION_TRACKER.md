@@ -69,7 +69,7 @@ Track remediation work from the executive audit report to close production-readi
 - Focused hardening pass applied via:
   - `20260310182500_policy_consolidation_batch1.sql`
   - `20260310184500_unused_index_drop_batch1.sql`
-- Current advisor state: `272` findings (`166` `unused_index`, `105` `multiple_permissive_policies`, `1` `auth_db_connections_absolute`).
+- Current advisor state: `272` findings (`166` `unused_index`, `105` `multiple_permissive_policies`, `1` `auth_db_connections_absolute`) — pre-2026-04-13 batch; expect a small `unused_index` decrement after `20260413140000_unused_index_drop_batch2.sql` is applied to hosted environments.
 - Remaining backlog plan:
   1. Continue table-by-table permissive-policy consolidation with role-safety validation.
   2. Continue conservative unused-index retirement in small reversible batches.
@@ -185,5 +185,9 @@ Track remediation work from the executive audit report to close production-readi
 
 ## Documentation change log (2026-04-14, WIN-34 / WIN-38 / WIN-35 triage execution)
 - **WIN-34 (soft-delete audit):** Marked must-have row **Completed** in this tracker. Canonical migrations implement `app.log_soft_delete_action` and `AFTER INSERT OR UPDATE OF deleted_at` triggers on `clients`, `therapists`, and `client_guardians` writing to `public.admin_actions`. `admin_actions` SELECT remains **admin-scoped** (`admin_actions_select_scoped`); integration coverage for audit rows is optional behind `TEST_JWT_ORG_A_ADMIN` in `tests/admins/archive_soft_delete.spec.ts`.
-- **WIN-38 (org-scoped edge):** No change to must-have row status; **programs** edge/API org deny matrix is already covered by `tests/edge/programs.cors.contract.test.ts` (`programs route org-scope deny matrix`) and `src/server/__tests__/programsHandler.test.ts`. Remaining endpoints per `docs/ai/WIN-38I-parity-scenario-execution-index.md` (goals, dashboard, sessions-start, MCP).
-- **WIN-35 (advisor backlog):** No migration in this change set. Next permissive-policy / unused-index batches require a **fresh Supabase advisor export** and table-by-table review before SQL (see advisor backlog section above).
+- **WIN-38 (org-scoped edge):** No change to must-have row status; **programs** and **goals** edge parity (org-context + deny matrix) are covered by `tests/edge/programs.cors.contract.test.ts` and `tests/edge/goals.parity.contract.test.ts` plus handler tests. Remaining endpoints per `docs/ai/WIN-38I-parity-scenario-execution-index.md` (dashboard, sessions-start, MCP).
+- **WIN-35 (advisor backlog):** Unused-index batch 2 landed 2026-04-13 (`20260413140000_unused_index_drop_batch2.sql`); further permissive-policy consolidation still requires a **fresh Supabase advisor export** and table-by-table review (see advisor backlog section above).
+
+## Documentation change log (2026-04-13, WIN-38 goals parity + WIN-35 index batch 2)
+- **WIN-38:** `supabase/functions/goals/index.ts` now matches **programs** org-context handling (`MissingOrgContextError` / 403-shallow catch before `auth.getUser`), and goal **POST** inserts use `orgScopedQuery` for defensive org depth. Contract coverage: `tests/edge/goals.parity.contract.test.ts` (missing-org GET, invalid-token + missing-org ordering, out-of-org POST program_id matrix, existing PATCH matrix).
+- **WIN-35:** Added `supabase/migrations/20260413140000_unused_index_drop_batch2.sql` (drops `referring_providers_name_idx`, `organization_plans_plan_code_idx`) with rationale in `docs/advisors-migration-summary.md`.

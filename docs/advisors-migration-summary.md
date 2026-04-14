@@ -277,3 +277,28 @@ psql $DATABASE_URL -f scripts/investigate-advisor-warnings.sql
 - S3: `npm run validate:tenant` passed after apply.
 - Ledger order: `20260416100000` → `20260416110000` → `20260416120000`.
 
+## 2026-04-17 WIN-35 throughput wave (three disjoint unused-index lanes, 15 drops)
+
+### Evidence
+
+- Wave note + `route-task` table: [win-35-throughput-wave-20260417.md](./supabase/win-35-throughput-wave-20260417.md).
+- Pre-apply export: [advisors-2026-04-17-win35-throughput-pre.json](./supabase/advisors-2026-04-17-win35-throughput-pre.json).
+- Post-apply export: [advisors-2026-04-17-win35-throughput-post.json](./supabase/advisors-2026-04-17-win35-throughput-post.json).
+
+### Migrations
+
+- `supabase/migrations/20260417100000_unused_index_drop_throughput_alpha_win35.sql` — alpha: `clients_updated_by_idx`, `client_issues_created_by_idx`, `authorization_services_org_auth_idx`, `admin_actions_organization_id_idx`, `therapist_documents_org_id_idx`.
+- `supabase/migrations/20260417110000_unused_index_drop_throughput_beta_win35.sql` — beta: `session_audit_logs_{org_created,actor_created}_idx`, `scheduling_orchestration_runs_{org,request}_idx`, `impersonation_audit_target_idx`.
+- `supabase/migrations/20260417120000_unused_index_drop_throughput_gamma_win35.sql` — gamma: `user_therapist_links_user_id_idx`, `client_session_notes_{authorization_id,session_date,created_by}_idx`, `edi_claim_statuses_billing_record_idx`.
+
+### Advisor delta (pre-wave vs post-apply MCP)
+
+- `unused_index` **167 → 152** (−15).
+- `multiple_permissive_policies` **107** (unchanged).
+- `unindexed_foreign_keys` **15 → 23** (+8); treated as advisor churn (no FK DDL in this wave).
+
+### Safety notes
+
+- Index-only wave; `npm run validate:tenant` run after hosted apply (no RLS DDL).
+- Ledger order: `20260417100000` → `20260417110000` → `20260417120000`.
+

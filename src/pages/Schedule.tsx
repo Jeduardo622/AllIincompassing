@@ -86,7 +86,7 @@ import {
 import { getSessionStatusClasses } from "./ScheduleSessionStatusStyles";
 
 const MISSING_NOTES_RETRY_HINT =
-  "Before closing this in-progress session, complete a linked clinical session note for this session and add per-goal note text for each worked goal. You can add these in Schedule > Edit Session > Clinical Session Notes, or in Client Details > Session Notes.";
+  "Before closing this in-progress session, persist per-goal note text for each worked goal on a linked session note. Save session capture from Schedule (Session capture), or add notes in Client Details > Session Notes. Narrative and signatures are completed in Client Details.";
 const AUTO_SCHEDULE_CONCURRENCY = 3;
 const _scheduleBoundedConcurrencyMarker = AUTO_SCHEDULE_CONCURRENCY;
 const LazySessionModal = React.lazy(() =>
@@ -1250,14 +1250,14 @@ export const Schedule = React.memo(() => {
         case "edit-update": {
           if (selectedSession && clinicalNoteDraft) {
             if (!activeOrganizationId) {
-              throw new Error("Organization context is required to save clinical session notes.");
+              throw new Error("Organization context is required to save session capture.");
             }
             if (!user?.id) {
-              throw new Error("Sign in again before saving clinical session notes.");
+              throw new Error("Sign in again before saving session capture.");
             }
             if (!clinicalNoteDraft.authorizationId || !clinicalNoteDraft.serviceCode) {
               throw new Error(
-                "Authorization and service code are required to save clinical session notes from schedule.",
+                "Authorization and service code are required to save session capture from Schedule (configure billing defaults for the client).",
               );
             }
             await upsertClientSessionNoteForSession({

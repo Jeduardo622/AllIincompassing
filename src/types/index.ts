@@ -328,10 +328,15 @@ export interface SessionGoalMeasurementData {
   measurement_type?: string | null;
   metric_label?: string | null;
   metric_unit?: string | null;
+  /** Correct or achieved trials (+). */
   metric_value?: number | null;
+  /** Incorrect trials or no response (−). */
+  incorrect_trials?: number | null;
   opportunities?: number | null;
   prompt_level?: string | null;
   note?: string | null;
+  /** Verbal / physical prompts and reactions for trial data (therapist capture). */
+  trial_prompt_note?: string | null;
 }
 
 export interface SessionGoalMeasurementEntry {

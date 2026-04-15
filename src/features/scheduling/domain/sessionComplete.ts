@@ -20,7 +20,7 @@ export type InProgressSessionCloseReadiness = {
 };
 
 export const IN_PROGRESS_CLOSE_NOT_READY_MESSAGE =
-  "You must complete the linked session documentation with per-goal notes before closing this in-progress session. Add per-goal notes in a client session note linked by session_id. Notes entered in this Schedule modal and overall narrative text do not satisfy this requirement.";
+  "You must complete the linked session documentation with per-goal notes before closing this in-progress session. Add per-goal text on a client_session_notes row linked to this session_id (for example by saving Session capture on Schedule or Session Notes under Client Details). Unsaved modal text alone does not satisfy this requirement.";
 
 export async function checkInProgressSessionCloseReadiness(
   input: InProgressSessionCloseReadinessInput,

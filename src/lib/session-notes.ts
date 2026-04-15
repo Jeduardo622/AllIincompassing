@@ -208,6 +208,11 @@ export interface SessionNoteUpsertApiPayload {
   readonly isLocked: boolean;
 }
 
+/**
+ * Single writer path for therapist-facing persistence of `client_session_notes` rows:
+ * server `POST /api/session-notes/upsert` (see `src/server/api/session-notes-upsert.ts`).
+ * Do not add parallel Supabase insert/update/upsert/delete call sites on this table in app code.
+ */
 const invokeSessionNoteUpsertApi = async (
   payload: SessionNoteUpsertApiPayload,
 ): Promise<SessionNote> => {

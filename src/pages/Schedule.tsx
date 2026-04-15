@@ -139,11 +139,14 @@ const buildClinicalNoteDraft = (
     data.session_note_goal_measurements && typeof data.session_note_goal_measurements === "object"
       ? (data.session_note_goal_measurements as Record<string, SessionGoalMeasurementEntry>)
       : {};
-  const goalsAddressed = Array.isArray(data.session_note_goals_addressed)
-    ? data.session_note_goals_addressed
-        .map((goalLabel) => goalLabel.trim())
-        .filter((goalLabel) => goalLabel.length > 0)
-    : [];
+  const rawGoalLabels = Array.isArray(data.session_note_goals_addressed) ? data.session_note_goals_addressed : [];
+  const goalsAddressed = goalIds.map((goalId, index) => {
+    const label = (rawGoalLabels[index] ?? "").trim();
+    if (label.length > 0) {
+      return label;
+    }
+    return goalId.startsWith("adhoc-") ? "Session target" : goalId;
+  });
   const authorizationId = data.session_note_authorization_id?.trim() ?? "";
   const serviceCode = data.session_note_service_code?.trim() ?? "";
   if (

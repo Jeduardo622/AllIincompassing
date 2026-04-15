@@ -2,9 +2,18 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useForm } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
-import { 
-  X, AlertCircle, Calendar, Clock, User, 
-  FileText, CheckCircle2, AlertTriangle, ChevronDown 
+import {
+  X,
+  AlertCircle,
+  Calendar,
+  Clock,
+  User,
+  FileText,
+  CheckCircle2,
+  AlertTriangle,
+  ChevronDown,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import type {
   Session,
@@ -38,8 +47,14 @@ import {
 } from '../lib/goal-measurements';
 import {
   getTherapistMinTrialsTarget,
-  showGoalOnBxTab,
 } from '../lib/session-goal-tracks';
+import {
+  createAdhocSessionTargetId,
+  isAdhocSessionTargetId,
+  pruneEmptyAdhocSessionTargets,
+  showGoalOnBxCaptureTab,
+  showGoalOnSkillCaptureTab,
+} from '../lib/session-adhoc-targets';
 
 const ENABLE_ALTERNATIVE_TIME_SUGGESTIONS = false;
 
@@ -183,6 +198,7 @@ export function SessionModal({
   const goalIds = watch('goal_ids') as string[] | undefined;
   const sessionNoteGoalNotes = watch('session_note_goal_notes') as Record<string, string> | undefined;
   const sessionNoteStoredGoalIds = watch('session_note_goal_ids') as string[] | undefined;
+  const sessionNoteGoalsAddressed = watch('session_note_goals_addressed') as string[] | undefined;
   const sessionNoteGoalMeasurements = watch('session_note_goal_measurements') as
     | Record<string, SessionGoalMeasurementEntry | Record<string, unknown>>
     | undefined;
@@ -671,19 +687,42 @@ export function SessionModal({
       }
     }
     try {
+      const pruned = pruneEmptyAdhocSessionTargets(
+        {
+          session_note_goal_ids: Array.isArray(data.session_note_goal_ids) ? data.session_note_goal_ids : [],
+          session_note_goals_addressed: Array.isArray(data.session_note_goals_addressed)
+            ? data.session_note_goals_addressed
+            : [],
+          session_note_goal_notes: data.session_note_goal_notes ?? {},
+          session_note_goal_measurements: data.session_note_goal_measurements ?? {},
+        },
+        goals,
+      );
+      const working: SessionModalFormValues = {
+        ...data,
+        session_note_goal_ids: pruned.session_note_goal_ids,
+        session_note_goals_addressed: pruned.session_note_goals_addressed,
+        session_note_goal_notes: pruned.session_note_goal_notes,
+        session_note_goal_measurements: pruned.session_note_goal_measurements,
+      };
+      setValue('session_note_goal_ids', pruned.session_note_goal_ids, { shouldDirty: true });
+      setValue('session_note_goals_addressed', pruned.session_note_goals_addressed, { shouldDirty: true });
+      setValue('session_note_goal_notes', pruned.session_note_goal_notes, { shouldDirty: true });
+      setValue('session_note_goal_measurements', pruned.session_note_goal_measurements, { shouldDirty: true });
+
       const normalizedGoalNoteMap = Object.fromEntries(
-        Object.entries(data.session_note_goal_notes ?? {})
+        Object.entries(working.session_note_goal_notes ?? {})
           .map(([goalKey, noteValue]) => [goalKey, noteValue?.trim() ?? ''])
           .filter(([, noteValue]) => noteValue.length > 0),
       );
-      const normalizedGoalIds = Array.isArray(data.goal_ids) ? data.goal_ids : [];
+      const normalizedGoalIds = Array.isArray(working.goal_ids) ? working.goal_ids : [];
       const sessionGoalIds = mergeUniqueGoalIds(
         normalizedGoalIds,
-        data.goal_id ? [data.goal_id] : [],
+        working.goal_id ? [working.goal_id] : [],
       );
-      const storedGoalIds = Array.isArray(data.session_note_goal_ids) ? data.session_note_goal_ids : [];
-      const noteGoalIds = Object.keys(data.session_note_goal_notes ?? {});
-      const measurementGoalIds = Object.keys(data.session_note_goal_measurements ?? {});
+      const storedGoalIds = Array.isArray(working.session_note_goal_ids) ? working.session_note_goal_ids : [];
+      const noteGoalIds = Object.keys(working.session_note_goal_notes ?? {});
+      const measurementGoalIds = Object.keys(working.session_note_goal_measurements ?? {});
       const mergedGoalIds = mergeUniqueGoalIds(
         sessionGoalIds,
         storedGoalIds,
@@ -693,14 +732,14 @@ export function SessionModal({
       const storedGoalLabelsById = new Map(
         storedGoalIds.map((goalEntryId, index) => [
           goalEntryId,
-          data.session_note_goals_addressed?.[index]?.trim() ?? null,
+          working.session_note_goals_addressed?.[index]?.trim() ?? null,
         ]),
       );
       const normalizedGoalMeasurementMap = Object.fromEntries(
         mergedGoalIds
           .map((goalEntryId) => {
             const entry = normalizeGoalMeasurementEntry(
-              data.session_note_goal_measurements?.[goalEntryId],
+              working.session_note_goal_measurements?.[goalEntryId],
               goals.find((goal) => goal.id === goalEntryId),
             );
             return entry ? [goalEntryId, entry] : null;
@@ -713,14 +752,14 @@ export function SessionModal({
           .map((s) => s.service_code?.trim())
           .find((c): c is string => Boolean(c)) ?? '';
       const resolvedAuthorizationId =
-        data.session_note_authorization_id?.trim() || firstApprovedAuth?.id || '';
+        working.session_note_authorization_id?.trim() || firstApprovedAuth?.id || '';
       const resolvedServiceCode =
-        data.session_note_service_code?.trim() || firstDefaultServiceCode;
+        working.session_note_service_code?.trim() || firstDefaultServiceCode;
       const hasCaptureInputFromSubmit =
-        Object.values(data.session_note_goal_notes ?? {}).some(
+        Object.values(working.session_note_goal_notes ?? {}).some(
           (value) => typeof value === 'string' && value.trim().length > 0,
         ) ||
-        Object.entries(data.session_note_goal_measurements ?? {}).some(([goalKey, rawValue]) =>
+        Object.entries(working.session_note_goal_measurements ?? {}).some(([goalKey, rawValue]) =>
           hasMeaningfulGoalMeasurementEntry(
             normalizeGoalMeasurementEntry(rawValue, goals.find((goal) => goal.id === goalKey)),
           ),
@@ -736,18 +775,21 @@ export function SessionModal({
           );
           return;
         }
-        for (const trackedGoalId of sessionGoalIds) {
+        for (const trackedGoalId of mergedGoalIds) {
           const goalNoteText = normalizedGoalNoteMap[trackedGoalId]?.trim() ?? '';
           if (!goalNoteText) {
-            const goalLabel = goals.find((goal) => goal.id === trackedGoalId)?.title ?? trackedGoalId;
+            const goalLabel =
+              goals.find((goal) => goal.id === trackedGoalId)?.title?.trim() ??
+              storedGoalLabelsById.get(trackedGoalId) ??
+              (isAdhocSessionTargetId(trackedGoalId) ? 'Session target' : `Goal ${trackedGoalId.slice(0, 8)}…`);
             showError(`Add a per-goal note for "${goalLabel}" before saving.`);
             return;
           }
         }
       }
       const transformed: SessionModalSubmitData = {
-        ...data,
-        session_note_narrative: data.session_note_narrative?.trim() ?? '',
+        ...working,
+        session_note_narrative: working.session_note_narrative?.trim() ?? '',
         session_note_goal_notes: normalizedGoalNoteMap,
         session_note_goal_measurements: normalizedGoalMeasurementMap,
         session_note_goal_ids: mergedGoalIds,
@@ -761,8 +803,8 @@ export function SessionModal({
         session_note_service_code: resolvedServiceCode,
         goal_ids: sessionGoalIds,
         // If a timezone prop is provided, normalize to UTC for consumers expecting Z times
-        start_time: timeZone ? toUtcSessionIsoString(data.start_time, resolvedTimeZone) : data.start_time,
-        end_time: timeZone ? toUtcSessionIsoString(data.end_time, resolvedTimeZone) : data.end_time,
+        start_time: timeZone ? toUtcSessionIsoString(working.start_time, resolvedTimeZone) : working.start_time,
+        end_time: timeZone ? toUtcSessionIsoString(working.end_time, resolvedTimeZone) : working.end_time,
       };
       await onSubmit(transformed);
       reset(getValues());
@@ -887,9 +929,13 @@ export function SessionModal({
 
   const sessionCaptureGoalIdsForTab = useMemo(() => {
     if (sessionCaptureTab === 'skill') {
-      return sessionNoteGoalIds;
+      return sessionNoteGoalIds.filter((id) =>
+        showGoalOnSkillCaptureTab(goals.find((g) => g.id === id), id),
+      );
     }
-    return sessionNoteGoalIds.filter((id) => showGoalOnBxTab(goals.find((g) => g.id === id)));
+    return sessionNoteGoalIds.filter((id) =>
+      showGoalOnBxCaptureTab(goals.find((g) => g.id === id), id),
+    );
   }, [sessionCaptureTab, sessionNoteGoalIds, goals]);
 
   const bumpTrialCount = useCallback(
@@ -904,6 +950,62 @@ export function SessionModal({
             : 0;
       const safe = Number.isFinite(cur) ? cur : 0;
       setValue(path, Math.max(0, safe + delta), { shouldDirty: true, shouldTouch: true });
+    },
+    [getValues, setValue],
+  );
+
+  const addAdhocSessionTarget = useCallback(
+    (kind: 'skill' | 'bx') => {
+      const id = createAdhocSessionTargetId(kind);
+      const label = kind === 'skill' ? 'New skill target' : 'New behavior target';
+      const ids = [...(getValues('session_note_goal_ids') ?? [])];
+      const labels = [...(getValues('session_note_goals_addressed') ?? [])];
+      setValue('session_note_goal_ids', [...ids, id], { shouldDirty: true, shouldTouch: true });
+      setValue('session_note_goals_addressed', [...labels, label], { shouldDirty: true, shouldTouch: true });
+      if (kind === 'bx') {
+        setSessionCaptureTab('bx');
+      } else {
+        setSessionCaptureTab('skill');
+      }
+    },
+    [getValues, setValue],
+  );
+
+  const removeAdhocSessionTarget = useCallback(
+    (targetId: string) => {
+      if (!isAdhocSessionTargetId(targetId)) {
+        return;
+      }
+      const ids = [...(getValues('session_note_goal_ids') ?? [])];
+      const idx = ids.indexOf(targetId);
+      if (idx === -1) {
+        return;
+      }
+      const labels = [...(getValues('session_note_goals_addressed') ?? [])];
+      ids.splice(idx, 1);
+      labels.splice(idx, 1);
+      setValue('session_note_goal_ids', ids, { shouldDirty: true, shouldTouch: true });
+      setValue('session_note_goals_addressed', labels, { shouldDirty: true, shouldTouch: true });
+      const notes = { ...(getValues('session_note_goal_notes') ?? {}) };
+      delete notes[targetId];
+      setValue('session_note_goal_notes', notes, { shouldDirty: true, shouldTouch: true });
+      const measurements = { ...(getValues('session_note_goal_measurements') ?? {}) };
+      delete measurements[targetId];
+      setValue('session_note_goal_measurements', measurements, { shouldDirty: true, shouldTouch: true });
+    },
+    [getValues, setValue],
+  );
+
+  const updateStoredGoalLabelAtId = useCallback(
+    (goalId: string, nextLabel: string) => {
+      const ids = [...(getValues('session_note_goal_ids') ?? [])];
+      const idx = ids.indexOf(goalId);
+      if (idx === -1) {
+        return;
+      }
+      const labels = [...(getValues('session_note_goals_addressed') ?? [])];
+      labels[idx] = nextLabel;
+      setValue('session_note_goals_addressed', labels, { shouldDirty: true, shouldTouch: true });
     },
     [getValues, setValue],
   );
@@ -1692,16 +1794,38 @@ export function SessionModal({
                 className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 space-y-4 dark:border-indigo-900/40 dark:bg-indigo-900/10"
                 data-testid="session-modal-capture-section"
               >
-                <div>
-                  <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">Session capture</p>
-                  <p className="mt-1 text-xs text-indigo-700 dark:text-indigo-300">
-                    Per-goal notes and trial data save with the session. Billing uses the first approved authorization
-                    on file when defaults exist. Full narrative and signatures are completed in Client Details.
-                  </p>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">Session capture</p>
+                    <p className="mt-1 text-xs text-indigo-700 dark:text-indigo-300">
+                      Per-goal notes and trial data save with the session. Billing uses the first approved authorization
+                      on file when defaults exist. Full narrative and signatures are completed in Client Details.
+                      Ad-hoc skill and behavior rows are stored on the session note.
+                    </p>
+                  </div>
+                  <div className="flex flex-shrink-0 flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => addAdhocSessionTarget('skill')}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-800 shadow-sm hover:bg-indigo-50 dark:border-indigo-800 dark:bg-dark-lighter dark:text-indigo-100 dark:hover:bg-indigo-900/30"
+                    >
+                      <Plus className="h-3.5 w-3.5" aria-hidden />
+                      Add skill
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => addAdhocSessionTarget('bx')}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-800 shadow-sm hover:bg-indigo-50 dark:border-indigo-800 dark:bg-dark-lighter dark:text-indigo-100 dark:hover:bg-indigo-900/30"
+                    >
+                      <Plus className="h-3.5 w-3.5" aria-hidden />
+                      Add behavior
+                    </button>
+                  </div>
                 </div>
                 {sessionNoteGoalIds.length === 0 ? (
                   <p className="text-sm text-indigo-900/90 dark:text-indigo-200/90">
-                    Select program and goals in People &amp; Plan to record session data.
+                    Select program and goals under People &amp; Plan, or tap Add skill / Add behavior to record ad-hoc
+                    targets for this session.
                   </p>
                 ) : (
                   <>
@@ -1739,12 +1863,16 @@ export function SessionModal({
                     </div>
                     {sessionCaptureGoalIdsForTab.length === 0 ? (
                       <p className="text-sm text-indigo-900/90 dark:text-indigo-200/90">
-                        No goals match this tab. Try Skill for all session goals, or add behavioral goals for BX.
+                        No targets on this tab. Switch tabs, add an ad-hoc target above, or adjust goals under People
+                        &amp; Plan.
                       </p>
                     ) : (
                       <div className="space-y-4">
                         {sessionCaptureGoalIdsForTab.map((selectedGoalId) => {
                           const selectedGoal = goals.find((goal) => goal.id === selectedGoalId);
+                          const storedTitleIndex = sessionNoteStoredGoalIds?.indexOf(selectedGoalId) ?? -1;
+                          const storedTitle =
+                            storedTitleIndex >= 0 ? sessionNoteGoalsAddressed?.[storedTitleIndex] ?? '' : '';
                           const measurementFieldMeta = getGoalMeasurementFieldMeta(selectedGoal);
                           const existingMeasurementEntry = normalizeGoalMeasurementEntry(
                             sessionNoteGoalMeasurements?.[selectedGoalId],
@@ -1785,9 +1913,42 @@ export function SessionModal({
                               key={selectedGoalId}
                               className="rounded-lg border border-indigo-100 bg-white/80 p-3 dark:border-indigo-900/40 dark:bg-dark-lighter/40"
                             >
-                              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-800 dark:text-indigo-200">
-                                {selectedGoal?.title ?? selectedGoalId}
-                              </p>
+                              <div className="flex items-start justify-between gap-2">
+                                {isAdhocSessionTargetId(selectedGoalId) ? (
+                                  <div className="min-w-0 flex-1">
+                                    <label
+                                      htmlFor={`adhoc-title-${selectedGoalId}`}
+                                      className="block text-[11px] font-medium uppercase tracking-wide text-indigo-800 dark:text-indigo-200"
+                                    >
+                                      Target title
+                                    </label>
+                                    <input
+                                      id={`adhoc-title-${selectedGoalId}`}
+                                      value={storedTitle}
+                                      onChange={(event) =>
+                                        updateStoredGoalLabelAtId(selectedGoalId, event.target.value)
+                                      }
+                                      className="mt-1 w-full rounded-md border border-indigo-200 bg-white px-2 py-1.5 text-sm font-semibold text-indigo-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-indigo-800 dark:bg-dark dark:text-indigo-100"
+                                      placeholder="Name this target"
+                                      autoComplete="off"
+                                    />
+                                  </div>
+                                ) : (
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-indigo-800 dark:text-indigo-200">
+                                    {selectedGoal?.title ?? selectedGoalId}
+                                  </p>
+                                )}
+                                {isAdhocSessionTargetId(selectedGoalId) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeAdhocSessionTarget(selectedGoalId)}
+                                    className="shrink-0 rounded-full p-2 text-indigo-700 hover:bg-indigo-100 dark:text-indigo-200 dark:hover:bg-indigo-900/40"
+                                    aria-label="Remove ad-hoc target"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                )}
+                              </div>
                               <label
                                 htmlFor={`goal-note-${selectedGoalId}`}
                                 className="mt-2 block text-xs font-medium text-gray-600 dark:text-gray-300"

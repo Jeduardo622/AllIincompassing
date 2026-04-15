@@ -1250,14 +1250,14 @@ export const Schedule = React.memo(() => {
         case "edit-update": {
           if (selectedSession && clinicalNoteDraft) {
             if (!activeOrganizationId) {
-              throw new Error("Organization context is required to save clinical session notes.");
+              throw new Error("Organization context is required to save session capture.");
             }
             if (!user?.id) {
-              throw new Error("Sign in again before saving clinical session notes.");
+              throw new Error("Sign in again before saving session capture.");
             }
             if (!clinicalNoteDraft.authorizationId || !clinicalNoteDraft.serviceCode) {
               throw new Error(
-                "Authorization and service code are required to save clinical session notes from schedule.",
+                "Authorization and service code are required to save session capture from Schedule (configure billing defaults for the client).",
               );
             }
             await upsertClientSessionNoteForSession({

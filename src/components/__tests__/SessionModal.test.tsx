@@ -921,7 +921,7 @@ describe('SessionModal', () => {
     expect(screen.getByRole('tab', { name: /^BX$/i })).toBeInTheDocument();
   });
 
-  it('submits normalized per-goal measurements with clinical session notes', async () => {
+  it('submits normalized per-goal measurements with session capture', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const buildChain = (rows: unknown[]) => {
       const chain: SupabaseQueryChain = {

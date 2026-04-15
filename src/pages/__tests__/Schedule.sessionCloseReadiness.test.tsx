@@ -153,7 +153,7 @@ vi.mock("../../features/scheduling/domain/sessionComplete", () => ({
   checkInProgressSessionCloseReadiness: (...args: unknown[]) =>
     checkInProgressSessionCloseReadinessMock(...args),
   IN_PROGRESS_CLOSE_NOT_READY_MESSAGE:
-    "You must complete the linked session documentation with per-goal notes before closing this in-progress session. Add per-goal notes in a client session note linked by session_id. Notes entered in this Schedule modal and overall narrative text do not satisfy this requirement.",
+    "You must complete the linked session documentation with per-goal notes before closing this in-progress session. Add per-goal text on a client_session_notes row linked to this session_id (for example by saving Session capture on Schedule or Session Notes under Client Details). Unsaved modal text alone does not satisfy this requirement.",
 }));
 
 vi.mock("../../lib/toast", async () => {
@@ -204,7 +204,7 @@ describe("Schedule session-close readiness precheck", { timeout: 15_000 }, () =>
     );
     expect(showErrorMock).not.toHaveBeenCalledWith(expect.stringMatching(/slot was just booked/i));
     expect(
-      screen.getByText(/you can add these in schedule > edit session > clinical session notes/i),
+      screen.getByText(/save session capture from schedule/i),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open Client Details" })).toBeInTheDocument();
   });

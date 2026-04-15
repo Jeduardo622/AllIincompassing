@@ -33,9 +33,11 @@ describe('goal-measurements helpers', () => {
         metric_label: 'Count',
         metric_unit: 'responses',
         metric_value: 4,
+        incorrect_trials: null,
         opportunities: 5,
         prompt_level: 'Gestural',
         note: 'Needed one reminder',
+        trial_prompt_note: null,
       },
     });
   });
@@ -53,9 +55,11 @@ describe('goal-measurements helpers', () => {
         metric_label: 'Duration',
         metric_unit: 'minutes',
         metric_value: 12,
+        incorrect_trials: null,
         opportunities: null,
         prompt_level: null,
         note: null,
+        trial_prompt_note: null,
       },
     });
   });

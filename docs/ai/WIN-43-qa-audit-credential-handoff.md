@@ -40,6 +40,14 @@ Document ownership and evidence expectations for QA credential bootstrap so brow
 - [ ] Confirm a canonical test client identifier source (reference location only).
 - [ ] Define evidence storage location for audit rerun outputs (screenshots, pass/fail note, timestamp).
 
+## Canonical upload artifact (Programs & Goals extraction re-audit)
+
+For **production** Playwright MCP runs that exercise **assessment upload → extraction → draft/Programs & Goals** flows, use this **tracked, redacted** sample at the repository root:
+
+- `7.21.2025_RoVa_CalOptima_FBA_FINAL (1).Redacted.docx.pdf`
+
+Pick that file from the local workspace when the upload control prompts for a file (absolute path on your machine will match your clone, e.g. `<repo-root>/7.21.2025_RoVa_CalOptima_FBA_FINAL (1).Redacted.docx.pdf`). Do not substitute unrelated PDFs for WIN-43 evidence unless the scenario explicitly requires a negative test.
+
 ## Safe Verification Notes
 
 - Browser re-audit remains blocked until credentials are provided through approved secure channels.

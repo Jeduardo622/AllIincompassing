@@ -46,6 +46,25 @@ const isTruthy = (value: string | undefined): boolean => /^(1|true|yes)$/i.test(
 
 const STEP_TIMEOUT_MS = Number(process.env.PW_LIFECYCLE_STEP_TIMEOUT_MS ?? "300000");
 
+/** Assert server upsert JSON includes per-goal metric_value (Session Data Collection 2.0 contract). */
+const assertUpsertResponseMetric = (
+  body: unknown,
+  goalId: string,
+  expectedMetric: number,
+  label: string,
+): void => {
+  const note = body as {
+    goal_measurements?: Record<string, { data?: { metric_value?: number | null } }> | null;
+    id?: string;
+  };
+  const val = note.goal_measurements?.[goalId]?.data?.metric_value;
+  assert.equal(
+    val,
+    expectedMetric,
+    `${label}: expected goal_measurements[${goalId}].data.metric_value=${expectedMetric}, got ${String(val)}`,
+  );
+};
+
 const withStepTimeout = async <T>(label: string, operation: () => Promise<T>): Promise<T> => {
   console.log(`[session-note-measurement] start ${label}`);
   let rejectTimeout: (error: Error) => void = () => {};
@@ -205,6 +224,7 @@ async function run(): Promise<void> {
       }
     }
     Object.assign(ids, booked);
+    assert.ok(booked.goalId, "bookSession must return goalId for measurement roundtrip assertions");
 
     await withStepTimeout("start-session", () => startSession(activePage, token, booked, strictParityMode));
     await withStepTimeout("wait-in-progress", () => waitForSessionStatus(booked.sessionId, "in_progress"));
@@ -257,9 +277,12 @@ async function run(): Promise<void> {
       await activePage.getByRole("button", { name: /Save Session Details/i }).click();
       const res = await upsertPromise;
       assert.equal(res.ok(), true, `session-notes upsert failed: HTTP ${res.status()}`);
-      const body = (await res.json().catch(() => null)) as { id?: string } | null;
-      if (body?.id && typeof body.id === "string") {
-        savedNoteId = body.id;
+      const body = (await res.json()) as unknown;
+      assert.ok(body && typeof body === "object", "session-notes upsert must return a JSON object");
+      assertUpsertResponseMetric(body, booked.goalId, initialMetric, "save-clinical-from-schedule");
+      const noteId = (body as { id?: string }).id;
+      if (noteId && typeof noteId === "string") {
+        savedNoteId = noteId;
       }
     });
 
@@ -292,7 +315,7 @@ async function run(): Promise<void> {
       const card = savedNoteId
         ? activePage.locator(`[data-testid="session-note-card"][data-note-id="${savedNoteId}"]`)
         : activePage.getByTestId("session-note-card").first();
-      await card.getByRole("button", { name: /^Edit$/i }).click();
+      await card.getByTestId("session-note-edit-button").click();
       await activePage.getByRole("dialog").filter({ hasText: /Add Session Note/i }).waitFor({ state: "visible", timeout: 30_000 });
       const goalId = booked.goalId;
       const valueInput = activePage.locator(`#goal-measurement-value-${goalId}`);
@@ -306,6 +329,9 @@ async function run(): Promise<void> {
       await activePage.getByRole("button", { name: /Save Note/i }).click();
       const res = await upsertPromise;
       assert.equal(res.ok(), true, `edit upsert failed: HTTP ${res.status()}`);
+      const editBody = (await res.json()) as unknown;
+      assert.ok(editBody && typeof editBody === "object", "edit upsert must return a JSON object");
+      assertUpsertResponseMetric(editBody, booked.goalId, updatedMetric, "edit-via-add-session-note-modal");
       await activePage.getByLabel(/Close add session note modal/i).click().catch(() => undefined);
     });
 

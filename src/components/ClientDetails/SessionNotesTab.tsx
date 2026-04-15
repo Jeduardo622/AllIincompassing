@@ -617,7 +617,8 @@ export function SessionNotesTab({ client }: SessionNotesTabProps) {
                         </div>
                         
                         {!note.is_locked && (
-                          <button 
+                          <button
+                            data-testid="session-note-edit-button"
                             onClick={() => handleEditSessionNote(note)}
                             className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm"
                             type="button"

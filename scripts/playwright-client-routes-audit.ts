@@ -217,6 +217,7 @@ const runRouteChecks = async (
   };
 
   let detailRouteUrl: string | null = null;
+  const clientDetailHrefs: string[] = [];
   try {
     await page.goto(clientsResult.url, { waitUntil: 'networkidle' });
     if (isOnLoginRoute(page.url())) {
@@ -235,13 +236,14 @@ const runRouteChecks = async (
     for (let i = 0; i < count; i += 1) {
       const href = await clientDetailLinks.nth(i).getAttribute('href');
       if (href && /^\/clients\/(?!new$)[^/]+$/i.test(href)) {
-        detailRouteUrl = `${baseUrl}${href}`;
-        break;
+        clientDetailHrefs.push(href);
       }
     }
 
     clientsResult.checks.push(
-      detailRouteUrl ? 'Found at least one client details link' : 'No client details link found (empty state)',
+      clientDetailHrefs.length > 0
+        ? `Found ${clientDetailHrefs.length} client detail link(s) on /clients`
+        : 'No client details link found (empty state)',
     );
     clientsResult.status = 'passed';
   } catch (error) {
@@ -253,26 +255,58 @@ const runRouteChecks = async (
   const detailsResult: RouteAuditResult = {
     route: '/clients/:clientId',
     status: 'skipped',
-    url: detailRouteUrl ?? `${baseUrl}/clients/:clientId`,
+    url: `${baseUrl}/clients/:clientId`,
     checks: [],
     errors: [],
   };
 
-  if (!detailRouteUrl) {
+  if (clientDetailHrefs.length === 0) {
     detailsResult.errors.push('Skipped: no client row/link available from /clients to open details.');
   } else {
     try {
-      await page.goto(detailRouteUrl, { waitUntil: 'networkidle' });
-      if (isOnLoginRoute(page.url())) {
-        throw new Error('Redirected to /login');
+      let opened = false;
+      for (const href of clientDetailHrefs.slice(0, 20)) {
+        const url = `${baseUrl}${href}`;
+        detailsResult.url = url;
+        await page.goto(url, { waitUntil: 'networkidle' });
+        if (isOnLoginRoute(page.url())) {
+          throw new Error('Redirected to /login');
+        }
+
+        const denied = page.getByRole('heading', { name: /you are not assigned to this client/i });
+        const notFound = page.getByRole('heading', { name: /client not found/i });
+        const orgRequired = page.getByRole('heading', { name: /organization context required/i });
+        if (await denied.first().isVisible().catch(() => false)) {
+          detailsResult.checks.push(`Skipped non-owned client: ${href}`);
+          continue;
+        }
+        if (await notFound.first().isVisible().catch(() => false)) {
+          detailsResult.checks.push(`Skipped missing client: ${href}`);
+          continue;
+        }
+        if (await orgRequired.first().isVisible().catch(() => false)) {
+          detailsResult.checks.push('Skipped: organization context required on client details');
+          continue;
+        }
+
+        // ClientDetails kicker: exact text "Client record" (`src/pages/ClientDetails.tsx`).
+        await page.getByText('Client record', { exact: true }).first().waitFor({ state: 'visible', timeout: 12000 });
+        detailRouteUrl = url;
+        detailsResult.checks.push('Client record label is visible');
+        await page.getByRole('button', { name: /profile \/ notes & issues/i }).first().waitFor({ state: 'visible', timeout: 5000 });
+        detailsResult.checks.push('Profile tab is visible');
+        await page.getByRole('button', { name: /session notes \/ physical auth/i }).first().waitFor({ state: 'visible', timeout: 5000 });
+        detailsResult.checks.push('Session Notes tab is visible');
+        detailsResult.status = 'passed';
+        opened = true;
+        break;
       }
-      await page.getByRole('heading', { name: /client records:/i }).first().waitFor({ state: 'visible', timeout: 10000 });
-      detailsResult.checks.push('Client details heading is visible');
-      await page.getByRole('button', { name: /profile \/ notes & issues/i }).first().waitFor({ state: 'visible', timeout: 5000 });
-      detailsResult.checks.push('Profile tab is visible');
-      await page.getByRole('button', { name: /session notes \/ physical auth/i }).first().waitFor({ state: 'visible', timeout: 5000 });
-      detailsResult.checks.push('Session Notes tab is visible');
-      detailsResult.status = 'passed';
+
+      if (!opened) {
+        throw new Error(
+          'No accessible client detail within first 20 list links (assignment, org context, or permissions).',
+        );
+      }
     } catch (error) {
       detailsResult.status = 'failed';
       detailsResult.errors.push(error instanceof Error ? error.message : String(error));

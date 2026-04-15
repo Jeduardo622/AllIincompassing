@@ -66,7 +66,8 @@ export const useScheduleDataBatch = (
     gcTime: CACHE_STRATEGIES.SESSIONS.schedule_batch * 2,
     refetchOnWindowFocus: false,
     refetchOnReconnect: 'always',
-    enabled: options?.enabled ?? true,
+    // Defense-in-depth: never run batch fetch without a resolved org id, even if a caller mis-sets `enabled`.
+    enabled: (options?.enabled ?? true) && Boolean(options?.organizationId),
   });
 };
 

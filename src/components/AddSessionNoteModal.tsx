@@ -11,6 +11,7 @@ import {
 import { useActiveOrganizationId } from '../lib/organization';
 import { showError } from '../lib/toast';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../lib/authContext';
 
 interface AddSessionNoteModalProps {
   isOpen: boolean;
@@ -85,6 +86,8 @@ export function AddSessionNoteModal({
   isSaving = false,
   existingNote = null,
 }: AddSessionNoteModalProps) {
+  const { profile } = useAuth();
+  const canLockSessionNotes = profile?.role === 'admin' || profile?.role === 'super_admin';
   const organizationId = useActiveOrganizationId();
   const isMinWidthSm = useMinWidthSm();
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -1026,19 +1029,21 @@ export function AddSessionNoteModal({
             />
           </div>
 
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="is-locked"
-              checked={isLocked}
-              onChange={(e) => setIsLocked(e.target.checked)}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <label htmlFor="is-locked" className="ml-2 block text-sm text-gray-900 dark:text-gray-100 flex items-center">
-              <CheckCircle className="w-4 h-4 mr-1 text-green-500" />
-              Sign and lock note
-            </label>
-          </div>
+          {canLockSessionNotes && (
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="is-locked"
+                checked={isLocked}
+                onChange={(e) => setIsLocked(e.target.checked)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="is-locked" className="ml-2 block text-sm text-gray-900 dark:text-gray-100 flex items-center">
+                <CheckCircle className="w-4 h-4 mr-1 text-green-500" />
+                Sign and lock note
+              </label>
+            </div>
+          )}
         </div>
 
         <div className="sticky bottom-0 z-10 flex shrink-0 flex-col gap-2 border-t border-gray-200 bg-white/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] backdrop-blur dark:border-gray-700 dark:bg-dark-lighter/95 sm:flex-row sm:justify-end sm:gap-3 sm:px-6 sm:pb-4">

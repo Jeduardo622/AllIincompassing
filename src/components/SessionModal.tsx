@@ -36,6 +36,10 @@ import {
   mergeUniqueGoalIds,
   normalizeGoalMeasurementEntry,
 } from '../lib/goal-measurements';
+import {
+  getTherapistMinTrialsTarget,
+  showGoalOnBxTab,
+} from '../lib/session-goal-tracks';
 
 const ENABLE_ALTERNATIVE_TIME_SUGGESTIONS = false;
 
@@ -105,7 +109,6 @@ export function SessionModal({
   onSessionStarted,
 }: SessionModalProps) {
   const [isPlanSummaryExpanded, setIsPlanSummaryExpanded] = useState(false);
-  const [isClinicalSummaryExpanded, setIsClinicalSummaryExpanded] = useState(false);
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [alternativeTimes, setAlternativeTimes] = useState<AlternativeTime[]>([]);
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
@@ -178,8 +181,6 @@ export function SessionModal({
   const programId = watch('program_id');
   const goalId = watch('goal_id');
   const goalIds = watch('goal_ids') as string[] | undefined;
-  const sessionNoteNarrative = watch('session_note_narrative') ?? '';
-  const sessionNoteAuthorizationId = watch('session_note_authorization_id') ?? '';
   const sessionNoteGoalNotes = watch('session_note_goal_notes') as Record<string, string> | undefined;
   const sessionNoteStoredGoalIds = watch('session_note_goal_ids') as string[] | undefined;
   const sessionNoteGoalMeasurements = watch('session_note_goal_measurements') as
@@ -706,24 +707,40 @@ export function SessionModal({
           })
           .filter((entry): entry is [string, SessionGoalMeasurementEntry] => Boolean(entry)),
       );
-      if (hasAnyClinicalNoteInput) {
+      const firstApprovedAuth = approvedAuthorizations[0];
+      const firstDefaultServiceCode =
+        (firstApprovedAuth?.services ?? [])
+          .map((s) => s.service_code?.trim())
+          .find((c): c is string => Boolean(c)) ?? '';
+      const resolvedAuthorizationId =
+        data.session_note_authorization_id?.trim() || firstApprovedAuth?.id || '';
+      const resolvedServiceCode =
+        data.session_note_service_code?.trim() || firstDefaultServiceCode;
+      const hasCaptureInputFromSubmit =
+        Object.values(data.session_note_goal_notes ?? {}).some(
+          (value) => typeof value === 'string' && value.trim().length > 0,
+        ) ||
+        Object.entries(data.session_note_goal_measurements ?? {}).some(([goalKey, rawValue]) =>
+          hasMeaningfulGoalMeasurementEntry(
+            normalizeGoalMeasurementEntry(rawValue, goals.find((goal) => goal.id === goalKey)),
+          ),
+        );
+      if (hasCaptureInputFromSubmit) {
         if (!session?.id) {
-          showError('Clinical session notes can only be saved for existing sessions.');
+          showError('Session capture can only be saved for existing sessions.');
           return;
         }
-        if (!data.session_note_authorization_id) {
-          showError('Select an authorization to save clinical session notes.');
-          return;
-        }
-        if (!data.session_note_service_code) {
-          showError('Select a service code to save clinical session notes.');
+        if (!resolvedAuthorizationId || !resolvedServiceCode) {
+          showError(
+            'No approved authorization or service is available for this client. Ask an admin to configure billing defaults.',
+          );
           return;
         }
         for (const trackedGoalId of sessionGoalIds) {
           const goalNoteText = normalizedGoalNoteMap[trackedGoalId]?.trim() ?? '';
           if (!goalNoteText) {
             const goalLabel = goals.find((goal) => goal.id === trackedGoalId)?.title ?? trackedGoalId;
-            showError(`Add a note for goal "${goalLabel}" before saving clinical notes.`);
+            showError(`Add a per-goal note for "${goalLabel}" before saving.`);
             return;
           }
         }
@@ -740,8 +757,8 @@ export function SessionModal({
             storedGoalLabelsById.get(goalEntryId) ??
             `Goal ${goalEntryId.slice(0, 8)}…`
           )),
-        session_note_authorization_id: data.session_note_authorization_id ?? '',
-        session_note_service_code: data.session_note_service_code ?? '',
+        session_note_authorization_id: resolvedAuthorizationId,
+        session_note_service_code: resolvedServiceCode,
         goal_ids: sessionGoalIds,
         // If a timezone prop is provided, normalize to UTC for consumers expecting Z times
         start_time: timeZone ? toUtcSessionIsoString(data.start_time, resolvedTimeZone) : data.start_time,
@@ -866,36 +883,31 @@ export function SessionModal({
     ),
     [goalIds, sessionNoteGoalMeasurements, sessionNoteGoalNotes, sessionNoteStoredGoalIds],
   );
-  const selectedAuthorization = approvedAuthorizations.find(
-    (authorization) => authorization.id === sessionNoteAuthorizationId,
+  const [sessionCaptureTab, setSessionCaptureTab] = useState<'skill' | 'bx'>('skill');
+
+  const sessionCaptureGoalIdsForTab = useMemo(() => {
+    if (sessionCaptureTab === 'skill') {
+      return sessionNoteGoalIds;
+    }
+    return sessionNoteGoalIds.filter((id) => showGoalOnBxTab(goals.find((g) => g.id === id)));
+  }, [sessionCaptureTab, sessionNoteGoalIds, goals]);
+
+  const bumpTrialCount = useCallback(
+    (goalId: string, field: 'metric_value' | 'incorrect_trials', delta: number) => {
+      const path = `session_note_goal_measurements.${goalId}.data.${field}` as const;
+      const raw = getValues(path);
+      const cur =
+        typeof raw === 'number' && Number.isFinite(raw)
+          ? raw
+          : typeof raw === 'string' && raw.trim().length > 0
+            ? Number(raw)
+            : 0;
+      const safe = Number.isFinite(cur) ? cur : 0;
+      setValue(path, Math.max(0, safe + delta), { shouldDirty: true, shouldTouch: true });
+    },
+    [getValues, setValue],
   );
-  const sessionNoteServiceCodes = useMemo(() => {
-    const services = selectedAuthorization?.services ?? [];
-    return Array.from(
-      new Set(
-        services
-          .map((service) => service.service_code?.trim())
-          .filter((serviceCode): serviceCode is string => Boolean(serviceCode)),
-      ),
-    );
-  }, [selectedAuthorization]);
-  const hasAnyClinicalNoteInput = useMemo(() => {
-    if (sessionNoteNarrative.trim().length > 0) {
-      return true;
-    }
-    const values = Object.values(sessionNoteGoalNotes ?? {});
-    if (values.some((value) => value?.trim().length > 0)) {
-      return true;
-    }
-    return Object.entries(sessionNoteGoalMeasurements ?? {}).some(([goalId, rawValue]) =>
-      hasMeaningfulGoalMeasurementEntry(
-        normalizeGoalMeasurementEntry(
-          rawValue,
-          goals.find((goal) => goal.id === goalId),
-        ),
-      ),
-    );
-  }, [sessionNoteGoalMeasurements, sessionNoteNarrative, sessionNoteGoalNotes, goals]);
+
   const saveStateMessage = useMemo(() => {
     if (isSubmitting) {
       return { tone: 'info' as const, text: 'Saving session details...' };
@@ -1024,7 +1036,6 @@ export function SessionModal({
     if (!linkedSessionNote || !session?.id || isDirty) {
       return;
     }
-    setValue('session_note_narrative', linkedSessionNote.narrative ?? '');
     setValue(
       'session_note_goal_notes',
       (linkedSessionNote.goal_notes as Record<string, string> | null) ?? {},
@@ -1042,7 +1053,6 @@ export function SessionModal({
   useEffect(() => {
     if (!isOpen) {
       setIsPlanSummaryExpanded(false);
-      setIsClinicalSummaryExpanded(false);
     }
   }, [isOpen]);
 
@@ -1678,246 +1688,244 @@ export function SessionModal({
             </section>
 
             {session?.id && (
-              <section className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 space-y-4 dark:border-indigo-900/40 dark:bg-indigo-900/10">
-                <div className="flex items-center justify-between gap-3">
+              <section
+                className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 space-y-4 dark:border-indigo-900/40 dark:bg-indigo-900/10"
+                data-testid="session-modal-capture-section"
+              >
                 <div>
-                  <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">Clinical Session Notes</p>
+                  <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">Session capture</p>
                   <p className="mt-1 text-xs text-indigo-700 dark:text-indigo-300">
-                    Write both narrative and per-goal notes from this schedule session modal.
+                    Per-goal notes and trial data save with the session. Billing uses the first approved authorization
+                    on file when defaults exist. Full narrative and signatures are completed in Client Details.
                   </p>
                 </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsClinicalSummaryExpanded((current) => !current)}
-                    aria-expanded={isClinicalSummaryExpanded}
-                    className="rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-dark-lighter dark:text-indigo-200 dark:hover:bg-indigo-900/30"
-                  >
-                    {isClinicalSummaryExpanded ? 'Hide details' : 'Show details'}
-                  </button>
-                </div>
-                {isClinicalSummaryExpanded && (
-                  <div className="rounded-lg border border-indigo-200 bg-white/90 p-3 text-xs text-indigo-800 dark:border-indigo-800 dark:bg-dark-lighter dark:text-indigo-200">
-                    <p className="font-medium">Linked note requirements</p>
-                    <p className="mt-1">
-                      Authorization, service code, narrative, and per-goal notes stay unchanged. This toggle only reduces mobile scrolling.
-                    </p>
-                  </div>
-                )}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  <div>
-                    <label
-                      htmlFor="session-note-auth-select"
-                      className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                {sessionNoteGoalIds.length === 0 ? (
+                  <p className="text-sm text-indigo-900/90 dark:text-indigo-200/90">
+                    Select program and goals in People &amp; Plan to record session data.
+                  </p>
+                ) : (
+                  <>
+                    <div
+                      className="flex gap-2 border-b border-indigo-200/60 pb-2 dark:border-indigo-800/50"
+                      role="tablist"
+                      aria-label="Session capture category"
                     >
-                      Authorization
-                    </label>
-                    <select
-                      id="session-note-auth-select"
-                      {...register('session_note_authorization_id')}
-                      className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-                    >
-                      <option value="">Select authorization</option>
-                      {approvedAuthorizations.map((authorization) => (
-                        <option key={authorization.id} value={authorization.id}>
-                          {authorization.authorization_number}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="session-note-service-code-select"
-                      className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                    >
-                      Service Code
-                    </label>
-                    <select
-                      id="session-note-service-code-select"
-                      {...register('session_note_service_code')}
-                      className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-                      disabled={!sessionNoteAuthorizationId}
-                    >
-                      <option value="">Select service code</option>
-                      {sessionNoteServiceCodes.map((serviceCode) => (
-                        <option key={serviceCode} value={serviceCode}>
-                          {serviceCode}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label
-                    htmlFor="session-note-narrative-input"
-                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                  >
-                    Clinical Narrative
-                  </label>
-                  <textarea
-                    id="session-note-narrative-input"
-                    {...register('session_note_narrative')}
-                    rows={4}
-                    className="w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-                    placeholder="Write a clinical summary for this session..."
-                  />
-                </div>
-                {sessionNoteGoalIds.length > 0 && (
-                  <div className="space-y-3">
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Per-goal Notes</p>
-                    {sessionNoteGoalIds.map((selectedGoalId) => {
-                      const selectedGoal = goals.find((goal) => goal.id === selectedGoalId);
-                      const measurementFieldMeta = getGoalMeasurementFieldMeta(selectedGoal);
-                      const existingMeasurementEntry = normalizeGoalMeasurementEntry(
-                        sessionNoteGoalMeasurements?.[selectedGoalId],
-                        selectedGoal,
-                      );
-                      const fieldKey = `session_note_goal_notes.${selectedGoalId}` as const;
-                      const metricValueFieldKey =
-                        `session_note_goal_measurements.${selectedGoalId}.data.metric_value` as const;
-                      const metricLabelFieldKey =
-                        `session_note_goal_measurements.${selectedGoalId}.data.metric_label` as const;
-                      const metricUnitFieldKey =
-                        `session_note_goal_measurements.${selectedGoalId}.data.metric_unit` as const;
-                      const measurementTypeFieldKey =
-                        `session_note_goal_measurements.${selectedGoalId}.data.measurement_type` as const;
-                      const opportunitiesFieldKey =
-                        `session_note_goal_measurements.${selectedGoalId}.data.opportunities` as const;
-                      const promptLevelFieldKey =
-                        `session_note_goal_measurements.${selectedGoalId}.data.prompt_level` as const;
-                      const noteFieldKey =
-                        `session_note_goal_measurements.${selectedGoalId}.data.note` as const;
-                      return (
-                        <div
-                          key={selectedGoalId}
-                          className="rounded-lg border border-indigo-100 bg-white/80 p-3 dark:border-indigo-900/40 dark:bg-dark-lighter/40"
-                        >
-                          <label
-                            htmlFor={`goal-note-${selectedGoalId}`}
-                            className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1"
-                          >
-                            {selectedGoal?.title ?? selectedGoalId}
-                          </label>
-                          <textarea
-                            id={`goal-note-${selectedGoalId}`}
-                            {...register(fieldKey)}
-                            rows={2}
-                            className="w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-                            placeholder="Add progress notes for this goal..."
-                          />
-                          <input
-                            type="hidden"
-                            {...register(metricLabelFieldKey)}
-                            defaultValue={existingMeasurementEntry?.data.metric_label ?? measurementFieldMeta.primaryLabel}
-                          />
-                          <input
-                            type="hidden"
-                            {...register(metricUnitFieldKey)}
-                            defaultValue={existingMeasurementEntry?.data.metric_unit ?? measurementFieldMeta.primaryUnit ?? ''}
-                          />
-                          <input
-                            type="hidden"
-                            {...register(measurementTypeFieldKey)}
-                            defaultValue={existingMeasurementEntry?.data.measurement_type ?? selectedGoal?.measurement_type ?? ''}
-                          />
-                          <div className="mt-3 rounded-md border border-indigo-100 bg-indigo-50/70 p-3 dark:border-indigo-900/40 dark:bg-indigo-900/10">
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={sessionCaptureTab === 'skill'}
+                        className={`rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition ${
+                          sessionCaptureTab === 'skill'
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'bg-white/80 text-indigo-800 hover:bg-white dark:bg-dark-lighter dark:text-indigo-100'
+                        }`}
+                        onClick={() => setSessionCaptureTab('skill')}
+                      >
+                        Skill
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={sessionCaptureTab === 'bx'}
+                        className={`rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition ${
+                          sessionCaptureTab === 'bx'
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'bg-white/80 text-indigo-800 hover:bg-white dark:bg-dark-lighter dark:text-indigo-100'
+                        }`}
+                        onClick={() => setSessionCaptureTab('bx')}
+                      >
+                        BX
+                      </button>
+                    </div>
+                    {sessionCaptureGoalIdsForTab.length === 0 ? (
+                      <p className="text-sm text-indigo-900/90 dark:text-indigo-200/90">
+                        No goals match this tab. Try Skill for all session goals, or add behavioral goals for BX.
+                      </p>
+                    ) : (
+                      <div className="space-y-4">
+                        {sessionCaptureGoalIdsForTab.map((selectedGoalId) => {
+                          const selectedGoal = goals.find((goal) => goal.id === selectedGoalId);
+                          const measurementFieldMeta = getGoalMeasurementFieldMeta(selectedGoal);
+                          const existingMeasurementEntry = normalizeGoalMeasurementEntry(
+                            sessionNoteGoalMeasurements?.[selectedGoalId],
+                            selectedGoal,
+                          );
+                          const minTrials = getTherapistMinTrialsTarget(selectedGoal);
+                          const fieldKey = `session_note_goal_notes.${selectedGoalId}` as const;
+                          const metricValueFieldKey =
+                            `session_note_goal_measurements.${selectedGoalId}.data.metric_value` as const;
+                          const incorrectTrialsFieldKey =
+                            `session_note_goal_measurements.${selectedGoalId}.data.incorrect_trials` as const;
+                          const trialPromptNoteFieldKey =
+                            `session_note_goal_measurements.${selectedGoalId}.data.trial_prompt_note` as const;
+                          const metricLabelFieldKey =
+                            `session_note_goal_measurements.${selectedGoalId}.data.metric_label` as const;
+                          const metricUnitFieldKey =
+                            `session_note_goal_measurements.${selectedGoalId}.data.metric_unit` as const;
+                          const measurementTypeFieldKey =
+                            `session_note_goal_measurements.${selectedGoalId}.data.measurement_type` as const;
+                          const opportunitiesFieldKey =
+                            `session_note_goal_measurements.${selectedGoalId}.data.opportunities` as const;
+                          const promptLevelFieldKey =
+                            `session_note_goal_measurements.${selectedGoalId}.data.prompt_level` as const;
+                          const noteFieldKey =
+                            `session_note_goal_measurements.${selectedGoalId}.data.note` as const;
+                          const correctWatch = watch(metricValueFieldKey);
+                          const incorrectWatch = watch(incorrectTrialsFieldKey);
+                          const correctDisplay =
+                            typeof correctWatch === 'number' && Number.isFinite(correctWatch)
+                              ? correctWatch
+                              : Number(correctWatch) || 0;
+                          const incorrectDisplay =
+                            typeof incorrectWatch === 'number' && Number.isFinite(incorrectWatch)
+                              ? incorrectWatch
+                              : Number(incorrectWatch) || 0;
+                          return (
+                            <div
+                              key={selectedGoalId}
+                              className="rounded-lg border border-indigo-100 bg-white/80 p-3 dark:border-indigo-900/40 dark:bg-dark-lighter/40"
+                            >
+                              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-800 dark:text-indigo-200">
+                                {selectedGoal?.title ?? selectedGoalId}
+                              </p>
+                              <label
+                                htmlFor={`goal-note-${selectedGoalId}`}
+                                className="mt-2 block text-xs font-medium text-gray-600 dark:text-gray-300"
+                              >
+                                Per-goal note
+                              </label>
+                              <textarea
+                                id={`goal-note-${selectedGoalId}`}
+                                {...register(fieldKey)}
+                                rows={2}
+                                className="mt-1 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                                placeholder="Add progress notes for this goal..."
+                              />
+                              <input
+                                type="hidden"
+                                {...register(metricLabelFieldKey)}
+                                defaultValue={existingMeasurementEntry?.data.metric_label ?? measurementFieldMeta.primaryLabel}
+                              />
+                              <input
+                                type="hidden"
+                                {...register(metricUnitFieldKey)}
+                                defaultValue={existingMeasurementEntry?.data.metric_unit ?? measurementFieldMeta.primaryUnit ?? ''}
+                              />
+                              <input
+                                type="hidden"
+                                {...register(measurementTypeFieldKey)}
+                                defaultValue={existingMeasurementEntry?.data.measurement_type ?? selectedGoal?.measurement_type ?? ''}
+                              />
+                              <input
+                                type="hidden"
+                                {...register(opportunitiesFieldKey, { setValueAs: toFormNumber })}
+                                defaultValue={toFormNumber(existingMeasurementEntry?.data.opportunities)}
+                              />
+                              <input
+                                type="hidden"
+                                {...register(promptLevelFieldKey)}
+                                defaultValue={existingMeasurementEntry?.data.prompt_level ?? ''}
+                              />
+                              <input
+                                type="hidden"
+                                {...register(noteFieldKey)}
+                                defaultValue={existingMeasurementEntry?.data.note ?? ''}
+                              />
+                              <div className="mt-3 rounded-md border border-indigo-100 bg-indigo-50/70 p-3 dark:border-indigo-900/40 dark:bg-indigo-900/10">
                                 <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-200">
-                                  Measurement snapshot
+                                  Trials
                                 </p>
                                 <p className="mt-1 text-[11px] text-indigo-700/90 dark:text-indigo-200/80">
-                                  {measurementFieldMeta.helperText}
+                                  + correct or achieved · − incorrect or no response. Admin or BCBA can complete
+                                  additional measurement fields in Client Details.
                                 </p>
-                              </div>
-                              {selectedGoal?.measurement_type && (
-                                <span className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-indigo-700 shadow-sm dark:bg-dark dark:text-indigo-200">
-                                  {selectedGoal.measurement_type}
-                                </span>
-                              )}
-                            </div>
-                            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                              <div>
-                                <label
-                                  htmlFor={`goal-measurement-value-${selectedGoalId}`}
-                                  className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300"
-                                >
-                                  {measurementFieldMeta.primaryLabel}
-                                  {measurementFieldMeta.primaryUnit ? ` (${measurementFieldMeta.primaryUnit})` : ''}
-                                </label>
-                                <input
-                                  id={`goal-measurement-value-${selectedGoalId}`}
-                                  type="number"
-                                  min={measurementFieldMeta.min}
-                                  max={measurementFieldMeta.max}
-                                  step={measurementFieldMeta.step}
-                                  defaultValue={toFormNumber(existingMeasurementEntry?.data.metric_value)}
-                                  {...register(metricValueFieldKey, {
-                                    setValueAs: toFormNumber,
-                                  })}
-                                  className="w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-                                  placeholder={measurementFieldMeta.primaryLabel}
-                                />
-                              </div>
-                              {measurementFieldMeta.secondaryLabel && (
-                                <div>
-                                  <label
-                                    htmlFor={`goal-measurement-opportunities-${selectedGoalId}`}
-                                    className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300"
-                                  >
-                                    {measurementFieldMeta.secondaryLabel}
-                                  </label>
-                                  <input
-                                    id={`goal-measurement-opportunities-${selectedGoalId}`}
-                                    type="number"
-                                    min={0}
-                                    step={1}
-                                    defaultValue={toFormNumber(existingMeasurementEntry?.data.opportunities)}
-                                    {...register(opportunitiesFieldKey, {
-                                      setValueAs: toFormNumber,
-                                    })}
-                                    className="w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-                                    placeholder={measurementFieldMeta.secondaryLabel}
-                                  />
+                                {minTrials != null && (
+                                  <p className="mt-2 text-[11px] font-medium text-indigo-800 dark:text-indigo-100">
+                                    Min trials (therapist target): {minTrials}
+                                  </p>
+                                )}
+                                <div className="mt-3 flex flex-wrap items-center gap-3">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">+</span>
+                                    <button
+                                      type="button"
+                                      aria-label="Increase correct trials"
+                                      className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600 text-lg font-bold text-white shadow-sm hover:bg-emerald-700"
+                                      onClick={() => bumpTrialCount(selectedGoalId, 'metric_value', 1)}
+                                    >
+                                      +
+                                    </button>
+                                    <span className="min-w-[2rem] rounded-md border border-gray-200 bg-white px-2 py-1 text-center text-sm dark:border-gray-600 dark:bg-dark">
+                                      {correctDisplay}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      aria-label="Decrease correct trials"
+                                      className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-700 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-400 dark:text-emerald-200"
+                                      onClick={() => bumpTrialCount(selectedGoalId, 'metric_value', -1)}
+                                    >
+                                      −
+                                    </button>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">−</span>
+                                    <button
+                                      type="button"
+                                      aria-label="Increase incorrect or no-response trials"
+                                      className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-600 text-lg font-bold text-white shadow-sm hover:bg-rose-700"
+                                      onClick={() => bumpTrialCount(selectedGoalId, 'incorrect_trials', 1)}
+                                    >
+                                      +
+                                    </button>
+                                    <span className="min-w-[2rem] rounded-md border border-gray-200 bg-white px-2 py-1 text-center text-sm dark:border-gray-600 dark:bg-dark">
+                                      {incorrectDisplay}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      aria-label="Decrease incorrect trials"
+                                      className="flex h-10 w-10 items-center justify-center rounded-full border border-rose-700 text-rose-700 hover:bg-rose-50 dark:border-rose-400 dark:text-rose-200"
+                                      onClick={() => bumpTrialCount(selectedGoalId, 'incorrect_trials', -1)}
+                                    >
+                                      −
+                                    </button>
+                                  </div>
                                 </div>
-                              )}
-                              <div>
-                                <label
-                                  htmlFor={`goal-measurement-prompt-${selectedGoalId}`}
-                                  className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300"
-                                >
-                                  Prompt level
-                                </label>
                                 <input
-                                  id={`goal-measurement-prompt-${selectedGoalId}`}
-                                  type="text"
-                                  defaultValue={existingMeasurementEntry?.data.prompt_level ?? ''}
-                                  {...register(promptLevelFieldKey)}
-                                  className="w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-                                  placeholder="Independent, verbal, gestural..."
+                                  type="number"
+                                  className="sr-only"
+                                  tabIndex={-1}
+                                  aria-hidden
+                                  {...register(metricValueFieldKey, { setValueAs: toFormNumber })}
+                                  defaultValue={toFormNumber(existingMeasurementEntry?.data.metric_value) ?? ''}
                                 />
-                              </div>
-                              <div>
-                                <label
-                                  htmlFor={`goal-measurement-note-${selectedGoalId}`}
-                                  className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300"
-                                >
-                                  Measurement note
-                                </label>
                                 <input
-                                  id={`goal-measurement-note-${selectedGoalId}`}
-                                  type="text"
-                                  defaultValue={existingMeasurementEntry?.data.note ?? ''}
-                                  {...register(noteFieldKey)}
-                                  className="w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
-                                  placeholder="Optional qualifier for the observed data"
+                                  type="number"
+                                  className="sr-only"
+                                  tabIndex={-1}
+                                  aria-hidden
+                                  {...register(incorrectTrialsFieldKey, { setValueAs: toFormNumber })}
+                                  defaultValue={toFormNumber(existingMeasurementEntry?.data.incorrect_trials) ?? ''}
+                                />
+                                <label
+                                  htmlFor={`trial-prompt-note-${selectedGoalId}`}
+                                  className="mt-3 block text-xs font-medium text-gray-600 dark:text-gray-300"
+                                >
+                                  Prompts &amp; reactions (verbal / physical)
+                                </label>
+                                <textarea
+                                  id={`trial-prompt-note-${selectedGoalId}`}
+                                  {...register(trialPromptNoteFieldKey)}
+                                  rows={2}
+                                  className="mt-1 w-full rounded-md border-gray-300 bg-white text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                                  placeholder="Record prompts used and client reactions for these trials..."
                                 />
                               </div>
                             </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
                 )}
               </section>
             )}

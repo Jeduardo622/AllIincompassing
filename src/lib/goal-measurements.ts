@@ -99,9 +99,11 @@ export const hasMeaningfulGoalMeasurementEntry = (
   const { data } = entry;
   return (
     (data.metric_value !== null && data.metric_value !== undefined) ||
+    (data.incorrect_trials !== null && data.incorrect_trials !== undefined) ||
     (data.opportunities !== null && data.opportunities !== undefined) ||
     (data.prompt_level?.trim().length ?? 0) > 0 ||
-    (data.note?.trim().length ?? 0) > 0
+    (data.note?.trim().length ?? 0) > 0 ||
+    (data.trial_prompt_note?.trim().length ?? 0) > 0
   );
 };
 
@@ -137,6 +139,9 @@ export const normalizeGoalMeasurementEntry = (
       metric_value: toOptionalNumber(
         sourceData.metric_value ?? sourceData.count ?? sourceData.value,
       ),
+      incorrect_trials: toOptionalNumber(
+        sourceData.incorrect_trials ?? sourceData.incorrectTrials,
+      ),
       opportunities: toOptionalNumber(
         sourceData.opportunities ?? sourceData.trials,
       ),
@@ -144,6 +149,9 @@ export const normalizeGoalMeasurementEntry = (
         sourceData.prompt_level ?? sourceData.promptLevel,
       ),
       note: toOptionalString(sourceData.note ?? sourceData.comment),
+      trial_prompt_note: toOptionalString(
+        sourceData.trial_prompt_note ?? sourceData.trialPromptNote,
+      ),
     },
   };
 
@@ -163,9 +171,11 @@ export const buildGoalMeasurementEntry = (
       metric_label: normalizedExisting?.data.metric_label ?? fieldMeta.primaryLabel,
       metric_unit: normalizedExisting?.data.metric_unit ?? fieldMeta.primaryUnit,
       metric_value: normalizedExisting?.data.metric_value ?? null,
+      incorrect_trials: normalizedExisting?.data.incorrect_trials ?? null,
       opportunities: normalizedExisting?.data.opportunities ?? null,
       prompt_level: normalizedExisting?.data.prompt_level ?? null,
       note: normalizedExisting?.data.note ?? null,
+      trial_prompt_note: normalizedExisting?.data.trial_prompt_note ?? null,
     },
   };
 
@@ -188,6 +198,9 @@ export const mergeGoalMeasurementEntry = (
       metric_value: updates.metric_value !== undefined
         ? updates.metric_value ?? null
         : existing?.data.metric_value ?? null,
+      incorrect_trials: updates.incorrect_trials !== undefined
+        ? updates.incorrect_trials ?? null
+        : existing?.data.incorrect_trials ?? null,
       opportunities: updates.opportunities !== undefined
         ? updates.opportunities ?? null
         : existing?.data.opportunities ?? null,
@@ -197,6 +210,9 @@ export const mergeGoalMeasurementEntry = (
       note: updates.note !== undefined
         ? updates.note ?? null
         : existing?.data.note ?? null,
+      trial_prompt_note: updates.trial_prompt_note !== undefined
+        ? updates.trial_prompt_note ?? null
+        : existing?.data.trial_prompt_note ?? null,
     },
   };
 

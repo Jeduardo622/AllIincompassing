@@ -570,8 +570,45 @@ describe('SessionModal', () => {
     });
   });
 
-  it('blocks Close Session when clinical narrative is present without authorization metadata', async () => {
+  it('blocks Close Session when session capture needs billing defaults but none exist', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'sessions') {
+        return buildChain([], {
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          started_at: '2026-03-01T10:00:00.000Z',
+        });
+      }
+      if (table === 'session_goals') {
+        return buildChain([{ goal_id: 'goal-1' }]);
+      }
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals);
+      }
+      if (table === 'authorizations') {
+        return buildChain([]);
+      }
+      if (table === 'client_session_notes') {
+        return buildChain([]);
+      }
+      return buildChain([]);
+    });
+
     renderWithProviders(
       <SessionModal
         {...defaultProps}
@@ -595,7 +632,9 @@ describe('SessionModal', () => {
       />
     );
 
-    await userEvent.type(screen.getByLabelText(/Clinical Narrative/i), 'Progress details');
+    fireEvent.change(await screen.findByLabelText(/^Per-goal note$/i), {
+      target: { value: 'Progress details' },
+    });
     await userEvent.click(screen.getByRole('button', { name: /^Close Session$/i }));
 
     expect(onSubmit).not.toHaveBeenCalled();
@@ -854,7 +893,7 @@ describe('SessionModal', () => {
     );
   });
 
-  it('renders clinical notes section for existing sessions', () => {
+  it('renders session capture section for existing sessions', () => {
     renderWithProviders(
       <SessionModal
         {...defaultProps}
@@ -877,8 +916,9 @@ describe('SessionModal', () => {
       />
     );
 
-    expect(screen.getByText(/Clinical Session Notes/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Clinical Narrative/i)).toBeInTheDocument();
+    expect(screen.getByTestId('session-modal-capture-section')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Skill$/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^BX$/i })).toBeInTheDocument();
   });
 
   it('submits normalized per-goal measurements with clinical session notes', async () => {
@@ -936,18 +976,14 @@ describe('SessionModal', () => {
       />
     );
 
-    await screen.findByRole('option', { name: /AUTH-001/i });
-    await userEvent.selectOptions(screen.getByLabelText(/Authorization/i), 'auth-1');
-    await userEvent.selectOptions(screen.getByLabelText(/Service Code/i), '97153');
-    fireEvent.change(screen.getByLabelText(/^Default Goal$/i), {
+    await screen.findByRole('button', { name: /Increase correct trials/i });
+    fireEvent.change(screen.getByLabelText(/^Per-goal note$/i), {
       target: { value: 'Observed steady progress' },
     });
-    fireEvent.change(screen.getByLabelText(/Count \(responses\)/i), { target: { value: '4' } });
-    fireEvent.change(screen.getByLabelText(/Opportunities/i), { target: { value: '5' } });
-    fireEvent.change(screen.getByLabelText(/Prompt level/i), {
-      target: { value: 'Gestural' },
-    });
-    fireEvent.change(screen.getByLabelText(/Measurement note/i), {
+    for (let i = 0; i < 4; i += 1) {
+      await userEvent.click(screen.getByRole('button', { name: /Increase correct trials/i }));
+    }
+    fireEvent.change(screen.getByLabelText(/Prompts & reactions/i), {
       target: { value: 'Needed one reminder at the start' },
     });
 
@@ -955,18 +991,18 @@ describe('SessionModal', () => {
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        session_note_authorization_id: 'auth-1',
+        session_note_service_code: '97153',
         session_note_goal_measurements: {
           'goal-1': {
             version: 1,
-            data: {
+            data: expect.objectContaining({
               measurement_type: 'frequency',
               metric_label: 'Count',
               metric_unit: 'responses',
               metric_value: 4,
-              opportunities: 5,
-              prompt_level: 'Gestural',
-              note: 'Needed one reminder at the start',
-            },
+              trial_prompt_note: 'Needed one reminder at the start',
+            }),
           },
         },
       }));
@@ -1243,8 +1279,45 @@ describe('SessionModal', () => {
     });
   }, 10000);
 
-  it('blocks submit when clinical narrative is filled without authorization metadata', async () => {
+  it('blocks submit when session capture is present without authorization metadata', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const buildChain = (rows: unknown[], singleRow: unknown = null) => {
+      const chain: SupabaseQueryChain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(async () => ({ data: rows, error: null })),
+        maybeSingle: vi.fn(async () => ({ data: singleRow, error: null })),
+        limit: vi.fn(async () => ({ data: [], error: null })),
+      };
+      return chain;
+    };
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'sessions') {
+        return buildChain([], {
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          started_at: null,
+        });
+      }
+      if (table === 'session_goals') {
+        return buildChain([{ goal_id: 'goal-1' }]);
+      }
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain(mockGoals);
+      }
+      if (table === 'authorizations') {
+        return buildChain([]);
+      }
+      if (table === 'client_session_notes') {
+        return buildChain([]);
+      }
+      return buildChain([]);
+    });
+
     renderWithProviders(
       <SessionModal
         {...defaultProps}
@@ -1268,7 +1341,7 @@ describe('SessionModal', () => {
       />
     );
 
-    fireEvent.change(screen.getByLabelText(/Clinical Narrative/i), {
+    fireEvent.change(await screen.findByLabelText(/^Per-goal note$/i), {
       target: { value: 'Progress details' },
     });
     await userEvent.click(screen.getByRole('button', { name: /Save Session Details/i }));

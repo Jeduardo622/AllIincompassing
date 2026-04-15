@@ -117,10 +117,10 @@ describe('SessionNotesTab — edit mutation sends goal_measurements', () => {
     renderWithProviders(<SessionNotesTab client={CLIENT} />, AUTH_OPTS);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /^Edit$/i })).toBeInTheDocument();
+      expect(screen.getByTestId('session-note-edit-button')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /^Edit$/i }));
+    fireEvent.click(screen.getByTestId('session-note-edit-button'));
     await waitFor(() => {
       expect(screen.getByTestId('stub-session-note-submit')).toBeInTheDocument();
     });

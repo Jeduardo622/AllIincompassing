@@ -1,4 +1,5 @@
 import type { Goal } from '../types';
+import { z } from 'zod';
 import {
   hasMeaningfulGoalMeasurementEntry,
   normalizeGoalMeasurementEntry,
@@ -12,6 +13,18 @@ export function isAdhocSessionTargetId(goalId: string | undefined | null): boole
     return false;
   }
   return ADHOC_ID_RE.test(goalId.trim());
+}
+
+/** Keys allowed on `client_session_notes.goal_ids`, `goal_notes`, and `goal_measurements` maps. */
+export function isValidSessionNoteGoalKey(goalId: string): boolean {
+  const t = goalId.trim();
+  if (!t) {
+    return false;
+  }
+  if (isAdhocSessionTargetId(t)) {
+    return true;
+  }
+  return z.string().uuid().safeParse(t).success;
 }
 
 /** Returns kind from id, or null if not an ad-hoc session target id. */

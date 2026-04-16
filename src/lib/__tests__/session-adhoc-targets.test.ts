@@ -3,12 +3,21 @@ import {
   createAdhocSessionTargetId,
   getAdhocSessionTargetKind,
   isAdhocSessionTargetId,
+  isValidSessionNoteGoalKey,
   pruneEmptyAdhocSessionTargets,
   showGoalOnBxCaptureTab,
   showGoalOnSkillCaptureTab,
 } from '../session-adhoc-targets';
 
 describe('session-adhoc-targets', () => {
+  it('accepts plan UUIDs and ad-hoc ids as session note goal keys', () => {
+    expect(isValidSessionNoteGoalKey('550e8400-e29b-41d4-a716-446655440000')).toBe(true);
+    expect(isValidSessionNoteGoalKey('adhoc-skill-550e8400-e29b-41d4-a716-446655440000')).toBe(true);
+    expect(isValidSessionNoteGoalKey('adhoc-bx-550e8400-e29b-41d4-a716-446655440000')).toBe(true);
+    expect(isValidSessionNoteGoalKey('not-valid')).toBe(false);
+    expect(isValidSessionNoteGoalKey('')).toBe(false);
+  });
+
   it('detects ad-hoc ids and kind', () => {
     const id = createAdhocSessionTargetId('skill');
     expect(isAdhocSessionTargetId(id)).toBe(true);

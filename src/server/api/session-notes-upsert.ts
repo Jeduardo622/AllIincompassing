@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { SessionGoalMeasurementEntry, SessionNote } from "../../types";
 import { normalizeGoalMeasurementEntry } from "../../lib/goal-measurements";
+import { isValidSessionNoteGoalKey } from "../../lib/session-adhoc-targets";
 import {
   corsHeadersForRequest,
   errorResponse,
@@ -74,7 +75,7 @@ const upsertSchema = z.object({
   sessionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   startTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
   endTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
-  goalIds: z.array(z.string().uuid()).default([]),
+  goalIds: z.array(z.string().min(1).refine((id) => isValidSessionNoteGoalKey(id))).default([]),
   goalsAddressed: z.array(z.string()).optional(),
   goalNotes: z.record(z.string()).default({}),
   goalMeasurements: z.record(z.unknown()).nullable().optional(),
@@ -107,7 +108,7 @@ const trimGoalNotes = (goalNotes: Record<string, string>): Record<string, string
   const cleaned = Object.fromEntries(
     Object.entries(goalNotes)
       .map(([goalId, noteText]) => [goalId, noteText.trim()])
-      .filter(([goalId, noteText]) => z.string().uuid().safeParse(goalId).success && noteText.length > 0),
+      .filter(([goalId, noteText]) => isValidSessionNoteGoalKey(goalId) && noteText.length > 0),
   );
 
   return Object.keys(cleaned).length > 0 ? cleaned : null;
@@ -122,7 +123,7 @@ const normalizeGoalMeasurements = (
 
   const entries = Object.entries(rawMeasurements)
     .map(([goalId, value]) => {
-      if (!z.string().uuid().safeParse(goalId).success) {
+      if (!isValidSessionNoteGoalKey(goalId)) {
         return null;
       }
       const normalized = normalizeGoalMeasurementEntry(value, undefined, { fallbackMetricUnit: null });

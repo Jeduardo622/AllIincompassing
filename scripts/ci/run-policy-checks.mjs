@@ -1,5 +1,7 @@
 import { spawnSync } from 'node:child_process';
 
+// Non-doc touch so change_scope is not docs-only; required CI checks still run on README-only PRs.
+
 const checks = [
   ['node', ['scripts/ci/check-focused-tests.mjs']],
   ['node', ['scripts/ci/check-main-branch-protection.mjs']],

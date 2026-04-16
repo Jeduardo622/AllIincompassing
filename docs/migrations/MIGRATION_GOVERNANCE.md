@@ -76,6 +76,10 @@ If **`reports/migration-triage-inventory.json`** (or human **`SUPERSEDED_DO_NOT_
 - **Separate preview vs main signals:** local/preview replay succeeding does **not** replace hosted **ledger parity** checks; use the right script/CI gate for each environment.
 - **Small reviewed slices:** prefer narrow migrations with governance headers over large catch-up dumps that are hard to review and easy to mis-apply.
 
+### Runtime merge parity (`check-runtime-migration-parity`)
+
+Merge-added migration checks (`scripts/ci/check-runtime-migration-parity.mjs`, `scripts/ci/runtime-migration-parity.mjs`) can treat a row as satisfied by **migration `name`** only when the hosted `schema_migrations.version` is **greater than or equal to** the repo filename version for that same `name`. If the hosted ledger recorded an **earlier** timestamp than the repo file for the same logical migration, CI may report the migration as missing even though the DDL already ran. The bounded fix is to **rename the repo migration file** so its version matches the hosted row (same SQL body), not to rewrite remote migration history.
+
 Changelog-style summary of the completed cleanup: [`RELEASE_NOTES.md`](../../RELEASE_NOTES.md#migration-ledger-parity-cleanup-operational-complete).
 
 ### Optional future work (out of scope for parity cleanup)

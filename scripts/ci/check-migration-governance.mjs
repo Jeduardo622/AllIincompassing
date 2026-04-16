@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { execSync } from "node:child_process";
 import path from "node:path";
 
 const ROOT = process.cwd();
@@ -17,7 +18,6 @@ const parseBaseline = async () => {
 };
 
 const getAddedFiles = async () => {
-  const { execSync } = await import("node:child_process");
   const results = new Set();
 
   const collect = (cmd) => {
@@ -64,8 +64,26 @@ const extractCanonicalToken = (fileName) => {
   return stem.replace(/^\d{14,}_/, "");
 };
 
+const readMigrationSource = async (migrationPath) => {
+  const absolutePath = path.join(ROOT, migrationPath);
+  try {
+    return await readFile(absolutePath, "utf8");
+  } catch (err) {
+    const code = /** @type {NodeJS.ErrnoException} */ (err)?.code;
+    if (code !== "ENOENT") {
+      throw err;
+    }
+    const posixPath = migrationPath.split(path.sep).join("/");
+    return execSync(`git show HEAD:${posixPath}`, {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  }
+};
+
 const validateMetadata = async (migrationPath) => {
-  const raw = await readFile(path.join(ROOT, migrationPath), "utf8");
+  const raw = await readMigrationSource(migrationPath);
   const header = raw.split(/\r?\n/).slice(0, 25).join("\n").toLowerCase();
   return METADATA_FIELDS.every((field) => header.includes(field));
 };

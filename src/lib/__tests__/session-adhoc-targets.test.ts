@@ -18,6 +18,14 @@ describe('session-adhoc-targets', () => {
     expect(isValidSessionNoteGoalKey('')).toBe(false);
   });
 
+  it('rejects ad-hoc-looking ids without a UUID suffix', () => {
+    expect(isAdhocSessionTargetId('adhoc-skill-not-a-uuid')).toBe(false);
+    expect(isValidSessionNoteGoalKey('adhoc-skill-not-a-uuid')).toBe(false);
+    expect(getAdhocSessionTargetKind('adhoc-skill-not-a-uuid')).toBe(null);
+    expect(isAdhocSessionTargetId('adhoc-skill-')).toBe(false);
+    expect(isAdhocSessionTargetId('adhoc-wrong-550e8400-e29b-41d4-a716-446655440000')).toBe(false);
+  });
+
   it('detects ad-hoc ids and kind', () => {
     const id = createAdhocSessionTargetId('skill');
     expect(isAdhocSessionTargetId(id)).toBe(true);

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { SessionGoalMeasurementEntry, SessionNote } from "../../types";
-import { normalizeGoalMeasurementEntry } from "../../lib/goal-measurements";
-import { isValidSessionNoteGoalKey } from "../../lib/session-adhoc-targets";
+import { mergeUniqueGoalIds, normalizeGoalMeasurementEntry } from "../../lib/goal-measurements";
+import { isAdhocSessionTargetId, isValidSessionNoteGoalKey } from "../../lib/session-adhoc-targets";
 import {
   corsHeadersForRequest,
   errorResponse,
@@ -132,6 +132,74 @@ const normalizeGoalMeasurements = (
     .filter((entry): entry is readonly [string, SessionGoalMeasurementEntry] => Boolean(entry));
 
   return entries.length > 0 ? Object.fromEntries(entries) : null;
+};
+
+/**
+ * Keeps `goal_ids` and `goals_addressed` aligned with trimmed `goal_notes` / normalized `goal_measurements`
+ * (same merge semantics as SessionModal / AddSessionNoteModal): any goal key present only in maps is
+ * appended to `goal_ids`, and `goals_addressed` gains stable labels for new ids.
+ */
+const alignSessionNoteGoalPayload = (input: {
+  goalIds: readonly string[];
+  goalsAddressed: readonly string[] | undefined;
+  goalNotes: Record<string, string> | null;
+  goalMeasurements: Record<string, SessionGoalMeasurementEntry> | null;
+}): {
+  goalIds: string[];
+  goalsAddressed: string[];
+  goalNotes: Record<string, string> | null;
+  goalMeasurements: Record<string, SessionGoalMeasurementEntry> | null;
+} => {
+  const notes = input.goalNotes ?? {};
+  const measurements = input.goalMeasurements ?? {};
+  const mergedGoalIds = mergeUniqueGoalIds(
+    [...input.goalIds],
+    Object.keys(notes),
+    Object.keys(measurements),
+  ).filter((id) => isValidSessionNoteGoalKey(id));
+
+  const addressedById = new Map<string, string>();
+  input.goalIds.forEach((rawId, index) => {
+    const id = rawId.trim();
+    const label = input.goalsAddressed?.[index]?.trim() ?? "";
+    if (label.length > 0) {
+      addressedById.set(id, label);
+    }
+  });
+
+  const goalsAddressed = mergedGoalIds.map((id) => {
+    const prior = addressedById.get(id);
+    if (prior && prior.length > 0) {
+      return prior;
+    }
+    if (isAdhocSessionTargetId(id)) {
+      return "Session target";
+    }
+    return id;
+  });
+
+  const goalNotes: Record<string, string> = {};
+  for (const id of mergedGoalIds) {
+    const text = notes[id]?.trim() ?? "";
+    if (text.length > 0) {
+      goalNotes[id] = text;
+    }
+  }
+
+  const goalMeasurements: Record<string, SessionGoalMeasurementEntry> = {};
+  for (const id of mergedGoalIds) {
+    const row = measurements[id];
+    if (row) {
+      goalMeasurements[id] = row;
+    }
+  }
+
+  return {
+    goalIds: mergedGoalIds,
+    goalsAddressed,
+    goalNotes: Object.keys(goalNotes).length > 0 ? goalNotes : null,
+    goalMeasurements: Object.keys(goalMeasurements).length > 0 ? goalMeasurements : null,
+  };
 };
 
 const mapRowToSessionNote = (row: SessionNoteRow): SessionNote => ({
@@ -327,6 +395,13 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     return errorResponse(request, "conflict", "Session note is locked and cannot be edited.", { status: 409 });
   }
 
+  const alignedGoals = alignSessionNoteGoalPayload({
+    goalIds: payload.goalIds,
+    goalsAddressed: payload.goalsAddressed,
+    goalNotes: normalizedGoalNotes,
+    goalMeasurements: normalizedGoalMeasurements,
+  });
+
   const writePayload = {
     authorization_id: payload.authorizationId,
     client_id: payload.clientId,
@@ -337,10 +412,10 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     start_time: payload.startTime,
     end_time: payload.endTime,
     session_duration: sessionDuration,
-    goals_addressed: payload.goalsAddressed ?? [],
-    goal_ids: payload.goalIds.length > 0 ? payload.goalIds : null,
-    goal_measurements: normalizedGoalMeasurements,
-    goal_notes: normalizedGoalNotes,
+    goals_addressed: alignedGoals.goalsAddressed,
+    goal_ids: alignedGoals.goalIds.length > 0 ? alignedGoals.goalIds : null,
+    goal_measurements: alignedGoals.goalMeasurements,
+    goal_notes: alignedGoals.goalNotes,
     narrative: payload.narrative.trim(),
     is_locked: payload.isLocked,
     signed_at: payload.isLocked ? new Date().toISOString() : null,

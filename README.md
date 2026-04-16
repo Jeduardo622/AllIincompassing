@@ -108,6 +108,12 @@ The policy gate currently validates branch protection contract on `main` and sho
 
 Lighthouse CI currently runs in advisory mode (non-blocking) while preview URL automation is stabilized. Configure `LIGHTHOUSE_PREVIEW_URL` (workflow input, repo variable, or secret) to restore strict URL resolution.
 
+### Deployment and releases
+
+- **Production** – The customer-facing app is hosted on **Netlify**. Production deploys track **GitHub `main`** after required checks pass; merge work there first, then confirm the Netlify production deploy (or wait for the automatic production hook if configured).
+- **Previews** – Pull requests should receive Netlify **deploy previews** for UI and integration review before merge when previews are enabled for the repo.
+- **Versioning** – `package.json` stays at `0.0.0` for the private app; it is not the production release lever. Use **git tags** and optional **GitHub Releases** for operator-visible milestones (e.g. post-incident cut points or audit baselines). Tag names are team-defined; prefer immutable references to commit SHAs in runbooks.
+
 ### Supabase connection diagnostics
 
 - Connection diagnostics automatically execute only in Vite development builds so production deployments do not trigger auth, table, or RPC probes on every boot.

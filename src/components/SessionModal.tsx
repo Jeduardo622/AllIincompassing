@@ -954,6 +954,13 @@ export function SessionModal({
     [goalIds, sessionNoteGoalMeasurements, sessionNoteGoalNotes, sessionNoteStoredGoalIds],
   );
   const [sessionCaptureTab, setSessionCaptureTab] = useState<'skill' | 'bx'>('skill');
+  const [isSessionCaptureNarrow, setIsSessionCaptureNarrow] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    return window.matchMedia?.('(max-width: 639px)')?.matches ?? false;
+  });
+  const [mobileCaptureOpenGoalId, setMobileCaptureOpenGoalId] = useState<string | null>(null);
 
   const sessionCaptureGoalIdsForTab = useMemo(() => {
     if (sessionCaptureTab === 'skill') {
@@ -1037,6 +1044,33 @@ export function SessionModal({
     },
     [getValues, setValue],
   );
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) {
+      return;
+    }
+    const media = window.matchMedia('(max-width: 639px)');
+    const syncNarrow = () => {
+      setIsSessionCaptureNarrow(media.matches);
+    };
+    syncNarrow();
+    media.addEventListener('change', syncNarrow);
+    return () => media.removeEventListener('change', syncNarrow);
+  }, []);
+
+  useEffect(() => {
+    if (!isSessionCaptureNarrow) {
+      return;
+    }
+    const ids = sessionCaptureGoalIdsForTab;
+    if (ids.length === 0) {
+      setMobileCaptureOpenGoalId(null);
+      return;
+    }
+    setMobileCaptureOpenGoalId((current) =>
+      current != null && ids.includes(current) ? current : ids[0] ?? null,
+    );
+  }, [isSessionCaptureNarrow, sessionCaptureGoalIdsForTab]);
 
   const saveStateMessage = useMemo(() => {
     if (isSubmitting) {
@@ -1962,12 +1996,55 @@ export function SessionModal({
                             typeof incorrectWatch === 'number' && Number.isFinite(incorrectWatch)
                               ? incorrectWatch
                               : Number(incorrectWatch) || 0;
+                          const mobileGoalSummaryLabel = isAdhocSessionTargetId(selectedGoalId)
+                            ? (storedTitle.trim() ? storedTitle : 'Ad-hoc target')
+                            : (selectedGoal?.title ?? selectedGoalId);
+                          const captureDetailsOpen =
+                            !isSessionCaptureNarrow || mobileCaptureOpenGoalId === selectedGoalId;
                           return (
-                            <div
+                            <details
                               key={selectedGoalId}
-                              className="rounded-lg border border-indigo-100 bg-white/80 p-3 dark:border-indigo-900/40 dark:bg-dark-lighter/40"
+                              open={captureDetailsOpen}
+                              onToggle={(event) => {
+                                if (!isSessionCaptureNarrow) {
+                                  return;
+                                }
+                                setMobileCaptureOpenGoalId(
+                                  event.currentTarget.open ? selectedGoalId : null,
+                                );
+                              }}
+                              className="group rounded-lg border border-indigo-100 bg-white/80 p-3 dark:border-indigo-900/40 dark:bg-dark-lighter/40"
+                              data-testid={`session-modal-goal-capture-${selectedGoalId}`}
                             >
-                              <div className="flex items-start justify-between gap-2">
+                              <summary className="mb-0 flex cursor-pointer list-none items-center gap-2 rounded-md px-0.5 py-1 sm:hidden [&::-webkit-details-marker]:hidden">
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-left text-xs font-semibold uppercase tracking-wide text-indigo-800 dark:text-indigo-200">
+                                    {mobileGoalSummaryLabel}
+                                  </p>
+                                  <p className="mt-0.5 text-left text-[11px] tabular-nums text-gray-600 dark:text-gray-400">
+                                    Trials +{correctDisplay} · −{incorrectDisplay}
+                                  </p>
+                                </div>
+                                {isAdhocSessionTargetId(selectedGoalId) ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      removeAdhocSessionTarget(selectedGoalId);
+                                    }}
+                                    className="shrink-0 rounded-full p-2 text-indigo-700 hover:bg-indigo-100 dark:text-indigo-200 dark:hover:bg-indigo-900/40"
+                                    aria-label="Remove ad-hoc target"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                ) : null}
+                                <ChevronDown
+                                  className="h-4 w-4 shrink-0 text-indigo-700 transition-transform group-open:rotate-180 dark:text-indigo-200"
+                                  aria-hidden
+                                />
+                              </summary>
+                              <div className="hidden sm:flex sm:items-start sm:justify-between sm:gap-2">
                                 {isAdhocSessionTargetId(selectedGoalId) ? (
                                   <div className="min-w-0 flex-1">
                                     <label
@@ -2003,9 +2080,29 @@ export function SessionModal({
                                   </button>
                                 )}
                               </div>
+                              {isAdhocSessionTargetId(selectedGoalId) ? (
+                                <div className="mt-3 sm:hidden">
+                                  <label
+                                    htmlFor={`adhoc-title-mobile-${selectedGoalId}`}
+                                    className="block text-[11px] font-medium uppercase tracking-wide text-indigo-800 dark:text-indigo-200"
+                                  >
+                                    Target title
+                                  </label>
+                                  <input
+                                    id={`adhoc-title-mobile-${selectedGoalId}`}
+                                    value={storedTitle}
+                                    onChange={(event) =>
+                                      updateStoredGoalLabelAtId(selectedGoalId, event.target.value)
+                                    }
+                                    className="mt-1 w-full rounded-md border border-indigo-200 bg-white px-2 py-1.5 text-sm font-semibold text-indigo-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-indigo-800 dark:bg-dark dark:text-indigo-100"
+                                    placeholder="Name this target"
+                                    autoComplete="off"
+                                  />
+                                </div>
+                              ) : null}
                               <label
                                 htmlFor={`goal-note-${selectedGoalId}`}
-                                className="mt-2 block text-xs font-medium text-gray-600 dark:text-gray-300"
+                                className="mt-3 block text-xs font-medium text-gray-600 dark:text-gray-300 sm:mt-2"
                               >
                                 Per-goal note
                               </label>
@@ -2060,7 +2157,7 @@ export function SessionModal({
                                   </p>
                                 )}
                                 <div className="mt-3 flex flex-wrap items-center gap-3">
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-xs font-medium text-gray-700 dark:text-gray-300">+</span>
                                     <button
                                       type="button"
@@ -2081,8 +2178,25 @@ export function SessionModal({
                                     >
                                       −
                                     </button>
+                                    <button
+                                      type="button"
+                                      aria-label="Add 5 correct trials"
+                                      className="rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50 dark:border-emerald-800 dark:bg-dark-lighter dark:text-emerald-100 dark:hover:bg-emerald-950/40"
+                                      onClick={() => bumpTrialCount(selectedGoalId, 'metric_value', 5)}
+                                    >
+                                      +5
+                                    </button>
+                                    <button
+                                      type="button"
+                                      aria-label="Subtract 5 correct trials"
+                                      disabled={correctDisplay < 5}
+                                      className="rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-emerald-800 dark:bg-dark-lighter dark:text-emerald-100 dark:hover:bg-emerald-950/40"
+                                      onClick={() => bumpTrialCount(selectedGoalId, 'metric_value', -5)}
+                                    >
+                                      −5
+                                    </button>
                                   </div>
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-xs font-medium text-gray-700 dark:text-gray-300">−</span>
                                     <button
                                       type="button"
@@ -2102,6 +2216,23 @@ export function SessionModal({
                                       onClick={() => bumpTrialCount(selectedGoalId, 'incorrect_trials', -1)}
                                     >
                                       −
+                                    </button>
+                                    <button
+                                      type="button"
+                                      aria-label="Add 5 incorrect or no-response trials"
+                                      className="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-semibold text-rose-800 shadow-sm hover:bg-rose-50 dark:border-rose-800 dark:bg-dark-lighter dark:text-rose-100 dark:hover:bg-rose-950/40"
+                                      onClick={() => bumpTrialCount(selectedGoalId, 'incorrect_trials', 5)}
+                                    >
+                                      +5
+                                    </button>
+                                    <button
+                                      type="button"
+                                      aria-label="Subtract 5 incorrect trials"
+                                      disabled={incorrectDisplay < 5}
+                                      className="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-semibold text-rose-800 shadow-sm hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-800 dark:bg-dark-lighter dark:text-rose-100 dark:hover:bg-rose-950/40"
+                                      onClick={() => bumpTrialCount(selectedGoalId, 'incorrect_trials', -5)}
+                                    >
+                                      −5
                                     </button>
                                   </div>
                                 </div>
@@ -2135,7 +2266,7 @@ export function SessionModal({
                                   placeholder="Record prompts used and client reactions for these trials..."
                                 />
                               </div>
-                            </div>
+                            </details>
                           );
                         })}
                       </div>

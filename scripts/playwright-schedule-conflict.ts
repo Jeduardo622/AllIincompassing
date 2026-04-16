@@ -103,7 +103,9 @@ async function openSessionModal(page: Page) {
     const detail = { start_time: now.toISOString() };
     window.dispatchEvent(new CustomEvent('openScheduleModal', { detail }));
   });
-  const modal = page.locator('[role="dialog"]:has-text("New Session"), [role="dialog"]:has-text("Edit Session")');
+  const modal = page.locator(
+    '[role="dialog"]:has-text("New Session"), [role="dialog"]:has-text("Edit Session"), [role="dialog"]:has-text("Live session")',
+  );
   await modal.waitFor({ state: 'visible', timeout: 5000 });
 }
 

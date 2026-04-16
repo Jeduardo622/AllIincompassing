@@ -1,5 +1,5 @@
 /**
- * Proves Schedule > Edit Session (in progress) can save ad-hoc session capture rows:
+ * Proves Schedule > Live session (in progress) can save ad-hoc session capture rows:
  * POST /api/session-notes/upsert succeeds and returns goal_notes keys matching adhoc-skill-*.
  *
  * Requires the same Playwright env contract as other non-AI session scripts (see playwright-preflight).
@@ -79,7 +79,7 @@ const openEditSessionModalFromUrl = async (page: Page, scheduleUrl: string, sess
       waitUntil: "networkidle",
       timeout: 60000,
     });
-    const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session/i });
+    const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
     try {
       await dialog.waitFor({ state: "visible", timeout: 12_000 });
       return;
@@ -87,7 +87,7 @@ const openEditSessionModalFromUrl = async (page: Page, scheduleUrl: string, sess
       await page.waitForTimeout(500 + attempt * 250);
     }
   }
-  throw new Error("Edit Session modal did not open from schedule deep link.");
+  throw new Error("Session modal (Edit Session / Live session) did not open from schedule deep link.");
 }
 
 async function waitForSessionStatus(sessionId: string, status: string, timeoutMs = 120_000): Promise<void> {
@@ -214,7 +214,7 @@ async function run(): Promise<void> {
 
     await withStepTimeout("open-modal-and-save-adhoc-capture", async () => {
       await openEditSessionModalFromUrl(activePage, scheduleUrl, booked.sessionId);
-      const editDialog = activePage.locator('[role="dialog"]').filter({ hasText: /Edit Session/i });
+      const editDialog = activePage.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
       const capture = editDialog.getByTestId("session-modal-capture-section");
       await capture.waitFor({ state: "visible", timeout: 30_000 });
 
@@ -230,7 +230,7 @@ async function run(): Promise<void> {
         (res) => res.url().includes("/api/session-notes/upsert") && res.request().method() === "POST",
         { timeout: 120_000 },
       );
-      await activePage.getByRole("button", { name: /Save Session Details/i }).click();
+      await activePage.getByRole("button", { name: /Save progress/i }).click();
       const res = await upsertPromise;
       assert.equal(res.ok(), true, `session-notes upsert failed: HTTP ${res.status()}`);
       const body = (await res.json()) as {

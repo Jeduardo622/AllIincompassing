@@ -345,7 +345,7 @@ const openEditSessionModalFromUrl = async (page: Page, scheduleUrl: string, sess
       waitUntil: "networkidle",
       timeout: 60000,
     });
-    const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session/i });
+    const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
     try {
       await dialog.waitFor({ state: "visible", timeout: 12_000 });
       return;
@@ -354,7 +354,7 @@ const openEditSessionModalFromUrl = async (page: Page, scheduleUrl: string, sess
     }
   }
   throw new Error(
-    "Edit Session modal did not open from schedule deep link; session may not be loaded in schedule data yet.",
+    "Session modal (Edit Session / Live session) did not open from schedule deep link; session may not be loaded in schedule data yet.",
   );
 };
 
@@ -369,7 +369,9 @@ async function openSessionModal(page: Page) {
     browserGlobal.dispatchEvent(new browserGlobal.CustomEvent("openScheduleModal", { detail: { start_time: now.toISOString() } }));
   });
   await page
-    .locator('[role="dialog"]:has-text("New Session"), [role="dialog"]:has-text("Edit Session")')
+    .locator(
+      '[role="dialog"]:has-text("New Session"), [role="dialog"]:has-text("Edit Session"), [role="dialog"]:has-text("Live session")',
+    )
     .first()
     .waitFor({ state: "visible", timeout: 10_000 });
 }
@@ -688,7 +690,7 @@ async function startSessionViaScheduleModal(
   const startButton = page.getByRole("button", { name: /^Start Session$/i });
   await startButton.waitFor({ state: "visible", timeout: 20_000 });
   await expectStartButtonEnabled(page, startButton);
-  const editDialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session/i });
+  const editDialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
 
   let uiEmittedStart = false;
   try {
@@ -729,7 +731,7 @@ async function markTerminalViaScheduleModal(
   strictMode: boolean,
 ): Promise<void> {
   await openEditSessionModalFromUrl(page, scheduleUrl, sessionId);
-  const editDialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session/i });
+  const editDialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
   await page.locator("#status-select").selectOption(terminalStatus);
   page.once("dialog", (dialog) => {
     void dialog.accept();

@@ -356,7 +356,9 @@ async function openSessionModal(page: Page) {
     browserGlobal.dispatchEvent(new browserGlobal.CustomEvent("openScheduleModal", { detail: { start_time: now.toISOString() } }));
   });
   await page
-    .locator('[role="dialog"]:has-text("New Session"), [role="dialog"]:has-text("Edit Session")')
+    .locator(
+      '[role="dialog"]:has-text("New Session"), [role="dialog"]:has-text("Edit Session"), [role="dialog"]:has-text("Live session")',
+    )
     .first()
     .waitFor({ state: "visible", timeout: 10_000 });
 }

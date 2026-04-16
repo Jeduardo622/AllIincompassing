@@ -1,0 +1,52 @@
+{
+  "target": "https://app.allincompassing.ai",
+  "timestamp": "2026-04-15T03:30:10.716Z",
+  "summary": {
+    "passed": 2,
+    "failed": 1,
+    "skipped": 0,
+    "blocked": 0
+  },
+  "auth": {
+    "attempted": true,
+    "success": true
+  },
+  "routes": [
+    {
+      "route": "/schedule",
+      "status": "passed",
+      "url": "https://app.allincompassing.ai/schedule",
+      "checks": [
+        "Schedule heading is visible",
+        "Day view control is visible",
+        "Week view control is visible"
+      ],
+      "errors": []
+    },
+    {
+      "route": "/clients",
+      "status": "passed",
+      "url": "https://app.allincompassing.ai/clients",
+      "checks": [
+        "Clients heading is visible",
+        "Search clients input is visible",
+        "Found at least one client details link"
+      ],
+      "errors": []
+    },
+    {
+      "route": "/clients/:clientId",
+      "status": "failed",
+      "url": "https://app.allincompassing.ai/clients/0082a5fb-faa9-4811-b122-5e55bb46938b",
+      "checks": [],
+      "errors": [
+        "locator.waitFor: Timeout 10000ms exceeded.\nCall log:\n  - waiting for getByRole('heading', { name: /client records:/i }).first() to be visible\n"
+      ],
+      "screenshotPath": "C:\\Users\\test\\Desktop\\AllIincompassing\\artifacts\\latest\\playwright-client-routes-client-details-1776223829208.png"
+    }
+  ],
+  "consoleErrors": [
+    "[ERROR] Failed to fetch profile record {scope: authContext.fetchProfile, userId: bcfba991-4c9b-48bd-8ede-086ac4c3954d}"
+  ],
+  "networkErrors": []
+}

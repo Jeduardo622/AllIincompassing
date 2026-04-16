@@ -26,6 +26,8 @@ Ensure all **therapist/app** writes to `client_session_notes` go through the ser
 |----------|------|---------|
 | `src/lib/session-notes.ts` | Upsert (create/update) | **`callApi('/api/session-notes/upsert', …)`** via `invokeSessionNoteUpsertApi` — **authoritative** |
 
+Optional request body field **`captureMergeGoalIds`** (camelCase JSON): when **updating** an existing row, the server merges **`goal_notes`** and **`goal_measurements`** only for those goal keys from the payload and leaves other goal keys as stored (see `src/server/api/session-notes-upsert.ts`). Live session **Save skills** / **Save behaviors** pass this list from `SessionModal` via `Schedule` → `upsertClientSessionNoteForSession`; **Save progress** omits it (full map write).
+
 No other files under scoped `src/` perform `insert` / `update` / `upsert` / `delete` on `client_session_notes` (verified by manual grep and `client-session-notes-direct-write-guard.test.ts`).
 
 ## Reads (not Stream A writes)

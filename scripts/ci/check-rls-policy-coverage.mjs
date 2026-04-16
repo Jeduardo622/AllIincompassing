@@ -55,7 +55,31 @@ const main = () => {
   const errors = [];
   for (const migrationPath of addedMigrations) {
     const absolutePath = path.join(ROOT, migrationPath);
-    const sql = readFileSync(absolutePath, 'utf8').toLowerCase();
+    /** @type {string} */
+    let rawSql;
+    try {
+      rawSql = readFileSync(absolutePath, 'utf8');
+    } catch (err) {
+      const code = /** @type {NodeJS.ErrnoException} */ (err)?.code;
+      if (code !== 'ENOENT') {
+        throw err;
+      }
+      // Staged/worktree renames can leave `git diff HEAD~1 HEAD` listing the pre-rename path while
+      // only the new filename exists on disk; read the blob from HEAD when the path is missing.
+      try {
+        rawSql = execSync(`git show HEAD:${migrationPath.replace(/\\/g, '/')}`, {
+          cwd: ROOT,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+        });
+      } catch (inner) {
+        console.error(
+          `RLS policy coverage: migration path missing on disk and not readable from HEAD: ${migrationPath}`,
+        );
+        throw inner;
+      }
+    }
+    const sql = rawSql.toLowerCase();
     const enablesRls = sql.includes('enable row level security');
     const createsPolicy = sql.includes('create policy');
 

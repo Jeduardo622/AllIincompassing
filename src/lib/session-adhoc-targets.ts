@@ -6,13 +6,31 @@ import {
 } from './goal-measurements';
 import { showGoalOnBxTab } from './session-goal-tracks';
 
-const ADHOC_ID_RE = /^adhoc-(skill|bx)-/i;
+/** `adhoc-skill-` / `adhoc-bx-` plus a UUID suffix (same shape as {@link createAdhocSessionTargetId}). */
+const ADHOC_SESSION_TARGET_RE = /^adhoc-(skill|bx)-(.+)$/i;
+
+const parseAdhocSessionTargetSegments = (goalId: string): { kind: 'skill' | 'bx' } | null => {
+  const t = goalId.trim();
+  const m = t.match(ADHOC_SESSION_TARGET_RE);
+  if (!m?.[1] || m[2] === undefined) {
+    return null;
+  }
+  const suffix = m[2];
+  if (!z.string().uuid().safeParse(suffix).success) {
+    return null;
+  }
+  const kindRaw = m[1].toLowerCase();
+  if (kindRaw !== 'skill' && kindRaw !== 'bx') {
+    return null;
+  }
+  return { kind: kindRaw };
+};
 
 export function isAdhocSessionTargetId(goalId: string | undefined | null): boolean {
   if (!goalId || typeof goalId !== 'string') {
     return false;
   }
-  return ADHOC_ID_RE.test(goalId.trim());
+  return parseAdhocSessionTargetSegments(goalId) !== null;
 }
 
 /** Keys allowed on `client_session_notes.goal_ids`, `goal_notes`, and `goal_measurements` maps. */
@@ -29,12 +47,7 @@ export function isValidSessionNoteGoalKey(goalId: string): boolean {
 
 /** Returns kind from id, or null if not an ad-hoc session target id. */
 export function getAdhocSessionTargetKind(goalId: string): 'skill' | 'bx' | null {
-  const m = goalId.trim().match(ADHOC_ID_RE);
-  if (!m?.[1]) {
-    return null;
-  }
-  const k = m[1].toLowerCase();
-  return k === 'skill' || k === 'bx' ? k : null;
+  return parseAdhocSessionTargetSegments(goalId)?.kind ?? null;
 }
 
 export function createAdhocSessionTargetId(kind: 'skill' | 'bx'): string {

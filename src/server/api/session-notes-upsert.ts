@@ -81,6 +81,11 @@ const upsertSchema = z.object({
   goalMeasurements: z.record(z.unknown()).nullable().optional(),
   narrative: z.string().default(""),
   isLocked: z.boolean().default(false),
+  /** When updating an existing note, only these goal keys read `goalNotes` / `goalMeasurements` from the request; other goals keep server values. */
+  captureMergeGoalIds: z
+    .array(z.string().min(1).refine((id) => isValidSessionNoteGoalKey(id)))
+    .max(200)
+    .optional(),
 });
 
 const normalizeTime = (value: string): string => {
@@ -112,6 +117,57 @@ const trimGoalNotes = (goalNotes: Record<string, string>): Record<string, string
   );
 
   return Object.keys(cleaned).length > 0 ? cleaned : null;
+};
+
+const mergeScopedGoalCaptureFromExisting = (args: {
+  captureMergeGoalIds: readonly string[];
+  existingRow: SessionNoteRow;
+  incomingGoalNotes: Record<string, string>;
+  incomingGoalMeasurements: Record<string, unknown> | null | undefined;
+}): {
+  goalNotes: Record<string, string>;
+  goalMeasurements: Record<string, unknown> | null;
+} => {
+  const existingNotes = { ...((args.existingRow.goal_notes as Record<string, string> | null) ?? {}) };
+  const existingMeasNormalized = normalizeGoalMeasurements(args.existingRow.goal_measurements) ?? {};
+  const mergedMeasPlain: Record<string, unknown> = Object.fromEntries(
+    Object.entries(existingMeasNormalized).map(([id, entry]) => [id, entry as unknown]),
+  );
+  const mergedNotes = { ...existingNotes };
+
+  for (const id of args.captureMergeGoalIds) {
+    if (!isValidSessionNoteGoalKey(id)) {
+      continue;
+    }
+    if (Object.prototype.hasOwnProperty.call(args.incomingGoalNotes, id)) {
+      const raw = args.incomingGoalNotes[id];
+      const trimmed = typeof raw === "string" ? raw.trim() : "";
+      if (trimmed.length > 0) {
+        mergedNotes[id] = trimmed;
+      } else {
+        delete mergedNotes[id];
+      }
+    }
+
+    const incomingMap = args.incomingGoalMeasurements;
+    if (incomingMap && typeof incomingMap === "object" && Object.prototype.hasOwnProperty.call(incomingMap, id)) {
+      const normalized = normalizeGoalMeasurementEntry(
+        incomingMap[id as keyof typeof incomingMap],
+        undefined,
+        { fallbackMetricUnit: null },
+      );
+      if (normalized) {
+        mergedMeasPlain[id] = normalized;
+      } else {
+        delete mergedMeasPlain[id];
+      }
+    }
+  }
+
+  return {
+    goalNotes: mergedNotes,
+    goalMeasurements: Object.keys(mergedMeasPlain).length > 0 ? mergedMeasPlain : null,
+  };
 };
 
 const normalizeGoalMeasurements = (
@@ -329,9 +385,6 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     return errorResponse(request, "validation_error", "End time must be later than start time.");
   }
 
-  const normalizedGoalNotes = trimGoalNotes(payload.goalNotes);
-  const normalizedGoalMeasurements = normalizeGoalMeasurements(payload.goalMeasurements ?? null);
-
   const { supabaseUrl, anonKey } = getSupabaseConfig();
   const headers = {
     "Content-Type": "application/json",
@@ -394,6 +447,32 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
   if (existingNote?.is_locked) {
     return errorResponse(request, "conflict", "Session note is locked and cannot be edited.", { status: 409 });
   }
+
+  const mergeGoalIds = payload.captureMergeGoalIds ?? [];
+  const shouldMergeScopedCapture = Boolean(existingNote) && mergeGoalIds.length > 0;
+
+  let goalNotesForNormalize = payload.goalNotes;
+  let goalMeasurementsForNormalize: Record<string, unknown> | null | undefined = payload.goalMeasurements ?? null;
+
+  if (shouldMergeScopedCapture && existingNote) {
+    const existingRowFull = await fetchSessionNoteById(supabaseUrl, headers, organizationId, existingNote.id);
+    if (!existingRowFull) {
+      return errorResponse(request, "upstream_error", "Unable to load existing session note for merge", {
+        status: 502,
+      });
+    }
+    const merged = mergeScopedGoalCaptureFromExisting({
+      captureMergeGoalIds: mergeGoalIds,
+      existingRow: existingRowFull,
+      incomingGoalNotes: payload.goalNotes,
+      incomingGoalMeasurements: payload.goalMeasurements ?? null,
+    });
+    goalNotesForNormalize = merged.goalNotes;
+    goalMeasurementsForNormalize = merged.goalMeasurements;
+  }
+
+  const normalizedGoalNotes = trimGoalNotes(goalNotesForNormalize);
+  const normalizedGoalMeasurements = normalizeGoalMeasurements(goalMeasurementsForNormalize ?? null);
 
   const alignedGoals = alignSessionNoteGoalPayload({
     goalIds: payload.goalIds,

@@ -447,6 +447,9 @@ describe('SessionModal', () => {
     expect(screen.getByTestId('session-modal-notes-guidance')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Save progress/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Close Session$/i })).toBeInTheDocument();
+    expect(screen.getByTestId('session-modal-capture-save-row')).toBeInTheDocument();
+    expect(screen.getByTestId('session-modal-save-capture-skills')).toBeInTheDocument();
+    expect(screen.getByTestId('session-modal-save-capture-behaviors')).toBeInTheDocument();
   });
 
   it('keeps update-session submit copy when edit session has not started', () => {
@@ -475,6 +478,7 @@ describe('SessionModal', () => {
     expect(screen.getByRole('button', { name: /Update Session/i })).toBeInTheDocument();
     expect(screen.queryByTestId('session-modal-in-progress-guidance')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Close Session$/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('session-modal-capture-save-row')).not.toBeInTheDocument();
   });
 
   it('does not show in-progress guidance for completed sessions with started_at', async () => {

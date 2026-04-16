@@ -66,6 +66,8 @@ export interface SessionModalClinicalNotesPayload {
   session_note_goals_addressed?: string[];
   session_note_authorization_id?: string;
   session_note_service_code?: string;
+  /** When set, POST /api/session-notes/upsert merges only these goal keys from this payload (server-authoritative). */
+  session_note_capture_merge_goal_ids?: string[];
 }
 
 export type SessionModalSubmitData = Partial<Session> & SessionModalClinicalNotesPayload;
@@ -681,7 +683,10 @@ export function SessionModal({
     resolvedTimeZone,
   ]);
 
-  const handleFormSubmit = async (data: SessionModalFormValues) => {
+  const handleFormSubmit = async (
+    data: SessionModalFormValues,
+    options?: { captureMergeGoalIds?: string[] },
+  ) => {
     if (conflicts.length > 0) {
       if (!window.confirm('There are scheduling conflicts. Do you want to proceed anyway?')) {
         return;
@@ -756,16 +761,31 @@ export function SessionModal({
         working.session_note_authorization_id?.trim() || firstApprovedAuth?.id || '';
       const resolvedServiceCode =
         working.session_note_service_code?.trim() || firstDefaultServiceCode;
-      const hasCaptureInputFromSubmit =
-        Object.values(working.session_note_goal_notes ?? {}).some(
-          (value) => typeof value === 'string' && value.trim().length > 0,
-        ) ||
-        Object.entries(working.session_note_goal_measurements ?? {}).some(([goalKey, rawValue]) =>
-          hasMeaningfulGoalMeasurementEntry(
-            normalizeGoalMeasurementEntry(rawValue, goals.find((goal) => goal.id === goalKey)),
-          ),
-        );
-      if (hasCaptureInputFromSubmit) {
+      const mergeGoalIds = options?.captureMergeGoalIds?.filter((id) => id.trim().length > 0) ?? [];
+      const isPartialCaptureSave = mergeGoalIds.length > 0;
+      const hasCaptureInputFromSubmit = isPartialCaptureSave
+        ? mergeGoalIds.some((goalKey) => {
+            const noteText = (working.session_note_goal_notes?.[goalKey] ?? '').trim();
+            if (noteText.length > 0) {
+              return true;
+            }
+            const rawValue = working.session_note_goal_measurements?.[goalKey];
+            return hasMeaningfulGoalMeasurementEntry(
+              normalizeGoalMeasurementEntry(rawValue, goals.find((goal) => goal.id === goalKey)),
+            );
+          })
+        : Object.values(working.session_note_goal_notes ?? {}).some(
+            (value) => typeof value === 'string' && value.trim().length > 0,
+          ) ||
+          Object.entries(working.session_note_goal_measurements ?? {}).some(([goalKey, rawValue]) =>
+            hasMeaningfulGoalMeasurementEntry(
+              normalizeGoalMeasurementEntry(rawValue, goals.find((goal) => goal.id === goalKey)),
+            ),
+          );
+      const goalIdsRequiringNotes = isPartialCaptureSave
+        ? mergedGoalIds.filter((id) => mergeGoalIds.includes(id))
+        : mergedGoalIds;
+      if (hasCaptureInputFromSubmit || isPartialCaptureSave) {
         if (!session?.id) {
           showError('Session capture can only be saved for existing sessions.');
           return;
@@ -776,7 +796,7 @@ export function SessionModal({
           );
           return;
         }
-        for (const trackedGoalId of mergedGoalIds) {
+        for (const trackedGoalId of goalIdsRequiringNotes) {
           const goalNoteText = normalizedGoalNoteMap[trackedGoalId]?.trim() ?? '';
           if (!goalNoteText) {
             const goalLabel =
@@ -802,6 +822,7 @@ export function SessionModal({
           )),
         session_note_authorization_id: resolvedAuthorizationId,
         session_note_service_code: resolvedServiceCode,
+        ...(isPartialCaptureSave ? { session_note_capture_merge_goal_ids: mergeGoalIds } : {}),
         goal_ids: sessionGoalIds,
         // If a timezone prop is provided, normalize to UTC for consumers expecting Z times
         start_time: timeZone ? toUtcSessionIsoString(working.start_time, resolvedTimeZone) : working.start_time,
@@ -962,16 +983,21 @@ export function SessionModal({
   });
   const [mobileCaptureOpenGoalId, setMobileCaptureOpenGoalId] = useState<string | null>(null);
 
+  const sessionCaptureSkillGoalIds = useMemo(
+    () =>
+      sessionNoteGoalIds.filter((id) => showGoalOnSkillCaptureTab(goals.find((g) => g.id === id), id)),
+    [sessionNoteGoalIds, goals],
+  );
+  const sessionCaptureBxGoalIds = useMemo(
+    () => sessionNoteGoalIds.filter((id) => showGoalOnBxCaptureTab(goals.find((g) => g.id === id), id)),
+    [sessionNoteGoalIds, goals],
+  );
   const sessionCaptureGoalIdsForTab = useMemo(() => {
     if (sessionCaptureTab === 'skill') {
-      return sessionNoteGoalIds.filter((id) =>
-        showGoalOnSkillCaptureTab(goals.find((g) => g.id === id), id),
-      );
+      return sessionCaptureSkillGoalIds;
     }
-    return sessionNoteGoalIds.filter((id) =>
-      showGoalOnBxCaptureTab(goals.find((g) => g.id === id), id),
-    );
-  }, [sessionCaptureTab, sessionNoteGoalIds, goals]);
+    return sessionCaptureBxGoalIds;
+  }, [sessionCaptureBxGoalIds, sessionCaptureSkillGoalIds, sessionCaptureTab]);
 
   const bumpTrialCount = useCallback(
     (goalId: string, field: 'metric_value' | 'incorrect_trials', delta: number) => {
@@ -1949,6 +1975,55 @@ export function SessionModal({
                         BX
                       </button>
                     </div>
+                    {isInProgressSession ? (
+                      <div
+                        className="flex flex-col gap-2 rounded-lg border border-indigo-200/80 bg-white/95 p-3 shadow-sm dark:border-indigo-800/60 dark:bg-dark-lighter/90"
+                        data-testid="session-modal-capture-save-row"
+                      >
+                        <p className="text-[11px] leading-snug text-indigo-800 dark:text-indigo-200">
+                          Each button writes only that tab&apos;s goal rows to the session note; the other tab keeps its
+                          last saved values until you save it or use Save progress for everything.
+                        </p>
+                        <div className="flex flex-wrap gap-2" role="group" aria-label="Save session capture">
+                          <button
+                            type="button"
+                            data-testid="session-modal-save-capture-skills"
+                            disabled={
+                              isSubmitting ||
+                              isDependentDataLoading ||
+                              isLoadingAlternatives ||
+                              sessionCaptureSkillGoalIds.length === 0
+                            }
+                            onClick={() =>
+                              void handleSubmit((fd) =>
+                                handleFormSubmit(fd, { captureMergeGoalIds: sessionCaptureSkillGoalIds }),
+                              )()
+                            }
+                            className="inline-flex min-h-10 flex-1 items-center justify-center rounded-lg border border-indigo-300 bg-indigo-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-500 dark:focus:ring-offset-dark sm:text-sm"
+                          >
+                            Save skills
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="session-modal-save-capture-behaviors"
+                            disabled={
+                              isSubmitting ||
+                              isDependentDataLoading ||
+                              isLoadingAlternatives ||
+                              sessionCaptureBxGoalIds.length === 0
+                            }
+                            onClick={() =>
+                              void handleSubmit((fd) =>
+                                handleFormSubmit(fd, { captureMergeGoalIds: sessionCaptureBxGoalIds }),
+                              )()
+                            }
+                            className="inline-flex min-h-10 flex-1 items-center justify-center rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-500 dark:focus:ring-offset-dark sm:text-sm"
+                          >
+                            Save behaviors
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                     {sessionCaptureGoalIdsForTab.length === 0 ? (
                       <p className="text-sm text-indigo-900/90 dark:text-indigo-200/90">
                         No targets on this tab. Switch tabs, add an ad-hoc target above, or adjust goals under People

@@ -495,4 +495,111 @@ describe("sessionNotesUpsertHandler", () => {
     expect(response.status).toBe(400);
     expect(payload.error).toMatch(/client does not match/i);
   });
+
+  it("merges only captureMergeGoalIds into an existing note on update", async () => {
+    const gidA = "44444444-4444-4444-8444-444444444444";
+    const gidB = "55555555-5555-4555-8555-555555555555";
+    const sessionId = "66666666-6666-4666-8666-666666666666";
+    const noteId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+    const existingRow = buildSessionNoteRow(noteId);
+    existingRow.session_id = sessionId;
+    existingRow.goal_ids = [gidA, gidB];
+    existingRow.goals_addressed = ["Goal A", "Goal B"];
+    existingRow.goal_notes = { [gidA]: "server kept skill note", [gidB]: "server old bx note" };
+    existingRow.goal_measurements = {
+      [gidA]: {
+        version: 1,
+        data: {
+          metric_label: "Count",
+          metric_unit: null,
+          metric_value: 1,
+          incorrect_trials: null,
+          opportunities: null,
+          prompt_level: null,
+          note: null,
+          trial_prompt_note: null,
+        },
+      },
+    };
+
+    const savedAfterPatch = {
+      ...existingRow,
+      goal_notes: { [gidA]: "server kept skill note", [gidB]: "merged bx from client" },
+    };
+
+    let fullNoteSelectGets = 0;
+
+    const fetchJsonMock = vi.mocked(fetchJson);
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      const method = init?.method ?? "GET";
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (
+        requestUrl.includes("/rest/v1/client_session_notes?") &&
+        method === "GET" &&
+        requestUrl.includes(`session_id=eq.${encodeURIComponent(sessionId)}`)
+      ) {
+        return { ok: true, status: 200, data: [{ id: noteId, is_locked: false }] };
+      }
+      if (
+        requestUrl.includes("/rest/v1/client_session_notes?") &&
+        method === "GET" &&
+        requestUrl.includes(`id=eq.${encodeURIComponent(noteId)}`) &&
+        !requestUrl.includes("session_id=eq.")
+      ) {
+        fullNoteSelectGets += 1;
+        if (fullNoteSelectGets === 1) {
+          return { ok: true, status: 200, data: [existingRow] };
+        }
+        return { ok: true, status: 200, data: [savedAfterPatch] };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?id=eq.") && method === "PATCH") {
+        const parsedBody = JSON.parse(String(init.body)) as { goal_notes?: Record<string, string> };
+        expect(parsedBody.goal_notes?.[gidA]).toBe("server kept skill note");
+        expect(parsedBody.goal_notes?.[gidB]).toBe("merged bx from client");
+        return { ok: true, status: 200, data: [{ id: noteId }] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl} ${method}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({
+          ...basePayload,
+          sessionId,
+          noteId: undefined,
+          goalIds: [gidA, gidB],
+          goalsAddressed: ["Goal A", "Goal B"],
+          goalNotes: {
+            [gidA]: "CLIENT STALE MUST NOT WIN",
+            [gidB]: "merged bx from client",
+          },
+          goalMeasurements: null,
+          captureMergeGoalIds: [gidB],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as { goal_notes?: Record<string, string> | null };
+    expect(json.goal_notes?.[gidA]).toBe("server kept skill note");
+    expect(json.goal_notes?.[gidB]).toBe("merged bx from client");
+  });
 });

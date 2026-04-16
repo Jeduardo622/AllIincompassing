@@ -172,6 +172,79 @@ describe("sessionNotesUpsertHandler", () => {
     expect(payload.goal_notes).toEqual({ "44444444-4444-4444-8444-444444444444": "covered" });
   });
 
+  it("merges goal_ids from goal_notes keys omitted in goalIds and pads goals_addressed", async () => {
+    const adhocId = "adhoc-skill-550e8400-e29b-41d4-a716-446655440000";
+    const fetchJsonMock = vi.mocked(fetchJson);
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.endsWith("/rest/v1/client_session_notes") && init?.method === "POST") {
+        const parsedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+        expect(parsedBody.goal_ids).toEqual(["44444444-4444-4444-8444-444444444444", adhocId]);
+        expect(parsedBody.goal_notes).toEqual({
+          "44444444-4444-4444-8444-444444444444": "covered",
+          [adhocId]: "adhoc only",
+        });
+        expect(parsedBody.goals_addressed).toEqual(["Goal A", "Session target"]);
+        return { ok: true, status: 201, data: [{ id: "note-merge" }] };
+      }
+      if (requestUrl.includes("select=id%2Cauthorization_id") && requestUrl.includes("id=eq.note-merge")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [
+            {
+              ...buildSessionNoteRow("note-merge"),
+              goal_ids: ["44444444-4444-4444-8444-444444444444", adhocId],
+              goal_notes: {
+                "44444444-4444-4444-8444-444444444444": "covered",
+                [adhocId]: "adhoc only",
+              },
+              goals_addressed: ["Goal A", "Session target"],
+            },
+          ],
+        };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({
+          ...basePayload,
+          goalIds: ["44444444-4444-4444-8444-444444444444"],
+          goalsAddressed: ["Goal A"],
+          goalNotes: {
+            "44444444-4444-4444-8444-444444444444": "covered",
+            [adhocId]: "adhoc only",
+          },
+          goalMeasurements: {},
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+  });
+
   it("creates a session note with ad-hoc goal ids alongside plan goal uuids", async () => {
     const adhocId = "adhoc-skill-550e8400-e29b-41d4-a716-446655440000";
     const fetchJsonMock = vi.mocked(fetchJson);

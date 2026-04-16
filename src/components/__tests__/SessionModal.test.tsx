@@ -1076,7 +1076,7 @@ describe('SessionModal', () => {
     await userEvent.click(screen.getByRole('button', { name: /Add 5 correct trials/i }));
     await userEvent.click(screen.getByRole('button', { name: /Increase correct trials/i }));
 
-    await userEvent.click(screen.getByRole('button', { name: /Save Session Details/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(

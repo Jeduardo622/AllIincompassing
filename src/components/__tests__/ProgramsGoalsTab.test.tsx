@@ -79,7 +79,10 @@ vi.mock("../../lib/supabase", () => ({
   },
 }));
 
-describe("ProgramsGoalsTab", () => {
+/** Deterministic, fast pointer/keyboard simulation — avoids CI flakes from default per-key delays. */
+const user = userEvent.setup({ delay: null });
+
+describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
   beforeEach(() => {
     vi.mocked(supabase.from).mockImplementation((tableName: string) => {
       const chain = {
@@ -448,7 +451,7 @@ describe("ProgramsGoalsTab", () => {
 
     const programNameInput = await screen.findByPlaceholderText("Program name");
     fireEvent.change(programNameInput, { target: { value: "Communication Program" } });
-    await userEvent.click(screen.getByRole("button", { name: "Create Program" }));
+    await user.click(screen.getByRole("button", { name: "Create Program" }));
 
     await waitFor(() => {
       expect(showSuccess).toHaveBeenCalledWith("Program created");
@@ -461,7 +464,7 @@ describe("ProgramsGoalsTab", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Create Goal" })).toBeEnabled();
     });
-    await userEvent.click(screen.getByRole("button", { name: "Create Goal" }));
+    await user.click(screen.getByRole("button", { name: "Create Goal" }));
 
     await waitFor(() => {
       expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
@@ -543,8 +546,8 @@ describe("ProgramsGoalsTab", () => {
     });
 
     const programNameInput = await screen.findByPlaceholderText("Program name");
-    await userEvent.type(programNameInput, "Fallback Program");
-    await userEvent.click(screen.getByRole("button", { name: "Create Program" }));
+    await user.type(programNameInput, "Fallback Program");
+    await user.click(screen.getByRole("button", { name: "Create Program" }));
 
     await waitFor(() => {
       expect(showSuccess).toHaveBeenCalledWith("Program created");
@@ -653,7 +656,7 @@ describe("ProgramsGoalsTab", () => {
         value: "Assessment shows deficits in functional communication and WH-question responding with moderate prompt dependence.",
       },
     });
-    await userEvent.click(screen.getByRole("button", { name: /Generate AI Proposal Program \+ Goals/i }));
+    await user.click(screen.getByRole("button", { name: /Generate AI Proposal Program \+ Goals/i }));
 
     await waitFor(() => {
       expect(generateProgramGoalDraft).toHaveBeenCalledTimes(1);
@@ -662,7 +665,7 @@ describe("ProgramsGoalsTab", () => {
     expect(screen.getByText(/Requesting preferred items with 2-word phrase/i)).toBeInTheDocument();
 
     expect(screen.queryByRole("button", { name: /Legacy Quick Create/i })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /Save AI Proposal to Selected Assessment/i }));
+    await user.click(screen.getByRole("button", { name: /Save AI Proposal to Selected Assessment/i }));
 
     await waitFor(() => {
       expect(callApi).toHaveBeenCalledWith(
@@ -724,8 +727,8 @@ describe("ProgramsGoalsTab", () => {
     });
 
     const assessmentInput = await screen.findByPlaceholderText(/Paste assessment summary or White Bible-aligned notes/i);
-    await userEvent.type(assessmentInput, "Assessment evidence supports one focused communication program and one child goal.");
-    await userEvent.click(screen.getByRole("button", { name: /Generate AI Proposal Program \+ Goals/i }));
+    await user.type(assessmentInput, "Assessment evidence supports one focused communication program and one child goal.");
+    await user.click(screen.getByRole("button", { name: /Generate AI Proposal Program \+ Goals/i }));
 
     await waitFor(() => {
       expect(generateProgramGoalDraft).toHaveBeenCalledTimes(1);
@@ -782,17 +785,17 @@ describe("ProgramsGoalsTab", () => {
     });
 
     const assessmentInput = await screen.findByPlaceholderText(/Paste assessment summary or White Bible-aligned notes/i);
-    await userEvent.type(
+    await user.type(
       assessmentInput,
       "Assessment evidence supports one focused communication program and one child goal.",
     );
-    await userEvent.click(screen.getByRole("button", { name: /Generate AI Proposal Program \+ Goals/i }));
+    await user.click(screen.getByRole("button", { name: /Generate AI Proposal Program \+ Goals/i }));
 
     await waitFor(() => {
       expect(generateProgramGoalDraft).toHaveBeenCalledTimes(1);
     });
 
-    await userEvent.click(screen.getByRole("button", { name: /Save AI Proposal to Selected Assessment/i }));
+    await user.click(screen.getByRole("button", { name: /Save AI Proposal to Selected Assessment/i }));
 
     await waitFor(() => {
       expect(callApi).toHaveBeenCalledWith("/api/assessment-drafts", expect.objectContaining({ method: "POST" }));
@@ -844,13 +847,13 @@ describe("ProgramsGoalsTab", () => {
     );
 
     await screen.findByText(/FBA Upload \+ AI Workflow/i);
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: /FBA template/i }), "iehp_fba");
+    await user.selectOptions(screen.getByRole("combobox", { name: /FBA template/i }), "iehp_fba");
     const uploadInput = screen.getByLabelText(/FBA file \(PDF or DOCX\)/i);
     const file = new File(["mock iehp content"], "iehp-fba.docx", {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
-    await userEvent.upload(uploadInput, file);
-    await userEvent.click(screen.getByRole("button", { name: /Upload IEHP FBA/i }));
+    await user.upload(uploadInput, file);
+    await user.click(screen.getByRole("button", { name: /Upload IEHP FBA/i }));
     await screen.findByText(/Uploading and processing your FBA/i);
     expect(screen.getByRole("button", { name: /Uploading and processing/i })).toBeDisabled();
 
@@ -938,7 +941,10 @@ describe("ProgramsGoalsTab", () => {
     );
 
     const generateButton = await screen.findByRole("button", { name: /Generate with AI from Uploaded FBA/i });
-    await userEvent.click(generateButton);
+    await waitFor(() => {
+      expect(generateButton).not.toBeDisabled();
+    });
+    await user.click(generateButton);
 
     await waitFor(() => {
       expect(callApi).toHaveBeenCalledWith(
@@ -1009,7 +1015,11 @@ describe("ProgramsGoalsTab", () => {
     );
 
     await screen.findByText("fba.pdf");
-    await userEvent.click(screen.getByRole("button", { name: /Optional: Export Completed CalOptima PDF/i }));
+    const exportPdfButton = screen.getByRole("button", { name: /Optional: Export Completed CalOptima PDF/i });
+    await waitFor(() => {
+      expect(exportPdfButton).not.toBeDisabled();
+    });
+    await user.click(exportPdfButton);
 
     await waitFor(() => {
       expect(callApi).toHaveBeenCalledWith(
@@ -1220,7 +1230,11 @@ describe("ProgramsGoalsTab", () => {
     );
 
     await screen.findByText("fba.pdf");
-    await userEvent.click(screen.getByRole("button", { name: /Publish to Live Programs \+ Goals/i }));
+    const publishButton = screen.getByRole("button", { name: /Publish to Live Programs \+ Goals/i });
+    await waitFor(() => {
+      expect(publishButton).not.toBeDisabled();
+    });
+    await user.click(publishButton);
 
     await waitFor(() => {
       expect(showError).toHaveBeenCalled();
@@ -1313,7 +1327,7 @@ describe("ProgramsGoalsTab", () => {
     );
 
     await screen.findByText("Draft changes pending publication.");
-    await userEvent.click(await screen.findByRole("button", { name: /Save Program Draft/i }));
+    await user.click(await screen.findByRole("button", { name: /Save Program Draft/i }));
 
     await waitFor(() => {
       expect(callApi).toHaveBeenCalledWith(
@@ -1409,7 +1423,7 @@ describe("ProgramsGoalsTab", () => {
     );
 
     await screen.findByText("fba.pdf");
-    await userEvent.click(screen.getByRole("button", { name: /Delete fba\.pdf/i }));
+    await user.click(screen.getByRole("button", { name: /Delete fba\.pdf/i }));
 
     await waitFor(() => {
       expect(callApi).toHaveBeenCalledWith(

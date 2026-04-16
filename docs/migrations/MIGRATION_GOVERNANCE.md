@@ -80,6 +80,8 @@ If **`reports/migration-triage-inventory.json`** (or human **`SUPERSEDED_DO_NOT_
 
 Merge-added migration checks (`scripts/ci/check-runtime-migration-parity.mjs`, `scripts/ci/runtime-migration-parity.mjs`) can treat a row as satisfied by **migration `name`** only when the hosted `schema_migrations.version` is **greater than or equal to** the repo filename version for that same `name`. If the hosted ledger recorded an **earlier** timestamp than the repo file for the same logical migration, CI may report the migration as missing even though the DDL already ran. The bounded fix is to **rename the repo migration file** so its version matches the hosted row (same SQL body), not to rewrite remote migration history.
 
+**Example — `repair_client_session_notes_goal_ids_if_still_uuid`:** the repo filename is `20260416141755_repair_client_session_notes_goal_ids_if_still_uuid.sql`. A hosted row with the **same `name`** and a **newer** version (for example `20260418100000_...`) is **not** a merge-parity failure under the rule above; audit with `select version, name from supabase_migrations.schema_migrations where name = 'repair_client_session_notes_goal_ids_if_still_uuid'` (and confirm `client_session_notes_goal_ids_text_array` is present). Do **not** replay the repair body on environments where `goal_ids` is already `text[]`, and avoid ad hoc `schema_migrations` edits except through an explicitly approved Supabase repair workflow.
+
 Changelog-style summary of the completed cleanup: [`RELEASE_NOTES.md`](../../RELEASE_NOTES.md#migration-ledger-parity-cleanup-operational-complete).
 
 ### Optional future work (out of scope for parity cleanup)

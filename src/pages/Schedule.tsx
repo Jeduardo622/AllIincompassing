@@ -41,6 +41,7 @@ import { useAuth } from "../lib/authContext";
 import { useActiveOrganizationId } from "../lib/organization";
 import { supabase } from "../lib/supabase";
 import { fetchLinkedClientIdsForTherapist } from "../lib/clients/therapistClientScope";
+import { hasMeaningfulGoalMeasurementEntry, normalizeGoalMeasurementEntry } from "../lib/goal-measurements";
 import { upsertClientSessionNoteForSession } from "../lib/session-notes";
 import {
   buildSessionSlotIndex,
@@ -110,6 +111,7 @@ const stripClinicalNoteFields = (data: ScheduleSubmitData): Partial<Session> => 
     session_note_goals_addressed: _sessionNoteGoalsAddressed,
     session_note_authorization_id: _sessionNoteAuthorizationId,
     session_note_service_code: _sessionNoteServiceCode,
+    session_note_capture_merge_goal_ids: _sessionNoteCaptureMergeGoalIds,
     ...sessionPayload
   } = data;
   return sessionPayload;
@@ -117,6 +119,7 @@ const stripClinicalNoteFields = (data: ScheduleSubmitData): Partial<Session> => 
 
 const buildClinicalNoteDraft = (
   data: SessionModalClinicalNotesPayload,
+  options?: { captureMergeGoalIds?: readonly string[] },
 ): {
   narrative: string;
   goalNotes: Record<string, string>;
@@ -149,7 +152,26 @@ const buildClinicalNoteDraft = (
   });
   const authorizationId = data.session_note_authorization_id?.trim() ?? "";
   const serviceCode = data.session_note_service_code?.trim() ?? "";
-  if (
+  const mergeIds = (options?.captureMergeGoalIds ?? []).filter(
+    (id): id is string => typeof id === "string" && id.trim().length > 0,
+  );
+  if (mergeIds.length > 0) {
+    const scopeHasContent =
+      narrative.length > 0 ||
+      mergeIds.some((id) => {
+        const note = (data.session_note_goal_notes?.[id] ?? "").trim();
+        if (note.length > 0) {
+          return true;
+        }
+        const raw = data.session_note_goal_measurements?.[id];
+        return hasMeaningfulGoalMeasurementEntry(
+          normalizeGoalMeasurementEntry(raw, undefined, { fallbackMetricUnit: null }),
+        );
+      });
+    if (!scopeHasContent) {
+      return null;
+    }
+  } else if (
     narrative.length === 0 &&
     Object.keys(goalNotes).length === 0 &&
     Object.keys(goalMeasurements).length === 0
@@ -1125,7 +1147,10 @@ export const Schedule = React.memo(() => {
   const handleSubmit = useCallback(
     async (data: ScheduleSubmitData) => {
       const sessionPayload = stripClinicalNoteFields(data);
-      const clinicalNoteDraft = buildClinicalNoteDraft(data);
+      const mergeCaptureIds = data.session_note_capture_merge_goal_ids?.filter(
+        (id): id is string => typeof id === "string" && id.trim().length > 0,
+      );
+      const clinicalNoteDraft = buildClinicalNoteDraft(data, { captureMergeGoalIds: mergeCaptureIds });
       const decision = decideScheduleSubmitBranch({
         selectedSession,
         data: sessionPayload,
@@ -1279,6 +1304,7 @@ export const Schedule = React.memo(() => {
               goalMeasurements: clinicalNoteDraft.goalMeasurements,
               goalNotes: clinicalNoteDraft.goalNotes,
               narrative: clinicalNoteDraft.narrative,
+              ...(mergeCaptureIds?.length ? { captureMergeGoalIds: mergeCaptureIds } : {}),
             });
           }
           await updateSessionMutation.mutateAsync(sessionPayload);

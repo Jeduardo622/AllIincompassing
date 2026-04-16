@@ -167,6 +167,7 @@ export interface UpsertClientSessionNoteForSessionInput {
   readonly goalMeasurements?: Record<string, SessionGoalMeasurementEntry> | null;
   readonly goalNotes: Record<string, string>;
   readonly narrative: string;
+  readonly captureMergeGoalIds?: string[];
 }
 
 export interface UpdateClientSessionNoteInput {
@@ -206,6 +207,8 @@ export interface SessionNoteUpsertApiPayload {
   readonly goalMeasurements?: Record<string, SessionGoalMeasurementEntry> | null;
   readonly narrative: string;
   readonly isLocked: boolean;
+  /** Server merges only these goal keys from the request into the existing session note. */
+  readonly captureMergeGoalIds?: string[];
 }
 
 /**
@@ -308,6 +311,7 @@ export const upsertClientSessionNoteForSession = async (
     goalMeasurements: payload.goalMeasurements ?? null,
     narrative: payload.narrative,
     isLocked: false,
+    ...(payload.captureMergeGoalIds?.length ? { captureMergeGoalIds: payload.captureMergeGoalIds } : {}),
   });
 };
 

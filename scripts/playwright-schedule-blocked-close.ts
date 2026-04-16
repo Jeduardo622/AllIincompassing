@@ -325,7 +325,9 @@ async function run(): Promise<void> {
     await withStepTimeout("open-edit-modal-via-url", async () => {
       await activePage.goto(editUrl, { waitUntil: "domcontentloaded", timeout: 90_000 });
       await activePage.waitForLoadState("networkidle").catch(() => undefined);
-      await activePage.getByRole("dialog", { name: /edit session/i }).waitFor({ state: "visible", timeout: 60_000 });
+      await activePage
+        .getByRole("dialog", { name: /edit session|live session/i })
+        .waitFor({ state: "visible", timeout: 60_000 });
       await activePage
         .locator('[role="dialog"][data-session-status="in_progress"]')
         .waitFor({ state: "visible", timeout: 90_000 });
@@ -376,7 +378,7 @@ async function run(): Promise<void> {
     });
 
     await withStepTimeout("attempt-terminal-close-and-assert-guidance", async () => {
-      const editDialog = activePage.getByRole("dialog", { name: /edit session/i });
+      const editDialog = activePage.getByRole("dialog", { name: /edit session|live session/i });
       await editDialog.waitFor({ state: "visible", timeout: 15_000 });
 
       const statusBefore = await activePage.locator("#status-select").inputValue();
@@ -448,7 +450,7 @@ async function run(): Promise<void> {
       if (outcome.kind === "none") {
         const dialogVisible = await editDialog.isVisible().catch(() => false);
         throw new Error(
-          `No blocked-close UI after Update Session. editDialogVisible=${dialogVisible} url=${activePage.url()}`,
+          `No blocked-close UI after session submit. editDialogVisible=${dialogVisible} url=${activePage.url()}`,
         );
       }
 

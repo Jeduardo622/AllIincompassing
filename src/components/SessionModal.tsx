@@ -129,6 +129,7 @@ export function SessionModal({
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const sessionCaptureSectionRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
   const previousClientIdRef = useRef<string | null>(null);
@@ -915,7 +916,34 @@ export function SessionModal({
     !hasTerminalSessionStatus &&
     (session?.status === 'in_progress' || hasStartedSession);
   const isDependentDataLoading = (Boolean(clientId) && isProgramsFetching) || (Boolean(programId) && isGoalsFetching);
-  const canStartSession = Boolean(session?.id && !hasStartedSession && programId && goalId);
+  const canStartSession = Boolean(
+    session?.id &&
+      !hasStartedSession &&
+      session?.status !== 'in_progress' &&
+      programId &&
+      goalId,
+  );
+  const sessionModalMode = useMemo(() => {
+    if (!session) {
+      return 'create';
+    }
+    return isInProgressSession ? 'live' : 'edit';
+  }, [session, isInProgressSession]);
+  const modalTitle = useMemo(() => {
+    if (!session) {
+      return 'New Session';
+    }
+    return isInProgressSession ? 'Live session' : 'Edit Session';
+  }, [session, isInProgressSession]);
+  const modalSubtitle = useMemo(() => {
+    if (!session) {
+      return 'Choose therapist, client, time, and plan details before creating this appointment.';
+    }
+    if (isInProgressSession) {
+      return 'Log trials and per-goal notes, then save to sync. Use Close session when the visit ends.';
+    }
+    return 'Review core details first, then add notes before saving.';
+  }, [session, isInProgressSession]);
   const sessionNoteGoalIds = useMemo(
     () => mergeUniqueGoalIds(
       Array.isArray(goalIds) ? goalIds : [],
@@ -1192,6 +1220,23 @@ export function SessionModal({
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen || !isInProgressSession) {
+      return;
+    }
+    setIsPlanSummaryExpanded(false);
+  }, [isOpen, isInProgressSession, session?.id]);
+
+  useEffect(() => {
+    if (!isOpen || !isInProgressSession) {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      sessionCaptureSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [isOpen, isInProgressSession, session?.id]);
+
   if (!isOpen) return null;
 
   return (
@@ -1213,6 +1258,7 @@ export function SessionModal({
         aria-labelledby={dialogTitleId}
         aria-describedby={dialogDescriptionIds}
         data-session-status={session?.status ?? ""}
+        data-session-modal-mode={sessionModalMode}
         tabIndex={-1}
       >
         {/* Header */}
@@ -1227,10 +1273,10 @@ export function SessionModal({
                 className="mt-1 flex items-center text-lg font-semibold text-gray-900 dark:text-white sm:text-xl"
               >
                 <Calendar className="mr-2 h-5 w-5 text-blue-600 sm:h-6 sm:w-6" />
-                {session ? 'Edit Session' : 'New Session'}
+                {modalTitle}
               </h2>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Review core details first, then add notes before saving.
+                {modalSubtitle}
               </p>
             </div>
           <button
@@ -1346,8 +1392,7 @@ export function SessionModal({
               >
                 <p className="font-medium">Session in progress</p>
                 <p className="mt-1">
-                  You can update program, primary goal, and additional goals while this session is active.
-                  Save session details to keep this plan in sync.
+                  You can adjust program and goals while active; save to keep the plan in sync with the schedule.
                 </p>
               </div>
             )}
@@ -1825,6 +1870,7 @@ export function SessionModal({
 
             {session?.id && (
               <section
+                ref={sessionCaptureSectionRef}
                 className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 space-y-4 dark:border-indigo-900/40 dark:bg-indigo-900/10"
                 data-testid="session-modal-capture-section"
               >
@@ -1832,10 +1878,18 @@ export function SessionModal({
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">Session capture</p>
                     <p className="mt-1 text-xs text-indigo-700 dark:text-indigo-300">
-                      Per-goal notes and trial data save with the session. Billing uses the first approved authorization
-                      on file when defaults exist. Full narrative and signatures are completed in Client Details.
-                      Ad-hoc skill and behavior rows are stored on the session note.
+                      Per-goal notes and trial counts save with this session. Ad-hoc skill and behavior rows live on the
+                      session note.
                     </p>
+                    <details className="mt-2 text-xs text-indigo-700 dark:text-indigo-300">
+                      <summary className="cursor-pointer font-semibold text-indigo-800 hover:underline dark:text-indigo-200">
+                        Billing, authorization, and full narratives
+                      </summary>
+                      <p className="mt-2 leading-snug">
+                        Billing uses the first approved authorization on file when defaults exist. Full narrative,
+                        signatures, and additional measurement fields are completed in Client Details.
+                      </p>
+                    </details>
                   </div>
                   <div className="flex flex-shrink-0 flex-wrap justify-end gap-2">
                     <button
@@ -2226,21 +2280,21 @@ export function SessionModal({
 
         {/* Footer */}
         <div className="sticky bottom-0 z-10 border-t border-gray-200/80 bg-white/90 px-4 py-2 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] backdrop-blur-md dark:border-gray-700 dark:bg-dark-lighter/90 sm:px-5 sm:py-4 sm:pb-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
-            <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-1 sm:flex sm:flex-wrap sm:justify-end sm:gap-2">
-            <button
-              type="button"
-              onClick={handleAttemptClose}
-              disabled={isSubmitting}
-              className="min-h-11 shrink-0 rounded-full px-4 text-sm font-medium text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-gray-300 sm:bg-white sm:px-4 sm:text-gray-700 sm:shadow-sm sm:hover:bg-gray-50"
+          <div className="flex flex-col gap-3">
+            <div
+              role="group"
+              aria-label="Session actions"
+              className="flex flex-wrap items-center justify-center gap-2 border-b border-gray-200/70 pb-2 dark:border-gray-700/80 sm:justify-end sm:border-0 sm:pb-0"
             >
-              Cancel
-            </button>
-            {session?.id && (
-              <>
-                <span className="hidden text-gray-300 dark:text-gray-600 max-sm:inline" aria-hidden>
-                  ·
-                </span>
+              <button
+                type="button"
+                onClick={handleAttemptClose}
+                disabled={isSubmitting}
+                className="min-h-11 shrink-0 rounded-full px-4 text-sm font-medium text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-gray-300 sm:bg-white sm:px-4 sm:text-gray-700 sm:shadow-sm sm:hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              {session?.id && session.status === 'scheduled' && !hasStartedSession ? (
                 <button
                   type="button"
                   onClick={handleStartSession}
@@ -2249,13 +2303,8 @@ export function SessionModal({
                 >
                   Start Session
                 </button>
-              </>
-            )}
-            {session?.id && isInProgressSession && (
-              <>
-                <span className="hidden text-gray-300 dark:text-gray-600 max-sm:inline" aria-hidden>
-                  ·
-                </span>
+              ) : null}
+              {session?.id && isInProgressSession ? (
                 <button
                   type="button"
                   onClick={handleCloseSession}
@@ -2264,29 +2313,30 @@ export function SessionModal({
                 >
                   Close Session
                 </button>
-              </>
-            )}
+              ) : null}
             </div>
-            <button
-              type="submit"
-              form="session-form"
-              disabled={isSubmitting || isDependentDataLoading || isLoadingAlternatives}
-              className="flex min-h-12 w-full items-center justify-center rounded-xl border border-transparent bg-blue-600 px-4 py-2.5 text-base font-semibold text-white shadow-lg shadow-blue-600/25 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-11 sm:w-auto sm:min-w-[12rem] sm:rounded-md sm:py-2 sm:text-sm sm:font-medium sm:shadow-sm sm:shadow-none max-sm:mt-0.5"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-4 h-4 mr-2" />
-                  {session
-                    ? (isInProgressSession ? 'Save Session Details' : 'Update Session')
-                    : 'Create Session'}
-                </>
-              )}
-            </button>
+            <div className="flex justify-center sm:justify-end">
+              <button
+                type="submit"
+                form="session-form"
+                disabled={isSubmitting || isDependentDataLoading || isLoadingAlternatives}
+                className="flex min-h-12 w-full items-center justify-center rounded-xl border border-transparent bg-blue-600 px-4 py-2.5 text-base font-semibold text-white shadow-lg shadow-blue-600/25 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-11 sm:w-auto sm:min-w-[12rem] sm:rounded-md sm:py-2 sm:text-sm sm:font-medium sm:shadow-sm sm:shadow-none"
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                    {session
+                      ? (isInProgressSession ? 'Save progress' : 'Update Session')
+                      : 'Create Session'}
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>

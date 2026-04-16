@@ -99,7 +99,7 @@ const openEditSessionModalFromUrl = async (page: Page, scheduleUrl: string, sess
       waitUntil: "networkidle",
       timeout: 60000,
     });
-    const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session/i });
+    const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
     try {
       await dialog.waitFor({ state: "visible", timeout: 12_000 });
       return;
@@ -107,7 +107,7 @@ const openEditSessionModalFromUrl = async (page: Page, scheduleUrl: string, sess
       await page.waitForTimeout(500 + attempt * 250);
     }
   }
-  throw new Error("Edit Session modal did not open from schedule deep link.");
+  throw new Error("Session modal (Edit Session / Live session) did not open from schedule deep link.");
 };
 
 async function waitForSessionStatus(sessionId: string, status: string, timeoutMs = 120_000): Promise<void> {
@@ -237,7 +237,7 @@ async function run(): Promise<void> {
 
     await withStepTimeout("open-session-modal-clinical", async () => {
       await openEditSessionModalFromUrl(activePage, scheduleUrl, booked.sessionId);
-      const editDialog = activePage.locator('[role="dialog"]').filter({ hasText: /Edit Session/i });
+      const editDialog = activePage.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
       await editDialog.getByRole("button", { name: /Show details/i }).click();
       await activePage.locator("#session-note-auth-select").waitFor({ state: "visible", timeout: 20_000 });
       const authSelect = activePage.locator("#session-note-auth-select");
@@ -274,7 +274,7 @@ async function run(): Promise<void> {
         (res) => res.url().includes("/api/session-notes/upsert") && res.request().method() === "POST",
         { timeout: 120_000 },
       );
-      await activePage.getByRole("button", { name: /Save Session Details/i }).click();
+      await activePage.getByRole("button", { name: /Save progress/i }).click();
       const res = await upsertPromise;
       assert.equal(res.ok(), true, `session-notes upsert failed: HTTP ${res.status()}`);
       const body = (await res.json()) as unknown;

@@ -122,6 +122,7 @@ describe('SessionModal', () => {
     renderWithProviders(<SessionModal {...defaultProps} />);
     expect(screen.getByText(/New Session/)).toBeInTheDocument();
     const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('data-session-modal-mode', 'create');
     expect(dialog).toHaveAttribute('aria-labelledby', 'session-modal-title');
     expect(dialog).toHaveAttribute('aria-describedby', 'session-modal-description');
     expect(screen.queryByRole('region', { name: /Session not saved/i })).not.toBeInTheDocument();
@@ -383,7 +384,7 @@ describe('SessionModal', () => {
     outsideButton.remove();
   });
 
-  it('disables start session when authoritative details already show started_at', async () => {
+  it('hides start session when authoritative details already show started_at', async () => {
     const buildChain = (rows: unknown[], singleRow: unknown = null) => {
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
@@ -437,13 +438,14 @@ describe('SessionModal', () => {
       />
     );
 
-    const startButton = await screen.findByRole('button', { name: /Start Session/i });
     await waitFor(() => {
-      expect(startButton).toBeDisabled();
+      expect(screen.queryByRole('button', { name: /Start Session/i })).not.toBeInTheDocument();
     });
+    expect(screen.getByText('Live session')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-session-modal-mode', 'live');
     expect(screen.getByTestId('session-modal-in-progress-guidance')).toBeInTheDocument();
     expect(screen.getByTestId('session-modal-notes-guidance')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Save Session Details/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Save progress/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Close Session$/i })).toBeInTheDocument();
   });
 
@@ -917,6 +919,9 @@ describe('SessionModal', () => {
     );
 
     expect(screen.getByTestId('session-modal-capture-section')).toBeInTheDocument();
+    expect(screen.getByText('Live session')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-session-modal-mode', 'live');
+    expect(screen.queryByRole('button', { name: /Start Session/i })).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /^Skill$/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /^BX$/i })).toBeInTheDocument();
   });
@@ -987,7 +992,7 @@ describe('SessionModal', () => {
       target: { value: 'Needed one reminder at the start' },
     });
 
-    await userEvent.click(screen.getByRole('button', { name: /Save Session Details/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
@@ -1071,7 +1076,7 @@ describe('SessionModal', () => {
     await userEvent.click(screen.getByRole('button', { name: /Add 5 correct trials/i }));
     await userEvent.click(screen.getByRole('button', { name: /Increase correct trials/i }));
 
-    await userEvent.click(screen.getByRole('button', { name: /Save Session Details/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(
@@ -1223,7 +1228,7 @@ describe('SessionModal', () => {
       expect(screen.getByDisplayValue('Observed steady progress')).toBeInTheDocument();
     });
 
-    await userEvent.click(screen.getByRole('button', { name: /Save Session Details/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
@@ -1359,7 +1364,7 @@ describe('SessionModal', () => {
       expect(screen.getByDisplayValue('Maintained prior skill with faded prompts')).toBeInTheDocument();
     });
 
-    await userEvent.click(screen.getByRole('button', { name: /Save Session Details/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
@@ -1451,7 +1456,7 @@ describe('SessionModal', () => {
     fireEvent.change(await screen.findByLabelText(/^Per-goal note$/i), {
       target: { value: 'Progress details' },
     });
-    await userEvent.click(screen.getByRole('button', { name: /Save Session Details/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Save progress/i }));
 
     expect(onSubmit).not.toHaveBeenCalled();
   });

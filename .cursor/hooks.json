@@ -1,11 +1,48 @@
 {
   "version": 1,
   "hooks": {
+    "sessionStart": [
+      {
+        "command": "node .cursor/hooks/session-start.mjs",
+        "timeout": 5
+      }
+    ],
     "beforeSubmitPrompt": [
       {
         "command": "node .cursor/hooks/before-submit-prompt.mjs",
         "matcher": "UserPromptSubmit",
         "timeout": 8
+      }
+    ],
+    "beforeReadFile": [
+      {
+        "command": "node .cursor/hooks/before-read-file.mjs",
+        "matcher": "Read",
+        "timeout": 8
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "node .cursor/hooks/pre-tool-use.mjs",
+        "timeout": 8
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "node .cursor/hooks/post-tool-use.mjs",
+        "timeout": 8
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "node .cursor/hooks/before-shell-execution.mjs",
+        "timeout": 12
+      }
+    ],
+    "beforeMCPExecution": [
+      {
+        "command": "node .cursor/hooks/before-mcp-execution.mjs",
+        "timeout": 12
       }
     ],
     "afterAgentResponse": [

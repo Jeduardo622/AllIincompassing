@@ -6,7 +6,7 @@ import { readStdinJson } from "./lib/read-stdin-json.mjs";
 const CONTEXT = [
   "[Project hooks] AllIincompassing guardrails:",
   "- High-risk areas (human review before merge): supabase/migrations, supabase/functions, src/server, src/lib/auth*, src/lib/runtimeConfig*, scripts/ci, .github/workflows, netlify.toml.",
-  "- Do not read or commit real .env* secrets; use .env.example / synthetic fixtures.",
+  "- Agents may use `.env.local` for dev. Do not read/commit root `.env` or other `.env.*` secrets (use .env.example / synthetic fixtures for docs and CI).",
   "- After substantive edits: npm run lint, npm run typecheck, npm run test:ci (and policy checks when touching protected surfaces).",
   "- Tenant/auth surfaces: npm run validate:tenant when DB/RLS paths change.",
 ].join("\n");

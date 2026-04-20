@@ -6,14 +6,18 @@ export function normalizeRepoSlashes(p) {
 }
 
 /**
- * Block reads/writes of local env files except documented examples.
+ * Block reads/writes of committed-style env files. Allows dev-local files:
+ * `.env.local`, `.env.example`, `.env.sample`.
  * @param {string} filePath
  */
 export function isProtectedEnvPath(filePath) {
   const norm = normalizeRepoSlashes(filePath);
   const base = norm.split("/").pop() ?? "";
-  if (base === ".env.example" || base === ".env.sample") return false;
-  if (base === ".env" || base.startsWith(".env.")) return true;
+  if (base === ".env.example" || base === ".env.sample" || base === ".env.local") {
+    return false;
+  }
+  if (base === ".env") return true;
+  if (base.startsWith(".env.")) return true;
   return false;
 }
 

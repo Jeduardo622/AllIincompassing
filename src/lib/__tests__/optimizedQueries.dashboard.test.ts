@@ -44,6 +44,7 @@ describe("useDashboardData /api/dashboard fetch", () => {
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
     const headers = init?.headers as Headers | undefined;
     expect(init?.method).toBe("GET");
+    expect(init?.cache).toBe("no-store");
     expect(headers?.get("Authorization")).toBe("Bearer token");
     expect(headers?.get("X-Supabase-Authorization")).toBe("Bearer token");
     expect(headers?.get("apikey")).toBe("test-anon-key");

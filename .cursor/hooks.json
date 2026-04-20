@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "node .cursor/hooks/before-submit-prompt.mjs",
+        "matcher": "UserPromptSubmit",
+        "timeout": 8
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "node .cursor/hooks/after-agent-response.mjs",
+        "matcher": "AgentResponse",
+        "timeout": 8
+      }
+    ],
+    "stop": [
+      {
+        "command": "node .cursor/hooks/stop.mjs",
+        "matcher": "Stop",
+        "timeout": 8
+      }
+    ]
+  }
+}

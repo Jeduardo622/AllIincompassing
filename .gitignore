@@ -48,6 +48,10 @@ WHITE BIBLE.pdf
 .reports/*.json
 .reports/*.md
 
+# Cursor hook volatile state and local audit logs (never ship)
+.cursor/hooks/state/
+.cursor/hooks/logs/
+
 # Local agent / editor scratch (not shipped)
 .claude/
 

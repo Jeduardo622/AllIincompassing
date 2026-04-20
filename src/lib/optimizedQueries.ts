@@ -217,6 +217,7 @@ export const fetchDashboardData = async () => {
         '/api/dashboard',
         {
           method: 'GET',
+          cache: 'no-store',
           headers: {
             apikey: anonKey,
           },

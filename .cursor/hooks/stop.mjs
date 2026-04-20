@@ -4,29 +4,13 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readStdinJson } from "./lib/read-stdin-json.mjs";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const LOG_DIR = join(__dirname, "logs");
 
 function logDirEnsure() {
   mkdirSync(LOG_DIR, { recursive: true });
-}
-
-function readStdinJson() {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    process.stdin.on("data", (c) => chunks.push(c));
-    process.stdin.on("end", () => {
-      try {
-        const raw = Buffer.concat(chunks).toString("utf8").trim();
-        if (!raw) resolve({});
-        else resolve(JSON.parse(raw));
-      } catch (e) {
-        reject(e);
-      }
-    });
-    process.stdin.on("error", reject);
-  });
 }
 
 function main() {

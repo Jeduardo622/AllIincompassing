@@ -27,6 +27,7 @@ import { checkSchedulingConflicts, suggestAlternativeTimes, type Conflict, type 
 import { logger } from '../lib/logger/logger';
 import { AlternativeTimes } from './AlternativeTimes';
 import { supabase } from '../lib/supabase';
+import { fetchLinkedClientSessionNoteForSession } from '../lib/session-note-linked-fetch';
 import { useActiveOrganizationId } from '../lib/organization';
 import { showError, showSuccess } from '../lib/toast';
 import {
@@ -332,18 +333,10 @@ export function SessionModal({
       if (!session?.id || !activeOrganizationId) {
         return null;
       }
-      const { data, error } = await supabase
-        .from('client_session_notes')
-        .select('id, authorization_id, service_code, narrative, goal_notes, goal_measurements, goal_ids, goals_addressed')
-        .eq('session_id', session.id)
-        .eq('organization_id', activeOrganizationId)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error) {
-        throw error;
-      }
-      return data ?? null;
+      return fetchLinkedClientSessionNoteForSession({
+        sessionId: session.id,
+        organizationId: activeOrganizationId,
+      });
     },
     enabled: Boolean(session?.id && activeOrganizationId),
   });

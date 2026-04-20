@@ -31,7 +31,7 @@ function main() {
       "[Project hook] This edit touched a high-risk path per AGENTS.md.",
       "Before claiming done: npm run ci:check-focused (when policy-relevant), npm run lint, npm run typecheck, npm run test:ci, and npm run build as appropriate.",
       "If migrations / RLS / tenant boundaries changed, also run npm run validate:tenant.",
-    ].join(" ");
+    ].join("\n");
 
     process.stdout.write(JSON.stringify({ additional_context: msg }));
     process.exit(0);

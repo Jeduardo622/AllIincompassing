@@ -6,7 +6,7 @@ import type { Session } from '../types';
 import { logger } from './logger/logger';
 import { toError } from './logger/normalizeError';
 import { useDashboardLiveRefresh } from './dashboardLiveRefresh';
-import { callApi } from './api';
+import { callApi, getCurrentAccessToken } from './api';
 import { ensureRuntimeSupabaseConfig, getSupabaseAnonKey } from './runtimeConfig';
 
 const buildOrgScopedScheduleBatchKey = (
@@ -186,6 +186,13 @@ export const useSessionMetrics = (
  */
 export const fetchDashboardData = async () => {
   const DASHBOARD_REQUEST_TIMEOUT_MS = 10000;
+
+  const token = await getCurrentAccessToken();
+  if (!token || token.trim().length === 0) {
+    const err = new Error('Not authenticated') as Error & { status: number };
+    err.status = 401;
+    throw err;
+  }
 
   const dashboardRouteFallback = async () => {
     // Same-origin GET /api/dashboard (no browser CORS). Wait for runtime config so URL/key

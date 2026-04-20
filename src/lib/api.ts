@@ -43,7 +43,8 @@ const shouldRefreshAccessToken = (token: string): boolean => {
   return expiry * 1000 <= Date.now() + 60_000;
 };
 
-const getCurrentAccessToken = async (): Promise<string | null> => {
+/** Shared with dashboard batching so we never hit `/api/dashboard` without resolving a JWT first. */
+export const getCurrentAccessToken = async (): Promise<string | null> => {
   try {
     const { data } = await supabase.auth.getSession();
     const currentToken = data?.session?.access_token ?? null;

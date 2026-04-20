@@ -75,7 +75,7 @@ describe("useDashboardData /api/dashboard fetch", () => {
     expect(headers?.get("apikey")).toBe("test-anon-key");
   });
 
-  it("surfaces 401 when no access token can be resolved", async () => {
+  it("does not call /api/dashboard when no access token can be resolved", async () => {
     getSessionMock.mockResolvedValue({
       data: { session: null },
       error: null,
@@ -96,7 +96,6 @@ describe("useDashboardData /api/dashboard fetch", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { fetchDashboardData } = await import("../optimizedQueries");
     await expect(fetchDashboardData()).rejects.toMatchObject({ status: 401 });
-    expect(fetchMock).toHaveBeenCalled();
-    expect(String(fetchMock.mock.calls[0]?.[0] ?? "")).toContain("/api/dashboard");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

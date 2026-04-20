@@ -1,4 +1,4 @@
-const APP_VERSION = '20260304';
+const APP_VERSION = '20260420';
 const PRECACHE_CACHE = `allincompassing-precache-${APP_VERSION}`;
 const RUNTIME_CACHE = `allincompassing-runtime-${APP_VERSION}`;
 const IMMUTABLE_CACHE = `allincompassing-immutable-${APP_VERSION}`;
@@ -34,11 +34,6 @@ const isHashedAsset = (url) => {
   return /\/assets\/.+\.[a-f0-9]{8,}\.(js|css|mjs|woff2|png|jpe?g|svg|webp)$/.test(url.pathname);
 };
 
-const isJsonRequest = (request) => {
-  const acceptHeader = request.headers.get('accept') || '';
-  return request.destination === '' && acceptHeader.includes('application/json');
-};
-
 const cacheFirst = async (request, cacheName) => {
   const cache = await caches.open(cacheName);
   const cachedResponse = await cache.match(request);
@@ -68,14 +63,11 @@ const staleWhileRevalidate = async (request, cacheName) => {
   return cachedResponse || networkResponsePromise;
 };
 
-const networkOnly = async (request) => {
-  try {
-    return await fetch(request);
-  } catch (error) {
-    throw error;
-  }
-};
-
+/**
+ * Do not call respondWith for same-origin `/api/*` or JSON Accept fetches.
+ * Let the browser handle them so Authorization and Supabase RPC traffic are
+ * not routed through the SW fetch path (avoids 401 / odd status in production).
+ */
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') {
@@ -100,16 +92,6 @@ self.addEventListener('fetch', (event) => {
           }
           return caches.match(OFFLINE_URL);
         }),
-    );
-    return;
-  }
-
-  if (isJsonRequest(request) || url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      networkOnly(request).catch(async () => {
-        const fallback = await caches.match(OFFLINE_URL);
-        return fallback || Response.error();
-      }),
     );
     return;
   }

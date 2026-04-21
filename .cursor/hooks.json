@@ -7,6 +7,12 @@
         "timeout": 5
       }
     ],
+    "sessionEnd": [
+      {
+        "command": "node .cursor/hooks/session-end.mjs",
+        "timeout": 5
+      }
+    ],
     "beforeSubmitPrompt": [
       {
         "command": "node .cursor/hooks/before-submit-prompt.mjs",
@@ -24,12 +30,39 @@
     "preToolUse": [
       {
         "command": "node .cursor/hooks/pre-tool-use.mjs",
+        "matcher": "Write|write|Delete|delete|StrReplace|strReplace|strreplace|SearchReplace|searchReplace|searchreplace|search_replace|Search_Replace|Edit|edit|ApplyPatch|applyPatch|applypatch|apply_patch",
         "timeout": 8
       }
     ],
     "postToolUse": [
       {
         "command": "node .cursor/hooks/post-tool-use.mjs",
+        "matcher": "Write|write|Delete|delete|StrReplace|strReplace|strreplace|SearchReplace|searchReplace|searchreplace|search_replace|Search_Replace|Edit|edit|ApplyPatch|applyPatch|applypatch|apply_patch",
+        "timeout": 8
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "command": "node .cursor/hooks/post-tool-use-failure.mjs",
+        "matcher": "Write|write|Delete|delete|StrReplace|strReplace|strreplace|SearchReplace|searchReplace|searchreplace|search_replace|Search_Replace|Edit|edit|ApplyPatch|applyPatch|applypatch|apply_patch",
+        "timeout": 8
+      }
+    ],
+    "preCompact": [
+      {
+        "command": "node .cursor/hooks/pre-compact.mjs",
+        "timeout": 5
+      }
+    ],
+    "subagentStart": [
+      {
+        "command": "node .cursor/hooks/subagent-start.mjs",
+        "timeout": 8
+      }
+    ],
+    "subagentStop": [
+      {
+        "command": "node .cursor/hooks/subagent-stop.mjs",
         "timeout": 8
       }
     ],
@@ -39,9 +72,21 @@
         "timeout": 12
       }
     ],
+    "afterShellExecution": [
+      {
+        "command": "node .cursor/hooks/after-shell-execution.mjs",
+        "timeout": 12
+      }
+    ],
     "beforeMCPExecution": [
       {
         "command": "node .cursor/hooks/before-mcp-execution.mjs",
+        "timeout": 12
+      }
+    ],
+    "afterMCPExecution": [
+      {
+        "command": "node .cursor/hooks/after-mcp-execution.mjs",
         "timeout": 12
       }
     ],

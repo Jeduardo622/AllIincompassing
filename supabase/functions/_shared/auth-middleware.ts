@@ -11,7 +11,10 @@
 import { errorEnvelope, getRequestId } from "../lib/http/error.ts";
 import { resolveOrgId } from "./org.ts";
 import { corsHeadersForRequest as sharedCorsHeadersForRequest } from "./cors.ts";
-import { resolveSupabasePublishableKeyFromEnv, resolveSupabaseUrlFromEnv } from "./supabaseEnv.ts";
+import { resolveSupabaseUrlFromEnv } from "./supabaseEnv.ts";
+import { extractBearerToken, resolvePublishableApiKeyForRequest } from "./requestAuthHeaders.ts";
+
+export { extractBearerToken };
 
 type SupabaseModule = typeof import("npm:@supabase/supabase-js@2.50.0");
 
@@ -123,27 +126,6 @@ export function handleCors(req: Request): Response | null {
   return null;
 }
 
-/**
- * Extract Bearer token from Authorization header
- */
-export function extractBearerToken(req: Request): string | null {
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
-  }
-  return authHeader.substring(7);
-}
-
-const resolveAnonKeyForAuth = (req: Request): string => {
-  const fromEnv = resolveSupabasePublishableKeyFromEnv();
-  if (fromEnv.length > 0) {
-    return fromEnv;
-  }
-  // Same publishable key the browser sends on /api/dashboard proxies (public anon key).
-  const fromHeader = req.headers.get("apikey")?.trim();
-  return fromHeader && fromHeader.length > 0 ? fromHeader : "";
-};
-
 export async function createSupabaseClientForRequest(req: Request): Promise<{
   supabase: ReturnType<SupabaseModule["createClient"]>;
   token: string | null;
@@ -151,7 +133,7 @@ export async function createSupabaseClientForRequest(req: Request): Promise<{
   const token = extractBearerToken(req);
   const { createClient } = await loadSupabaseModule();
   const supabaseUrl = resolveSupabaseUrlFromEnv();
-  const anonKey = resolveAnonKeyForAuth(req);
+  const anonKey = resolvePublishableApiKeyForRequest(req);
   const supabase = createClient(
     supabaseUrl,
     anonKey,

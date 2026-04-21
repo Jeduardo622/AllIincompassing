@@ -34,10 +34,20 @@ export async function dashboardHandler(request: Request): Promise<Response> {
     });
   }
 
-  const authHeader =
-    request.headers.get("Authorization") ?? request.headers.get("X-Supabase-Authorization") ?? "";
-  const accessToken = typeof authHeader === "string" ? authHeader.replace(/^Bearer\s+/i, "").trim() : "";
-  if (!authHeader || accessToken.length === 0) {
+  const bearerPayload = (value: string | null): string => {
+    if (!value) {
+      return "";
+    }
+    const trimmed = value.trim();
+    if (!/^Bearer\s+/i.test(trimmed)) {
+      return "";
+    }
+    return trimmed.replace(/^Bearer\s+/i, "").trim();
+  };
+  const accessToken =
+    bearerPayload(request.headers.get("Authorization")) ||
+    bearerPayload(request.headers.get("X-Supabase-Authorization"));
+  if (!accessToken) {
     return errorResponse(request, "unauthorized", "Missing authorization token", {
       headers: { "WWW-Authenticate": "Bearer" },
     });

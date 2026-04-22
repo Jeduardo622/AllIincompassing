@@ -368,7 +368,103 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     expect(await screen.findByText("Could not load programs yet: Failed to load programs")).toBeInTheDocument();
-    expect(screen.getByText("No programs yet.")).toBeInTheDocument();
+    expect(screen.getByText("No programs yet. Create a program to unlock goals and notes for this client.")).toBeInTheDocument();
+  });
+
+  it("renders a non-blocking shell while programs are loading", async () => {
+    vi.mocked(callApi).mockImplementation((path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) {
+        return new Promise<Response>(() => {});
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return Promise.resolve(new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 }));
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByRole("heading", { name: /Add Program/i })).toBeInTheDocument();
+    expect(screen.getByText("Loading existing programs. You can still add a new program below.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create Program" })).toBeInTheDocument();
+  });
+
+  it("unlocks goal and note creation after creating a program while the programs query is still loading", async () => {
+    vi.mocked(callApi).mockImplementation((path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) {
+        return new Promise<Response>(() => {});
+      }
+      if (method === "POST" && path === "/api/programs") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "program-pending-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              name: "Communication Program",
+              description: "Created while list is pending",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            }),
+            { status: 201 },
+          ),
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return Promise.resolve(new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 }));
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    fireEvent.change(await screen.findByPlaceholderText("Program name"), {
+      target: { value: "Communication Program" },
+    });
+    await user.click(screen.getByRole("button", { name: "Create Program" }));
+
+    await waitFor(() => {
+      expect(showSuccess).toHaveBeenCalledWith("Program created");
+    });
+
+    fireEvent.change(screen.getByLabelText(/Goal title/i), { target: { value: "Goal A" } });
+    fireEvent.change(screen.getByLabelText(/Goal description/i), { target: { value: "Goal description" } });
+    fireEvent.change(screen.getByLabelText(/Original clinical wording/i), { target: { value: "Original wording" } });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Create Goal" })).toBeEnabled();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Add a program note"), {
+      target: { value: "Progress note" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add Note" })).toBeEnabled();
+    });
   });
 
   it("creates a program and then creates a goal for the selected program", async () => {
@@ -1369,8 +1465,33 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     );
 
-    expect(await screen.findByText("Create or select a program first.")).toBeInTheDocument();
+    const helperMessages = await screen.findAllByText("Create a program or select an existing one before adding goals or notes.");
+    expect(helperMessages).toHaveLength(4);
     expect(screen.getByRole("button", { name: /Create Goal/i })).toBeDisabled();
+    expect(screen.getByLabelText(/Goal title/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Goal description/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Original clinical wording/i)).toBeInTheDocument();
+    expect(
+      screen.getByText("Paste the original clinical wording from the assessment or care-plan source so the goal stays audit-friendly."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows explicit no-program guidance for goals and notes", async () => {
+    renderWithProviders(
+      <ProgramsGoalsTab client={buildClient()} />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    const helperMessages = await screen.findAllByText("Create a program or select an existing one before adding goals or notes.");
+    expect(helperMessages).toHaveLength(4);
+    expect(screen.getByRole("button", { name: /Add Note/i })).toBeDisabled();
+    expect(screen.getByPlaceholderText("Add a program note")).toBeDisabled();
   });
 
   it("deletes an uploaded assessment document from the queue", async () => {

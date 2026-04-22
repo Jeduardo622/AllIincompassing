@@ -14,18 +14,23 @@ import { useActiveOrganizationId } from '../lib/organization';
 
 type TabType = 'profile' | 'session-notes' | 'pre-auth' | 'contracts' | 'programs-goals';
 
+const parseTabFromSearch = (search: string): TabType => {
+  const tab = new URLSearchParams(search).get('tab');
+
+  switch (tab) {
+    case 'session-notes':
+    case 'programs-goals':
+      return tab;
+    default:
+      return 'profile';
+  }
+};
+
 export function ClientDetails() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const initialTab = useMemo<TabType>(() => {
-    const params = new URLSearchParams(location.search);
-    const tab = params.get('tab');
-    if (tab === 'session-notes') {
-      return 'session-notes';
-    }
-    return 'profile';
-  }, [location.search]);
+  const initialTab = useMemo<TabType>(() => parseTabFromSearch(location.search), [location.search]);
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const { profile, effectiveRole } = useAuth();
   const activeOrganizationId = useActiveOrganizationId();

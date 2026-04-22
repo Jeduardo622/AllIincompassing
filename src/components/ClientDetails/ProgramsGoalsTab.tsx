@@ -234,8 +234,12 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const goalTitleValue = goalTitle.trim();
   const goalDescriptionValue = goalDescription.trim();
   const goalOriginalTextValue = goalOriginalText.trim();
-  const createGoalDisabledReason = !resolvedProgramId
-    ? "Create or select a program first."
+  const hasResolvedProgram = Boolean(resolvedProgramId);
+  const noProgramHelperText = programsLoading
+    ? "Programs are still loading. You can create one now, or wait for an existing program before adding goals or notes."
+    : "Create a program or select an existing one before adding goals or notes.";
+  const createGoalDisabledReason = !hasResolvedProgram
+    ? noProgramHelperText
     : !goalTitleValue
       ? "Goal title is required."
       : !goalDescriptionValue
@@ -243,6 +247,12 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         : !goalOriginalTextValue
           ? "Original clinical wording is required."
           : null;
+  const noteContentValue = noteContent.trim();
+  const createNoteDisabledReason = !hasResolvedProgram
+    ? noProgramHelperText
+    : !noteContentValue
+      ? "Program note is required."
+      : null;
 
   const {
     data: goals = [],
@@ -886,6 +896,18 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       setProgramName("");
       setProgramDescription("");
       setSelectedProgramId(created.id);
+      queryClient.setQueryData<Program[]>(
+        ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
+        (current = []) => {
+          const existingIndex = current.findIndex((program) => program.id === created.id);
+          if (existingIndex >= 0) {
+            const next = [...current];
+            next[existingIndex] = created;
+            return next;
+          }
+          return [created, ...current];
+        },
+      );
       queryClient.invalidateQueries({
         queryKey: ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
       });
@@ -1153,14 +1175,6 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
     onError: showError,
   });
-
-  if (programsLoading) {
-    return (
-      <div className="flex items-center justify-center h-40">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
 
   if (!organizationId) {
     return (
@@ -1430,8 +1444,21 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               Live records only. Uploaded assessment drafts appear here after you publish.
             </p>
             <div className="space-y-2">
+              {programsLoading && (
+                <div
+                  className="flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:border-sky-700 dark:bg-sky-900/20 dark:text-sky-100"
+                  role="status"
+                >
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  <span>Loading existing programs. You can still add a new program below.</span>
+                </div>
+              )}
               {livePrograms.length === 0 && (
-                <p className="text-sm text-gray-500">No programs yet.</p>
+                <p className="text-sm text-gray-500">
+                  {programsLoading
+                    ? "No existing programs loaded yet."
+                    : "No programs yet. Create a program to unlock goals and notes for this client."}
+                </p>
               )}
               {livePrograms.map((program) => (
                 <div key={program.id} className="flex items-stretch gap-1">
@@ -1480,6 +1507,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               Add Program
             </h3>
             <div className="space-y-3">
+              <p className="text-xs text-gray-500 dark:text-gray-300">
+                Add a program first if this client does not have one yet. Goals and notes attach to the selected program.
+              </p>
               <input
                 type="text"
                 value={programName}
@@ -2033,27 +2063,54 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Add Goal</h3>
             <div className="space-y-3">
+              <p className="text-xs text-gray-500 dark:text-gray-300">
+                Select a program before creating a goal. Required fields are marked with an asterisk.
+              </p>
+              {!hasResolvedProgram && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
+                  {noProgramHelperText}
+                </div>
+              )}
+              <label htmlFor="goal-title" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                Goal title *
+              </label>
               <input
+                id="goal-title"
                 type="text"
                 value={goalTitle}
                 onChange={(event) => setGoalTitle(event.target.value)}
                 placeholder="Goal title"
+                aria-required="true"
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
               />
+              <label htmlFor="goal-description" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                Goal description *
+              </label>
               <textarea
+                id="goal-description"
                 value={goalDescription}
                 onChange={(event) => setGoalDescription(event.target.value)}
                 placeholder="Goal description"
                 rows={2}
+                aria-required="true"
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
               />
+              <label htmlFor="goal-original-text" className="block text-xs font-medium text-gray-700 dark:text-gray-200">
+                Original clinical wording *
+              </label>
               <textarea
+                id="goal-original-text"
                 value={goalOriginalText}
                 onChange={(event) => setGoalOriginalText(event.target.value)}
                 placeholder="Original clinical wording"
                 rows={2}
+                aria-describedby="goal-original-text-help"
+                aria-required="true"
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
               />
+              <p id="goal-original-text-help" className="text-xs text-gray-500 dark:text-gray-300">
+                Paste the original clinical wording from the assessment or care-plan source so the goal stays audit-friendly.
+              </p>
               <input
                 type="text"
                 value={goalMeasurementType}
@@ -2120,8 +2177,17 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Program Notes</h3>
             <div className="space-y-3">
-              {programNotes.length === 0 && (
+              {!hasResolvedProgram ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
+                  {noProgramHelperText}
+                </div>
+              ) : programNotes.length === 0 ? (
                 <p className="text-sm text-gray-500">No program notes yet.</p>
+              ) : null}
+              {hasResolvedProgram && programNotes.length === 0 && (
+                <p className="text-xs text-gray-500 dark:text-gray-300">
+                  Add a note to document plan updates, progress summaries, or other program-specific context.
+                </p>
               )}
               {programNotes.map((note) => (
                 <div key={note.id} className="rounded-md border border-gray-200 dark:border-gray-700 p-3">
@@ -2140,6 +2206,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               <select
                 value={noteType}
                 onChange={(event) => setNoteType(event.target.value as ProgramNote["note_type"])}
+                disabled={!hasResolvedProgram}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
               >
                 <option value="plan_update">Plan Update</option>
@@ -2151,16 +2218,20 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 onChange={(event) => setNoteContent(event.target.value)}
                 placeholder="Add a program note"
                 rows={3}
+                disabled={!hasResolvedProgram}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
               />
               <button
                 type="button"
                 onClick={() => createNote.mutate()}
-                disabled={!resolvedProgramId || !noteContent || createNote.isLoading}
+                disabled={Boolean(createNoteDisabledReason) || createNote.isLoading}
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
               >
                 {createNote.isLoading ? "Saving..." : "Add Note"}
               </button>
+              {createNoteDisabledReason && !createNote.isLoading && (
+                <p className="text-xs text-gray-500 dark:text-gray-300">{createNoteDisabledReason}</p>
+              )}
             </div>
           </div>
         </div>

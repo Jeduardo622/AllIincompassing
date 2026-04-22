@@ -30,6 +30,16 @@ describe('SessionModal', () => {
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
     },
+    {
+      id: 'program-2',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      name: 'Second Program',
+      description: 'Second program for tests',
+      status: 'active',
+      created_at: '2024-01-02T00:00:00Z',
+      updated_at: '2024-01-02T00:00:00Z',
+    },
   ];
 
   const mockGoals = [
@@ -45,6 +55,19 @@ describe('SessionModal', () => {
       status: 'active',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
+    },
+    {
+      id: 'goal-2',
+      organization_id: 'org-a',
+      client_id: 'test-client-1',
+      program_id: 'program-2',
+      title: 'Second Goal',
+      description: 'Second goal for tests',
+      original_text: 'Second clinical wording',
+      measurement_type: 'frequency',
+      status: 'active',
+      created_at: '2024-01-02T00:00:00Z',
+      updated_at: '2024-01-02T00:00:00Z',
     },
   ];
 
@@ -158,7 +181,7 @@ describe('SessionModal', () => {
     );
     await screen.findByRole('option', { name: /Default Program/i });
     await userEvent.selectOptions(
-      screen.getByLabelText(/Program/i),
+      screen.getByRole('combobox', { name: /^Program$/i }),
       'program-1'
     );
     await screen.findByRole('option', { name: /Default Goal/i });
@@ -191,6 +214,36 @@ describe('SessionModal', () => {
     });
   }, 15000);
 
+  it('reuses the client-wide goals query when switching programs', async () => {
+    renderWithProviders(<SessionModal {...defaultProps} />);
+
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    await screen.findByRole('option', { name: /Default Program/i });
+    const goalFetchCountBeforeSwitch = vi.mocked(supabase.from).mock.calls.filter(([table]) => table === 'goals').length;
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-2');
+    await screen.findByRole('option', { name: /Second Goal/i });
+
+    const goalFetchCountAfterSwitch = vi.mocked(supabase.from).mock.calls.filter(([table]) => table === 'goals').length;
+    expect(goalFetchCountAfterSwitch).toBe(goalFetchCountBeforeSwitch);
+  });
+
+  it('keeps previously selected goal names intact when another program is added', async () => {
+    renderWithProviders(<SessionModal {...defaultProps} />);
+
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    await screen.findByRole('option', { name: /Default Program/i });
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-1');
+    await screen.findByRole('option', { name: /Default Goal/i });
+    await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
+
+    await userEvent.click(screen.getByRole('button', { name: /Second Program/i }));
+    await userEvent.click(screen.getAllByLabelText(/Second Goal/i)[0]);
+
+    expect(screen.getAllByText(/Selected goals: Default Goal, Second Goal/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Tracking: Default Program, Second Program/i).length).toBeGreaterThan(0);
+  });
+
   it('shows conflict banner and proceeds after user confirmation', async () => {
     // Existing overlapping session to trigger conflict
     const existingSessions = [{
@@ -221,7 +274,7 @@ describe('SessionModal', () => {
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
     await screen.findByRole('option', { name: /Default Program/i });
-    await userEvent.selectOptions(screen.getByLabelText(/Program/i), 'program-1');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-1');
     await screen.findByRole('option', { name: /Default Goal/i });
     await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
     // Use change events for datetime-local inputs to ensure value is set reliably
@@ -275,7 +328,7 @@ describe('SessionModal', () => {
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
     await screen.findByRole('option', { name: /Default Program/i });
-    await userEvent.selectOptions(screen.getByLabelText(/Program/i), 'program-1');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-1');
     await screen.findByRole('option', { name: /Default Goal/i });
     await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
     fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2025-03-18T10:00' } });
@@ -792,7 +845,7 @@ describe('SessionModal', () => {
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
     await screen.findByRole('option', { name: /Default Program/i });
-    await userEvent.selectOptions(screen.getByLabelText(/Program/i), 'program-1');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-1');
     await screen.findByRole('option', { name: /Default Goal/i });
     await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
     fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2026-03-01T10:00' } });
@@ -836,7 +889,7 @@ describe('SessionModal', () => {
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
     await screen.findByRole('option', { name: /Default Program/i });
-    await userEvent.selectOptions(screen.getByLabelText(/Program/i), 'program-1');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-1');
     await screen.findByRole('option', { name: /Default Goal/i });
     await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
     fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2026-03-01T10:00' } });
@@ -883,7 +936,7 @@ describe('SessionModal', () => {
     await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
     await screen.findByRole('option', { name: /Default Program/i });
-    await userEvent.selectOptions(screen.getByLabelText(/Program/i), 'program-1');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-1');
     await screen.findByRole('option', { name: /Default Goal/i });
     await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
     fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2026-03-01T10:00' } });

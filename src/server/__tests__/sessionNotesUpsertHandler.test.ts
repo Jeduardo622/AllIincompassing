@@ -94,6 +94,7 @@ describe("sessionNotesUpsertHandler", () => {
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: false,
     });

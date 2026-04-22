@@ -73,6 +73,7 @@ describe("sessionsStartHandler", () => {
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: false,
     });
@@ -128,6 +129,7 @@ describe("sessionsStartHandler", () => {
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: false,
     });
@@ -171,6 +173,7 @@ describe("sessionsStartHandler", () => {
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: false,
     });
@@ -224,6 +227,7 @@ describe("sessionsStartHandler", () => {
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: false,
     });
@@ -281,6 +285,7 @@ describe("sessionsStartHandler", () => {
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: false,
     });
@@ -338,6 +343,7 @@ describe("sessionsStartHandler", () => {
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: false,
     });
@@ -391,6 +397,7 @@ describe("sessionsStartHandler", () => {
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: false,
     });
@@ -452,6 +459,7 @@ describe("sessionsStartHandler", () => {
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: false,
     });
@@ -486,6 +494,7 @@ describe("sessionsStartHandler", () => {
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: false,
     });
@@ -544,6 +553,7 @@ describe("sessionsStartHandler", () => {
       organizationId: "org-1",
       isTherapist: false,
       isAdmin: true,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: false,
     });
@@ -599,6 +609,7 @@ describe("sessionsStartHandler", () => {
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: false,
     });
@@ -631,6 +642,7 @@ describe("sessionsStartHandler", () => {
       organizationId: null,
       isTherapist: false,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: true,
     });
@@ -658,6 +670,7 @@ describe("sessionsStartHandler", () => {
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: false,
     });

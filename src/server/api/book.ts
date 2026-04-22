@@ -72,6 +72,7 @@ async function assertBookRequestScope(
   const {
     isTherapist,
     isAdmin,
+    isOrgMember,
     isSuperAdmin,
     upstreamError: roleUpstreamError,
   } = roleResolution;
@@ -127,7 +128,7 @@ async function assertBookRequestScope(
     }
   }
 
-  if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
+  if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin && !isOrgMember)) {
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
 
@@ -139,7 +140,7 @@ async function assertBookRequestScope(
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
 
-  if (isTherapist && body.session.therapist_id !== currentUserId) {
+  if (isTherapist && !isAdmin && !isSuperAdmin && !isOrgMember && body.session.therapist_id !== currentUserId) {
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
 

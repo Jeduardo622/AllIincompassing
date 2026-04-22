@@ -35,27 +35,39 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
     fetchSpy.mockRestore();
   });
 
-  it("calls current_user_is_super_admin, current_user_organization_id, then user_has_role_for_org twice with untargeted payloads", async () => {
+  it("calls current_user_is_super_admin, current_user_organization_id, then user_has_role_for_org for therapist/admin/org_admin/org_member", async () => {
     fetchSpy
       .mockResolvedValueOnce(jsonResponse(false))
       .mockResolvedValueOnce(jsonResponse("org-1"))
       .mockResolvedValueOnce(jsonResponse(true))
+      .mockResolvedValueOnce(jsonResponse(false))
+      .mockResolvedValueOnce(jsonResponse(false))
       .mockResolvedValueOnce(jsonResponse(false));
 
     await resolveOrgAndRoleWithStatus(accessToken);
 
-    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    expect(fetchSpy).toHaveBeenCalledTimes(6);
     expect(String(fetchSpy.mock.calls[0]?.[0])).toContain("/rest/v1/rpc/current_user_is_super_admin");
     expect(String(fetchSpy.mock.calls[1]?.[0])).toContain("/rest/v1/rpc/current_user_organization_id");
 
     const therapistInit = fetchSpy.mock.calls[2]?.[1] as RequestInit;
     const adminInit = fetchSpy.mock.calls[3]?.[1] as RequestInit;
+    const orgAdminInit = fetchSpy.mock.calls[4]?.[1] as RequestInit;
+    const orgMemberInit = fetchSpy.mock.calls[5]?.[1] as RequestInit;
     expect(JSON.parse(String(therapistInit.body))).toEqual({
       role_name: "therapist",
       target_organization_id: "org-1",
     });
     expect(JSON.parse(String(adminInit.body))).toEqual({
       role_name: "admin",
+      target_organization_id: "org-1",
+    });
+    expect(JSON.parse(String(orgAdminInit.body))).toEqual({
+      role_name: "org_admin",
+      target_organization_id: "org-1",
+    });
+    expect(JSON.parse(String(orgMemberInit.body))).toEqual({
+      role_name: "org_member",
       target_organization_id: "org-1",
     });
   });
@@ -65,12 +77,15 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       .mockResolvedValueOnce(jsonResponse(false))
       .mockResolvedValueOnce(jsonResponse("org-1"))
       .mockResolvedValueOnce(jsonResponse(true))
-      .mockResolvedValueOnce(jsonResponse(true));
+      .mockResolvedValueOnce(jsonResponse(true))
+      .mockResolvedValueOnce(jsonResponse(false))
+      .mockResolvedValueOnce(jsonResponse(false));
 
     await expect(resolveOrgAndRoleWithStatus(accessToken)).resolves.toEqual({
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: true,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: false,
     });
@@ -81,12 +96,15 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       .mockResolvedValueOnce(jsonResponse(true))
       .mockResolvedValueOnce(jsonResponse("org-1"))
       .mockResolvedValueOnce(jsonResponse(false))
+      .mockResolvedValueOnce(jsonResponse(false))
+      .mockResolvedValueOnce(jsonResponse(false))
       .mockResolvedValueOnce(jsonResponse(false));
 
     await expect(resolveOrgAndRoleWithStatus(accessToken)).resolves.toEqual({
       organizationId: "org-1",
       isTherapist: false,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: true,
       upstreamError: false,
     });
@@ -101,6 +119,7 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       organizationId: null,
       isTherapist: false,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: false,
     });
@@ -112,12 +131,15 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       .mockResolvedValueOnce(jsonResponse(false))
       .mockResolvedValueOnce(jsonResponse("org-1"))
       .mockResolvedValueOnce(new Response("", { status: 503 }))
+      .mockResolvedValueOnce(jsonResponse(false))
+      .mockResolvedValueOnce(jsonResponse(false))
       .mockResolvedValueOnce(jsonResponse(false));
 
     await expect(resolveOrgAndRoleWithStatus(accessToken)).resolves.toEqual({
       organizationId: "org-1",
       isTherapist: false,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: true,
     });

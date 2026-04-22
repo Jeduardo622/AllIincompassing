@@ -71,7 +71,7 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
       });
     }
 
-    const { organizationId, isTherapist, isAdmin, isSuperAdmin, upstreamError: roleUpstreamError } =
+    const { organizationId, isTherapist, isAdmin, isOrgMember, isSuperAdmin, upstreamError: roleUpstreamError } =
       await resolveOrgAndRoleWithStatus(accessToken);
     if (roleUpstreamError) {
       return errorResponse(request, "upstream_error", "Unable to validate organization access", {
@@ -79,7 +79,7 @@ export async function sessionsStartHandler(request: Request): Promise<Response> 
         headers: traceHeaders,
       });
     }
-    if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
+    if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin && !isOrgMember)) {
       return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
     }
 

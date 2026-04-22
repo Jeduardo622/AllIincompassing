@@ -231,6 +231,7 @@ export async function resolveOrgAndRole(accessToken: string): Promise<{
   organizationId: string | null;
   isTherapist: boolean;
   isAdmin: boolean;
+  isOrgMember: boolean;
   isSuperAdmin: boolean;
 }> {
   const result = await resolveOrgAndRoleWithStatus(accessToken);
@@ -238,6 +239,7 @@ export async function resolveOrgAndRole(accessToken: string): Promise<{
     organizationId: result.organizationId,
     isTherapist: result.isTherapist,
     isAdmin: result.isAdmin,
+    isOrgMember: result.isOrgMember,
     isSuperAdmin: result.isSuperAdmin,
   };
 }
@@ -246,6 +248,8 @@ export async function resolveOrgAndRoleWithStatus(accessToken: string): Promise<
   organizationId: string | null;
   isTherapist: boolean;
   isAdmin: boolean;
+  /** Scheduling-staff role (RLS storage name); may reschedule sessions without being a therapist row. */
+  isOrgMember: boolean;
   isSuperAdmin: boolean;
   upstreamError: boolean;
 }> {
@@ -283,6 +287,7 @@ export async function resolveOrgAndRoleWithStatus(accessToken: string): Promise<
       organizationId: null,
       isTherapist: false,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin,
       upstreamError: superAdminUpstreamError || orgUpstreamError,
     };
@@ -299,18 +304,35 @@ export async function resolveOrgAndRoleWithStatus(accessToken: string): Promise<
     headers,
     body: JSON.stringify({ role_name: "admin", target_organization_id: organizationId }),
   });
+  const orgAdminResult = await fetchJson<boolean>(roleUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ role_name: "org_admin", target_organization_id: organizationId }),
+  });
+  const orgMemberResult = await fetchJson<boolean>(roleUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ role_name: "org_member", target_organization_id: organizationId }),
+  });
   const therapistUpstreamError = !therapistResult.ok && therapistResult.status >= 500;
   const adminUpstreamError = !adminResult.ok && adminResult.status >= 500;
+  const orgAdminUpstreamError = !orgAdminResult.ok && orgAdminResult.status >= 500;
+  const orgMemberUpstreamError = !orgMemberResult.ok && orgMemberResult.status >= 500;
+  const isOrgMember = orgMemberResult.ok && orgMemberResult.data === true;
   return {
     organizationId,
     isTherapist: therapistResult.ok && therapistResult.data === true,
-    isAdmin: adminResult.ok && adminResult.data === true,
+    isAdmin:
+      (adminResult.ok && adminResult.data === true) || (orgAdminResult.ok && orgAdminResult.data === true),
+    isOrgMember,
     isSuperAdmin,
     upstreamError:
       superAdminUpstreamError ||
       orgUpstreamError ||
       therapistUpstreamError ||
-      adminUpstreamError,
+      adminUpstreamError ||
+      orgAdminUpstreamError ||
+      orgMemberUpstreamError,
   };
 }
 

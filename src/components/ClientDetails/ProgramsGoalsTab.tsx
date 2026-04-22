@@ -40,6 +40,12 @@ const PROGRAM_NOTES_REQUEST_TIMEOUT_MS = 12_000;
 const PROGRAM_CREATE_REQUEST_TIMEOUT_MS = 12_000;
 const GOAL_CREATE_REQUEST_TIMEOUT_MS = 12_000;
 const PROGRAM_NOTE_CREATE_REQUEST_TIMEOUT_MS = 12_000;
+const TAB_QUERY_STALE_TIME_MS = 30_000;
+const ASSESSMENT_DOCUMENT_POLL_INTERVAL_MS = 3_000;
+const ACTIVE_ASSESSMENT_POLL_STATUSES: ReadonlySet<AssessmentDocumentRecord["status"]> = new Set([
+  "uploaded",
+  "extracting",
+]);
 
 const withTimeout = async <T,>(
   promise: Promise<T>,
@@ -69,6 +75,35 @@ const PROGRAM_NOTES_EDGE_PATH = "program-notes";
 
 const buildProgramsQueryPath = (clientId: string): string =>
   `${PROGRAMS_EDGE_PATH}?client_id=${encodeURIComponent(clientId)}`;
+
+const buildClientProgramsQueryKey = (clientId: string, organizationId?: string | null) =>
+  ["client-programs", clientId, organizationId ?? "MISSING_ORG"] as const;
+
+const buildProgramGoalsQueryKey = (programId: string | null, organizationId?: string | null) =>
+  ["program-goals", programId, organizationId ?? "MISSING_ORG"] as const;
+
+const buildProgramNotesQueryKey = (programId: string | null, organizationId?: string | null) =>
+  ["program-notes", programId, organizationId ?? "MISSING_ORG"] as const;
+
+const upsertById = <T extends { id: string }>(current: T[] | undefined, nextItem: T): T[] => {
+  const existingItems = Array.isArray(current) ? current : [];
+  const existingIndex = existingItems.findIndex((item) => item.id === nextItem.id);
+  if (existingIndex >= 0) {
+    const nextItems = [...existingItems];
+    nextItems[existingIndex] = nextItem;
+    return nextItems;
+  }
+  return [nextItem, ...existingItems];
+};
+
+const mapById = <T extends { id: string }>(
+  current: T[] | undefined,
+  id: string,
+  mapItem: (item: T) => T,
+): T[] => {
+  const existingItems = Array.isArray(current) ? current : [];
+  return existingItems.map((item) => (item.id === id ? mapItem(item) : item));
+};
 
 const shouldFallbackToApi = (error: unknown): boolean => {
   if (!(error instanceof Error)) {
@@ -119,6 +154,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const { session } = useAuth();
   const publishSectionRef = useRef<HTMLDivElement | null>(null);
   const assessmentDocumentsQueryKey = ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"] as const;
+  const clientProgramsQueryKey = buildClientProgramsQueryKey(client.id, organizationId);
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
   const [selectedAssessmentId, setSelectedAssessmentId] = useState<string | null>(null);
   const [assessmentFile, setAssessmentFile] = useState<File | null>(null);
@@ -169,6 +205,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [archivingProgramId, setArchivingProgramId] = useState<string | null>(null);
   const [archivingGoalId, setArchivingGoalId] = useState<string | null>(null);
   const [isUploadProcessing, setIsUploadProcessing] = useState(false);
+  const [assessmentDocumentsNeedsRetry, setAssessmentDocumentsNeedsRetry] = useState(false);
 
   const applyDraftGoal = (goal: ProgramGoalDraftResponse["goals"][number]) => {
     setGoalTitle(goal.title);
@@ -188,7 +225,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     isLoading: programsLoading,
     error: programsQueryError,
   } = useQuery({
-    queryKey: ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
+    queryKey: clientProgramsQueryKey,
     queryFn: async () => {
       if (!organizationId) {
         throw new Error("Organization context is required to load programs.");
@@ -217,6 +254,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
     enabled: Boolean(client.id && organizationId),
     retry: false,
+    staleTime: TAB_QUERY_STALE_TIME_MS,
   });
 
   const livePrograms = useMemo(
@@ -253,13 +291,15 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     : !noteContentValue
       ? "Program note is required."
       : null;
+  const programGoalsQueryKey = buildProgramGoalsQueryKey(resolvedProgramId, organizationId);
+  const programNotesQueryKey = buildProgramNotesQueryKey(resolvedProgramId, organizationId);
 
   const {
     data: goals = [],
     isLoading: goalsLoading,
     error: goalsQueryError,
   } = useQuery({
-    queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
+    queryKey: programGoalsQueryKey,
     queryFn: async () => {
       if (!resolvedProgramId) return [];
       const response = await callEdgeWithSupabaseFallback({
@@ -288,6 +328,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
     enabled: Boolean(resolvedProgramId),
     retry: false,
+    staleTime: TAB_QUERY_STALE_TIME_MS,
   });
 
   const liveGoals = useMemo(
@@ -296,7 +337,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   );
 
   const { data: programNotes = [] } = useQuery({
-    queryKey: ["program-notes", resolvedProgramId, organizationId ?? "MISSING_ORG"],
+    queryKey: programNotesQueryKey,
     queryFn: async () => {
       if (!resolvedProgramId) return [];
       const response = await callEdgeWithSupabaseFallback({
@@ -323,27 +364,51 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
     enabled: Boolean(resolvedProgramId),
     retry: false,
+    staleTime: TAB_QUERY_STALE_TIME_MS,
   });
 
-  const { data: assessmentDocuments = EMPTY_ASSESSMENT_DOCUMENTS, isLoading: assessmentLoading } = useQuery({
+  const {
+    data: assessmentDocuments = EMPTY_ASSESSMENT_DOCUMENTS,
+    isLoading: assessmentLoading,
+    refetch: refetchAssessmentDocuments,
+  } = useQuery({
     queryKey: assessmentDocumentsQueryKey,
     queryFn: async () => {
       const response = await callApi(`/api/assessment-documents?client_id=${encodeURIComponent(client.id)}`);
       if (!response.ok) {
+        setAssessmentDocumentsNeedsRetry(true);
         const cachedDocuments = queryClient.getQueryData<AssessmentDocumentRecord[]>(assessmentDocumentsQueryKey);
         return cachedDocuments ?? EMPTY_ASSESSMENT_DOCUMENTS;
       }
+      setAssessmentDocumentsNeedsRetry(false);
       return parseJson<AssessmentDocumentRecord[]>(response);
     },
     enabled: Boolean(client.id && organizationId),
-    // Keep queue status fresh while avoiding version-specific callback signatures.
-    refetchInterval: 3000,
+    staleTime: TAB_QUERY_STALE_TIME_MS,
   });
+  const shouldPollAssessmentDocuments =
+    isUploadProcessing ||
+    assessmentDocumentsNeedsRetry ||
+    assessmentDocuments.some((document) => ACTIVE_ASSESSMENT_POLL_STATUSES.has(document.status));
   const selectedAssessmentIdIsValid = Boolean(selectedAssessmentId && UUID_PATTERN.test(selectedAssessmentId));
   const selectedAssessmentInQueue = Boolean(
     selectedAssessmentId && assessmentDocuments.some((document) => document.id === selectedAssessmentId),
   );
   const canQuerySelectedAssessment = selectedAssessmentIdIsValid && selectedAssessmentInQueue;
+
+  useEffect(() => {
+    if (!shouldPollAssessmentDocuments) {
+      return undefined;
+    }
+
+    const pollHandle = window.setInterval(() => {
+      void refetchAssessmentDocuments();
+    }, ASSESSMENT_DOCUMENT_POLL_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(pollHandle);
+    };
+  }, [refetchAssessmentDocuments, shouldPollAssessmentDocuments]);
 
   const { data: checklistItems = EMPTY_CHECKLIST_ITEMS } = useQuery({
     queryKey: ["assessment-checklist", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
@@ -545,7 +610,6 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         const withoutCreated = currentRecords.filter((record) => record.id !== created.id);
         return [{ ...created }, ...withoutCreated];
       });
-      queryClient.invalidateQueries({ queryKey: assessmentDocumentsQueryKey });
       showSuccess(`${createdTemplateLabel} uploaded and checklist initialized.`);
     },
     onError: showError,
@@ -625,9 +689,6 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       });
       queryClient.removeQueries({
         queryKey: ["assessment-drafts", document.id, organizationId ?? "MISSING_ORG"],
-      });
-      queryClient.invalidateQueries({
-        queryKey: assessmentDocumentsQueryKey,
       });
       queryClient.invalidateQueries({
         queryKey: ["assessment-checklist", document.id, organizationId ?? "MISSING_ORG"],
@@ -896,21 +957,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       setProgramName("");
       setProgramDescription("");
       setSelectedProgramId(created.id);
-      queryClient.setQueryData<Program[]>(
-        ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
-        (current = []) => {
-          const existingIndex = current.findIndex((program) => program.id === created.id);
-          if (existingIndex >= 0) {
-            const next = [...current];
-            next[existingIndex] = created;
-            return next;
-          }
-          return [created, ...current];
-        },
-      );
-      queryClient.invalidateQueries({
-        queryKey: ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
-      });
+      queryClient.setQueryData<Program[]>(clientProgramsQueryKey, (current) => upsertById(current, created));
     },
     onError: showError,
   });
@@ -981,7 +1028,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       }
       return parseJson<Goal>(response);
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       showSuccess("Goal created");
       setGoalTitle("");
       setGoalDescription("");
@@ -993,9 +1040,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       setGoalMaintenanceCriteria("");
       setGoalGeneralizationCriteria("");
       setGoalObjectiveDataPoints("[]");
-      queryClient.invalidateQueries({
-        queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
-      });
+      queryClient.setQueryData<Goal[]>(buildProgramGoalsQueryKey(created.program_id, organizationId), (current) =>
+        upsertById(current, created),
+      );
     },
     onError: showError,
   });
@@ -1037,9 +1084,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (selectedProgramId === program.id) {
         setSelectedProgramId(null);
       }
-      queryClient.invalidateQueries({
-        queryKey: ["client-programs", client.id, organizationId ?? "MISSING_ORG"],
-      });
+      queryClient.setQueryData<Program[]>(clientProgramsQueryKey, (current) =>
+        mapById(current, program.id, (currentProgram) => ({ ...currentProgram, status: "archived" })),
+      );
     },
     onError: showError,
     onSettled: () => {
@@ -1081,9 +1128,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     },
     onSuccess: (_, goal) => {
       showSuccess(`Goal "${goal.title}" removed from active care plan.`);
-      queryClient.invalidateQueries({
-        queryKey: ["program-goals", goal.program_id, organizationId ?? "MISSING_ORG"],
-      });
+      queryClient.setQueryData<Goal[]>(buildProgramGoalsQueryKey(goal.program_id, organizationId), (current) =>
+        mapById(current, goal.id, (currentGoal) => ({ ...currentGoal, status: "archived" })),
+      );
     },
     onError: showError,
     onSettled: () => {
@@ -1137,12 +1184,12 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       }
       return parseJson<ProgramNote>(response);
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       showSuccess("Program note added");
       setNoteContent("");
-      queryClient.invalidateQueries({
-        queryKey: ["program-notes", resolvedProgramId, organizationId ?? "MISSING_ORG"],
-      });
+      queryClient.setQueryData<ProgramNote[]>(buildProgramNotesQueryKey(created.program_id, organizationId), (current) =>
+        upsertById(current, created),
+      );
     },
     onError: showError,
   });

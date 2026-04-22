@@ -4,6 +4,104 @@ import { assertAdminOrSuperAdmin } from "../_shared/auth.ts";
 
 interface RoleUpdateRequest { role: 'client' | 'therapist' | 'admin' | 'super_admin'; is_active?: boolean; }
 
+type AppRole = RoleUpdateRequest["role"];
+
+const CANONICAL_ROLE_NAMES: AppRole[] = ["super_admin", "admin", "therapist", "client"];
+
+const ROLE_RANK: Record<AppRole, number> = {
+  super_admin: 4,
+  admin: 3,
+  therapist: 2,
+  client: 1,
+};
+
+/**
+ * `profiles.role` is not authoritative: middleware and RLS use `user_roles` + helpers
+ * (`current_user_is_super_admin`, `get_user_role_from_junction`). Authenticated clients
+ * cannot mutate another user's `user_roles` rows (RLS), so apply junction changes with the
+ * service role after this super-admin-only route has authorized the caller.
+ */
+async function syncCanonicalUserRoles(
+  targetUserId: string,
+  role: AppRole,
+  grantedBy: string,
+): Promise<string | null> {
+  const { data: roleRows, error: rolesError } = await supabaseAdmin
+    .from("roles")
+    .select("id,name")
+    .in("name", CANONICAL_ROLE_NAMES);
+
+  if (rolesError || !roleRows?.length) {
+    console.error("syncCanonicalUserRoles: failed to load roles", rolesError);
+    return "Failed to resolve canonical roles";
+  }
+
+  const roleIdByName = new Map<string, string>();
+  for (const row of roleRows) {
+    if (typeof row.name === "string" && typeof row.id === "string") {
+      roleIdByName.set(row.name, row.id);
+    }
+  }
+
+  const allStandardIds = CANONICAL_ROLE_NAMES
+    .map((name) => roleIdByName.get(name))
+    .filter((id): id is string => Boolean(id));
+
+  if (role === "client") {
+    const { error: clearError } = await supabaseAdmin
+      .from("user_roles")
+      .delete()
+      .eq("user_id", targetUserId)
+      .in("role_id", allStandardIds);
+    if (clearError) {
+      console.error("syncCanonicalUserRoles: clear standard roles failed", clearError);
+      return "Failed to update role assignments";
+    }
+    return null;
+  }
+
+  const targetRank = ROLE_RANK[role];
+  const elevatedIds = CANONICAL_ROLE_NAMES
+    .filter((name) => ROLE_RANK[name] > targetRank)
+    .map((name) => roleIdByName.get(name))
+    .filter((id): id is string => Boolean(id));
+
+  if (elevatedIds.length > 0) {
+    const { error: delError } = await supabaseAdmin
+      .from("user_roles")
+      .delete()
+      .eq("user_id", targetUserId)
+      .in("role_id", elevatedIds);
+    if (delError) {
+      console.error("syncCanonicalUserRoles: delete elevated roles failed", delError);
+      return "Failed to update role assignments";
+    }
+  }
+
+  const targetRoleId = roleIdByName.get(role);
+  if (!targetRoleId) {
+    return "Target role is not configured";
+  }
+
+  const nowIso = new Date().toISOString();
+  const { error: upsertError } = await supabaseAdmin.from("user_roles").upsert(
+    {
+      user_id: targetUserId,
+      role_id: targetRoleId,
+      granted_by: grantedBy,
+      granted_at: nowIso,
+      is_active: true,
+    },
+    { onConflict: "user_id,role_id" },
+  );
+
+  if (upsertError) {
+    console.error("syncCanonicalUserRoles: upsert failed", upsertError);
+    return "Failed to update role assignments";
+  }
+  return null;
+}
+
 export default createProtectedRoute(async (req: Request, userContext) => {
   if (req.method !== 'PATCH') return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   try {
@@ -31,6 +129,11 @@ export default createProtectedRoute(async (req: Request, userContext) => {
     if (userId === userContext.user.id && is_active === false) return new Response(JSON.stringify({ error: 'Cannot deactivate your own account' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     const updateData: any = { role }; if (is_active !== undefined) updateData.is_active = is_active;
+
+    const junctionError = await syncCanonicalUserRoles(userId, role, userContext.user.id);
+    if (junctionError) {
+      return new Response(JSON.stringify({ error: junctionError }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
 
     const { data: updatedUser, error: updateError } = await adminClient
       .from('profiles').update(updateData).eq('id', userId)

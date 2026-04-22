@@ -7,6 +7,13 @@ const envValues = new Map<string, string>([
   ['SUPABASE_ANON_KEY', 'anon-key'],
 ]);
 
+const CANONICAL_TEST_ROLES = [
+  { id: 'rid-super', name: 'super_admin' },
+  { id: 'rid-admin', name: 'admin' },
+  { id: 'rid-therapist', name: 'therapist' },
+  { id: 'rid-client', name: 'client' },
+] as const;
+
 type TestRole = 'client' | 'therapist' | 'admin' | 'super_admin';
 
 type TestUser = {
@@ -39,6 +46,7 @@ let existingProfile: TestProfile & {
   updated_at: string;
 };
 let adminActionInserts: Array<Record<string, unknown>> = [];
+let userRolesUpsertPayload: Record<string, unknown> | null = null;
 
 type AdminUserRecord = {
   id: string;
@@ -119,6 +127,32 @@ vi.mock('../supabase/functions/_shared/database.ts', () => {
           })),
         },
       },
+      from: vi.fn((table: string) => {
+        if (table === 'roles') {
+          return {
+            select: vi.fn(() => ({
+              in: vi.fn(async () => ({
+                data: CANONICAL_TEST_ROLES,
+                error: null,
+              })),
+            })),
+          };
+        }
+        if (table === 'user_roles') {
+          return {
+            delete: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                in: vi.fn(async () => ({ error: null })),
+              })),
+            })),
+            upsert: vi.fn((payload: Record<string, unknown>) => {
+              userRolesUpsertPayload = payload;
+              return Promise.resolve({ error: null });
+            }),
+          };
+        }
+        throw new Error(`Unexpected supabaseAdmin table: ${table}`);
+      }),
     },
     createRequestClient: () => ({
       rpc: vi.fn(async (functionName: string) => {
@@ -164,6 +198,7 @@ describe('admin-users-roles access control', () => {
     };
     adminActionInserts = [];
     adminUsers.clear();
+    userRolesUpsertPayload = null;
   });
 
   it('allows a super admin to demote another admin user', async () => {
@@ -208,6 +243,12 @@ describe('admin-users-roles access control', () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.user.role).toBe('therapist');
+    expect(userRolesUpsertPayload).toMatchObject({
+      user_id: existingProfile.id,
+      role_id: 'rid-therapist',
+      granted_by: 'super-admin-1',
+      is_active: true,
+    });
     expect(latestUpdatePayload).toEqual({ role: 'therapist' });
     expect(logApiAccess).toHaveBeenCalledWith('PATCH', '/admin/users/11111111-1111-1111-1111-111111111111/roles', superAdminContext, 200);
     expect(adminActionInserts).toEqual([
@@ -222,5 +263,53 @@ describe('admin-users-roles access control', () => {
         },
       },
     ]);
+  });
+
+  it('syncs user_roles when promoting a user to super_admin', async () => {
+    rpcRoles = ['super_admin'];
+
+    const superAdminContext: TestUserContext = {
+      user: { id: 'super-admin-2', email: 'super2@example.com' },
+      profile: {
+        id: 'super-admin-profile-2',
+        email: 'super2@example.com',
+        role: 'super_admin',
+        is_active: true,
+      },
+    };
+
+    userContexts.set('super2', superAdminContext);
+    adminUsers.set('super-admin-2', {
+      id: 'super-admin-2',
+      email: 'super2@example.com',
+      user_metadata: { organization_id: 'org-123' },
+    });
+    adminUsers.set(existingProfile.id, {
+      id: existingProfile.id,
+      email: existingProfile.email,
+      user_metadata: { organization_id: 'org-999' },
+    });
+
+    const { default: handler } = await import('../supabase/functions/admin-users-roles/index.ts');
+
+    const response = await handler(
+      new Request('http://localhost/functions/v1/admin/users/11111111-1111-1111-1111-111111111111/roles', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer test-token',
+          'x-test-user': 'super2',
+        },
+        body: JSON.stringify({ role: 'super_admin' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(userRolesUpsertPayload).toMatchObject({
+      user_id: existingProfile.id,
+      role_id: 'rid-super',
+      granted_by: 'super-admin-2',
+      is_active: true,
+    });
   });
 });

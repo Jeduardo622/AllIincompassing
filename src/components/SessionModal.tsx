@@ -127,6 +127,10 @@ export function SessionModal({
   onSessionStarted,
 }: SessionModalProps) {
   const [isPlanSummaryExpanded, setIsPlanSummaryExpanded] = useState(false);
+  const [selectedProgramIds, setSelectedProgramIds] = useState<string[]>(() =>
+    session?.program_id ? [session.program_id] : [],
+  );
+  const [mobileProgramsExpanded, setMobileProgramsExpanded] = useState(false);
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [alternativeTimes, setAlternativeTimes] = useState<AlternativeTime[]>([]);
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
@@ -279,9 +283,9 @@ export function SessionModal({
     isError: isGoalsError,
     refetch: refetchGoals,
   } = useQuery({
-    queryKey: ['program-goals', programId, activeOrganizationId ?? 'MISSING_ORG'],
+    queryKey: ['client-goals', clientId, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
-      if (!programId || !activeOrganizationId) {
+      if (!clientId || !activeOrganizationId) {
         return [];
       }
       const { data, error } = await supabase
@@ -289,7 +293,7 @@ export function SessionModal({
         .select(
           'id, title, status, program_id, measurement_type, baseline_data, target_criteria, mastery_criteria, maintenance_criteria, generalization_criteria, objective_data_points',
         )
-        .eq('program_id', programId)
+        .eq('client_id', clientId)
         .eq('organization_id', activeOrganizationId)
         .order('created_at', { ascending: false });
       if (error) {
@@ -297,7 +301,7 @@ export function SessionModal({
       }
       return (data ?? []) as Goal[];
     },
-    enabled: Boolean(programId && activeOrganizationId),
+    enabled: Boolean(clientId && activeOrganizationId),
   });
 
   const { data: approvedAuthorizations = [] } = useQuery({
@@ -347,13 +351,75 @@ export function SessionModal({
   const selectedClientServices = selectedClient?.service_preference ?? [];
   const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
   const activePrograms = programs.filter((program) => program.status === 'active');
-  const activeGoals = goals.filter((goal) => goal.status === 'active');
-  const selectedPrimaryGoal = goals.find((goal) => goal.id === goalId);
+  const availableGoals = useMemo(
+    () => goals.filter((goal) => goal.status !== 'archived'),
+    [goals],
+  );
+  const activeGoals = useMemo(
+    () => availableGoals.filter((goal) => goal.status === 'active'),
+    [availableGoals],
+  );
+  const programsById = useMemo(
+    () => new Map(programs.map((program) => [program.id, program])),
+    [programs],
+  );
+  const goalsById = useMemo(
+    () => new Map(availableGoals.map((goal) => [goal.id, goal])),
+    [availableGoals],
+  );
+  const activeGoalsByProgram = useMemo(() => {
+    const byProgram = new Map<string, Goal[]>();
+    for (const goal of activeGoals) {
+      const programKey = goal.program_id ?? '__unknown__';
+      const existing = byProgram.get(programKey);
+      if (existing) {
+        existing.push(goal);
+      } else {
+        byProgram.set(programKey, [goal]);
+      }
+    }
+    return byProgram;
+  }, [activeGoals]);
+  const selectedPrimaryGoal = goalId ? goalsById.get(goalId) : undefined;
+  const selectedProgramSet = useMemo(
+    () => new Set(selectedProgramIds),
+    [selectedProgramIds],
+  );
+  const selectedPrograms = useMemo(
+    () => selectedProgramIds.map((id) => programsById.get(id)).filter((program): program is Program => Boolean(program)),
+    [programsById, selectedProgramIds],
+  );
+  const selectedProgramGoals = useMemo(
+    () =>
+      selectedProgramIds.flatMap((id) => activeGoalsByProgram.get(id) ?? []),
+    [activeGoalsByProgram, selectedProgramIds],
+  );
+  const availableProgramGroups = useMemo(
+    () =>
+      activePrograms
+        .map((program) => ({
+          program,
+          goals: activeGoalsByProgram.get(program.id) ?? [],
+        }))
+        .filter(({ goals }) => goals.length > 0),
+    [activeGoalsByProgram, activePrograms],
+  );
+  const selectedGoalsForSession = useMemo(
+    () =>
+      mergeUniqueGoalIds(Array.isArray(goalIds) ? goalIds : [], goalId ? [goalId] : [])
+        .map((id) => goalsById.get(id))
+        .filter((goal): goal is Goal => Boolean(goal)),
+    [goalId, goalIds, goalsById],
+  );
+  const selectedGoalsSummary = useMemo(
+    () => selectedGoalsForSession.map((goal) => goal.title).join(', '),
+    [selectedGoalsForSession],
+  );
   const hasProgramOptionForValue = typeof programId === 'string' && programId.length > 0
-    ? programs.some((program) => program.id === programId)
+    ? activePrograms.some((program) => program.id === programId)
     : false;
   const hasGoalOptionForValue = typeof goalId === 'string' && goalId.length > 0
-    ? goals.some((goal) => goal.id === goalId)
+    ? selectedProgramGoals.some((goal) => goal.id === goalId)
     : false;
 
   useEffect(() => {
@@ -383,6 +449,8 @@ export function SessionModal({
     setValue('program_id', '');
     setValue('goal_id', '');
     setValue('goal_ids', []);
+    setSelectedProgramIds([]);
+    setMobileProgramsExpanded(false);
   }, [clientId, setValue]);
 
   useEffect(() => {
@@ -391,6 +459,11 @@ export function SessionModal({
     }
     if (sessionDetails.program_id) {
       setValue('program_id', sessionDetails.program_id);
+      setSelectedProgramIds((current) =>
+        current.includes(sessionDetails.program_id as string)
+          ? current
+          : [sessionDetails.program_id as string, ...current],
+      );
     }
     if (sessionDetails.goal_id) {
       setValue('goal_id', sessionDetails.goal_id);
@@ -427,67 +500,71 @@ export function SessionModal({
       if (Array.isArray(goalIds) && goalIds.length > 0) {
         setValue('goal_ids', []);
       }
+      setSelectedProgramIds([]);
       return;
     }
-    const programIds = new Set(programs.map((program) => program.id));
-    if (programId && programIds.has(programId)) {
-      return;
-    }
-    if (session?.id && programId && !programIds.has(programId)) {
-      return;
+    const programIdsSet = new Set(programs.map((program) => program.id));
+    const nextProgram = programs.find((program) => program.status === 'active') ?? programs[0];
+    if (!programId || !programIdsSet.has(programId)) {
+      if (session?.id && programId && !programIdsSet.has(programId)) {
+        return;
+      }
+      if (nextProgram?.id) {
+        setValue('program_id', nextProgram.id);
+      }
     }
 
-    const nextProgram = programs.find((program) => program.status === 'active') ?? programs[0];
-    if (nextProgram?.id) {
-      setValue('program_id', nextProgram.id);
-      if (goalId) {
-        setValue('goal_id', '');
+    setSelectedProgramIds((current) => {
+      const filtered = current.filter((id) => programIdsSet.has(id));
+      const preferredPrimaryProgram = programIdsSet.has(programId ?? '') ? programId : nextProgram?.id ?? '';
+      const withPrimary =
+        preferredPrimaryProgram && !filtered.includes(preferredPrimaryProgram)
+          ? [preferredPrimaryProgram, ...filtered]
+          : filtered;
+      if (withPrimary.length > 0) {
+        return withPrimary;
       }
-      if (Array.isArray(goalIds) && goalIds.length > 0) {
-        setValue('goal_ids', []);
-      }
-    }
-  }, [isProgramsFetched, programs, programId, goalId, goalIds, setValue]);
+      return nextProgram?.id ? [nextProgram.id] : [];
+    });
+  }, [isProgramsFetched, programs, programId, goalId, goalIds, session?.id, setValue]);
 
   useEffect(() => {
     if (!isGoalsFetched) {
       return;
     }
 
-    if (!goals.length) {
+    if (!availableGoals.length) {
       return;
     }
-    const goalIdsSet = new Set(goals.map((goal) => goal.id));
+    const primaryProgramId = selectedProgramIds[0] ?? programId ?? '';
+    const primaryProgramGoals =
+      activeGoalsByProgram.get(primaryProgramId) ??
+      activeGoalsByProgram.get(programId ?? '') ??
+      activeGoals;
+    const goalIdsSet = new Set(availableGoals.map((goal) => goal.id));
     if (session?.id && goalId && !goalIdsSet.has(goalId)) {
       return;
     }
     if (!goalId || !goalIdsSet.has(goalId)) {
-      const nextGoal = goals.find((goal) => goal.status === 'active') ?? goals[0];
+      const nextGoal = primaryProgramGoals[0] ?? activeGoals[0] ?? availableGoals[0];
       if (nextGoal?.id) {
         setValue('goal_id', nextGoal.id);
+        if (nextGoal.program_id) {
+          setValue('program_id', nextGoal.program_id);
+        }
       }
     }
-  }, [isGoalsFetched, goals, goalId, setValue]);
-
-  useEffect(() => {
-    if (!programId) {
-      if (Array.isArray(goalIds) && goalIds.length > 0) {
-        setValue('goal_ids', []);
-      }
-      return;
-    }
-    if (!goals.length || !Array.isArray(goalIds)) {
-      return;
-    }
-    const allowed = new Set(goals.map((goal) => goal.id));
-    if (session?.id && goalId) {
-      allowed.add(goalId);
-    }
-    const filtered = goalIds.filter((id) => allowed.has(id));
-    if (filtered.length !== goalIds.length) {
-      setValue('goal_ids', filtered);
-    }
-  }, [programId, goals, goalIds, setValue]);
+  }, [
+    activeGoals,
+    activeGoalsByProgram,
+    availableGoals,
+    goalId,
+    isGoalsFetched,
+    programId,
+    selectedProgramIds,
+    session?.id,
+    setValue,
+  ]);
 
   useEffect(() => {
     if (!goalId) {
@@ -497,7 +574,95 @@ export function SessionModal({
     if (!nextGoalIds.includes(goalId)) {
       setValue('goal_ids', [...nextGoalIds, goalId]);
     }
+    const primaryGoalProgramId = goalsById.get(goalId)?.program_id;
+    if (primaryGoalProgramId) {
+      setSelectedProgramIds((current) =>
+        current.includes(primaryGoalProgramId) ? current : [primaryGoalProgramId, ...current],
+      );
+      if (programId !== primaryGoalProgramId) {
+        setValue('program_id', primaryGoalProgramId);
+      }
+    }
+  }, [goalId, goalIds, goalsById, programId, setValue]);
+
+  useEffect(() => {
+    const programsFromGoals = mergeUniqueGoalIds(Array.isArray(goalIds) ? goalIds : [], goalId ? [goalId] : [])
+      .map((selectedGoalId) => goalsById.get(selectedGoalId)?.program_id)
+      .filter((id): id is string => Boolean(id));
+    if (programId) {
+      programsFromGoals.unshift(programId);
+    }
+    if (programsFromGoals.length === 0) {
+      return;
+    }
+    setSelectedProgramIds((current) => {
+      const next = Array.from(new Set([...programsFromGoals, ...current]));
+      return next.length === current.length && next.every((id, index) => id === current[index])
+        ? current
+        : next;
+    });
   }, [goalId, goalIds, setValue]);
+
+  const updateProgramSelection = useCallback(
+    (nextProgramIds: string[]) => {
+      const uniqueProgramIds = Array.from(new Set(nextProgramIds)).filter((id) => programsById.has(id));
+      setSelectedProgramIds(uniqueProgramIds);
+
+      if (uniqueProgramIds.length === 0) {
+        if (Array.isArray(goalIds) && goalIds.length > 0) {
+          setValue('goal_ids', []);
+        }
+        if (goalId) {
+          setValue('goal_id', '');
+        }
+        if (programId) {
+          setValue('program_id', '');
+        }
+        return;
+      }
+
+      const selectedGoalIdSet = new Set(
+        uniqueProgramIds.flatMap((id) => (activeGoalsByProgram.get(id) ?? []).map((goal) => goal.id)),
+      );
+      const currentGoalIds = Array.isArray(goalIds) ? goalIds : [];
+      const nextGoalIds = currentGoalIds.filter((id) => selectedGoalIdSet.has(id));
+      if (nextGoalIds.length !== currentGoalIds.length) {
+        setValue('goal_ids', nextGoalIds);
+      }
+
+      const currentPrimaryGoal = goalId ? goalsById.get(goalId) : undefined;
+      const fallbackGoal =
+        uniqueProgramIds.flatMap((id) => activeGoalsByProgram.get(id) ?? [])[0] ??
+        activeGoals[0] ??
+        availableGoals[0];
+      const nextPrimaryGoal =
+        currentPrimaryGoal && uniqueProgramIds.includes(currentPrimaryGoal.program_id)
+          ? currentPrimaryGoal
+          : fallbackGoal;
+      if (nextPrimaryGoal?.id && nextPrimaryGoal.id !== goalId) {
+        setValue('goal_id', nextPrimaryGoal.id);
+      }
+
+      const nextPrimaryProgramId =
+        nextPrimaryGoal?.program_id ??
+        uniqueProgramIds[0] ??
+        '';
+      if (nextPrimaryProgramId !== programId) {
+        setValue('program_id', nextPrimaryProgramId);
+      }
+    },
+    [activeGoals, activeGoalsByProgram, availableGoals, goalId, goalIds, goalsById, programId, programsById, setValue],
+  );
+
+  const toggleProgramSelection = useCallback(
+    (targetProgramId: string) => {
+      const nextProgramIds = selectedProgramSet.has(targetProgramId)
+        ? selectedProgramIds.filter((id) => id !== targetProgramId)
+        : [...selectedProgramIds, targetProgramId];
+      updateProgramSelection(nextProgramIds);
+    },
+    [selectedProgramIds, selectedProgramSet, updateProgramSelection],
+  );
 
   const toggleGoalSelection = (targetId: string) => {
     const nextGoalIds = Array.isArray(goalIds) ? [...goalIds] : [];
@@ -507,6 +672,10 @@ export function SessionModal({
       }
       setValue('goal_ids', nextGoalIds.filter((id) => id !== targetId));
       return;
+    }
+    const programForGoal = goalsById.get(targetId)?.program_id;
+    if (programForGoal && !selectedProgramSet.has(programForGoal)) {
+      setSelectedProgramIds((current) => [...current, programForGoal]);
     }
     setValue('goal_ids', [...nextGoalIds, targetId]);
   };
@@ -739,7 +908,7 @@ export function SessionModal({
           .map((goalEntryId) => {
             const entry = normalizeGoalMeasurementEntry(
               working.session_note_goal_measurements?.[goalEntryId],
-              goals.find((goal) => goal.id === goalEntryId),
+              goalsById.get(goalEntryId),
             );
             return entry ? [goalEntryId, entry] : null;
           })
@@ -764,7 +933,7 @@ export function SessionModal({
             }
             const rawValue = working.session_note_goal_measurements?.[goalKey];
             return hasMeaningfulGoalMeasurementEntry(
-              normalizeGoalMeasurementEntry(rawValue, goals.find((goal) => goal.id === goalKey)),
+              normalizeGoalMeasurementEntry(rawValue, goalsById.get(goalKey)),
             );
           })
         : Object.values(working.session_note_goal_notes ?? {}).some(
@@ -772,7 +941,7 @@ export function SessionModal({
           ) ||
           Object.entries(working.session_note_goal_measurements ?? {}).some(([goalKey, rawValue]) =>
             hasMeaningfulGoalMeasurementEntry(
-              normalizeGoalMeasurementEntry(rawValue, goals.find((goal) => goal.id === goalKey)),
+              normalizeGoalMeasurementEntry(rawValue, goalsById.get(goalKey)),
             ),
           );
       const goalIdsRequiringNotes = isPartialCaptureSave
@@ -793,7 +962,7 @@ export function SessionModal({
           const goalNoteText = normalizedGoalNoteMap[trackedGoalId]?.trim() ?? '';
           if (!goalNoteText) {
             const goalLabel =
-              goals.find((goal) => goal.id === trackedGoalId)?.title?.trim() ??
+              goalsById.get(trackedGoalId)?.title?.trim() ??
               storedGoalLabelsById.get(trackedGoalId) ??
               (isAdhocSessionTargetId(trackedGoalId) ? 'Session target' : `Goal ${trackedGoalId.slice(0, 8)}…`);
             showError(`Add a per-goal note for "${goalLabel}" before saving.`);
@@ -809,7 +978,7 @@ export function SessionModal({
         session_note_goal_ids: mergedGoalIds,
         session_note_goals_addressed: mergedGoalIds
           .map((goalEntryId) => (
-            goals.find((goal) => goal.id === goalEntryId)?.title?.trim() ??
+            goalsById.get(goalEntryId)?.title?.trim() ??
             storedGoalLabelsById.get(goalEntryId) ??
             `Goal ${goalEntryId.slice(0, 8)}…`
           )),
@@ -929,7 +1098,7 @@ export function SessionModal({
   const isInProgressSession =
     !hasTerminalSessionStatus &&
     (session?.status === 'in_progress' || hasStartedSession);
-  const isDependentDataLoading = (Boolean(clientId) && isProgramsFetching) || (Boolean(programId) && isGoalsFetching);
+  const isDependentDataLoading = (Boolean(clientId) && isProgramsFetching) || (Boolean(clientId) && isGoalsFetching);
   const canStartSession = Boolean(
     session?.id &&
       !hasStartedSession &&
@@ -978,12 +1147,12 @@ export function SessionModal({
 
   const sessionCaptureSkillGoalIds = useMemo(
     () =>
-      sessionNoteGoalIds.filter((id) => showGoalOnSkillCaptureTab(goals.find((g) => g.id === id), id)),
-    [sessionNoteGoalIds, goals],
+      sessionNoteGoalIds.filter((id) => showGoalOnSkillCaptureTab(goalsById.get(id), id)),
+    [goalsById, sessionNoteGoalIds],
   );
   const sessionCaptureBxGoalIds = useMemo(
-    () => sessionNoteGoalIds.filter((id) => showGoalOnBxCaptureTab(goals.find((g) => g.id === id), id)),
-    [sessionNoteGoalIds, goals],
+    () => sessionNoteGoalIds.filter((id) => showGoalOnBxCaptureTab(goalsById.get(id), id)),
+    [goalsById, sessionNoteGoalIds],
   );
   const sessionCaptureGoalIdsForTab = useMemo(() => {
     if (sessionCaptureTab === 'skill') {
@@ -1602,11 +1771,11 @@ export function SessionModal({
               </div>
             )}
 
-            {(programs.length === 0 || activePrograms.length === 0 || activeGoals.length === 0) && (
+            {(programs.length === 0 || activePrograms.length === 0 || availableProgramGroups.length === 0) && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200 sm:p-4">
                 {programs.length === 0 || activePrograms.length === 0
                   ? 'No active programs found for this client. Create or activate a program before starting a session.'
-                  : 'No active goals found for the selected program. Add or activate a goal before starting a session.'}
+                  : 'No active goals found for this client. Add or activate a goal before starting a session.'}
               </div>
             )}
 
@@ -1626,6 +1795,15 @@ export function SessionModal({
                   id="program-select"
                   {...register('program_id', { required: session ? false : 'Program is required' })}
                   disabled={isProgramsFetching || !clientId}
+                  onChange={(event) => {
+                    const nextProgramId = event.target.value;
+                    setValue('program_id', nextProgramId, { shouldDirty: true, shouldTouch: true });
+                    if (!nextProgramId) {
+                      updateProgramSelection([]);
+                      return;
+                    }
+                    updateProgramSelection([nextProgramId, ...selectedProgramIds.filter((id) => id !== nextProgramId)]);
+                  }}
                   className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                 >
                   <option value="">Select a program</option>
@@ -1634,7 +1812,7 @@ export function SessionModal({
                       Current program (unavailable in active list)
                     </option>
                   )}
-                  {programs.map((program) => (
+                  {activePrograms.map((program) => (
                     <option key={program.id} value={program.id}>
                       {program.name}
                     </option>
@@ -1672,7 +1850,7 @@ export function SessionModal({
                 <select
                   id="goal-select"
                   {...register('goal_id', { required: session ? false : 'Primary goal is required' })}
-                  disabled={isGoalsFetching || !programId}
+                  disabled={isGoalsFetching || selectedProgramGoals.length === 0}
                   className="min-h-11 w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                 >
                   <option value="">Select a goal</option>
@@ -1681,7 +1859,7 @@ export function SessionModal({
                       Current goal (unavailable in active list)
                     </option>
                   )}
-                  {goals.map((goal) => (
+                  {selectedProgramGoals.map((goal) => (
                     <option key={goal.id} value={goal.id}>
                       {goal.title}
                     </option>
@@ -1709,62 +1887,197 @@ export function SessionModal({
                 )}
               </div>
             </div>
-            </div>
 
-            {goals.length > 0 && (
-              <>
-                <details className="rounded-lg border border-gray-200 dark:border-gray-700 sm:hidden">
+            {availableProgramGroups.length > 0 && (
+              <div className="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Programs in this session</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Choose one or more programs, then select the goals you want to track without waiting on another fetch.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:bg-blue-900/20 dark:text-blue-200">
+                    {selectedProgramIds.length} selected
+                  </span>
+                </div>
+                <div className="hidden flex-wrap gap-2 sm:flex">
+                  {availableProgramGroups.map(({ program, goals: groupedGoals }) => {
+                    const isSelected = selectedProgramSet.has(program.id);
+                    return (
+                      <button
+                        key={program.id}
+                        type="button"
+                        onClick={() => toggleProgramSelection(program.id)}
+                        className={`rounded-full border px-3 py-2 text-sm font-medium transition ${
+                          isSelected
+                            ? 'border-blue-500 bg-blue-600 text-white shadow-sm'
+                            : 'border-gray-300 bg-white text-gray-700 hover:border-blue-300 hover:text-blue-700 dark:border-gray-600 dark:bg-dark dark:text-gray-200'
+                        }`}
+                      >
+                        {program.name}
+                        <span className={`ml-2 text-[11px] ${isSelected ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'}`}>
+                          {groupedGoals.length} goals
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <details
+                  className="rounded-lg border border-gray-200 dark:border-gray-700 sm:hidden"
+                  open={mobileProgramsExpanded}
+                  onToggle={(event) => setMobileProgramsExpanded(event.currentTarget.open)}
+                >
                   <summary className="cursor-pointer list-none px-3 py-2.5 [&::-webkit-details-marker]:hidden">
                     <div className="flex min-h-11 items-center justify-between gap-2 text-sm font-medium text-gray-800 dark:text-gray-100">
-                      <span>Additional goals</span>
+                      <span>Selected programs</span>
                       <span className="shrink-0 text-xs font-normal text-gray-500 dark:text-gray-400">
-                        {(Array.isArray(goalIds) ? goalIds.length : 0)} selected
+                        {selectedProgramIds.length} chosen
                       </span>
                     </div>
                   </summary>
                   <div className="border-t border-gray-200 px-3 pb-3 pt-2 dark:border-gray-700">
                     <div className="grid grid-cols-1 gap-2">
-                      {goals.map((goal) => (
+                      {availableProgramGroups.map(({ program, goals: groupedGoals }) => (
                         <label
-                          key={`m-${goal.id}`}
+                          key={`mobile-program-${program.id}`}
                           className="flex min-w-0 items-center gap-2 text-sm text-gray-600 dark:text-gray-300"
                         >
                           <input
                             type="checkbox"
-                            checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
-                            onChange={() => toggleGoalSelection(goal.id)}
+                            checked={selectedProgramSet.has(program.id)}
+                            onChange={() => toggleProgramSelection(program.id)}
                             className="h-5 w-5 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                           />
-                          <span className="min-w-0 flex-1 truncate">{goal.title}</span>
+                          <span className="min-w-0 flex-1 truncate">{program.name}</span>
                           <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-400">
-                            (
-                            {Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} pts)
+                            {groupedGoals.length} goals
                           </span>
                         </label>
                       ))}
                     </div>
                   </div>
                 </details>
-                <div className="hidden rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:block">
-                  <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">Additional Goals</p>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {goals.map((goal) => (
-                      <label key={goal.id} className="flex min-w-0 items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                        <input
-                          type="checkbox"
-                          checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
-                          onChange={() => toggleGoalSelection(goal.id)}
-                          className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <span className="truncate">{goal.title}</span>
-                        <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                          ({Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} data points)
-                        </span>
-                      </label>
-                    ))}
+                {selectedPrograms.length > 0 && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Tracking: {selectedPrograms.map((program) => program.name).join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+            </div>
+
+            {selectedProgramGoals.length > 0 && (
+              <>
+                <details className="rounded-lg border border-gray-200 dark:border-gray-700 sm:hidden">
+                  <summary className="cursor-pointer list-none px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+                    <div className="flex min-h-11 items-center justify-between gap-2 text-sm font-medium text-gray-800 dark:text-gray-100">
+                      <span>Additional goals</span>
+                      <span className="shrink-0 text-xs font-normal text-gray-500 dark:text-gray-400">
+                        {selectedGoalsForSession.length} selected
+                      </span>
+                    </div>
+                  </summary>
+                  <div className="space-y-3 border-t border-gray-200 px-3 pb-3 pt-2 dark:border-gray-700">
+                    {selectedPrograms.map((program) => {
+                      const groupedGoals = activeGoalsByProgram.get(program.id) ?? [];
+                      if (groupedGoals.length === 0) {
+                        return null;
+                      }
+                      return (
+                        <div key={`mobile-goals-${program.id}`} className="space-y-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            {program.name}
+                          </p>
+                          <div className="grid grid-cols-1 gap-2">
+                            {groupedGoals.map((goal) => (
+                              <label
+                                key={`m-${goal.id}`}
+                                className="flex min-w-0 items-center gap-2 text-sm text-gray-600 dark:text-gray-300"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
+                                  onChange={() => toggleGoalSelection(goal.id)}
+                                  className="h-5 w-5 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="min-w-0 flex-1 truncate">{goal.title}</span>
+                                <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-400">
+                                  {Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} pts
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {selectedPrograms.length === 0 && (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        Select at least one program to choose goals.
+                      </p>
+                    )}
+                    {selectedGoalsSummary && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Selected goals: {selectedGoalsSummary}
+                      </p>
+                    )}
+                  </div>
+                </details>
+                <div className="hidden rounded-lg border border-gray-200 p-3 dark:border-gray-700 sm:block">
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Goals in this session</p>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {selectedGoalsForSession.length} selected
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {selectedPrograms.map((program) => {
+                      const groupedGoals = activeGoalsByProgram.get(program.id) ?? [];
+                      if (groupedGoals.length === 0) {
+                        return null;
+                      }
+                      return (
+                        <div key={`desktop-goals-${program.id}`} className="space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            {program.name}
+                          </p>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            {groupedGoals.map((goal) => (
+                              <label key={goal.id} className="flex min-w-0 items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                                <input
+                                  type="checkbox"
+                                  checked={Array.isArray(goalIds) && goalIds.includes(goal.id)}
+                                  onChange={() => toggleGoalSelection(goal.id)}
+                                  className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="truncate">{goal.title}</span>
+                                <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                                  ({Array.isArray(goal.objective_data_points) ? goal.objective_data_points.length : 0} data points)
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {selectedGoalsSummary && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Selected goals: {selectedGoalsSummary}
+                      </p>
+                    )}
+                    {selectedPrograms.length === 0 && (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        Select at least one program to choose goals.
+                      </p>
+                    )}
                   </div>
                 </div>
               </>
+            )}
+            {availableProgramGroups.length > 0 && selectedProgramGoals.length === 0 && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-200">
+                Select one or more programs above to load goals instantly on mobile and desktop.
+              </div>
             )}
             </section>
 
@@ -2025,7 +2338,7 @@ export function SessionModal({
                     ) : (
                       <div className="space-y-4">
                         {sessionCaptureGoalIdsForTab.map((selectedGoalId) => {
-                          const selectedGoal = goals.find((goal) => goal.id === selectedGoalId);
+                          const selectedGoal = goalsById.get(selectedGoalId);
                           const storedTitleIndex = sessionNoteStoredGoalIds?.indexOf(selectedGoalId) ?? -1;
                           const storedTitle =
                             storedTitleIndex >= 0 ? sessionNoteGoalsAddressed?.[storedTitleIndex] ?? '' : '';

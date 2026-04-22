@@ -1,6 +1,6 @@
 # Low-Risk Queue Runbook
 
-> This is the canonical current source for low-risk queue operations.  
+> This is the canonical current source for low-risk queue operations.
 > `docs/ai/low-risk-autonomy-week1.md` remains historical evidence only.
 
 ## Purpose
@@ -24,6 +24,7 @@ Queue items are candidates, not pre-approved implementation.
 - Keep only `fast` or `standard` lane candidates in this queue.
 - Exclude any work that routes to `critical` or touches protected paths in `AGENTS.md` and `docs/ai/high-risk-paths.md`.
 - Re-route immediately if scope expands into protected behavior (auth, runtime config, server/API boundaries, tenant isolation, RLS, grants, RPC exposure, CI policy, deploy routing, secrets).
+- Queue items are not pre-approved, but a routed candidate may be executed as a complete bounded end-to-end slice when it remains within allowed lane, scope, and verification requirements.
 
 ## Mandatory Workflow Per Task
 
@@ -32,6 +33,7 @@ Queue items are candidates, not pre-approved implementation.
 3. Run `route-task` and capture both `classification` and `lane`.
 4. Implement only if lane is `fast` or `standard` (do not implement `blocked` or `critical` queue items in this runbook).
 5. Invoke domain guard skills when scope requires them:
+
    - `auth-routing-guard`
    - `supabase-tenant-safety`
    - `playwright-regression-triage`
@@ -39,6 +41,7 @@ Queue items are candidates, not pre-approved implementation.
 7. Run `reviewer` before finalizing non-trivial code/config work.
 8. Run `pr-hygiene` before final handoff for non-trivial code/config work.
 9. Hand off in a PR for human review.
+10. When a clearly bounded fix/feature can be completed end-to-end within the routed lane and allowed scope, prefer finishing it in one implementation pass rather than splitting it into avoidable follow-up slices.
 
 For `standard` lanes, satisfy the full required agent sequence and checks in `docs/ai/cto-lane-contract.md` and `docs/ai/verification-matrix.md`. If scope escalates to `critical`, exit this queue and follow the critical-lane contract directly.
 
@@ -64,7 +67,7 @@ Operational queue hygiene:
 
 - Use `docs/ai/lane-handoff-template.md` for non-trivial handoffs.
 - Include lane/classification, checks required/executed/blocked, reviewer result, and residual risk.
-- Keep diffs single-purpose and reviewable.
+- Keep diffs single-purpose and reviewable, but sized to complete the bounded end-to-end task rather than an artificially narrow sub-slice.
 
 ## Historical Reference
 

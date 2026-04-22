@@ -1,6 +1,6 @@
 # Verification Matrix
 
-Use the smallest verification set that matches the change. If a change spans multiple categories, run the union of those checks.
+Use the minimum sufficient verification set that matches the full bounded change. Do not split implementation solely to avoid appropriate verification for a safely bounded end-to-end slice. If a change spans multiple categories, run the union of those checks.
 For lane routing and hard-gate rules, see `docs/ai/cto-lane-contract.md`.
 
 ## Lane Baseline

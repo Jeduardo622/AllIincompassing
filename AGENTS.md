@@ -2,18 +2,17 @@
 description: 
 alwaysApply: true
 ---
-
 # AGENTS.md
 
 ## Mission
 
-This repository is an AI-assisted engineering lab for a React/Vite app with Supabase, Netlify, and policy-heavy CI. Optimize for small, reviewable changes that preserve auth, tenant isolation, and deployment safety.
+This repository is an AI-assisted engineering lab for a React/Vite app with Supabase, Netlify, and policy-heavy CI. Optimize for the smallest practical end-to-end change that can be implemented, verified, reviewed, and merged safely. Prefer complete bounded fixes/features over artificially fragmented slices, while preserving auth, tenant isolation, and deployment safety.
 
 ## Working Style
 
 - Inspect the relevant architecture before changing code.
 - Prefer existing patterns over new abstractions.
-- Keep diffs small and easy to review.
+- Keep diffs as small as practical while still completing the bounded end-to-end slice.
 - For implementation work, create a new branch before changing code. Use the `codex/` prefix for Codex-created branches.
 - Do not bypass tests, lint, typecheck, or policy checks.
 - For non-trivial changes, summarize risk and verification before closing the task.
@@ -78,7 +77,7 @@ For any autonomous slice, Codex must:
 5. Maintain PR hygiene for non-trivial work:
 
    - isolated branch
-   - small reviewable diff
+   - reviewable diff sized to the bounded end-to-end slice
    - accurate PR summary
    - live check status and merge blockers reported precisely
 6. Maintain tracking artifacts for non-trivial work:

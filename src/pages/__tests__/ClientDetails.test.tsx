@@ -112,5 +112,14 @@ describe('ClientDetails page', () => {
     await waitFor(() => expect(screen.getByText('SessionNotesTabContent')).toBeInTheDocument());
     expect(screen.queryByText('ProfileTabContent')).not.toBeInTheDocument();
   });
+
+  it('selects Programs & Goals tab from tab query param', async () => {
+    mockLocationSearch = '?tab=programs-goals';
+
+    renderWithProviders(<ClientDetails />);
+
+    await waitFor(() => expect(screen.getByText('ProgramsGoalsTabContent')).toBeInTheDocument());
+    expect(screen.queryByText('ProfileTabContent')).not.toBeInTheDocument();
+  });
 });
 

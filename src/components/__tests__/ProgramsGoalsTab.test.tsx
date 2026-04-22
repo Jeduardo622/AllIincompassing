@@ -287,6 +287,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -560,6 +561,24 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Create Goal" })).toBeEnabled();
     });
+
+    const goalFetchCountBeforeCreate = vi
+      .mocked(callApi)
+      .mock.calls.filter(
+        ([path, init]) =>
+          typeof path === "string" &&
+          path.startsWith("/api/goals?") &&
+          (init?.method ?? "GET").toUpperCase() === "GET",
+      ).length;
+    const noteFetchCountBeforeCreate = vi
+      .mocked(callApi)
+      .mock.calls.filter(
+        ([path, init]) =>
+          typeof path === "string" &&
+          path.startsWith("/api/program-notes?") &&
+          (init?.method ?? "GET").toUpperCase() === "GET",
+      ).length;
+
     await user.click(screen.getByRole("button", { name: "Create Goal" }));
 
     await waitFor(() => {
@@ -572,6 +591,232 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       );
     });
     expect(showSuccess).toHaveBeenCalledWith("Goal created");
+    expect(
+      vi
+        .mocked(callApi)
+        .mock.calls.filter(
+          ([path, init]) =>
+            typeof path === "string" &&
+            path.startsWith("/api/goals?") &&
+            (init?.method ?? "GET").toUpperCase() === "GET",
+        ),
+    ).toHaveLength(goalFetchCountBeforeCreate);
+    expect(
+      vi
+        .mocked(callApi)
+        .mock.calls.filter(
+          ([path, init]) =>
+            typeof path === "string" &&
+            path.startsWith("/api/program-notes?") &&
+            (init?.method ?? "GET").toUpperCase() === "GET",
+        ),
+    ).toHaveLength(noteFetchCountBeforeCreate);
+  });
+
+  it("adds a program note without refetching the notes list", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "program-1",
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              name: "Communication Program",
+              description: "Live program",
+              status: "active",
+              created_at: "2026-02-11T00:00:00.000Z",
+              updated_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/program-notes?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "POST" && path === "/api/program-notes") {
+        return new Response(
+          JSON.stringify({
+            id: "note-2",
+            organization_id: ORG_ID,
+            program_id: "program-1",
+            author_id: "therapist-user-id",
+            note_type: "plan_update",
+            content: { text: "Progress note" },
+            created_at: "2026-02-11T00:00:00.000Z",
+            updated_at: "2026-02-11T00:00:00.000Z",
+          }),
+          { status: 201 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await screen.findByText("Communication Program");
+
+    const noteFetchCountBeforeCreate = vi
+      .mocked(callApi)
+      .mock.calls.filter(
+        ([path, init]) =>
+          typeof path === "string" &&
+          path.startsWith("/api/program-notes?") &&
+          (init?.method ?? "GET").toUpperCase() === "GET",
+      ).length;
+
+    fireEvent.change(await screen.findByPlaceholderText("Add a program note"), {
+      target: { value: "Progress note" },
+    });
+    await user.click(screen.getByRole("button", { name: "Add Note" }));
+
+    await waitFor(() => {
+      expect(showSuccess).toHaveBeenCalledWith("Program note added");
+    });
+
+    expect(
+      vi
+        .mocked(callApi)
+        .mock.calls.filter(
+          ([path, init]) =>
+            typeof path === "string" &&
+            path.startsWith("/api/program-notes?") &&
+            (init?.method ?? "GET").toUpperCase() === "GET",
+        ),
+    ).toHaveLength(noteFetchCountBeforeCreate);
+    expect(await screen.findByText("Progress note")).toBeInTheDocument();
+  });
+
+  it("polls assessment documents only while extraction work is active", async () => {
+    let assessmentFetchCount = 0;
+
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        assessmentFetchCount += 1;
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "iehp_fba",
+              file_name: "iehp-fba.docx",
+              mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/iehp-fba.docx",
+              status: assessmentFetchCount === 1 ? "extracting" : "drafted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await screen.findByText(/Extracting fields from uploaded file/i);
+    await new Promise((resolve) => setTimeout(resolve, 3_300));
+
+    await waitFor(() => {
+      expect(assessmentFetchCount).toBeGreaterThanOrEqual(2);
+    });
+
+    const completedPollCount = assessmentFetchCount;
+    await new Promise((resolve) => setTimeout(resolve, 3_300));
+    expect(assessmentFetchCount).toBe(completedPollCount);
+  });
+
+  it("retries the assessment queue after a transient load failure", async () => {
+    let assessmentFetchCount = 0;
+
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        assessmentFetchCount += 1;
+        if (assessmentFetchCount === 1) {
+          return new Response(JSON.stringify({ error: "Temporary upstream failure" }), { status: 503 });
+        }
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "iehp_fba",
+              file_name: "iehp-fba.docx",
+              mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/iehp-fba.docx",
+              status: "extracting",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByText("No uploaded assessments yet.")).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 3_300));
+
+    await waitFor(() => {
+      expect(assessmentFetchCount).toBeGreaterThanOrEqual(2);
+    });
+    expect(await screen.findByText(/Extracting fields from uploaded file/i)).toBeInTheDocument();
   });
 
   it("falls back to same-origin API when program edge calls time out", async () => {

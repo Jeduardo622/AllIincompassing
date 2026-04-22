@@ -38,6 +38,7 @@ cypress/screenshots
 # Local/editor backup artifacts
 *.backup
 /src/*.zip
+docs/ai/*.zip
 # Local Netlify folder
 .netlify
 

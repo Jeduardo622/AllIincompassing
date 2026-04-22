@@ -9,6 +9,21 @@ Use it as the source of truth for:
 
 When guidance conflicts, this file, `AGENTS.md`, and `docs/ai/verification-matrix.md` win.
 
+## Execution sizing rule
+
+Lane routing controls risk, not unnecessary task fragmentation.
+
+Within an allowed lane, prefer the smallest practical end-to-end slice that can be implemented, verified, reviewed, and merged safely.
+
+Do not split clearly related implementation work into multiple slices when one bounded change can complete the user-visible fix or feature without entering protected paths or widening blast radius.
+
+A slice should be reduced only when:
+
+- it would cross into protected paths
+- verification requirements diverge materially
+- safe containment is no longer clear
+- policy ambiguity or human judgment is required
+
 ## Lane Definitions
 
 Choose exactly one lane before implementation:

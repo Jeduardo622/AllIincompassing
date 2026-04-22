@@ -351,12 +351,12 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     });
   }
 
-  const { organizationId, isTherapist, isAdmin, isSuperAdmin, upstreamError: roleUpstreamError } =
+  const { organizationId, isTherapist, isAdmin, isOrgMember, isSuperAdmin, upstreamError: roleUpstreamError } =
     await resolveOrgAndRoleWithStatus(accessToken);
   if (roleUpstreamError) {
     return errorResponse(request, "upstream_error", "Unable to validate organization access", { status: 502 });
   }
-  if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
+  if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin && !isOrgMember)) {
     return errorResponse(request, "forbidden", "Forbidden");
   }
 

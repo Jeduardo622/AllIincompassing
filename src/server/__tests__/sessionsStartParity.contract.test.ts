@@ -36,6 +36,7 @@ describe("sessionsStartHandler edge proxy parity (WIN-38E / A08)", () => {
       organizationId: "org-1",
       isTherapist: true,
       isAdmin: false,
+      isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: false,
     });

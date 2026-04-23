@@ -7,6 +7,7 @@ const cancelSessionsMock = vi.fn();
 const showErrorMock = vi.fn();
 const showSuccessMock = vi.fn();
 const buildBookSessionApiPayloadMock = vi.fn((session: unknown) => session);
+const upsertClientSessionNoteForSessionMock = vi.fn();
 
 const currentSessionStart = new Date();
 currentSessionStart.setHours(10, 0, 0, 0);
@@ -75,6 +76,11 @@ vi.mock("../../lib/toast", () => ({
   showSuccess: (...args: unknown[]) => showSuccessMock(...args),
 }));
 
+vi.mock("../../lib/session-notes", () => ({
+  upsertClientSessionNoteForSession: (...args: unknown[]) =>
+    upsertClientSessionNoteForSessionMock(...args),
+}));
+
 vi.mock("../../lib/conflictPolicy", () => ({
   buildSchedulingConflictHint: () => "conflict-hint",
 }));
@@ -130,6 +136,26 @@ vi.mock("../../components/SessionModal", () => ({
           submit-update
         </button>
         <button
+          aria-label="submit-update-with-note-context"
+          onClick={() => {
+            const result = onSubmit({
+              status: "scheduled",
+              session_note_goal_ids: ["goal-1"],
+              session_note_goals_addressed: ["Goal 1"],
+              session_note_goal_notes: { "goal-1": "Previously saved note" },
+              session_note_goal_measurements: {},
+              session_note_authorization_id: "auth-1",
+              session_note_service_code: "97153",
+              session_note_persist_requested: false,
+            });
+            if (result && typeof (result as Promise<unknown>).catch === "function") {
+              void (result as Promise<unknown>).catch(() => undefined);
+            }
+          }}
+        >
+          submit-update-with-note-context
+        </button>
+        <button
           aria-label="submit-cancel"
           onClick={() => {
             const result = onSubmit({
@@ -167,6 +193,9 @@ describe("Schedule orchestration integration hardening", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
+    upsertClientSessionNoteForSessionMock.mockResolvedValue({
+      id: "linked-note-1",
+    });
     bookSessionViaApiMock.mockResolvedValue({
       session: {
         id: "created-session",
@@ -348,6 +377,23 @@ describe("Schedule orchestration integration hardening", () => {
     expect(screen.getByTestId("retry-hint")).toHaveTextContent("");
     expect(showSuccessMock).not.toHaveBeenCalled();
     expect(cancelSessionsMock).not.toHaveBeenCalled();
+  });
+
+  it("manual scheduled update ignores unchanged linked note context unless capture persistence was requested", async () => {
+    renderWithProviders(<Schedule />);
+    await screen.findByRole("heading", { name: /Schedule/i });
+
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+    fireEvent.click(screen.getByLabelText("submit-update-with-note-context"));
+
+    await waitFor(() => {
+      expect(bookSessionViaApiMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(upsertClientSessionNoteForSessionMock).not.toHaveBeenCalled();
+    expect(bookSessionViaApiMock.mock.calls[0][1]).toBeUndefined();
+    expect(showErrorMock).not.toHaveBeenCalled();
   });
 
   it("manual close clears retry hint without success-style submission", async () => {

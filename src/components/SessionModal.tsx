@@ -67,6 +67,8 @@ export interface SessionModalClinicalNotesPayload {
   session_note_goals_addressed?: string[];
   session_note_authorization_id?: string;
   session_note_service_code?: string;
+  /** Explicitly signals that this submit should persist session-capture content. */
+  session_note_persist_requested?: boolean;
   /** When set, POST /api/session-notes/upsert merges only these goal keys from this payload (server-authoritative). */
   session_note_capture_merge_goal_ids?: string[];
 }
@@ -85,6 +87,14 @@ const toOptionalNumber = (value: unknown): number | null => {
 const toFormNumber = (value: unknown): number | undefined => {
   const normalized = toOptionalNumber(value);
   return normalized ?? undefined;
+};
+
+const hasNestedDirtyEntries = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object') {
+    return Boolean(value);
+  }
+
+  return Object.values(value as Record<string, unknown>).some((entry) => hasNestedDirtyEntries(entry));
 };
 
 interface SessionModalProps {
@@ -171,7 +181,7 @@ export function SessionModal({
     setValue,
     reset,
     getValues,
-    formState: { errors, isSubmitting, isDirty },
+    formState: { errors, isSubmitting, isDirty, dirtyFields },
   } = useForm<SessionModalFormValues>({
     defaultValues: {
       therapist_id: session?.therapist_id || defaultTherapistId || '',
@@ -421,6 +431,21 @@ export function SessionModal({
   const hasGoalOptionForValue = typeof goalId === 'string' && goalId.length > 0
     ? selectedProgramGoals.some((goal) => goal.id === goalId)
     : false;
+  const hasDirtySessionCaptureFields = useMemo(
+    () =>
+      hasNestedDirtyEntries(dirtyFields.session_note_narrative) ||
+      hasNestedDirtyEntries(dirtyFields.session_note_goal_ids) ||
+      hasNestedDirtyEntries(dirtyFields.session_note_goals_addressed) ||
+      hasNestedDirtyEntries(dirtyFields.session_note_goal_notes) ||
+      hasNestedDirtyEntries(dirtyFields.session_note_goal_measurements),
+    [
+      dirtyFields.session_note_goal_ids,
+      dirtyFields.session_note_goals_addressed,
+      dirtyFields.session_note_goal_measurements,
+      dirtyFields.session_note_goal_notes,
+      dirtyFields.session_note_narrative,
+    ],
+  );
 
   useEffect(() => {
     if (session?.therapist_id) {
@@ -758,6 +783,9 @@ export function SessionModal({
           const localDate = localStart?.slice(0, 10);
           const localHHmm = localStart?.slice(11, 16);
           const overlapping = existingSessions.find((s) => {
+            if (session?.id && s.id === session.id) {
+              return false;
+            }
             if (s.therapist_id !== therapistId && s.client_id !== clientId) return false;
             const localIso = formatSessionLocalInput(s.start_time, resolvedTimeZone);
             const localSessionDate = localIso.slice(0, 10);
@@ -984,6 +1012,8 @@ export function SessionModal({
           )),
         session_note_authorization_id: resolvedAuthorizationId,
         session_note_service_code: resolvedServiceCode,
+        session_note_persist_requested:
+          isPartialCaptureSave || hasDirtySessionCaptureFields || isInProgressSession,
         ...(isPartialCaptureSave ? { session_note_capture_merge_goal_ids: mergeGoalIds } : {}),
         goal_ids: sessionGoalIds,
         // If a timezone prop is provided, normalize to UTC for consumers expecting Z times

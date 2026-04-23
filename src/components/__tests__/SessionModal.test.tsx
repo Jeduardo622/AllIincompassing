@@ -3,11 +3,16 @@ import { renderWithProviders, screen, userEvent, waitFor } from '../../test/util
 import { fireEvent } from '@testing-library/react';
 import { SessionModal } from '../SessionModal';
 import { supabase } from '../../lib/supabase';
+import { fetchLinkedClientSessionNoteForSession } from '../../lib/session-note-linked-fetch';
 import type { Session } from '../../types';
 import { startSessionFromModal } from '../../features/scheduling/domain/sessionStart';
 
 vi.mock('../../features/scheduling/domain/sessionStart', () => ({
   startSessionFromModal: vi.fn(),
+}));
+
+vi.mock('../../lib/session-note-linked-fetch', () => ({
+  fetchLinkedClientSessionNoteForSession: vi.fn(),
 }));
 
 type SupabaseQueryChain = {
@@ -73,6 +78,7 @@ describe('SessionModal', () => {
 
   beforeEach(() => {
     vi.mocked(startSessionFromModal).mockReset();
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue(null);
     defaultProps.onClose.mockClear();
     defaultProps.onSubmit.mockClear();
 
@@ -952,6 +958,125 @@ describe('SessionModal', () => {
     );
   });
 
+  it('does not treat the edited session itself as a scheduling conflict fallback match', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const existingSession = {
+      id: 'session-self-overlap',
+      therapist_id: 'test-therapist-1',
+      client_id: 'test-client-1',
+      program_id: 'program-1',
+      goal_id: 'goal-1',
+      start_time: '2026-03-02T15:00:00.000Z',
+      end_time: '2026-03-02T16:00:00.000Z',
+      status: 'scheduled',
+      notes: '',
+      created_at: '2026-03-01T09:00:00.000Z',
+      created_by: null,
+      updated_at: '2026-03-01T09:00:00.000Z',
+      updated_by: null,
+      started_at: null,
+    } satisfies Session;
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={existingSession}
+        existingSessions={[existingSession]}
+      />
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    await screen.findByRole('option', { name: /Default Program/i });
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-1');
+    await screen.findByRole('option', { name: /Default Goal/i });
+    await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
+    fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2026-03-02T10:00' } });
+    fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2026-03-02T11:00' } });
+
+    await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalled();
+    });
+    expect(confirmSpy).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it('marks unchanged linked session note content as non-persisting on scheduled updates', async () => {
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'linked-note-1',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: ['Default Goal'],
+      goal_ids: ['goal-1'],
+      goal_measurements: null,
+      goal_notes: { 'goal-1': 'Previously saved note' },
+      session_id: 'session-note-prefill',
+      narrative: '',
+      is_locked: false,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: null,
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T09:00:00.000Z',
+    });
+
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        session={{
+          id: 'session-note-prefill',
+          therapist_id: 'test-therapist-1',
+          client_id: 'test-client-1',
+          program_id: 'program-1',
+          goal_id: 'goal-1',
+          start_time: '2026-03-01T15:00:00.000Z',
+          end_time: '2026-03-01T16:00:00.000Z',
+          status: 'scheduled',
+          notes: '',
+          created_at: '2026-03-01T09:00:00.000Z',
+          created_by: null,
+          updated_at: '2026-03-01T09:00:00.000Z',
+          updated_by: null,
+          started_at: null,
+        } satisfies Session}
+      />
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
+    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
+    await screen.findByRole('option', { name: /Default Program/i });
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-1');
+    await screen.findByRole('option', { name: /Default Goal/i });
+    await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
+    fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2026-03-01T10:00' } });
+    fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2026-03-01T11:00' } });
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalled();
+    });
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      session_note_goal_notes: { 'goal-1': 'Previously saved note' },
+      session_note_persist_requested: false,
+    }));
+    confirmSpy.mockRestore();
+  });
+
   it('renders session capture section for existing sessions', () => {
     renderWithProviders(
       <SessionModal
@@ -1199,6 +1324,30 @@ describe('SessionModal', () => {
       goals_addressed: ['Default Goal'],
     };
 
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'linked-note-legacy-measurements',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: linkedSessionNote.goals_addressed,
+      goal_ids: linkedSessionNote.goal_ids,
+      goal_measurements: linkedSessionNote.goal_measurements as Record<string, unknown>,
+      goal_notes: linkedSessionNote.goal_notes,
+      session_id: 'session-linked-legacy-measurements',
+      narrative: linkedSessionNote.narrative,
+      is_locked: false,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: null,
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T09:00:00.000Z',
+    });
+
     vi.mocked(supabase.from).mockImplementation((table: string) => {
       if (table === 'programs') {
         const chain: SupabaseQueryChain = {
@@ -1232,21 +1381,6 @@ describe('SessionModal', () => {
           limit: vi.fn(async () => ({ data: [], error: null })),
         };
         return chain;
-      }
-      if (table === 'client_session_notes') {
-        return {
-          select: () => ({
-            eq: () => ({
-              eq: () => ({
-                order: () => ({
-                  limit: () => ({
-                    maybeSingle: async () => ({ data: linkedSessionNote, error: null }),
-                  }),
-                }),
-              }),
-            }),
-          }),
-        };
       }
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),
@@ -1289,6 +1423,7 @@ describe('SessionModal', () => {
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        session_note_persist_requested: true,
         session_note_goal_measurements: {
           'goal-1': {
             version: 1,
@@ -1335,6 +1470,30 @@ describe('SessionModal', () => {
       goals_addressed: ['Default Goal', 'Legacy Goal'],
     };
 
+    vi.mocked(fetchLinkedClientSessionNoteForSession).mockResolvedValue({
+      id: 'linked-note-drifted-goals',
+      date: '2026-03-01',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+      service_code: '97153',
+      therapist_id: 'test-therapist-1',
+      therapist_name: 'Test Therapist 1',
+      goals_addressed: linkedSessionNote.goals_addressed,
+      goal_ids: linkedSessionNote.goal_ids,
+      goal_measurements: linkedSessionNote.goal_measurements as Record<string, unknown>,
+      goal_notes: linkedSessionNote.goal_notes,
+      session_id: 'session-linked-drifted-goals',
+      narrative: linkedSessionNote.narrative,
+      is_locked: false,
+      client_id: 'test-client-1',
+      authorization_id: 'auth-1',
+      organization_id: 'org-a',
+      session_duration: 60,
+      signed_at: null,
+      created_at: '2026-03-01T09:00:00.000Z',
+      updated_at: '2026-03-01T09:00:00.000Z',
+    });
+
     vi.mocked(supabase.from).mockImplementation((table: string) => {
       if (table === 'programs') {
         const chain: SupabaseQueryChain = {
@@ -1368,21 +1527,6 @@ describe('SessionModal', () => {
           limit: vi.fn(async () => ({ data: [], error: null })),
         };
         return chain;
-      }
-      if (table === 'client_session_notes') {
-        return {
-          select: () => ({
-            eq: () => ({
-              eq: () => ({
-                order: () => ({
-                  limit: () => ({
-                    maybeSingle: async () => ({ data: linkedSessionNote, error: null }),
-                  }),
-                }),
-              }),
-            }),
-          }),
-        };
       }
       const chain: SupabaseQueryChain = {
         select: vi.fn(() => chain),

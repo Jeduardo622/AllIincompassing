@@ -111,6 +111,7 @@ const stripClinicalNoteFields = (data: ScheduleSubmitData): Partial<Session> => 
     session_note_goals_addressed: _sessionNoteGoalsAddressed,
     session_note_authorization_id: _sessionNoteAuthorizationId,
     session_note_service_code: _sessionNoteServiceCode,
+    session_note_persist_requested: _sessionNotePersistRequested,
     session_note_capture_merge_goal_ids: _sessionNoteCaptureMergeGoalIds,
     ...sessionPayload
   } = data;
@@ -129,6 +130,10 @@ const buildClinicalNoteDraft = (
   authorizationId: string;
   serviceCode: string;
 } | null => {
+  if (data.session_note_persist_requested !== true) {
+    return null;
+  }
+
   const narrative = data.session_note_narrative?.trim() ?? "";
   const goalNotes = Object.fromEntries(
     Object.entries(data.session_note_goal_notes ?? {})

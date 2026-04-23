@@ -744,4 +744,444 @@ describe("sessionNotesUpsertHandler", () => {
     expect(payload.id).toBe(noteId);
     expect(payload.goal_measurements ?? null).toBeNull();
   });
+
+  it("falls back on code-only PGRST204 when reading existing note for merge", async () => {
+    const sessionId = "99999999-9999-4999-8999-999999999999";
+    const noteId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    let noteReadAttempts = 0;
+
+    const fetchJsonMock = vi.mocked(fetchJson);
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      const decodedUrl = decodeURIComponent(requestUrl);
+      const method = init?.method ?? "GET";
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (
+        requestUrl.includes("/rest/v1/client_session_notes?") &&
+        method === "GET" &&
+        requestUrl.includes(`session_id=eq.${encodeURIComponent(sessionId)}`)
+      ) {
+        return { ok: true, status: 200, data: [{ id: noteId, is_locked: false }] };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?") && method === "GET" && requestUrl.includes(`id=eq.${encodeURIComponent(noteId)}`)) {
+        noteReadAttempts += 1;
+        if (noteReadAttempts === 1) {
+          expect(decodedUrl).toContain("goal_measurements");
+          return {
+            ok: false,
+            status: 400,
+            data: {
+              code: "PGRST204",
+            },
+          };
+        }
+        if (noteReadAttempts === 2) {
+          expect(decodedUrl).not.toContain("goal_measurements");
+        }
+        return { ok: true, status: 200, data: [buildSessionNoteRow(noteId)] };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?id=eq.") && method === "PATCH") {
+        return { ok: true, status: 200, data: [{ id: noteId }] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl} ${method}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({
+          ...basePayload,
+          sessionId,
+          captureMergeGoalIds: [basePayload.goalIds[0]],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(noteReadAttempts).toBeGreaterThanOrEqual(2);
+  });
+
+  it("falls back on code-only PGRST204 when reading saved note after upsert", async () => {
+    const noteId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    let postSaveReads = 0;
+
+    const fetchJsonMock = vi.mocked(fetchJson);
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      const decodedUrl = decodeURIComponent(requestUrl);
+      const method = init?.method ?? "GET";
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.endsWith("/rest/v1/client_session_notes") && method === "POST") {
+        return { ok: true, status: 201, data: [{ id: noteId }] };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?") && method === "GET" && requestUrl.includes(`id=eq.${encodeURIComponent(noteId)}`)) {
+        postSaveReads += 1;
+        if (postSaveReads === 1) {
+          expect(decodedUrl).toContain("goal_measurements");
+          return {
+            ok: false,
+            status: 400,
+            data: {
+              code: "PGRST204",
+            },
+          };
+        }
+        expect(decodedUrl).not.toContain("goal_measurements");
+        const row = buildSessionNoteRow(noteId);
+        const { goal_measurements: _dropped, ...withoutGoalMeasurements } = row;
+        return { ok: true, status: 200, data: [withoutGoalMeasurements] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl} ${method}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify(basePayload),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json() as { id: string; goal_measurements?: unknown };
+    expect(payload.id).toBe(noteId);
+    expect(payload.goal_measurements ?? null).toBeNull();
+    expect(postSaveReads).toBeGreaterThanOrEqual(2);
+  });
+
+  it("retries insert without goal_measurements when create fails with missing-column error", async () => {
+    const noteId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    let insertAttempts = 0;
+
+    const fetchJsonMock = vi.mocked(fetchJson);
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      const method = init?.method ?? "GET";
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.endsWith("/rest/v1/client_session_notes") && method === "POST") {
+        insertAttempts += 1;
+        const parsedBody = JSON.parse(String(init?.body ?? "{}")) as { goal_measurements?: unknown };
+        if (insertAttempts === 1) {
+          expect(parsedBody.goal_measurements).toBeDefined();
+          return {
+            ok: false,
+            status: 400,
+            data: {
+              code: "PGRST204",
+              details: "Could not find the 'goal_measurements' column of 'client_session_notes' in the schema cache",
+            },
+          };
+        }
+        expect(parsedBody.goal_measurements).toBeUndefined();
+        return { ok: true, status: 201, data: [{ id: noteId }] };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?") && requestUrl.includes(`id=eq.${encodeURIComponent(noteId)}`) && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ ...buildSessionNoteRow(noteId), goal_measurements: null }],
+        };
+      }
+      throw new Error(`Unexpected request: ${requestUrl} ${method}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify(basePayload),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(insertAttempts).toBe(2);
+  });
+
+  it("retries insert with UUID-only goal_ids when legacy uuid[] casts reject adhoc ids", async () => {
+    const adhocId = "adhoc-skill-550e8400-e29b-41d4-a716-446655440000";
+    const noteId = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+    let insertAttempts = 0;
+
+    const fetchJsonMock = vi.mocked(fetchJson);
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      const method = init?.method ?? "GET";
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.endsWith("/rest/v1/client_session_notes") && method === "POST") {
+        insertAttempts += 1;
+        const parsedBody = JSON.parse(String(init?.body ?? "{}")) as {
+          goal_ids?: unknown;
+          goals_addressed?: unknown;
+        };
+        if (insertAttempts === 1) {
+          expect(parsedBody.goal_ids).toEqual(["44444444-4444-4444-8444-444444444444", adhocId]);
+          return {
+            ok: false,
+            status: 400,
+            data: {
+              code: "22P02",
+              message: "invalid input syntax for type uuid",
+              details: "goal_ids contains non-uuid value",
+            },
+          };
+        }
+        expect(parsedBody.goal_ids).toEqual(["44444444-4444-4444-8444-444444444444"]);
+        expect(parsedBody.goals_addressed).toEqual(["Goal A"]);
+        return { ok: true, status: 201, data: [{ id: noteId }] };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?") && requestUrl.includes(`id=eq.${encodeURIComponent(noteId)}`) && method === "GET") {
+        return { ok: true, status: 200, data: [buildSessionNoteRow(noteId)] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl} ${method}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({
+          ...basePayload,
+          goalIds: ["44444444-4444-4444-8444-444444444444", adhocId],
+          goalsAddressed: ["Goal A", "Session target"],
+          goalNotes: {
+            "44444444-4444-4444-8444-444444444444": "covered",
+            [adhocId]: "adhoc note",
+          },
+          goalMeasurements: {
+            "44444444-4444-4444-8444-444444444444": {
+              data: { metric_value: 4, opportunities: 5 },
+            },
+            [adhocId]: {
+              data: { metric_value: 1 },
+            },
+          },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(insertAttempts).toBe(2);
+  });
+
+  it("retries update without goal_measurements when PATCH fails with missing-column error", async () => {
+    const existingNoteId = "abababab-abab-4bab-8bab-abababababab";
+    let updateAttempts = 0;
+
+    const fetchJsonMock = vi.mocked(fetchJson);
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      const method = init?.method ?? "GET";
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ id: existingNoteId, is_locked: false }],
+        };
+      }
+      if (requestUrl.includes(`/rest/v1/client_session_notes?id=eq.${encodeURIComponent(existingNoteId)}`) && method === "PATCH") {
+        updateAttempts += 1;
+        const parsedBody = JSON.parse(String(init?.body ?? "{}")) as { goal_measurements?: unknown };
+        if (updateAttempts === 1) {
+          expect(parsedBody.goal_measurements).toBeDefined();
+          return {
+            ok: false,
+            status: 400,
+            data: {
+              code: "PGRST204",
+              details: "Could not find the 'goal_measurements' column of 'client_session_notes' in the schema cache",
+            },
+          };
+        }
+        expect(parsedBody.goal_measurements).toBeUndefined();
+        return { ok: true, status: 200, data: [{ id: existingNoteId }] };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?") && requestUrl.includes(`id=eq.${encodeURIComponent(existingNoteId)}`) && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ ...buildSessionNoteRow(existingNoteId), goal_measurements: null }],
+        };
+      }
+      throw new Error(`Unexpected request: ${requestUrl} ${method}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({ ...basePayload, noteId: existingNoteId }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(updateAttempts).toBe(2);
+  });
+
+  it("retries update with UUID-only goal_ids when legacy uuid[] casts reject adhoc ids", async () => {
+    const adhocId = "adhoc-skill-7f0f6fce-9d71-44f6-b5ce-c2fc73cb036f";
+    const existingNoteId = "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd";
+    let updateAttempts = 0;
+
+    const fetchJsonMock = vi.mocked(fetchJson);
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      const method = init?.method ?? "GET";
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ id: existingNoteId, is_locked: false }],
+        };
+      }
+      if (requestUrl.includes(`/rest/v1/client_session_notes?id=eq.${encodeURIComponent(existingNoteId)}`) && method === "PATCH") {
+        updateAttempts += 1;
+        const parsedBody = JSON.parse(String(init?.body ?? "{}")) as {
+          goal_ids?: unknown;
+          goals_addressed?: unknown;
+        };
+        if (updateAttempts === 1) {
+          expect(parsedBody.goal_ids).toEqual(["44444444-4444-4444-8444-444444444444", adhocId]);
+          return {
+            ok: false,
+            status: 400,
+            data: {
+              code: "22P02",
+              details: "invalid input syntax for type uuid in goal_ids",
+            },
+          };
+        }
+        expect(parsedBody.goal_ids).toEqual(["44444444-4444-4444-8444-444444444444"]);
+        expect(parsedBody.goals_addressed).toEqual(["Goal A"]);
+        return { ok: true, status: 200, data: [{ id: existingNoteId }] };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?") && requestUrl.includes(`id=eq.${encodeURIComponent(existingNoteId)}`) && method === "GET") {
+        return { ok: true, status: 200, data: [buildSessionNoteRow(existingNoteId)] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl} ${method}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({
+          ...basePayload,
+          noteId: existingNoteId,
+          goalIds: ["44444444-4444-4444-8444-444444444444", adhocId],
+          goalsAddressed: ["Goal A", "Session target"],
+          goalNotes: {
+            "44444444-4444-4444-8444-444444444444": "covered",
+            [adhocId]: "adhoc note",
+          },
+          goalMeasurements: {
+            "44444444-4444-4444-8444-444444444444": {
+              data: { metric_value: 4, opportunities: 5 },
+            },
+            [adhocId]: {
+              data: { metric_value: 1 },
+            },
+          },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(updateAttempts).toBe(2);
+  });
 });

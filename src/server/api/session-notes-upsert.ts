@@ -293,12 +293,20 @@ type PostgrestErrorPayload = {
   hint?: unknown;
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const isMissingGoalMeasurementsError = (payload: unknown): boolean => {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return false;
   }
   const maybeError = payload as PostgrestErrorPayload;
   const code = typeof maybeError.code === "string" ? maybeError.code : "";
+  if (code === "PGRST204") {
+    return true;
+  }
+  if (code.length > 0 && code !== "42703") {
+    return false;
+  }
   const text = [maybeError.message, maybeError.details, maybeError.hint]
     .filter((part): part is string => typeof part === "string")
     .join(" ");
@@ -308,6 +316,68 @@ const isMissingGoalMeasurementsError = (payload: unknown): boolean => {
   }
 
   return /goal_measurements/i.test(text) && /column|does not exist|schema cache/i.test(text);
+};
+
+const isLegacyGoalIdsTypeError = (payload: unknown): boolean => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return false;
+  }
+  const maybeError = payload as PostgrestErrorPayload;
+  const code = typeof maybeError.code === "string" ? maybeError.code : "";
+  const text = [maybeError.message, maybeError.details, maybeError.hint]
+    .filter((part): part is string => typeof part === "string")
+    .join(" ");
+  if (code === "22P02" && /uuid/i.test(text)) {
+    return true;
+  }
+  return /goal_ids/i.test(text) && /uuid|invalid input syntax/i.test(text);
+};
+
+const buildCompatRetryWritePayload = <TPayload extends Record<string, unknown>>(
+  payload: TPayload,
+  upstreamErrorPayload: unknown,
+): TPayload | null => {
+  let nextPayload: Record<string, unknown> | null = null;
+
+  if (
+    isMissingGoalMeasurementsError(upstreamErrorPayload) &&
+    Object.prototype.hasOwnProperty.call(payload, "goal_measurements")
+  ) {
+    nextPayload = { ...payload };
+    delete nextPayload.goal_measurements;
+  }
+
+  if (
+    isLegacyGoalIdsTypeError(upstreamErrorPayload) &&
+    Array.isArray(payload.goal_ids)
+  ) {
+    const goalIds = payload.goal_ids;
+    const goalsAddressed = Array.isArray(payload.goals_addressed)
+      ? payload.goals_addressed
+      : [];
+    const narrowedGoalIds: string[] = [];
+    const narrowedGoalsAddressed: string[] = [];
+
+    for (let index = 0; index < goalIds.length; index += 1) {
+      const candidate = goalIds[index];
+      if (typeof candidate !== "string" || !UUID_PATTERN.test(candidate)) {
+        continue;
+      }
+      narrowedGoalIds.push(candidate);
+      const label = goalsAddressed[index];
+      if (typeof label === "string") {
+        narrowedGoalsAddressed.push(label);
+      }
+    }
+
+    nextPayload = {
+      ...(nextPayload ?? payload),
+      goal_ids: narrowedGoalIds.length > 0 ? narrowedGoalIds : null,
+      goals_addressed: narrowedGoalIds.length > 0 ? narrowedGoalsAddressed : [],
+    };
+  }
+
+  return nextPayload ? (nextPayload as TPayload) : null;
 };
 
 const fetchExistingNote = async (
@@ -548,17 +618,32 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
 
   let noteId = existingNote?.id ?? null;
   if (!noteId) {
-    const insertResult = await fetchJson<Array<{ id: string }>>(
+    let insertBody: Record<string, unknown> = {
+      ...writePayload,
+      created_by: actorUserId,
+    };
+    let insertResult = await fetchJson<Array<{ id: string }>>(
       `${supabaseUrl}/rest/v1/client_session_notes`,
       {
         method: "POST",
         headers: { ...headers, Prefer: "return=representation" },
-        body: JSON.stringify({
-          ...writePayload,
-          created_by: actorUserId,
-        }),
+        body: JSON.stringify(insertBody),
       },
     );
+    if (!insertResult.ok) {
+      const retryBody = buildCompatRetryWritePayload(insertBody, insertResult.data);
+      if (retryBody) {
+        insertBody = retryBody;
+        insertResult = await fetchJson<Array<{ id: string }>>(
+          `${supabaseUrl}/rest/v1/client_session_notes`,
+          {
+            method: "POST",
+            headers: { ...headers, Prefer: "return=representation" },
+            body: JSON.stringify(insertBody),
+          },
+        );
+      }
+    }
     if (!insertResult.ok || !insertResult.data || insertResult.data.length === 0) {
       return errorResponse(request, "upstream_error", "Unable to create session note", {
         status: insertResult.status || 502,
@@ -569,11 +654,23 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     const updateUrl =
       `${supabaseUrl}/rest/v1/client_session_notes?id=eq.${encodeURIComponent(noteId)}` +
       `&organization_id=eq.${encodeURIComponent(organizationId)}`;
-    const updateResult = await fetchJson<Array<{ id: string }>>(updateUrl, {
+    let updateBody: Record<string, unknown> = writePayload;
+    let updateResult = await fetchJson<Array<{ id: string }>>(updateUrl, {
       method: "PATCH",
       headers: { ...headers, Prefer: "return=representation" },
-      body: JSON.stringify(writePayload),
+      body: JSON.stringify(updateBody),
     });
+    if (!updateResult.ok) {
+      const retryBody = buildCompatRetryWritePayload(updateBody, updateResult.data);
+      if (retryBody) {
+        updateBody = retryBody;
+        updateResult = await fetchJson<Array<{ id: string }>>(updateUrl, {
+          method: "PATCH",
+          headers: { ...headers, Prefer: "return=representation" },
+          body: JSON.stringify(updateBody),
+        });
+      }
+    }
     if (!updateResult.ok || !updateResult.data || updateResult.data.length === 0) {
       return errorResponse(request, "upstream_error", "Unable to update session note", {
         status: updateResult.status || 502,

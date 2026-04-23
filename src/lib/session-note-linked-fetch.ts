@@ -27,6 +27,12 @@ export const isMissingColumnSelectError = (
   if (!error) {
     return false;
   }
+  if (error.code === 'PGRST204') {
+    return true;
+  }
+  if (typeof error.code === 'string' && error.code.length > 0 && error.code !== '42703') {
+    return false;
+  }
   const messageParts = [error.message, error.details, error.hint]
     .filter((part): part is string => typeof part === 'string' && part.length > 0)
     .join(' ');

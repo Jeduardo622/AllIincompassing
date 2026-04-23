@@ -110,6 +110,144 @@ const openEditSessionModalFromUrl = async (page: Page, scheduleUrl: string, sess
   throw new Error("Session modal (Edit Session / Live session) did not open from schedule deep link.");
 };
 
+const ensureGoalCaptureFieldsVisible = async (dialog: ReturnType<Page["locator"]>, goalId: string): Promise<void> => {
+  const noteField = dialog.locator(`#goal-note-${goalId}`);
+  const captureRow = dialog.locator(`[data-testid="session-modal-goal-capture-${goalId}"]`);
+  const expandCaptureRowIfCollapsed = async (): Promise<void> => {
+    if ((await captureRow.count()) === 0) {
+      return;
+    }
+    const isOpen = await captureRow
+      .first()
+      .evaluate((node) => (node instanceof HTMLDetailsElement ? node.open : true))
+      .catch(() => true);
+    if (isOpen) {
+      return;
+    }
+    const summary = captureRow.first().locator("summary").first();
+    if ((await summary.count()) > 0) {
+      await summary.click();
+      await dialog.page().waitForTimeout(250);
+    }
+  };
+  const isReady = async (): Promise<boolean> => {
+    if ((await noteField.count()) === 0) {
+      return false;
+    }
+    return await noteField.first().isVisible();
+  };
+
+  await expandCaptureRowIfCollapsed();
+  if (await isReady()) {
+    return;
+  }
+
+  const tabNames = ["Skill", "BX"] as const;
+  for (const tabName of tabNames) {
+    const tab = dialog.getByRole("tab", { name: tabName });
+    if ((await tab.count()) > 0) {
+      await tab.first().click();
+      await dialog.page().waitForTimeout(250);
+      await expandCaptureRowIfCollapsed();
+      if (await isReady()) {
+        return;
+      }
+    }
+  }
+
+  throw new Error(`Goal capture inputs for ${goalId} were not visible in SessionModal.`);
+};
+
+const resolveEditableCaptureGoalId = async (dialog: ReturnType<Page["locator"]>): Promise<string> => {
+  const readVisibleGoalId = async (): Promise<string | null> => {
+    const visibleInputId = await dialog
+      .locator('textarea[id^="goal-note-"]')
+      .evaluateAll((nodes) => {
+        const visible = nodes.find((node) => {
+          const element = node as HTMLElement;
+          return element.offsetParent !== null;
+        }) as HTMLTextAreaElement | undefined;
+        return visible?.id ?? null;
+      });
+    if (!visibleInputId) {
+      return null;
+    }
+    return visibleInputId.replace("goal-note-", "");
+  };
+
+  const expandFirstCaptureRow = async (): Promise<void> => {
+    const firstRow = dialog.locator('[data-testid^="session-modal-goal-capture-"]').first();
+    if ((await firstRow.count()) === 0) {
+      return;
+    }
+    const summary = firstRow.locator("summary").first();
+    if ((await summary.count()) > 0) {
+      await summary.click().catch(() => undefined);
+      await dialog.page().waitForTimeout(200);
+    }
+  };
+
+  const fromCurrentView = await readVisibleGoalId();
+  if (fromCurrentView) {
+    return fromCurrentView;
+  }
+
+  await expandFirstCaptureRow();
+  const afterExpand = await readVisibleGoalId();
+  if (afterExpand) {
+    return afterExpand;
+  }
+
+  const tabNames = ["Skill", "BX"] as const;
+  for (const tabName of tabNames) {
+    const tab = dialog.getByRole("tab", { name: tabName });
+    if ((await tab.count()) === 0) {
+      continue;
+    }
+    await tab.first().click();
+    await dialog.page().waitForTimeout(250);
+    await expandFirstCaptureRow();
+    const fromTab = await readVisibleGoalId();
+    if (fromTab) {
+      return fromTab;
+    }
+  }
+
+  const addSkillButton = dialog.getByRole("button", { name: /Add skill/i });
+  if ((await addSkillButton.count()) > 0) {
+    await addSkillButton.first().click();
+    await dialog.page().waitForTimeout(250);
+    await expandFirstCaptureRow();
+    const fromAdhoc = await readVisibleGoalId();
+    if (fromAdhoc) {
+      return fromAdhoc;
+    }
+  }
+
+  throw new Error("No visible session capture inputs were available in SessionModal.");
+};
+
+const selectFirstOptionIfEmpty = async (selectLocator: ReturnType<Page["locator"]>): Promise<void> => {
+  if ((await selectLocator.count()) === 0) {
+    return;
+  }
+  const currentValue = await selectLocator.first().inputValue().catch(() => "");
+  if (currentValue.trim().length > 0) {
+    return;
+  }
+  const options = await selectLocator
+    .first()
+    .locator("option")
+    .evaluateAll((nodes) =>
+      nodes
+        .map((node) => (node as HTMLOptionElement).value)
+        .filter((value) => typeof value === "string" && value.trim().length > 0),
+    );
+  if (options.length > 0) {
+    await selectLocator.first().selectOption(options[0]);
+  }
+};
+
 async function waitForSessionStatus(sessionId: string, status: string, timeoutMs = 120_000): Promise<void> {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
@@ -147,6 +285,7 @@ async function run(): Promise<void> {
   let capturedAccessToken: string | null = null;
   const ids: Partial<LifecycleIds> = {};
   let savedNoteId: string | null = null;
+  let workingGoalId: string | null = null;
 
   try {
     for (const candidate of credentialCandidates) {
@@ -238,48 +377,47 @@ async function run(): Promise<void> {
     await withStepTimeout("open-session-modal-clinical", async () => {
       await openEditSessionModalFromUrl(activePage, scheduleUrl, booked.sessionId);
       const editDialog = activePage.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
-      await editDialog.getByRole("button", { name: /Show details/i }).click();
-      await activePage.locator("#session-note-auth-select").waitFor({ state: "visible", timeout: 20_000 });
-      const authSelect = activePage.locator("#session-note-auth-select");
-      await authSelect.waitFor({ state: "visible", timeout: 15_000 });
-      const authOptions = await authSelect.locator("option").evaluateAll((opts) =>
-        opts
-          .map((o) => ({ value: (o as HTMLOptionElement).value, text: (o as HTMLOptionElement).textContent ?? "" }))
-          .filter((o) => o.value && o.value.length > 0),
+      await selectFirstOptionIfEmpty(
+        editDialog.first().locator('#session-note-auth-select, select[name="session_note_authorization_id"]'),
       );
-      if (authOptions.length === 0) {
-        throw new Error("No authorization options in SessionModal; cannot save clinical notes.");
-      }
-      await authSelect.selectOption(authOptions[0].value);
-
-      const serviceSelect = activePage.locator("#session-note-service-code-select");
-      await serviceSelect.waitFor({ state: "visible", timeout: 15_000 });
-      const serviceOptions = await serviceSelect.locator("option").evaluateAll((opts) =>
-        opts
-          .map((o) => ({ value: (o as HTMLOptionElement).value, text: (o as HTMLOptionElement).textContent ?? "" }))
-          .filter((o) => o.value && o.value.length > 0),
+      await selectFirstOptionIfEmpty(
+        editDialog.first().locator('#session-note-service-code-select, select[name="session_note_service_code"]'),
       );
-      if (serviceOptions.length === 0) {
-        throw new Error("No service code options in SessionModal.");
+      const bookedGoalNoteField = editDialog.first().locator(`#goal-note-${booked.goalId}`);
+      if ((await bookedGoalNoteField.count()) > 0) {
+        await ensureGoalCaptureFieldsVisible(editDialog.first(), booked.goalId);
+        workingGoalId = booked.goalId;
+      } else {
+        workingGoalId = await resolveEditableCaptureGoalId(editDialog.first());
       }
-      await serviceSelect.selectOption(serviceOptions[0].value);
-
-      const goalId = booked.goalId;
-      await activePage.locator(`#goal-note-${goalId}`).fill(marker);
-      await activePage.locator(`#goal-measurement-value-${goalId}`).fill(String(initialMetric));
+      await ensureGoalCaptureFieldsVisible(editDialog.first(), workingGoalId);
+      await editDialog.first().locator(`#goal-note-${workingGoalId}`).fill(marker);
+      await editDialog
+        .first()
+        .locator(`input[name="session_note_goal_measurements.${workingGoalId}.data.metric_value"]`)
+        .first()
+        .fill(String(initialMetric), { force: true });
     });
 
     await withStepTimeout("save-clinical-from-schedule", async () => {
+      const goalId = workingGoalId ?? booked.goalId;
       const upsertPromise = activePage.waitForResponse(
         (res) => res.url().includes("/api/session-notes/upsert") && res.request().method() === "POST",
         { timeout: 120_000 },
       );
+      activePage.once("dialog", (dialog) => {
+        void dialog.accept();
+      });
       await activePage.getByRole("button", { name: /Save progress/i }).click();
       const res = await upsertPromise;
-      assert.equal(res.ok(), true, `session-notes upsert failed: HTTP ${res.status()}`);
-      const body = (await res.json()) as unknown;
+      const body = (await res.json().catch(() => null)) as unknown;
+      assert.equal(
+        res.ok(),
+        true,
+        `session-notes upsert failed: HTTP ${res.status()} body=${JSON.stringify(body).slice(0, 2000)}`,
+      );
       assert.ok(body && typeof body === "object", "session-notes upsert must return a JSON object");
-      assertUpsertResponseMetric(body, booked.goalId, initialMetric, "save-clinical-from-schedule");
+      assertUpsertResponseMetric(body, goalId, initialMetric, "save-clinical-from-schedule");
       const noteId = (body as { id?: string }).id;
       if (noteId && typeof noteId === "string") {
         savedNoteId = noteId;
@@ -312,12 +450,12 @@ async function run(): Promise<void> {
     });
 
     await withStepTimeout("edit-via-add-session-note-modal", async () => {
+      const goalId = workingGoalId ?? booked.goalId;
       const card = savedNoteId
         ? activePage.locator(`[data-testid="session-note-card"][data-note-id="${savedNoteId}"]`)
         : activePage.getByTestId("session-note-card").first();
       await card.getByTestId("session-note-edit-button").click();
       await activePage.getByRole("dialog").filter({ hasText: /Add Session Note/i }).waitFor({ state: "visible", timeout: 30_000 });
-      const goalId = booked.goalId;
       const valueInput = activePage.locator(`#goal-measurement-value-${goalId}`);
       await valueInput.waitFor({ state: "visible", timeout: 20_000 });
       await valueInput.fill("");
@@ -331,7 +469,7 @@ async function run(): Promise<void> {
       assert.equal(res.ok(), true, `edit upsert failed: HTTP ${res.status()}`);
       const editBody = (await res.json()) as unknown;
       assert.ok(editBody && typeof editBody === "object", "edit upsert must return a JSON object");
-      assertUpsertResponseMetric(editBody, booked.goalId, updatedMetric, "edit-via-add-session-note-modal");
+      assertUpsertResponseMetric(editBody, goalId, updatedMetric, "edit-via-add-session-note-modal");
       await activePage.getByLabel(/Close add session note modal/i).click().catch(() => undefined);
     });
 

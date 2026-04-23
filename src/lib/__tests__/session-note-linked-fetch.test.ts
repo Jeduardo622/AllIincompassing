@@ -51,6 +51,10 @@ describe("isMissingColumnSelectError", () => {
     ).toBe(true);
   });
 
+  it("returns true for code-only PGRST204 errors", () => {
+    expect(isMissingColumnSelectError({ code: "PGRST204" })).toBe(true);
+  });
+
   it("returns false for unrelated errors", () => {
     expect(isMissingColumnSelectError({ code: "42501", message: "permission denied" })).toBe(false);
     expect(isMissingColumnSelectError(null)).toBe(false);
@@ -102,6 +106,35 @@ describe("fetchLinkedClientSessionNoteForSession", () => {
         error: {
           code: "42703",
           message: 'column "goal_measurements" does not exist',
+        },
+      })
+      .mockResolvedValueOnce({ data: baseRow, error: null });
+
+    const { fetchLinkedClientSessionNoteForSession } = await import("../session-note-linked-fetch");
+    const result = await fetchLinkedClientSessionNoteForSession({
+      sessionId: "sess-1",
+      organizationId: "org-1",
+    });
+
+    expect(maybeSingleMock).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ ...baseRow, goal_measurements: null });
+  });
+
+  it("retries without goal_measurements for code-only PGRST204 errors", async () => {
+    const baseRow = {
+      id: "n1",
+      authorization_id: "a1",
+      service_code: "97151",
+      narrative: null,
+      goal_notes: {},
+      goal_ids: [] as string[] | null,
+      goals_addressed: [] as string[] | null,
+    };
+    maybeSingleMock
+      .mockResolvedValueOnce({
+        data: null,
+        error: {
+          code: "PGRST204",
         },
       })
       .mockResolvedValueOnce({ data: baseRow, error: null });

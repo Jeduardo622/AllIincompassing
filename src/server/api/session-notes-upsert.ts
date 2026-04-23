@@ -41,14 +41,13 @@ type SessionNoteRow = {
   } | null;
 };
 
-const selectColumns = [
+const baseSelectColumns = [
   "id",
   "authorization_id",
   "client_id",
   "created_at",
   "end_time",
   "goal_ids",
-  "goal_measurements",
   "goal_notes",
   "goals_addressed",
   "is_locked",
@@ -63,7 +62,10 @@ const selectColumns = [
   "therapist_id",
   "updated_at",
   "therapists:therapist_id(full_name,title)",
-].join(",");
+];
+
+const selectColumns = [...baseSelectColumns, "goal_measurements"].join(",");
+const fallbackSelectColumns = baseSelectColumns.join(",");
 
 const upsertSchema = z.object({
   noteId: z.string().uuid().optional(),
@@ -284,6 +286,30 @@ const mapRowToSessionNote = (row: SessionNoteRow): SessionNote => ({
 
 const toDate = (value: string): Date => new Date(`${value}T00:00:00.000Z`);
 
+type PostgrestErrorPayload = {
+  code?: unknown;
+  message?: unknown;
+  details?: unknown;
+  hint?: unknown;
+};
+
+const isMissingGoalMeasurementsError = (payload: unknown): boolean => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return false;
+  }
+  const maybeError = payload as PostgrestErrorPayload;
+  const code = typeof maybeError.code === "string" ? maybeError.code : "";
+  const text = [maybeError.message, maybeError.details, maybeError.hint]
+    .filter((part): part is string => typeof part === "string")
+    .join(" ");
+
+  if (code === "42703" && /goal_measurements/i.test(text)) {
+    return true;
+  }
+
+  return /goal_measurements/i.test(text) && /column|does not exist|schema cache/i.test(text);
+};
+
 const fetchExistingNote = async (
   supabaseUrl: string,
   headers: Record<string, string>,
@@ -327,8 +353,27 @@ const fetchSessionNoteById = async (
     `${supabaseUrl}/rest/v1/client_session_notes?select=${encodeURIComponent(selectColumns)}` +
     `&organization_id=eq.${encodeURIComponent(organizationId)}` +
     `&id=eq.${encodeURIComponent(noteId)}&limit=1`;
-  const result = await fetchJson<SessionNoteRow[]>(url, { method: "GET", headers });
-  return result.ok && result.data && result.data.length > 0 ? result.data[0] : null;
+  const result = await fetchJson<unknown>(url, { method: "GET", headers });
+  if (result.ok && Array.isArray(result.data) && result.data.length > 0) {
+    return result.data[0] as SessionNoteRow;
+  }
+
+  if (!result.ok && isMissingGoalMeasurementsError(result.data)) {
+    const fallbackUrl =
+      `${supabaseUrl}/rest/v1/client_session_notes?select=${encodeURIComponent(fallbackSelectColumns)}` +
+      `&organization_id=eq.${encodeURIComponent(organizationId)}` +
+      `&id=eq.${encodeURIComponent(noteId)}&limit=1`;
+    const fallback = await fetchJson<unknown>(fallbackUrl, { method: "GET", headers });
+    if (fallback.ok && Array.isArray(fallback.data) && fallback.data.length > 0) {
+      const rowWithoutGoalMeasurements = fallback.data[0] as Omit<SessionNoteRow, "goal_measurements">;
+      return {
+        ...rowWithoutGoalMeasurements,
+        goal_measurements: null,
+      };
+    }
+  }
+
+  return null;
 };
 
 export async function sessionNotesUpsertHandler(request: Request): Promise<Response> {

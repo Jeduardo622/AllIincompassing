@@ -603,4 +603,145 @@ describe("sessionNotesUpsertHandler", () => {
     expect(json.goal_notes?.[gidA]).toBe("server kept skill note");
     expect(json.goal_notes?.[gidB]).toBe("merged bx from client");
   });
+
+  it("falls back when merge-read select misses goal_measurements column", async () => {
+    const sessionId = "66666666-6666-4666-8666-666666666666";
+    const noteId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let patchCalled = false;
+    let noteReadAttempts = 0;
+
+    const fetchJsonMock = vi.mocked(fetchJson);
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      const decodedUrl = decodeURIComponent(requestUrl);
+      const method = init?.method ?? "GET";
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (
+        requestUrl.includes("/rest/v1/client_session_notes?") &&
+        method === "GET" &&
+        requestUrl.includes(`session_id=eq.${encodeURIComponent(sessionId)}`)
+      ) {
+        return { ok: true, status: 200, data: [{ id: noteId, is_locked: false }] };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?") && method === "GET" && requestUrl.includes(`id=eq.${encodeURIComponent(noteId)}`)) {
+        noteReadAttempts += 1;
+        if (noteReadAttempts === 1) {
+          expect(decodedUrl).toContain("goal_measurements");
+          return {
+            ok: false,
+            status: 400,
+            data: {
+              code: "42703",
+              message: 'column "goal_measurements" does not exist',
+            },
+          };
+        }
+        if (noteReadAttempts === 2) {
+          expect(decodedUrl).not.toContain("goal_measurements");
+          return { ok: true, status: 200, data: [buildSessionNoteRow(noteId)] };
+        }
+        return { ok: true, status: 200, data: [buildSessionNoteRow(noteId)] };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?id=eq.") && method === "PATCH") {
+        patchCalled = true;
+        return { ok: true, status: 200, data: [{ id: noteId }] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl} ${method}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({
+          ...basePayload,
+          sessionId,
+          captureMergeGoalIds: [basePayload.goalIds[0]],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(noteReadAttempts).toBeGreaterThanOrEqual(2);
+    expect(patchCalled).toBe(true);
+  });
+
+  it("falls back when post-save read misses goal_measurements column", async () => {
+    const noteId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    let postSaveReads = 0;
+
+    const fetchJsonMock = vi.mocked(fetchJson);
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      const decodedUrl = decodeURIComponent(requestUrl);
+      const method = init?.method ?? "GET";
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "approved",
+            start_date: "2026-01-01",
+            end_date: "2026-12-31",
+            services: [{ service_code: basePayload.serviceCode, approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.endsWith("/rest/v1/client_session_notes") && method === "POST") {
+        return { ok: true, status: 201, data: [{ id: noteId }] };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?") && method === "GET" && requestUrl.includes(`id=eq.${encodeURIComponent(noteId)}`)) {
+        postSaveReads += 1;
+        if (postSaveReads === 1) {
+          expect(decodedUrl).toContain("goal_measurements");
+          return {
+            ok: false,
+            status: 400,
+            data: {
+              code: "PGRST204",
+              details: "Could not find the 'goal_measurements' column of 'client_session_notes' in the schema cache",
+            },
+          };
+        }
+        expect(decodedUrl).not.toContain("goal_measurements");
+        const row = buildSessionNoteRow(noteId);
+        const { goal_measurements: _dropped, ...withoutGoalMeasurements } = row;
+        return { ok: true, status: 200, data: [withoutGoalMeasurements] };
+      }
+      throw new Error(`Unexpected request: ${requestUrl} ${method}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify(basePayload),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json() as { id: string; goal_measurements?: unknown };
+    expect(payload.id).toBe(noteId);
+    expect(payload.goal_measurements ?? null).toBeNull();
+  });
 });

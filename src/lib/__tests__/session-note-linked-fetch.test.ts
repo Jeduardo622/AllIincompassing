@@ -28,7 +28,9 @@ vi.mock("../supabase", () => ({
 
 describe("isMissingColumnSelectError", () => {
   it("returns true for Postgres undefined_column code", () => {
-    expect(isMissingColumnSelectError({ code: "42703", message: "whatever" })).toBe(true);
+    expect(
+      isMissingColumnSelectError({ code: "42703", message: 'column "goal_measurements" does not exist' }),
+    ).toBe(true);
   });
 
   it("returns true when message names goal_measurements and missing column", () => {
@@ -36,6 +38,15 @@ describe("isMissingColumnSelectError", () => {
       isMissingColumnSelectError({
         code: "PGRST204",
         message: "Could not find the 'goal_measurements' column of 'client_session_notes' in the schema cache",
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true when missing-column text is in details", () => {
+    expect(
+      isMissingColumnSelectError({
+        code: "PGRST204",
+        details: "Could not find the 'goal_measurements' column in the schema cache",
       }),
     ).toBe(true);
   });

@@ -52,6 +52,7 @@ WHITE BIBLE.pdf
 # Cursor hook volatile state and local audit logs (never ship)
 .cursor/hooks/state/
 .cursor/hooks/logs/
+.cursor/mcp.json
 
 # Local agent / editor scratch (not shipped)
 .claude/

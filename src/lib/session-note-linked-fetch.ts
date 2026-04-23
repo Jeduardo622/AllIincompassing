@@ -21,15 +21,19 @@ export type LinkedClientSessionNoteRow = {
  * PostgREST / Postgres signals when `select` references a column missing from the schema cache
  * (e.g. production DB behind app migrations).
  */
-export const isMissingColumnSelectError = (error: { code?: string; message?: string } | null): boolean => {
+export const isMissingColumnSelectError = (
+  error: { code?: string; message?: string; details?: string; hint?: string } | null,
+): boolean => {
   if (!error) {
     return false;
   }
-  const message = typeof error.message === 'string' ? error.message : '';
-  if (error.code === '42703') {
+  const messageParts = [error.message, error.details, error.hint]
+    .filter((part): part is string => typeof part === 'string' && part.length > 0)
+    .join(' ');
+  if (error.code === '42703' && /goal_measurements/i.test(messageParts)) {
     return true;
   }
-  if (/goal_measurements/i.test(message) && /column|does not exist|schema cache/i.test(message)) {
+  if (/goal_measurements/i.test(messageParts) && /column|does not exist|schema cache/i.test(messageParts)) {
     return true;
   }
   return false;

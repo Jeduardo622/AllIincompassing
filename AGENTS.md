@@ -215,3 +215,13 @@ A task is done only when:
 4. The result is pushed on a branch and a PR is ready for human review.
 5. High-risk changes include a short risk summary.
 6. High-risk changes are linked to a Linear issue, and non-trivial changes should be linked when practical.
+
+## Learned User Preferences
+
+- When the user asks to use Supabase from Cursor’s installed **plugin / MCP** stack, use the **Supabase plugin MCP** (read tool schemas first) for hosted work such as migration listing/apply and SQL checks on the linked project, instead of treating repo files as the only source of truth for what is applied remotely.
+- If the user points to `.env` or `.env.local` for a token, do **not** read those files unless they explicitly request it; explain that the MCP or CLI process must receive credentials via a supported **environment** path for that process, not by assuming the file is loaded automatically.
+
+## Learned Workspace Facts
+
+- **MCP processes** only see environment variables the IDE/OS (or server config) provides; project `.env` / `.env.local` is not automatically injected into MCP server processes unless your setup explicitly loads it for those tools.
+- For **admin, scheduling, and RLS-related behavior**, treat **`user_roles` (and related RPCs / helpers) as the source of truth** for “what role does this user have in the org?”, not **`profiles.role` alone** when both exist—keep junction and profile in sync in privileged code paths.

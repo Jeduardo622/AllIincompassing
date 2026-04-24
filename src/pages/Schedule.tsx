@@ -46,6 +46,7 @@ import { upsertClientSessionNoteForSession } from "../lib/session-notes";
 import {
   buildSessionSlotIndex,
   normalizeRecurrencePayload,
+  reconcileOptimisticSessionMoves,
   toPendingScheduleDetail,
   type PendingScheduleDetail,
   type RecurrenceFormState,
@@ -1031,19 +1032,23 @@ export const Schedule = React.memo(() => {
         overrides: undefined,
       });
     },
-    onSuccess: async (_result, variables) => {
-      await Promise.all([
-        queryClient.refetchQueries({ queryKey: ["sessions"], type: "active" }),
-        queryClient.refetchQueries({ queryKey: ["sessions-batch"], type: "active" }),
-      ]);
+    onSuccess: async (result, variables) => {
       setOptimisticSessionMoves((prev) => {
         if (!prev[variables.session.id]) {
           return prev;
         }
-        const next = { ...prev };
-        delete next[variables.session.id];
-        return next;
+        return {
+          ...prev,
+          [variables.session.id]: {
+            start_time: result.session.start_time,
+            end_time: result.session.end_time,
+          },
+        };
       });
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["sessions"], type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["sessions-batch"], type: "active" }),
+      ]);
       showSuccess("Appointment moved");
     },
     onError: (error, variables) => {
@@ -1563,34 +1568,7 @@ export const Schedule = React.memo(() => {
     if (Object.keys(optimisticSessionMoves).length === 0) {
       return;
     }
-    const matchesPersistedInstant = (candidate: string, persisted: string): boolean => {
-      const candidateMs = parseISO(candidate).getTime();
-      const persistedMs = parseISO(persisted).getTime();
-      if (!Number.isNaN(candidateMs) && !Number.isNaN(persistedMs)) {
-        return candidateMs === persistedMs;
-      }
-      return candidate === persisted;
-    };
-    setOptimisticSessionMoves((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      for (const [sessionId, optimisticMove] of Object.entries(prev)) {
-        const persisted = displayData.sessions.find((session) => session.id === sessionId);
-        if (!persisted) {
-          delete next[sessionId];
-          changed = true;
-          continue;
-        }
-        if (
-          matchesPersistedInstant(optimisticMove.start_time, persisted.start_time) &&
-          matchesPersistedInstant(optimisticMove.end_time, persisted.end_time)
-        ) {
-          delete next[sessionId];
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
+    setOptimisticSessionMoves((prev) => reconcileOptimisticSessionMoves(prev, displayData.sessions));
   }, [displayData.sessions, optimisticSessionMoves]);
 
   const sessionSlotIndex = useMemo(

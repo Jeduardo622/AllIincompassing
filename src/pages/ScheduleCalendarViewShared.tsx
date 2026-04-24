@@ -9,6 +9,7 @@ import { getSessionStatusClasses } from './ScheduleSessionStatusStyles';
 export type ScheduleTimeSlotHandler = (timeSlot: { date: Date; time: string }) => void;
 export type ScheduleEditSessionHandler = (session: Session) => void;
 export type ScheduleSlotPosition = { date: Date; time: string };
+export type ScheduleDropPayload = { target: ScheduleSlotPosition; draggedSessionId?: string | null };
 
 export const TimeSlot = React.memo(
   ({
@@ -36,7 +37,7 @@ export const TimeSlot = React.memo(
     activeDragSessionId?: string | null;
     activeDropSlotKey?: string | null;
     onStartSessionDrag?: (session: Session, source: ScheduleSlotPosition) => void;
-    onSessionDrop?: (target: ScheduleSlotPosition) => void;
+    onSessionDrop?: (payload: ScheduleDropPayload) => void;
     onHoverSlotDuringDrag?: (targetSlotKey: string | null) => void;
     onEndSessionDrag?: () => void;
   }) => {
@@ -61,7 +62,7 @@ export const TimeSlot = React.memo(
         }
         event.preventDefault();
         if (allowDragAndDrop && activeDragSessionId !== null) {
-          onSessionDrop?.({ date: day, time });
+          onSessionDrop?.({ target: { date: day, time } });
           return;
         }
         if (enableSlotCreateChrome) {
@@ -69,7 +70,7 @@ export const TimeSlot = React.memo(
           return;
         }
         if (allowDragAndDrop) {
-          onSessionDrop?.({ date: day, time });
+          onSessionDrop?.({ target: { date: day, time } });
         }
       },
       [activeDragSessionId, allowDragAndDrop, day, enableSlotCreateChrome, handleTimeSlotClick, onSessionDrop, time],
@@ -118,7 +119,11 @@ export const TimeSlot = React.memo(
           allowDragAndDrop
             ? (event) => {
                 event.preventDefault();
-                onSessionDrop?.({ date: day, time });
+                const draggedSessionId = event.dataTransfer.getData("text/plain").trim();
+                onSessionDrop?.({
+                  target: { date: day, time },
+                  draggedSessionId: draggedSessionId.length > 0 ? draggedSessionId : null,
+                });
               }
             : undefined
         }
@@ -226,7 +231,7 @@ export const DayColumn = React.memo(
     activeDragSessionId?: string | null;
     activeDropSlotKey?: string | null;
     onStartSessionDrag?: (session: Session, source: ScheduleSlotPosition) => void;
-    onSessionDrop?: (target: ScheduleSlotPosition) => void;
+    onSessionDrop?: (payload: ScheduleDropPayload) => void;
     onHoverSlotDuringDrag?: (targetSlotKey: string | null) => void;
     onEndSessionDrag?: () => void;
   }) => {

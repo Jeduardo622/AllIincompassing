@@ -1,8 +1,9 @@
-import React, { useCallback, useRef, useState } from 'react';
-import { format } from 'date-fns';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { format, parseISO } from 'date-fns';
 import type { Session } from '../types';
 import {
   DayColumn,
+  type ScheduleDropPayload,
   type ScheduleEditSessionHandler,
   type ScheduleSlotPosition,
   type ScheduleTimeSlotHandler,
@@ -34,6 +35,15 @@ const ScheduleWeekViewComponent: React.FC<ScheduleWeekViewProps> = ({
   const [dropSlotKey, setDropSlotKey] = useState<string | null>(null);
   const draggedSessionRef = useRef<Session | null>(null);
   const sourceSlotKeyRef = useRef<string | null>(null);
+  const sessionsById = useMemo(() => {
+    const next = new Map<string, Session>();
+    for (const slotSessions of sessionSlotIndex.values()) {
+      for (const session of slotSessions) {
+        next.set(session.id, session);
+      }
+    }
+    return next;
+  }, [sessionSlotIndex]);
 
   const handleStartSessionDrag = useCallback((session: Session, source: ScheduleSlotPosition) => {
     if (!allowDragAndDrop) {
@@ -60,19 +70,26 @@ const ScheduleWeekViewComponent: React.FC<ScheduleWeekViewProps> = ({
     setDropSlotKey(targetSlotKey);
   }, [allowDragAndDrop]);
 
-  const handleDropOnSlot = useCallback((target: ScheduleSlotPosition) => {
-    const sessionToMove = draggedSessionRef.current;
+  const handleDropOnSlot = useCallback(({ target, draggedSessionId }: ScheduleDropPayload) => {
+    const sessionToMove =
+      draggedSessionRef.current ??
+      (draggedSessionId ? sessionsById.get(draggedSessionId) ?? null : null);
     if (!allowDragAndDrop || !sessionToMove) {
       clearDragState();
       return;
     }
     const targetKey = createSessionSlotKey(format(target.date, 'yyyy-MM-dd'), target.time);
-    const shouldReschedule = targetKey !== sourceSlotKeyRef.current;
+    const fallbackSourceDate = parseISO(sessionToMove.start_time);
+    const fallbackSourceKey = Number.isNaN(fallbackSourceDate.getTime())
+      ? null
+      : createSessionSlotKey(format(fallbackSourceDate, 'yyyy-MM-dd'), format(fallbackSourceDate, 'HH:mm'));
+    const sourceKey = sourceSlotKeyRef.current ?? fallbackSourceKey;
+    const shouldReschedule = targetKey !== sourceKey;
     clearDragState();
     if (shouldReschedule) {
       onRescheduleSession?.(sessionToMove, target);
     }
-  }, [allowDragAndDrop, clearDragState, onRescheduleSession]);
+  }, [allowDragAndDrop, clearDragState, onRescheduleSession, sessionsById]);
 
   return (
     <div className="bg-white dark:bg-dark-lighter rounded-lg shadow overflow-x-auto">

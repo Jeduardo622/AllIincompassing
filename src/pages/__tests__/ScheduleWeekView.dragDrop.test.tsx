@@ -1,17 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
+import { format } from "date-fns";
 import type { Session } from "../../types";
 import { createSessionSlotKey } from "../schedule-utils";
 import { ScheduleWeekView } from "../ScheduleWeekView";
 
-const buildSession = (): Session => ({
+const buildSession = (startDate: Date): Session => ({
   id: "session-1",
   client_id: "client-1",
   therapist_id: "therapist-1",
   program_id: "program-1",
   goal_id: "goal-1",
-  start_time: "2025-07-07T10:00:00.000Z",
-  end_time: "2025-07-07T11:00:00.000Z",
+  start_time: startDate.toISOString(),
+  end_time: new Date(startDate.getTime() + 60 * 60 * 1000).toISOString(),
   status: "scheduled",
   notes: "weekly session",
   created_at: "2025-07-01T00:00:00.000Z",
@@ -24,7 +25,7 @@ const buildSession = (): Session => ({
 
 const dragData = {
   setData: vi.fn(),
-  getData: vi.fn(),
+  getData: vi.fn(() => "session-1"),
   effectAllowed: "move",
 };
 
@@ -34,12 +35,12 @@ describe("ScheduleWeekView drag and drop", () => {
     const targetDay = new Date("2025-07-08T00:00:00.000Z");
     const sourceTime = "10:00";
     const targetTime = "10:15";
-    const session = buildSession();
+    const sessionStart = new Date(sourceDay);
+    sessionStart.setHours(10, 0, 0, 0);
+    const session = buildSession(sessionStart);
     const onRescheduleSession = vi.fn();
-    const sourceKey = createSessionSlotKey(
-      `${sourceDay.getFullYear()}-${String(sourceDay.getMonth() + 1).padStart(2, "0")}-${String(sourceDay.getDate()).padStart(2, "0")}`,
-      sourceTime,
-    );
+    const sourceStart = sessionStart;
+    const sourceKey = createSessionSlotKey(format(sourceStart, "yyyy-MM-dd"), format(sourceStart, "HH:mm"));
     const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
 
     const { container } = render(
@@ -80,9 +81,12 @@ describe("ScheduleWeekView drag and drop", () => {
   it("does not invoke onRescheduleSession when dropped on same slot", () => {
     const sourceDay = new Date("2025-07-07T00:00:00.000Z");
     const sourceTime = "10:00";
-    const session = buildSession();
+    const sessionStart = new Date(sourceDay);
+    sessionStart.setHours(10, 0, 0, 0);
+    const session = buildSession(sessionStart);
     const onRescheduleSession = vi.fn();
-    const sourceKey = createSessionSlotKey("2025-07-07", sourceTime);
+    const sourceStart = sessionStart;
+    const sourceKey = createSessionSlotKey(format(sourceStart, "yyyy-MM-dd"), format(sourceStart, "HH:mm"));
     const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
 
     const { container } = render(
@@ -114,9 +118,12 @@ describe("ScheduleWeekView drag and drop", () => {
     const targetDay = new Date("2025-07-08T00:00:00.000Z");
     const sourceTime = "10:00";
     const targetTime = "10:15";
-    const session = buildSession();
+    const sessionStart = new Date(sourceDay);
+    sessionStart.setHours(10, 0, 0, 0);
+    const session = buildSession(sessionStart);
     const onRescheduleSession = vi.fn();
-    const sourceKey = createSessionSlotKey("2025-07-07", sourceTime);
+    const sourceStart = sessionStart;
+    const sourceKey = createSessionSlotKey(format(sourceStart, "yyyy-MM-dd"), format(sourceStart, "HH:mm"));
     const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
 
     const { container } = render(

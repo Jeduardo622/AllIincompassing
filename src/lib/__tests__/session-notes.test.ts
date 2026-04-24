@@ -120,6 +120,159 @@ describe('fetchClientSessionNotes', () => {
       },
     });
   });
+
+  it('retries without goal_measurements when select fails on missing column', async () => {
+    const fallbackRows = [
+      {
+        id: 'note-fallback',
+        authorization_id: 'auth-1',
+        client_id: 'client-1',
+        therapist_id: 'therapist-1',
+        organization_id: 'org-1',
+        service_code: '97153',
+        session_date: '2025-06-01',
+        start_time: '09:00',
+        end_time: '10:00',
+        session_duration: 60,
+        goals_addressed: ['Goal A'],
+        goal_ids: ['goal-1'],
+        goal_notes: { 'goal-1': 'Captured note without measurements column' },
+        narrative: 'test',
+        is_locked: false,
+        signed_at: null,
+        created_at: '2025-06-01T00:00:00Z',
+        updated_at: '2025-06-01T00:00:00Z',
+        therapists: { full_name: 'Fallback Therapist', title: 'BCBA' },
+      },
+    ];
+    const selectCalls: string[] = [];
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table !== 'client_session_notes') {
+        return {};
+      }
+      const chain = {
+        select: vi.fn((clause: string) => {
+          selectCalls.push(clause);
+          return chain;
+        }),
+        eq: vi.fn(() => chain),
+        order: vi.fn(() => chain),
+        limit: vi.fn(async () => {
+          if (selectCalls.length === 1) {
+            return {
+              data: null,
+              error: {
+                code: '42703',
+                message: 'column client_session_notes.goal_measurements does not exist',
+                details: null,
+                hint: null,
+              },
+            };
+          }
+          return { data: fallbackRows, error: null };
+        }),
+      };
+      return chain;
+    });
+
+    const result = await fetchClientSessionNotes('client-1', 'org-1');
+
+    expect(selectCalls).toHaveLength(2);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.id).toBe('note-fallback');
+    expect(result[0]?.goal_measurements).toBeNull();
+    expect(result[0]?.goal_notes).toEqual({ 'goal-1': 'Captured note without measurements column' });
+  });
+
+  it('retries without goal_measurements when select fails with PGRST204 schema-cache error', async () => {
+    const fallbackRows = [
+      {
+        id: 'note-pgrst204',
+        authorization_id: 'auth-1',
+        client_id: 'client-1',
+        therapist_id: 'therapist-1',
+        organization_id: 'org-1',
+        service_code: '97153',
+        session_date: '2025-06-01',
+        start_time: '09:00',
+        end_time: '10:00',
+        session_duration: 60,
+        goals_addressed: ['Goal A'],
+        goal_ids: ['goal-1'],
+        goal_notes: { 'goal-1': 'Recovered from schema cache miss' },
+        narrative: 'test',
+        is_locked: false,
+        signed_at: null,
+        created_at: '2025-06-01T00:00:00Z',
+        updated_at: '2025-06-01T00:00:00Z',
+        therapists: { full_name: 'Fallback Therapist', title: 'BCBA' },
+      },
+    ];
+    let selectCount = 0;
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table !== 'client_session_notes') {
+        return {};
+      }
+      const chain = {
+        select: vi.fn(() => {
+          selectCount += 1;
+          return chain;
+        }),
+        eq: vi.fn(() => chain),
+        order: vi.fn(() => chain),
+        limit: vi.fn(async () => {
+          if (selectCount === 1) {
+            return {
+              data: null,
+              error: {
+                code: 'PGRST204',
+                message: "Could not find the 'goal_measurements' column of 'client_session_notes' in the schema cache",
+                details: null,
+                hint: null,
+              },
+            };
+          }
+          return { data: fallbackRows, error: null };
+        }),
+      };
+      return chain;
+    });
+
+    const result = await fetchClientSessionNotes('client-1', 'org-1');
+
+    expect(selectCount).toBe(2);
+    expect(result[0]?.id).toBe('note-pgrst204');
+    expect(result[0]?.goal_measurements).toBeNull();
+  });
+
+  it('does not fallback for unrelated select errors', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table !== 'client_session_notes') {
+        return {};
+      }
+      const chain = {
+        select: vi.fn(() => chain),
+        eq: vi.fn(() => chain),
+        order: vi.fn(() => chain),
+        limit: vi.fn(async () => ({
+          data: null,
+          error: {
+            code: '42703',
+            message: 'column client_session_notes.some_other_column does not exist',
+            details: null,
+            hint: null,
+          },
+        })),
+      };
+      return chain;
+    });
+
+    await expect(fetchClientSessionNotes('client-1', 'org-1')).rejects.toMatchObject({
+      code: '42703',
+    });
+  });
 });
 
 describe('session note write helpers', () => {

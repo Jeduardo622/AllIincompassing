@@ -1,3 +1,4 @@
+/* eslint-disable jsx-a11y/no-static-element-interactions */
 import React, { useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { Clock, Edit2, Plus } from 'lucide-react';
@@ -7,6 +8,7 @@ import { getSessionStatusClasses } from './ScheduleSessionStatusStyles';
 
 export type ScheduleTimeSlotHandler = (timeSlot: { date: Date; time: string }) => void;
 export type ScheduleEditSessionHandler = (session: Session) => void;
+export type ScheduleSlotPosition = { date: Date; time: string };
 
 export const TimeSlot = React.memo(
   ({
@@ -16,6 +18,13 @@ export const TimeSlot = React.memo(
     onCreateSession,
     onEditSession,
     allowCreateInEmptySlot = true,
+    allowDragAndDrop = false,
+    activeDragSessionId = null,
+    activeDropSlotKey = null,
+    onStartSessionDrag,
+    onSessionDrop,
+    onHoverSlotDuringDrag,
+    onEndSessionDrag,
   }: {
     time: string;
     day: Date;
@@ -23,7 +32,16 @@ export const TimeSlot = React.memo(
     onCreateSession: ScheduleTimeSlotHandler;
     onEditSession: ScheduleEditSessionHandler;
     allowCreateInEmptySlot?: boolean;
+    allowDragAndDrop?: boolean;
+    activeDragSessionId?: string | null;
+    activeDropSlotKey?: string | null;
+    onStartSessionDrag?: (session: Session, source: ScheduleSlotPosition) => void;
+    onSessionDrop?: (target: ScheduleSlotPosition) => void;
+    onHoverSlotDuringDrag?: (targetSlotKey: string | null) => void;
+    onEndSessionDrag?: () => void;
   }) => {
+    const dayKey = useMemo(() => format(day, 'yyyy-MM-dd'), [day]);
+    const slotKey = useMemo(() => createSessionSlotKey(dayKey, time), [dayKey, time]);
     const handleTimeSlotClick = useCallback(() => {
       onCreateSession({ date: day, time });
     }, [day, time, onCreateSession]);
@@ -35,35 +53,79 @@ export const TimeSlot = React.memo(
       },
       [onEditSession],
     );
-
     const enableSlotCreateChrome = allowCreateInEmptySlot;
+    const handleSlotKeyDown = useCallback(
+      (event: React.KeyboardEvent<HTMLDivElement>) => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+          return;
+        }
+        event.preventDefault();
+        if (allowDragAndDrop && activeDragSessionId !== null) {
+          onSessionDrop?.({ date: day, time });
+          return;
+        }
+        if (enableSlotCreateChrome) {
+          handleTimeSlotClick();
+          return;
+        }
+        if (allowDragAndDrop) {
+          onSessionDrop?.({ date: day, time });
+        }
+      },
+      [activeDragSessionId, allowDragAndDrop, day, enableSlotCreateChrome, handleTimeSlotClick, onSessionDrop, time],
+    );
+
+    const slotHasDropTarget = allowDragAndDrop && activeDropSlotKey === slotKey && activeDragSessionId !== null;
 
     return (
       <div
-        className={`h-10 border-b border-r p-2 relative group dark:border-gray-700 ${
+        className={`h-10 border-b border-r p-2 relative group dark:border-gray-700 transition-colors ${
           enableSlotCreateChrome
             ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
             : "cursor-default"
-        }`}
-        role={enableSlotCreateChrome ? "button" : undefined}
-        tabIndex={enableSlotCreateChrome ? 0 : undefined}
+        } ${slotHasDropTarget ? "bg-blue-50 dark:bg-blue-950/40" : ""}`}
+        data-slot-key={slotKey}
+        data-drop-target={slotHasDropTarget ? "true" : "false"}
+        role={enableSlotCreateChrome || allowDragAndDrop ? "button" : undefined}
+        tabIndex={enableSlotCreateChrome || allowDragAndDrop ? 0 : undefined}
         aria-label={
           enableSlotCreateChrome
             ? "Add session"
+            : allowDragAndDrop
+              ? "Drop appointment here"
             : slotSessions.length === 0
               ? "Empty time slot"
               : undefined
         }
         title={enableSlotCreateChrome ? "Add session" : undefined}
-        {...(enableSlotCreateChrome
+        onDragEnter={
+          allowDragAndDrop
+            ? () => {
+                onHoverSlotDuringDrag?.(slotKey);
+              }
+            : undefined
+        }
+        onDragOver={
+          allowDragAndDrop
+            ? (event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                onHoverSlotDuringDrag?.(slotKey);
+              }
+            : undefined
+        }
+        onDrop={
+          allowDragAndDrop
+            ? (event) => {
+                event.preventDefault();
+                onSessionDrop?.({ date: day, time });
+              }
+            : undefined
+        }
+        {...(enableSlotCreateChrome || allowDragAndDrop
           ? {
-              onClick: handleTimeSlotClick,
-              onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  handleTimeSlotClick();
-                }
-              },
+              ...(enableSlotCreateChrome ? { onClick: handleTimeSlotClick } : {}),
+              onKeyDown: handleSlotKeyDown,
             }
           : {})}
       >
@@ -82,7 +144,29 @@ export const TimeSlot = React.memo(
             <div
               key={session.id}
               data-session-status={session.status}
-              className={`${statusStyles.card} rounded p-1 text-xs mb-1 group/session relative cursor-pointer transition-colors`}
+              data-session-id={session.id}
+              draggable={allowDragAndDrop && session.status === "scheduled"}
+              aria-grabbed={allowDragAndDrop && activeDragSessionId === session.id}
+              onDragStart={
+                allowDragAndDrop && session.status === "scheduled"
+                  ? (event) => {
+                      event.stopPropagation();
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", session.id);
+                      onStartSessionDrag?.(session, { date: day, time });
+                    }
+                  : undefined
+              }
+              onDragEnd={
+                allowDragAndDrop
+                  ? () => {
+                      onEndSessionDrag?.();
+                    }
+                  : undefined
+              }
+              className={`${statusStyles.card} rounded p-1 text-xs mb-1 group/session relative transition-colors ${
+                allowDragAndDrop && session.status === "scheduled" ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+              } ${activeDragSessionId === session.id ? "opacity-50" : ""}`}
               role="button"
               tabIndex={0}
               onClick={(event) => handleSessionClick(event, session)}
@@ -124,6 +208,13 @@ export const DayColumn = React.memo(
     onCreateSession,
     onEditSession,
     allowCreateInEmptySlot = true,
+    allowDragAndDrop = false,
+    activeDragSessionId = null,
+    activeDropSlotKey = null,
+    onStartSessionDrag,
+    onSessionDrop,
+    onHoverSlotDuringDrag,
+    onEndSessionDrag,
   }: {
     day: Date;
     timeSlots: string[];
@@ -131,6 +222,13 @@ export const DayColumn = React.memo(
     onCreateSession: ScheduleTimeSlotHandler;
     onEditSession: ScheduleEditSessionHandler;
     allowCreateInEmptySlot?: boolean;
+    allowDragAndDrop?: boolean;
+    activeDragSessionId?: string | null;
+    activeDropSlotKey?: string | null;
+    onStartSessionDrag?: (session: Session, source: ScheduleSlotPosition) => void;
+    onSessionDrop?: (target: ScheduleSlotPosition) => void;
+    onHoverSlotDuringDrag?: (targetSlotKey: string | null) => void;
+    onEndSessionDrag?: () => void;
   }) => {
     const dayKey = useMemo(() => format(day, 'yyyy-MM-dd'), [day]);
 
@@ -145,6 +243,13 @@ export const DayColumn = React.memo(
             onCreateSession={onCreateSession}
             onEditSession={onEditSession}
             allowCreateInEmptySlot={allowCreateInEmptySlot}
+            allowDragAndDrop={allowDragAndDrop}
+            activeDragSessionId={activeDragSessionId}
+            activeDropSlotKey={activeDropSlotKey}
+            onStartSessionDrag={onStartSessionDrag}
+            onSessionDrop={onSessionDrop}
+            onHoverSlotDuringDrag={onHoverSlotDuringDrag}
+            onEndSessionDrag={onEndSessionDrag}
           />
         ))}
       </div>

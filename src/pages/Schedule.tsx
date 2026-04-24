@@ -338,6 +338,7 @@ export const Schedule = React.memo(() => {
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
   const [scopedTherapistId, setScopedTherapistId] = useState<string | null>(null);
   const [scopedClientId, setScopedClientId] = useState<string | null>(null);
+  const [optimisticSessionMoves, setOptimisticSessionMoves] = useState<Record<string, { start_time: string; end_time: string }>>({});
   const [retryHint, setRetryHint] = useState<string | null>(null);
   const [pendingAgentIdempotencyKey, setPendingAgentIdempotencyKey] = useState<string | null>(null);
   const [pendingAgentOperationId, setPendingAgentOperationId] = useState<string | null>(null);
@@ -999,6 +1000,66 @@ export const Schedule = React.memo(() => {
     },
   });
 
+  const rescheduleSessionMutation = useMutation({
+    mutationFn: async ({
+      session,
+      start_time,
+      end_time,
+    }: {
+      session: Session;
+      start_time: string;
+      end_time: string;
+    }) => {
+      const movedSession: Session = {
+        ...session,
+        start_time,
+        end_time,
+      };
+      const { startOffsetMinutes, endOffsetMinutes, timeZone } =
+        computeTimeMetadata(movedSession);
+
+      return bookSessionViaApi({
+        ...buildBookSessionApiPayload(
+          { ...movedSession, id: session.id },
+          {
+            startOffsetMinutes,
+            endOffsetMinutes,
+            timeZone,
+          },
+          undefined,
+        ),
+        overrides: undefined,
+      });
+    },
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["sessions"], type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["sessions-batch"], type: "active" }),
+      ]);
+      setOptimisticSessionMoves((prev) => {
+        if (!prev[variables.session.id]) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[variables.session.id];
+        return next;
+      });
+      showSuccess("Appointment moved");
+    },
+    onError: (error, variables) => {
+      setOptimisticSessionMoves((prev) => {
+        if (!prev[variables.session.id]) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[variables.session.id];
+        return next;
+      });
+      const adaptation = adaptScheduleMutationError(error);
+      showError(adaptation.userMessage);
+    },
+  });
+
   // Memoized callbacks
   const handleCreateSession = useCallback(
     (
@@ -1120,10 +1181,70 @@ export const Schedule = React.memo(() => {
     queryClient.invalidateQueries({ queryKey: ["sessions-batch"] });
   }, [queryClient]);
 
+  const toRescheduledWindow = useCallback(
+    (session: Session, target: { date: Date; time: string }) => {
+      const [hourPart, minutePart] = target.time.split(":");
+      const targetHour = Number(hourPart);
+      const targetMinute = Number(minutePart);
+      if (!Number.isFinite(targetHour) || !Number.isFinite(targetMinute)) {
+        return null;
+      }
+
+      const originalStart = parseISO(session.start_time);
+      const originalEnd = parseISO(session.end_time);
+      if (Number.isNaN(originalStart.getTime()) || Number.isNaN(originalEnd.getTime())) {
+        return null;
+      }
+
+      const durationMs = Math.max(15 * 60 * 1000, originalEnd.getTime() - originalStart.getTime());
+      const nextStart = new Date(target.date);
+      nextStart.setHours(targetHour, targetMinute, 0, 0);
+      const nextEnd = new Date(nextStart.getTime() + durationMs);
+
+      return {
+        start_time: nextStart.toISOString(),
+        end_time: nextEnd.toISOString(),
+      };
+    },
+    [],
+  );
+
   const dismissRetryHint = useCallback(() => {
     setRetryActionLabel(null);
     setRetryHint(null);
   }, []);
+
+  const handleRescheduleSession = useCallback((session: Session, target: { date: Date; time: string }) => {
+    if (therapistScopedView) {
+      return;
+    }
+
+    const movedWindow = toRescheduledWindow(session, target);
+    if (!movedWindow) {
+      showError("Unable to move appointment. Please try again.");
+      return;
+    }
+
+    const sourceDate = parseISO(session.start_time);
+    const sourceSlotKey = Number.isNaN(sourceDate.getTime())
+      ? null
+      : createSessionSlotKey(format(sourceDate, "yyyy-MM-dd"), format(sourceDate, "HH:mm"));
+    const targetSlotKey = createSessionSlotKey(format(target.date, "yyyy-MM-dd"), target.time);
+    if (sourceSlotKey === targetSlotKey) {
+      return;
+    }
+
+    setOptimisticSessionMoves((prev) => ({
+      ...prev,
+      [session.id]: movedWindow,
+    }));
+
+    rescheduleSessionMutation.mutate({
+      session,
+      start_time: movedWindow.start_time,
+      end_time: movedWindow.end_time,
+    });
+  }, [rescheduleSessionMutation, therapistScopedView, toRescheduledWindow]);
 
   const handleOpenLinkedSessionDocumentation = useCallback(() => {
     if (!selectedSession?.client_id) {
@@ -1423,9 +1544,58 @@ export const Schedule = React.memo(() => {
     );
   }, [weekStart]);
 
+  const renderedSessions = useMemo(
+    () =>
+      displayData.sessions.map((session) => {
+        const optimisticMove = optimisticSessionMoves[session.id];
+        if (!optimisticMove) {
+          return session;
+        }
+        return {
+          ...session,
+          ...optimisticMove,
+        };
+      }),
+    [displayData.sessions, optimisticSessionMoves],
+  );
+
+  useEffect(() => {
+    if (Object.keys(optimisticSessionMoves).length === 0) {
+      return;
+    }
+    const matchesPersistedInstant = (candidate: string, persisted: string): boolean => {
+      const candidateMs = parseISO(candidate).getTime();
+      const persistedMs = parseISO(persisted).getTime();
+      if (!Number.isNaN(candidateMs) && !Number.isNaN(persistedMs)) {
+        return candidateMs === persistedMs;
+      }
+      return candidate === persisted;
+    };
+    setOptimisticSessionMoves((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [sessionId, optimisticMove] of Object.entries(prev)) {
+        const persisted = displayData.sessions.find((session) => session.id === sessionId);
+        if (!persisted) {
+          delete next[sessionId];
+          changed = true;
+          continue;
+        }
+        if (
+          matchesPersistedInstant(optimisticMove.start_time, persisted.start_time) &&
+          matchesPersistedInstant(optimisticMove.end_time, persisted.end_time)
+        ) {
+          delete next[sessionId];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [displayData.sessions, optimisticSessionMoves]);
+
   const sessionSlotIndex = useMemo(
-    () => buildSessionSlotIndex(displayData.sessions),
-    [displayData.sessions],
+    () => buildSessionSlotIndex(renderedSessions),
+    [renderedSessions],
   );
 
   // Memoized date range display
@@ -1954,7 +2124,9 @@ export const Schedule = React.memo(() => {
               sessionSlotIndex={sessionSlotIndex}
               onCreateSession={handleCreateSession}
               onEditSession={handleEditSession}
+              onRescheduleSession={handleRescheduleSession}
               allowCreateInEmptySlot={!therapistScopedView}
+              allowDragAndDrop={!therapistScopedView}
             />
           )}
         </Suspense>

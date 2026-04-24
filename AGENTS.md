@@ -220,6 +220,7 @@ A task is done only when:
 
 - When the user asks to use Supabase from Cursor’s installed **plugin / MCP** stack, use the **Supabase plugin MCP** (read tool schemas first) for hosted work such as migration listing/apply and SQL checks on the linked project, instead of treating repo files as the only source of truth for what is applied remotely.
 - If the user points to `.env` or `.env.local` for a token, do **not** read those files unless they explicitly request it; explain that the MCP or CLI process must receive credentials via a supported **environment** path for that process, not by assuming the file is loaded automatically.
+- The user frequently requires strict final-output contracts (`Return exactly` + named fields); when a response schema is specified, follow it literally and preserve field order/labels.
 
 ## Learned Workspace Facts
 

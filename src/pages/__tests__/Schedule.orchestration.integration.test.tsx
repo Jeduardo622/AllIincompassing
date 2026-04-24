@@ -14,6 +14,11 @@ currentSessionStart.setHours(10, 0, 0, 0);
 const currentSessionEnd = new Date(currentSessionStart);
 currentSessionEnd.setHours(11, 0, 0, 0);
 
+const originalSessionWindow = {
+  start_time: currentSessionStart.toISOString(),
+  end_time: currentSessionEnd.toISOString(),
+};
+
 const scheduleFixtures = {
   sessions: [
     {
@@ -22,8 +27,8 @@ const scheduleFixtures = {
       client_id: "client-1",
       program_id: "program-1",
       goal_id: "goal-1",
-      start_time: currentSessionStart.toISOString(),
-      end_time: currentSessionEnd.toISOString(),
+      start_time: originalSessionWindow.start_time,
+      end_time: originalSessionWindow.end_time,
       status: "scheduled",
       notes: "Initial session",
       therapist: { id: "therapist-1", full_name: "Dr. Myles" },
@@ -179,6 +184,11 @@ vi.mock("../../components/SessionModal", () => ({
 import { Schedule } from "../Schedule";
 
 describe("Schedule orchestration integration hardening", () => {
+  const resetScheduleFixtureWindow = () => {
+    scheduleFixtures.sessions[0].start_time = originalSessionWindow.start_time;
+    scheduleFixtures.sessions[0].end_time = originalSessionWindow.end_time;
+  };
+
   const openExistingSessionForEdit = async () => {
     await waitFor(() => {
       expect(document.querySelector("[data-session-status]")).toBeTruthy();
@@ -193,6 +203,7 @@ describe("Schedule orchestration integration hardening", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
+    resetScheduleFixtureWindow();
     upsertClientSessionNoteForSessionMock.mockResolvedValue({
       id: "linked-note-1",
     });
@@ -419,4 +430,5 @@ describe("Schedule orchestration integration hardening", () => {
     });
     expect(bookSessionViaApiMock).toHaveBeenCalledTimes(1);
   });
+
 });

@@ -183,6 +183,41 @@ export function buildSessionSlotIndex(sessions: Session[]): Map<string, Session[
   return index;
 }
 
+export function reconcileOptimisticSessionMoves(
+  optimisticSessionMoves: Record<string, { start_time: string; end_time: string }>,
+  persistedSessions: Session[],
+): Record<string, { start_time: string; end_time: string }> {
+  const matchesPersistedInstant = (candidate: string, persisted: string): boolean => {
+    const candidateMs = new Date(candidate).getTime();
+    const persistedMs = new Date(persisted).getTime();
+    if (!Number.isNaN(candidateMs) && !Number.isNaN(persistedMs)) {
+      return candidateMs === persistedMs;
+    }
+    return candidate === persisted;
+  };
+
+  let changed = false;
+  const next = { ...optimisticSessionMoves };
+
+  for (const [sessionId, optimisticMove] of Object.entries(optimisticSessionMoves)) {
+    const persisted = persistedSessions.find((session) => session.id === sessionId);
+    if (!persisted) {
+      delete next[sessionId];
+      changed = true;
+      continue;
+    }
+    if (
+      matchesPersistedInstant(optimisticMove.start_time, persisted.start_time) &&
+      matchesPersistedInstant(optimisticMove.end_time, persisted.end_time)
+    ) {
+      delete next[sessionId];
+      changed = true;
+    }
+  }
+
+  return changed ? next : optimisticSessionMoves;
+}
+
 export async function mapWithConcurrency<T, R>(
   items: T[],
   worker: (item: T, index: number) => Promise<R>,

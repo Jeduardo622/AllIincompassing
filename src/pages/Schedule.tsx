@@ -44,6 +44,7 @@ import { fetchLinkedClientIdsForTherapist } from "../lib/clients/therapistClient
 import { hasMeaningfulGoalMeasurementEntry, normalizeGoalMeasurementEntry } from "../lib/goal-measurements";
 import { upsertClientSessionNoteForSession } from "../lib/session-notes";
 import {
+  createSessionSlotKey,
   buildSessionSlotIndex,
   normalizeRecurrencePayload,
   reconcileOptimisticSessionMoves,

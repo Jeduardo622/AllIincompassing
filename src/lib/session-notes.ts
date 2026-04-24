@@ -33,14 +33,13 @@ export const normalizeSessionGoalMeasurementMap = (
 };
 
 const TABLE = 'client_session_notes';
-const SESSION_NOTE_SELECT_COLUMNS = `
+const SESSION_NOTE_SELECT_COLUMNS_BASE = `
   id,
   authorization_id,
   client_id,
   created_at,
   end_time,
   goal_ids,
-  goal_measurements,
   goal_notes,
   goals_addressed,
   is_locked,
@@ -56,6 +55,11 @@ const SESSION_NOTE_SELECT_COLUMNS = `
   updated_at
 `;
 
+const SESSION_NOTE_SELECT_COLUMNS = `
+  ${SESSION_NOTE_SELECT_COLUMNS_BASE},
+  goal_measurements
+`;
+
 const SESSION_NOTE_WITH_THERAPIST_SELECT = `
   ${SESSION_NOTE_SELECT_COLUMNS},
   therapists:therapist_id (
@@ -63,6 +67,35 @@ const SESSION_NOTE_WITH_THERAPIST_SELECT = `
     title
   )
 `;
+
+const SESSION_NOTE_WITH_THERAPIST_FALLBACK_SELECT = `
+  ${SESSION_NOTE_SELECT_COLUMNS_BASE},
+  therapists:therapist_id (
+    full_name,
+    title
+  )
+`;
+
+const isMissingGoalMeasurementsColumnError = (
+  error: Pick<PostgrestError, 'code' | 'message' | 'details' | 'hint'> | null,
+): boolean => {
+  if (!error) {
+    return false;
+  }
+  if (error.code === 'PGRST204') {
+    return true;
+  }
+  if (typeof error.code === 'string' && error.code.length > 0 && error.code !== '42703') {
+    return false;
+  }
+  const messageParts = [error.message, error.details, error.hint]
+    .filter((part): part is string => typeof part === 'string' && part.length > 0)
+    .join(' ');
+  if (error.code === '42703' && /goal_measurements/i.test(messageParts)) {
+    return true;
+  }
+  return /goal_measurements/i.test(messageParts) && /column|does not exist|schema cache/i.test(messageParts);
+};
 
 const mapRowToSessionNote = (
   row: ClientSessionNoteRow,
@@ -110,24 +143,39 @@ export const fetchClientSessionNotes = async (
 
   const limit = options.limit ?? 100;
 
-  const { data, error } = await supabase
+  const runQuery = async (selectClause: string) => await supabase
     .from(TABLE)
-    .select(SESSION_NOTE_WITH_THERAPIST_SELECT)
+    .select(selectClause)
     .eq('client_id', clientId)
     .eq('organization_id', organizationId)
     .order('session_date', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(limit);
 
-  if (error) {
-    throw error;
+  const primary = await runQuery(SESSION_NOTE_WITH_THERAPIST_SELECT);
+  if (primary.error && isMissingGoalMeasurementsColumnError(primary.error)) {
+    const fallback = await runQuery(SESSION_NOTE_WITH_THERAPIST_FALLBACK_SELECT);
+    if (fallback.error) {
+      throw fallback.error;
+    }
+    return (fallback.data ?? []).map((row) =>
+      mapRowToSessionNote(
+        {
+          ...(row as ClientSessionNoteRow & { therapists: TherapistSummary | null }),
+          goal_measurements: null,
+        },
+        (row as { therapists: TherapistSummary | null }).therapists ?? null,
+      ),
+    );
   }
-
-  return (data ?? []).map((row) =>
+  if (primary.error) {
+    throw primary.error;
+  }
+  return (primary.data ?? []).map((row) =>
     mapRowToSessionNote(
       row as ClientSessionNoteRow & { therapists: TherapistSummary | null },
-      (row as { therapists: TherapistSummary | null }).therapists ?? null
-    )
+      (row as { therapists: TherapistSummary | null }).therapists ?? null,
+    ),
   );
 };
 

@@ -108,4 +108,47 @@ describe("ScheduleWeekView drag and drop", () => {
 
     expect(onRescheduleSession).not.toHaveBeenCalled();
   });
+
+  it("invokes onRescheduleSession when dropping via keyboard", () => {
+    const sourceDay = new Date("2025-07-07T00:00:00.000Z");
+    const targetDay = new Date("2025-07-08T00:00:00.000Z");
+    const sourceTime = "10:00";
+    const targetTime = "10:15";
+    const session = buildSession();
+    const onRescheduleSession = vi.fn();
+    const sourceKey = createSessionSlotKey("2025-07-07", sourceTime);
+    const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
+
+    const { container } = render(
+      <ScheduleWeekView
+        weekDays={[sourceDay, targetDay]}
+        timeSlots={[sourceTime, targetTime]}
+        sessionSlotIndex={sessionSlotIndex}
+        onCreateSession={vi.fn()}
+        onEditSession={vi.fn()}
+        onRescheduleSession={onRescheduleSession}
+        allowDragAndDrop
+      />,
+    );
+
+    const card = container.querySelector('[data-session-id="session-1"]');
+    const targetSlot = Array.from(container.querySelectorAll("[data-slot-key]")).find((slot) => {
+      const slotKey = slot.getAttribute("data-slot-key");
+      return typeof slotKey === "string" && slotKey !== sourceKey && slotKey.endsWith(`|${targetTime}`);
+    });
+    expect(card).toBeTruthy();
+    expect(targetSlot).toBeTruthy();
+
+    fireEvent.dragStart(card as HTMLElement, { dataTransfer: dragData });
+    fireEvent.keyDown(targetSlot as HTMLElement, { key: "Enter" });
+
+    expect(onRescheduleSession).toHaveBeenCalledTimes(1);
+    expect(onRescheduleSession).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "session-1" }),
+      expect.objectContaining({
+        time: targetTime,
+        date: expect.any(Date),
+      }),
+    );
+  });
 });

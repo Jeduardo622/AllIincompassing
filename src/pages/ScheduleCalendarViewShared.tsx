@@ -53,8 +53,28 @@ export const TimeSlot = React.memo(
       },
       [onEditSession],
     );
-
     const enableSlotCreateChrome = allowCreateInEmptySlot;
+    const handleSlotKeyDown = useCallback(
+      (event: React.KeyboardEvent<HTMLDivElement>) => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+          return;
+        }
+        event.preventDefault();
+        if (allowDragAndDrop && activeDragSessionId !== null) {
+          onSessionDrop?.({ date: day, time });
+          return;
+        }
+        if (enableSlotCreateChrome) {
+          handleTimeSlotClick();
+          return;
+        }
+        if (allowDragAndDrop) {
+          onSessionDrop?.({ date: day, time });
+        }
+      },
+      [activeDragSessionId, allowDragAndDrop, day, enableSlotCreateChrome, handleTimeSlotClick, onSessionDrop, time],
+    );
+
     const slotHasDropTarget = allowDragAndDrop && activeDropSlotKey === slotKey && activeDragSessionId !== null;
 
     return (
@@ -102,21 +122,10 @@ export const TimeSlot = React.memo(
               }
             : undefined
         }
-        {...(enableSlotCreateChrome
+        {...(enableSlotCreateChrome || allowDragAndDrop
           ? {
-              onClick: handleTimeSlotClick,
-              onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  if (enableSlotCreateChrome) {
-                    handleTimeSlotClick();
-                    return;
-                  }
-                  if (allowDragAndDrop) {
-                    onSessionDrop?.({ date: day, time });
-                  }
-                }
-              },
+              ...(enableSlotCreateChrome ? { onClick: handleTimeSlotClick } : {}),
+              onKeyDown: handleSlotKeyDown,
             }
           : {})}
       >

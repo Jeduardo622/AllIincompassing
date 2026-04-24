@@ -1577,6 +1577,8 @@ export const Schedule = React.memo(() => {
       for (const [sessionId, optimisticMove] of Object.entries(prev)) {
         const persisted = displayData.sessions.find((session) => session.id === sessionId);
         if (!persisted) {
+          delete next[sessionId];
+          changed = true;
           continue;
         }
         if (

@@ -2115,7 +2115,9 @@ export const Schedule = React.memo(() => {
               sessionSlotIndex={sessionSlotIndex}
               onCreateSession={handleCreateSession}
               onEditSession={handleEditSession}
+              onRescheduleSession={handleRescheduleSession}
               allowCreateInEmptySlot={!therapistScopedView}
+              allowDragAndDrop={!therapistScopedView}
             />
           ) : (
             <LazyScheduleWeekView

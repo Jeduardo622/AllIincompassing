@@ -43,6 +43,7 @@ import { supabase } from "../lib/supabase";
 import { fetchLinkedClientIdsForTherapist } from "../lib/clients/therapistClientScope";
 import { hasMeaningfulGoalMeasurementEntry, normalizeGoalMeasurementEntry } from "../lib/goal-measurements";
 import { upsertClientSessionNoteForSession } from "../lib/session-notes";
+import { isSessionCaptureBillingGateRelaxed } from "../lib/sessionCaptureBillingGate";
 import {
   createSessionSlotKey,
   buildSessionSlotIndex,
@@ -1415,9 +1416,15 @@ export const Schedule = React.memo(() => {
             if (!user?.id) {
               throw new Error("Sign in again before saving session capture.");
             }
-            if (!clinicalNoteDraft.authorizationId || !clinicalNoteDraft.serviceCode) {
+            if (!isSessionCaptureBillingGateRelaxed()) {
+              if (!clinicalNoteDraft.authorizationId || !clinicalNoteDraft.serviceCode) {
+                throw new Error(
+                  "Authorization and service code are required to save session capture from Schedule (configure billing defaults for the client).",
+                );
+              }
+            } else if (!clinicalNoteDraft.authorizationId) {
               throw new Error(
-                "Authorization and service code are required to save session capture from Schedule (configure billing defaults for the client).",
+                "An authorization id is required to save session capture (add any authorization for this client).",
               );
             }
             await upsertClientSessionNoteForSession({

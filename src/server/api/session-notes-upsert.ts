@@ -13,6 +13,7 @@ import {
   jsonForRequest,
   resolveOrgAndRoleWithStatus,
 } from "./shared";
+import { isSessionCaptureBillingGateRelaxed } from "../sessionCaptureBillingGate";
 
 type SessionNoteRow = {
   id: string;
@@ -534,21 +535,38 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
   if (authorization.client_id !== payload.clientId) {
     return errorResponse(request, "validation_error", "Client does not match the selected authorization.");
   }
-  if (authorization.status !== "approved") {
-    return errorResponse(request, "validation_error", "Authorization must be approved before saving session notes.");
+
+  const captureBillingRelaxed = isSessionCaptureBillingGateRelaxed();
+
+  if (!captureBillingRelaxed) {
+    if (authorization.status !== "approved") {
+      return errorResponse(request, "validation_error", "Authorization must be approved before saving session notes.");
+    }
+
+    const sessionDateStrict = toDate(payload.sessionDate);
+    if (
+      sessionDateStrict < toDate(authorization.start_date) ||
+      sessionDateStrict > toDate(authorization.end_date)
+    ) {
+      return errorResponse(request, "validation_error", "Session date must be within the authorization date range.");
+    }
+
+    const hasAuthorizedServiceStrict = (authorization.services ?? []).some(
+      (service) => service.service_code === payload.serviceCode,
+    );
+    if (!hasAuthorizedServiceStrict) {
+      return errorResponse(request, "validation_error", "Selected service code is not part of this authorization.");
+    }
   }
 
-  const sessionDate = toDate(payload.sessionDate);
-  if (sessionDate < toDate(authorization.start_date) || sessionDate > toDate(authorization.end_date)) {
-    return errorResponse(request, "validation_error", "Session date must be within the authorization date range.");
-  }
-
-  const hasAuthorizedService = (authorization.services ?? []).some(
-    (service) => service.service_code === payload.serviceCode,
-  );
-  if (!hasAuthorizedService) {
-    return errorResponse(request, "validation_error", "Selected service code is not part of this authorization.");
-  }
+  const services = authorization.services ?? [];
+  const hasAuthorizedService = services.some((service) => service.service_code === payload.serviceCode);
+  const firstListedServiceCode =
+    services.map((service) => service.service_code?.trim()).find((code): code is string => Boolean(code)) ?? "";
+  const effectiveServiceCode =
+    captureBillingRelaxed && !hasAuthorizedService
+      ? firstListedServiceCode || "UNSPECIFIED"
+      : payload.serviceCode;
 
   const existingNote = await fetchExistingNote(supabaseUrl, headers, organizationId, {
     noteId: payload.noteId,
@@ -601,7 +619,7 @@ export async function sessionNotesUpsertHandler(request: Request): Promise<Respo
     client_id: payload.clientId,
     therapist_id: payload.therapistId,
     organization_id: organizationId,
-    service_code: payload.serviceCode,
+    service_code: effectiveServiceCode,
     session_date: payload.sessionDate,
     start_time: payload.startTime,
     end_time: payload.endTime,

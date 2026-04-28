@@ -89,6 +89,7 @@ const buildSessionNoteRow = (id: string) => ({
 describe("sessionNotesUpsertHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    process.env.SESSION_CAPTURE_RELAX_BILLING_GATE = "false";
     vi.mocked(getAccessToken).mockReturnValue(ACCESS_TOKEN);
     vi.mocked(resolveOrgAndRoleWithStatus).mockResolvedValue({
       organizationId: "org-1",
@@ -460,6 +461,62 @@ describe("sessionNotesUpsertHandler", () => {
 
     expect(response.status).toBe(400);
     expect(payload.error).toMatch(/service code/i);
+  });
+
+  it("when billing gate relaxed, skips date/service strict checks and uses first listed service code", async () => {
+    delete process.env.SESSION_CAPTURE_RELAX_BILLING_GATE;
+    const fetchJsonMock = vi.mocked(fetchJson);
+    fetchJsonMock.mockImplementation(async (url, init) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/rest/v1/authorizations?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            id: basePayload.authorizationId,
+            organization_id: "org-1",
+            client_id: basePayload.clientId,
+            status: "pending",
+            start_date: "2026-01-01",
+            end_date: "2026-01-31",
+            services: [{ service_code: "97151", approved_units: 10 }],
+          }],
+        };
+      }
+      if (requestUrl.includes("/rest/v1/client_session_notes?select=id,is_locked")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (requestUrl.endsWith("/rest/v1/client_session_notes") && init?.method === "POST") {
+        const parsedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+        expect(parsedBody.service_code).toBe("97151");
+        return { ok: true, status: 201, data: [{ id: "note-relaxed" }] };
+      }
+      if (requestUrl.includes("select=id%2Cauthorization_id") && requestUrl.includes("id=eq.note-relaxed")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{
+            ...buildSessionNoteRow("note-relaxed"),
+            service_code: "97151",
+          }],
+        };
+      }
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const response = await sessionNotesUpsertHandler(
+      new Request("http://localhost/api/session-notes/upsert", {
+        method: "POST",
+        headers: HEADERS,
+        body: JSON.stringify({
+          ...basePayload,
+          sessionDate: "2026-03-10",
+          serviceCode: "97153",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
   });
 
   it("rejects when client does not match authorization", async () => {

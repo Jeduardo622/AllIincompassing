@@ -31,6 +31,24 @@ const dragData = {
 };
 
 describe("ScheduleDayView drag and drop", () => {
+  beforeEach(() => {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      configurable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query === "(any-pointer: fine)",
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("invokes onRescheduleSession for a different target slot", () => {
     const selectedDate = new Date("2025-07-07T00:00:00.000Z");
     const sourceTime = "10:00";
@@ -85,7 +103,7 @@ describe("ScheduleDayView drag and drop", () => {
         writable: true,
         configurable: true,
         value: vi.fn().mockImplementation((query: string) => ({
-          matches: query === "(pointer: coarse)",
+          matches: query === "(any-pointer: fine)" ? false : query === "(pointer: coarse)",
           media: query,
           addEventListener: vi.fn(),
           removeEventListener: vi.fn(),

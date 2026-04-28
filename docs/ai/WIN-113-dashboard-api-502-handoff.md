@@ -67,9 +67,12 @@
 - verification summary: present
 - pr-ready: no
 - required follow-up:
-  - push branch and open PR
-  - report live PR checks and merge blockers
+  - wait for live PR checks on `#478`
+  - obtain human review before merge
+  - resolve any required check failures if CI disagrees with the local scoped result
 
 ## Handoff Summary
 
 This slice keeps the outage fix constrained to the dashboard API proxy. The change adds a `try/catch` around the edge-authority call in `src/server/api/dashboard.ts` so a thrown upstream fetch no longer escapes the handler and instead returns a typed `upstream_error` response with status `502`. A focused regression test now covers that path, while broader repo verification remains limited by unrelated pre-existing test failures and local browser-runner instability outside this dashboard slice.
+
+Draft PR: `#478` (`WIN-113 Guard /api/dashboard transport failures`)

@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render } from "@testing-library/react";
 import { format } from "date-fns";
 import type { Session } from "../../types";
 import { createSessionSlotKey } from "../schedule-utils";
@@ -76,5 +76,59 @@ describe("ScheduleDayView drag and drop", () => {
         date: expect.any(Date),
       }),
     );
+  });
+
+  describe("coarse pointer (touch) move path", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      Object.defineProperty(window, "matchMedia", {
+        writable: true,
+        configurable: true,
+        value: vi.fn().mockImplementation((query: string) => ({
+          matches: query === "(pointer: coarse)",
+          media: query,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        })),
+      });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    });
+
+    it("short tap still opens edit via onEditSession", () => {
+      const selectedDate = new Date("2025-07-07T00:00:00.000Z");
+      const sourceTime = "10:00";
+      const sessionStart = new Date(selectedDate);
+      sessionStart.setHours(10, 0, 0, 0);
+      const session = buildSession(sessionStart);
+      const onEditSession = vi.fn();
+      const sourceKey = createSessionSlotKey(format(sessionStart, "yyyy-MM-dd"), format(sessionStart, "HH:mm"));
+      const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
+
+      const { container } = render(
+        <ScheduleDayView
+          selectedDate={selectedDate}
+          timeSlots={[sourceTime, "10:15"]}
+          sessionSlotIndex={sessionSlotIndex}
+          onCreateSession={vi.fn()}
+          onEditSession={onEditSession}
+          onRescheduleSession={vi.fn()}
+          allowDragAndDrop
+        />,
+      );
+
+      const card = container.querySelector('[data-session-id="session-1"]') as HTMLElement;
+      fireEvent.pointerDown(card, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+      vi.advanceTimersByTime(100);
+      fireEvent.pointerUp(card, { button: 0, pointerId: 1 });
+      fireEvent.click(card);
+
+      expect(onEditSession).toHaveBeenCalledTimes(1);
+      expect(onEditSession).toHaveBeenCalledWith(expect.objectContaining({ id: "session-1" }));
+    });
   });
 });

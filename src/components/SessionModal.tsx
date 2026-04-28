@@ -56,6 +56,12 @@ import {
   showGoalOnBxCaptureTab,
   showGoalOnSkillCaptureTab,
 } from '../lib/session-adhoc-targets';
+import {
+  firstServiceCodeOnAuthorization,
+  isSessionCaptureBillingGateRelaxed,
+  pickPrimaryBillingAuthorization,
+  SESSION_CAPTURE_RELAXED_FALLBACK_SERVICE_CODE,
+} from '../lib/sessionCaptureBillingGate';
 
 const ENABLE_ALTERNATIVE_TIME_SUGGESTIONS = false;
 
@@ -314,25 +320,38 @@ export function SessionModal({
     enabled: Boolean(clientId && activeOrganizationId),
   });
 
-  const { data: approvedAuthorizations = [] } = useQuery({
-    queryKey: ['session-note-authorizations', clientId, activeOrganizationId ?? 'MISSING_ORG'],
+  const captureBillingRelaxed = isSessionCaptureBillingGateRelaxed();
+
+  const { data: billingAuthorizations = [] } = useQuery({
+    queryKey: [
+      'session-note-billing-authorizations',
+      clientId,
+      activeOrganizationId ?? 'MISSING_ORG',
+      captureBillingRelaxed ? 'relaxed' : 'strict',
+    ],
     queryFn: async () => {
       if (!clientId || !activeOrganizationId) {
         return [];
       }
-      const { data, error } = await supabase
+      let query = supabase
         .from('authorizations')
-        .select('id, authorization_number, services:authorization_services(service_code)')
+        .select(
+          'id, status, authorization_number, services:authorization_services(service_code)',
+        )
         .eq('client_id', clientId)
         .eq('organization_id', activeOrganizationId)
-        .eq('status', 'approved')
         .order('start_date', { ascending: false });
+      if (!captureBillingRelaxed) {
+        query = query.eq('status', 'approved');
+      }
+      const { data, error } = await query;
       if (error) {
         throw error;
       }
       return (
         data as Array<{
           id: string;
+          status: string;
           authorization_number: string;
           services?: Array<{ service_code: string | null }> | null;
         }>
@@ -340,6 +359,11 @@ export function SessionModal({
     },
     enabled: Boolean(clientId && activeOrganizationId),
   });
+
+  const primaryBillingAuthorization = useMemo(
+    () => pickPrimaryBillingAuthorization(billingAuthorizations),
+    [billingAuthorizations],
+  );
 
   const { data: linkedSessionNote } = useQuery({
     queryKey: ['session-note-linked', session?.id, activeOrganizationId ?? 'MISSING_ORG'],
@@ -942,15 +966,20 @@ export function SessionModal({
           })
           .filter((entry): entry is [string, SessionGoalMeasurementEntry] => Boolean(entry)),
       );
-      const firstApprovedAuth = approvedAuthorizations[0];
-      const firstDefaultServiceCode =
-        (firstApprovedAuth?.services ?? [])
-          .map((s) => s.service_code?.trim())
-          .find((c): c is string => Boolean(c)) ?? '';
+      const firstDefaultServiceCode = firstServiceCodeOnAuthorization(primaryBillingAuthorization);
       const resolvedAuthorizationId =
-        working.session_note_authorization_id?.trim() || firstApprovedAuth?.id || '';
-      const resolvedServiceCode =
+        working.session_note_authorization_id?.trim() ||
+        primaryBillingAuthorization?.id ||
+        '';
+      let resolvedServiceCode =
         working.session_note_service_code?.trim() || firstDefaultServiceCode;
+      if (
+        captureBillingRelaxed &&
+        resolvedAuthorizationId &&
+        !resolvedServiceCode
+      ) {
+        resolvedServiceCode = SESSION_CAPTURE_RELAXED_FALLBACK_SERVICE_CODE;
+      }
       const mergeGoalIds = options?.captureMergeGoalIds?.filter((id) => id.trim().length > 0) ?? [];
       const isPartialCaptureSave = mergeGoalIds.length > 0;
       const hasCaptureInputFromSubmit = isPartialCaptureSave
@@ -980,9 +1009,16 @@ export function SessionModal({
           showError('Session capture can only be saved for existing sessions.');
           return;
         }
-        if (!resolvedAuthorizationId || !resolvedServiceCode) {
+        if (!captureBillingRelaxed) {
+          if (!resolvedAuthorizationId || !resolvedServiceCode) {
+            showError(
+              'No approved authorization or service is available for this client. Ask an admin to configure billing defaults.',
+            );
+            return;
+          }
+        } else if (!resolvedAuthorizationId) {
           showError(
-            'No approved authorization or service is available for this client. Ask an admin to configure billing defaults.',
+            'No authorization on file for this client. Add an authorization (any status) before saving session capture, or ask an admin.',
           );
           return;
         }
@@ -2248,8 +2284,9 @@ export function SessionModal({
                         Billing, authorization, and full narratives
                       </summary>
                       <p className="mt-2 leading-snug">
-                        Billing uses the first approved authorization on file when defaults exist. Full narrative,
-                        signatures, and additional measurement fields are completed in Client Details.
+                        {captureBillingRelaxed
+                          ? 'Billing defaults prefer an approved authorization when one exists; otherwise the most recent authorization for this client may be used so capture can save. See docs/session-capture-billing-gate.md to re-enable strict checks.'
+                          : 'Billing uses the first approved authorization on file when defaults exist. Full narrative, signatures, and additional measurement fields are completed in Client Details.'}
                       </p>
                     </details>
                   </div>

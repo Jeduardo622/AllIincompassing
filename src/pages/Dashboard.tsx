@@ -35,6 +35,19 @@ type DashboardDataShape = {
   quickStats?: { activeClients: number; activeTherapists: number; thisMonthRevenue: number; attendanceRate: number };
 };
 
+const formatDashboardDate = (value: string | null | undefined, dateFormat: string, fallback = 'Date unavailable') => {
+  if (!value) {
+    return fallback;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return fallback;
+  }
+
+  return format(date, dateFormat);
+};
+
 export interface DashboardViewProps {
   dashboardData?: DashboardDataShape | null;
   isLoading: boolean;
@@ -91,6 +104,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const isIncompleteSessionsRedacted = false;
   const isBillingAlertsRedacted = false;
   const isClientMetricsRedacted = false;
+
+  const showRecentActivityEmpty =
+    !isIncompleteSessionsRedacted &&
+    !isBillingAlertsRedacted &&
+    displayData.incompleteSessions.length === 0 &&
+    displayData.billingAlerts.length === 0;
 
   const activeClientsCount =
     displayData.clientMetrics.active > 0
@@ -229,10 +248,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-medium text-gray-900 dark:text-white">
-                        {format(new Date(session.start_time), 'h:mm a')}
+                        {formatDashboardDate(session.start_time, 'h:mm a', 'Time unavailable')}
                       </div>
                       <div className="text-sm text-gray-500 dark:text-gray-400">
-                        {format(new Date(session.start_time), 'MMM d, yyyy')}
+                        {formatDashboardDate(session.start_time, 'MMM d, yyyy')}
                       </div>
                     </div>
                   </div>
@@ -291,67 +310,79 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="p-6">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recent Activity</h2>
               <div className="space-y-4">
-              {isIncompleteSessionsRedacted ? (
-                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-dark rounded-lg">
-                  <div>
-                    <div className="font-medium text-gray-900 dark:text-white">Documentation Metrics Restricted</div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">
-                      Pending note details are only available to administrators.
-                    </div>
-                  </div>
-                </div>
+              {showRecentActivityEmpty ? (
+                <p
+                  className="rounded-md border border-dashed border-gray-200 py-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400"
+                  role="status"
+                  aria-label="No recent documentation or billing activity"
+                >
+                  No pending documentation or billing alerts right now.
+                </p>
               ) : (
-                displayData.incompleteSessions.slice(0, 5).map(session => (
-                  <div key={session.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-dark rounded-lg">
-                    <div>
-                      <div className="font-medium text-gray-900 dark:text-white">
-                        Documentation Needed
-                      </div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400">
-                        Session with {session.client?.full_name}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-medium text-blue-600 dark:text-blue-400">
-                        Add Notes
-                      </div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400">
-                        {format(new Date(session.start_time), 'MMM d, yyyy')}
+                <>
+                  {isIncompleteSessionsRedacted ? (
+                    <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-dark rounded-lg">
+                      <div>
+                        <div className="font-medium text-gray-900 dark:text-white">Documentation Metrics Restricted</div>
+                        <div className="text-sm text-gray-500 dark:text-gray-400">
+                          Pending note details are only available to administrators.
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
-              )}
-              {isBillingAlertsRedacted ? (
-                <div className="flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                  <div>
-                    <div className="font-medium text-red-900 dark:text-red-100">Billing Metrics Restricted</div>
-                    <div className="text-sm text-red-700 dark:text-red-300">
-                      Billing alerts are only visible to authorized billing staff.
+                  ) : (
+                    displayData.incompleteSessions.slice(0, 5).map(session => (
+                      <div key={session.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-dark rounded-lg">
+                        <div>
+                          <div className="font-medium text-gray-900 dark:text-white">
+                            Documentation Needed
+                          </div>
+                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                            Session with {session.client?.full_name}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                            Add Notes
+                          </div>
+                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                            {formatDashboardDate(session.start_time, 'MMM d, yyyy')}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  {isBillingAlertsRedacted ? (
+                    <div className="flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                      <div>
+                        <div className="font-medium text-red-900 dark:text-red-100">Billing Metrics Restricted</div>
+                        <div className="text-sm text-red-700 dark:text-red-300">
+                          Billing alerts are only visible to authorized billing staff.
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              ) : (
-                displayData.billingAlerts.slice(0, 3).map(record => (
-                  <div key={record.id} className="flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                    <div>
-                      <div className="font-medium text-red-900 dark:text-red-100">
-                        Billing Alert
+                  ) : (
+                    displayData.billingAlerts.slice(0, 3).map(record => (
+                      <div key={record.id} className="flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                        <div>
+                          <div className="font-medium text-red-900 dark:text-red-100">
+                            Billing Alert
+                          </div>
+                          <div className="text-sm text-red-700 dark:text-red-300">
+                            ${record.amount} - {record.status}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-medium text-red-600 dark:text-red-400">
+                            Review
+                          </div>
+                          <div className="text-sm text-red-700 dark:text-red-300">
+                            {formatDashboardDate(record.created_at, 'MMM d, yyyy', '—')}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-sm text-red-700 dark:text-red-300">
-                        ${record.amount} - {record.status}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-medium text-red-600 dark:text-red-400">
-                        Review
-                      </div>
-                      <div className="text-sm text-red-700 dark:text-red-300">
-                        {record.created_at ? format(new Date(record.created_at), 'MMM d, yyyy') : '—'}
-                      </div>
-                    </div>
-                  </div>
-                ))
+                    ))
+                  )}
+                </>
               )}
             </div>
           </div>

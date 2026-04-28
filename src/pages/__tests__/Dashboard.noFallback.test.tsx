@@ -30,4 +30,12 @@ describe('Dashboard without client fallbacks', () => {
     expect(screen.getByText('Active Clients')).toBeInTheDocument();
     expect(screen.getByText('Billing Alerts')).toBeInTheDocument();
   });
+
+  it('shows an empty state when there is no recent documentation or billing activity', () => {
+    render(<DashboardView {...baseProps} />);
+
+    expect(screen.getByRole('status', { name: /no recent documentation or billing activity/i })).toHaveTextContent(
+      'No pending documentation or billing alerts right now.',
+    );
+  });
 });

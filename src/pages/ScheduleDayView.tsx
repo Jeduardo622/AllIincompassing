@@ -46,23 +46,27 @@ const ScheduleDayViewComponent: React.FC<ScheduleDayViewProps> = ({
     return next;
   }, [sessionSlotIndex]);
 
-  const handleStartSessionDrag = useCallback((session: Session, source: ScheduleSlotPosition) => {
-    if (!allowDragAndDrop) {
-      return;
-    }
-    const nextSourceSlotKey = createSessionSlotKey(format(source.date, 'yyyy-MM-dd'), source.time);
-    draggedSessionRef.current = session;
-    sourceSlotKeyRef.current = nextSourceSlotKey;
-    setDraggedSession(session);
-    setDropSlotKey(null);
-  }, [allowDragAndDrop]);
-
   const clearDragState = useCallback(() => {
     draggedSessionRef.current = null;
     sourceSlotKeyRef.current = null;
     setDraggedSession(null);
     setDropSlotKey(null);
   }, []);
+
+  const handleStartSessionDrag = useCallback((session: Session, source: ScheduleSlotPosition) => {
+    if (!allowDragAndDrop) {
+      return;
+    }
+    const nextSourceSlotKey = createSessionSlotKey(format(source.date, 'yyyy-MM-dd'), source.time);
+    if (draggedSessionRef.current?.id === session.id) {
+      clearDragState();
+      return;
+    }
+    draggedSessionRef.current = session;
+    sourceSlotKeyRef.current = nextSourceSlotKey;
+    setDraggedSession(session);
+    setDropSlotKey(null);
+  }, [allowDragAndDrop, clearDragState]);
 
   const handleHoverSlotDuringDrag = useCallback((targetSlotKey: string | null) => {
     if (!allowDragAndDrop || !draggedSessionRef.current) {

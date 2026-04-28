@@ -1,5 +1,5 @@
 /* eslint-disable jsx-a11y/no-static-element-interactions */
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { format, parseISO } from 'date-fns';
 import { Clock, Edit2, Plus } from 'lucide-react';
 import type { Session } from '../types';
@@ -10,6 +10,25 @@ export type ScheduleTimeSlotHandler = (timeSlot: { date: Date; time: string }) =
 export type ScheduleEditSessionHandler = (session: Session) => void;
 export type ScheduleSlotPosition = { date: Date; time: string };
 export type ScheduleDropPayload = { target: ScheduleSlotPosition; draggedSessionId?: string | null };
+
+/** True when the primary input is touch (phones, most tablets). HTML5 drag/drop is unreliable here. */
+function useCoarsePointer(): boolean {
+  const getSnapshot = () =>
+    typeof window !== 'undefined' ? window.matchMedia('(pointer: coarse)').matches : false;
+
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      if (typeof window === 'undefined') {
+        return () => {};
+      }
+      const mq = window.matchMedia('(pointer: coarse)');
+      mq.addEventListener('change', onStoreChange);
+      return () => mq.removeEventListener('change', onStoreChange);
+    },
+    getSnapshot,
+    getSnapshot,
+  );
+}
 
 export const TimeSlot = React.memo(
   ({
@@ -41,6 +60,11 @@ export const TimeSlot = React.memo(
     onHoverSlotDuringDrag?: (targetSlotKey: string | null) => void;
     onEndSessionDrag?: () => void;
   }) => {
+    const coarsePointer = useCoarsePointer();
+    const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const longPressOriginRef = useRef<{ x: number; y: number } | null>(null);
+    const suppressSessionClickRef = useRef(false);
+
     const dayKey = useMemo(() => format(day, 'yyyy-MM-dd'), [day]);
     const slotKey = useMemo(() => createSessionSlotKey(dayKey, time), [dayKey, time]);
     const handleTimeSlotClick = useCallback(() => {
@@ -54,7 +78,35 @@ export const TimeSlot = React.memo(
       },
       [onEditSession],
     );
+
+    const clearLongPressTimer = useCallback(() => {
+      if (longPressTimerRef.current !== null) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      longPressOriginRef.current = null;
+    }, []);
+
     const enableSlotCreateChrome = allowCreateInEmptySlot;
+
+    const handleSlotClick = useCallback(() => {
+      if (coarsePointer && allowDragAndDrop && activeDragSessionId !== null) {
+        onSessionDrop?.({ target: { date: day, time }, draggedSessionId: activeDragSessionId });
+        return;
+      }
+      if (enableSlotCreateChrome) {
+        handleTimeSlotClick();
+      }
+    }, [
+      coarsePointer,
+      allowDragAndDrop,
+      activeDragSessionId,
+      onSessionDrop,
+      day,
+      time,
+      enableSlotCreateChrome,
+      handleTimeSlotClick,
+    ]);
     const handleSlotKeyDown = useCallback(
       (event: React.KeyboardEvent<HTMLDivElement>) => {
         if (event.key !== 'Enter' && event.key !== ' ') {
@@ -129,7 +181,9 @@ export const TimeSlot = React.memo(
         }
         {...(enableSlotCreateChrome || allowDragAndDrop
           ? {
-              ...(enableSlotCreateChrome ? { onClick: handleTimeSlotClick } : {}),
+              ...(enableSlotCreateChrome || (coarsePointer && allowDragAndDrop)
+                ? { onClick: handleSlotClick }
+                : {}),
               onKeyDown: handleSlotKeyDown,
             }
           : {})}
@@ -145,15 +199,62 @@ export const TimeSlot = React.memo(
 
         {slotSessions.map((session) => {
           const statusStyles = getSessionStatusClasses(session.status);
+          const touchMovePickup =
+            coarsePointer && allowDragAndDrop && session.status === "scheduled";
+
+          const onSessionPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+            if (!touchMovePickup) {
+              return;
+            }
+            if (event.pointerType === "mouse" && typeof event.button === "number" && event.button !== 0) {
+              return;
+            }
+            clearLongPressTimer();
+            longPressOriginRef.current = { x: event.clientX, y: event.clientY };
+            longPressTimerRef.current = setTimeout(() => {
+              longPressTimerRef.current = null;
+              longPressOriginRef.current = null;
+              suppressSessionClickRef.current = true;
+              onStartSessionDrag?.(session, { date: day, time });
+              if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+                try {
+                  navigator.vibrate(12);
+                } catch {
+                  /* ignore */
+                }
+              }
+            }, 480);
+          };
+
+          const onSessionPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+            if (longPressTimerRef.current === null || !longPressOriginRef.current) {
+              return;
+            }
+            const dx = event.clientX - longPressOriginRef.current.x;
+            const dy = event.clientY - longPressOriginRef.current.y;
+            if (dx * dx + dy * dy > 100) {
+              clearLongPressTimer();
+            }
+          };
+
+          const endLongPressTracking = () => {
+            clearLongPressTimer();
+          };
+
           return (
             <div
               key={session.id}
               data-session-status={session.status}
               data-session-id={session.id}
-              draggable={allowDragAndDrop && session.status === "scheduled"}
+              draggable={allowDragAndDrop && session.status === "scheduled" && !coarsePointer}
               aria-grabbed={allowDragAndDrop && activeDragSessionId === session.id}
+              title={
+                touchMovePickup
+                  ? "Press and hold to move, then tap a time slot. Tap again to cancel."
+                  : undefined
+              }
               onDragStart={
-                allowDragAndDrop && session.status === "scheduled"
+                allowDragAndDrop && session.status === "scheduled" && !coarsePointer
                   ? (event) => {
                       event.stopPropagation();
                       event.dataTransfer.effectAllowed = "move";
@@ -163,18 +264,35 @@ export const TimeSlot = React.memo(
                   : undefined
               }
               onDragEnd={
-                allowDragAndDrop
+                allowDragAndDrop && !coarsePointer
                   ? () => {
                       onEndSessionDrag?.();
                     }
                   : undefined
               }
-              className={`${statusStyles.card} rounded p-1 text-xs mb-1 group/session relative transition-colors ${
-                allowDragAndDrop && session.status === "scheduled" ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
-              } ${activeDragSessionId === session.id ? "opacity-50" : ""}`}
+              className={`${statusStyles.card} touch-manipulation rounded p-1 text-xs mb-1 group/session relative transition-colors ${
+                allowDragAndDrop && session.status === "scheduled"
+                  ? coarsePointer
+                    ? "cursor-pointer"
+                    : "cursor-grab active:cursor-grabbing"
+                  : "cursor-pointer"
+              } ${activeDragSessionId === session.id ? "opacity-50 ring-2 ring-blue-400 ring-offset-1 dark:ring-offset-gray-900" : ""}`}
               role="button"
               tabIndex={0}
-              onClick={(event) => handleSessionClick(event, session)}
+              onPointerDown={touchMovePickup ? onSessionPointerDown : undefined}
+              onPointerMove={touchMovePickup ? onSessionPointerMove : undefined}
+              onPointerUp={touchMovePickup ? endLongPressTracking : undefined}
+              onPointerCancel={touchMovePickup ? endLongPressTracking : undefined}
+              onPointerLeave={touchMovePickup ? endLongPressTracking : undefined}
+              onClick={(event) => {
+                if (suppressSessionClickRef.current) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  suppressSessionClickRef.current = false;
+                  return;
+                }
+                handleSessionClick(event, session);
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();

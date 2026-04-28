@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
 import { format } from "date-fns";
 import type { Session } from "../../types";
@@ -30,6 +30,24 @@ const dragData = {
 };
 
 describe("ScheduleWeekView drag and drop", () => {
+  beforeEach(() => {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      configurable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query === "(any-pointer: fine)",
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("invokes onRescheduleSession for a different target slot", () => {
     const sourceDay = new Date("2025-07-07T00:00:00.000Z");
     const targetDay = new Date("2025-07-08T00:00:00.000Z");

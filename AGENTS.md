@@ -219,10 +219,13 @@ A task is done only when:
 ## Learned User Preferences
 
 - When the user asks to use Supabase from Cursor’s installed **plugin / MCP** stack, use the **Supabase plugin MCP** (read tool schemas first) for hosted work such as migration listing/apply and SQL checks on the linked project, instead of treating repo files as the only source of truth for what is applied remotely.
-- If the user points to `.env` or `.env.local` for a token, do **not** read those files unless they explicitly request it; explain that the MCP or CLI process must receive credentials via a supported **environment** path for that process, not by assuming the file is loaded automatically.
+- If the user points to `.env` or `.env.local` for a token, do **not** read those files unless they explicitly request it; explain that the MCP or CLI process must receive credentials via a supported **environment** path for that process, not by assuming the file is loaded automatically. The same applies to API-key MCP plugins (e.g. Postman): configure the key in **Cursor’s MCP/plugin settings**; a full Cursor restart may be needed before a new key is picked up.
 - The user frequently requires strict final-output contracts (`Return exactly` + named fields); when a response schema is specified, follow it literally and preserve field order/labels.
 
 ## Learned Workspace Facts
 
 - **MCP processes** only see environment variables the IDE/OS (or server config) provides; project `.env` / `.env.local` is not automatically injected into MCP server processes unless your setup explicitly loads it for those tools.
 - For **admin, scheduling, and RLS-related behavior**, treat **`user_roles` (and related RPCs / helpers) as the source of truth** for “what role does this user have in the org?”, not **`profiles.role` alone** when both exist—keep junction and profile in sync in privileged code paths.
+- **Session capture** (`Save progress` / `POST /api/session-notes/upsert`): the **billing / authorization gate is relaxed by default** unless both **`VITE_SESSION_CAPTURE_RELAX_BILLING_GATE`** (client) and **`SESSION_CAPTURE_RELAX_BILLING_GATE`** (server) are the literal string **`false`**; keep those flags aligned when toggling strict mode. At least one **`authorizations`** row for the client is still required.
+- **Schedule reschedule:** HTML5 **drag-and-drop is used whenever `(any-pointer: fine)` matches** (mouse, trackpad, or stylus), including hybrid touch laptops. **Long-press, then tap a slot**, is used only when there is **no** fine pointer (typical phones / finger-only tablets).
+- Extra **git worktrees** (for example under **`.config/superpowers/worktrees/...`**) register as separate checkouts of the same repo; Cursor’s Source Control can list them as additional roots until **`git worktree remove`** (and clearing any stale multi-root workspace folders) tidies them up.

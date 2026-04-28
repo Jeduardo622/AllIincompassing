@@ -11,17 +11,21 @@ export type ScheduleEditSessionHandler = (session: Session) => void;
 export type ScheduleSlotPosition = { date: Date; time: string };
 export type ScheduleDropPayload = { target: ScheduleSlotPosition; draggedSessionId?: string | null };
 
-/** True when the primary input is touch (phones, most tablets). HTML5 drag/drop is unreliable here. */
-function useCoarsePointer(): boolean {
+/**
+ * True when a precise pointing device (mouse, trackpad, stylus) is available.
+ * Use HTML5 drag/drop in that case — even on hybrid touch laptops where `(pointer: coarse)` can still match.
+ * Long-press + tap is used only when there is no fine pointer (typical phones / finger-only tablets).
+ */
+function useHasFinePointer(): boolean {
   const getSnapshot = () =>
-    typeof window !== 'undefined' ? window.matchMedia('(pointer: coarse)').matches : false;
+    typeof window !== 'undefined' ? window.matchMedia('(any-pointer: fine)').matches : false;
 
   return useSyncExternalStore(
     (onStoreChange) => {
       if (typeof window === 'undefined') {
         return () => {};
       }
-      const mq = window.matchMedia('(pointer: coarse)');
+      const mq = window.matchMedia('(any-pointer: fine)');
       mq.addEventListener('change', onStoreChange);
       return () => mq.removeEventListener('change', onStoreChange);
     },
@@ -60,7 +64,7 @@ export const TimeSlot = React.memo(
     onHoverSlotDuringDrag?: (targetSlotKey: string | null) => void;
     onEndSessionDrag?: () => void;
   }) => {
-    const coarsePointer = useCoarsePointer();
+    const hasFinePointer = useHasFinePointer();
     const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const longPressOriginRef = useRef<{ x: number; y: number } | null>(null);
     const suppressSessionClickRef = useRef(false);
@@ -90,7 +94,7 @@ export const TimeSlot = React.memo(
     const enableSlotCreateChrome = allowCreateInEmptySlot;
 
     const handleSlotClick = useCallback(() => {
-      if (coarsePointer && allowDragAndDrop && activeDragSessionId !== null) {
+      if (!hasFinePointer && allowDragAndDrop && activeDragSessionId !== null) {
         onSessionDrop?.({ target: { date: day, time }, draggedSessionId: activeDragSessionId });
         return;
       }
@@ -98,7 +102,7 @@ export const TimeSlot = React.memo(
         handleTimeSlotClick();
       }
     }, [
-      coarsePointer,
+      hasFinePointer,
       allowDragAndDrop,
       activeDragSessionId,
       onSessionDrop,
@@ -181,7 +185,7 @@ export const TimeSlot = React.memo(
         }
         {...(enableSlotCreateChrome || allowDragAndDrop
           ? {
-              ...(enableSlotCreateChrome || (coarsePointer && allowDragAndDrop)
+              ...(enableSlotCreateChrome || (!hasFinePointer && allowDragAndDrop)
                 ? { onClick: handleSlotClick }
                 : {}),
               onKeyDown: handleSlotKeyDown,
@@ -200,7 +204,7 @@ export const TimeSlot = React.memo(
         {slotSessions.map((session) => {
           const statusStyles = getSessionStatusClasses(session.status);
           const touchMovePickup =
-            coarsePointer && allowDragAndDrop && session.status === "scheduled";
+            !hasFinePointer && allowDragAndDrop && session.status === "scheduled";
 
           const onSessionPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
             if (!touchMovePickup) {
@@ -246,7 +250,7 @@ export const TimeSlot = React.memo(
               key={session.id}
               data-session-status={session.status}
               data-session-id={session.id}
-              draggable={allowDragAndDrop && session.status === "scheduled" && !coarsePointer}
+              draggable={allowDragAndDrop && session.status === "scheduled" && hasFinePointer}
               aria-grabbed={allowDragAndDrop && activeDragSessionId === session.id}
               title={
                 touchMovePickup
@@ -254,7 +258,7 @@ export const TimeSlot = React.memo(
                   : undefined
               }
               onDragStart={
-                allowDragAndDrop && session.status === "scheduled" && !coarsePointer
+                allowDragAndDrop && session.status === "scheduled" && hasFinePointer
                   ? (event) => {
                       event.stopPropagation();
                       event.dataTransfer.effectAllowed = "move";
@@ -264,7 +268,7 @@ export const TimeSlot = React.memo(
                   : undefined
               }
               onDragEnd={
-                allowDragAndDrop && !coarsePointer
+                allowDragAndDrop && hasFinePointer
                   ? () => {
                       onEndSessionDrag?.();
                     }
@@ -272,9 +276,9 @@ export const TimeSlot = React.memo(
               }
               className={`${statusStyles.card} touch-manipulation rounded p-1 text-xs mb-1 group/session relative transition-colors ${
                 allowDragAndDrop && session.status === "scheduled"
-                  ? coarsePointer
-                    ? "cursor-pointer"
-                    : "cursor-grab active:cursor-grabbing"
+                  ? hasFinePointer
+                    ? "cursor-grab active:cursor-grabbing"
+                    : "cursor-pointer"
                   : "cursor-pointer"
               } ${activeDragSessionId === session.id ? "opacity-50 ring-2 ring-blue-400 ring-offset-1 dark:ring-offset-gray-900" : ""}`}
               role="button"

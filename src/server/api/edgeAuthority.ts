@@ -99,6 +99,7 @@ export async function proxyToEdgeAuthority(request: Request, options: {
   accessToken?: string | null;
   method?: "GET" | "POST";
   body?: string;
+  signal?: AbortSignal;
 }): Promise<Response> {
   const method = options.method ?? (request.method === "GET" ? "GET" : "POST");
   const baseUrl = getEdgeAuthorityBaseUrl();
@@ -115,6 +116,7 @@ export async function proxyToEdgeAuthority(request: Request, options: {
     method,
     headers,
     body,
+    signal: options.signal,
   });
 }
 

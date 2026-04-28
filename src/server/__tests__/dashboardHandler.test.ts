@@ -127,6 +127,51 @@ describe("dashboardHandler", () => {
     const json = await response.json();
     expect(json).toMatchObject(body);
   });
+
+  it("returns upstream_error when edge authority request throws", async () => {
+    const fetchSpy = mockFetch();
+    fetchSpy.mockRejectedValueOnce(new TypeError("fetch failed"));
+
+    const { dashboardHandler } = await import("../api/dashboard");
+    const response = await dashboardHandler(createRequest("GET", "token"));
+
+    expect(response.status).toBe(502);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:3000");
+    await expect(response.json()).resolves.toMatchObject({
+      code: "upstream_error",
+      classification: expect.objectContaining({
+        retryable: true,
+        httpStatus: 502,
+      }),
+      message: "Failed to load dashboard data",
+      success: false,
+    });
+  });
+
+  it("rethrows non-transport failures instead of relabeling them as upstream errors", async () => {
+    const fetchSpy = mockFetch();
+    fetchSpy.mockRejectedValueOnce(new Error("unexpected parse failure"));
+
+    const { dashboardHandler } = await import("../api/dashboard");
+
+    await expect(dashboardHandler(createRequest("GET", "token"))).rejects.toThrow(
+      /unexpected parse failure/i,
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rethrows non-network TypeErrors instead of relabeling them as upstream errors", async () => {
+    const fetchSpy = mockFetch();
+    fetchSpy.mockRejectedValueOnce(new TypeError("invalid url format"));
+
+    const { dashboardHandler } = await import("../api/dashboard");
+
+    await expect(dashboardHandler(createRequest("GET", "token"))).rejects.toThrow(
+      /invalid url format/i,
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 

@@ -10,6 +10,20 @@ const JSON_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
 };
 
+const isProxyTransportFailure = (error: unknown): boolean => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.trim().toLowerCase();
+  return (
+    message.includes("fetch failed") ||
+    message.includes("network") ||
+    message.includes("load failed") ||
+    message.includes("aborted")
+  );
+};
+
 export async function dashboardHandler(request: Request): Promise<Response> {
   if (isDisallowedOriginRequest(request)) {
     return errorResponse(request, "forbidden", "Origin not allowed", { status: 403 });
@@ -53,21 +67,30 @@ export async function dashboardHandler(request: Request): Promise<Response> {
     });
   }
 
-  const forwarded = await proxyToEdgeAuthority(request, {
-    functionName: "get-dashboard-data",
-    accessToken,
-    method: "GET",
-  });
-  const body = await forwarded.text();
-  const retryAfter = forwarded.headers.get("Retry-After");
-  return new Response(body, {
-    status: forwarded.status,
-    headers: {
-      ...JSON_HEADERS,
-      ...corsHeadersForRequest(request),
-      ...(retryAfter ? { "Retry-After": retryAfter } : {}),
-    },
-  });
+  try {
+    const forwarded = await proxyToEdgeAuthority(request, {
+      functionName: "get-dashboard-data",
+      accessToken,
+      method: "GET",
+    });
+    const body = await forwarded.text();
+    const retryAfter = forwarded.headers.get("Retry-After");
+    return new Response(body, {
+      status: forwarded.status,
+      headers: {
+        ...JSON_HEADERS,
+        ...corsHeadersForRequest(request),
+        ...(retryAfter ? { "Retry-After": retryAfter } : {}),
+      },
+    });
+  } catch (error) {
+    if (isProxyTransportFailure(error)) {
+      return errorResponse(request, "upstream_error", "Failed to load dashboard data", {
+        status: 502,
+      });
+    }
+    throw error;
+  }
 }
 
 

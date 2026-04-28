@@ -329,7 +329,7 @@ describe("dashboardHandler", () => {
   });
 
   it("returns a typed upstream error when the edge authority URL is not HTTP(S)", async () => {
-    process.env.SUPABASE_EDGE_URL = "postgres://user:password@example.supabase.co:5432/postgres";
+    process.env.SUPABASE_EDGE_URL = "ftp://example.supabase.co/functions/v1";
     const fetchSpy = mockFetch();
 
     const { dashboardHandler } = await import("../api/dashboard");

@@ -13,6 +13,7 @@ import { callApiRoute } from "../../../lib/sdk/client";
 import { parseJsonResponse } from "../../../lib/sdk/contracts";
 import { toNormalizedApiError, type NormalizedApiError } from "../../../lib/sdk/errors";
 import { bookSessionEnvelopeSchema } from "../../../lib/contracts/scheduling";
+import { normalizeSessionPayloadSubtree } from "../../../lib/scheduling/bookingRequestBodyNormalize";
 
 const DEFAULT_SESSION_HOLD_SECONDS = 5 * 60;
 
@@ -56,10 +57,10 @@ export function buildBookSessionApiPayload(
   recurrence?: BookSessionApiRequestBody["recurrence"],
   holdSeconds = DEFAULT_SESSION_HOLD_SECONDS,
 ): BookSessionApiRequestBody {
-  const normalizedSession = {
+  const normalizedSession = normalizeSessionPayloadSubtree({
     ...session,
     status: session.status ?? "scheduled",
-  } as BookSessionApiRequestBody["session"];
+  }) as BookSessionApiRequestBody["session"];
 
   return {
     session: normalizedSession,

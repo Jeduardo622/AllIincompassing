@@ -21,6 +21,7 @@ import {
 } from "../types";
 import { logger } from "../../lib/logger/logger";
 import { toError } from "../../lib/logger/normalizeError";
+import { normalizeBookRequestBodyForZod } from "../../lib/scheduling/bookingRequestBodyNormalize";
 
 const JSON_CONTENT_TYPE_HEADER: Record<string, string> = {
   "Content-Type": "application/json",
@@ -249,7 +250,7 @@ export async function bookHandler(request: Request): Promise<Response> {
     return errorResponse(request, "validation_error", "Invalid JSON body");
   }
 
-  const parseResult = bookSessionApiRequestBodySchema.safeParse(rawBody);
+  const parseResult = bookSessionApiRequestBodySchema.safeParse(normalizeBookRequestBodyForZod(rawBody));
 
   if (!parseResult.success) {
     logger.warn("Rejected invalid booking payload", {

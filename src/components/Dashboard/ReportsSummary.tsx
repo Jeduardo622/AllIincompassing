@@ -26,6 +26,14 @@ const coerceMetricsRow = (value: unknown): SessionMetricsRow => {
 
 const toNumber = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
 
+const calculatePercentChange = (current: number, previous: number): number => {
+  if (previous > 0) {
+    return ((current - previous) / previous) * 100;
+  }
+
+  return current > 0 ? 100 : 0;
+};
+
 const toCountMap = (value: unknown): Record<string, number> => {
   if (!value || typeof value !== 'object') {
     return {};
@@ -46,6 +54,7 @@ const toCountMap = (value: unknown): Record<string, number> => {
 export const __TESTING__ = {
   coerceMetricsRow,
   toNumber,
+  calculatePercentChange,
   toCountMap,
 };
 
@@ -74,9 +83,7 @@ export function ReportsSummary({ enabled = true }: ReportsSummaryProps) {
   // Calculate metrics from aggregated rows
   const totalSessions = toNumber(currentMetrics.total_sessions);
   const lastMonthSessions = toNumber(lastMetrics.total_sessions);
-  const sessionChange = lastMonthSessions > 0 
-    ? ((totalSessions - lastMonthSessions) / lastMonthSessions) * 100 
-    : 100;
+  const sessionChange = calculatePercentChange(totalSessions, lastMonthSessions);
   
   const completedSessions = toNumber(currentMetrics.completed_sessions);
   const cancelledSessions = toNumber(currentMetrics.cancelled_sessions);
@@ -84,25 +91,19 @@ export function ReportsSummary({ enabled = true }: ReportsSummaryProps) {
   const scheduledSessions = Math.max(0, totalSessions - completedSessions - cancelledSessions - noShowSessions);
 
   const lastMonthCompleted = toNumber(lastMetrics.completed_sessions);
-  const completionChange = lastMonthCompleted > 0 
-    ? ((completedSessions - lastMonthCompleted) / lastMonthCompleted) * 100 
-    : 100;
+  const completionChange = calculatePercentChange(completedSessions, lastMonthCompleted);
   
   const currentByClient = toCountMap(currentMetrics.sessions_by_client);
   const lastByClient = toCountMap(lastMetrics.sessions_by_client);
   const activeClients = Object.keys(currentByClient).length;
   const lastMonthActiveClients = Object.keys(lastByClient).length;
-  const clientChange = lastMonthActiveClients > 0 
-    ? ((activeClients - lastMonthActiveClients) / lastMonthActiveClients) * 100 
-    : 100;
+  const clientChange = calculatePercentChange(activeClients, lastMonthActiveClients);
   
   const currentByTherapist = toCountMap(currentMetrics.sessions_by_therapist);
   const lastByTherapist = toCountMap(lastMetrics.sessions_by_therapist);
   const activeTherapists = Object.keys(currentByTherapist).length;
   const lastMonthActiveTherapists = Object.keys(lastByTherapist).length;
-  const therapistChange = lastMonthActiveTherapists > 0 
-    ? ((activeTherapists - lastMonthActiveTherapists) / lastMonthActiveTherapists) * 100 
-    : 100;
+  const therapistChange = calculatePercentChange(activeTherapists, lastMonthActiveTherapists);
 
   const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const sessionsByDay = useMemo(() => {

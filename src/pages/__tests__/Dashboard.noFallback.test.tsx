@@ -30,4 +30,34 @@ describe('Dashboard without client fallbacks', () => {
     expect(screen.getByText('Active Clients')).toBeInTheDocument();
     expect(screen.getByText('Billing Alerts')).toBeInTheDocument();
   });
+
+  it('shows an empty state when there is no recent documentation or billing activity', () => {
+    render(<DashboardView {...baseProps} />);
+
+    expect(screen.getByRole('status', { name: /no recent documentation or billing activity/i })).toHaveTextContent(
+      'No pending documentation or billing alerts right now.',
+    );
+  });
+
+  it('renders a fallback when activity dates are malformed', () => {
+    render(
+      <DashboardView
+        {...baseProps}
+        dashboardData={{
+          ...baseProps.dashboardData,
+          incompleteSessions: [
+            {
+              id: 'session-with-bad-date',
+              start_time: 'not-a-date',
+              status: 'scheduled',
+              client: { id: 'client-1', full_name: 'Bad Date Client' },
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/Session with/i)).toHaveTextContent('Bad Date Client');
+    expect(screen.getByText('Date unavailable')).toBeInTheDocument();
+  });
 });

@@ -140,7 +140,7 @@ async function assertBookRequestScope(
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
 
-  if (isTherapist && !isAdmin && !isSuperAdmin && !isOrgMember && body.session.therapist_id !== currentUserId) {
+  if (isTherapist && !isAdmin && !isSuperAdmin && body.session.therapist_id !== currentUserId) {
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });
   }
 

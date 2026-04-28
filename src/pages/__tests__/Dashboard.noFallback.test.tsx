@@ -38,4 +38,26 @@ describe('Dashboard without client fallbacks', () => {
       'No pending documentation or billing alerts right now.',
     );
   });
+
+  it('renders a fallback when activity dates are malformed', () => {
+    render(
+      <DashboardView
+        {...baseProps}
+        dashboardData={{
+          ...baseProps.dashboardData,
+          incompleteSessions: [
+            {
+              id: 'session-with-bad-date',
+              start_time: 'not-a-date',
+              status: 'scheduled',
+              client: { id: 'client-1', full_name: 'Bad Date Client' },
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/Session with/i)).toHaveTextContent('Bad Date Client');
+    expect(screen.getByText('Date unavailable')).toBeInTheDocument();
+  });
 });

@@ -35,6 +35,19 @@ type DashboardDataShape = {
   quickStats?: { activeClients: number; activeTherapists: number; thisMonthRevenue: number; attendanceRate: number };
 };
 
+const formatDashboardDate = (value: string | null | undefined, dateFormat: string, fallback = 'Date unavailable') => {
+  if (!value) {
+    return fallback;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return fallback;
+  }
+
+  return format(date, dateFormat);
+};
+
 export interface DashboardViewProps {
   dashboardData?: DashboardDataShape | null;
   isLoading: boolean;
@@ -235,10 +248,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-medium text-gray-900 dark:text-white">
-                        {format(new Date(session.start_time), 'h:mm a')}
+                        {formatDashboardDate(session.start_time, 'h:mm a', 'Time unavailable')}
                       </div>
                       <div className="text-sm text-gray-500 dark:text-gray-400">
-                        {format(new Date(session.start_time), 'MMM d, yyyy')}
+                        {formatDashboardDate(session.start_time, 'MMM d, yyyy')}
                       </div>
                     </div>
                   </div>
@@ -332,7 +345,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             Add Notes
                           </div>
                           <div className="text-sm text-gray-500 dark:text-gray-400">
-                            {format(new Date(session.start_time), 'MMM d, yyyy')}
+                            {formatDashboardDate(session.start_time, 'MMM d, yyyy')}
                           </div>
                         </div>
                       </div>
@@ -363,7 +376,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             Review
                           </div>
                           <div className="text-sm text-red-700 dark:text-red-300">
-                            {record.created_at ? format(new Date(record.created_at), 'MMM d, yyyy') : '—'}
+                            {formatDashboardDate(record.created_at, 'MMM d, yyyy', '—')}
                           </div>
                         </div>
                       </div>

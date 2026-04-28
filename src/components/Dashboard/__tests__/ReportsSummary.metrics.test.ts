@@ -20,4 +20,12 @@ describe("ReportsSummary metric coercion helpers", () => {
 
     expect(map).toEqual({ Monday: 7, Tuesday: 3 });
   });
+
+  it("treats zero-to-zero percent change as neutral", () => {
+    expect(__TESTING__.calculatePercentChange(0, 0)).toBe(0);
+  });
+
+  it("treats growth from zero baseline as 100%", () => {
+    expect(__TESTING__.calculatePercentChange(3, 0)).toBe(100);
+  });
 });

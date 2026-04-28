@@ -240,6 +240,31 @@ describe("bookHandler", () => {
     expect(bookSessionMock).not.toHaveBeenCalled();
   });
 
+  it("forbids org-member-equivalent therapist role from booking for a different therapist", async () => {
+    server.use(
+      http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/user_has_role_for_org`, async ({ request }) => {
+        const body = await request.json() as { role_name?: string };
+        if (body.role_name === "therapist" || body.role_name === "org_member") {
+          return HttpResponse.json(true);
+        }
+        return HttpResponse.json(false);
+      }),
+      http.get(`${TEST_SUPABASE_URL}/auth/v1/user`, () => HttpResponse.json({ id: "org-member-user" })),
+    );
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest({
+      ...validPayload,
+      session: {
+        ...validPayload.session,
+        therapist_id: "therapist-2",
+      },
+    }));
+
+    expect(response.status).toBe(403);
+    expect(bookSessionMock).not.toHaveBeenCalled();
+  });
+
   it("returns 502 when org resolution dependency fails", async () => {
     server.use(
       http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/current_user_organization_id`, () =>

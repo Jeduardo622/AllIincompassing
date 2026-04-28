@@ -7,13 +7,16 @@ const REDACTED_PLACEHOLDER = '****';
 const isNonEmpty = (value: string | undefined): value is string =>
   typeof value === 'string' && value.trim().length > 0;
 
-const assertPresent = (name: string): string => {
-  const value = process.env[name];
+const assertPresent = (name: string, fallbacks: string[] = []): string => {
+  const candidateNames = [name, ...fallbacks];
+  const resolvedName = candidateNames.find((candidate) => isNonEmpty(process.env[candidate]));
+  const value = resolvedName ? process.env[resolvedName] : undefined;
   if (!isNonEmpty(value)) {
-    throw new Error(`${name} is required for deterministic Playwright smoke execution.`);
+    const aliases = fallbacks.length > 0 ? ` (or ${fallbacks.join(', ')})` : '';
+    throw new Error(`${name}${aliases} is required for deterministic Playwright smoke execution.`);
   }
   if (value.trim() === REDACTED_PLACEHOLDER) {
-    throw new Error(`${name} cannot use placeholder value "${REDACTED_PLACEHOLDER}".`);
+    throw new Error(`${resolvedName ?? name} cannot use placeholder value "${REDACTED_PLACEHOLDER}".`);
   }
   return value.trim();
 };
@@ -35,10 +38,10 @@ const run = (): void => {
   loadPlaywrightEnv();
 
   const baseUrl = assertUrl('PW_BASE_URL');
-  const adminEmail = assertPresent('PW_ADMIN_EMAIL');
-  const adminPassword = assertPresent('PW_ADMIN_PASSWORD');
-  const therapistEmail = assertPresent('PW_THERAPIST_EMAIL');
-  const therapistPassword = assertPresent('PW_THERAPIST_PASSWORD');
+  const adminEmail = assertPresent('PW_ADMIN_EMAIL', ['PLAYWRIGHT_ADMIN_EMAIL']);
+  const adminPassword = assertPresent('PW_ADMIN_PASSWORD', ['PLAYWRIGHT_ADMIN_PASSWORD']);
+  const therapistEmail = assertPresent('PW_THERAPIST_EMAIL', ['PLAYWRIGHT_THERAPIST_EMAIL']);
+  const therapistPassword = assertPresent('PW_THERAPIST_PASSWORD', ['PLAYWRIGHT_THERAPIST_PASSWORD']);
   const foreignClientId = assertUuid(assertPresent('PW_FOREIGN_CLIENT_ID'), 'PW_FOREIGN_CLIENT_ID');
   const foreignTherapistId = assertUuid(assertPresent('PW_FOREIGN_THERAPIST_ID'), 'PW_FOREIGN_THERAPIST_ID');
 

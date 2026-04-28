@@ -324,7 +324,6 @@ export function LocationSettings() {
                     <button
                       type="button"
                       onClick={() => handleDelete(location.id)}
-                      aria-label={`Delete ${location.name}`}
                       className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400"
                       aria-label={`Delete location ${location.name}`}
                     >

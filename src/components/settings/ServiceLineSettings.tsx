@@ -318,7 +318,6 @@ export function ServiceLineSettings() {
                     <button
                       type="button"
                       onClick={() => handleDelete(serviceLine.id)}
-                      aria-label={`Delete ${serviceLine.name}`}
                       className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400"
                       aria-label={`Delete service line ${serviceLine.name}`}
                     >

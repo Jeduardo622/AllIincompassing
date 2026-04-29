@@ -18,7 +18,7 @@ afterAll(async () => {
 });
 
 describe("get_dashboard_data org scoping (live RPC)", () => {
-  it("returns only data for requested org", async () => {
+  it("keeps direct authenticated get_dashboard_data denied", async () => {
     if (!harness.enabled) {
       if (harness.required) {
         throw new Error(harness.skipReason);
@@ -27,9 +27,22 @@ describe("get_dashboard_data org scoping (live RPC)", () => {
     }
 
     const orgAClient = await harness.signInAdminA();
-    const orgBClient = await harness.signInAdminB();
-    const orgAResult = await orgAClient.rpc("get_dashboard_data");
-    const orgBResult = await orgBClient.rpc("get_dashboard_data");
+    const result = await orgAClient.rpc("get_dashboard_data");
+
+    expect(result.data).toBeNull();
+    expect(result.error?.code).toBe("42501");
+  });
+
+  it("trusted service RPC returns only data for the requested actor org", async () => {
+    if (!harness.enabled) {
+      if (harness.required) {
+        throw new Error(harness.skipReason);
+      }
+      return;
+    }
+
+    const orgAResult = await harness.callTrustedDashboardRpc(harness.orgAAdminUserId, harness.orgAId);
+    const orgBResult = await harness.callTrustedDashboardRpc(harness.orgBAdminUserId, harness.orgBId);
 
     expect(orgAResult.error).toBeNull();
     expect(orgBResult.error).toBeNull();
@@ -50,7 +63,7 @@ describe("get_dashboard_data org scoping (live RPC)", () => {
     expect(orgBBillingAlerts.map(alert => alert.id)).not.toContain(harness.orgA.billingRecordId);
   });
 
-  it("does not leak org-b data when querying org-a", async () => {
+  it("trusted service RPC denies an org-a admin querying org-b", async () => {
     if (!harness.enabled) {
       if (harness.required) {
         throw new Error(harness.skipReason);
@@ -58,12 +71,9 @@ describe("get_dashboard_data org scoping (live RPC)", () => {
       return;
     }
 
-    const orgAClient = await harness.signInAdminA();
-    const result = await orgAClient.rpc("get_dashboard_data");
+    const result = await harness.callTrustedDashboardRpc(harness.orgAAdminUserId, harness.orgBId);
 
-    expect(result.error).toBeNull();
-    const orgAIncompleteSessions = ((result.data as { incompleteSessions?: Array<{ id: string }> })?.incompleteSessions ?? []);
-    expect(orgAIncompleteSessions.map(session => session.id)).toContain(harness.orgA.sessionId);
-    expect(orgAIncompleteSessions.map(session => session.id)).not.toContain(harness.orgB.sessionId);
+    expect(result.data).toBeNull();
+    expect(result.error?.code).toBe("42501");
   });
 });

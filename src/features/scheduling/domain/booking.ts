@@ -60,7 +60,11 @@ export function buildBookSessionApiPayload(
   const normalizedSession = normalizeSessionPayloadSubtree({
     ...session,
     status: session.status ?? "scheduled",
-  }) as BookSessionApiRequestBody["session"];
+  }) as BookSessionApiRequestBody["session"] & { notes?: string | null };
+
+  if (normalizedSession.notes === null) {
+    delete normalizedSession.notes;
+  }
 
   return {
     session: normalizedSession,

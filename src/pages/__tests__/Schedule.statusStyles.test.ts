@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { getSessionStatusClasses, normalizeScheduleSessionStatus } from "../ScheduleSessionStatusStyles";
+import {
+  getSessionStatusClasses,
+  isScheduleSessionDragEligible,
+  normalizeScheduleSessionStatus,
+} from "../ScheduleSessionStatusStyles";
 
 describe("getSessionStatusClasses", () => {
   it("returns distinct card classes for all five statuses", () => {
@@ -35,5 +39,16 @@ describe("getSessionStatusClasses", () => {
   it("normalizes casing and whitespace before applying schedule behavior", () => {
     expect(normalizeScheduleSessionStatus(" Scheduled ")).toBe("scheduled");
     expect(normalizeScheduleSessionStatus("IN_PROGRESS")).toBe("in_progress");
+  });
+
+  it("keeps drag eligibility narrower than fallback styling", () => {
+    expect(isScheduleSessionDragEligible(" Scheduled ")).toBe(true);
+    expect(isScheduleSessionDragEligible("SCHEDULED")).toBe(true);
+    expect(isScheduleSessionDragEligible("in_progress")).toBe(false);
+    expect(isScheduleSessionDragEligible("completed")).toBe(false);
+    expect(isScheduleSessionDragEligible("cancelled")).toBe(false);
+    expect(isScheduleSessionDragEligible("no-show")).toBe(false);
+    expect(isScheduleSessionDragEligible("unknown_status")).toBe(false);
+    expect(isScheduleSessionDragEligible(null)).toBe(false);
   });
 });

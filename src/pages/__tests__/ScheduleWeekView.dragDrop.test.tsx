@@ -230,4 +230,64 @@ describe("ScheduleWeekView drag and drop", () => {
       }),
     );
   });
+
+  it("keeps overlapping non-scheduled sessions non-draggable without blocking scheduled siblings", () => {
+    const sourceDay = new Date("2025-07-07T00:00:00.000Z");
+    const targetDay = new Date("2025-07-08T00:00:00.000Z");
+    const sourceTime = "10:00";
+    const targetTime = "10:15";
+    const sourceStart = new Date(sourceDay);
+    sourceStart.setHours(10, 0, 0, 0);
+    const scheduledSession = buildSession(sourceStart, {
+      id: "session-scheduled",
+      client: { id: "client-1", full_name: "Jorge Thorpe" },
+    });
+    const completedSession = buildSession(sourceStart, {
+      id: "session-completed",
+      status: "completed",
+      client: { id: "client-2", full_name: "Calvin Tran" },
+    });
+    const onRescheduleSession = vi.fn();
+    const sourceKey = createSessionSlotKey(format(sourceStart, "yyyy-MM-dd"), format(sourceStart, "HH:mm"));
+    const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [scheduledSession, completedSession]]]);
+
+    const { container } = render(
+      <ScheduleWeekView
+        weekDays={[sourceDay, targetDay]}
+        timeSlots={[sourceTime, targetTime]}
+        sessionSlotIndex={sessionSlotIndex}
+        onCreateSession={vi.fn()}
+        onEditSession={vi.fn()}
+        onRescheduleSession={onRescheduleSession}
+        allowDragAndDrop
+      />,
+    );
+
+    const scheduledCard = container.querySelector('[data-session-id="session-scheduled"]') as HTMLElement;
+    const completedCard = container.querySelector('[data-session-id="session-completed"]') as HTMLElement;
+    const targetSlot = Array.from(container.querySelectorAll("[data-slot-key]")).find((slot) => {
+      const slotKey = slot.getAttribute("data-slot-key");
+      return typeof slotKey === "string" && slotKey !== sourceKey && slotKey.endsWith(`|${targetTime}`);
+    });
+
+    expect(scheduledCard.getAttribute("draggable")).toBe("true");
+    expect(completedCard.getAttribute("draggable")).toBe("false");
+    expect(targetSlot).toBeTruthy();
+
+    fireEvent.dragStart(completedCard, { dataTransfer: dragData });
+    fireEvent.dragOver(targetSlot as HTMLElement, { dataTransfer: dragData });
+    fireEvent.drop(targetSlot as HTMLElement, { dataTransfer: dragData });
+    expect(onRescheduleSession).not.toHaveBeenCalled();
+
+    dragData.getData.mockReturnValueOnce("session-scheduled");
+    fireEvent.dragStart(scheduledCard, { dataTransfer: dragData });
+    fireEvent.dragOver(targetSlot as HTMLElement, { dataTransfer: dragData });
+    fireEvent.drop(targetSlot as HTMLElement, { dataTransfer: dragData });
+
+    expect(onRescheduleSession).toHaveBeenCalledTimes(1);
+    expect(onRescheduleSession).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "session-scheduled" }),
+      expect.objectContaining({ time: targetTime, date: expect.any(Date) }),
+    );
+  });
 });

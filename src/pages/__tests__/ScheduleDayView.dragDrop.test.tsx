@@ -148,6 +148,82 @@ describe("ScheduleDayView drag and drop", () => {
     );
   });
 
+  it("keeps canonical non-scheduled statuses non-draggable", () => {
+    const selectedDate = new Date("2025-07-07T00:00:00.000Z");
+    const sourceTime = "10:00";
+    const targetTime = "10:15";
+    const sessionStart = new Date(selectedDate);
+    sessionStart.setHours(10, 0, 0, 0);
+    const session = buildSession(sessionStart, {
+      id: "session-completed",
+      status: "completed",
+      client: { id: "client-3", full_name: "Completed Client" },
+    });
+    const onRescheduleSession = vi.fn();
+    const sourceKey = createSessionSlotKey(format(sessionStart, "yyyy-MM-dd"), format(sessionStart, "HH:mm"));
+    const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
+
+    const { container } = render(
+      <ScheduleDayView
+        selectedDate={selectedDate}
+        timeSlots={[sourceTime, targetTime]}
+        sessionSlotIndex={sessionSlotIndex}
+        onCreateSession={vi.fn()}
+        onEditSession={vi.fn()}
+        onRescheduleSession={onRescheduleSession}
+        allowDragAndDrop
+      />,
+    );
+
+    const card = container.querySelector('[data-session-id="session-completed"]') as HTMLElement;
+    const targetSlot = Array.from(container.querySelectorAll("[data-slot-key]")).find((slot) => {
+      const slotKey = slot.getAttribute("data-slot-key");
+      return typeof slotKey === "string" && slotKey.endsWith(`|${targetTime}`);
+    });
+    expect(card.getAttribute("draggable")).toBe("false");
+    expect(targetSlot).toBeTruthy();
+
+    fireEvent.dragStart(card, { dataTransfer: dragData });
+    fireEvent.dragOver(targetSlot as HTMLElement, { dataTransfer: dragData });
+    fireEvent.drop(targetSlot as HTMLElement, { dataTransfer: dragData });
+
+    expect(onRescheduleSession).not.toHaveBeenCalled();
+  });
+
+  it("does not invoke onRescheduleSession when dropped on the same day slot", () => {
+    const selectedDate = new Date("2025-07-07T00:00:00.000Z");
+    const sourceTime = "10:00";
+    const sessionStart = new Date(selectedDate);
+    sessionStart.setHours(10, 0, 0, 0);
+    const session = buildSession(sessionStart);
+    const onRescheduleSession = vi.fn();
+    const sourceKey = createSessionSlotKey(format(sessionStart, "yyyy-MM-dd"), format(sessionStart, "HH:mm"));
+    const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
+
+    const { container } = render(
+      <ScheduleDayView
+        selectedDate={selectedDate}
+        timeSlots={[sourceTime]}
+        sessionSlotIndex={sessionSlotIndex}
+        onCreateSession={vi.fn()}
+        onEditSession={vi.fn()}
+        onRescheduleSession={onRescheduleSession}
+        allowDragAndDrop
+      />,
+    );
+
+    const card = container.querySelector('[data-session-id="session-1"]');
+    const sourceSlot = container.querySelector(`[data-slot-key="${sourceKey}"]`);
+    expect(card).toBeTruthy();
+    expect(sourceSlot).toBeTruthy();
+
+    fireEvent.dragStart(card as HTMLElement, { dataTransfer: dragData });
+    fireEvent.dragOver(sourceSlot as HTMLElement, { dataTransfer: dragData });
+    fireEvent.drop(sourceSlot as HTMLElement, { dataTransfer: dragData });
+
+    expect(onRescheduleSession).not.toHaveBeenCalled();
+  });
+
   describe("coarse pointer (touch) move path", () => {
     beforeEach(() => {
       vi.useFakeTimers();
@@ -199,6 +275,237 @@ describe("ScheduleDayView drag and drop", () => {
 
       expect(onEditSession).toHaveBeenCalledTimes(1);
       expect(onEditSession).toHaveBeenCalledWith(expect.objectContaining({ id: "session-1" }));
+    });
+
+    it("long-press moves a scheduled status variant to a tapped slot", () => {
+      const selectedDate = new Date("2025-07-07T00:00:00.000Z");
+      const sourceTime = "10:00";
+      const targetTime = "10:15";
+      const sessionStart = new Date(selectedDate);
+      sessionStart.setHours(10, 0, 0, 0);
+      const session = buildSession(sessionStart, {
+        id: "session-touch",
+        // @ts-expect-error regression coverage for non-canonical runtime values
+        status: " Scheduled ",
+      });
+      const onEditSession = vi.fn();
+      const onRescheduleSession = vi.fn();
+      const sourceKey = createSessionSlotKey(format(sessionStart, "yyyy-MM-dd"), format(sessionStart, "HH:mm"));
+      const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
+
+      const { container } = render(
+        <ScheduleDayView
+          selectedDate={selectedDate}
+          timeSlots={[sourceTime, targetTime]}
+          sessionSlotIndex={sessionSlotIndex}
+          onCreateSession={vi.fn()}
+          onEditSession={onEditSession}
+          onRescheduleSession={onRescheduleSession}
+          allowDragAndDrop
+          allowCreateInEmptySlot={false}
+        />,
+      );
+
+      const card = container.querySelector('[data-session-id="session-touch"]') as HTMLElement;
+      const targetSlot = Array.from(container.querySelectorAll("[data-slot-key]")).find((slot) => {
+        const slotKey = slot.getAttribute("data-slot-key");
+        return typeof slotKey === "string" && slotKey.endsWith(`|${targetTime}`);
+      }) as HTMLElement | undefined;
+      expect(targetSlot).toBeTruthy();
+      expect(card.getAttribute("draggable")).toBe("false");
+
+      fireEvent.pointerDown(card, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+      act(() => {
+        vi.advanceTimersByTime(480);
+      });
+      fireEvent.click(targetSlot!);
+
+      expect(onRescheduleSession).toHaveBeenCalledTimes(1);
+      expect(onRescheduleSession).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "session-touch", status: " Scheduled " }),
+        expect.objectContaining({
+          time: targetTime,
+          date: expect.any(Date),
+        }),
+      );
+
+      fireEvent.click(card);
+
+      expect(onEditSession).toHaveBeenCalledWith(expect.objectContaining({ id: "session-touch" }));
+    });
+
+    it("lets a second tap on the picked-up card cancel coarse-pointer move mode", () => {
+      const selectedDate = new Date("2025-07-07T00:00:00.000Z");
+      const sourceTime = "10:00";
+      const targetTime = "10:15";
+      const sessionStart = new Date(selectedDate);
+      sessionStart.setHours(10, 0, 0, 0);
+      const session = buildSession(sessionStart);
+      const onEditSession = vi.fn();
+      const onRescheduleSession = vi.fn();
+      const sourceKey = createSessionSlotKey(format(sessionStart, "yyyy-MM-dd"), format(sessionStart, "HH:mm"));
+      const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
+
+      const { container } = render(
+        <ScheduleDayView
+          selectedDate={selectedDate}
+          timeSlots={[sourceTime, targetTime]}
+          sessionSlotIndex={sessionSlotIndex}
+          onCreateSession={vi.fn()}
+          onEditSession={onEditSession}
+          onRescheduleSession={onRescheduleSession}
+          allowDragAndDrop
+          allowCreateInEmptySlot={false}
+        />,
+      );
+
+      const card = container.querySelector('[data-session-id="session-1"]') as HTMLElement;
+      const targetSlot = Array.from(container.querySelectorAll("[data-slot-key]")).find((slot) => {
+        const slotKey = slot.getAttribute("data-slot-key");
+        return typeof slotKey === "string" && slotKey.endsWith(`|${targetTime}`);
+      }) as HTMLElement | undefined;
+      expect(targetSlot).toBeTruthy();
+
+      fireEvent.pointerDown(card, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+      act(() => {
+        vi.advanceTimersByTime(480);
+      });
+      fireEvent.pointerUp(card, { button: 0, pointerId: 1 });
+      fireEvent.click(card);
+      fireEvent.click(card);
+      fireEvent.click(targetSlot!);
+
+      expect(onEditSession).not.toHaveBeenCalled();
+      expect(onRescheduleSession).not.toHaveBeenCalled();
+    });
+
+    it("clears coarse-pointer move mode on pointer cancel after pickup", () => {
+      const selectedDate = new Date("2025-07-07T00:00:00.000Z");
+      const sourceTime = "10:00";
+      const targetTime = "10:15";
+      const sessionStart = new Date(selectedDate);
+      sessionStart.setHours(10, 0, 0, 0);
+      const session = buildSession(sessionStart);
+      const onRescheduleSession = vi.fn();
+      const sourceKey = createSessionSlotKey(format(sessionStart, "yyyy-MM-dd"), format(sessionStart, "HH:mm"));
+      const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
+
+      const { container } = render(
+        <ScheduleDayView
+          selectedDate={selectedDate}
+          timeSlots={[sourceTime, targetTime]}
+          sessionSlotIndex={sessionSlotIndex}
+          onCreateSession={vi.fn()}
+          onEditSession={vi.fn()}
+          onRescheduleSession={onRescheduleSession}
+          allowDragAndDrop
+          allowCreateInEmptySlot={false}
+        />,
+      );
+
+      const card = container.querySelector('[data-session-id="session-1"]') as HTMLElement;
+      const targetSlot = Array.from(container.querySelectorAll("[data-slot-key]")).find((slot) => {
+        const slotKey = slot.getAttribute("data-slot-key");
+        return typeof slotKey === "string" && slotKey.endsWith(`|${targetTime}`);
+      }) as HTMLElement | undefined;
+      expect(targetSlot).toBeTruthy();
+
+      fireEvent.pointerDown(card, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+      act(() => {
+        vi.advanceTimersByTime(480);
+      });
+      fireEvent.pointerCancel(card, { pointerId: 1 });
+      fireEvent.click(targetSlot!);
+
+      expect(onRescheduleSession).not.toHaveBeenCalled();
+    });
+
+    it("does not pick up non-scheduled sessions on long-press", () => {
+      const selectedDate = new Date("2025-07-07T00:00:00.000Z");
+      const sourceTime = "10:00";
+      const targetTime = "10:15";
+      const sessionStart = new Date(selectedDate);
+      sessionStart.setHours(10, 0, 0, 0);
+      const session = buildSession(sessionStart, {
+        id: "session-cancelled",
+        status: "cancelled",
+      });
+      const onCreateSession = vi.fn();
+      const onRescheduleSession = vi.fn();
+      const sourceKey = createSessionSlotKey(format(sessionStart, "yyyy-MM-dd"), format(sessionStart, "HH:mm"));
+      const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
+
+      const { container } = render(
+        <ScheduleDayView
+          selectedDate={selectedDate}
+          timeSlots={[sourceTime, targetTime]}
+          sessionSlotIndex={sessionSlotIndex}
+          onCreateSession={onCreateSession}
+          onEditSession={vi.fn()}
+          onRescheduleSession={onRescheduleSession}
+          allowDragAndDrop
+          allowCreateInEmptySlot={false}
+        />,
+      );
+
+      const card = container.querySelector('[data-session-id="session-cancelled"]') as HTMLElement;
+      const targetSlot = Array.from(container.querySelectorAll("[data-slot-key]")).find((slot) => {
+        const slotKey = slot.getAttribute("data-slot-key");
+        return typeof slotKey === "string" && slotKey.endsWith(`|${targetTime}`);
+      }) as HTMLElement | undefined;
+      expect(targetSlot).toBeTruthy();
+
+      fireEvent.pointerDown(card, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+      act(() => {
+        vi.advanceTimersByTime(480);
+      });
+      fireEvent.click(targetSlot!);
+
+      expect(onRescheduleSession).not.toHaveBeenCalled();
+      expect(onCreateSession).not.toHaveBeenCalled();
+    });
+
+    it("cancels long-press pickup when the pointer moves before the threshold", () => {
+      const selectedDate = new Date("2025-07-07T00:00:00.000Z");
+      const sourceTime = "10:00";
+      const targetTime = "10:15";
+      const sessionStart = new Date(selectedDate);
+      sessionStart.setHours(10, 0, 0, 0);
+      const session = buildSession(sessionStart);
+      const onCreateSession = vi.fn();
+      const onRescheduleSession = vi.fn();
+      const sourceKey = createSessionSlotKey(format(sessionStart, "yyyy-MM-dd"), format(sessionStart, "HH:mm"));
+      const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
+
+      const { container } = render(
+        <ScheduleDayView
+          selectedDate={selectedDate}
+          timeSlots={[sourceTime, targetTime]}
+          sessionSlotIndex={sessionSlotIndex}
+          onCreateSession={onCreateSession}
+          onEditSession={vi.fn()}
+          onRescheduleSession={onRescheduleSession}
+          allowDragAndDrop
+          allowCreateInEmptySlot={false}
+        />,
+      );
+
+      const card = container.querySelector('[data-session-id="session-1"]') as HTMLElement;
+      const targetSlot = Array.from(container.querySelectorAll("[data-slot-key]")).find((slot) => {
+        const slotKey = slot.getAttribute("data-slot-key");
+        return typeof slotKey === "string" && slotKey.endsWith(`|${targetTime}`);
+      }) as HTMLElement | undefined;
+      expect(targetSlot).toBeTruthy();
+
+      fireEvent.pointerDown(card, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+      fireEvent.pointerMove(card, { clientX: 25, clientY: 10, pointerId: 1 });
+      act(() => {
+        vi.advanceTimersByTime(480);
+      });
+      fireEvent.click(targetSlot!);
+
+      expect(onRescheduleSession).not.toHaveBeenCalled();
+      expect(onCreateSession).not.toHaveBeenCalled();
     });
   });
 });

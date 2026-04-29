@@ -90,6 +90,39 @@ const openEditSessionModalFromUrl = async (page: Page, scheduleUrl: string, sess
   throw new Error("Session modal (Edit Session / Live session) did not open from schedule deep link.");
 }
 
+const selectFirstOptionIfEmpty = async (
+  selectLocator: ReturnType<Page["locator"]>,
+  label: string,
+): Promise<string | null> => {
+  const select = selectLocator.first();
+  const count = await select.count();
+  if (count === 0) {
+    return null;
+  }
+  const currentValue = await select.inputValue().catch(() => "");
+  if (currentValue.trim().length > 0) {
+    return currentValue.trim();
+  }
+  const started = Date.now();
+  let selectedValue = "";
+  while (Date.now() - started < 30_000 && !selectedValue) {
+    const values = await select.locator("option").evaluateAll((nodes) =>
+      nodes
+        .map((node) => (node as HTMLOptionElement).value)
+        .filter((value) => typeof value === "string" && value.trim().length > 0),
+    );
+    selectedValue = values[0] ?? "";
+    if (!selectedValue) {
+      await select.page().waitForTimeout(250);
+    }
+  }
+  if (!selectedValue) {
+    throw new Error(`No selectable ${label} option was available for session capture.`);
+  }
+  await select.selectOption(selectedValue);
+  return selectedValue;
+};
+
 async function waitForSessionStatus(sessionId: string, status: string, timeoutMs = 120_000): Promise<void> {
   const supabaseUrl = getEnv("VITE_SUPABASE_URL");
   const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
@@ -217,21 +250,63 @@ async function run(): Promise<void> {
       const editDialog = activePage.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i });
       const capture = editDialog.getByTestId("session-modal-capture-section");
       await capture.waitFor({ state: "visible", timeout: 30_000 });
+      await selectFirstOptionIfEmpty(
+        editDialog.first().locator('#session-note-auth-select, select[name="session_note_authorization_id"]'),
+        "authorization",
+      );
+      await selectFirstOptionIfEmpty(
+        editDialog.first().locator('#session-note-service-code-select, select[name="session_note_service_code"]'),
+        "service code",
+      );
 
       await editDialog.locator(`#goal-note-${booked.goalId}`).fill(`Plan note ${marker}`);
 
       await capture.getByRole("button", { name: /Add skill/i }).click();
-      const adhocCard = capture.locator(".rounded-lg.border").last();
-      await adhocCard.getByPlaceholder("Name this target").fill(`Adhoc title ${marker}`);
+      const adhocCard = capture.locator('[data-testid^="session-modal-goal-capture-adhoc-skill-"]').last();
+      await adhocCard.waitFor({ state: "visible", timeout: 30_000 });
+      await adhocCard.scrollIntoViewIfNeeded();
+      await adhocCard.locator('input[placeholder="Name this target"]:visible').first().fill(`Adhoc title ${marker}`);
       await adhocCard.getByLabel(/^Per-goal note$/i).fill(`Adhoc note ${marker}`);
-      await adhocCard.getByRole("button", { name: /Increase correct trials/i }).click();
+      await adhocCard.getByRole("button", { name: /Increase correct trials/i }).first().click();
 
       const upsertPromise = activePage.waitForResponse(
         (res) => res.url().includes("/api/session-notes/upsert") && res.request().method() === "POST",
         { timeout: 120_000 },
       );
-      await activePage.getByRole("button", { name: /Save progress/i }).click();
-      const res = await upsertPromise;
+      await capture.getByRole("button", { name: /Save skills/i }).click();
+      const res = await upsertPromise.catch(async (error) => {
+        const diagnostics = await activePage.evaluate(() => {
+          const form = document.querySelector("#session-form") as HTMLFormElement | null;
+          const invalidFields = form
+            ? Array.from(form.elements)
+                .filter((element): element is HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement =>
+                  "validity" in element && !element.validity.valid)
+                .map((element) => ({
+                  id: element.id,
+                  name: element.name,
+                  value: element.value,
+                  validationMessage: element.validationMessage,
+                }))
+            : [];
+          const saveSkillsButton = Array.from(document.querySelectorAll("button")).find((button) =>
+            /Save skills/i.test(button.textContent ?? ""));
+          return {
+            formValid: form?.checkValidity() ?? null,
+            invalidFields,
+            saveSkillsDisabled: saveSkillsButton instanceof HTMLButtonElement ? saveSkillsButton.disabled : null,
+            visibleAdhocTitleCount: document.querySelectorAll('input[placeholder="Name this target"]').length,
+            sessionNoteAuthSelectCount: document.querySelectorAll(
+              '#session-note-auth-select, select[name="session_note_authorization_id"]',
+            ).length,
+            sessionNoteServiceCodeSelectCount: document.querySelectorAll(
+              '#session-note-service-code-select, select[name="session_note_service_code"]',
+            ).length,
+          };
+        });
+        throw new Error(
+          `${error instanceof Error ? error.message : String(error)} diagnostics=${JSON.stringify(diagnostics)}`,
+        );
+      });
       assert.equal(res.ok(), true, `session-notes upsert failed: HTTP ${res.status()}`);
       const body = (await res.json()) as {
         goal_notes?: Record<string, string> | null;

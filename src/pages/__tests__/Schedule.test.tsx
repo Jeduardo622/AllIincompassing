@@ -155,6 +155,17 @@ const waitForScheduleGridReady = () =>
 describe("Schedule", () => {
   beforeEach(() => {
     sessionModalModuleLoads = 0;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      configurable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query === "(any-pointer: fine)",
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
     mockUseActiveOrganizationId.mockReturnValue("org-1");
     mockPrefetchScheduleRange.mockReset();
     mockUseScheduleDataBatch.mockReset();

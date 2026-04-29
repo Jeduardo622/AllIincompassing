@@ -1,5 +1,5 @@
 /* eslint-disable jsx-a11y/no-static-element-interactions */
-import React, { useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { format, parseISO } from 'date-fns';
 import { Clock, Edit2, Plus } from 'lucide-react';
 import type { Session } from '../types';
@@ -134,6 +134,12 @@ export const TimeSlot = React.memo(
 
     const slotHasDropTarget = allowDragAndDrop && activeDropSlotKey === slotKey && activeDragSessionId !== null;
 
+    useEffect(() => {
+      if (activeDragSessionId === null) {
+        suppressSessionClickRef.current = false;
+      }
+    }, [activeDragSessionId]);
+
     return (
       <div
         className={`h-10 border-b border-r p-2 relative group dark:border-gray-700 transition-colors ${
@@ -244,8 +250,12 @@ export const TimeSlot = React.memo(
             }
           };
 
-          const endLongPressTracking = () => {
+          const endLongPressTracking = (cancelActiveDrag = false) => {
             clearLongPressTimer();
+            if (cancelActiveDrag && activeDragSessionId === session.id) {
+              suppressSessionClickRef.current = false;
+              onEndSessionDrag?.();
+            }
           };
 
           return (
@@ -288,14 +298,20 @@ export const TimeSlot = React.memo(
               tabIndex={0}
               onPointerDown={touchMovePickup ? onSessionPointerDown : undefined}
               onPointerMove={touchMovePickup ? onSessionPointerMove : undefined}
-              onPointerUp={touchMovePickup ? endLongPressTracking : undefined}
-              onPointerCancel={touchMovePickup ? endLongPressTracking : undefined}
-              onPointerLeave={touchMovePickup ? endLongPressTracking : undefined}
+              onPointerUp={touchMovePickup ? () => endLongPressTracking() : undefined}
+              onPointerCancel={touchMovePickup ? () => endLongPressTracking(true) : undefined}
+              onPointerLeave={touchMovePickup ? () => endLongPressTracking() : undefined}
               onClick={(event) => {
                 if (suppressSessionClickRef.current) {
                   event.preventDefault();
                   event.stopPropagation();
                   suppressSessionClickRef.current = false;
+                  return;
+                }
+                if (allowDragAndDrop && activeDragSessionId === session.id) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onEndSessionDrag?.();
                   return;
                 }
                 handleSessionClick(event, session);

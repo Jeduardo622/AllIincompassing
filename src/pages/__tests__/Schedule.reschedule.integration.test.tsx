@@ -12,6 +12,7 @@ const showSuccessMock = vi.fn();
 let latestRescheduleHandler:
   | ((session: Session, target: { date: Date; time: string }) => void)
   | null = null;
+let latestAllowDragAndDrop: boolean | undefined;
 
 type ScheduleStore = {
   sessions: Session[];
@@ -80,13 +81,16 @@ vi.mock("../ScheduleWeekView", () => ({
     timeSlots,
     sessionSlotIndex,
     onRescheduleSession,
+    allowDragAndDrop,
   }: {
     weekDays: Date[];
     timeSlots: string[];
     sessionSlotIndex: Map<string, Session[]>;
     onRescheduleSession?: (session: Session, target: { date: Date; time: string }) => void;
+    allowDragAndDrop?: boolean;
   }) => {
     latestRescheduleHandler = onRescheduleSession ?? null;
+    latestAllowDragAndDrop = allowDragAndDrop;
     const allSessions = Array.from(sessionSlotIndex.values()).flat();
     const sessionToMove = allSessions[0] ?? null;
     const targetDate = sessionToMove ? new Date(sessionToMove.start_time) : weekDays[0];
@@ -180,6 +184,7 @@ describe("Schedule reschedule integration", () => {
     vi.clearAllMocks();
     scheduleStore = buildScheduleStore();
     latestRescheduleHandler = null;
+    latestAllowDragAndDrop = undefined;
   });
 
   afterEach(() => {
@@ -226,6 +231,14 @@ describe("Schedule reschedule integration", () => {
     await waitFor(() => {
       expect(bookSessionViaApiMock).toHaveBeenCalledTimes(1);
     });
+    expect(bookSessionViaApiMock.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        id: "session-1",
+        start_time: movedStart.toISOString(),
+        end_time: movedEnd.toISOString(),
+        overrides: undefined,
+      }),
+    );
 
     await waitFor(() => {
       expect(getSlotSessionIds(container, sourceSlotKey)).toEqual([]);
@@ -269,5 +282,21 @@ describe("Schedule reschedule integration", () => {
     });
 
     expect(showErrorMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["admin", "admin", true],
+    ["super admin", "super_admin", true],
+    ["therapist", "therapist", false],
+  ] as const)("wires schedule drag/drop availability for %s users", async (_label, role, expectedAllowDragAndDrop) => {
+    renderWithProviders(<Schedule />, {
+      auth: { role },
+    });
+
+    await screen.findByRole("heading", { name: /Schedule/i });
+
+    await waitFor(() => {
+      expect(latestAllowDragAndDrop).toBe(expectedAllowDragAndDrop);
+    });
   });
 });

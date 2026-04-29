@@ -34,6 +34,12 @@ export type LiveRlsHarness =
       orgBId: string;
       orgA: OrgDataFixture;
       orgB: OrgDataFixture;
+      orgAAdminUserId: string;
+      orgBAdminUserId: string;
+      callTrustedDashboardRpc: (
+        actorUserId: string,
+        organizationId: string,
+      ) => Promise<Awaited<ReturnType<SupabaseClient["rpc"]>>>;
       signInAdminA: () => Promise<TypedClient>;
       signInAdminB: () => Promise<TypedClient>;
       cleanup: () => Promise<void>;
@@ -248,6 +254,13 @@ export async function setupLiveRlsHarness(): Promise<LiveRlsHarness> {
     orgBId,
     orgA,
     orgB,
+    orgAAdminUserId: orgAAdmin.userId,
+    orgBAdminUserId: orgBAdmin.userId,
+    callTrustedDashboardRpc: (actorUserId: string, organizationId: string) =>
+      serviceClient.rpc("get_dashboard_data_for_org", {
+        actor_user_id: actorUserId,
+        target_organization_id: organizationId,
+      }),
     signInAdminA: () => signInAdmin(orgAAdmin),
     signInAdminB: () => signInAdmin(orgBAdmin),
     cleanup,

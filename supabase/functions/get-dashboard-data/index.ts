@@ -1,7 +1,7 @@
 import { errorEnvelope, getRequestId, rateLimit } from '../lib/http/error.ts'
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
-import { createRequestClient } from "../_shared/database.ts";
-import { createProtectedRoute, RouteOptions } from "../_shared/auth-middleware.ts";
+import { createRequestClient, supabaseAdmin } from "../_shared/database.ts";
+import { createProtectedRoute, RouteOptions, type UserContext } from "../_shared/auth-middleware.ts";
 import { MissingOrgContextError, resolveOrgId } from "../_shared/org.ts";
 import { resolveAllowedOrigin } from "../_shared/cors.ts";
 
@@ -41,6 +41,8 @@ const aggregateTodaysSessions = (
 interface HandlerOptions {
   req: Request;
   db?: SupabaseClient;
+  adminDb?: SupabaseClient;
+  userContext?: UserContext;
 }
 
 const parseDefaultOrganizationId = (): string | null => {
@@ -165,7 +167,29 @@ const resolveDashboardOrganizationId = async (db: SupabaseClient): Promise<strin
   throw new MissingOrgContextError();
 }
 
-export async function handleGetDashboardData({ req, db: providedDb }: HandlerOptions) {
+const resolveDashboardActorId = async (
+  db: SupabaseClient,
+  userContext?: UserContext,
+): Promise<string> => {
+  const contextUserId = typeof userContext?.user?.id === "string" ? userContext.user.id.trim() : "";
+  if (contextUserId.length > 0) {
+    return contextUserId;
+  }
+
+  const { data: authData, error: authError } = await db.auth.getUser();
+  const userId = typeof authData?.user?.id === "string" ? authData.user.id.trim() : "";
+  if (authError || userId.length === 0) {
+    throw new MissingOrgContextError("Authenticated dashboard actor required");
+  }
+  return userId;
+};
+
+export async function handleGetDashboardData({
+  req,
+  db: providedDb,
+  adminDb: providedAdminDb,
+  userContext,
+}: HandlerOptions) {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -187,7 +211,7 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
 
     const db = providedDb ?? createRequestClient(req);
     const orgStartedAt = Date.now();
-    await withDashboardStepTimeout(
+    const orgId = await withDashboardStepTimeout(
       resolveDashboardOrganizationId(db),
       "org_resolution",
       DASHBOARD_ORG_TIMEOUT_MS,
@@ -210,9 +234,25 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
       })
     }
 
+    const actorStartedAt = Date.now();
+    const actorUserId = await withDashboardStepTimeout(
+      resolveDashboardActorId(db, userContext),
+      "actor_resolution",
+      DASHBOARD_ORG_TIMEOUT_MS,
+    );
+    logDashboardStep("info", "get-dashboard-data step completed", {
+      requestId,
+      step: "actor_resolution",
+      elapsedMs: elapsedMsSince(actorStartedAt),
+    });
+
+    const dashboardDb = providedAdminDb ?? supabaseAdmin;
     const rpcStartedAt = Date.now();
     const { data: rpcData, error: rpcError } = await withDashboardStepTimeout(
-      db.rpc('get_dashboard_data'),
+      dashboardDb.rpc('get_dashboard_data_for_org', {
+        actor_user_id: actorUserId,
+        target_organization_id: orgId,
+      }),
       "dashboard_rpc",
       DASHBOARD_RPC_TIMEOUT_MS,
     );
@@ -235,7 +275,7 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
       return errorEnvelope({
         requestId,
         code: status === 403 ? 'forbidden' : 'upstream_error',
-        message: rpcError.message || 'Dashboard RPC failed',
+        message: status === 403 ? 'Dashboard access denied' : 'Dashboard RPC failed',
         status,
         headers: corsHeaders,
       });
@@ -293,9 +333,13 @@ export const __TESTING__ = {
   aggregateTodaysSessions,
   resolveDashboardOrganizationId,
   withDashboardStepTimeout,
+  resolveDashboardActorId,
 }
 
-const dashboardRoute = createProtectedRoute((req: Request) => handleGetDashboardData({ req }), RouteOptions.admin)
+const dashboardRoute = createProtectedRoute(
+  (req: Request, userContext: UserContext) => handleGetDashboardData({ req, userContext }),
+  RouteOptions.admin,
+)
 
 const servedDashboardRoute = async (req: Request): Promise<Response> => {
   const requestId = getRequestId(req)

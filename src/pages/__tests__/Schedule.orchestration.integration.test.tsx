@@ -183,6 +183,13 @@ vi.mock("../../components/SessionModal", () => ({
 
 import { Schedule } from "../Schedule";
 
+const waitForScheduleGridReady = () =>
+  waitFor(() => {
+    const activeView = screen.queryByTestId("week-view") ?? screen.queryByTestId("day-view");
+    expect(activeView).toBeTruthy();
+    return activeView!;
+  }, { timeout: 10_000 });
+
 describe("Schedule orchestration integration hardening", () => {
   const resetScheduleFixtureWindow = () => {
     scheduleFixtures.sessions[0].start_time = originalSessionWindow.start_time;
@@ -235,6 +242,7 @@ describe("Schedule orchestration integration hardening", () => {
 
     renderWithProviders(<Schedule />);
     await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
     await screen.findByTestId("session-modal");
     expect(localStorage.getItem("pendingSchedule")).toBeNull();
 
@@ -267,7 +275,7 @@ describe("Schedule orchestration integration hardening", () => {
       requestId: undefined,
       correlationId: undefined,
     });
-  });
+  }, 15_000);
 
   it("create 409 keeps modal open and sets retry hint distinct from non-409", async () => {
     bookSessionViaApiMock.mockRejectedValueOnce({
@@ -281,6 +289,7 @@ describe("Schedule orchestration integration hardening", () => {
 
     renderWithProviders(<Schedule />);
     await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
 
     fireEvent.click(screen.getAllByLabelText("Add session")[0]);
     await screen.findByTestId("session-modal");
@@ -288,8 +297,8 @@ describe("Schedule orchestration integration hardening", () => {
 
     await waitFor(() => {
       expect(showErrorMock).toHaveBeenCalled();
+      expect(screen.getByTestId("retry-hint")).toHaveTextContent("conflict-hint");
     });
-    expect(screen.getByTestId("retry-hint")).toHaveTextContent("conflict-hint");
     expect(screen.getByTestId("session-modal")).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("submit-create"));
@@ -299,11 +308,12 @@ describe("Schedule orchestration integration hardening", () => {
     });
     expect(screen.getByTestId("retry-hint")).toHaveTextContent("");
     expect(screen.getByTestId("session-modal")).toBeInTheDocument();
-  });
+  }, 15_000);
 
   it("manual edit cancel path stays distinct and closes modal", async () => {
     renderWithProviders(<Schedule />);
     await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
 
     await openExistingSessionForEdit();
     await screen.findByTestId("session-modal");

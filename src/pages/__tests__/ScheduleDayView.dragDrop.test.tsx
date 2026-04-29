@@ -5,7 +5,7 @@ import type { Session } from "../../types";
 import { createSessionSlotKey } from "../schedule-utils";
 import { ScheduleDayView } from "../ScheduleDayView";
 
-const buildSession = (startDate: Date): Session => ({
+const buildSession = (startDate: Date, overrides: Partial<Session> = {}): Session => ({
   id: "session-1",
   client_id: "client-1",
   therapist_id: "therapist-1",
@@ -21,6 +21,7 @@ const buildSession = (startDate: Date): Session => ({
   updated_by: "user-1",
   client: { id: "client-1", full_name: "Jamie Client" },
   therapist: { id: "therapist-1", full_name: "Dr. Myles" },
+  ...overrides,
 });
 
 const dragData = {
@@ -89,6 +90,57 @@ describe("ScheduleDayView drag and drop", () => {
     expect(onRescheduleSession).toHaveBeenCalledTimes(1);
     expect(onRescheduleSession).toHaveBeenCalledWith(
       expect.objectContaining({ id: "session-1" }),
+      expect.objectContaining({
+        time: targetTime,
+        date: expect.any(Date),
+      }),
+    );
+  });
+
+  it("allows dragging a visible session when scheduled status casing drifts", () => {
+    const selectedDate = new Date("2025-07-07T00:00:00.000Z");
+    const sourceTime = "10:00";
+    const targetTime = "10:15";
+    const sessionStart = new Date(selectedDate);
+    sessionStart.setHours(10, 0, 0, 0);
+    const session = buildSession(sessionStart, {
+      id: "session-2",
+      // @ts-expect-error regression coverage for non-canonical runtime values
+      status: " Scheduled ",
+      client: { id: "client-2", full_name: "Jorge Eduardo" },
+    });
+    const onRescheduleSession = vi.fn();
+    const sourceKey = createSessionSlotKey(format(sessionStart, "yyyy-MM-dd"), format(sessionStart, "HH:mm"));
+    const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
+
+    const { container } = render(
+      <ScheduleDayView
+        selectedDate={selectedDate}
+        timeSlots={[sourceTime, targetTime]}
+        sessionSlotIndex={sessionSlotIndex}
+        onCreateSession={vi.fn()}
+        onEditSession={vi.fn()}
+        onRescheduleSession={onRescheduleSession}
+        allowDragAndDrop
+      />,
+    );
+
+    const card = container.querySelector('[data-session-id="session-2"]') as HTMLElement;
+    const targetSlot = Array.from(container.querySelectorAll("[data-slot-key]")).find((slot) => {
+      const slotKey = slot.getAttribute("data-slot-key");
+      return typeof slotKey === "string" && slotKey.endsWith(`|${targetTime}`);
+    });
+    expect(card.getAttribute("draggable")).toBe("true");
+    expect(targetSlot).toBeTruthy();
+
+    fireEvent.dragStart(card, { dataTransfer: dragData });
+    fireEvent.dragEnter(targetSlot as HTMLElement, { dataTransfer: dragData });
+    fireEvent.dragOver(targetSlot as HTMLElement, { dataTransfer: dragData });
+    fireEvent.drop(targetSlot as HTMLElement, { dataTransfer: dragData });
+
+    expect(onRescheduleSession).toHaveBeenCalledTimes(1);
+    expect(onRescheduleSession).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "session-2", status: " Scheduled " }),
       expect.objectContaining({
         time: targetTime,
         date: expect.any(Date),

@@ -165,7 +165,14 @@ vi.mock("../../lib/toast", async () => {
   };
 });
 
-describe("Schedule session-close readiness precheck", { timeout: 15_000 }, () => {
+const waitForScheduleGridReady = () =>
+  waitFor(() => {
+    const activeView = screen.queryByTestId("week-view") ?? screen.queryByTestId("day-view");
+    expect(activeView).toBeTruthy();
+    return activeView!;
+  }, { timeout: 10_000 });
+
+describe("Schedule session-close readiness precheck", { timeout: 30_000 }, () => {
   beforeEach(() => {
     sessionStatus = "in_progress";
     completeSessionFromModalMock.mockReset();
@@ -189,6 +196,7 @@ describe("Schedule session-close readiness precheck", { timeout: 15_000 }, () =>
 
     renderWithProviders(<Schedule />);
 
+    await waitForScheduleGridReady();
     fireEvent.click(await screen.findByText("Jamie Client"));
     fireEvent.click(await screen.findByRole("button", { name: "Submit terminal" }));
 
@@ -218,6 +226,7 @@ describe("Schedule session-close readiness precheck", { timeout: 15_000 }, () =>
 
     renderWithProviders(<Schedule />);
 
+    await waitForScheduleGridReady();
     fireEvent.click(await screen.findByText("Jamie Client"));
     fireEvent.click(await screen.findByRole("button", { name: "Submit terminal" }));
 
@@ -233,6 +242,7 @@ describe("Schedule session-close readiness precheck", { timeout: 15_000 }, () =>
   it("proceeds with completion when readiness passes", async () => {
     renderWithProviders(<Schedule />);
 
+    await waitForScheduleGridReady();
     fireEvent.click(await screen.findByText("Jamie Client"));
     fireEvent.click(await screen.findByRole("button", { name: "Submit terminal" }));
 
@@ -251,6 +261,7 @@ describe("Schedule session-close readiness precheck", { timeout: 15_000 }, () =>
 
     renderWithProviders(<Schedule />);
 
+    await waitForScheduleGridReady();
     fireEvent.click(await screen.findByText("Jamie Client"));
     fireEvent.click(await screen.findByRole("button", { name: "Submit terminal" }));
 

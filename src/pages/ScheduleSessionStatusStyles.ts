@@ -1,5 +1,13 @@
 import type { Session } from '../types';
 
+const CANONICAL_SESSION_STATUSES = new Set<Session['status']>([
+  'scheduled',
+  'in_progress',
+  'completed',
+  'cancelled',
+  'no-show',
+]);
+
 const SESSION_STATUS_STYLES: Record<
   Session['status'],
   { card: string; secondary: string; time: string }
@@ -31,8 +39,23 @@ const SESSION_STATUS_STYLES: Record<
   },
 };
 
+export function normalizeScheduleSessionStatus(
+  status: Session['status'] | string | null | undefined,
+): Session['status'] {
+  const normalized = typeof status === 'string' ? status.trim().toLowerCase() : '';
+  return CANONICAL_SESSION_STATUSES.has(normalized as Session['status'])
+    ? (normalized as Session['status'])
+    : 'scheduled';
+}
+
+export function isScheduleSessionDragEligible(
+  status: Session['status'] | string | null | undefined,
+): boolean {
+  return typeof status === 'string' && status.trim().toLowerCase() === 'scheduled';
+}
+
 export function getSessionStatusClasses(
-  status: Session['status'],
+  status: Session['status'] | string | null | undefined,
 ): { card: string; secondary: string; time: string } {
-  return SESSION_STATUS_STYLES[status] ?? SESSION_STATUS_STYLES.scheduled;
+  return SESSION_STATUS_STYLES[normalizeScheduleSessionStatus(status)];
 }

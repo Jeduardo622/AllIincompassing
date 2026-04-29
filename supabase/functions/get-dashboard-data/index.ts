@@ -12,6 +12,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, X-Client-Info, apikey, content-type, x-request-id',
 }
 
+const DASHBOARD_ROUTE_TIMEOUT_MS = 6_500;
+const DASHBOARD_ORG_TIMEOUT_MS = 2_500;
+const DASHBOARD_RPC_TIMEOUT_MS = 4_500;
+
 type TodaySession = {
   id: string
   status: string
@@ -47,6 +51,48 @@ const parseDefaultOrganizationId = (): string | null => {
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
+
+class DashboardStepTimeoutError extends Error {
+  constructor(
+    public readonly step: string,
+    public readonly timeoutMs: number,
+  ) {
+    super(`Dashboard step timed out: ${step}`);
+    this.name = "DashboardStepTimeoutError";
+  }
+}
+
+const elapsedMsSince = (startedAt: number): number => Date.now() - startedAt;
+
+const logDashboardStep = (
+  level: "info" | "warn" | "error",
+  message: string,
+  fields: Record<string, unknown>,
+) => {
+  console[level](message, fields);
+};
+
+const withDashboardStepTimeout = async <T>(
+  operation: Promise<T>,
+  step: string,
+  timeoutMs: number,
+): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new DashboardStepTimeoutError(step, timeoutMs));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+};
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === "object" && !Array.isArray(value)
@@ -130,11 +176,27 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
     })
   }
 
+  const requestId = getRequestId(req)
+  const startedAt = Date.now()
+
   try {
-    const requestId = getRequestId(req)
+    logDashboardStep("info", "get-dashboard-data request started", {
+      requestId,
+      method: req.method,
+    });
 
     const db = providedDb ?? createRequestClient(req);
-    await resolveDashboardOrganizationId(db);
+    const orgStartedAt = Date.now();
+    await withDashboardStepTimeout(
+      resolveDashboardOrganizationId(db),
+      "org_resolution",
+      DASHBOARD_ORG_TIMEOUT_MS,
+    );
+    logDashboardStep("info", "get-dashboard-data step completed", {
+      requestId,
+      step: "org_resolution",
+      elapsedMs: elapsedMsSince(orgStartedAt),
+    });
 
     const ip = req.headers.get('x-forwarded-for') || 'unknown'
     const rl = rateLimit(`dashboard:${ip}`, 60, 60_000)
@@ -148,10 +210,28 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
       })
     }
 
-    const { data: rpcData, error: rpcError } = await db.rpc('get_dashboard_data');
+    const rpcStartedAt = Date.now();
+    const { data: rpcData, error: rpcError } = await withDashboardStepTimeout(
+      db.rpc('get_dashboard_data'),
+      "dashboard_rpc",
+      DASHBOARD_RPC_TIMEOUT_MS,
+    );
+    logDashboardStep("info", "get-dashboard-data step completed", {
+      requestId,
+      step: "dashboard_rpc",
+      elapsedMs: elapsedMsSince(rpcStartedAt),
+      hasError: Boolean(rpcError),
+    });
     if (rpcError) {
       const code = typeof rpcError.code === 'string' ? rpcError.code : '';
       const status = code === '42501' ? 403 : 500;
+      logDashboardStep("warn", "get-dashboard-data rpc failed", {
+        requestId,
+        step: "dashboard_rpc",
+        status,
+        elapsedMs: elapsedMsSince(rpcStartedAt),
+        rpcCode: code || "unknown",
+      });
       return errorEnvelope({
         requestId,
         code: status === 403 ? 'forbidden' : 'upstream_error',
@@ -180,12 +260,31 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   } catch (error) {
+    if (error instanceof DashboardStepTimeoutError) {
+      // The timed operation may eventually reject with an authz error, but after this deadline
+      // the only safe observable state is "no dashboard data returned in time".
+      logDashboardStep("warn", "get-dashboard-data step timed out", {
+        requestId,
+        step: error.step,
+        timeoutMs: error.timeoutMs,
+        elapsedMs: elapsedMsSince(startedAt),
+      });
+      return errorEnvelope({
+        requestId,
+        code: 'upstream_timeout',
+        message: 'Dashboard data request timed out',
+        status: 504,
+        headers: corsHeaders,
+      })
+    }
     if (error instanceof MissingOrgContextError) {
-      const requestId = getRequestId(new Request('http://local'))
       return errorEnvelope({ requestId, code: 'missing_org', message: error.message, status: 403, headers: corsHeaders })
     }
-    const requestId = getRequestId(new Request('http://local'))
-    console.error('Dashboard data error:', error)
+    logDashboardStep("error", "Dashboard data error", {
+      requestId,
+      elapsedMs: elapsedMsSince(startedAt),
+      errorName: error instanceof Error ? error.name : typeof error,
+    })
     return errorEnvelope({ requestId, code: 'internal_error', message: 'Unexpected error', status: 500, headers: corsHeaders })
   }
 }
@@ -193,6 +292,55 @@ export async function handleGetDashboardData({ req, db: providedDb }: HandlerOpt
 export const __TESTING__ = {
   aggregateTodaysSessions,
   resolveDashboardOrganizationId,
+  withDashboardStepTimeout,
 }
 
-export default createProtectedRoute((req: Request) => handleGetDashboardData({ req }), RouteOptions.admin)
+const dashboardRoute = createProtectedRoute((req: Request) => handleGetDashboardData({ req }), RouteOptions.admin)
+
+const servedDashboardRoute = async (req: Request): Promise<Response> => {
+  const requestId = getRequestId(req)
+  const startedAt = Date.now()
+  try {
+    logDashboardStep("info", "get-dashboard-data edge route received", {
+      requestId,
+      method: req.method,
+      timeoutMs: DASHBOARD_ROUTE_TIMEOUT_MS,
+    })
+    const response = await withDashboardStepTimeout(
+      dashboardRoute(req),
+      "edge_route",
+      DASHBOARD_ROUTE_TIMEOUT_MS,
+    )
+    logDashboardStep("info", "get-dashboard-data edge route completed", {
+      requestId,
+      status: response.status,
+      elapsedMs: elapsedMsSince(startedAt),
+    })
+    return response
+  } catch (error) {
+    if (error instanceof DashboardStepTimeoutError) {
+      // Fail closed before the /api/dashboard proxy timeout; never infer success or tenant scope
+      // from a route that did not complete.
+      logDashboardStep("warn", "get-dashboard-data edge route timed out", {
+        requestId,
+        step: error.step,
+        timeoutMs: error.timeoutMs,
+        elapsedMs: elapsedMsSince(startedAt),
+      })
+      return errorEnvelope({
+        requestId,
+        code: 'upstream_timeout',
+        message: 'Dashboard data request timed out',
+        status: 504,
+        headers: corsHeaders,
+      })
+    }
+    throw error
+  }
+}
+
+if (typeof Deno !== "undefined" && typeof Deno.serve === "function") {
+  Deno.serve(servedDashboardRoute)
+}
+
+export default servedDashboardRoute

@@ -86,5 +86,29 @@ describe("booking domain payload builder", () => {
       expect(parsed.data.session.updated_at).toBeUndefined();
     }
   });
+
+  it("strips null notes from reschedule payloads so /api/book validation accepts the body", () => {
+    const payload = buildBookSessionApiPayload(
+      {
+        id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        therapist_id: "11111111-1111-1111-1111-111111111111",
+        client_id: "22222222-2222-2222-2222-222222222222",
+        program_id: "33333333-3333-3333-3333-333333333333",
+        goal_id: "44444444-4444-4444-4444-444444444444",
+        start_time: "2026-04-29T19:00:00.000Z",
+        end_time: "2026-04-29T20:00:00.000Z",
+        notes: null,
+      } as never,
+      {
+        startOffsetMinutes: -420,
+        endOffsetMinutes: -420,
+        timeZone: "America/Los_Angeles",
+      },
+    );
+
+    const parsed = bookSessionApiRequestBodySchema.safeParse(payload);
+    expect(parsed.success).toBe(true);
+    expect("notes" in payload.session).toBe(false);
+  });
 });
 

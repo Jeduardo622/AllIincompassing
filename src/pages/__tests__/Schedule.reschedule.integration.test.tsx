@@ -65,8 +65,8 @@ vi.mock("../../lib/optimizedQueries", () => ({
   }),
 }));
 
-vi.mock("../../features/scheduling/domain/booking", () => ({
-  buildBookSessionApiPayload: (session: unknown) => session,
+vi.mock("../../features/scheduling/domain/booking", async () => ({
+  ...(await vi.importActual("../../features/scheduling/domain/booking")),
   bookSessionViaApi: (...args: unknown[]) => bookSessionViaApiMock(...args),
 }));
 
@@ -141,7 +141,7 @@ const buildScheduleStore = () => {
     start_time: sourceDate.toISOString(),
     end_time: new Date(sourceDate.getTime() + 60 * 60 * 1000).toISOString(),
     status: "scheduled",
-    notes: "Initial session",
+    notes: null,
     created_at: "2025-07-01T00:00:00.000Z",
     created_by: "user-1",
     updated_at: "2025-07-01T00:00:00.000Z",
@@ -233,12 +233,15 @@ describe("Schedule reschedule integration", () => {
     });
     expect(bookSessionViaApiMock.mock.calls[0][0]).toEqual(
       expect.objectContaining({
-        id: "session-1",
-        start_time: movedStart.toISOString(),
-        end_time: movedEnd.toISOString(),
+        session: expect.objectContaining({
+          id: "session-1",
+          start_time: movedStart.toISOString(),
+          end_time: movedEnd.toISOString(),
+        }),
         overrides: undefined,
       }),
     );
+    expect(bookSessionViaApiMock.mock.calls[0][0].session).not.toHaveProperty("notes");
 
     await waitFor(() => {
       expect(getSlotSessionIds(container, sourceSlotKey)).toEqual([]);

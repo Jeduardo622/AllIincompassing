@@ -25,10 +25,12 @@ async function loadDashboardModule() {
 describe("get-dashboard-data organization context parity", () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.useRealTimers();
     envValues.delete("DEFAULT_ORGANIZATION_ID");
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     envValues.delete("DEFAULT_ORGANIZATION_ID");
   });
 
@@ -102,6 +104,141 @@ describe("get-dashboard-data organization context parity", () => {
     expect(response.status).toBe(403);
     const body = (await response.json()) as { code?: string };
     expect(body.code).toBe("forbidden");
+  });
+
+  it("returns a typed timeout when organization resolution does not complete", async () => {
+    vi.useFakeTimers();
+    const mod = await loadDashboardModule();
+    const db = {
+      rpc: (fn: string) => {
+        if (fn === "current_user_organization_id") return new Promise(() => undefined);
+        return Promise.resolve({ data: null, error: null });
+      },
+    };
+    const responsePromise = mod.handleGetDashboardData({
+      req: createDashboardRequest("GET", "org-timeout"),
+      db: db as never,
+    });
+
+    await vi.advanceTimersByTimeAsync(2_500);
+
+    const response = await responsePromise;
+    expect(response.status).toBe(504);
+    const body = (await response.json()) as { code?: string; requestId?: string; classification?: { category?: string } };
+    expect(body).toMatchObject({
+      requestId: "req-dash-org-timeout",
+      code: "upstream_timeout",
+      classification: { category: "upstream" },
+    });
+  });
+
+  it("returns a typed timeout when the dashboard RPC does not complete", async () => {
+    vi.useFakeTimers();
+    const mod = await loadDashboardModule();
+    const db = {
+      rpc: (fn: string) => {
+        if (fn === "current_user_organization_id") return Promise.resolve({ data: "org-resolved", error: null });
+        if (fn === "get_dashboard_data") return new Promise(() => undefined);
+        return Promise.resolve({ data: null, error: null });
+      },
+    };
+    const responsePromise = mod.handleGetDashboardData({
+      req: createDashboardRequest("GET", "rpc-timeout"),
+      db: db as never,
+    });
+
+    await vi.advanceTimersByTimeAsync(4_500);
+
+    const response = await responsePromise;
+    expect(response.status).toBe(504);
+    const body = (await response.json()) as { code?: string; requestId?: string; classification?: { category?: string } };
+    expect(body).toMatchObject({
+      requestId: "req-dash-rpc-timeout",
+      code: "upstream_timeout",
+      classification: { category: "upstream" },
+    });
+  });
+
+  it("fails closed as timeout when the dashboard RPC permission failure is slower than the deadline", async () => {
+    vi.useFakeTimers();
+    const mod = await loadDashboardModule();
+    const db = {
+      rpc: (fn: string) => {
+        if (fn === "current_user_organization_id") return Promise.resolve({ data: "org-resolved", error: null });
+        if (fn === "get_dashboard_data") {
+          return new Promise((resolve) => {
+            setTimeout(() => {
+              resolve({ data: null, error: { code: "42501", message: "permission denied for function" } });
+            }, 5_000);
+          });
+        }
+        return Promise.resolve({ data: null, error: null });
+      },
+    };
+    const responsePromise = mod.handleGetDashboardData({
+      req: createDashboardRequest("GET", "slow-forbidden"),
+      db: db as never,
+    });
+
+    await vi.advanceTimersByTimeAsync(4_500);
+
+    const response = await responsePromise;
+    expect(response.status).toBe(504);
+    const body = (await response.json()) as { code?: string; requestId?: string; classification?: { category?: string } };
+    expect(body).toMatchObject({
+      requestId: "req-dash-slow-forbidden",
+      code: "upstream_timeout",
+      classification: { category: "upstream" },
+    });
+  });
+});
+
+describe("get-dashboard-data Supabase Edge entrypoint", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    stubDenoEnv((key) => envValues.get(key) ?? "");
+    vi.resetModules();
+  });
+
+  it("registers a Deno.serve handler when the Edge runtime provides serve", async () => {
+    const serve = vi.fn();
+    vi.stubGlobal("Deno", {
+      env: {
+        get: (key: string) => envValues.get(key) ?? "",
+      },
+      serve,
+    });
+
+    await loadDashboardModule();
+
+    expect(serve).toHaveBeenCalledTimes(1);
+    expect(serve.mock.calls[0]?.[0]).toEqual(expect.any(Function));
+  });
+
+  it("returns a typed timeout when the protected Edge route does not complete", async () => {
+    vi.useFakeTimers();
+    vi.doMock("../../supabase/functions/_shared/auth-middleware.ts", () => ({
+      createProtectedRoute: () => () => new Promise(() => undefined),
+      RouteOptions: { admin: { requireAuth: true, allowedRoles: ["admin", "super_admin"] } },
+    }));
+    const module = await loadDashboardModule();
+    const responsePromise = module.default(createDashboardRequest("GET", "route-timeout"));
+
+    await vi.advanceTimersByTimeAsync(6_500);
+
+    const response = await responsePromise;
+    expect(response.status).toBe(504);
+    const body = (await response.json()) as { code?: string; requestId?: string; classification?: { category?: string } };
+    expect(body).toMatchObject({
+      requestId: "req-dash-route-timeout",
+      code: "upstream_timeout",
+      classification: { category: "upstream" },
+    });
   });
 });
 

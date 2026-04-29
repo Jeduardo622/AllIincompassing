@@ -9,6 +9,7 @@ const envValues = new Map<string, string>([
 ]);
 
 const createRequestClientMock = vi.fn();
+const supabaseAdminRpcMock = vi.fn();
 const resolveOrgIdMock = vi.fn();
 const rateLimitMock = vi.fn();
 
@@ -17,6 +18,9 @@ stubDenoEnv((key) => envValues.get(key) ?? '');
 async function loadHandler() {
   vi.doMock('../../supabase/functions/_shared/database.ts', () => ({
     createRequestClient: createRequestClientMock,
+    supabaseAdmin: {
+      rpc: supabaseAdminRpcMock,
+    },
   }));
   vi.doMock('../../supabase/functions/_shared/auth-middleware.ts', async () => {
     const actual = await vi.importActual<typeof import('../../supabase/functions/_shared/auth-middleware.ts')>(
@@ -79,6 +83,7 @@ describe('get-dashboard-data rate-limit contract', () => {
     expect(createRequestClientMock).toHaveBeenCalledTimes(1);
     expect(resolveOrgIdMock).toHaveBeenCalledTimes(1);
     expect(rateLimitMock).toHaveBeenCalledWith('dashboard:203.0.113.27', 60, 60_000);
+    expect(supabaseAdminRpcMock).not.toHaveBeenCalled();
 
     expect(response.status).toBe(429);
     expect(response.headers.get('Retry-After')).toBe('41');

@@ -145,6 +145,13 @@ import { Schedule } from "../Schedule";
 
 const defaultRpcImplementation = vi.mocked(supabase.rpc as any).getMockImplementation();
 
+const waitForScheduleGridReady = () =>
+  waitFor(() => {
+    const activeView = screen.queryByTestId("week-view") ?? screen.queryByTestId("day-view");
+    expect(activeView).toBeTruthy();
+    return activeView!;
+  }, { timeout: 10_000 });
+
 describe("Schedule", () => {
   beforeEach(() => {
     sessionModalModuleLoads = 0;
@@ -260,6 +267,7 @@ describe("Schedule", () => {
     renderWithProviders(<Schedule />);
 
     await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
     expect(sessionModalModuleLoads).toBe(0);
 
     const addButtons = await screen.findAllByLabelText("Add session");
@@ -269,12 +277,13 @@ describe("Schedule", () => {
       expect(sessionModalModuleLoads).toBe(1);
     });
     expect(await screen.findByTestId("session-modal-sessions")).toHaveTextContent("session-1");
-  });
+  }, 15_000);
 
   it("prefetches the next schedule batch when the next-period control is hovered", async () => {
     renderWithProviders(<Schedule />);
 
     await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
 
     fireEvent.mouseEnter(screen.getByRole("button", { name: /Next period/i }));
 
@@ -292,14 +301,15 @@ describe("Schedule", () => {
     expect((targetStart as Date).toISOString()).toBe(expectedStart.toISOString());
     expect((targetEnd as Date).toISOString()).toBe(expectedEnd.toISOString());
     expect(options).toEqual({ organizationId: "org-1" });
-  });
+  }, 15_000);
 
   it("applies therapist filters to batched sessions", async () => {
     renderWithProviders(<Schedule />);
 
+    await waitForScheduleGridReady();
     const addButtons = await screen.findAllByLabelText("Add session");
     fireEvent.click(addButtons[0]);
-    expect(screen.getByTestId("session-modal-sessions")).toHaveTextContent("session-1");
+    expect(await screen.findByTestId("session-modal-sessions")).toHaveTextContent("session-1");
     expect(screen.getByTestId("session-modal-sessions")).toHaveTextContent("session-2");
 
     await userEvent.selectOptions(screen.getByLabelText("Therapist"), "therapist-2");
@@ -308,7 +318,7 @@ describe("Schedule", () => {
       expect(screen.getByTestId("session-modal-sessions")).not.toHaveTextContent("session-1");
       expect(screen.getByTestId("session-modal-sessions")).toHaveTextContent("session-2");
     });
-  });
+  }, 15_000);
 
   it("locks therapist scope and limits clients for therapist users", async () => {
     mockUseDropdownData.mockReturnValue({

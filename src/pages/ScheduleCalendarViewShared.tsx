@@ -4,7 +4,7 @@ import { format, parseISO } from 'date-fns';
 import { Clock, Edit2, Plus } from 'lucide-react';
 import type { Session } from '../types';
 import { createSessionSlotKey } from './schedule-utils';
-import { getSessionStatusClasses } from './ScheduleSessionStatusStyles';
+import { getSessionStatusClasses, isScheduleSessionDragEligible } from './ScheduleSessionStatusStyles';
 
 export type ScheduleTimeSlotHandler = (timeSlot: { date: Date; time: string }) => void;
 export type ScheduleEditSessionHandler = (session: Session) => void;
@@ -195,16 +195,19 @@ export const TimeSlot = React.memo(
         {enableSlotCreateChrome ? (
           <span
             aria-hidden="true"
-            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 rounded-full text-gray-500 transition-opacity dark:text-gray-400"
+            className="pointer-events-none absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 rounded-full text-gray-500 transition-opacity dark:text-gray-400"
           >
             <Plus className="w-4 h-4 text-gray-500 dark:text-gray-400" />
           </span>
         ) : null}
 
         {slotSessions.map((session) => {
+          const dragEligibleSession = isScheduleSessionDragEligible(session.status);
           const statusStyles = getSessionStatusClasses(session.status);
           const touchMovePickup =
-            !hasFinePointer && allowDragAndDrop && session.status === "scheduled";
+            !hasFinePointer && allowDragAndDrop && dragEligibleSession;
+          const canDragWithFinePointer =
+            allowDragAndDrop && hasFinePointer && dragEligibleSession;
 
           const onSessionPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
             if (!touchMovePickup) {
@@ -250,7 +253,7 @@ export const TimeSlot = React.memo(
               key={session.id}
               data-session-status={session.status}
               data-session-id={session.id}
-              draggable={allowDragAndDrop && session.status === "scheduled" && hasFinePointer}
+              draggable={canDragWithFinePointer}
               aria-grabbed={allowDragAndDrop && activeDragSessionId === session.id}
               title={
                 touchMovePickup
@@ -258,7 +261,7 @@ export const TimeSlot = React.memo(
                   : undefined
               }
               onDragStart={
-                allowDragAndDrop && session.status === "scheduled" && hasFinePointer
+                canDragWithFinePointer
                   ? (event) => {
                       event.stopPropagation();
                       event.dataTransfer.effectAllowed = "move";
@@ -268,14 +271,14 @@ export const TimeSlot = React.memo(
                   : undefined
               }
               onDragEnd={
-                allowDragAndDrop && hasFinePointer
+                canDragWithFinePointer
                   ? () => {
                       onEndSessionDrag?.();
                     }
                   : undefined
               }
               className={`${statusStyles.card} touch-manipulation rounded p-1 text-xs mb-1 group/session relative transition-colors ${
-                allowDragAndDrop && session.status === "scheduled"
+                allowDragAndDrop && dragEligibleSession
                   ? hasFinePointer
                     ? "cursor-grab active:cursor-grabbing"
                     : "cursor-pointer"
@@ -313,7 +316,7 @@ export const TimeSlot = React.memo(
 
               <span
                 aria-hidden="true"
-                className="absolute top-1 right-1 opacity-0 group-hover/session:opacity-100"
+                className="pointer-events-none absolute top-1 right-1 opacity-0 group-hover/session:opacity-100"
               >
                 <Edit2 className="w-3 h-3" />
               </span>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getSessionStatusClasses } from "../ScheduleSessionStatusStyles";
+import { getSessionStatusClasses, normalizeScheduleSessionStatus } from "../ScheduleSessionStatusStyles";
 
 describe("getSessionStatusClasses", () => {
   it("returns distinct card classes for all five statuses", () => {
@@ -30,5 +30,10 @@ describe("getSessionStatusClasses", () => {
     // @ts-expect-error intentional unknown status for fallback coverage
     const result = getSessionStatusClasses("unknown_status");
     expect(result).toEqual(getSessionStatusClasses("scheduled"));
+  });
+
+  it("normalizes casing and whitespace before applying schedule behavior", () => {
+    expect(normalizeScheduleSessionStatus(" Scheduled ")).toBe("scheduled");
+    expect(normalizeScheduleSessionStatus("IN_PROGRESS")).toBe("in_progress");
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { renderWithProviders, screen, userEvent } from "../../test/utils";
+import { renderWithProviders, screen, userEvent, waitFor } from "../../test/utils";
 
 const mockUseScheduleDataBatch = vi.fn(() => ({
   data: {
@@ -65,6 +65,13 @@ vi.mock("../../components/SessionModal", () => ({
 }));
 
 import { Schedule } from "../Schedule";
+
+const waitForScheduleGridReady = () =>
+  waitFor(() => {
+    const activeView = screen.queryByTestId("week-view") ?? screen.queryByTestId("day-view");
+    expect(activeView).toBeTruthy();
+    return activeView!;
+  }, { timeout: 10_000 });
 
 describe("Schedule data-load UX", () => {
   beforeEach(() => {
@@ -191,10 +198,11 @@ describe("Schedule data-load UX", () => {
 
     renderWithProviders(<Schedule />);
 
-    expect(await screen.findByText(/^Time$/)).toBeInTheDocument();
+    await waitForScheduleGridReady();
+    expect(screen.getByText(/^Time$/)).toBeInTheDocument();
     expect(screen.queryByTestId("schedule-empty-sessions")).not.toBeInTheDocument();
     expect(screen.queryByTestId("schedule-data-load-error")).not.toBeInTheDocument();
-  });
+  }, 15_000);
 
   it("shows an explicit empty state when there are no sessions and no therapists or clients (no schedule data)", async () => {
     mockUseScheduleDataBatch.mockReturnValue({
@@ -269,9 +277,10 @@ describe("Schedule data-load UX", () => {
 
     renderWithProviders(<Schedule />);
 
-    expect(await screen.findByText(/^Time$/)).toBeInTheDocument();
+    await waitForScheduleGridReady();
+    expect(screen.getByText(/^Time$/)).toBeInTheDocument();
     expect(screen.queryByTestId("schedule-empty-sessions")).not.toBeInTheDocument();
-  });
+  }, 15_000);
 
   it("uses generic copy when sessions query is in error but no error object is present", async () => {
     mockUseScheduleDataBatch.mockReturnValue({

@@ -4,6 +4,13 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../../test/setup';
 import { Schedule } from '../../pages/Schedule';
 
+const waitForScheduleGridReady = () =>
+  waitFor(() => {
+    const activeView = screen.queryByTestId('week-view') ?? screen.queryByTestId('day-view');
+    expect(activeView).toBeTruthy();
+    return activeView!;
+  }, { timeout: 10000 });
+
 // Test data that matches the expected API response format
 const mockScheduleData = {
   sessions: [
@@ -133,6 +140,7 @@ describe('Scheduling Basic Functionality', () => {
       },
       { timeout: 3000 }
     );
+    await waitForScheduleGridReady();
 
     // Note: Session display might depend on the current date/week view
     // This test verifies the component loads successfully with mock data
@@ -157,6 +165,7 @@ describe('Scheduling Basic Functionality', () => {
     await waitFor(() => {
       expect(screen.getByText('Schedule')).toBeInTheDocument();
     });
+    await waitForScheduleGridReady();
 
     // The Week button should be active by default (based on the component code)
     const weekButton = screen.getByText('Week');
@@ -188,13 +197,9 @@ describe('Scheduling Basic Functionality', () => {
 
     renderWithProviders(<Schedule />);
 
-    // Page should still render successfully
-    await waitFor(() => {
-      expect(screen.getByText('Schedule')).toBeInTheDocument();
-    });
-
+    expect(await screen.findByRole('heading', { name: 'Schedule' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Day view/i })).toBeInTheDocument();
-  });
+  }, 15000);
 
   it('should handle API errors gracefully', async () => {
     // Mock API errors

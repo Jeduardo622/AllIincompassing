@@ -96,7 +96,10 @@ const ScheduleWeekViewComponent: React.FC<ScheduleWeekViewProps> = ({
   }, [allowDragAndDrop, clearDragState, onRescheduleSession, sessionsById]);
 
   return (
-    <div className="bg-white dark:bg-dark-lighter rounded-lg shadow overflow-x-auto">
+    <div
+      className="bg-white dark:bg-dark-lighter rounded-lg shadow overflow-x-auto"
+      data-testid="week-view"
+    >
       <div className="grid grid-cols-[72px_repeat(6,minmax(90px,1fr))] sm:grid-cols-7 border-b dark:border-gray-700 min-w-[620px] sm:min-w-[800px]">
         <div className="py-2 px-1.5 text-center text-sm font-medium text-gray-500 border-r dark:border-gray-700 dark:text-gray-400 sm:px-2">
           Time

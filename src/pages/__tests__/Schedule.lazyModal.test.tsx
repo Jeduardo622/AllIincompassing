@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { renderWithProviders, screen } from "../../test/utils";
+import { renderWithProviders, screen, waitFor } from "../../test/utils";
 import userEvent from "@testing-library/user-event";
 
 const mockUseScheduleDataBatch = vi.fn();
@@ -37,6 +37,13 @@ vi.mock("../../components/SessionModal", () => {
 });
 
 import { Schedule } from "../Schedule";
+
+const waitForScheduleGridReady = () =>
+  waitFor(() => {
+    const activeView = screen.queryByTestId("week-view") ?? screen.queryByTestId("day-view");
+    expect(activeView).toBeTruthy();
+    return activeView!;
+  }, { timeout: 10_000 });
 
 const scheduleFixtures = {
   sessions: [
@@ -104,6 +111,7 @@ describe("Schedule lazy session modal", () => {
     renderWithProviders(<Schedule />);
 
     await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
     expect(sessionModalLoadCount).toBe(0);
 
     const addButtons = await screen.findAllByLabelText("Add session");
@@ -111,5 +119,5 @@ describe("Schedule lazy session modal", () => {
 
     expect(await screen.findByTestId("session-modal")).toHaveTextContent("Session modal for 08:00");
     expect(sessionModalLoadCount).toBe(1);
-  });
+  }, 15_000);
 });

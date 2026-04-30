@@ -603,6 +603,21 @@ describe("bookSession", () => {
     });
     expect(mockedConfirmSessionBooking).not.toHaveBeenCalled();
   });
+
+  it("fails closed when hold authority rejects the request", async () => {
+    const bookSession = await importBookSession();
+    mockedRequestSessionHold.mockRejectedValueOnce({
+      status: 401,
+      code: "SESSIONS_HOLD_UNAUTHORIZED",
+      message: "Unauthorized",
+    });
+
+    await expect(bookSession(basePayload)).rejects.toMatchObject({
+      status: 502,
+      code: "BOOKING_AUTHORITY_UNAVAILABLE",
+    });
+    expect(mockedConfirmSessionBooking).not.toHaveBeenCalled();
+  });
 });
 
 afterAll(() => {

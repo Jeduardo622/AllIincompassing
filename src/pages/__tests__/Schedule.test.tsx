@@ -270,6 +270,7 @@ describe("Schedule", () => {
       null,
       null,
       false,
+      null,
     );
     expect(mockUseDropdownData).toHaveBeenCalledWith({ enabled: false });
   });

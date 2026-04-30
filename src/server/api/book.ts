@@ -1,5 +1,5 @@
 import "../bootstrapSupabase";
-import { bookSession } from "../bookSession";
+import { bookSession, deriveBookSessionOccurrences } from "../bookSession";
 import {
   consumeRateLimit,
   corsHeadersForRequest,
@@ -28,7 +28,7 @@ const JSON_CONTENT_TYPE_HEADER: Record<string, string> = {
 };
 
 function shouldFallbackToLegacyBooking(status: number): boolean {
-  return status === 401 || status === 403 || status === 404 || status === 408 || status >= 500;
+  return status === 404 || status === 408 || status >= 500;
 }
 
 function normalizePayload(
@@ -42,8 +42,18 @@ function normalizePayload(
     agentOperationId?: string;
   },
 ): BookSessionRequest {
+  const occurrences = deriveBookSessionOccurrences({
+    session: body.session,
+    recurrence: body.recurrence,
+    occurrences: body.occurrences,
+    startTimeOffsetMinutes: body.startTimeOffsetMinutes,
+    endTimeOffsetMinutes: body.endTimeOffsetMinutes,
+    timeZone: body.timeZone,
+  });
+
   return {
     ...body,
+    occurrences,
     idempotencyKey,
     accessToken,
     anonKey,
@@ -267,14 +277,53 @@ export async function bookHandler(request: Request): Promise<Response> {
   }
 
   const body: BookSessionApiRequestBody = parseResult.data;
+  let derivedOccurrences;
+  try {
+    derivedOccurrences = deriveBookSessionOccurrences({
+      session: body.session,
+      recurrence: body.recurrence,
+      occurrences: body.occurrences,
+      startTimeOffsetMinutes: body.startTimeOffsetMinutes,
+      endTimeOffsetMinutes: body.endTimeOffsetMinutes,
+      timeZone: body.timeZone,
+    });
+  } catch (error) {
+    const status = typeof (error as { status?: unknown })?.status === "number"
+      ? (error as { status: number }).status
+      : 500;
+    if (status === 400) {
+      const code = typeof (error as { code?: unknown })?.code === "string"
+        ? (error as { code: string }).code
+        : undefined;
+      logger.warn("Rejected invalid booking occurrence payload", {
+        metadata: {
+          status,
+          code: code ?? null,
+        },
+        context: { handler: "bookHandler" },
+      });
+      return errorResponse(request, "validation_error", "Booking failed", {
+        status,
+        extra: {
+          ...(code ? { code } : {}),
+          conflictCode: code ?? null,
+        },
+      });
+    }
+    throw error;
+  }
 
   if (getApiAuthorityMode() === "edge") {
     try {
+      const edgePayload: BookSessionApiRequestBody = {
+        ...body,
+        occurrences: derivedOccurrences,
+      };
       const forwarded = await proxyToEdgeAuthority(request, {
         functionName: "sessions-book",
         accessToken,
         method: "POST",
-        body: JSON.stringify(body),
+        body: JSON.stringify(edgePayload),
       });
       const forwardedBody = await forwarded.text();
       if (!shouldFallbackToLegacyBooking(forwarded.status)) {
@@ -325,7 +374,10 @@ export async function bookHandler(request: Request): Promise<Response> {
       correlationId: request.headers.get("x-correlation-id") ?? undefined,
       agentOperationId: request.headers.get("x-agent-operation-id") ?? undefined,
     };
-    const result = await bookSession(normalizePayload(body, idempotencyKey, accessToken, anonKey, trace));
+    const result = await bookSession({
+      ...normalizePayload(body, idempotencyKey, accessToken, anonKey, trace),
+      occurrences: derivedOccurrences,
+    });
     const headers = idempotencyKey
       ? { ...JSON_CONTENT_TYPE_HEADER, "Idempotency-Key": idempotencyKey }
       : { ...JSON_CONTENT_TYPE_HEADER };
@@ -408,6 +460,7 @@ export async function bookHandler(request: Request): Promise<Response> {
       {
         status,
         extra: {
+          ...(conflictCode ? { code: conflictCode } : {}),
           conflictCode: conflictCode ?? null,
           ...(isUnauthorized
             ? {

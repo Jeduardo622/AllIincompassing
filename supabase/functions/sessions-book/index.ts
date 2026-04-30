@@ -19,6 +19,12 @@ const requestSchema = z.object({
   startTimeOffsetMinutes: z.number(),
   endTimeOffsetMinutes: z.number(),
   timeZone: z.string().min(1),
+  occurrences: z.array(z.object({
+    startTime: z.string(),
+    endTime: z.string(),
+    startOffsetMinutes: z.number(),
+    endOffsetMinutes: z.number(),
+  })).optional(),
   holdSeconds: z.number().int().positive().optional(),
   overrides: z.record(z.unknown()).optional(),
   recurrence: z.unknown().optional(),
@@ -78,6 +84,9 @@ const parseEdgeJson = async (response: Response): Promise<Record<string, unknown
   }
 };
 
+const occurrenceKey = (startTime: string, endTime: string): string =>
+  `${new Date(startTime).toISOString()}::${new Date(endTime).toISOString()}`;
+
 /** Plain objects for bookSessionEnvelopeSchema (z.record); never null — matches legacy bookSession shape. */
 const asBookingRecord = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -118,6 +127,14 @@ Deno.serve(async (req) => {
   const baseUrl = normalizeEdgeBase();
   const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() || null;
   const headers = forwardHeaders(req, idempotencyKey);
+  const occurrencePayloads = Array.isArray(payload.occurrences) && payload.occurrences.length > 0
+    ? payload.occurrences
+    : [{
+        startTime: payload.session.start_time,
+        endTime: payload.session.end_time,
+        startOffsetMinutes: payload.startTimeOffsetMinutes,
+        endOffsetMinutes: payload.endTimeOffsetMinutes,
+      }];
 
   const holdResponse = await fetch(`${baseUrl}/sessions-hold`, {
     method: "POST",
@@ -132,6 +149,12 @@ Deno.serve(async (req) => {
       start_time_offset_minutes: payload.startTimeOffsetMinutes,
       end_time_offset_minutes: payload.endTimeOffsetMinutes,
       time_zone: payload.timeZone,
+      occurrences: occurrencePayloads.map((occurrence) => ({
+        start_time: occurrence.startTime,
+        end_time: occurrence.endTime,
+        start_time_offset_minutes: occurrence.startOffsetMinutes,
+        end_time_offset_minutes: occurrence.endOffsetMinutes,
+      })),
     }),
   });
 
@@ -153,6 +176,47 @@ Deno.serve(async (req) => {
     return json(req, 500, { success: false, error: "Hold response missing hold key" });
   }
 
+  const holdOccurrences = Array.isArray((holdBody.data as { holds?: unknown[] } | undefined)?.holds)
+    ? ((holdBody.data as { holds: Array<Record<string, unknown>> }).holds)
+    : [];
+  const confirmOccurrences = holdOccurrences.length > 0
+    ? (() => {
+        const occurrenceByWindow = new Map(
+          occurrencePayloads.map((occurrence) => [occurrenceKey(occurrence.startTime, occurrence.endTime), occurrence] as const),
+        );
+
+        return holdOccurrences.map((heldOccurrence) => {
+          const holdStartTime = typeof heldOccurrence.startTime === "string" ? heldOccurrence.startTime : null;
+          const holdEndTime = typeof heldOccurrence.endTime === "string" ? heldOccurrence.endTime : null;
+          const holdKey = typeof heldOccurrence.holdKey === "string" ? heldOccurrence.holdKey : null;
+          if (!holdStartTime || !holdEndTime || !holdKey) {
+            throw new Error("Hold response missing occurrence window metadata");
+          }
+
+          const occurrence = occurrenceByWindow.get(occurrenceKey(holdStartTime, holdEndTime));
+          if (!occurrence) {
+            throw new Error("Hold occurrences did not align with requested booking windows");
+          }
+
+          return {
+            hold_key: holdKey,
+            session: {
+              ...payload.session,
+              start_time: occurrence.startTime,
+              end_time: occurrence.endTime,
+            },
+            cpt: payload.overrides ?? null,
+            goal_ids: Array.isArray(payload.session.goal_ids)
+              ? payload.session.goal_ids
+              : [payload.session.goal_id].filter(Boolean),
+            start_time_offset_minutes: occurrence.startOffsetMinutes,
+            end_time_offset_minutes: occurrence.endOffsetMinutes,
+            time_zone: payload.timeZone,
+          };
+        });
+      })()
+    : undefined;
+
   const confirmResponse = await fetch(`${baseUrl}/sessions-confirm`, {
     method: "POST",
     headers,
@@ -166,6 +230,7 @@ Deno.serve(async (req) => {
       start_time_offset_minutes: payload.startTimeOffsetMinutes,
       end_time_offset_minutes: payload.endTimeOffsetMinutes,
       time_zone: payload.timeZone,
+      ...(confirmOccurrences ? { occurrences: confirmOccurrences } : {}),
     }),
   });
 

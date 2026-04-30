@@ -13,6 +13,70 @@ const loggerMock = vi.hoisted(() => ({
 
 vi.mock("../bookSession", () => ({
   bookSession: bookSessionMock,
+  deriveBookSessionOccurrences: (payload: {
+    session: { start_time: string; end_time: string };
+    startTimeOffsetMinutes: number;
+    endTimeOffsetMinutes: number;
+    occurrences?: Array<{
+      startTime: string;
+      endTime: string;
+      startOffsetMinutes: number;
+      endOffsetMinutes: number;
+    }>;
+    recurrence?: { count?: number; timeZone?: string } | null;
+    timeZone: string;
+  }) => {
+    if (payload.recurrence?.count === 2 && payload.session.start_time === "2026-03-30T05:00:00.000Z") {
+      const derivedOccurrences = [
+        {
+          startTime: "2026-03-30T05:00:00.000Z",
+          endTime: "2026-03-30T05:30:00.000Z",
+          startOffsetMinutes: payload.startTimeOffsetMinutes,
+          endOffsetMinutes: payload.endTimeOffsetMinutes,
+        },
+        {
+          startTime: "2026-04-06T05:00:00.000Z",
+          endTime: "2026-04-06T05:30:00.000Z",
+          startOffsetMinutes: payload.startTimeOffsetMinutes,
+          endOffsetMinutes: payload.endTimeOffsetMinutes,
+        },
+      ];
+
+      if (!Array.isArray(payload.occurrences) || payload.occurrences.length === 0) {
+        return derivedOccurrences;
+      }
+
+      const matches = payload.occurrences.length === derivedOccurrences.length
+        && payload.occurrences.every((occurrence, index) =>
+          occurrence.startTime === derivedOccurrences[index]?.startTime
+          && occurrence.endTime === derivedOccurrences[index]?.endTime
+          && occurrence.startOffsetMinutes === derivedOccurrences[index]?.startOffsetMinutes
+          && occurrence.endOffsetMinutes === derivedOccurrences[index]?.endOffsetMinutes
+        );
+      if (!matches) {
+        const error = new Error("Provided booking occurrences do not match the server-derived recurrence windows.") as Error & {
+          status?: number;
+          code?: string;
+        };
+        error.status = 400;
+        error.code = "INVALID_OCCURRENCES";
+        throw error;
+      }
+
+      return derivedOccurrences;
+    }
+
+    if (Array.isArray(payload.occurrences) && payload.occurrences.length > 0) {
+      return payload.occurrences;
+    }
+
+    return [{
+      startTime: payload.session.start_time,
+      endTime: payload.session.end_time,
+      startOffsetMinutes: payload.startTimeOffsetMinutes,
+      endOffsetMinutes: payload.endTimeOffsetMinutes,
+    }];
+  },
 }));
 
 vi.mock("../../lib/logger/logger", () => ({
@@ -223,6 +287,51 @@ describe("bookHandler", () => {
     expect(body.success).toBe(false);
     expect(body.error).toMatch(/authorization/i);
     expect(bookSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects caller-supplied occurrences that do not match the server-derived recurrence windows", async () => {
+    process.env.API_AUTHORITY_MODE = "edge";
+    const bookHandler = await importBookHandler();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const response = await bookHandler(
+      createRequest({
+        ...validPayload,
+        recurrence: {
+          rule: "FREQ=WEEKLY;COUNT=2;BYDAY=MO",
+          count: 2,
+          timeZone: "America/Los_Angeles",
+        },
+        session: {
+          ...validPayload.session,
+          start_time: "2026-03-30T05:00:00.000Z",
+          end_time: "2026-03-30T05:30:00.000Z",
+        },
+        occurrences: [
+          {
+            startTime: "2026-03-30T05:00:00.000Z",
+            endTime: "2026-03-30T05:30:00.000Z",
+            startOffsetMinutes: 0,
+            endOffsetMinutes: 0,
+          },
+          {
+            startTime: "2026-04-13T05:00:00.000Z",
+            endTime: "2026-04-13T05:30:00.000Z",
+            startOffsetMinutes: 0,
+            endOffsetMinutes: 0,
+          },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    const payload = await response.json();
+    expect(payload.code).toBe("INVALID_OCCURRENCES");
+    expect(bookSessionMock).not.toHaveBeenCalled();
+    expect(
+      fetchSpy.mock.calls.some(([url]) => String(url).includes("/functions/v1/sessions-book")),
+    ).toBe(false);
+    fetchSpy.mockRestore();
   });
 
   it("accepts session payloads when audit timestamps omit timezone offsets (RPC-shaped rows)", async () => {
@@ -682,6 +791,48 @@ describe("bookHandler", () => {
     expect(body.orchestration).toBeUndefined();
   });
 
+  it("forwards derived recurrence occurrences to edge booking authority", async () => {
+    process.env.API_AUTHORITY_MODE = "edge";
+    let forwardedBody: Record<string, unknown> | null = null;
+    server.use(
+      http.post(`${TEST_SUPABASE_EDGE_URL.replace(/\/$/, "")}/sessions-book`, async ({ request }) => {
+        forwardedBody = await request.json() as Record<string, unknown>;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            session: { id: "session-recurring" },
+            sessions: [{ id: "session-recurring-1" }, { id: "session-recurring-2" }],
+            hold: { holdKey: "hold-recurring", holdId: "hold-recurring", expiresAt: "2026-03-30T05:05:00.000Z", holds: [] },
+            cpt: {},
+          },
+        });
+      }),
+    );
+
+    const recurringPayload = {
+      ...validPayload,
+      session: {
+        ...validPayload.session,
+        start_time: "2026-03-30T05:00:00.000Z",
+        end_time: "2026-03-30T05:30:00.000Z",
+      },
+      recurrence: {
+        rule: "FREQ=WEEKLY;INTERVAL=1",
+        count: 2,
+        timeZone: "America/Los_Angeles",
+      },
+    };
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest(recurringPayload));
+
+    expect(response.status).toBe(200);
+    expect(bookSessionMock).not.toHaveBeenCalled();
+    expect(Array.isArray(forwardedBody?.occurrences)).toBe(true);
+    expect((forwardedBody?.occurrences as unknown[])?.length).toBe(2);
+    expect((forwardedBody?.occurrences as Array<Record<string, unknown>>)?.[1]?.startTime).toBe("2026-04-06T05:00:00.000Z");
+  });
+
   it("falls back to legacy booking when edge authority is unavailable", async () => {
     process.env.API_AUTHORITY_MODE = "edge";
     server.use(
@@ -755,53 +906,21 @@ describe("bookHandler", () => {
     expect(body.code).toBe("THERAPIST_CONFLICT");
   });
 
-  it("falls back to legacy booking when edge authority returns 401", async () => {
+  it("does not fallback to legacy booking when edge authority returns 401", async () => {
     process.env.API_AUTHORITY_MODE = "edge";
     server.use(
       http.post(`${TEST_SUPABASE_EDGE_URL.replace(/\/$/, "")}/sessions-book`, () =>
         HttpResponse.json({ success: false, error: "Missing authorization token" }, { status: 401 })),
     );
-    bookSessionMock.mockResolvedValueOnce({
-      session: {
-        id: "session-edge-401-fallback",
-        client_id: "client-1",
-        therapist_id: "therapist-1",
-        start_time: "2025-01-01T10:00:00Z",
-        end_time: "2025-01-01T11:00:00Z",
-        status: "scheduled",
-        notes: "",
-        created_at: "2025-01-01T09:00:00Z",
-        created_by: "user-1",
-        updated_at: "2025-01-01T09:00:00Z",
-        updated_by: "user-1",
-        duration_minutes: 60,
-      },
-      sessions: [],
-      hold: {
-        holdKey: "hold",
-        holdId: "1",
-        startTime: "2025-01-01T10:00:00Z",
-        endTime: "2025-01-01T11:00:00Z",
-        expiresAt: "2025-01-01T10:05:00Z",
-        holds: [],
-      },
-      cpt: {
-        code: "97153",
-        description: "Adaptive behavior treatment by protocol",
-        modifiers: [],
-        source: "fallback",
-        durationMinutes: 60,
-      },
-    });
 
     const bookHandler = await importBookHandler();
     const response = await bookHandler(createRequest(validPayload));
 
-    expect(response.status).toBe(200);
-    expect(bookSessionMock).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(401);
+    expect(bookSessionMock).not.toHaveBeenCalled();
     const body = await response.json();
-    expect(body.success).toBe(true);
-    expect(body.data.session.id).toBe("session-edge-401-fallback");
+    expect(body.success).toBe(false);
+    expect(body.error).toBe("Missing authorization token");
   });
 
   it("falls back to legacy booking when edge authority request throws", async () => {

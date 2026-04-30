@@ -108,7 +108,7 @@ const createUserScopedFallbackClient = (payload: BookSessionRequest) => {
   });
 };
 
-async function bookSessionViaServiceRoleFallback(payload: BookSessionRequest, occurrences: RecurrenceOccurrence[], cpt: ReturnType<typeof deriveCptMetadata>): Promise<BookSessionResult> {
+async function _bookSessionViaServiceRoleFallback(payload: BookSessionRequest, occurrences: RecurrenceOccurrence[], cpt: ReturnType<typeof deriveCptMetadata>): Promise<BookSessionResult> {
   const buildFallbackResponse = (insertedRows: Array<Record<string, unknown>>): BookSessionResult => {
     const holds = occurrences.map((occurrence, index) => {
       const sessionId = typeof insertedRows[index]?.id === "string" ? insertedRows[index].id : `fallback-${index + 1}`;
@@ -530,6 +530,58 @@ function generateOccurrences(
   return occurrences;
 }
 
+export function deriveBookSessionOccurrences(payload: Pick<
+  BookSessionRequest,
+  "session" | "recurrence" | "startTimeOffsetMinutes" | "endTimeOffsetMinutes" | "timeZone" | "occurrences"
+>): RecurrenceOccurrence[] {
+  const recurrence = payload.recurrence ?? payload.session.recurrence ?? null;
+  const generatedOccurrences = generateOccurrences(payload.session, recurrence, {
+    startOffsetMinutes: payload.startTimeOffsetMinutes,
+    endOffsetMinutes: payload.endTimeOffsetMinutes,
+    timeZone: payload.timeZone,
+  });
+
+  if (!Array.isArray(payload.occurrences) || payload.occurrences.length === 0) {
+    return generatedOccurrences;
+  }
+
+  if (payload.occurrences.length !== generatedOccurrences.length) {
+    const mismatchError = new Error("Provided booking occurrences do not match the server-derived recurrence windows.") as Error & {
+      status?: number;
+      code?: string;
+    };
+    mismatchError.status = 400;
+    mismatchError.code = "INVALID_OCCURRENCES";
+    throw mismatchError;
+  }
+
+  const providedByWindow = new Map<string, RecurrenceOccurrence>();
+  for (const occurrence of payload.occurrences) {
+    const key = occurrenceKey(occurrence.startTime, occurrence.endTime);
+    providedByWindow.set(key, occurrence);
+  }
+
+  for (const occurrence of generatedOccurrences) {
+    const key = occurrenceKey(occurrence.startTime, occurrence.endTime);
+    const providedOccurrence = providedByWindow.get(key);
+    if (
+      !providedOccurrence ||
+      providedOccurrence.startOffsetMinutes !== occurrence.startOffsetMinutes ||
+      providedOccurrence.endOffsetMinutes !== occurrence.endOffsetMinutes
+    ) {
+      const mismatchError = new Error("Provided booking occurrences do not match the server-derived recurrence windows.") as Error & {
+        status?: number;
+        code?: string;
+      };
+      mismatchError.status = 400;
+      mismatchError.code = "INVALID_OCCURRENCES";
+      throw mismatchError;
+    }
+  }
+
+  return generatedOccurrences;
+}
+
 export async function bookSession(payload: BookSessionRequest): Promise<BookSessionResult> {
   if (!payload?.session) {
     throw new Error("Session payload is required");
@@ -546,11 +598,7 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
 
   const sessionId = typeof payload.session.id === "string" ? payload.session.id : undefined;
 
-  const occurrences = generateOccurrences(payload.session, recurrence, {
-    startOffsetMinutes: payload.startTimeOffsetMinutes,
-    endOffsetMinutes: payload.endTimeOffsetMinutes,
-    timeZone: payload.timeZone,
-  });
+  const occurrences = deriveBookSessionOccurrences(payload);
 
   const [primaryOccurrence] = occurrences;
   if (!primaryOccurrence) {
@@ -585,7 +633,12 @@ export async function bookSession(payload: BookSessionRequest): Promise<BookSess
       ? (error as { status: number }).status
       : 0;
     if (status === 401 || status === 403) {
-      return bookSessionViaServiceRoleFallback(payload, occurrences, cpt);
+      const authorizationError = new Error(
+        "Booking authority rejected the request before hold acquisition; refusing unsafe fallback.",
+      ) as Error & { status?: number; code?: string };
+      authorizationError.status = 502;
+      authorizationError.code = "BOOKING_AUTHORITY_UNAVAILABLE";
+      throw authorizationError;
     }
     throw error;
   }

@@ -108,6 +108,13 @@ describe("Schedule org-context guard", () => {
       );
     });
 
+    it("passes the active organization id to useSessionsOptimized", () => {
+      renderWithProviders(<Schedule />);
+      const calls = sessionsMock.mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      expect(calls[0][5]).toBe("org-abc-123");
+    });
+
     it("passes enabled: true to useDropdownData", () => {
       renderWithProviders(<Schedule />);
       expect(dropdownMock).toHaveBeenCalledWith({ enabled: true });

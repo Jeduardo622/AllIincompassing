@@ -37,6 +37,7 @@ export interface BookSessionRequest {
   startTimeOffsetMinutes: number;
   endTimeOffsetMinutes: number;
   timeZone: string;
+  occurrences?: RecurrenceOccurrence[];
   holdSeconds?: number;
   idempotencyKey?: string;
   overrides?: BookingOverrides;
@@ -75,6 +76,13 @@ const recurrenceSchema = z.object({
   until: isoDateTime.optional(),
   exceptions: z.array(isoDateTime).optional(),
   timeZone: nonEmptyString.optional(),
+});
+
+const occurrenceSchema = z.object({
+  startTime: isoDateTime,
+  endTime: isoDateTime,
+  startOffsetMinutes: z.number().int(),
+  endOffsetMinutes: z.number().int(),
 });
 
 const bookingOverridesSchema = z.object({
@@ -126,6 +134,7 @@ export const bookSessionApiRequestBodySchema = z.object({
   startTimeOffsetMinutes: z.number().int(),
   endTimeOffsetMinutes: z.number().int(),
   timeZone: nonEmptyString,
+  occurrences: z.array(occurrenceSchema).min(1).optional(),
   holdSeconds: z.number().int().min(0).optional(),
   overrides: bookingOverridesSchema.optional(),
   recurrence: recurrenceSchema.nullable().optional(),

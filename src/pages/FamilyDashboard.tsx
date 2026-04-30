@@ -175,7 +175,7 @@ export function FamilyDashboard() {
           <div>
             <h2 className="text-lg font-semibold">We were unable to load your family dashboard.</h2>
             <p className="mt-1 text-sm text-red-600">
-              {guardianClientsQuery.error?.message ?? 'Please refresh the page or try again later.'}
+              Please refresh the page or try again in a moment. If this keeps happening, contact your care team.
             </p>
           </div>
         </div>

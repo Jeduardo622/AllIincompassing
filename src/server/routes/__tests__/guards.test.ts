@@ -91,4 +91,11 @@ describe('route guard access controls', () => {
     expect(hasRoleAccess('/schedule', 'therapist')).toBe(true);
     expect(hasRoleAccess('/schedule', 'admin')).toBe(true);
   });
+
+  it('does not treat elevated non-client roles as family-dashboard eligible', () => {
+    expect(findGuardForPath('/family')?.requiresGuardian).toBe(true);
+    expect(hasRoleAccess('/family', 'client')).toBe(true);
+    expect(hasRoleAccess('/family', 'admin')).toBe(false);
+    expect(hasRoleAccess('/family', 'super_admin')).toBe(false);
+  });
 });

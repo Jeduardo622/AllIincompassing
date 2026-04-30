@@ -22,8 +22,8 @@ const requestSchema = z.object({
   endTimeOffsetMinutes: z.number(),
   timeZone: z.string().min(1),
   occurrences: z.array(z.object({
-    startTime: z.string(),
-    endTime: z.string(),
+    startTime: isoDateTime,
+    endTime: isoDateTime,
     startOffsetMinutes: z.number(),
     endOffsetMinutes: z.number(),
   })).optional(),

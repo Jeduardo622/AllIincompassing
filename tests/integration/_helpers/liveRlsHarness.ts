@@ -12,13 +12,15 @@ type AdminAuthFixture = {
   userId: string;
   email: string;
   password: string;
-  organizationId: string;
+  organizationId: string | null;
 };
 
 type OrgDataFixture = {
   therapistId: string;
   clientId: string;
   sessionId: string;
+  sessionHoldId: string;
+  sessionHoldKey: string;
   billingRecordId: string;
 };
 
@@ -36,12 +38,18 @@ export type LiveRlsHarness =
       orgB: OrgDataFixture;
       orgAAdminUserId: string;
       orgBAdminUserId: string;
+      orgATherapistUserId: string;
+      orgBTherapistUserId: string;
+      outsiderUserId: string;
       callTrustedDashboardRpc: (
         actorUserId: string,
         organizationId: string,
       ) => Promise<Awaited<ReturnType<SupabaseClient["rpc"]>>>;
       signInAdminA: () => Promise<TypedClient>;
       signInAdminB: () => Promise<TypedClient>;
+      signInTherapistA: () => Promise<TypedClient>;
+      signInTherapistB: () => Promise<TypedClient>;
+      signInOutsider: () => Promise<TypedClient>;
       cleanup: () => Promise<void>;
     };
 
@@ -53,18 +61,49 @@ const parseBooleanEnv = (value: string | undefined): boolean => {
   return normalized === "1" || normalized === "true";
 };
 
-const createAdminFixture = async (
+const assignNamedRole = async (
   serviceClient: TypedClient,
-  organizationId: string,
+  userId: string,
+  roleName: "therapist",
+): Promise<void> => {
+  const roleLookup = await serviceClient.from("roles").select("id").eq("name", roleName).maybeSingle();
+  if (roleLookup.error || !roleLookup.data?.id) {
+    throw roleLookup.error ?? new Error(`Role lookup failed for ${roleName}`);
+  }
+
+  const insertResult = await serviceClient.from("user_roles").insert({
+    user_id: userId,
+    role_id: roleLookup.data.id,
+    is_active: true,
+  });
+  if (insertResult.error && insertResult.error.code !== "23505") {
+    throw insertResult.error;
+  }
+};
+
+const createAuthFixture = async (
+  serviceClient: TypedClient,
+  options: {
+    organizationId: string | null;
+    role: "admin" | "therapist" | "none";
+    label: string;
+  },
 ): Promise<AdminAuthFixture> => {
-  const email = `admin.${Date.now()}.${Math.random().toString(36).slice(2, 8)}@example.com`;
+  const email = `${options.label}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}@example.com`;
   const password = `P@ssw0rd-${Math.random().toString(36).slice(2, 10)}`;
+  const userMetadata: Record<string, string> = {};
+  if (options.organizationId) {
+    userMetadata.organization_id = options.organizationId;
+  }
+  if (options.role !== "none") {
+    userMetadata.role = options.role;
+  }
 
   const { data: createdUser, error: createUserError } = await serviceClient.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
-    user_metadata: { organization_id: organizationId },
+    user_metadata: userMetadata,
   });
 
   if (createUserError || !createdUser?.user) {
@@ -73,24 +112,31 @@ const createAdminFixture = async (
 
   const userId = createdUser.user.id;
 
-  const assignResult = await serviceClient.rpc("assign_admin_role", {
-    user_email: email,
-    organization_id: organizationId,
-    reason: "integration-test bootstrap",
-  });
-  if (assignResult.error) {
-    throw assignResult.error;
+  if (options.role === "admin") {
+    if (!options.organizationId) {
+      throw new Error("Admin fixtures require an organization id");
+    }
+    const assignResult = await serviceClient.rpc("assign_admin_role", {
+      user_email: email,
+      organization_id: options.organizationId,
+      reason: "integration-test bootstrap",
+    });
+    if (assignResult.error) {
+      throw assignResult.error;
+    }
+  } else if (options.role === "therapist") {
+    await assignNamedRole(serviceClient, userId, "therapist");
   }
 
-  return { userId, email, password, organizationId };
+  return { userId, email, password, organizationId: options.organizationId };
 };
 
 const seedOrgData = async (
   serviceClient: TypedClient,
   organizationId: string,
   label: string,
+  therapistId: string,
 ): Promise<OrgDataFixture> => {
-  const therapistId = randomUUID();
   const clientId = randomUUID();
   const sessionId = randomUUID();
 
@@ -158,10 +204,33 @@ const seedOrgData = async (
     throw billingInsert.error ?? new Error("Billing record creation failed");
   }
 
+  const holdStart = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+  const holdEnd = new Date(holdStart.getTime() + 30 * 60 * 1000);
+  const holdExpiresAt = new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString();
+  const sessionHoldKey = randomUUID();
+  const holdInsert = await serviceClient
+    .from("session_holds")
+    .insert({
+      therapist_id: therapistId,
+      client_id: clientId,
+      start_time: holdStart.toISOString(),
+      end_time: holdEnd.toISOString(),
+      expires_at: holdExpiresAt,
+      organization_id: organizationId,
+      hold_key: sessionHoldKey,
+    })
+    .select("id")
+    .single();
+  if (holdInsert.error || !holdInsert.data?.id) {
+    throw holdInsert.error ?? new Error("Session hold creation failed");
+  }
+
   return {
     therapistId,
     clientId,
     sessionId,
+    sessionHoldId: holdInsert.data.id,
+    sessionHoldKey,
     billingRecordId: billingInsert.data.id,
   };
 };
@@ -222,10 +291,25 @@ export async function setupLiveRlsHarness(): Promise<LiveRlsHarness> {
 
   const orgAId = randomUUID();
   const orgBId = randomUUID();
-  const orgAAdmin = await createAdminFixture(serviceClient, orgAId);
-  const orgBAdmin = await createAdminFixture(serviceClient, orgBId);
-  const orgA = await seedOrgData(serviceClient, orgAId, "org-a");
-  const orgB = await seedOrgData(serviceClient, orgBId, "org-b");
+  const orgAAdmin = await createAuthFixture(serviceClient, { organizationId: orgAId, role: "admin", label: "admin.org-a" });
+  const orgBAdmin = await createAuthFixture(serviceClient, { organizationId: orgBId, role: "admin", label: "admin.org-b" });
+  const orgATherapist = await createAuthFixture(serviceClient, {
+    organizationId: orgAId,
+    role: "therapist",
+    label: "therapist.org-a",
+  });
+  const orgBTherapist = await createAuthFixture(serviceClient, {
+    organizationId: orgBId,
+    role: "therapist",
+    label: "therapist.org-b",
+  });
+  const outsider = await createAuthFixture(serviceClient, {
+    organizationId: null,
+    role: "none",
+    label: "outsider",
+  });
+  const orgA = await seedOrgData(serviceClient, orgAId, "org-a", orgATherapist.userId);
+  const orgB = await seedOrgData(serviceClient, orgBId, "org-b", orgBTherapist.userId);
 
   const signInAdmin = async (admin: AdminAuthFixture): Promise<TypedClient> => {
     const client = createUserClient(supabaseUrl, supabaseAnonKey);
@@ -240,12 +324,16 @@ export async function setupLiveRlsHarness(): Promise<LiveRlsHarness> {
   };
 
   const cleanup = async (): Promise<void> => {
+    await serviceClient.from("session_holds").delete().in("id", [orgA.sessionHoldId, orgB.sessionHoldId]);
     await serviceClient.from("billing_records").delete().in("id", [orgA.billingRecordId, orgB.billingRecordId]);
     await serviceClient.from("sessions").delete().in("id", [orgA.sessionId, orgB.sessionId]);
     await serviceClient.from("clients").delete().in("id", [orgA.clientId, orgB.clientId]);
     await serviceClient.from("therapists").delete().in("id", [orgA.therapistId, orgB.therapistId]);
     await serviceClient.auth.admin.deleteUser(orgAAdmin.userId);
     await serviceClient.auth.admin.deleteUser(orgBAdmin.userId);
+    await serviceClient.auth.admin.deleteUser(orgATherapist.userId);
+    await serviceClient.auth.admin.deleteUser(orgBTherapist.userId);
+    await serviceClient.auth.admin.deleteUser(outsider.userId);
   };
 
   return {
@@ -256,6 +344,9 @@ export async function setupLiveRlsHarness(): Promise<LiveRlsHarness> {
     orgB,
     orgAAdminUserId: orgAAdmin.userId,
     orgBAdminUserId: orgBAdmin.userId,
+    orgATherapistUserId: orgATherapist.userId,
+    orgBTherapistUserId: orgBTherapist.userId,
+    outsiderUserId: outsider.userId,
     callTrustedDashboardRpc: (actorUserId: string, organizationId: string) =>
       serviceClient.rpc("get_dashboard_data_for_org", {
         actor_user_id: actorUserId,
@@ -263,6 +354,9 @@ export async function setupLiveRlsHarness(): Promise<LiveRlsHarness> {
       }),
     signInAdminA: () => signInAdmin(orgAAdmin),
     signInAdminB: () => signInAdmin(orgBAdmin),
+    signInTherapistA: () => signInAdmin(orgATherapist),
+    signInTherapistB: () => signInAdmin(orgBTherapist),
+    signInOutsider: () => signInAdmin(outsider),
     cleanup,
   };
 }

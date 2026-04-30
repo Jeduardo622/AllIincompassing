@@ -21,6 +21,7 @@ const ORIGINAL_ENV = {
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
   SUPABASE_EDGE_URL: process.env.SUPABASE_EDGE_URL,
   DEFAULT_ORGANIZATION_ID: process.env.DEFAULT_ORGANIZATION_ID,
+  API_AUTHORITY_MODE: process.env.API_AUTHORITY_MODE,
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -54,6 +55,7 @@ describe("bookHandler integration", () => {
     process.env.SUPABASE_ANON_KEY = TEST_SUPABASE_ANON_KEY;
     process.env.SUPABASE_EDGE_URL = TEST_SUPABASE_EDGE_URL;
     process.env.DEFAULT_ORGANIZATION_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
+    delete process.env.API_AUTHORITY_MODE;
     server.use(
       http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/current_user_is_super_admin`, () => HttpResponse.json(false)),
       http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/current_user_organization_id`, () =>
@@ -164,6 +166,125 @@ describe("bookHandler integration", () => {
       expect.any(Object),
       expect.objectContaining({ accessToken }),
     );
+  });
+
+  it("sends recurring booking batches through the active edge booking authority and preserves confirm batching payloads", async () => {
+    process.env.API_AUTHORITY_MODE = "edge";
+    let forwardedPayload: Record<string, unknown> | null = null;
+
+    server.use(
+      http.post(`${TEST_SUPABASE_EDGE_URL.replace(/\/$/, "")}/sessions-book`, async ({ request }) => {
+        forwardedPayload = await request.json() as Record<string, unknown>;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            session: {
+              id: "session-1",
+              therapist_id: payload.session.therapist_id,
+              client_id: payload.session.client_id,
+              program_id: payload.session.program_id,
+              goal_id: payload.session.goal_id,
+              start_time: payload.session.start_time,
+              end_time: payload.session.end_time,
+              status: "scheduled",
+            },
+            sessions: [
+              {
+                id: "session-1",
+                therapist_id: payload.session.therapist_id,
+                client_id: payload.session.client_id,
+                program_id: payload.session.program_id,
+                goal_id: payload.session.goal_id,
+                start_time: "2025-01-01T10:00:00Z",
+                end_time: "2025-01-01T11:00:00Z",
+                status: "scheduled",
+              },
+              {
+                id: "session-2",
+                therapist_id: payload.session.therapist_id,
+                client_id: payload.session.client_id,
+                program_id: payload.session.program_id,
+                goal_id: payload.session.goal_id,
+                start_time: "2025-01-08T10:00:00Z",
+                end_time: "2025-01-08T11:00:00Z",
+                status: "scheduled",
+              },
+            ],
+            hold: {
+              holdKey: "hold-root",
+              holdId: "hold-root",
+              expiresAt: "2025-01-01T09:05:00Z",
+              holds: [
+                {
+                  holdKey: "hold-2",
+                  holdId: "hold-2",
+                  startTime: "2025-01-08T10:00:00Z",
+                  endTime: "2025-01-08T11:00:00Z",
+                  expiresAt: "2025-01-01T09:05:00Z",
+                },
+                {
+                  holdKey: "hold-1",
+                  holdId: "hold-1",
+                  startTime: "2025-01-01T10:00:00Z",
+                  endTime: "2025-01-01T11:00:00Z",
+                  expiresAt: "2025-01-01T09:05:00Z",
+                },
+              ],
+            },
+            cpt: {},
+          },
+        });
+      }),
+    );
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(
+      new Request("http://localhost/api/book", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer integration-token",
+        },
+        body: JSON.stringify({
+          ...payload,
+          recurrence: {
+            rule: "FREQ=WEEKLY;INTERVAL=1",
+            count: 2,
+            timeZone: "UTC",
+          },
+          occurrences: [
+            {
+              startTime: "2025-01-01T10:00:00Z",
+              endTime: "2025-01-01T11:00:00Z",
+              startOffsetMinutes: 0,
+              endOffsetMinutes: 0,
+            },
+            {
+              startTime: "2025-01-08T10:00:00Z",
+              endTime: "2025-01-08T11:00:00Z",
+              startOffsetMinutes: 0,
+              endOffsetMinutes: 0,
+            },
+          ],
+          session: {
+            ...payload.session,
+            goal_ids: ["goal-1", "goal-2"],
+          },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(callEdgeMock).not.toHaveBeenCalled();
+    expect(Array.isArray(forwardedPayload?.occurrences)).toBe(true);
+    expect((forwardedPayload?.occurrences as Array<Record<string, unknown>>)).toHaveLength(2);
+    expect((forwardedPayload?.occurrences as Array<Record<string, unknown>>)[1]?.startTime).toBe("2025-01-08T10:00:00.000Z");
+    expect((forwardedPayload?.session as Record<string, unknown>)?.goal_ids).toEqual(["goal-1", "goal-2"]);
+
+    const body = await response.json();
+    expect(body.success).toBe(true);
+    expect(body.data.sessions).toHaveLength(2);
+    expect(body.data.hold.holds[0].holdKey).toBe("hold-2");
   });
 
   it("rejects unauthorized requests before invoking edge functions", async () => {
@@ -361,5 +482,10 @@ afterAll(() => {
     process.env.DEFAULT_ORGANIZATION_ID = ORIGINAL_ENV.DEFAULT_ORGANIZATION_ID;
   } else {
     delete process.env.DEFAULT_ORGANIZATION_ID;
+  }
+  if (typeof ORIGINAL_ENV.API_AUTHORITY_MODE === "string") {
+    process.env.API_AUTHORITY_MODE = ORIGINAL_ENV.API_AUTHORITY_MODE;
+  } else {
+    delete process.env.API_AUTHORITY_MODE;
   }
 });

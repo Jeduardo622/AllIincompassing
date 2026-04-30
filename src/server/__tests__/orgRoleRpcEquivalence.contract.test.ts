@@ -11,9 +11,10 @@ vi.mock("../api/shared", async () => {
   };
 });
 
-import { getSupabaseConfig, resolveOrgAndRoleWithStatus } from "../api/shared";
+import { getSupabaseConfig, resolveOrgAndRoleWithStatus, resolveSchedulingOrgAndRoleWithStatus } from "../api/shared";
 
 const accessToken = "header.payload.signature";
+const originalServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 function jsonResponse(data: unknown, status = 200): Response {
   const text = data === "" ? "" : JSON.stringify(data);
@@ -33,6 +34,11 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
 
   afterEach(() => {
     fetchSpy.mockRestore();
+    if (typeof originalServiceRoleKey === "string") {
+      process.env.SUPABASE_SERVICE_ROLE_KEY = originalServiceRoleKey;
+    } else {
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    }
   });
 
   it("calls current_user_is_super_admin, current_user_organization_id, then user_has_role_for_org for therapist/admin/org_admin/org_member", async () => {
@@ -142,6 +148,65 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
       isOrgMember: false,
       isSuperAdmin: false,
       upstreamError: true,
+    });
+  });
+
+  it("derives scheduling org context from the target therapist for super-admins without direct org context", async () => {
+    fetchSpy
+      .mockResolvedValueOnce(jsonResponse(true))
+      .mockResolvedValueOnce(jsonResponse(""))
+      .mockResolvedValueOnce(jsonResponse([{ organization_id: "org-therapist" }]));
+
+    await expect(resolveSchedulingOrgAndRoleWithStatus(accessToken, "therapist-1")).resolves.toEqual({
+      organizationId: "org-therapist",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: true,
+      upstreamError: false,
+      resolvedViaServiceRole: false,
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(String(fetchSpy.mock.calls[2]?.[0])).toContain("/rest/v1/therapists?select=organization_id&id=eq.therapist-1");
+    const init = fetchSpy.mock.calls[2]?.[1] as RequestInit;
+    expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${accessToken}`);
+  });
+
+  it("uses service-role therapist lookup only for super-admin scheduling fallback when direct scope is absent", async () => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+    fetchSpy
+      .mockResolvedValueOnce(jsonResponse(true))
+      .mockResolvedValueOnce(jsonResponse(""))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "forbidden" }), { status: 403 }))
+      .mockResolvedValueOnce(jsonResponse([{ organization_id: "org-service-scope" }]));
+
+    await expect(resolveSchedulingOrgAndRoleWithStatus(accessToken, "therapist-2")).resolves.toEqual({
+      organizationId: "org-service-scope",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: true,
+      upstreamError: false,
+      resolvedViaServiceRole: true,
+    });
+    const init = fetchSpy.mock.calls[3]?.[1] as RequestInit;
+    expect((init.headers as Record<string, string>).apikey).toBe("service-role-key");
+  });
+
+  it("fails closed for super-admin scheduling fallback when no direct org and no therapist target scope resolve", async () => {
+    fetchSpy
+      .mockResolvedValueOnce(jsonResponse(true))
+      .mockResolvedValueOnce(jsonResponse(""))
+      .mockResolvedValueOnce(jsonResponse([]));
+
+    await expect(resolveSchedulingOrgAndRoleWithStatus(accessToken, "therapist-missing")).resolves.toEqual({
+      organizationId: null,
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: true,
+      upstreamError: false,
+      resolvedViaServiceRole: false,
     });
   });
 });

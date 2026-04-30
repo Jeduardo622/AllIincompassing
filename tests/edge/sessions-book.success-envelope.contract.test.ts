@@ -258,7 +258,6 @@ describe('sessions-book success envelope vs bookSessionEnvelopeSchema', () => {
     expect(confirmBody.occurrences).toHaveLength(2);
     expect(confirmBody.occurrences[1].hold_key).toBe('hold-2');
     expect(confirmBody.occurrences[1].session.start_time).toBe(sessionRowTwo.start_time);
-
     const payload = await response.json();
     expect(payload.data.sessions).toHaveLength(2);
   });
@@ -369,6 +368,30 @@ describe('sessions-book success envelope vs bookSessionEnvelopeSchema', () => {
     expect(confirmBody.occurrences[0].session.start_time).toBe(sessionRowTwo.start_time);
     expect(confirmBody.occurrences[1].hold_key).toBe('hold-1');
     expect(confirmBody.occurrences[1].session.start_time).toBe(sessionRowOne.start_time);
+  });
+
+  it('rejects malformed occurrence timestamps with 400 before calling hold or confirm', async () => {
+    const handler = await loadHandler();
+    const response = await handler(
+      buildBookRequest({
+        ...buildValidBookingPayload(),
+        occurrences: [
+          {
+            startTime: 'not-an-iso-datetime',
+            endTime: '2026-03-30T05:30:00.000Z',
+            startOffsetMinutes: -420,
+            endOffsetMinutes: -420,
+          },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      error: 'Invalid request body',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 before hold when top-level session.start_time is malformed', async () => {

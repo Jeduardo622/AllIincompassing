@@ -16,8 +16,8 @@ import {
   type GuardianPortalClient,
 } from './fetchers';
 
-type GuardianClientsQueryKey = ['guardian', 'clients'];
-type GuardianClientQueryKey = ['guardian', 'clients', string];
+type GuardianClientsQueryKey = ['guardian', 'clients', string];
+type GuardianClientQueryKey = ['guardian', 'clients', string, string];
 type ClientNotesQueryKey = ['client-notes', string, 'parent' | 'all', string];
 type ClientIssuesQueryKey = ['client-issues', string, string];
 type GuardianContactMetadataKey = ['guardian', 'contact', string];
@@ -34,31 +34,35 @@ const buildClientNotesKey = (
 ];
 
 export const useGuardianClients = () => {
-  const { isGuardian } = useAuth();
+  const { isGuardian, user } = useAuth();
+  const guardianUserId = user?.id ?? 'anonymous';
 
   return useQuery<GuardianPortalClient[], Error>({
-    queryKey: ['guardian', 'clients'] satisfies GuardianClientsQueryKey,
+    queryKey: ['guardian', 'clients', guardianUserId] satisfies GuardianClientsQueryKey,
     queryFn: async () => {
-      if (!isGuardian) {
+      if (!isGuardian || !user?.id) {
         return [];
       }
       return fetchGuardianClients();
     },
-    enabled: Boolean(isGuardian),
+    enabled: Boolean(isGuardian) && Boolean(user?.id),
   });
 };
 
 export const useGuardianClient = (clientId: string | null | undefined) => {
+  const { isGuardian, user } = useAuth();
+  const guardianUserId = user?.id ?? 'anonymous';
+
   return useQuery<GuardianPortalClient | null, Error>({
-    queryKey: ['guardian', 'clients', clientId ?? 'unknown'] satisfies GuardianClientQueryKey,
+    queryKey: ['guardian', 'clients', guardianUserId, clientId ?? 'unknown'] satisfies GuardianClientQueryKey,
     queryFn: async () => {
-      if (!clientId) {
+      if (!clientId || !user?.id || !isGuardian) {
         return null;
       }
 
       return fetchGuardianClientById(clientId);
     },
-    enabled: Boolean(clientId),
+    enabled: Boolean(clientId) && Boolean(user?.id) && Boolean(isGuardian),
   });
 };
 
@@ -113,9 +117,9 @@ export const useConfirmGuardianContact = () => {
       return confirmGuardianContactInfo(user.id, clientId);
     },
     onSuccess: (_result, clientId) => {
-      queryClient.invalidateQueries({ queryKey: ['guardian', 'clients'] satisfies GuardianClientsQueryKey });
+      queryClient.invalidateQueries({ queryKey: ['guardian', 'clients', user?.id ?? 'anonymous'] satisfies GuardianClientsQueryKey });
       if (clientId) {
-        queryClient.invalidateQueries({ queryKey: ['guardian', 'clients', clientId] satisfies GuardianClientQueryKey });
+        queryClient.invalidateQueries({ queryKey: ['guardian', 'clients', user?.id ?? 'anonymous', clientId] satisfies GuardianClientQueryKey });
       }
       if (user?.id) {
         queryClient.invalidateQueries({ queryKey: ['guardian', 'contact', user.id] satisfies GuardianContactMetadataKey });

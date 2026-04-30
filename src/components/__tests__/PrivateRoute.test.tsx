@@ -75,6 +75,22 @@ describe('PrivateRoute access behaviour', () => {
     expect(loginStateNode.textContent).toContain('"pathname":"/protected"');
   });
 
+  it('keeps protected routes pending while profile hydration is still in progress', () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'user-1' },
+      loading: false,
+      profileLoading: true,
+      profile: null,
+      signOut: vi.fn(),
+    });
+
+    renderProtectedRoute();
+
+    expect(screen.getByLabelText('Restoring your secure session...')).toBeInTheDocument();
+    expect(screen.queryByText('protected')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('login-page')).not.toBeInTheDocument();
+  });
+
   it('renders protected children when the user is authenticated', async () => {
     vi.mocked(useAuth).mockReturnValue({
       user: { id: 'user-1' },
@@ -87,5 +103,23 @@ describe('PrivateRoute access behaviour', () => {
     renderProtectedRoute();
 
     expect(await screen.findByText('protected')).toBeInTheDocument();
+  });
+
+  it('signs out and redirects inactive users before rendering protected content', async () => {
+    const signOut = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'user-1' },
+      loading: false,
+      profileLoading: false,
+      profile: { is_active: false },
+      signOut,
+    });
+
+    renderProtectedRoute();
+
+    const loginStateNode = await screen.findByTestId('login-page');
+    expect(loginStateNode.textContent).toContain('Your account is inactive. Please contact support.');
+    expect(screen.queryByText('protected')).not.toBeInTheDocument();
+    expect(signOut).toHaveBeenCalledTimes(1);
   });
 });

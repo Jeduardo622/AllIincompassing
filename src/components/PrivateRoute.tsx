@@ -21,7 +21,7 @@ export const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
   }, [profile?.is_active, profileLoading, signOut, user]);
 
   // Show loading while auth is being determined
-  if (loading) {
+  if (loading || (user && profileLoading && !profile)) {
     return <ProtectedShellPending label="Restoring your secure session..." />;
   }
 

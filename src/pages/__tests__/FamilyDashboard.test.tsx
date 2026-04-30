@@ -82,8 +82,19 @@ const mockConfirm = {
   variables: undefined as string | undefined,
 };
 
+let guardianClientsState: {
+  data: typeof mockGuardianClients | [];
+  isLoading: boolean;
+  isError: boolean;
+  error?: Error;
+} = {
+  data: mockGuardianClients,
+  isLoading: false,
+  isError: false,
+};
+
 vi.mock('../../lib/clients/hooks', () => ({
-  useGuardianClients: () => ({ data: mockGuardianClients, isLoading: false, isError: false }),
+  useGuardianClients: () => guardianClientsState,
   useGuardianContactMetadata: () => ({ data: mockMetadata, isLoading: false }),
   useConfirmGuardianContact: () => mockConfirm,
 }));
@@ -99,6 +110,11 @@ describe('FamilyDashboard', () => {
   beforeEach(() => {
     mockConfirm.mutateAsync.mockClear();
     mockConfirm.variables = undefined;
+    guardianClientsState = {
+      data: mockGuardianClients,
+      isLoading: false,
+      isError: false,
+    };
   });
 
   it('renders kiddo details, sessions, and notes', () => {
@@ -158,5 +174,22 @@ describe('FamilyDashboard', () => {
     } finally {
       mockGuardianClients[0].upcomingSessions[0].status = originalStatus;
     }
+  });
+
+  it('sanitizes guardian-facing error copy', () => {
+    guardianClientsState = {
+      data: [],
+      isLoading: false,
+      isError: true,
+      error: new Error('permission denied for relation client_guardians'),
+    };
+
+    renderWithProviders(<FamilyDashboard />);
+
+    expect(screen.getByText('We were unable to load your family dashboard.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Please refresh the page or try again in a moment. If this keeps happening, contact your care team.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/permission denied for relation client_guardians/i)).not.toBeInTheDocument();
   });
 });

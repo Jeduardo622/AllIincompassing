@@ -207,5 +207,30 @@ describe("sessions-cancel org scoping", () => {
     expect(payload.data.summary.cancelledCount).toBe(0);
     expect(payload.data.summary.nonCancellableCount).toBe(0);
   });
+
+  it("builds explicit timezone-aware UTC ranges for date cancellation across DST", () => {
+    const springForward = __TESTING__.buildDateRange("2025-03-09", "America/Los_Angeles");
+    const fallBack = __TESTING__.buildDateRange("2025-11-02", "America/Los_Angeles");
+
+    expect(springForward).toEqual({
+      start: "2025-03-09T08:00:00.000Z",
+      end: "2025-03-10T06:59:59.999Z",
+      timeZone: "America/Los_Angeles",
+    });
+    expect(fallBack).toEqual({
+      start: "2025-11-02T07:00:00.000Z",
+      end: "2025-11-03T07:59:59.999Z",
+      timeZone: "America/Los_Angeles",
+    });
+  });
+
+  it("reports invalid time zones as a bad date-window request instead of missing date input", () => {
+    expect(() =>
+      __TESTING__.parseCancelPayload({
+        date: "2025-03-09",
+        time_zone: "Mars/Phobos",
+      }),
+    ).toThrowError("Invalid date or time_zone for cancellation window");
+  });
 });
 

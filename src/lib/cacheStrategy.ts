@@ -52,8 +52,9 @@ export const CACHE_STRATEGIES = {
 // ============================================================================
 
 export const generateCacheKey = {
-  sessions: (startDate: string, endDate: string, therapistId?: string, clientId?: string) => [
+  sessions: (startDate: string, endDate: string, therapistId?: string, clientId?: string, organizationId?: string | null) => [
     'sessions',
+    organizationId || 'org:none',
     startDate,
     endDate,
     therapistId || 'all',

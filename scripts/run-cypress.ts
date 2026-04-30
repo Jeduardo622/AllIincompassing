@@ -39,6 +39,10 @@ const run = async (): Promise<void> => {
     CYPRESS_BASE_URL: previewConfig.url,
   };
 
+  // Some local shells export ELECTRON_RUN_AS_NODE for unrelated tooling.
+  // Cypress must launch its Electron app normally for verify/run to work.
+  delete env.ELECTRON_RUN_AS_NODE;
+
   try {
     await new Promise<void>((resolvePromise, rejectPromise) => {
       const command = process.platform === 'win32' ? 'cmd' : cypressBin;

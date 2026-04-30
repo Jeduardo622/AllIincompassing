@@ -494,7 +494,12 @@ describe('SessionModal', () => {
           updated_by: null,
           started_at: null,
         } satisfies Session}
-      />
+      />,
+      {
+        auth: {
+          organizationId: 'org-a',
+        },
+      },
     );
 
     await waitFor(() => {

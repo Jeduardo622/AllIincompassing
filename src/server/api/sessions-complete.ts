@@ -170,7 +170,7 @@ const checkNotesCoverage = async ({
     : { ok: false };
 };
 
-const completeSessionViaRuntimeRest = async ({
+const _completeSessionViaRuntimeRest = async ({
   request,
   payload,
   accessToken,
@@ -369,6 +369,7 @@ export async function sessionsCompleteHandler(request: Request): Promise<Respons
     const requestIdHeader = request.headers.get("x-request-id");
     const correlationIdHeader = request.headers.get("x-correlation-id");
     const agentOperationIdHeader = request.headers.get("x-agent-operation-id");
+    const idempotencyKeyHeader = request.headers.get("Idempotency-Key")?.trim();
     if (requestIdHeader) {
       forwardHeaders.set("x-request-id", requestIdHeader);
     }
@@ -378,21 +379,18 @@ export async function sessionsCompleteHandler(request: Request): Promise<Respons
     if (agentOperationIdHeader) {
       forwardHeaders.set("x-agent-operation-id", agentOperationIdHeader);
     }
+    if (idempotencyKeyHeader) {
+      forwardHeaders.set("Idempotency-Key", idempotencyKeyHeader);
+    }
     const forwarded = await fetch(functionUrl, {
       method: "POST",
       headers: forwardHeaders,
       body: JSON.stringify(parsed.data),
     });
-    if (forwarded.status === 401) {
-      return completeSessionViaRuntimeRest({
-        request,
-        payload: parsed.data,
-        accessToken,
-        traceHeaders,
-      });
-    }
     const bodyText = await forwarded.text();
     const retryAfter = forwarded.headers.get("Retry-After");
+    const returnedIdempotency = forwarded.headers.get("Idempotency-Key") ?? idempotencyKeyHeader ?? undefined;
+    const idempotentReplay = forwarded.headers.get("Idempotent-Replay");
 
     return new Response(bodyText, {
       status: forwarded.status,
@@ -401,6 +399,8 @@ export async function sessionsCompleteHandler(request: Request): Promise<Respons
         ...traceHeaders,
         "Content-Type": "application/json",
         ...(retryAfter ? { "Retry-After": retryAfter } : {}),
+        ...(returnedIdempotency ? { "Idempotency-Key": returnedIdempotency } : {}),
+        ...(idempotentReplay ? { "Idempotent-Replay": idempotentReplay } : {}),
       },
     });
   } catch {

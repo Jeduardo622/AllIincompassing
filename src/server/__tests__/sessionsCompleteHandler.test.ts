@@ -69,13 +69,22 @@ describe("sessionsCompleteHandler", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
         JSON.stringify({ success: true, data: { outcome: "completed" } }),
-        { status: 200, headers: { "content-type": "application/json" } },
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "Idempotent-Replay": "true",
+          },
+        },
       ),
     );
 
     const request = new Request("http://localhost/api/sessions-complete", {
       method: "POST",
-      headers: { Authorization: "Bearer token-123" },
+      headers: {
+        Authorization: "Bearer token-123",
+        "Idempotency-Key": "complete-idempotency-key",
+      },
       body: JSON.stringify({
         session_id: "11111111-1111-1111-1111-111111111111",
         outcome: "completed",
@@ -89,6 +98,7 @@ describe("sessionsCompleteHandler", () => {
       "https://example.supabase.co/functions/v1/sessions-complete",
       expect.objectContaining({
         method: "POST",
+        headers: expect.any(Headers),
         body: JSON.stringify({
           session_id: "11111111-1111-1111-1111-111111111111",
           outcome: "completed",
@@ -96,23 +106,17 @@ describe("sessionsCompleteHandler", () => {
         }),
       }),
     );
+    const forwardedHeaders = fetchMock.mock.calls[0]?.[1]?.headers as Headers;
+    expect(forwardedHeaders.get("Idempotency-Key")).toBe("complete-idempotency-key");
+    expect(response.headers.get("Idempotency-Key")).toBe("complete-idempotency-key");
+    expect(response.headers.get("Idempotent-Replay")).toBe("true");
     fetchMock.mockRestore();
   });
 
-  it("falls back to runtime REST completion when edge returns 401", async () => {
+  it("fails closed when edge returns 401 instead of degrading to runtime REST", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token-123");
     const fetchMock = vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(jsonResponse({ success: false, error: "Unauthorized" }, 401))
-      .mockResolvedValueOnce(jsonResponse(false, 200))
-      .mockResolvedValueOnce(jsonResponse("org-1", 200))
-      .mockResolvedValueOnce(jsonResponse(true, 200))
-      .mockResolvedValueOnce(jsonResponse(false, 200))
-      .mockResolvedValueOnce(jsonResponse(false, 200))
-      .mockResolvedValueOnce(jsonResponse({ id: "therapist-1" }, 200))
-      .mockResolvedValueOnce(jsonResponse([{ id: "session-1", status: "in_progress", therapist_id: "therapist-1" }], 200))
-      .mockResolvedValueOnce(jsonResponse([{ goal_id: "goal-1" }], 200))
-      .mockResolvedValueOnce(jsonResponse([{ goal_notes: { "goal-1": "Covered" } }], 200))
-      .mockResolvedValueOnce(jsonResponse([{ id: "session-1", status: "completed", updated_at: "2026-01-01T00:00:00.000Z" }], 200));
+      .mockResolvedValueOnce(jsonResponse({ success: false, error: "Unauthorized" }, 401));
 
     const request = new Request("http://localhost/api/sessions-complete", {
       method: "POST",
@@ -124,11 +128,12 @@ describe("sessionsCompleteHandler", () => {
       }),
     });
     const response = await sessionsCompleteHandler(request);
-    const payload = await response.json() as { success: boolean };
+    const payload = await response.json() as { success: boolean; error: string };
 
-    expect(response.status).toBe(200);
-    expect(payload.success).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(11);
+    expect(response.status).toBe(401);
+    expect(payload.success).toBe(false);
+    expect(payload.error).toBe("Unauthorized");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     fetchMock.mockRestore();
   });
 });

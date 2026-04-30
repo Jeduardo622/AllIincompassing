@@ -3,6 +3,7 @@ import { callEdge } from "./supabase";
 export interface CancelSessionsPayload {
   sessionIds?: string[];
   date?: string;
+  timeZone?: string;
   therapistId?: string;
   reason?: string | null;
   idempotencyKey?: string;
@@ -70,6 +71,9 @@ export async function cancelSessions(payload: CancelSessionsPayload): Promise<Ca
   }
   if (payload.date) {
     body.date = payload.date;
+    if (payload.timeZone && payload.timeZone.trim().length > 0) {
+      body.time_zone = payload.timeZone.trim();
+    }
   }
   if (payload.therapistId) {
     body.therapist_id = payload.therapistId;

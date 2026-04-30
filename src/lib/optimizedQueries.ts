@@ -81,6 +81,7 @@ export const useSessionsOptimized = (
   therapistId?: string,
   clientId?: string,
   enabled = true,
+  organizationId?: string | null,
 ) => {
   // Debounce filter changes to prevent excessive API calls
   const debouncedTherapistId = useDebounce(therapistId, 300);
@@ -91,7 +92,8 @@ export const useSessionsOptimized = (
       startDate.toISOString(),
       endDate.toISOString(),
       debouncedTherapistId,
-      debouncedClientId
+      debouncedClientId,
+      organizationId,
     ),
     queryFn: async () => {
       const { data, error } = await supabase.rpc('get_sessions_optimized', {
@@ -107,7 +109,7 @@ export const useSessionsOptimized = (
       return data?.map((item: { session_data: Session }) => item.session_data) || [];
     },
     staleTime: CACHE_STRATEGIES.SESSIONS.current_week,
-    enabled: !!startDate && !!endDate && enabled,
+    enabled: !!startDate && !!endDate && enabled && Boolean(organizationId),
   });
 };
 

@@ -18,11 +18,13 @@ import { increment } from "../_shared/metrics.ts";
 import { recordSessionAuditEvent } from "../_shared/audit.ts";
 import { orchestrateScheduling } from "../_shared/scheduling-orchestrator.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
+import { deriveOffsetFromTimeZone } from "../_shared/timezone.ts";
 
 interface CancelPayload {
   hold_key?: unknown;
   session_ids?: unknown;
   date?: unknown;
+  time_zone?: unknown;
   therapist_id?: unknown;
   reason?: unknown;
 }
@@ -107,7 +109,7 @@ function normalizeSessionIds(value: unknown): string[] {
   return Array.from(seen);
 }
 
-function buildDateRange(value: unknown): { start: string; end: string } | null {
+function buildDateRange(value: unknown, timeZone: unknown): { start: string; end: string; timeZone: string } | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -117,9 +119,41 @@ function buildDateRange(value: unknown): { start: string; end: string } | null {
     return null;
   }
 
-  const start = `${trimmed}T00:00:00`;
-  const end = `${trimmed}T23:59:59.999`;
-  return { start, end };
+  const resolvedTimeZone =
+    typeof timeZone === "string" && timeZone.trim().length > 0
+      ? timeZone.trim()
+      : "UTC";
+
+  const toUtcIso = (localClockTime: string) => {
+    const utcGuess = new Date(`${trimmed}T${localClockTime}Z`);
+    if (Number.isNaN(utcGuess.getTime())) {
+      return null;
+    }
+
+    const firstOffset = deriveOffsetFromTimeZone(resolvedTimeZone, utcGuess.toISOString());
+    if (firstOffset === null) {
+      return null;
+    }
+
+    const firstCandidate = new Date(utcGuess.getTime() - firstOffset * 60_000);
+    const secondOffset = deriveOffsetFromTimeZone(resolvedTimeZone, firstCandidate.toISOString());
+    if (secondOffset === null) {
+      return null;
+    }
+
+    const finalCandidate = secondOffset === firstOffset
+      ? firstCandidate
+      : new Date(utcGuess.getTime() - secondOffset * 60_000);
+    return finalCandidate.toISOString();
+  };
+
+  const start = toUtcIso("00:00:00.000");
+  const end = toUtcIso("23:59:59.999");
+  if (!start || !end) {
+    return null;
+  }
+
+  return { start, end, timeZone: resolvedTimeZone };
 }
 
 function parseCancelPayload(input: unknown): {
@@ -141,7 +175,9 @@ function parseCancelPayload(input: unknown): {
       : null;
 
   const sessionIds = normalizeSessionIds(payload.session_ids);
-  const dateRange = buildDateRange(payload.date);
+  const dateRange = buildDateRange(payload.date, payload.time_zone);
+  const hasDateInput = typeof payload.date === "string" && payload.date.trim().length > 0;
+  const hasTimeZoneInput = typeof payload.time_zone === "string" && payload.time_zone.trim().length > 0;
   const therapistId =
     typeof payload.therapist_id === "string" && payload.therapist_id.trim().length > 0
       ? payload.therapist_id.trim()
@@ -150,6 +186,10 @@ function parseCancelPayload(input: unknown): {
     typeof payload.reason === "string" && payload.reason.trim().length > 0
       ? payload.reason.trim()
       : null;
+
+  if (hasDateInput && hasTimeZoneInput && !dateRange) {
+    throw new BadRequestError("Invalid date or time_zone for cancellation window");
+  }
 
   if (!holdKey && sessionIds.length === 0 && !dateRange) {
     throw new BadRequestError("Must provide hold_key, session_ids, or date");
@@ -658,4 +698,5 @@ export const __TESTING__ = {
   handleSessionCancellation,
   handleHoldRelease,
   parseCancelPayload,
+  buildDateRange,
 };

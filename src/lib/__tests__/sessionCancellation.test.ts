@@ -72,7 +72,7 @@ describe("cancelSessions", () => {
     expect(body.session_ids).toEqual(["s1", "s2"]);
   });
 
-  it("generates an idempotency key when not provided", async () => {
+  it("generates an idempotency key and forwards time_zone for date-based cancellation", async () => {
     mockedCallEdge.mockResolvedValueOnce(
       jsonResponse(
         {
@@ -92,13 +92,14 @@ describe("cancelSessions", () => {
       ),
     );
 
-    await cancelSessions({ date: "2025-03-18" });
+    await cancelSessions({ date: "2025-03-18", timeZone: "America/Los_Angeles" });
 
     const requestInit = mockedCallEdge.mock.calls[0][1];
     const headers = requestInit?.headers as Headers;
     expect(headers.get("Idempotency-Key")).toBeTruthy();
     const body = JSON.parse(requestInit?.body as string);
     expect(body.date).toBe("2025-03-18");
+    expect(body.time_zone).toBe("America/Los_Angeles");
   });
 
   it("throws when the API responds with an error", async () => {

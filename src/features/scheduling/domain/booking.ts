@@ -56,6 +56,7 @@ export function buildBookSessionApiPayload(
   },
   recurrence?: BookSessionApiRequestBody["recurrence"],
   holdSeconds = DEFAULT_SESSION_HOLD_SECONDS,
+  occurrences?: BookSessionApiRequestBody["occurrences"],
 ): BookSessionApiRequestBody {
   const normalizedSession = normalizeSessionPayloadSubtree({
     ...session,
@@ -72,6 +73,7 @@ export function buildBookSessionApiPayload(
     endTimeOffsetMinutes: metadata.endOffsetMinutes,
     timeZone: metadata.timeZone,
     holdSeconds,
+    ...(occurrences && occurrences.length > 0 ? { occurrences } : {}),
     ...(recurrence ? { recurrence } : {}),
   };
 }

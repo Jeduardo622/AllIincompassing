@@ -583,6 +583,7 @@ export const Schedule = React.memo(() => {
     debouncedTherapist,
     debouncedClient,
     enableFallbackSessionsQuery,
+    activeOrganizationId,
   );
 
   // Use dropdown data hook for therapists and clients

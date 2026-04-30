@@ -393,7 +393,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 };
 
 const Dashboard = () => {
-  const { effectiveRole, session, loading: authLoading } = useAuth();
+  const { effectiveRole, session, loading: authLoading, user, profile } = useAuth();
   const canViewStaffDashboard = canAccessStaffDashboard(effectiveRole);
   const hasAccessToken = Boolean(session?.access_token && session.access_token.trim().length > 0);
   const {
@@ -404,6 +404,11 @@ const Dashboard = () => {
     refreshConfig,
   } = useDashboardData({
     enabled: canViewStaffDashboard && hasAccessToken && !authLoading,
+    actorScope: {
+      userId: user?.id ?? null,
+      effectiveRole,
+      organizationId: profile?.organization_id ?? null,
+    },
   }) as unknown as {
     data: DashboardDataShape | null;
     isLoading: boolean;

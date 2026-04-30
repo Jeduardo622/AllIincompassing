@@ -3,6 +3,7 @@ export type AppRole = 'client' | 'therapist' | 'admin' | 'super_admin';
 export type RouteGuardDefinition = {
   readonly path: string;
   readonly allowedRoles: readonly AppRole[];
+  readonly requiresGuardian?: boolean;
   readonly requiredPermissions: readonly string[];
   readonly supabasePolicies: readonly string[];
 };
@@ -112,6 +113,7 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
   createGuard({
     path: '/family',
     allowedRoles: ['client'],
+    requiresGuardian: true,
     requiredPermissions: ['guardian_access'],
     supabasePolicies: ['public.client_guardians: client_guardians_select'],
   }),
@@ -170,6 +172,9 @@ export const hasRoleAccess = (pathname: string, role: AppRole): boolean => {
   const guard = findGuardForPath(pathname);
   if (!guard) {
     return false;
+  }
+  if (guard.requiresGuardian) {
+    return guard.allowedRoles.includes(role);
   }
   if (guard.allowedRoles.includes(role)) {
     return true;

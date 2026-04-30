@@ -1,8 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+const useQueryMock = vi.hoisted(() => vi.fn());
 
 const getSessionMock = vi.fn();
 const getUserMock = vi.fn();
 const refreshSessionMock = vi.fn();
+
+vi.mock("@tanstack/react-query", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-query")>();
+  return {
+    ...actual,
+    useQuery: (options: unknown) => useQueryMock(options),
+  };
+});
 
 vi.mock("../supabase", () => ({
   supabase: {
@@ -17,11 +26,19 @@ vi.mock("../supabase", () => ({
   },
 }));
 
+vi.mock("../dashboardLiveRefresh", () => ({
+  useDashboardLiveRefresh: () => ({
+    isLiveRole: true,
+    intervalMs: 60000,
+  }),
+}));
+
 describe("useDashboardData /api/dashboard fetch", () => {
   afterEach(() => {
     getSessionMock.mockReset();
     getUserMock.mockReset();
     refreshSessionMock.mockReset();
+    useQueryMock.mockReset();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -98,5 +115,32 @@ describe("useDashboardData /api/dashboard fetch", () => {
     const { fetchDashboardData } = await import("../optimizedQueries");
     await expect(fetchDashboardData()).rejects.toMatchObject({ status: 401 });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("scopes dashboard query keys by actor context", async () => {
+    useQueryMock.mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    const { useDashboardData } = await import("../optimizedQueries");
+    useDashboardData({
+      enabled: true,
+      actorScope: {
+        userId: "user-1",
+        effectiveRole: "admin",
+        organizationId: "org-1",
+      },
+    });
+
+    expect(useQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ["dashboard", "user-1", "admin", "org-1"],
+        keepPreviousData: true,
+        enabled: true,
+      }),
+    );
   });
 });

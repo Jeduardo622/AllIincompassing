@@ -17,9 +17,17 @@ const parseRoleList = (value: string): string[] => {
   return normalizeRoles(matches.map((entry) => entry.replace(/'/g, '')));
 };
 
-const parseGuardedRoutesFromApp = (source: string): Map<string, string[]> => {
-  const routeMap = new Map<string, string[]>();
-  routeMap.set('/', normalizeRoles(['client', 'therapist', 'admin', 'super_admin']));
+type AppGuardExpectation = {
+  readonly roles: string[];
+  readonly requiresGuardian: boolean;
+};
+
+const parseGuardedRoutesFromApp = (source: string): Map<string, AppGuardExpectation> => {
+  const routeMap = new Map<string, AppGuardExpectation>();
+  routeMap.set('/', {
+    roles: normalizeRoles(['client', 'therapist', 'admin', 'super_admin']),
+    requiresGuardian: false,
+  });
 
   const routeEntries: Array<{ readonly index: number; readonly path: string }> = [];
   const routePathRegex = /<Route\b[\s\S]*?path="([^"]+)"/g;
@@ -44,8 +52,9 @@ const parseGuardedRoutesFromApp = (source: string): Map<string, string[]> => {
     const roles = rolesMatch
       ? parseRoleList(rolesMatch[1])
       : normalizeRoles(['client', 'therapist', 'admin', 'super_admin']);
+    const requiresGuardian = snippet.includes('requireGuardian');
 
-    routeMap.set(`/${entry.path.replace(/^\//, '')}`, roles);
+    routeMap.set(`/${entry.path.replace(/^\//, '')}`, { roles, requiresGuardian });
   }
 
   return routeMap;
@@ -55,12 +64,20 @@ describe('route guard parity against App routes', () => {
   it('keeps guarded route paths and role matrices in sync', () => {
     const appSource = readFileSync(APP_PATH, 'utf8');
     const appGuardedRoutes = parseGuardedRoutesFromApp(appSource);
-    const guardMap = new Map(routeGuards.map((guard) => [guard.path, normalizeRoles(guard.allowedRoles)]));
+    const guardMap = new Map(
+      routeGuards.map((guard) => [
+        guard.path,
+        {
+          roles: normalizeRoles(guard.allowedRoles),
+          requiresGuardian: guard.requiresGuardian ?? false,
+        },
+      ]),
+    );
 
     expect([...guardMap.keys()].sort()).toEqual([...appGuardedRoutes.keys()].sort());
 
-    for (const [pathKey, appRoles] of appGuardedRoutes.entries()) {
-      expect(guardMap.get(pathKey), `role mismatch for ${pathKey}`).toEqual(appRoles);
+    for (const [pathKey, appGuard] of appGuardedRoutes.entries()) {
+      expect(guardMap.get(pathKey), `guard mismatch for ${pathKey}`).toEqual(appGuard);
     }
   });
 });

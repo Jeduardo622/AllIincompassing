@@ -5,13 +5,20 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 
 let capturedDashboardEnabled: boolean | undefined;
+let capturedActorScope:
+  | { userId?: string | null; effectiveRole?: string | null; organizationId?: string | null }
+  | undefined;
 
 vi.mock("../../lib/optimizedQueries", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/optimizedQueries")>();
   return {
     ...actual,
-    useDashboardData: (options?: { enabled?: boolean }) => {
+    useDashboardData: (options?: {
+      enabled?: boolean;
+      actorScope?: { userId?: string | null; effectiveRole?: string | null; organizationId?: string | null };
+    }) => {
       capturedDashboardEnabled = options?.enabled;
+      capturedActorScope = options?.actorScope;
       return actual.useDashboardData(options);
     },
   };
@@ -61,6 +68,7 @@ const renderDashboard = () => {
 describe("Dashboard staff dashboard query gate", () => {
   beforeEach(() => {
     capturedDashboardEnabled = undefined;
+    capturedActorScope = undefined;
     mockUseAuth.mockReset();
   });
 
@@ -107,5 +115,27 @@ describe("Dashboard staff dashboard query gate", () => {
 
     renderDashboard();
     expect(capturedDashboardEnabled).toBe(false);
+  });
+
+  it("passes actor-scoped dashboard cache context for admin users", () => {
+    mockUseAuth.mockReturnValue(
+      authStub({
+        user: { id: "user-7" },
+        profile: { organization_id: "org-9" },
+        effectiveRole: "admin",
+        session: { access_token: "valid-token" } as import("@supabase/supabase-js").Session,
+        loading: false,
+        isAdmin: () => true,
+        isSuperAdmin: () => false,
+      }),
+    );
+
+    renderDashboard();
+
+    expect(capturedActorScope).toEqual({
+      userId: "user-7",
+      effectiveRole: "admin",
+      organizationId: "org-9",
+    });
   });
 });

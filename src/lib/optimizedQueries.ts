@@ -270,14 +270,27 @@ export const fetchDashboardData = async () => {
   return dashboardRouteFallback();
 };
 
-export const useDashboardData = (options?: { enabled?: boolean }) => {
+type DashboardActorScope = {
+  readonly userId?: string | null;
+  readonly effectiveRole?: string | null;
+  readonly organizationId?: string | null;
+};
+
+const buildDashboardQueryKey = (actorScope?: DashboardActorScope) => [
+  ...generateCacheKey.dashboard(),
+  actorScope?.userId ?? 'user:anonymous',
+  actorScope?.effectiveRole ?? 'role:unknown',
+  actorScope?.organizationId ?? 'org:unknown',
+] as const;
+
+export const useDashboardData = (options?: { enabled?: boolean; actorScope?: DashboardActorScope }) => {
   const { isLiveRole, intervalMs } = useDashboardLiveRefresh();
   const isTransientDashboardFailure = (status?: number) =>
     status === 429 || status === 502 || status === 503 || status === 504;
   const enabled = options?.enabled ?? true;
 
   const dashboardQuery = useQuery({
-    queryKey: generateCacheKey.dashboard(),
+    queryKey: buildDashboardQueryKey(options?.actorScope),
     queryFn: fetchDashboardData,
     staleTime: CACHE_STRATEGIES.DASHBOARD.summary,
     gcTime: CACHE_STRATEGIES.DASHBOARD.summary * 2,
@@ -301,6 +314,10 @@ export const useDashboardData = (options?: { enabled?: boolean }) => {
       intervalMs,
     },
   };
+};
+
+export const __TESTING__ = {
+  buildDashboardQueryKey,
 };
 
 // ============================================================================

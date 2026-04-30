@@ -613,6 +613,62 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     ).toHaveLength(noteFetchCountBeforeCreate);
   });
 
+  it("renders three goal fields and serializes them into target_criteria on create", async () => {
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    fireEvent.change(await screen.findByPlaceholderText("Program name"), {
+      target: { value: "Communication Program" },
+    });
+    await user.click(screen.getByRole("button", { name: "Create Program" }));
+
+    await waitFor(() => {
+      expect(showSuccess).toHaveBeenCalledWith("Program created");
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Goal title"), { target: { value: "Goal A" } });
+    fireEvent.change(screen.getByPlaceholderText("Goal description"), { target: { value: "Goal description" } });
+    fireEvent.change(screen.getByPlaceholderText("Original clinical wording"), { target: { value: "Original wording" } });
+    fireEvent.change(screen.getByPlaceholderText("Short-term goal (optional)"), {
+      target: { value: "Request preferred items with a prompt." },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Intermediate goal (optional)"), {
+      target: { value: "Request preferred items across two settings." },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Long-term goal (optional)"), {
+      target: { value: "Request preferred items independently." },
+    });
+
+    await user.click(screen.getByRole("button", { name: "Create Goal" }));
+
+    await waitFor(() => {
+      expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
+        "goals",
+        expect.objectContaining({
+          method: "POST",
+        }),
+      );
+    });
+
+    const createGoalCall = vi
+      .mocked(callEdgeFunctionHttp)
+      .mock.calls.find(([path, init]) => path === "goals" && init?.method === "POST");
+
+    expect(createGoalCall).toBeTruthy();
+    const [, init] = createGoalCall!;
+    const body = JSON.parse(String(init?.body)) as { target_criteria?: string };
+    expect(body.target_criteria).toBe(
+      "Short-term: Request preferred items with a prompt.\n" +
+        "Intermediate: Request preferred items across two settings.\n" +
+        "Long-term: Request preferred items independently.",
+    );
+  });
+
   it("adds a program note without refetching the notes list", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
@@ -1681,6 +1737,124 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
     expect(showSuccess).toHaveBeenCalledWith("Program draft saved. Not published yet.");
     expect(screen.getByText("Saves to draft only. Not visible in live records until published.")).toBeInTheDocument();
+  });
+
+  it("hydrates legacy target criteria into the short-term goal field and saves all three goals back into target_criteria", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/goals?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/program-notes?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/fba.pdf",
+              status: "drafted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(
+          JSON.stringify({
+            programs: [],
+            goals: [
+              {
+                id: "draft-goal-1",
+                assessment_document_id: ASSESSMENT_ID,
+                organization_id: ORG_ID,
+                client_id: "client-1",
+                title: "Draft Goal",
+                description: "Draft goal description",
+                original_text: "Draft original wording",
+                goal_type: "child",
+                measurement_type: "percent opportunities",
+                baseline_data: "40%",
+                target_criteria: "Legacy target criteria text",
+                mastery_criteria: "80% across 3 sessions",
+                maintenance_criteria: "70% after 4 weeks",
+                generalization_criteria: "2 settings with 2 adults",
+                objective_data_points: [],
+                accept_state: "accepted",
+                review_notes: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "PATCH" && path === "/api/assessment-drafts") {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    const shortTermField = await screen.findByDisplayValue("Legacy target criteria text");
+    expect(shortTermField).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Intermediate goal")).toHaveValue("");
+    expect(screen.getByPlaceholderText("Long-term goal")).toHaveValue("");
+
+    fireEvent.change(screen.getByPlaceholderText("Intermediate goal"), {
+      target: { value: "Intermediate draft goal" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Long-term goal"), {
+      target: { value: "Long-term draft goal" },
+    });
+
+    await user.click(screen.getByRole("button", { name: /Save Goal Draft/i }));
+
+    await waitFor(() => {
+      expect(callApi).toHaveBeenCalledWith(
+        "/api/assessment-drafts",
+        expect.objectContaining({
+          method: "PATCH",
+          body: expect.stringContaining("\"draft_type\":\"goal\""),
+        }),
+      );
+    });
+
+    const saveGoalDraftCall = vi
+      .mocked(callApi)
+      .mock.calls.find(
+        ([path, requestInit]) => path === "/api/assessment-drafts" && requestInit?.method === "PATCH",
+      );
+
+    expect(saveGoalDraftCall).toBeTruthy();
+    const [, requestInit] = saveGoalDraftCall!;
+    const body = JSON.parse(String(requestInit?.body)) as { target_criteria?: string };
+    expect(body.target_criteria).toBe(
+      "Short-term: Legacy target criteria text\n" +
+        "Intermediate: Intermediate draft goal\n" +
+        "Long-term: Long-term draft goal",
+    );
   });
 
   it("shows inline helper when promote is disabled", async () => {

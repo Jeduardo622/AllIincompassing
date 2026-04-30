@@ -115,3 +115,75 @@ export const parseObjectiveDataPointsInput = (
   }
   return parsed.filter((item): item is Record<string, unknown> => !!item && typeof item === "object");
 };
+
+export interface GoalTimelineFields {
+  shortTermGoal: string;
+  intermediateGoal: string;
+  longTermGoal: string;
+}
+
+export const EMPTY_GOAL_TIMELINE_FIELDS: GoalTimelineFields = {
+  shortTermGoal: "",
+  intermediateGoal: "",
+  longTermGoal: "",
+};
+
+const GOAL_TIMELINE_LABELS = [
+  { key: "shortTermGoal", label: "Short-term" },
+  { key: "intermediateGoal", label: "Intermediate" },
+  { key: "longTermGoal", label: "Long-term" },
+] as const satisfies ReadonlyArray<{ key: keyof GoalTimelineFields; label: string }>;
+
+export const formatGoalTimelineCriteria = (fields: GoalTimelineFields): string => {
+  const lines = GOAL_TIMELINE_LABELS.flatMap(({ key, label }) => {
+    const value = fields[key].trim();
+    return value ? [`${label}: ${value}`] : [];
+  });
+  return lines.join("\n");
+};
+
+export const parseGoalTimelineCriteria = (value?: string | null): GoalTimelineFields => {
+  const trimmedValue = value?.trim() ?? "";
+  if (!trimmedValue) {
+    return { ...EMPTY_GOAL_TIMELINE_FIELDS };
+  }
+
+  const lines = trimmedValue
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const parsed = { ...EMPTY_GOAL_TIMELINE_FIELDS };
+  const remainingLegacyLines: string[] = [];
+
+  for (const line of lines) {
+    const match = line.match(/^(Short-term|Intermediate|Long-term):\s*(.*)$/i);
+    if (!match) {
+      remainingLegacyLines.push(line);
+      continue;
+    }
+
+    const [, rawLabel, rawValue] = match;
+    const normalizedValue = rawValue.trim();
+    switch (rawLabel.toLowerCase()) {
+      case "short-term":
+        parsed.shortTermGoal = normalizedValue;
+        break;
+      case "intermediate":
+        parsed.intermediateGoal = normalizedValue;
+        break;
+      case "long-term":
+        parsed.longTermGoal = normalizedValue;
+        break;
+      default:
+        remainingLegacyLines.push(line);
+        break;
+    }
+  }
+
+  if (remainingLegacyLines.length > 0) {
+    parsed.shortTermGoal = trimmedValue;
+  }
+
+  return parsed;
+};

@@ -9,7 +9,7 @@ import {
   getSupabaseConfig,
   isDisallowedOriginRequest,
   jsonForRequest,
-  resolveOrgAndRoleWithStatus,
+  resolveSchedulingOrgAndRoleWithStatus,
 } from "./shared";
 import { getOptionalServerEnv } from "../env";
 import { getApiAuthorityMode, proxyToEdgeAuthority } from "./edgeAuthority";
@@ -78,14 +78,15 @@ async function assertBookRequestScope(
   accessToken: string,
   body: BookSessionApiRequestBody,
 ): Promise<Response | null> {
-  const roleResolution = await resolveOrgAndRoleWithStatus(accessToken);
-  let organizationId = roleResolution.organizationId;
+  const roleResolution = await resolveSchedulingOrgAndRoleWithStatus(accessToken, body.session.therapist_id);
+  const organizationId = roleResolution.organizationId;
   const {
     isTherapist,
     isAdmin,
     isOrgMember,
     isSuperAdmin,
     upstreamError: roleUpstreamError,
+    resolvedViaServiceRole,
   } = roleResolution;
   if (roleUpstreamError) {
     return errorResponse(request, "upstream_error", "Unable to validate organization access", { status: 502 });
@@ -106,38 +107,7 @@ async function assertBookRequestScope(
       }
     : null;
   const canUseServiceRoleScopeFallback = isSuperAdmin && serviceRoleHeaders !== null;
-  let usingServiceRoleScope = false;
-
-  if (!organizationId && isSuperAdmin) {
-    const encodedTherapistId = encodeURIComponent(body.session.therapist_id);
-    const therapistOrgUrl = `${supabaseUrl}/rest/v1/therapists?select=organization_id&id=eq.${encodedTherapistId}`;
-    const therapistOrgResult = await fetchJson<Array<{ organization_id: string }>>(therapistOrgUrl, {
-      method: "GET",
-      headers: userHeaders,
-    });
-    const therapistRow =
-      therapistOrgResult.ok && Array.isArray(therapistOrgResult.data) ? therapistOrgResult.data[0] : null;
-    if (therapistRow && typeof therapistRow.organization_id === "string" && therapistRow.organization_id.length > 0) {
-      organizationId = therapistRow.organization_id;
-    } else if (canUseServiceRoleScopeFallback && serviceRoleHeaders) {
-      const serviceTherapistOrgResult = await fetchJson<Array<{ organization_id: string }>>(therapistOrgUrl, {
-        method: "GET",
-        headers: serviceRoleHeaders,
-      });
-      const serviceTherapistRow =
-        serviceTherapistOrgResult.ok && Array.isArray(serviceTherapistOrgResult.data)
-          ? serviceTherapistOrgResult.data[0]
-          : null;
-      if (
-        serviceTherapistRow &&
-        typeof serviceTherapistRow.organization_id === "string" &&
-        serviceTherapistRow.organization_id.length > 0
-      ) {
-        organizationId = serviceTherapistRow.organization_id;
-        usingServiceRoleScope = true;
-      }
-    }
-  }
+  const usingServiceRoleScope = resolvedViaServiceRole;
 
   if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin && !isOrgMember)) {
     return errorResponse(request, "forbidden", "Forbidden", { status: 403 });

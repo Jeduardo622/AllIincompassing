@@ -1,11 +1,13 @@
 import { z } from "npm:zod@3.23.8";
 import { resolveAllowedOriginForRequest, corsHeadersForRequest } from "../_shared/cors.ts";
 
+const isoDateTime = z.string().datetime({ offset: true });
+
 const sessionSchema = z.object({
   therapist_id: z.string().uuid(),
   client_id: z.string().uuid(),
-  start_time: z.string(),
-  end_time: z.string(),
+  start_time: isoDateTime,
+  end_time: isoDateTime,
   id: z.string().uuid().optional(),
   program_id: z.string().uuid(),
   goal_id: z.string().uuid(),
@@ -20,8 +22,8 @@ const requestSchema = z.object({
   endTimeOffsetMinutes: z.number(),
   timeZone: z.string().min(1),
   occurrences: z.array(z.object({
-    startTime: z.string(),
-    endTime: z.string(),
+    startTime: isoDateTime,
+    endTime: isoDateTime,
     startOffsetMinutes: z.number(),
     endOffsetMinutes: z.number(),
   })).optional(),

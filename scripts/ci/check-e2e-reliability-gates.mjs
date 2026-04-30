@@ -17,6 +17,7 @@ const CRITICAL_PLAYWRIGHT_SCRIPTS = [
   path.join(ROOT, "scripts", "playwright-therapist-onboarding.ts"),
   path.join(ROOT, "scripts", "playwright-therapist-authorization.ts"),
   path.join(ROOT, "scripts", "playwright-session-lifecycle.ts"),
+  path.join(ROOT, "scripts", "playwright-session-no-show.ts"),
   path.join(ROOT, "scripts", "playwright-session-complete.ts"),
   path.join(ROOT, "scripts", "playwright-schedule-blocked-close.ts"),
   path.join(ROOT, "scripts", "playwright-session-note-measurement-roundtrip.ts"),
@@ -60,15 +61,18 @@ const run = async () => {
   if (!ciPlaywright.includes("playwright:preflight")) {
     errors.push("package.json script ci:playwright must start with playwright:preflight.");
   }
+  if (!ciPlaywright.includes("playwright:session-no-show")) {
+    errors.push("package.json script ci:playwright must include playwright:session-no-show for explicit no-show terminal coverage.");
+  }
   if (!ciPlaywright.includes("playwright:session-complete")) {
     errors.push("package.json script ci:playwright must include playwright:session-complete for completed terminal coverage.");
   }
   if (
-    ciPlaywright.includes("playwright:session-lifecycle") &&
+    ciPlaywright.includes("playwright:session-no-show") &&
     ciPlaywright.includes("playwright:session-complete") &&
-    ciPlaywright.indexOf("playwright:session-complete") < ciPlaywright.indexOf("playwright:session-lifecycle")
+    ciPlaywright.indexOf("playwright:session-complete") < ciPlaywright.indexOf("playwright:session-no-show")
   ) {
-    errors.push("package.json script ci:playwright must run playwright:session-lifecycle before playwright:session-complete.");
+    errors.push("package.json script ci:playwright must run playwright:session-no-show before playwright:session-complete.");
   }
   if (!ciPlaywright.includes("playwright:session-note-measurement-roundtrip")) {
     errors.push("package.json script ci:playwright must include playwright:session-note-measurement-roundtrip.");
@@ -134,6 +138,9 @@ const run = async () => {
   if (!ciWorkflow.includes("Record auth smoke evidence")) {
     errors.push(".github/workflows/ci.yml must record auth smoke evidence artifacts for success/failure runs.");
   }
+  if (!ciWorkflow.includes("npm run playwright:session-no-show")) {
+    errors.push(".github/workflows/ci.yml auth-browser-smoke gate must run playwright:session-no-show.");
+  }
   if (!ciWorkflow.includes("npm run playwright:session-complete")) {
     errors.push(".github/workflows/ci.yml auth-browser-smoke gate must run playwright:session-complete.");
   }
@@ -141,11 +148,11 @@ const run = async () => {
     errors.push(".github/workflows/ci.yml auth-browser-smoke gate must run playwright:session-note-measurement-roundtrip.");
   }
   if (
-    ciWorkflow.includes("npm run playwright:session-lifecycle") &&
+    ciWorkflow.includes("npm run playwright:session-no-show") &&
     ciWorkflow.includes("npm run playwright:session-complete") &&
-    ciWorkflow.indexOf("npm run playwright:session-complete") < ciWorkflow.indexOf("npm run playwright:session-lifecycle")
+    ciWorkflow.indexOf("npm run playwright:session-complete") < ciWorkflow.indexOf("npm run playwright:session-no-show")
   ) {
-    errors.push(".github/workflows/ci.yml must run playwright:session-lifecycle before playwright:session-complete.");
+    errors.push(".github/workflows/ci.yml must run playwright:session-no-show before playwright:session-complete.");
   }
   if (
     ciWorkflow.includes("npm run playwright:schedule-blocked-close") &&

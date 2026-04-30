@@ -336,3 +336,101 @@ export async function resolveOrgAndRoleWithStatus(accessToken: string): Promise<
   };
 }
 
+type OrgRoleResolution = Awaited<ReturnType<typeof resolveOrgAndRoleWithStatus>>;
+
+export async function resolveSchedulingOrgAndRoleWithStatus(
+  accessToken: string,
+  therapistId: string,
+): Promise<OrgRoleResolution & { resolvedViaServiceRole: boolean }> {
+  const roleResolution = await resolveOrgAndRoleWithStatus(accessToken);
+  if (roleResolution.upstreamError || roleResolution.organizationId) {
+    return {
+      ...roleResolution,
+      resolvedViaServiceRole: false,
+    };
+  }
+
+  if (!roleResolution.isSuperAdmin) {
+    return {
+      ...roleResolution,
+      resolvedViaServiceRole: false,
+    };
+  }
+
+  const trimmedTherapistId = therapistId.trim();
+  if (trimmedTherapistId.length === 0) {
+    return {
+      ...roleResolution,
+      resolvedViaServiceRole: false,
+    };
+  }
+
+  const { supabaseUrl, anonKey } = getSupabaseConfig();
+  const therapistOrgUrl =
+    `${supabaseUrl}/rest/v1/therapists?select=organization_id&id=eq.${encodeURIComponent(trimmedTherapistId)}`;
+  const userHeaders = {
+    ...JSON_HEADERS,
+    apikey: anonKey,
+    Authorization: `Bearer ${accessToken}`,
+  };
+
+  const userScopedTherapistResult = await fetchJson<Array<{ organization_id?: unknown }>>(therapistOrgUrl, {
+    method: "GET",
+    headers: userHeaders,
+  });
+  const userScopedTherapistRow =
+    userScopedTherapistResult.ok && Array.isArray(userScopedTherapistResult.data)
+      ? userScopedTherapistResult.data[0]
+      : null;
+  if (
+    userScopedTherapistRow &&
+    typeof userScopedTherapistRow.organization_id === "string" &&
+    userScopedTherapistRow.organization_id.length > 0
+  ) {
+    return {
+      ...roleResolution,
+      organizationId: userScopedTherapistRow.organization_id,
+      resolvedViaServiceRole: false,
+    };
+  }
+
+  const serviceRoleKey = getOptionalServerEnv("SUPABASE_SERVICE_ROLE_KEY")?.trim();
+  if (!serviceRoleKey) {
+    return {
+      ...roleResolution,
+      upstreamError:
+        roleResolution.upstreamError || (!userScopedTherapistResult.ok && userScopedTherapistResult.status >= 500),
+      resolvedViaServiceRole: false,
+    };
+  }
+
+  const serviceScopedTherapistResult = await fetchJson<Array<{ organization_id?: unknown }>>(therapistOrgUrl, {
+    method: "GET",
+    headers: {
+      ...JSON_HEADERS,
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+    },
+  });
+  const serviceScopedTherapistRow =
+    serviceScopedTherapistResult.ok && Array.isArray(serviceScopedTherapistResult.data)
+      ? serviceScopedTherapistResult.data[0]
+      : null;
+  const resolvedOrganizationId =
+    serviceScopedTherapistRow &&
+    typeof serviceScopedTherapistRow.organization_id === "string" &&
+    serviceScopedTherapistRow.organization_id.length > 0
+      ? serviceScopedTherapistRow.organization_id
+      : null;
+
+  return {
+    ...roleResolution,
+    organizationId: resolvedOrganizationId,
+    upstreamError:
+      roleResolution.upstreamError ||
+      (!userScopedTherapistResult.ok && userScopedTherapistResult.status >= 500) ||
+      (!serviceScopedTherapistResult.ok && serviceScopedTherapistResult.status >= 500),
+    resolvedViaServiceRole: resolvedOrganizationId !== null,
+  };
+}
+

@@ -233,7 +233,6 @@ describe('sessions-book success envelope vs bookSessionEnvelopeSchema', () => {
     expect(confirmBody.occurrences).toHaveLength(2);
     expect(confirmBody.occurrences[1].hold_key).toBe('hold-2');
     expect(confirmBody.occurrences[1].session.start_time).toBe(sessionRowTwo.start_time);
-
     const payload = await response.json();
     expect(payload.data.sessions).toHaveLength(2);
   });
@@ -344,5 +343,47 @@ describe('sessions-book success envelope vs bookSessionEnvelopeSchema', () => {
     expect(confirmBody.occurrences[0].session.start_time).toBe(sessionRowTwo.start_time);
     expect(confirmBody.occurrences[1].hold_key).toBe('hold-1');
     expect(confirmBody.occurrences[1].session.start_time).toBe(sessionRowOne.start_time);
+  });
+
+  it('rejects malformed occurrence timestamps with 400 before calling hold or confirm', async () => {
+    const handler = await loadHandler();
+    const response = await handler(
+      new Request('https://edge.example.com/functions/v1/sessions-book', {
+        method: 'POST',
+        headers: {
+          Origin: 'https://preview.example.com',
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session: {
+            therapist_id: '11111111-1111-1111-1111-111111111111',
+            client_id: '22222222-2222-2222-2222-222222222222',
+            program_id: '33333333-3333-3333-3333-333333333333',
+            goal_id: '44444444-4444-4444-4444-444444444444',
+            start_time: '2026-03-30T05:00:00.000Z',
+            end_time: '2026-03-30T05:30:00.000Z',
+          },
+          startTimeOffsetMinutes: -420,
+          endTimeOffsetMinutes: -420,
+          timeZone: 'America/Los_Angeles',
+          occurrences: [
+            {
+              startTime: 'not-an-iso-datetime',
+              endTime: '2026-03-30T05:30:00.000Z',
+              startOffsetMinutes: -420,
+              endOffsetMinutes: -420,
+            },
+          ],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      error: 'Invalid request body',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

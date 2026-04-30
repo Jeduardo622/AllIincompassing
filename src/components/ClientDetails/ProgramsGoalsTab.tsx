@@ -20,7 +20,9 @@ import {
   ENABLE_CHECKLIST_MAPPING_UI,
   MIN_CHILD_GOALS,
   MIN_PARENT_GOALS,
+  formatGoalTimelineCriteria,
   parseApiErrorMessage,
+  parseGoalTimelineCriteria,
   parseJson,
   parseObjectiveDataPointsInput,
   statusToneByAssessment,
@@ -30,6 +32,7 @@ import {
   type AssessmentDraftProgram,
   type AssessmentDraftResponse,
   type AssessmentPlanPdfResponse,
+  type GoalTimelineFields,
 } from "./ProgramsGoalsTab.helpers";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -78,6 +81,15 @@ const buildProgramsQueryPath = (clientId: string): string =>
 
 const buildClientProgramsQueryKey = (clientId: string, organizationId?: string | null) =>
   ["client-programs", clientId, organizationId ?? "MISSING_ORG"] as const;
+
+const GOAL_TIMELINE_INPUTS: ReadonlyArray<{
+  key: keyof GoalTimelineFields;
+  placeholder: string;
+}> = [
+  { key: "shortTermGoal", placeholder: "Short-term goal" },
+  { key: "intermediateGoal", placeholder: "Intermediate goal" },
+  { key: "longTermGoal", placeholder: "Long-term goal" },
+];
 
 const buildProgramGoalsQueryKey = (programId: string | null, organizationId?: string | null) =>
   ["program-goals", programId, organizationId ?? "MISSING_ORG"] as const;
@@ -166,7 +178,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [goalOriginalText, setGoalOriginalText] = useState("");
   const [goalMeasurementType, setGoalMeasurementType] = useState("");
   const [goalBaselineData, setGoalBaselineData] = useState("");
-  const [goalTargetCriteria, setGoalTargetCriteria] = useState("");
+  const [goalShortTermGoal, setGoalShortTermGoal] = useState("");
+  const [goalIntermediateGoal, setGoalIntermediateGoal] = useState("");
+  const [goalLongTermGoal, setGoalLongTermGoal] = useState("");
   const [goalMasteryCriteria, setGoalMasteryCriteria] = useState("");
   const [goalMaintenanceCriteria, setGoalMaintenanceCriteria] = useState("");
   const [goalGeneralizationCriteria, setGoalGeneralizationCriteria] = useState("");
@@ -191,7 +205,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         goalType: AssessmentDraftGoal["goal_type"];
         measurementType: string;
         baselineData: string;
-        targetCriteria: string;
+        shortTermGoal: string;
+        intermediateGoal: string;
+        longTermGoal: string;
         masteryCriteria: string;
         maintenanceCriteria: string;
         generalizationCriteria: string;
@@ -208,12 +224,15 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [assessmentDocumentsNeedsRetry, setAssessmentDocumentsNeedsRetry] = useState(false);
 
   const applyDraftGoal = (goal: ProgramGoalDraftResponse["goals"][number]) => {
+    const parsedTargetCriteria = parseGoalTimelineCriteria(goal.target_criteria);
     setGoalTitle(goal.title);
     setGoalDescription(goal.description);
     setGoalOriginalText(goal.original_text);
     setGoalMeasurementType(goal.measurement_type ?? "");
     setGoalBaselineData(goal.baseline_data ?? "");
-    setGoalTargetCriteria(goal.target_criteria ?? "");
+    setGoalShortTermGoal(parsedTargetCriteria.shortTermGoal);
+    setGoalIntermediateGoal(parsedTargetCriteria.intermediateGoal);
+    setGoalLongTermGoal(parsedTargetCriteria.longTermGoal);
     setGoalMasteryCriteria(goal.mastery_criteria ?? "");
     setGoalMaintenanceCriteria(goal.maintenance_criteria ?? "");
     setGoalGeneralizationCriteria(goal.generalization_criteria ?? "");
@@ -551,7 +570,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         goalType: AssessmentDraftGoal["goal_type"];
         measurementType: string;
         baselineData: string;
-        targetCriteria: string;
+        shortTermGoal: string;
+        intermediateGoal: string;
+        longTermGoal: string;
         masteryCriteria: string;
         maintenanceCriteria: string;
         generalizationCriteria: string;
@@ -559,6 +580,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       }
     > = {};
     (assessmentDrafts?.goals ?? []).forEach((goal) => {
+      const parsedTargetCriteria = parseGoalTimelineCriteria(goal.target_criteria);
       nextGoals[goal.id] = {
         acceptState: goal.accept_state,
         reviewNotes: goal.review_notes ?? "",
@@ -568,7 +590,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         goalType: goal.goal_type,
         measurementType: goal.measurement_type ?? "",
         baselineData: goal.baseline_data ?? "",
-        targetCriteria: goal.target_criteria ?? "",
+        shortTermGoal: parsedTargetCriteria.shortTermGoal,
+        intermediateGoal: parsedTargetCriteria.intermediateGoal,
+        longTermGoal: parsedTargetCriteria.longTermGoal,
         masteryCriteria: goal.mastery_criteria ?? "",
         maintenanceCriteria: goal.maintenance_criteria ?? "",
         generalizationCriteria: goal.generalization_criteria ?? "",
@@ -803,6 +827,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         throw new Error("Goal edit state not found.");
       }
       const objectiveDataPoints = parseObjectiveDataPointsInput(edit.objectiveDataPoints);
+      const targetCriteria = formatGoalTimelineCriteria({
+        shortTermGoal: edit.shortTermGoal,
+        intermediateGoal: edit.intermediateGoal,
+        longTermGoal: edit.longTermGoal,
+      });
       const response = await callApi("/api/assessment-drafts", {
         method: "PATCH",
         body: JSON.stringify({
@@ -816,7 +845,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           goal_type: edit.goalType,
           measurement_type: edit.measurementType || undefined,
           baseline_data: edit.baselineData || undefined,
-          target_criteria: edit.targetCriteria || undefined,
+          target_criteria: targetCriteria || undefined,
           mastery_criteria: edit.masteryCriteria || undefined,
           maintenance_criteria: edit.maintenanceCriteria || undefined,
           generalization_criteria: edit.generalizationCriteria || undefined,
@@ -968,6 +997,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         throw new Error("Select a program first");
       }
       const objectiveDataPoints = parseObjectiveDataPointsInput(goalObjectiveDataPoints);
+      const targetCriteria = formatGoalTimelineCriteria({
+        shortTermGoal: goalShortTermGoal,
+        intermediateGoal: goalIntermediateGoal,
+        longTermGoal: goalLongTermGoal,
+      });
       const payload = JSON.stringify({
         client_id: client.id,
         program_id: resolvedProgramId,
@@ -976,7 +1010,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         original_text: goalOriginalTextValue,
         measurement_type: goalMeasurementType || undefined,
         baseline_data: goalBaselineData || undefined,
-        target_criteria: goalTargetCriteria || undefined,
+        target_criteria: targetCriteria || undefined,
         mastery_criteria: goalMasteryCriteria || undefined,
         maintenance_criteria: goalMaintenanceCriteria || undefined,
         generalization_criteria: goalGeneralizationCriteria || undefined,
@@ -1000,7 +1034,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 original_text: goalOriginalTextValue,
                 measurement_type: goalMeasurementType || null,
                 baseline_data: goalBaselineData || null,
-                target_criteria: goalTargetCriteria || null,
+                target_criteria: targetCriteria || null,
                 mastery_criteria: goalMasteryCriteria || null,
                 maintenance_criteria: goalMaintenanceCriteria || null,
                 generalization_criteria: goalGeneralizationCriteria || null,
@@ -1035,7 +1069,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       setGoalOriginalText("");
       setGoalMeasurementType("");
       setGoalBaselineData("");
-      setGoalTargetCriteria("");
+      setGoalShortTermGoal("");
+      setGoalIntermediateGoal("");
+      setGoalLongTermGoal("");
       setGoalMasteryCriteria("");
       setGoalMaintenanceCriteria("");
       setGoalGeneralizationCriteria("");
@@ -1804,6 +1840,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 })}
 
                 {(assessmentDrafts?.goals ?? []).map((goal) => {
+                  const parsedTargetCriteria = parseGoalTimelineCriteria(goal.target_criteria);
                   const edit = draftGoalEdits[goal.id] ?? {
                     acceptState: goal.accept_state,
                     reviewNotes: goal.review_notes ?? "",
@@ -1813,7 +1850,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                     goalType: goal.goal_type,
                     measurementType: goal.measurement_type ?? "",
                     baselineData: goal.baseline_data ?? "",
-                    targetCriteria: goal.target_criteria ?? "",
+                    shortTermGoal: parsedTargetCriteria.shortTermGoal,
+                    intermediateGoal: parsedTargetCriteria.intermediateGoal,
+                    longTermGoal: parsedTargetCriteria.longTermGoal,
                     masteryCriteria: goal.mastery_criteria ?? "",
                     maintenanceCriteria: goal.maintenance_criteria ?? "",
                     generalizationCriteria: goal.generalization_criteria ?? "",
@@ -1909,21 +1948,24 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           rows={2}
                           className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
                         />
-                        <textarea
-                          value={edit.targetCriteria}
-                          onChange={(event) =>
-                            setDraftGoalEdits((current) => ({
-                              ...current,
-                              [goal.id]: {
-                                ...edit,
-                                targetCriteria: event.target.value,
-                              },
-                            }))
-                          }
-                          placeholder="Target criteria"
-                          rows={2}
-                          className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
-                        />
+                        {GOAL_TIMELINE_INPUTS.map(({ key, placeholder }) => (
+                          <textarea
+                            key={`${goal.id}-${key}`}
+                            value={edit[key]}
+                            onChange={(event) =>
+                              setDraftGoalEdits((current) => ({
+                                ...current,
+                                [goal.id]: {
+                                  ...edit,
+                                  [key]: event.target.value,
+                                },
+                              }))
+                            }
+                            placeholder={placeholder}
+                            rows={2}
+                            className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                          />
+                        ))}
                         <textarea
                           value={edit.masteryCriteria}
                           onChange={(event) =>
@@ -2172,13 +2214,32 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 rows={2}
                 className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
               />
-              <textarea
-                value={goalTargetCriteria}
-                onChange={(event) => setGoalTargetCriteria(event.target.value)}
-                placeholder="Target criteria (optional)"
-                rows={2}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
-              />
+              {GOAL_TIMELINE_INPUTS.map(({ key, placeholder }) => (
+                <textarea
+                  key={key}
+                  value={
+                    key === "shortTermGoal"
+                      ? goalShortTermGoal
+                      : key === "intermediateGoal"
+                        ? goalIntermediateGoal
+                        : goalLongTermGoal
+                  }
+                  onChange={(event) => {
+                    if (key === "shortTermGoal") {
+                      setGoalShortTermGoal(event.target.value);
+                      return;
+                    }
+                    if (key === "intermediateGoal") {
+                      setGoalIntermediateGoal(event.target.value);
+                      return;
+                    }
+                    setGoalLongTermGoal(event.target.value);
+                  }}
+                  placeholder={`${placeholder} (optional)`}
+                  rows={2}
+                  className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+                />
+              ))}
               <textarea
                 value={goalMasteryCriteria}
                 onChange={(event) => setGoalMasteryCriteria(event.target.value)}

@@ -154,34 +154,43 @@ export const parseGoalTimelineCriteria = (value?: string | null): GoalTimelineFi
     .filter(Boolean);
 
   const parsed = { ...EMPTY_GOAL_TIMELINE_FIELDS };
-  const remainingLegacyLines: string[] = [];
+  let matchedLabelCount = 0;
+  let currentField: keyof GoalTimelineFields | null = null;
 
   for (const line of lines) {
     const match = line.match(/^(Short-term|Intermediate|Long-term):\s*(.*)$/i);
     if (!match) {
-      remainingLegacyLines.push(line);
+      if (currentField) {
+        parsed[currentField] = parsed[currentField]
+          ? `${parsed[currentField]}\n${line}`
+          : line;
+      }
       continue;
     }
 
     const [, rawLabel, rawValue] = match;
     const normalizedValue = rawValue.trim();
+    matchedLabelCount += 1;
     switch (rawLabel.toLowerCase()) {
       case "short-term":
         parsed.shortTermGoal = normalizedValue;
+        currentField = "shortTermGoal";
         break;
       case "intermediate":
         parsed.intermediateGoal = normalizedValue;
+        currentField = "intermediateGoal";
         break;
       case "long-term":
         parsed.longTermGoal = normalizedValue;
+        currentField = "longTermGoal";
         break;
       default:
-        remainingLegacyLines.push(line);
+        currentField = null;
         break;
     }
   }
 
-  if (remainingLegacyLines.length > 0) {
+  if (matchedLabelCount === 0) {
     parsed.shortTermGoal = trimmedValue;
   }
 

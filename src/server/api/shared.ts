@@ -428,8 +428,9 @@ export async function resolveSchedulingOrgAndRoleWithStatus(
     organizationId: resolvedOrganizationId,
     upstreamError:
       roleResolution.upstreamError ||
-      (!userScopedTherapistResult.ok && userScopedTherapistResult.status >= 500) ||
-      (!serviceScopedTherapistResult.ok && serviceScopedTherapistResult.status >= 500),
+      (resolvedOrganizationId === null &&
+        ((!userScopedTherapistResult.ok && userScopedTherapistResult.status >= 500) ||
+          (!serviceScopedTherapistResult.ok && serviceScopedTherapistResult.status >= 500))),
     resolvedViaServiceRole: resolvedOrganizationId !== null,
   };
 }

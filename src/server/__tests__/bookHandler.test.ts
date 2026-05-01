@@ -520,6 +520,89 @@ describe("bookHandler", () => {
     expect(bookSessionMock).toHaveBeenCalledTimes(1);
   });
 
+  it("continues super-admin booking when the user-scoped therapist org lookup returns 503 but service-role fallback resolves the org", async () => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+
+    server.use(
+      http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/current_user_is_super_admin`, () => HttpResponse.json(true)),
+      http.post(`${TEST_SUPABASE_URL}/rest/v1/rpc/current_user_organization_id`, () => HttpResponse.json(null)),
+      http.get(`${TEST_SUPABASE_URL}/rest/v1/therapists`, ({ request }) => {
+        const apikey = request.headers.get("apikey");
+        const select = new URL(request.url).searchParams.get("select");
+        if (apikey === "service-role-key" && select === "organization_id") {
+          return HttpResponse.json([{ organization_id: "5238e88b-6198-4862-80a2-dbe15bbeabdd" }]);
+        }
+        if (apikey === "service-role-key") {
+          return HttpResponse.json([{ id: "therapist-1" }]);
+        }
+        if (select === "organization_id") {
+          return new HttpResponse(null, { status: 503 });
+        }
+        return HttpResponse.json({ error: "forbidden" }, { status: 403 });
+      }),
+      http.get(`${TEST_SUPABASE_URL}/rest/v1/clients`, ({ request }) => {
+        const apikey = request.headers.get("apikey");
+        if (apikey === "service-role-key") {
+          return HttpResponse.json([{ id: "client-1" }]);
+        }
+        return HttpResponse.json({ error: "forbidden" }, { status: 403 });
+      }),
+      http.get(`${TEST_SUPABASE_URL}/rest/v1/programs`, ({ request }) => {
+        const apikey = request.headers.get("apikey");
+        if (apikey === "service-role-key") {
+          return HttpResponse.json([{ id: "program-1", client_id: "client-1" }]);
+        }
+        return HttpResponse.json({ error: "forbidden" }, { status: 403 });
+      }),
+      http.get(`${TEST_SUPABASE_URL}/rest/v1/goals`, ({ request }) => {
+        const apikey = request.headers.get("apikey");
+        if (apikey === "service-role-key") {
+          return HttpResponse.json([{ id: "goal-1", program_id: "program-1" }]);
+        }
+        return HttpResponse.json({ error: "forbidden" }, { status: 403 });
+      }),
+    );
+
+    bookSessionMock.mockResolvedValueOnce({
+      session: {
+        id: "session-super-admin-fallback-503",
+        client_id: "client-1",
+        therapist_id: "therapist-1",
+        start_time: "2025-01-01T10:00:00Z",
+        end_time: "2025-01-01T11:00:00Z",
+        status: "scheduled",
+        notes: "",
+        created_at: "2025-01-01T09:00:00Z",
+        created_by: "user-1",
+        updated_at: "2025-01-01T09:00:00Z",
+        updated_by: "user-1",
+        duration_minutes: 60,
+      },
+      sessions: [],
+      hold: {
+        holdKey: "hold",
+        holdId: "1",
+        startTime: "2025-01-01T10:00:00Z",
+        endTime: "2025-01-01T11:00:00Z",
+        expiresAt: "2025-01-01T10:05:00Z",
+        holds: [],
+      },
+      cpt: {
+        code: "97153",
+        description: "Adaptive behavior treatment by protocol",
+        modifiers: [],
+        source: "fallback",
+        durationMinutes: 60,
+      },
+    });
+
+    const bookHandler = await importBookHandler();
+    const response = await bookHandler(createRequest(validPayload));
+
+    expect(response.status).toBe(200);
+    expect(bookSessionMock).toHaveBeenCalledTimes(1);
+  });
+
   it("accepts lowercase bearer prefix", async () => {
     bookSessionMock.mockResolvedValueOnce({
       session: {

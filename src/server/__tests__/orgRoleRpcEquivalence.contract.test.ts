@@ -193,6 +193,25 @@ describe("P05 resolveOrgAndRoleWithStatus (untargeted RPC equivalence)", () => {
     expect((init.headers as Record<string, string>).apikey).toBe("service-role-key");
   });
 
+  it("clears fallback-specific upstream error state when service-role therapist lookup resolves the org", async () => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+    fetchSpy
+      .mockResolvedValueOnce(jsonResponse(true))
+      .mockResolvedValueOnce(jsonResponse(""))
+      .mockResolvedValueOnce(new Response("", { status: 503 }))
+      .mockResolvedValueOnce(jsonResponse([{ organization_id: "org-service-scope" }]));
+
+    await expect(resolveSchedulingOrgAndRoleWithStatus(accessToken, "therapist-503")).resolves.toEqual({
+      organizationId: "org-service-scope",
+      isTherapist: false,
+      isAdmin: false,
+      isOrgMember: false,
+      isSuperAdmin: true,
+      upstreamError: false,
+      resolvedViaServiceRole: true,
+    });
+  });
+
   it("fails closed for super-admin scheduling fallback when no direct org and no therapist target scope resolve", async () => {
     fetchSpy
       .mockResolvedValueOnce(jsonResponse(true))

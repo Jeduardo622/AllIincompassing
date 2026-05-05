@@ -586,26 +586,24 @@ export async function sessionsCompleteHandler(request: Request): Promise<Respons
       });
     }
     const bodyText = await forwarded.text();
-    const responseHeaders: Record<string, string> = {
+    const responseHeaders = new Headers({
       ...corsHeadersForRequest(request),
       ...traceHeaders,
       "Content-Type": forwarded.headers.get("Content-Type") ?? "application/json",
-    };
+    });
     forwarded.headers.forEach((value, key) => {
       const normalized = key.toLowerCase();
       if (
-        normalized === "content-type" ||
         normalized === "retry-after" ||
         normalized === "idempotency-key" ||
         normalized === "idempotent-replay" ||
         normalized === "www-authenticate"
       ) {
-        responseHeaders[key] = value;
+        responseHeaders.set(key, value);
       }
     });
-    const hasReturnedIdempotency = Object.keys(responseHeaders).some((key) => key.toLowerCase() === "idempotency-key");
-    if (!hasReturnedIdempotency && idempotencyKeyHeader) {
-      responseHeaders["Idempotency-Key"] = idempotencyKeyHeader;
+    if (!responseHeaders.has("Idempotency-Key") && idempotencyKeyHeader) {
+      responseHeaders.set("Idempotency-Key", idempotencyKeyHeader);
     }
 
     return new Response(bodyText, {

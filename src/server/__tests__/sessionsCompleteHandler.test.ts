@@ -203,6 +203,7 @@ describe("sessionsCompleteHandler", () => {
     expect(response.headers.get("Idempotency-Key")).toBe("edge-returned-key");
     expect(response.headers.get("Idempotent-Replay")).toBe("true");
     expect(response.headers.get("Retry-After")).toBe("3");
+    expect(response.headers.get("Content-Type")).toBe("application/json");
   });
 
   it("fails closed when edge returns 401 instead of degrading to runtime REST", async () => {

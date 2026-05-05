@@ -6,6 +6,7 @@ export type ApiErrorShape = {
   retryAfter?: string | null;
   retryAfterSeconds?: number | null;
   orchestration?: Record<string, unknown> | null;
+  data?: unknown;
 };
 
 export type NormalizedApiError = Error & {
@@ -15,6 +16,7 @@ export type NormalizedApiError = Error & {
   retryAfter?: string | null;
   retryAfterSeconds?: number | null;
   orchestration?: Record<string, unknown> | null;
+  data?: unknown;
 };
 
 export const toNormalizedApiError = (
@@ -30,6 +32,7 @@ export const toNormalizedApiError = (
   error.retryAfter = typeof payload?.retryAfter === "string" ? payload.retryAfter : null;
   error.retryAfterSeconds = typeof payload?.retryAfterSeconds === "number" ? payload.retryAfterSeconds : null;
   error.orchestration = payload?.orchestration ?? null;
+  error.data = payload?.data;
   return error;
 };
 

@@ -361,56 +361,139 @@ describe("Schedule", () => {
     expect(screen.queryByRole("option", { name: /Riley Client/i })).not.toBeInTheDocument();
 
     expect(
-      screen.queryByRole("checkbox", { name: /Enable recurrence \(RRULE\)/i }),
+      screen.queryByRole("checkbox", { name: /Apply this visible week forward/i }),
     ).not.toBeInTheDocument();
     expect(screen.queryAllByLabelText("Add session")).toHaveLength(0);
   });
 
-  it("exposes recurrence toggle and labeled recurrence controls when enabled", async () => {
+  it("exposes week-forward admin controls when enabled in week view", async () => {
     renderWithProviders(<Schedule />);
 
     const recurrenceToggle = await screen.findByRole("checkbox", {
-      name: /Enable recurrence \(RRULE\)/i,
+      name: /Apply this visible week forward/i,
     });
     expect(recurrenceToggle).not.toBeChecked();
     expect(screen.getByLabelText(/Time Zone/i)).toBeInTheDocument();
 
     await userEvent.click(recurrenceToggle);
-    expect(screen.getByLabelText(/^RRULE$/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Count/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Until/i)).toBeInTheDocument();
+    expect(screen.getByText(/Source week/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/End date/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Preview week-forward schedule/i })).toBeInTheDocument();
+    expect(screen.getByText(/Advanced single-session RRULE/i)).toBeInTheDocument();
   }, 15000);
 
-  it("shows accessible exception controls in recurrence panel", async () => {
+  it("previews and applies the visible week with the displayed week payload", async () => {
+    const capturedRequests: Array<Record<string, unknown>> = [];
+    server.use(
+      http.post("*/api/sessions-week-forward", async ({ request }) => {
+        const body = await request.json() as Record<string, unknown>;
+        capturedRequests.push(body);
+        return HttpResponse.json({
+          success: true,
+          data: body.dryRun === true
+            ? {
+                sourceSessionCount: 2,
+                generatedSessionCount: 8,
+                generatedWeekCount: 4,
+                endDate: "2025-08-31",
+                conflicts: [],
+              }
+            : {
+                sourceSessionCount: 2,
+                generatedSessionCount: 8,
+                generatedWeekCount: 4,
+                endDate: "2025-08-31",
+                conflicts: [],
+                createdSessions: [],
+              },
+        });
+      }),
+    );
+
     renderWithProviders(<Schedule />);
 
     const recurrenceToggle = await screen.findByRole("checkbox", {
-      name: /Enable recurrence \(RRULE\)/i,
+      name: /Apply this visible week forward/i,
     });
     await userEvent.click(recurrenceToggle);
+    fireEvent.change(screen.getByLabelText(/End date/i), { target: { value: "2025-08-31" } });
 
-    expect(screen.getByText(/Exceptions/i)).toBeInTheDocument();
-    expect(screen.getByText(/No exception dates configured/i)).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: /Add exception/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Preview week-forward schedule/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Remove/i })).toBeInTheDocument();
+      expect(screen.getByText(/^Preview$/i)).toBeInTheDocument();
+      expect(screen.getByText("8")).toBeInTheDocument();
     });
-    expect(screen.queryByText(/No exception dates configured/i)).not.toBeInTheDocument();
+
+    expect(capturedRequests).toHaveLength(1);
+    expect(capturedRequests[0]).toMatchObject({
+      sourceSessionIds: ["session-1", "session-2"],
+      endDate: "2025-08-31",
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      dryRun: true,
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /Apply this week forward/i }));
+
+    await waitFor(() => {
+      expect(capturedRequests).toHaveLength(2);
+    });
+    expect(capturedRequests[1]).toMatchObject({
+      sourceSessionIds: ["session-1", "session-2"],
+      endDate: "2025-08-31",
+      dryRun: false,
+    });
   }, 15000);
 
-  it("assigns deterministic accessible names to recurrence exception row controls", async () => {
+  it("blocks week-forward when visible sessions are not all scheduled", async () => {
+    mockUseScheduleDataBatch.mockReturnValue({
+      data: {
+        ...scheduleFixtures,
+        sessions: [
+          scheduleFixtures.sessions[0],
+          {
+            ...scheduleFixtures.sessions[1],
+            status: "completed",
+          },
+        ],
+      },
+      isLoading: false,
+    });
+
     renderWithProviders(<Schedule />);
 
     const recurrenceToggle = await screen.findByRole("checkbox", {
-      name: /Enable recurrence \(RRULE\)/i,
+      name: /Apply this visible week forward/i,
     });
     await userEvent.click(recurrenceToggle);
 
-    const addExceptionButton = await screen.findByRole("button", {
-      name: /Add exception/i,
+    expect(
+      screen.getByText(/Every visible session must be scheduled before cloning this week forward/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Preview week-forward schedule/i })).toBeDisabled();
+  }, 15000);
+
+  it("shows the missing-org state for super-admins without an active organization context", async () => {
+    mockUseActiveOrganizationId.mockReturnValue(null);
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "super_admin", organizationId: null },
     });
+
+    expect(await screen.findByTestId("schedule-missing-org")).toBeInTheDocument();
+    expect(screen.getByText(/Organization context unavailable/i)).toBeInTheDocument();
+  }, 15000);
+
+  it("keeps advanced RRULE exception controls accessible", async () => {
+    renderWithProviders(<Schedule />);
+
+    const recurrenceToggle = await screen.findByRole("checkbox", {
+      name: /Apply this visible week forward/i,
+    });
+    await userEvent.click(recurrenceToggle);
+
+    await userEvent.click(screen.getByText(/Advanced single-session RRULE/i));
+    const addExceptionButton = await screen.findByRole("button", { name: /Add exception/i });
     await userEvent.click(addExceptionButton);
     await userEvent.click(addExceptionButton);
 

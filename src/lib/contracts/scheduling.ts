@@ -35,3 +35,30 @@ export const bookSessionEnvelopeSchema = baseApiEnvelopeSchema.extend({
   data: bookSessionResultSchema,
 });
 
+export const weekForwardConflictSchema = z.object({
+  sourceSessionId: z.string(),
+  conflictingSessionId: z.string().optional(),
+  startTime: z.string(),
+  endTime: z.string(),
+  therapistId: z.string(),
+  clientId: z.string(),
+  code: z.string(),
+  message: z.string(),
+});
+
+export const weekForwardPreviewResultSchema = z.object({
+  sourceSessionCount: z.number().int().nonnegative(),
+  generatedSessionCount: z.number().int().nonnegative(),
+  generatedWeekCount: z.number().int().nonnegative(),
+  endDate: z.string(),
+  conflicts: z.array(weekForwardConflictSchema),
+});
+
+export const weekForwardCommitResultSchema = weekForwardPreviewResultSchema.extend({
+  createdSessions: z.array(z.record(z.unknown())),
+});
+
+export const weekForwardEnvelopeSchema = baseApiEnvelopeSchema.extend({
+  data: z.union([weekForwardPreviewResultSchema, weekForwardCommitResultSchema]).optional(),
+});
+

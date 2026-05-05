@@ -290,4 +290,47 @@ describe("ScheduleWeekView drag and drop", () => {
       expect.objectContaining({ time: targetTime, date: expect.any(Date) }),
     );
   });
+
+  it("shows a focus notice and highlights the full visible duration in the correct day column", () => {
+    const sourceDay = new Date("2025-07-07T00:00:00.000Z");
+    const targetDay = new Date("2025-07-08T00:00:00.000Z");
+    const sourceStart = new Date(sourceDay);
+    sourceStart.setHours(10, 0, 0, 0);
+    const sourceEnd = new Date(sourceDay);
+    sourceEnd.setHours(10, 45, 0, 0);
+    const session = buildSession(sourceStart, {
+      end_time: sourceEnd.toISOString(),
+    });
+    const sourceKey = createSessionSlotKey(format(sourceStart, "yyyy-MM-dd"), format(sourceStart, "HH:mm"));
+    const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
+
+    const { container, getByRole, queryByRole } = render(
+      <ScheduleWeekView
+        weekDays={[sourceDay, targetDay]}
+        timeSlots={["10:00", "10:15", "10:30", "10:45"]}
+        sessionSlotIndex={sessionSlotIndex}
+        onCreateSession={vi.fn()}
+        onEditSession={vi.fn()}
+      />,
+    );
+
+    const card = container.querySelector('[data-session-id="session-1"]') as HTMLElement;
+    expect(queryByRole("note")).toBeNull();
+
+    fireEvent.focus(card);
+
+    expect(getByRole("note")).toHaveTextContent("Jamie Client: 10:00 AM - 10:45 AM (45 min)");
+    const previewSlots = Array.from(container.querySelectorAll('[data-slot-key]')).filter((slot) =>
+      slot.querySelector('[data-preview-slot="session-1"]'),
+    );
+    expect(previewSlots).toHaveLength(3);
+    expect(
+      new Set(previewSlots.map((slot) => slot.getAttribute("data-slot-key")?.split("|")[0])).size,
+    ).toBe(1);
+
+    fireEvent.blur(card);
+
+    expect(queryByRole("note")).toBeNull();
+    expect(container.querySelectorAll('[data-preview-slot="session-1"]')).toHaveLength(0);
+  });
 });

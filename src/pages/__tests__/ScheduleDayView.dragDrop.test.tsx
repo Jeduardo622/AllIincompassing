@@ -224,6 +224,42 @@ describe("ScheduleDayView drag and drop", () => {
     expect(onRescheduleSession).not.toHaveBeenCalled();
   });
 
+  it("shows a hover notice and highlights the full visible appointment duration", () => {
+    const selectedDate = new Date("2025-07-07T00:00:00.000Z");
+    const sessionStart = new Date(selectedDate);
+    sessionStart.setHours(10, 0, 0, 0);
+    const sessionEnd = new Date(selectedDate);
+    sessionEnd.setHours(10, 30, 0, 0);
+    const session = buildSession(sessionStart, {
+      end_time: sessionEnd.toISOString(),
+    });
+    const sourceKey = createSessionSlotKey(format(sessionStart, "yyyy-MM-dd"), format(sessionStart, "HH:mm"));
+    const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
+
+    const { container, getByRole, queryByRole } = render(
+      <ScheduleDayView
+        selectedDate={selectedDate}
+        timeSlots={["10:00", "10:15", "10:30"]}
+        sessionSlotIndex={sessionSlotIndex}
+        onCreateSession={vi.fn()}
+        onEditSession={vi.fn()}
+      />,
+    );
+
+    const card = container.querySelector('[data-session-id="session-1"]') as HTMLElement;
+    expect(queryByRole("note")).toBeNull();
+
+    fireEvent.mouseEnter(card);
+
+    expect(getByRole("note")).toHaveTextContent("Jamie Client: 10:00 AM - 10:30 AM (30 min)");
+    expect(container.querySelectorAll('[data-preview-slot="session-1"]')).toHaveLength(2);
+
+    fireEvent.mouseLeave(card);
+
+    expect(queryByRole("note")).toBeNull();
+    expect(container.querySelectorAll('[data-preview-slot="session-1"]')).toHaveLength(0);
+  });
+
   describe("coarse pointer (touch) move path", () => {
     beforeEach(() => {
       vi.useFakeTimers();

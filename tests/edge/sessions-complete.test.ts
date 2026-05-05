@@ -17,6 +17,8 @@ vi.mock("../../supabase/functions/_shared/metrics.ts", () => ({
 }));
 
 import * as database from "../../supabase/functions/_shared/database.ts";
+import { recordSessionAuditEvent } from "../../supabase/functions/_shared/audit.ts";
+import { increment } from "../../supabase/functions/_shared/metrics.ts";
 import { __TESTING__ } from "../../supabase/functions/sessions-complete/index.ts";
 
 const { handleSessionCompletion, parseCompletionPayload, checkSessionNotesPresent } = __TESTING__;
@@ -110,6 +112,23 @@ describe("sessions-complete handler", () => {
     expect(body.success).toBe(true);
     expect(body.data.outcome).toBe("completed");
     expect(body.data.session.id).toBe("session-1");
+    expect(recordSessionAuditEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      sessionId: "session-1",
+      eventType: "session_completed",
+      actorId: "admin-user",
+      required: false,
+      payload: expect.objectContaining({
+        outcome: "completed",
+        startTime: "2026-03-31T09:00:00Z",
+        endTime: "2026-03-31T10:00:00Z",
+        notes: null,
+      }),
+    }));
+    expect(increment).toHaveBeenCalledWith("session_complete_success_total", {
+      function: "sessions-complete",
+      orgId: "org-1",
+      outcome: "completed",
+    });
   });
 
   it("marks an in_progress session as no-show (authorized admin)", async () => {
@@ -138,6 +157,21 @@ describe("sessions-complete handler", () => {
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
     expect(body.data.outcome).toBe("no-show");
+    expect(recordSessionAuditEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      sessionId: "session-2",
+      eventType: "session_no_show",
+      actorId: "admin-user",
+      required: false,
+      payload: expect.objectContaining({
+        outcome: "no-show",
+        notes: "Client did not attend",
+      }),
+    }));
+    expect(increment).toHaveBeenCalledWith("session_complete_success_total", {
+      function: "sessions-complete",
+      orgId: "org-1",
+      outcome: "no-show",
+    });
   });
 
   it("allows a therapist to complete their own session", async () => {
@@ -275,6 +309,10 @@ describe("sessions-complete handler", () => {
     expect(response.status).toBe(409);
     expect(body.success).toBe(false);
     expect(body.code).toBe("CONCURRENT_MODIFICATION");
+    expect(increment).toHaveBeenCalledWith("session_complete_concurrent_total", {
+      function: "sessions-complete",
+      orgId: "org-1",
+    });
   });
 
   it("returns 404 when the session is not found in the org scope", async () => {
@@ -494,6 +532,10 @@ describe("sessions-complete handler — SESSION_NOTES_REQUIRED guard", () => {
     expect(response.status).toBe(409);
     expect(body.success).toBe(false);
     expect(body.code).toBe("SESSION_NOTES_REQUIRED");
+    expect(increment).toHaveBeenCalledWith("session_notes_required_rejection_total", {
+      function: "sessions-complete",
+      orgId: "org-1",
+    });
   });
 
   it("rejects an in_progress session when some goal_notes entries are missing (409 SESSION_NOTES_REQUIRED)", async () => {

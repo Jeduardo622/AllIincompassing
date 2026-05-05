@@ -333,4 +333,41 @@ describe("ScheduleWeekView drag and drop", () => {
     expect(queryByRole("note")).toBeNull();
     expect(container.querySelectorAll('[data-preview-slot="session-1"]')).toHaveLength(0);
   });
+
+  it("highlights only the visible overlapping slots when an appointment crosses midnight", () => {
+    const sourceDay = new Date(2025, 6, 7);
+    const targetDay = new Date(2025, 6, 8);
+    const sourceStart = new Date(sourceDay);
+    sourceStart.setHours(23, 45, 0, 0);
+    const sourceEnd = new Date(targetDay);
+    sourceEnd.setHours(0, 15, 0, 0);
+    const session = buildSession(sourceStart, {
+      end_time: sourceEnd.toISOString(),
+    });
+    const sourceKey = createSessionSlotKey(format(sourceStart, "yyyy-MM-dd"), format(sourceStart, "HH:mm"));
+    const nextVisibleOverlapKey = createSessionSlotKey(format(sourceEnd, "yyyy-MM-dd"), "00:00");
+    const sessionSlotIndex = new Map<string, Session[]>([[sourceKey, [session]]]);
+
+    const { container, getByRole } = render(
+      <ScheduleWeekView
+        weekDays={[sourceDay, targetDay]}
+        timeSlots={["23:45", "00:00", "00:15"]}
+        sessionSlotIndex={sessionSlotIndex}
+        onCreateSession={vi.fn()}
+        onEditSession={vi.fn()}
+      />,
+    );
+
+    const card = container.querySelector('[data-session-id="session-1"]') as HTMLElement;
+
+    fireEvent.focus(card);
+
+    expect(getByRole("note")).toHaveTextContent("Jamie Client: 11:45 PM - 12:15 AM (30 min)");
+    const previewSlots = Array.from(container.querySelectorAll('[data-slot-key]')).filter((slot) =>
+      slot.querySelector('[data-preview-slot="session-1"]'),
+    );
+    const previewSlotKeys = previewSlots.map((slot) => slot.getAttribute("data-slot-key"));
+    expect(previewSlotKeys).toHaveLength(2);
+    expect(previewSlotKeys).toEqual(expect.arrayContaining([sourceKey, nextVisibleOverlapKey]));
+  });
 });

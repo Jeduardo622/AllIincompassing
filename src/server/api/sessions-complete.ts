@@ -21,6 +21,38 @@ type CompleteSessionPayload = z.infer<typeof completeSessionSchema>;
 const COMPLETABLE_STATUSES = new Set(["scheduled", "in_progress"]);
 const TERMINAL_STATUSES = new Set(["completed", "cancelled", "no-show"]);
 
+type RuntimeMetricLabels = Record<string, string | number | boolean | null | undefined>;
+
+type RuntimeTraceMeta = {
+  requestId: string | null;
+  correlationId: string | null;
+  agentOperationId: string | null;
+};
+
+const sanitizeMetricLabels = (labels: RuntimeMetricLabels): RuntimeMetricLabels =>
+  Object.entries(labels).reduce<RuntimeMetricLabels>((acc, [key, value]) => {
+    if (value !== undefined && value !== null) {
+      acc[key] = value;
+    }
+    return acc;
+  }, {});
+
+const incrementRuntimeMetric = (name: string, labels: RuntimeMetricLabels = {}): void => {
+  console.log(JSON.stringify({
+    timestamp: new Date().toISOString(),
+    level: "metric",
+    metric: name,
+    count: 1,
+    ...sanitizeMetricLabels(labels),
+  }));
+};
+
+const traceMetaFromHeaders = (traceHeaders: Record<string, string>): RuntimeTraceMeta => ({
+  requestId: traceHeaders["x-request-id"] ?? null,
+  correlationId: traceHeaders["x-correlation-id"] ?? null,
+  agentOperationId: traceHeaders["x-agent-operation-id"] ?? null,
+});
+
 const buildRuntimeHeaders = (accessToken: string, supabaseAnonKey: string): Record<string, string> => ({
   "Content-Type": "application/json",
   apikey: supabaseAnonKey,
@@ -109,16 +141,21 @@ const resolveRuntimeAuthenticatedUserWithStatus = async ({
   accessToken: string;
   supabaseUrl: string;
   supabaseAnonKey: string;
-}): Promise<{ userId: string | null; upstreamError: boolean }> => {
+}): Promise<{ userId: string | null; unauthorized: boolean; upstreamError: boolean }> => {
   const userResult = await fetchJson<{ id?: unknown }>(`${supabaseUrl}/auth/v1/user`, {
     method: "GET",
     headers: buildRuntimeHeaders(accessToken, supabaseAnonKey),
   });
   if (!userResult.ok || !userResult.data) {
-    return { userId: null, upstreamError: userResult.status >= 500 || userResult.status === 0 };
+    return {
+      userId: null,
+      unauthorized: userResult.status === 401 || userResult.status === 403,
+      upstreamError: userResult.status >= 500 || userResult.status === 0,
+    };
   }
   return {
     userId: typeof userResult.data.id === "string" && userResult.data.id.length > 0 ? userResult.data.id : null,
+    unauthorized: false,
     upstreamError: false,
   };
 };
@@ -133,12 +170,15 @@ const checkNotesCoverage = async ({
   organizationId: string;
   supabaseUrl: string;
   headers: Record<string, string>;
-}): Promise<{ ok: true } | { ok: false }> => {
+}): Promise<{ ok: true } | { ok: false } | { upstreamError: true; message: string }> => {
   const sessionGoalsResult = await fetchJson<Array<{ goal_id: string }>>(
     `${supabaseUrl}/rest/v1/session_goals?select=goal_id&organization_id=eq.${encodeURIComponent(organizationId)}&session_id=eq.${encodeURIComponent(sessionId)}`,
     { method: "GET", headers },
   );
-  if (!sessionGoalsResult.ok || !sessionGoalsResult.data || sessionGoalsResult.data.length === 0) {
+  if (!sessionGoalsResult.ok || !sessionGoalsResult.data) {
+    return { upstreamError: true, message: "Failed to load session goals for notes check" };
+  }
+  if (sessionGoalsResult.data.length === 0) {
     return { ok: true };
   }
 
@@ -150,7 +190,7 @@ const checkNotesCoverage = async ({
     { method: "GET", headers },
   );
   if (!notesRowsResult.ok || !notesRowsResult.data) {
-    return { ok: false };
+    return { upstreamError: true, message: "Failed to load session notes for notes check" };
   }
   const coveredGoalIds = new Set<string>();
   for (const row of notesRowsResult.data) {
@@ -170,7 +210,63 @@ const checkNotesCoverage = async ({
     : { ok: false };
 };
 
-const _completeSessionViaRuntimeRest = async ({
+const recordRuntimeSessionAuditEvent = async ({
+  sessionId,
+  eventType,
+  actorId,
+  payload,
+  supabaseUrl,
+  headers,
+}: {
+  sessionId: string;
+  eventType: string;
+  actorId: string;
+  payload: Record<string, unknown>;
+  supabaseUrl: string;
+  headers: Record<string, string>;
+}): Promise<void> => {
+  try {
+    const result = await fetchJson(`${supabaseUrl}/rest/v1/rpc/record_session_audit`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        p_session_id: sessionId,
+        p_event_type: eventType,
+        p_actor_id: actorId,
+        p_event_payload: payload,
+      }),
+    });
+
+    if (!result.ok) {
+      incrementRuntimeMetric("session_audit_failure_total", {
+        eventType,
+        required: false,
+        failureType: "rpc_error",
+      });
+      console.warn(JSON.stringify({
+        level: "warn",
+        message: "audit.event.persist_failed",
+        eventType,
+        sessionId,
+      }));
+    }
+  } catch (error) {
+    incrementRuntimeMetric("session_audit_failure_total", {
+      eventType,
+      required: false,
+      failureType: "exception",
+    });
+    console.error(JSON.stringify({
+      level: "error",
+      message: "audit.event.exception",
+      eventType,
+      sessionId,
+      error: error instanceof Error ? error.message : "unknown",
+    }));
+  }
+};
+
+const completeSessionViaRuntimeRest = async ({
   request,
   payload,
   accessToken,
@@ -190,6 +286,11 @@ const _completeSessionViaRuntimeRest = async ({
     });
   }
   if (!roleResolution.organizationId || (!roleResolution.isTherapist && !roleResolution.isAdmin && !roleResolution.isSuperAdmin)) {
+    incrementRuntimeMetric("tenant_denial_total", {
+      function: "sessions-complete",
+      orgId: roleResolution.organizationId ?? undefined,
+      reason: roleResolution.organizationId ? "role-denied" : "missing-org",
+    });
     return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
   }
 
@@ -200,23 +301,65 @@ const _completeSessionViaRuntimeRest = async ({
       headers: traceHeaders,
     });
   }
+  if (currentUserResult.unauthorized) {
+    return errorResponse(request, "unauthorized", "Unauthorized", {
+      status: 401,
+      headers: { ...traceHeaders, "WWW-Authenticate": "Bearer" },
+    });
+  }
   if (!currentUserResult.userId) {
-    return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
+    return errorResponse(request, "unauthorized", "Unauthorized", {
+      status: 401,
+      headers: { ...traceHeaders, "WWW-Authenticate": "Bearer" },
+    });
   }
 
   const organizationId = roleResolution.organizationId;
   const currentUserId = currentUserResult.userId;
   const headers = buildRuntimeHeaders(accessToken, supabaseAnonKey);
-  const sessionResult = await fetchJson<Array<{ id: string; status: string; therapist_id: string | null }>>(
-    `${supabaseUrl}/rest/v1/sessions?select=id,status,therapist_id&organization_id=eq.${encodeURIComponent(organizationId)}&id=eq.${encodeURIComponent(payload.session_id)}`,
+  const sessionResult = await fetchJson<Array<{
+    id: string;
+    status: string;
+    therapist_id: string | null;
+    start_time: string;
+    end_time: string;
+  }>>(
+    `${supabaseUrl}/rest/v1/sessions?select=id,status,therapist_id,start_time,end_time&organization_id=eq.${encodeURIComponent(organizationId)}&id=eq.${encodeURIComponent(payload.session_id)}`,
     { method: "GET", headers },
   );
-  if (!sessionResult.ok || !sessionResult.data || sessionResult.data.length === 0) {
-    return errorResponse(request, "not_found", "Session not found", { headers: traceHeaders });
+  incrementRuntimeMetric("org_scoped_query_total", {
+    function: "sessions-complete",
+    orgId: organizationId,
+    operation: "fetch-session",
+  });
+  if (!sessionResult.ok || !sessionResult.data) {
+    return errorResponse(request, "upstream_error", "Failed to load session", {
+      status: 502,
+      headers: traceHeaders,
+    });
+  }
+  if (sessionResult.data.length === 0) {
+    incrementRuntimeMetric("tenant_denial_total", {
+      function: "sessions-complete",
+      orgId: organizationId,
+      reason: "session-not-found",
+    });
+    return errorResponse(request, "not_found", "Session not found", {
+      headers: traceHeaders,
+      extra: { code: "SESSION_NOT_FOUND" },
+    });
   }
   const session = sessionResult.data[0];
   if (roleResolution.isTherapist && session.therapist_id !== currentUserId) {
-    return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
+    incrementRuntimeMetric("tenant_denial_total", {
+      function: "sessions-complete",
+      orgId: organizationId,
+      reason: "therapist-mismatch",
+    });
+    return errorResponse(request, "forbidden", "Forbidden", {
+      headers: traceHeaders,
+      extra: { code: "FORBIDDEN" },
+    });
   }
   if (TERMINAL_STATUSES.has(session.status)) {
     return errorResponse(request, "conflict", `Session is already in a terminal state: ${session.status}`, {
@@ -240,7 +383,17 @@ const _completeSessionViaRuntimeRest = async ({
       supabaseUrl,
       headers,
     });
+    if ("upstreamError" in notesCoverage) {
+      return errorResponse(request, "upstream_error", notesCoverage.message, {
+        status: 502,
+        headers: traceHeaders,
+      });
+    }
     if (!notesCoverage.ok) {
+      incrementRuntimeMetric("session_notes_required_rejection_total", {
+        function: "sessions-complete",
+        orgId: organizationId,
+      });
       return errorResponse(
         request,
         "conflict",
@@ -272,13 +425,48 @@ const _completeSessionViaRuntimeRest = async ({
       body: JSON.stringify(updates),
     },
   );
-  if (!updateResult.ok || !updateResult.data || updateResult.data.length === 0) {
+  if (!updateResult.ok || !updateResult.data) {
     return errorResponse(request, "conflict", "Session could not be completed", {
       status: 409,
       headers: traceHeaders,
       extra: { code: "UPDATE_FAILED" },
     });
   }
+  if (updateResult.data.length === 0) {
+    incrementRuntimeMetric("session_complete_concurrent_total", {
+      function: "sessions-complete",
+      orgId: organizationId,
+    });
+    return errorResponse(request, "conflict", "Session was modified concurrently. Refresh and try again.", {
+      status: 409,
+      headers: traceHeaders,
+      extra: { code: "CONCURRENT_MODIFICATION" },
+    });
+  }
+
+  const traceMeta = traceMetaFromHeaders(traceHeaders);
+  const eventType = payload.outcome === "completed" ? "session_completed" : "session_no_show";
+  await recordRuntimeSessionAuditEvent({
+    sessionId: payload.session_id,
+    eventType,
+    actorId: currentUserId,
+    supabaseUrl,
+    headers,
+    payload: {
+      outcome: payload.outcome,
+      startTime: session.start_time,
+      endTime: session.end_time,
+      notes: payload.notes ?? null,
+      agentOperationId: traceMeta.agentOperationId,
+      trace: traceMeta,
+    },
+  });
+
+  incrementRuntimeMetric("session_complete_success_total", {
+    function: "sessions-complete",
+    orgId: organizationId,
+    outcome: payload.outcome,
+  });
 
   return jsonForRequest(
     request,
@@ -382,26 +570,47 @@ export async function sessionsCompleteHandler(request: Request): Promise<Respons
     if (idempotencyKeyHeader) {
       forwardHeaders.set("Idempotency-Key", idempotencyKeyHeader);
     }
-    const forwarded = await fetch(functionUrl, {
-      method: "POST",
-      headers: forwardHeaders,
-      body: JSON.stringify(parsed.data),
-    });
+    let forwarded: Response;
+    try {
+      forwarded = await fetch(functionUrl, {
+        method: "POST",
+        headers: forwardHeaders,
+        body: JSON.stringify(parsed.data),
+      });
+    } catch {
+      return completeSessionViaRuntimeRest({
+        request,
+        payload: parsed.data,
+        accessToken,
+        traceHeaders,
+      });
+    }
     const bodyText = await forwarded.text();
-    const retryAfter = forwarded.headers.get("Retry-After");
-    const returnedIdempotency = forwarded.headers.get("Idempotency-Key") ?? idempotencyKeyHeader ?? undefined;
-    const idempotentReplay = forwarded.headers.get("Idempotent-Replay");
+    const responseHeaders: Record<string, string> = {
+      ...corsHeadersForRequest(request),
+      ...traceHeaders,
+      "Content-Type": forwarded.headers.get("Content-Type") ?? "application/json",
+    };
+    forwarded.headers.forEach((value, key) => {
+      const normalized = key.toLowerCase();
+      if (
+        normalized === "content-type" ||
+        normalized === "retry-after" ||
+        normalized === "idempotency-key" ||
+        normalized === "idempotent-replay" ||
+        normalized === "www-authenticate"
+      ) {
+        responseHeaders[key] = value;
+      }
+    });
+    const hasReturnedIdempotency = Object.keys(responseHeaders).some((key) => key.toLowerCase() === "idempotency-key");
+    if (!hasReturnedIdempotency && idempotencyKeyHeader) {
+      responseHeaders["Idempotency-Key"] = idempotencyKeyHeader;
+    }
 
     return new Response(bodyText, {
       status: forwarded.status,
-      headers: {
-        ...corsHeadersForRequest(request),
-        ...traceHeaders,
-        "Content-Type": "application/json",
-        ...(retryAfter ? { "Retry-After": retryAfter } : {}),
-        ...(returnedIdempotency ? { "Idempotency-Key": returnedIdempotency } : {}),
-        ...(idempotentReplay ? { "Idempotent-Replay": idempotentReplay } : {}),
-      },
+      headers: responseHeaders,
     });
   } catch {
     return errorResponse(request, "upstream_error", "Failed to complete session", {
@@ -410,3 +619,7 @@ export async function sessionsCompleteHandler(request: Request): Promise<Respons
     });
   }
 }
+
+export const __TESTING__ = {
+  completeSessionViaRuntimeRest,
+};

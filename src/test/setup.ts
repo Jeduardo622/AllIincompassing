@@ -1321,6 +1321,36 @@ export const server = setupServer(
       },
     });
   }),
+  http.post('*/api/sessions-week-forward', async ({ request }) => {
+    let body: {
+      sourceSessionIds?: string[];
+      endDate?: string;
+      dryRun?: boolean;
+    } | null = null;
+    try {
+      body = await request.json();
+    } catch (error) {
+      console.error('Failed to parse week-forward API payload in tests', error);
+    }
+
+    const responseData = {
+      sourceSessionCount: body?.sourceSessionIds?.length ?? 0,
+      generatedSessionCount: Math.max((body?.sourceSessionIds?.length ?? 0) * 4, 0),
+      generatedWeekCount: 4,
+      endDate: body?.endDate ?? '2025-08-31',
+      conflicts: [],
+    };
+
+    return HttpResponse.json({
+      success: true,
+      data: body?.dryRun
+        ? responseData
+        : {
+            ...responseData,
+            createdSessions: [],
+          },
+    });
+  }),
   // Mock session hold + confirmation flow
   http.post('*/functions/v1/sessions-hold*', () => {
     return HttpResponse.json({

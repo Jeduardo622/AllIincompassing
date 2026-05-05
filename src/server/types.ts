@@ -152,3 +152,78 @@ export interface BookSessionApiResponse {
   retryAfterSeconds?: number | null;
   orchestration?: Record<string, unknown> | null;
 }
+
+export interface WeekForwardConflict {
+  sourceSessionId: string;
+  conflictingSessionId?: string;
+  startTime: string;
+  endTime: string;
+  therapistId: string;
+  clientId: string;
+  code: string;
+  message: string;
+}
+
+export interface WeekForwardPreviewResult {
+  sourceSessionCount: number;
+  generatedSessionCount: number;
+  generatedWeekCount: number;
+  endDate: string;
+  conflicts: WeekForwardConflict[];
+}
+
+export interface WeekForwardCommitResult extends WeekForwardPreviewResult {
+  createdSessions: Session[];
+}
+
+export const weekForwardConflictSchema = z.object({
+  sourceSessionId: nonEmptyString,
+  conflictingSessionId: nonEmptyString.optional(),
+  startTime: isoDateTime,
+  endTime: isoDateTime,
+  therapistId: nonEmptyString,
+  clientId: nonEmptyString,
+  code: nonEmptyString,
+  message: nonEmptyString,
+});
+
+const isoDateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+export const weekForwardRequestBodySchema = z.object({
+  sourceSessionIds: z.array(nonEmptyString).min(1),
+  displayedWeekStart: isoDateTime,
+  displayedWeekEnd: isoDateTime,
+  endDate: isoDateOnly,
+  timeZone: nonEmptyString,
+  dryRun: z.boolean(),
+});
+
+export type WeekForwardRequestBody = z.infer<typeof weekForwardRequestBodySchema>;
+
+export const weekForwardPreviewResultSchema = z.object({
+  sourceSessionCount: z.number().int().nonnegative(),
+  generatedSessionCount: z.number().int().nonnegative(),
+  generatedWeekCount: z.number().int().nonnegative(),
+  endDate: isoDateOnly,
+  conflicts: z.array(weekForwardConflictSchema),
+});
+
+export const weekForwardCommitResultSchema = weekForwardPreviewResultSchema.extend({
+  createdSessions: z.array(z.record(z.unknown())),
+});
+
+export const weekForwardApiResponseSchema = z.object({
+  success: z.boolean(),
+  data: z.union([weekForwardPreviewResultSchema, weekForwardCommitResultSchema]).optional(),
+  error: z.string().optional(),
+  code: z.string().optional(),
+  hint: z.string().optional(),
+});
+
+export interface WeekForwardApiResponse {
+  success: boolean;
+  data?: WeekForwardPreviewResult | WeekForwardCommitResult;
+  error?: string;
+  code?: string;
+  hint?: string;
+}

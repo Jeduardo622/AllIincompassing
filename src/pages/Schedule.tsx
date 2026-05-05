@@ -9,7 +9,7 @@ import React, {
   Suspense,
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { format, parseISO, startOfWeek, addDays, endOfWeek } from "date-fns";
+import { format, parseISO, startOfWeek, addDays, addMonths, endOfWeek } from "date-fns";
 import { getTimezoneOffset } from "date-fns-tz";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -25,6 +25,7 @@ import {
   type SessionModalSubmitData,
   type SessionModalClinicalNotesPayload,
 } from "../components/SessionModal";
+import type { WeekForwardPreviewResult } from "../server/types";
 import { SessionFilters } from "../components/SessionFilters";
 import { useDebounce } from "../lib/performance";
 import {
@@ -58,6 +59,11 @@ import {
   bookSessionViaApi,
   buildBookSessionApiPayload,
 } from "../features/scheduling/domain/booking";
+import {
+  applyWeekForwardScheduling,
+  asWeekForwardError,
+  previewWeekForwardScheduling,
+} from "../features/scheduling/domain/weekForward";
 import { buildScheduleDisplayData } from "../features/scheduling/domain/displayData";
 import {
   collectTherapistScopeCandidateIds,
@@ -88,6 +94,7 @@ import {
   SCHEDULE_MODAL_URL_TTL_MS,
 } from "./schedule-modal-url-state";
 import { getSessionStatusClasses } from "./ScheduleSessionStatusStyles";
+import { weekForwardPreviewResultSchema } from "../lib/contracts/scheduling";
 
 const MISSING_NOTES_RETRY_HINT =
   "Before closing this in-progress session, persist per-goal note text for each worked goal on a linked session note. Save session capture from Schedule (Session capture), or add notes in Client Details > Session Notes. Narrative and signatures are completed in Client Details.";
@@ -419,11 +426,14 @@ export const Schedule = React.memo(() => {
   }, []);
 
   const [recurrenceEnabled, setRecurrenceEnabled] = useState(false);
+  const [advancedRecurrenceEnabled, setAdvancedRecurrenceEnabled] = useState(false);
   const [recurrenceRule, setRecurrenceRule] = useState("FREQ=WEEKLY;INTERVAL=1");
   const [recurrenceCount, setRecurrenceCount] = useState<number | undefined>();
   const [recurrenceUntil, setRecurrenceUntil] = useState("");
   const [recurrenceExceptions, setRecurrenceExceptions] = useState<string[]>([]);
   const [recurrenceTimeZone, setRecurrenceTimeZone] = useState(userTimeZone);
+  const [weekForwardEndDate, setWeekForwardEndDate] = useState("");
+  const [weekForwardPreview, setWeekForwardPreview] = useState<WeekForwardPreviewResult | null>(null);
 
   useLayoutEffect(() => {
     setRecurrenceTimeZone(userTimeZone);
@@ -437,7 +447,7 @@ export const Schedule = React.memo(() => {
 
   const recurrenceFormState = useMemo<RecurrenceFormState>(
     () => ({
-      enabled: recurrenceEnabled,
+      enabled: advancedRecurrenceEnabled,
       rule: recurrenceRule,
       count: recurrenceCount,
       until: recurrenceUntil,
@@ -445,7 +455,7 @@ export const Schedule = React.memo(() => {
       timeZone: recurrenceTimeZone,
     }),
     [
-      recurrenceEnabled,
+      advancedRecurrenceEnabled,
       recurrenceRule,
       recurrenceCount,
       recurrenceUntil,
@@ -668,6 +678,13 @@ export const Schedule = React.memo(() => {
     therapistScopedView && !showOrgDirectoryEmpty && displayData.sessions.length === 0;
 
   useEffect(() => {
+    if (recurrenceEnabled) {
+      return;
+    }
+    setWeekForwardEndDate(format(addMonths(weekEnd, 2), "yyyy-MM-dd"));
+  }, [recurrenceEnabled, weekEnd]);
+
+  useEffect(() => {
     if (therapistScopedView) {
       setView("day");
     }
@@ -784,6 +801,27 @@ export const Schedule = React.memo(() => {
     scopedTherapistId,
     therapistLinkedClientIdsQuery.data,
   ]);
+  const weekForwardSourceSessions = displayData.sessions;
+  const weekForwardHasVisibleSessions = weekForwardSourceSessions.length > 0;
+  const weekForwardInvalidStatusSessions = useMemo(
+    () => weekForwardSourceSessions.filter((session) => session.status !== "scheduled"),
+    [weekForwardSourceSessions],
+  );
+  const weekForwardBlockedStatuses = useMemo(
+    () => Array.from(new Set(weekForwardInvalidStatusSessions.map((session) => session.status).filter(Boolean))),
+    [weekForwardInvalidStatusSessions],
+  );
+  const weekForwardRequiresOrgContext = effectiveRole === "super_admin" && !activeOrganizationId;
+  const weekForwardAvailableInCurrentView = view === "week";
+  const weekForwardSourceSummary = `${format(weekStart, "MMM d")} - ${format(weekEnd, "MMM d, yyyy")}`;
+  const weekForwardCanPreview =
+    !therapistScopedView &&
+    recurrenceEnabled &&
+    weekForwardAvailableInCurrentView &&
+    !weekForwardRequiresOrgContext &&
+    weekForwardHasVisibleSessions &&
+    weekForwardInvalidStatusSessions.length === 0 &&
+    weekForwardEndDate.trim().length > 0;
   const isScheduleShellNarrow = useSyncExternalStore(
     (onStoreChange) => {
       if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -809,7 +847,7 @@ export const Schedule = React.memo(() => {
     parts.push(view === "day" ? "Day view" : "Week view");
     parts.push(tzShort);
     if (!therapistScopedView && recurrenceEnabled) {
-      parts.push("Recurrence on");
+      parts.push("Week-forward on");
     }
     if (therapistScopedView) {
       parts.push("All therapists");
@@ -958,6 +996,72 @@ export const Schedule = React.memo(() => {
       handleScheduleMutationError(error);
     },
   });
+
+  const weekForwardPreviewMutation = useMutation({
+    mutationFn: async () =>
+      previewWeekForwardScheduling({
+        sourceSessionIds: weekForwardSourceSessions.map((session) => session.id),
+        displayedWeekStart: weekStart.toISOString(),
+        displayedWeekEnd: weekEnd.toISOString(),
+        endDate: weekForwardEndDate,
+        timeZone: recurrenceTimeZone,
+      }),
+    onSuccess: (result) => {
+      setWeekForwardPreview(result);
+      if (result.generatedSessionCount === 0) {
+        showSuccess("No future sessions will be created for the selected end date.");
+      }
+    },
+    onError: (error) => {
+      const normalized = asWeekForwardError(error);
+      const parsedPreview = weekForwardPreviewResultSchema.safeParse(normalized.data);
+      if (parsedPreview.success) {
+        setWeekForwardPreview(parsedPreview.data);
+      } else {
+        setWeekForwardPreview(null);
+      }
+      showError(normalized.message);
+    },
+  });
+
+  const weekForwardApplyMutation = useMutation({
+    mutationFn: async () =>
+      applyWeekForwardScheduling({
+        sourceSessionIds: weekForwardSourceSessions.map((session) => session.id),
+        displayedWeekStart: weekStart.toISOString(),
+        displayedWeekEnd: weekEnd.toISOString(),
+        endDate: weekForwardEndDate,
+        timeZone: recurrenceTimeZone,
+      }),
+    onSuccess: async (result) => {
+      setWeekForwardPreview(result);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["sessions"] }),
+        queryClient.invalidateQueries({ queryKey: ["sessions-batch"] }),
+      ]);
+      showSuccess(
+        `Applied ${result.sourceSessionCount} visible sessions through ${format(parseISO(`${result.endDate}T12:00:00Z`), "MMM d, yyyy")}.`,
+      );
+    },
+    onError: (error) => {
+      const normalized = asWeekForwardError(error);
+      const parsedPreview = weekForwardPreviewResultSchema.safeParse(normalized.data);
+      if (parsedPreview.success) {
+        setWeekForwardPreview(parsedPreview.data);
+      }
+      showError(normalized.message);
+    },
+  });
+
+  useEffect(() => {
+    setWeekForwardPreview(null);
+  }, [
+    recurrenceEnabled,
+    recurrenceTimeZone,
+    weekForwardEndDate,
+    weekForwardSourceSessions,
+    weekForwardAvailableInCurrentView,
+  ]);
 
   const cancelSessionMutation = useMutation({
     mutationFn: async ({
@@ -1889,7 +1993,7 @@ export const Schedule = React.memo(() => {
               checked={recurrenceEnabled}
               onChange={(event) => setRecurrenceEnabled(event.target.checked)}
             />
-            Enable recurrence (RRULE)
+            Apply this visible week forward
           </label>
 
           <div className="flex items-center gap-2 w-full md:w-auto">
@@ -1908,114 +2012,237 @@ export const Schedule = React.memo(() => {
         </div>
 
         {recurrenceEnabled && (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <label htmlFor="recurrence-rrule" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                RRULE
-              </label>
-              <input
-                id="recurrence-rrule"
-                type="text"
-                value={recurrenceRule}
-                onChange={(event) => setRecurrenceRule(event.target.value)}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
-                placeholder="FREQ=WEEKLY;BYDAY=MO,WE;INTERVAL=1"
-              />
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Provide a valid RFC 5545 RRULE string. Weekly rules support automatic timezone-aware scheduling.
-              </p>
-            </div>
-
-            <div>
-              <label htmlFor="recurrence-count" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Count
-              </label>
-              <input
-                id="recurrence-count"
-                type="number"
-                min="1"
-                value={typeof recurrenceCount === "number" ? recurrenceCount : ""}
-                onChange={(event) => {
-                  const { value } = event.target;
-                  if (value.trim().length === 0) {
-                    setRecurrenceCount(undefined);
-                    return;
-                  }
-
-                  const parsed = Number(value);
-                  setRecurrenceCount(Number.isNaN(parsed) ? undefined : parsed);
-                }}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
-              />
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Limit the number of occurrences. Leave blank to rely on the RRULE or end date.
-              </p>
-            </div>
-
-            <div>
-              <label htmlFor="recurrence-until" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Until
-              </label>
-              <input
-                id="recurrence-until"
-                type="datetime-local"
-                value={recurrenceUntil}
-                onChange={(event) => setRecurrenceUntil(event.target.value)}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
-              />
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Optional end date in the selected time zone.
-              </p>
-            </div>
-
-            <div className="md:col-span-2">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Exceptions
-                </span>
-                <button
-                  type="button"
-                  onClick={handleAddRecurrenceException}
-                  className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 focus:outline-none"
-                >
-                  Add exception
-                </button>
+          <div className="mt-4 space-y-4">
+            {!weekForwardAvailableInCurrentView ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                Switch to Week view to apply the currently displayed week forward.
               </div>
-
-              {recurrenceExceptions.length === 0 ? (
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  No exception dates configured.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {recurrenceExceptions.map((value, index) => (
-                    <div key={`recurrence-exception-${index}`} className="flex items-center gap-2">
-                      <label
-                        htmlFor={`recurrence-exception-input-${index}`}
-                        className="sr-only"
-                      >
-                        Exception date {index + 1}
-                      </label>
-                      <input
-                        id={`recurrence-exception-input-${index}`}
-                        type="datetime-local"
-                        value={value}
-                        onChange={(event) => handleRecurrenceExceptionChange(index, event.target.value)}
-                        className="flex-1 rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveRecurrenceException(index)}
-                        aria-label={`Remove exception date ${index + 1}`}
-                        className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 focus:outline-none"
-                      >
-                        Remove
-                      </button>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-dark">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Source week</div>
+                    <div className="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100">{weekForwardSourceSummary}</div>
+                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {weekForwardSourceSessions.length} visible {weekForwardSourceSessions.length === 1 ? "session" : "sessions"} will be used.
                     </div>
-                  ))}
+                  </div>
+
+                  <div>
+                    <label htmlFor="week-forward-end-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      End date
+                    </label>
+                    <input
+                      id="week-forward-end-date"
+                      type="date"
+                      value={weekForwardEndDate}
+                      min={format(addDays(weekEnd, 1), "yyyy-MM-dd")}
+                      onChange={(event) => setWeekForwardEndDate(event.target.value)}
+                      className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                    />
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      The displayed week will repeat weekly through this inclusive date in {recurrenceTimeZone}.
+                    </p>
+                  </div>
                 </div>
-              )}
-            </div>
+
+                <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100">
+                  The operation stops on the first conflict and creates nothing unless the whole batch is valid.
+                </div>
+
+                {weekForwardRequiresOrgContext ? (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                    Choose an organization context before applying a visible week forward as a super admin.
+                  </div>
+                ) : null}
+
+                {!weekForwardHasVisibleSessions ? (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                    There are no visible sessions in this displayed week to reuse.
+                  </div>
+                ) : null}
+
+                {weekForwardInvalidStatusSessions.length > 0 ? (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                    Every visible session must be scheduled before cloning this week forward.
+                    <div className="mt-1 text-xs">
+                      Blocking statuses: {weekForwardBlockedStatuses.join(", ")}.
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <button
+                    type="button"
+                    onClick={() => void weekForwardPreviewMutation.mutateAsync()}
+                    disabled={!weekForwardCanPreview || weekForwardPreviewMutation.isPending || weekForwardApplyMutation.isPending}
+                    className="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {weekForwardPreviewMutation.isPending ? "Previewing..." : "Preview week-forward schedule"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void weekForwardApplyMutation.mutateAsync()}
+                    disabled={!weekForwardCanPreview || !weekForwardPreview || weekForwardPreview.generatedSessionCount === 0 || weekForwardPreviewMutation.isPending || weekForwardApplyMutation.isPending}
+                    className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {weekForwardApplyMutation.isPending ? "Applying..." : "Apply this week forward"}
+                  </button>
+                </div>
+
+                {weekForwardPreview ? (
+                  <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-dark">
+                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Preview</div>
+                    <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-3">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Source sessions</div>
+                        <div className="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">{weekForwardPreview.sourceSessionCount}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Generated sessions</div>
+                        <div className="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">{weekForwardPreview.generatedSessionCount}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Generated weeks</div>
+                        <div className="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">{weekForwardPreview.generatedWeekCount}</div>
+                      </div>
+                    </div>
+
+                    {weekForwardPreview.conflicts.length > 0 ? (
+                      <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-100">
+                        <div className="font-medium">Blocking conflict</div>
+                        {weekForwardPreview.conflicts.map((conflict) => (
+                          <div key={`${conflict.sourceSessionId}-${conflict.startTime}`} className="mt-2">
+                            {conflict.message} ({format(parseISO(conflict.startTime), "MMM d, yyyy h:mm a")} - {format(parseISO(conflict.endTime), "h:mm a")})
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
+            )}
+
+            <details className="rounded-lg border border-dashed border-gray-300 p-3 dark:border-gray-600">
+              <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">
+                Advanced single-session RRULE
+              </summary>
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <label className="inline-flex items-center text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <input
+                      type="checkbox"
+                      className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      checked={advancedRecurrenceEnabled}
+                      onChange={(event) => setAdvancedRecurrenceEnabled(event.target.checked)}
+                    />
+                    Apply raw RRULE when saving from the session modal
+                  </label>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label htmlFor="recurrence-rrule" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    RRULE
+                  </label>
+                  <input
+                    id="recurrence-rrule"
+                    type="text"
+                    value={recurrenceRule}
+                    onChange={(event) => setRecurrenceRule(event.target.value)}
+                    className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                    placeholder="FREQ=WEEKLY;BYDAY=MO,WE;INTERVAL=1"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Use this only when you need a manual RFC 5545 rule for a single modal save.
+                  </p>
+                </div>
+
+                <div>
+                  <label htmlFor="recurrence-count" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Count
+                  </label>
+                  <input
+                    id="recurrence-count"
+                    type="number"
+                    min="1"
+                    value={typeof recurrenceCount === "number" ? recurrenceCount : ""}
+                    onChange={(event) => {
+                      const { value } = event.target;
+                      if (value.trim().length === 0) {
+                        setRecurrenceCount(undefined);
+                        return;
+                      }
+
+                      const parsed = Number(value);
+                      setRecurrenceCount(Number.isNaN(parsed) ? undefined : parsed);
+                    }}
+                    className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="recurrence-until" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Until
+                  </label>
+                  <input
+                    id="recurrence-until"
+                    type="datetime-local"
+                    value={recurrenceUntil}
+                    onChange={(event) => setRecurrenceUntil(event.target.value)}
+                    className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Exceptions
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleAddRecurrenceException}
+                      className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 focus:outline-none"
+                    >
+                      Add exception
+                    </button>
+                  </div>
+
+                  {recurrenceExceptions.length === 0 ? (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      No exception dates configured.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {recurrenceExceptions.map((value, index) => (
+                        <div key={`recurrence-exception-${index}`} className="flex items-center gap-2">
+                          <label
+                            htmlFor={`recurrence-exception-input-${index}`}
+                            className="sr-only"
+                          >
+                            Exception date {index + 1}
+                          </label>
+                          <input
+                            id={`recurrence-exception-input-${index}`}
+                            type="datetime-local"
+                            value={value}
+                            onChange={(event) => handleRecurrenceExceptionChange(index, event.target.value)}
+                            className="flex-1 rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRecurrenceException(index)}
+                            aria-label={`Remove exception date ${index + 1}`}
+                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 focus:outline-none"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </details>
           </div>
         )}
       </fieldset>

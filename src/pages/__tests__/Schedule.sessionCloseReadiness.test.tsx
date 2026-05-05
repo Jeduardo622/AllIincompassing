@@ -172,6 +172,13 @@ const waitForScheduleGridReady = () =>
     return activeView!;
   }, { timeout: 10_000 });
 
+const findSessionCard = async (sessionId: string) =>
+  waitFor(() => {
+    const card = document.querySelector(`[data-session-id="${sessionId}"]`) as HTMLElement | null;
+    expect(card).toBeTruthy();
+    return card!;
+  }, { timeout: 10_000 });
+
 describe("Schedule session-close readiness precheck", { timeout: 30_000 }, () => {
   beforeEach(() => {
     sessionStatus = "in_progress";
@@ -197,7 +204,7 @@ describe("Schedule session-close readiness precheck", { timeout: 30_000 }, () =>
     renderWithProviders(<Schedule />);
 
     await waitForScheduleGridReady();
-    fireEvent.click(await screen.findByText("Jamie Client"));
+    fireEvent.click(await findSessionCard("session-1"));
     fireEvent.click(await screen.findByRole("button", { name: "Submit terminal" }));
 
     await waitFor(() => {
@@ -227,7 +234,7 @@ describe("Schedule session-close readiness precheck", { timeout: 30_000 }, () =>
     renderWithProviders(<Schedule />);
 
     await waitForScheduleGridReady();
-    fireEvent.click(await screen.findByText("Jamie Client"));
+    fireEvent.click(await findSessionCard("session-1"));
     fireEvent.click(await screen.findByRole("button", { name: "Submit terminal" }));
 
     await waitFor(() => {
@@ -243,7 +250,7 @@ describe("Schedule session-close readiness precheck", { timeout: 30_000 }, () =>
     renderWithProviders(<Schedule />);
 
     await waitForScheduleGridReady();
-    fireEvent.click(await screen.findByText("Jamie Client"));
+    fireEvent.click(await findSessionCard("session-1"));
     fireEvent.click(await screen.findByRole("button", { name: "Submit terminal" }));
 
     await waitFor(() => {
@@ -262,7 +269,7 @@ describe("Schedule session-close readiness precheck", { timeout: 30_000 }, () =>
     renderWithProviders(<Schedule />);
 
     await waitForScheduleGridReady();
-    fireEvent.click(await screen.findByText("Jamie Client"));
+    fireEvent.click(await findSessionCard("session-1"));
     fireEvent.click(await screen.findByRole("button", { name: "Submit terminal" }));
 
     await waitFor(() => {

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import type { Session } from '../types';
 import {
@@ -33,6 +33,8 @@ const ScheduleWeekViewComponent: React.FC<ScheduleWeekViewProps> = ({
 }) => {
   const [draggedSession, setDraggedSession] = useState<Session | null>(null);
   const [dropSlotKey, setDropSlotKey] = useState<string | null>(null);
+  const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
+  const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
   const draggedSessionRef = useRef<Session | null>(null);
   const sourceSlotKeyRef = useRef<string | null>(null);
   const sessionsById = useMemo(() => {
@@ -44,6 +46,17 @@ const ScheduleWeekViewComponent: React.FC<ScheduleWeekViewProps> = ({
     }
     return next;
   }, [sessionSlotIndex]);
+  const previewSessionId = focusedSessionId ?? hoveredSessionId;
+  const previewSession = previewSessionId ? sessionsById.get(previewSessionId) ?? null : null;
+
+  useEffect(() => {
+    if (hoveredSessionId && !sessionsById.has(hoveredSessionId)) {
+      setHoveredSessionId(null);
+    }
+    if (focusedSessionId && !sessionsById.has(focusedSessionId)) {
+      setFocusedSessionId(null);
+    }
+  }, [focusedSessionId, hoveredSessionId, sessionsById]);
 
   const clearDragState = useCallback(() => {
     draggedSessionRef.current = null;
@@ -143,6 +156,10 @@ const ScheduleWeekViewComponent: React.FC<ScheduleWeekViewProps> = ({
             onSessionDrop={handleDropOnSlot}
             onHoverSlotDuringDrag={handleHoverSlotDuringDrag}
             onEndSessionDrag={clearDragState}
+            previewSession={previewSession}
+            previewSessionId={previewSessionId}
+            onHoverPreviewSessionChange={(session) => setHoveredSessionId(session?.id ?? null)}
+            onFocusPreviewSessionChange={(session) => setFocusedSessionId(session?.id ?? null)}
           />
         ))}
       </div>

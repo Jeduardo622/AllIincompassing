@@ -79,11 +79,13 @@ vi.mock("../../lib/supabase", () => ({
   },
 }));
 
-/** Deterministic, fast pointer/keyboard simulation — avoids CI flakes from default per-key delays. */
-const user = userEvent.setup({ delay: null });
+/** Deterministic, fast pointer/keyboard simulation — avoid sharing interaction state across tests. */
+let user: ReturnType<typeof userEvent.setup>;
 
 describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
   beforeEach(() => {
+    user = userEvent.setup({ delay: null });
+
     vi.mocked(supabase.from).mockImplementation((tableName: string) => {
       const chain = {
         select: vi.fn().mockReturnThis(),
@@ -1337,6 +1339,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     );
 
+    await screen.findByText("fba.docx");
     const generateButton = await screen.findByRole("button", { name: /Generate with AI from Uploaded FBA/i });
     await waitFor(() => {
       expect(generateButton).not.toBeDisabled();
@@ -1344,13 +1347,14 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     await user.click(generateButton);
 
     await waitFor(() => {
-      expect(callApi).toHaveBeenCalledWith(
-        "/api/assessment-drafts",
-        expect.objectContaining({
-          method: "POST",
-          body: expect.stringContaining("\"auto_generate\":true"),
-        }),
-      );
+      expect(
+        vi.mocked(callApi).mock.calls.some(
+          ([path, init]) =>
+            path === "/api/assessment-drafts" &&
+            init?.method === "POST" &&
+            String(init.body).includes("\"auto_generate\":true"),
+        ),
+      ).toBe(true);
     });
     expect(showSuccess).toHaveBeenCalledWith("AI proposal program and goals generated from uploaded FBA.");
   });

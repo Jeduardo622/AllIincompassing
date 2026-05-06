@@ -719,6 +719,7 @@ describe('Admin therapist links', () => {
 
 describe('AdminSettings super admin access', () => {
   let fromSpy: ReturnType<typeof vi.spyOn> | null = null;
+  let invokeSpy: ReturnType<typeof vi.spyOn> | null = null;
 
   beforeEach(() => {
     const authStub = {
@@ -742,12 +743,18 @@ describe('AdminSettings super admin access', () => {
 
     vi.mocked(useAuth).mockReturnValue(authStub);
     rpcMock.mockClear();
+    vi.mocked(showError).mockClear();
+    vi.mocked(showSuccess).mockClear();
+    confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
       if (functionName === 'get_admin_users_paged') {
         return { data: [mockAdminUser], error: null };
       }
       if (functionName === 'get_admin_therapist_links') {
         return { data: [], error: null };
+      }
+      if (functionName === 'manage_admin_users') {
+        return { data: null, error: null };
       }
 
       if (functionName === 'guardian_link_queue_admin_view') {
@@ -781,12 +788,19 @@ describe('AdminSettings super admin access', () => {
 
       return originalFrom(table) as never;
     });
+    invokeSpy = vi
+      .spyOn(supabase.functions, 'invoke')
+      .mockResolvedValue({ data: null, error: null });
   });
 
   afterEach(() => {
     rpcMock.mockImplementation(defaultRpcImplementation ?? fallbackRpc);
     fromSpy?.mockRestore();
     fromSpy = null;
+    invokeSpy?.mockRestore();
+    invokeSpy = null;
+    confirmSpy?.mockRestore();
+    confirmSpy = null;
   });
 
   it('allows super admins to view and filter admins across organizations', async () => {
@@ -830,6 +844,74 @@ describe('AdminSettings super admin access', () => {
       });
     });
     expect(fromSpy).not.toHaveBeenCalledWith('therapists');
+  });
+
+  it('creates an admin in the selected organization', async () => {
+    renderWithProviders(<AdminSettings />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add Admin' }));
+
+    const modal = await screen.findByRole('dialog', { name: 'Add New Admin' });
+    await userEvent.type(within(modal).getByLabelText('Email*'), 'super.created@example.com');
+    await userEvent.type(within(modal).getByLabelText('Password*'), 'StrongPass123!');
+    await userEvent.type(within(modal).getByLabelText('First Name*'), 'Super');
+    await userEvent.type(within(modal).getByLabelText('Last Name*'), 'Created');
+    await userEvent.selectOptions(within(modal).getByLabelText('Organization'), 'org-2');
+    await userEvent.type(within(modal).getByLabelText('Reason for admin access*'), 'Coverage for the Sunrise Therapy workspace.');
+
+    await userEvent.click(within(modal).getByRole('button', { name: 'Add Admin' }));
+
+    await waitFor(() => {
+      expect(invokeSpy).toHaveBeenCalledWith(
+        'admin-create-user',
+        expect.objectContaining({
+          body: expect.objectContaining({
+            email: 'super.created@example.com',
+            organization_id: 'org-2',
+            reason: 'Coverage for the Sunrise Therapy workspace.',
+          }),
+        }),
+      );
+    });
+    expect(showSuccess).toHaveBeenCalledWith('Admin user created successfully');
+  });
+
+  it('resets an admin password through the canonical RPC without falling back when available', async () => {
+    invokeSpy?.mockResolvedValue({ data: null, error: null });
+    renderWithProviders(<AdminSettings />);
+
+    await userEvent.click(await screen.findByTitle('Reset password'));
+
+    const modal = await screen.findByRole('dialog', { name: `Reset Password for ${mockAdminUser.email}` });
+    await userEvent.type(within(modal).getByLabelText('New Password*'), 'UpdatedPass123!');
+    await userEvent.click(within(modal).getByRole('button', { name: 'Reset Password' }));
+
+    await waitFor(() => {
+      expect(invokeSpy).toHaveBeenCalledWith(
+        'admin-reset-user-password',
+        expect.objectContaining({
+          body: {
+            email: mockAdminUser.email,
+            new_password: 'UpdatedPass123!',
+          },
+        }),
+      );
+    });
+    expect(showSuccess).toHaveBeenCalledWith('Password reset successfully');
+  });
+
+  it('removes an admin through manage_admin_users for super admins', async () => {
+    renderWithProviders(<AdminSettings />);
+
+    await userEvent.click(await screen.findByTitle('Remove admin'));
+
+    await waitFor(() => {
+      expect(rpcMock).toHaveBeenCalledWith('manage_admin_users', {
+        operation: 'remove',
+        target_user_id: mockAdminUser.user_id,
+      });
+    });
+    expect(showSuccess).toHaveBeenCalledWith('Admin user removed successfully');
   });
 });
 

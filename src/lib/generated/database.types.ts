@@ -6213,6 +6213,42 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_admin_linkable_therapists: {
+        Args: { p_organization_id: string }
+        Returns: {
+          id: string
+          full_name: string | null
+          email: string | null
+        }[]
+      }
+      get_admin_therapist_links: {
+        Args: { p_organization_id: string }
+        Returns: {
+          user_id: string
+          therapist_id: string
+          therapist_name: string | null
+        }[]
+      }
+      set_admin_therapist_link: {
+        Args: {
+          target_user_id: string
+          target_therapist_id: string
+          p_organization_id: string
+        }
+        Returns: {
+          user_id: string
+          therapist_id: string
+          therapist_name: string | null
+        }[]
+      }
+      delete_admin_therapist_link: {
+        Args: {
+          target_user_id: string
+          target_therapist_id: string
+          p_organization_id: string
+        }
+        Returns: boolean
+      }
       get_ai_cache_metrics: {
         Args: never
         Returns: {

@@ -55,6 +55,18 @@ interface ClientOption {
   displayName: string;
 }
 
+interface TherapistOption {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+}
+
+interface AdminTherapistLink {
+  user_id: string;
+  therapist_id: string;
+  therapist_name: string | null;
+}
+
 export function AdminSettings() {
   const ALL_ORGANIZATIONS_VALUE = 'ALL';
 
@@ -76,6 +88,7 @@ export function AdminSettings() {
   const [relationshipByRequest, setRelationshipByRequest] = useState<Record<string, string>>({});
   const [notesByRequest, setNotesByRequest] = useState<Record<string, string>>({});
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string>(ALL_ORGANIZATIONS_VALUE);
+  const [selectedTherapistByAdmin, setSelectedTherapistByAdmin] = useState<Record<string, string>>({});
 
   const addAdminEmailRef = useRef<HTMLInputElement>(null);
   const resetPasswordInputRef = useRef<HTMLInputElement>(null);
@@ -244,6 +257,77 @@ export function AdminSettings() {
     retry: false,
   });
 
+  const {
+    data: therapistOptions = [],
+    isLoading: isTherapistOptionsLoading,
+    error: therapistOptionsError,
+  } = useQuery<TherapistOption[], Error>({
+    queryKey: ['admin-link-therapists', activeOrganizationId ?? 'ALL'],
+    queryFn: async () => {
+      if (!activeOrganizationId) {
+        return [];
+      }
+
+      const { data, error } = await supabase.rpc('get_admin_linkable_therapists', {
+        p_organization_id: activeOrganizationId,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      return ((data as TherapistOption[] | null) ?? []).map((therapist) => ({
+        id: therapist.id,
+        full_name: therapist.full_name ?? null,
+        email: therapist.email ?? null,
+      }));
+    },
+    enabled: Boolean(activeOrganizationId),
+    retry: false,
+  });
+
+  const {
+    data: adminTherapistLinks = [],
+    isLoading: isAdminTherapistLinksLoading,
+    error: adminTherapistLinksError,
+  } = useQuery<AdminTherapistLink[], Error>({
+    queryKey: ['admin-therapist-links', activeOrganizationId ?? 'ALL'],
+    queryFn: async () => {
+      if (!activeOrganizationId) {
+        return [];
+      }
+
+      const { data, error } = await supabase.rpc('get_admin_therapist_links', {
+        p_organization_id: activeOrganizationId,
+      });
+
+      if (error) {
+        const rpcError = error as PostgrestError & { status?: number };
+        const mapped = new Error(
+          rpcError.code === '42501'
+            ? 'You do not have permission to view admin therapist links for this organization.'
+            : error.message || 'Failed to load admin therapist links.'
+        );
+        (mapped as Error & { status?: number }).status = rpcError.code === '42501' ? 403 : 500;
+        throw mapped;
+      }
+
+      return (data as AdminTherapistLink[] | null) ?? [];
+    },
+    enabled: Boolean(activeOrganizationId),
+    retry: false,
+  });
+
+  const adminTherapistLinksByUser = useMemo(() => {
+    const grouped = new Map<string, AdminTherapistLink[]>();
+    adminTherapistLinks.forEach((link) => {
+      const existing = grouped.get(link.user_id) ?? [];
+      existing.push(link);
+      grouped.set(link.user_id, existing);
+    });
+    return grouped;
+  }, [adminTherapistLinks]);
+
   useEffect(() => {
     if (!adminsError) {
       if (!isSuperAdmin && organizationId) {
@@ -289,6 +373,22 @@ export function AdminSettings() {
 
     showError(organizationOptionsError);
   }, [organizationOptionsError]);
+
+  useEffect(() => {
+    if (!therapistOptionsError) {
+      return;
+    }
+
+    showError(therapistOptionsError);
+  }, [therapistOptionsError]);
+
+  useEffect(() => {
+    if (!adminTherapistLinksError) {
+      return;
+    }
+
+    showError(adminTherapistLinksError);
+  }, [adminTherapistLinksError]);
 
   const createAdminMutation = useMutation({
     mutationFn: async (data: AdminFormData) => {
@@ -467,6 +567,57 @@ export function AdminSettings() {
     },
   });
 
+  const linkAdminTherapistMutation = useMutation({
+    mutationFn: async ({ userId, therapistId }: { userId: string; therapistId: string }) => {
+      if (!activeOrganizationId) {
+        throw new Error('Select an organization before linking admins to therapists.');
+      }
+
+      const { error } = await supabase.rpc('set_admin_therapist_link', {
+        target_user_id: userId,
+        target_therapist_id: therapistId,
+        p_organization_id: activeOrganizationId,
+      });
+
+      if (error) {
+        throw error;
+      }
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-therapist-links', activeOrganizationId ?? 'ALL'] });
+      setSelectedTherapistByAdmin((previous) => ({ ...previous, [variables.userId]: '' }));
+      showSuccess('Admin linked to therapist');
+    },
+    onError: (error) => {
+      showError(error);
+    },
+  });
+
+  const unlinkAdminTherapistMutation = useMutation({
+    mutationFn: async ({ userId, therapistId }: { userId: string; therapistId: string }) => {
+      if (!activeOrganizationId) {
+        throw new Error('Select an organization before unlinking admins from therapists.');
+      }
+
+      const { error } = await supabase.rpc('delete_admin_therapist_link', {
+        target_user_id: userId,
+        target_therapist_id: therapistId,
+        p_organization_id: activeOrganizationId,
+      });
+
+      if (error) {
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-therapist-links', activeOrganizationId ?? 'ALL'] });
+      showSuccess('Admin unlinked from therapist');
+    },
+    onError: (error) => {
+      showError(error);
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       email: '',
@@ -498,6 +649,32 @@ export function AdminSettings() {
       ...previous,
       [requestId]: value,
     }));
+  };
+
+  const updateSelectedAdminTherapist = (userId: string, therapistId: string) => {
+    setSelectedTherapistByAdmin((previous) => ({
+      ...previous,
+      [userId]: therapistId,
+    }));
+  };
+
+  const handleLinkAdminTherapist = async (userId: string) => {
+    const therapistId = selectedTherapistByAdmin[userId];
+    if (!therapistId) {
+      showError(new Error('Select a therapist to link.'));
+      return;
+    }
+
+    linkAdminTherapistMutation.mutate({ userId, therapistId });
+  };
+
+  const handleUnlinkAdminTherapist = async (userId: string, therapistId: string, therapistName: string) => {
+    const shouldUnlink = window.confirm(`Unlink this admin from ${therapistName}?`);
+    if (!shouldUnlink) {
+      return;
+    }
+
+    unlinkAdminTherapistMutation.mutate({ userId, therapistId });
   };
 
   const getMetadataValue = (entry: GuardianQueueEntry, key: string) => {
@@ -711,6 +888,75 @@ export function AdminSettings() {
                       </span>
                     </div>
                   )}
+                  <div className="border-t border-gray-200 pt-3 dark:border-gray-700">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Therapist Links
+                    </p>
+                    {!activeOrganizationId ? (
+                      <p className="text-xs text-amber-600 dark:text-amber-300">
+                        Select an organization to manage therapist links.
+                      </p>
+                    ) : isTherapistOptionsLoading || isAdminTherapistLinksLoading ? (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Loading therapist links…</p>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap gap-2">
+                          {(adminTherapistLinksByUser.get(admin.user_id) ?? []).length === 0 ? (
+                            <span className="text-xs text-gray-500 dark:text-gray-400">No therapists linked</span>
+                          ) : (
+                            (adminTherapistLinksByUser.get(admin.user_id) ?? []).map((link) => {
+                              const therapistName = link.therapist_name ?? link.therapist_id;
+                              return (
+                                <span
+                                  key={`${admin.user_id}-${link.therapist_id}`}
+                                  className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/20 dark:text-blue-200"
+                                >
+                                  {therapistName}
+                                  <button
+                                    type="button"
+                                    className="text-blue-500 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                    disabled={unlinkAdminTherapistMutation.isPending}
+                                    onClick={() => handleUnlinkAdminTherapist(admin.user_id, link.therapist_id, therapistName)}
+                                    aria-label={`Unlink ${therapistName}`}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        <div className="flex gap-2">
+                          <select
+                            className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1 text-xs dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                            value={selectedTherapistByAdmin[admin.user_id] ?? ''}
+                            onChange={(event) => updateSelectedAdminTherapist(admin.user_id, event.target.value)}
+                            aria-label={`Select therapist for ${admin.email}`}
+                          >
+                            <option value="">Select therapist</option>
+                            {therapistOptions.map((therapist) => (
+                              <option key={therapist.id} value={therapist.id}>
+                                {therapist.full_name ?? therapist.email ?? therapist.id}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={
+                              linkAdminTherapistMutation.isPending ||
+                              !selectedTherapistByAdmin[admin.user_id] ||
+                              therapistOptions.length === 0
+                            }
+                            onClick={() => handleLinkAdminTherapist(admin.user_id)}
+                          >
+                            Link
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );

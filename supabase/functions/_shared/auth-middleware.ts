@@ -319,6 +319,24 @@ async function resolveRoleForOrganization(
 
   if (
     await rpcBoolean(supabase, "user_has_role_for_org", {
+      role_name: "org_super_admin",
+      target_organization_id: orgId,
+    })
+  ) {
+    return "admin";
+  }
+
+  if (
+    await rpcBoolean(supabase, "user_has_role_for_org", {
+      role_name: "org_admin",
+      target_organization_id: orgId,
+    })
+  ) {
+    return "admin";
+  }
+
+  if (
+    await rpcBoolean(supabase, "user_has_role_for_org", {
       role_name: "admin",
       target_organization_id: orgId,
     })
@@ -555,6 +573,12 @@ export const RouteOptions = {
   therapist: { requireAuth: true, allowedRoles: ['therapist', 'admin', 'super_admin'] as Role[] },
   admin: { requireAuth: true, allowedRoles: ['admin', 'super_admin'] as Role[] },
   superAdmin: { requireAuth: true, allowedRoles: ['super_admin'] as Role[] },
+};
+
+export const __TESTING__ = {
+  parseRole,
+  resolveRoleFromRoleRows,
+  resolveRoleForOrganization,
 };
 
 /**

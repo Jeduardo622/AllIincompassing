@@ -19,7 +19,7 @@ type TestUserContext = {
 const logApiAccess = vi.fn();
 const userContexts = new Map<string, TestUserContext>();
 const getUserByIdSpy = vi.fn();
-const supabaseAdminRpcSpy = vi.fn();
+const updateUserByIdSpy = vi.fn();
 const requestRpcSpy = vi.fn();
 
 vi.mock('../supabase/functions/_shared/auth-middleware.ts', () => ({
@@ -65,9 +65,9 @@ vi.mock('../supabase/functions/_shared/database.ts', () => ({
     auth: {
       admin: {
         getUserById: getUserByIdSpy,
+        updateUserById: updateUserByIdSpy,
       },
     },
-    rpc: supabaseAdminRpcSpy,
   },
   createRequestClient: () => ({
     rpc: requestRpcSpy,
@@ -79,10 +79,10 @@ describe('admin-reset-user-password access control', () => {
     userContexts.clear();
     logApiAccess.mockClear();
     getUserByIdSpy.mockReset();
-    supabaseAdminRpcSpy.mockReset();
+    updateUserByIdSpy.mockReset();
     requestRpcSpy.mockReset();
 
-    supabaseAdminRpcSpy.mockResolvedValue({ error: null });
+    updateUserByIdSpy.mockResolvedValue({ error: null });
   });
 
   it('allows a super_admin to reset an admin password through the protected function', async () => {
@@ -96,7 +96,11 @@ describe('admin-reset-user-password access control', () => {
       },
     });
     requestRpcSpy.mockResolvedValue({
-      data: [{ email: 'target.admin@example.com', raw_user_meta_data: { organization_id: 'org-2' } }],
+      data: [{
+        user_id: '22222222-2222-2222-2222-222222222222',
+        email: 'target.admin@example.com',
+        raw_user_meta_data: { organization_id: 'org-2' },
+      }],
       error: null,
     });
 
@@ -121,9 +125,8 @@ describe('admin-reset-user-password access control', () => {
       p_limit: 500,
       p_offset: 0,
     });
-    expect(supabaseAdminRpcSpy).toHaveBeenCalledWith('admin_reset_user_password', {
-      user_email: 'target.admin@example.com',
-      new_password: 'UpdatedPass123!',
+    expect(updateUserByIdSpy).toHaveBeenCalledWith('22222222-2222-2222-2222-222222222222', {
+      password: 'UpdatedPass123!',
     });
   });
 
@@ -170,7 +173,7 @@ describe('admin-reset-user-password access control', () => {
     await expect(response.json()).resolves.toMatchObject({
       error: 'Target admin is outside the caller organization.',
     });
-    expect(supabaseAdminRpcSpy).not.toHaveBeenCalled();
+    expect(updateUserByIdSpy).not.toHaveBeenCalled();
   });
 
   it('allows a regular admin to reset a same-organization admin password', async () => {
@@ -193,7 +196,11 @@ describe('admin-reset-user-password access control', () => {
       error: null,
     });
     requestRpcSpy.mockResolvedValue({
-      data: [{ email: 'same.org.admin@example.com', raw_user_meta_data: { organization_id: '11111111-1111-1111-1111-111111111111' } }],
+      data: [{
+        user_id: '33333333-3333-3333-3333-333333333333',
+        email: 'same.org.admin@example.com',
+        raw_user_meta_data: { organization_id: '11111111-1111-1111-1111-111111111111' },
+      }],
       error: null,
     });
 
@@ -218,14 +225,13 @@ describe('admin-reset-user-password access control', () => {
       p_limit: 500,
       p_offset: 0,
     });
-    expect(supabaseAdminRpcSpy).toHaveBeenCalledWith('admin_reset_user_password', {
-      user_email: 'same.org.admin@example.com',
-      new_password: 'UpdatedPass123!',
+    expect(updateUserByIdSpy).toHaveBeenCalledWith('33333333-3333-3333-3333-333333333333', {
+      password: 'UpdatedPass123!',
     });
   });
 
-  it('falls back to the legacy RPC only when the canonical reset RPC is missing', async () => {
-    userContexts.set('super-fallback', {
+  it('returns a server error without resetting when the scoped target row is missing user_id', async () => {
+    userContexts.set('super-missing-id', {
       user: { id: 'super-user-id', email: 'super@example.com' },
       profile: {
         id: 'super-profile-id',
@@ -238,9 +244,6 @@ describe('admin-reset-user-password access control', () => {
       data: [{ email: 'target.admin@example.com', raw_user_meta_data: { organization_id: 'org-2' } }],
       error: null,
     });
-    supabaseAdminRpcSpy
-      .mockResolvedValueOnce({ error: { code: 'PGRST202' } })
-      .mockResolvedValueOnce({ error: null });
 
     const { default: handler } = await import('../supabase/functions/admin-reset-user-password/index.ts');
 
@@ -249,7 +252,7 @@ describe('admin-reset-user-password access control', () => {
       headers: {
         'Content-Type': 'application/json',
         Authorization: 'Bearer test-token',
-        'x-test-user': 'super-fallback',
+        'x-test-user': 'super-missing-id',
       },
       body: JSON.stringify({
         email: 'target.admin@example.com',
@@ -257,14 +260,7 @@ describe('admin-reset-user-password access control', () => {
       }),
     }));
 
-    expect(response.status).toBe(200);
-    expect(supabaseAdminRpcSpy).toHaveBeenNthCalledWith(1, 'admin_reset_user_password', {
-      user_email: 'target.admin@example.com',
-      new_password: 'UpdatedPass123!',
-    });
-    expect(supabaseAdminRpcSpy).toHaveBeenNthCalledWith(2, 'reset_user_password', {
-      target_email: 'target.admin@example.com',
-      new_password: 'UpdatedPass123!',
-    });
+    expect(response.status).toBe(500);
+    expect(updateUserByIdSpy).not.toHaveBeenCalled();
   });
 });

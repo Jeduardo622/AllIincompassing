@@ -14,6 +14,7 @@ interface ResetAdminPasswordPayload {
 }
 
 interface AdminUserRecord {
+  user_id?: string;
   email?: string;
   raw_user_meta_data?: Record<string, unknown> | null;
 }
@@ -52,28 +53,6 @@ const resolveCallerOrg = async (context: UserContext): Promise<string | null> =>
 };
 
 const canManageAllOrganizations = (role: Role) => role === "super_admin";
-
-const invokeCanonicalReset = async (normalizedEmail: string, normalizedPassword: string) => {
-  const primaryResult = await supabaseAdmin.rpc("admin_reset_user_password", {
-    user_email: normalizedEmail,
-    new_password: normalizedPassword,
-  });
-
-  if (!primaryResult.error) {
-    return null;
-  }
-
-  if (primaryResult.error.code !== "PGRST202") {
-    return primaryResult.error;
-  }
-
-  const legacyResult = await supabaseAdmin.rpc("reset_user_password", {
-    target_email: normalizedEmail,
-    new_password: normalizedPassword,
-  });
-
-  return legacyResult.error ?? null;
-};
 
 const handler = createProtectedRoute(
   async (req, userContext) => {
@@ -137,9 +116,19 @@ const handler = createProtectedRoute(
       });
     }
 
-    const resetError = await invokeCanonicalReset(normalizedEmail, normalizedPassword);
-    if (resetError) {
-      console.error("admin_reset_user_password failed", { error: resetError, email: normalizedEmail });
+    const targetUserId = normalizeString(targetAdmin.user_id);
+    if (!targetUserId) {
+      console.error("Admin password reset target is missing user_id");
+      logApiAccess("POST", "/admin/reset-user-password", userContext, 500);
+      return respond(500, { error: "Failed to reset admin password." });
+    }
+
+    const resetResult = await supabaseAdmin.auth.admin.updateUserById(targetUserId, {
+      password: normalizedPassword,
+    });
+
+    if (resetResult.error) {
+      console.error("Admin password reset failed", { error: resetResult.error });
       logApiAccess("POST", "/admin/reset-user-password", userContext, 500);
       return respond(500, { error: "Failed to reset admin password." });
     }

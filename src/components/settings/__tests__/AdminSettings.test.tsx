@@ -57,7 +57,34 @@ const mockAdminUser = {
   }
 };
 
+const mockTherapist = {
+  id: 'therapist-1',
+  full_name: 'Therapist One',
+  email: 'therapist@example.com',
+};
+
+const buildTherapistQuery = (data = [mockTherapist], error: Error | null = null) => {
+  const query: any = {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    is: vi.fn().mockReturnThis(),
+    order: vi.fn().mockResolvedValue({ data, error }),
+  };
+  return query;
+};
+
+const buildEmptyClientsQuery = () => {
+  const query: any = {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    order: vi.fn().mockResolvedValue({ data: [], error: null }),
+  };
+  return query;
+};
+
 describe('AdminSettings logging', () => {
+  let fromSpy: ReturnType<typeof vi.spyOn> | null = null;
+
   beforeEach(() => {
     const authStub = {
       user: {
@@ -88,6 +115,9 @@ describe('AdminSettings logging', () => {
         expect(params).toMatchObject({ organization_id: '11111111-1111-1111-1111-111111111111' });
         return { data: [mockAdminUser], error: null };
       }
+      if (functionName === 'get_admin_therapist_links') {
+        return { data: [], error: null };
+      }
       if (functionName === 'manage_admin_users') {
         expect(params).toMatchObject({
           operation: 'remove',
@@ -100,6 +130,12 @@ describe('AdminSettings logging', () => {
       }
       return fallbackRpc(functionName, params);
     });
+    fromSpy = vi.spyOn(supabase, 'from').mockImplementation((table: string) => {
+      if (table === 'therapists') {
+        return buildTherapistQuery() as never;
+      }
+      return originalFrom(table) as never;
+    });
     vi.mocked(logger.error).mockClear();
     vi.mocked(logger.info).mockClear();
     vi.mocked(showError).mockClear();
@@ -108,6 +144,8 @@ describe('AdminSettings logging', () => {
 
   afterEach(() => {
     rpcMock.mockImplementation(defaultRpcImplementation ?? fallbackRpc);
+    fromSpy?.mockRestore();
+    fromSpy = null;
     confirmSpy?.mockRestore();
     confirmSpy = null;
   });
@@ -145,6 +183,9 @@ describe('AdminSettings logging', () => {
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
       if (functionName === 'get_admin_users_paged') {
         return { data: [mockAdminUser], error: null };
+      }
+      if (functionName === 'get_admin_therapist_links') {
+        return { data: [], error: null };
       }
       if (functionName === 'manage_admin_users') {
         return { data: null, error: null };
@@ -203,6 +244,9 @@ describe('AdminSettings logging', () => {
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
       if (functionName === 'get_admin_users_paged') {
         return { data: [mockAdminUser], error: null };
+      }
+      if (functionName === 'get_admin_therapist_links') {
+        return { data: [], error: null };
       }
 
       if (defaultRpcImplementation) {
@@ -298,6 +342,9 @@ describe('Guardian approvals', () => {
       if (functionName === 'get_admin_users_paged') {
         return { data: [], error: null };
       }
+      if (functionName === 'get_admin_therapist_links') {
+        return { data: [], error: null };
+      }
 
       if (functionName === 'guardian_link_queue_admin_view') {
         expect(params).toMatchObject({
@@ -315,6 +362,10 @@ describe('Guardian approvals', () => {
     });
 
     fromSpy = vi.spyOn(supabase, 'from').mockImplementation((table: string) => {
+      if (table === 'therapists') {
+        return buildTherapistQuery() as never;
+      }
+
       if (table === 'clients') {
         const query: any = {
           select: vi.fn().mockReturnThis(),
@@ -363,6 +414,9 @@ describe('Guardian approvals', () => {
       if (functionName === 'get_admin_users_paged') {
         return { data: [], error: null };
       }
+      if (functionName === 'get_admin_therapist_links') {
+        return { data: [], error: null };
+      }
 
       if (functionName === 'guardian_link_queue_admin_view') {
         expect(params).toMatchObject({
@@ -392,6 +446,9 @@ describe('Guardian approvals', () => {
 
     rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
       if (functionName === 'get_admin_users_paged') {
+        return { data: [], error: null };
+      }
+      if (functionName === 'get_admin_therapist_links') {
         return { data: [], error: null };
       }
 
@@ -440,6 +497,226 @@ describe('Guardian approvals', () => {
   });
 });
 
+describe('Admin therapist links', () => {
+  let fromSpy: ReturnType<typeof vi.spyOn> | null = null;
+
+  beforeEach(() => {
+    const authStub = {
+      user: {
+        user_metadata: {
+          organization_id: '11111111-1111-1111-1111-111111111111',
+        },
+      },
+      effectiveRole: 'admin',
+      profile: null,
+      session: null,
+      loading: false,
+      signIn: vi.fn(),
+      signUp: vi.fn(),
+      signOut: vi.fn(),
+      resetPassword: vi.fn(),
+      updateProfile: vi.fn(),
+      hasRole: vi.fn(() => true),
+      hasAnyRole: vi.fn(() => true),
+      isAdmin: vi.fn(() => true),
+      isSuperAdmin: vi.fn(() => false),
+    } as unknown as ReturnType<typeof useAuth>;
+
+    vi.mocked(useAuth).mockReturnValue(authStub);
+    confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.mocked(showError).mockClear();
+    vi.mocked(showSuccess).mockClear();
+    rpcMock.mockClear();
+
+    fromSpy = vi.spyOn(supabase, 'from').mockImplementation((table: string) => {
+      if (table === 'clients') {
+        return buildEmptyClientsQuery() as never;
+      }
+
+      return originalFrom(table) as never;
+    });
+  });
+
+  afterEach(() => {
+    rpcMock.mockImplementation(defaultRpcImplementation ?? fallbackRpc);
+    fromSpy?.mockRestore();
+    fromSpy = null;
+    confirmSpy?.mockRestore();
+    confirmSpy = null;
+  });
+
+  it('links an admin to a same-organization therapist through the scoped RPC', async () => {
+    rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
+      if (functionName === 'get_admin_users_paged') {
+        return { data: [mockAdminUser], error: null };
+      }
+      if (functionName === 'guardian_link_queue_admin_view') {
+        return { data: [], error: null };
+      }
+      if (functionName === 'get_admin_linkable_therapists') {
+        return { data: [mockTherapist], error: null };
+      }
+      if (functionName === 'get_admin_therapist_links') {
+        expect(params).toMatchObject({
+          p_organization_id: '11111111-1111-1111-1111-111111111111',
+        });
+        return { data: [], error: null };
+      }
+      if (functionName === 'set_admin_therapist_link') {
+        return { data: [{ user_id: mockAdminUser.user_id, therapist_id: mockTherapist.id, therapist_name: mockTherapist.full_name }], error: null };
+      }
+
+      return fallbackRpc(functionName, params);
+    });
+
+    renderWithProviders(<AdminSettings />);
+
+    const therapistSelect = await screen.findByLabelText('Select therapist for admin@example.com');
+    await waitFor(() => {
+      expect(rpcMock).toHaveBeenCalledWith('get_admin_linkable_therapists', {
+        p_organization_id: '11111111-1111-1111-1111-111111111111',
+      });
+    });
+    expect(fromSpy).not.toHaveBeenCalledWith('therapists');
+
+    await userEvent.selectOptions(therapistSelect, mockTherapist.id);
+    await userEvent.click(screen.getByRole('button', { name: 'Link' }));
+
+    await waitFor(() => {
+      expect(rpcMock).toHaveBeenCalledWith(
+        'set_admin_therapist_link',
+        {
+          target_user_id: mockAdminUser.user_id,
+          target_therapist_id: mockTherapist.id,
+          p_organization_id: '11111111-1111-1111-1111-111111111111',
+        }
+      );
+    });
+    expect(showSuccess).toHaveBeenCalledWith('Admin linked to therapist');
+  });
+
+  it('unlinks an existing admin therapist relationship through the scoped RPC', async () => {
+    rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
+      if (functionName === 'get_admin_users_paged') {
+        return { data: [mockAdminUser], error: null };
+      }
+      if (functionName === 'guardian_link_queue_admin_view') {
+        return { data: [], error: null };
+      }
+      if (functionName === 'get_admin_linkable_therapists') {
+        return { data: [mockTherapist], error: null };
+      }
+      if (functionName === 'get_admin_therapist_links') {
+        return {
+          data: [{
+            user_id: mockAdminUser.user_id,
+            therapist_id: mockTherapist.id,
+            therapist_name: mockTherapist.full_name,
+          }],
+          error: null,
+        };
+      }
+      if (functionName === 'delete_admin_therapist_link') {
+        return { data: true, error: null };
+      }
+
+      return fallbackRpc(functionName, params);
+    });
+
+    renderWithProviders(<AdminSettings />);
+
+    await userEvent.click(await screen.findByLabelText(`Unlink ${mockTherapist.full_name}`));
+
+    await waitFor(() => {
+      expect(rpcMock).toHaveBeenCalledWith(
+        'delete_admin_therapist_link',
+        {
+          target_user_id: mockAdminUser.user_id,
+          target_therapist_id: mockTherapist.id,
+          p_organization_id: '11111111-1111-1111-1111-111111111111',
+        }
+      );
+    });
+    expect(confirmSpy).toHaveBeenCalledWith(`Unlink this admin from ${mockTherapist.full_name}?`);
+    expect(showSuccess).toHaveBeenCalledWith('Admin unlinked from therapist');
+  });
+
+  it('surfaces scoped RPC denial without falling back to direct table writes', async () => {
+    rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
+      if (functionName === 'get_admin_users_paged') {
+        return { data: [mockAdminUser], error: null };
+      }
+      if (functionName === 'guardian_link_queue_admin_view') {
+        return { data: [], error: null };
+      }
+      if (functionName === 'get_admin_linkable_therapists') {
+        return { data: [mockTherapist], error: null };
+      }
+      if (functionName === 'get_admin_therapist_links') {
+        return { data: [], error: null };
+      }
+      if (functionName === 'get_admin_linkable_therapists') {
+        return { data: [mockTherapist], error: null };
+      }
+      if (functionName === 'set_admin_therapist_link') {
+        return { data: null, error: new Error('Caller organization mismatch') };
+      }
+
+      return fallbackRpc(functionName, params);
+    });
+
+    renderWithProviders(<AdminSettings />);
+
+    await userEvent.selectOptions(
+      await screen.findByLabelText('Select therapist for admin@example.com'),
+      mockTherapist.id
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Link' }));
+
+    await waitFor(() => {
+      expect(showError).toHaveBeenCalledWith(expect.objectContaining({ message: 'Caller organization mismatch' }));
+    });
+    expect(fromSpy).not.toHaveBeenCalledWith('user_therapist_links');
+  });
+
+  it('surfaces read denial when therapist links are forbidden for the selected org', async () => {
+    rpcMock.mockImplementation(async (functionName: string, params?: Record<string, unknown>) => {
+      if (functionName === 'get_admin_users_paged') {
+        return { data: [mockAdminUser], error: null };
+      }
+      if (functionName === 'guardian_link_queue_admin_view') {
+        return { data: [], error: null };
+      }
+      if (functionName === 'get_admin_linkable_therapists') {
+        return { data: [mockTherapist], error: null };
+      }
+      if (functionName === 'get_admin_therapist_links') {
+        return {
+          data: null,
+          error: { code: '42501', message: 'Caller organization mismatch' },
+        };
+      }
+
+      return fallbackRpc(functionName, params);
+    });
+
+    renderWithProviders(<AdminSettings />);
+
+    await screen.findByText('Ada Admin');
+
+    await waitFor(() => {
+      expect(showError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'You do not have permission to view admin therapist links for this organization.',
+        })
+      );
+    });
+    expect(rpcMock).toHaveBeenCalledWith('get_admin_therapist_links', {
+      p_organization_id: '11111111-1111-1111-1111-111111111111',
+    });
+  });
+});
+
 describe('AdminSettings super admin access', () => {
   let fromSpy: ReturnType<typeof vi.spyOn> | null = null;
 
@@ -469,6 +746,9 @@ describe('AdminSettings super admin access', () => {
       if (functionName === 'get_admin_users_paged') {
         return { data: [mockAdminUser], error: null };
       }
+      if (functionName === 'get_admin_therapist_links') {
+        return { data: [], error: null };
+      }
 
       if (functionName === 'guardian_link_queue_admin_view') {
         return { data: [], error: null };
@@ -496,12 +776,7 @@ describe('AdminSettings super admin access', () => {
       }
 
       if (table === 'clients') {
-        const query: any = {
-          select: vi.fn().mockReturnThis(),
-          eq: vi.fn().mockReturnThis(),
-          order: vi.fn().mockImplementation(() => Promise.resolve({ data: [], error: null })),
-        };
-        return query;
+        return buildEmptyClientsQuery() as never;
       }
 
       return originalFrom(table) as never;
@@ -533,9 +808,34 @@ describe('AdminSettings super admin access', () => {
       expect(adminCalls.some(([, params]) => params && (params as Record<string, unknown>).organization_id === 'org-1')).toBe(true);
     });
   });
+
+  it('keeps therapist link RPCs disabled for All organizations until a concrete org is selected', async () => {
+    renderWithProviders(<AdminSettings />);
+
+    const filterSelect = await screen.findByDisplayValue('All organizations');
+    await screen.findByText('Select an organization to manage therapist links.');
+
+    expect(rpcMock.mock.calls.some(([fnName]) => fnName === 'get_admin_linkable_therapists')).toBe(false);
+    expect(rpcMock.mock.calls.some(([fnName]) => fnName === 'get_admin_therapist_links')).toBe(false);
+    expect(fromSpy).not.toHaveBeenCalledWith('therapists');
+
+    await userEvent.selectOptions(filterSelect, 'org-1');
+
+    await waitFor(() => {
+      expect(rpcMock).toHaveBeenCalledWith('get_admin_linkable_therapists', {
+        p_organization_id: 'org-1',
+      });
+      expect(rpcMock).toHaveBeenCalledWith('get_admin_therapist_links', {
+        p_organization_id: 'org-1',
+      });
+    });
+    expect(fromSpy).not.toHaveBeenCalledWith('therapists');
+  });
 });
 
 describe('AdminSettings accessibility', () => {
+  let fromSpy: ReturnType<typeof vi.spyOn> | null = null;
+
   beforeEach(() => {
     const authStub = {
       user: {
@@ -563,6 +863,9 @@ describe('AdminSettings accessibility', () => {
       if (functionName === 'get_admin_users_paged') {
         return { data: [], error: null };
       }
+      if (functionName === 'get_admin_therapist_links') {
+        return { data: [], error: null };
+      }
 
       if (defaultRpcImplementation) {
         return defaultRpcImplementation(functionName, params as never);
@@ -570,10 +873,18 @@ describe('AdminSettings accessibility', () => {
 
       return fallbackRpc(functionName, params);
     });
+    fromSpy = vi.spyOn(supabase, 'from').mockImplementation((table: string) => {
+      if (table === 'therapists') {
+        return buildTherapistQuery() as never;
+      }
+      return originalFrom(table) as never;
+    });
   });
 
   afterEach(() => {
     rpcMock.mockImplementation(defaultRpcImplementation ?? fallbackRpc);
+    fromSpy?.mockRestore();
+    fromSpy = null;
   });
 
   it('traps focus within the add admin modal', async () => {

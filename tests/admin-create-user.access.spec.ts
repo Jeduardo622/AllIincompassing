@@ -21,6 +21,11 @@ const userContexts = new Map<string, TestUserContext>();
 const createUserSpy = vi.fn();
 const assignAdminRoleSpy = vi.fn();
 const getUserByIdSpy = vi.fn();
+const profilesUpdateSpy = vi.fn();
+const profilesEqSpy = vi.fn();
+const profilesIsSpy = vi.fn();
+const profilesSelectSpy = vi.fn();
+const profilesSingleSpy = vi.fn();
 
 vi.mock('../supabase/functions/_shared/auth-middleware.ts', () => ({
   corsHeaders: {
@@ -69,6 +74,14 @@ vi.mock('../supabase/functions/_shared/database.ts', () => ({
       },
     },
     rpc: assignAdminRoleSpy,
+    from: (table: string) => {
+      if (table !== 'profiles') {
+        throw new Error(`Unexpected table ${table}`);
+      }
+      return {
+        update: profilesUpdateSpy,
+      };
+    },
   },
 }));
 
@@ -79,12 +92,28 @@ describe('admin-create-user access control', () => {
     createUserSpy.mockReset();
     assignAdminRoleSpy.mockReset();
     getUserByIdSpy.mockReset();
+    profilesUpdateSpy.mockReset();
+    profilesEqSpy.mockReset();
+    profilesIsSpy.mockReset();
+    profilesSelectSpy.mockReset();
+    profilesSingleSpy.mockReset();
 
     createUserSpy.mockResolvedValue({
       data: { user: { id: 'new-admin-user-id' } },
       error: null,
     });
     assignAdminRoleSpy.mockResolvedValue({ error: null });
+    profilesUpdateSpy.mockReturnValue({ eq: profilesEqSpy });
+    profilesEqSpy.mockReturnValue({ is: profilesIsSpy });
+    profilesIsSpy.mockReturnValue({ select: profilesSelectSpy });
+    profilesSelectSpy.mockReturnValue({ single: profilesSingleSpy });
+    profilesSingleSpy.mockResolvedValue({
+      data: {
+        id: 'new-admin-user-id',
+        organization_id: '22222222-2222-2222-2222-222222222222',
+      },
+      error: null,
+    });
   });
 
   it('allows a super_admin to create an admin in the requested organization', async () => {
@@ -130,6 +159,13 @@ describe('admin-create-user access control', () => {
       organization_id: '22222222-2222-2222-2222-222222222222',
       reason: 'Coverage for the selected organization.',
     });
+    expect(profilesUpdateSpy).toHaveBeenCalledWith({
+      organization_id: '22222222-2222-2222-2222-222222222222',
+    });
+    expect(profilesEqSpy).toHaveBeenCalledWith('id', 'new-admin-user-id');
+    expect(profilesIsSpy).toHaveBeenCalledWith('organization_id', null);
+    expect(profilesSelectSpy).toHaveBeenCalledWith('id, organization_id');
+    expect(profilesSingleSpy).toHaveBeenCalled();
   });
 
   it('denies a regular admin from creating an admin in a different organization', async () => {
@@ -175,6 +211,7 @@ describe('admin-create-user access control', () => {
     await expect(response.json()).resolves.toMatchObject({ error: 'Caller organization mismatch.' });
     expect(createUserSpy).not.toHaveBeenCalled();
     expect(assignAdminRoleSpy).not.toHaveBeenCalled();
+    expect(profilesUpdateSpy).not.toHaveBeenCalled();
   });
 
   it('denies non-admin roles from creating admins', async () => {
@@ -210,5 +247,83 @@ describe('admin-create-user access control', () => {
     expect(response.status).toBe(403);
     expect(createUserSpy).not.toHaveBeenCalled();
     expect(assignAdminRoleSpy).not.toHaveBeenCalled();
+    expect(profilesUpdateSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns an error when the created admin profile organization cannot be assigned', async () => {
+    userContexts.set('super-profile-org-failure', {
+      user: { id: 'super-user-id', email: 'super@example.com' },
+      profile: {
+        id: 'super-profile-id',
+        email: 'super@example.com',
+        role: 'super_admin',
+        is_active: true,
+      },
+    });
+    profilesSingleSpy.mockResolvedValue({
+      data: null,
+      error: { message: 'profile update failed' },
+    });
+
+    const { default: handler } = await import('../supabase/functions/admin-create-user/index.ts');
+
+    const response = await handler(new Request('http://localhost/functions/v1/admin-create-user', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer test-token',
+        'x-test-user': 'super-profile-org-failure',
+      },
+      body: JSON.stringify({
+        email: 'new.admin@example.com',
+        password: 'StrongPass123!',
+        first_name: 'New',
+        last_name: 'Admin',
+        organization_id: '22222222-2222-2222-2222-222222222222',
+        reason: 'Coverage for profile organization failure.',
+      }),
+    }));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'User created, but assigning organization failed.',
+    });
+  });
+
+  it('returns an error when assigning the profile organization updates no rows', async () => {
+    userContexts.set('super-profile-org-noop', {
+      user: { id: 'super-user-id', email: 'super@example.com' },
+      profile: {
+        id: 'super-profile-id',
+        email: 'super@example.com',
+        role: 'super_admin',
+        is_active: true,
+      },
+    });
+    profilesSingleSpy.mockResolvedValue({ data: null, error: null });
+
+    const { default: handler } = await import('../supabase/functions/admin-create-user/index.ts');
+
+    const response = await handler(new Request('http://localhost/functions/v1/admin-create-user', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer test-token',
+        'x-test-user': 'super-profile-org-noop',
+      },
+      body: JSON.stringify({
+        email: 'new.admin@example.com',
+        password: 'StrongPass123!',
+        first_name: 'New',
+        last_name: 'Admin',
+        organization_id: '22222222-2222-2222-2222-222222222222',
+        reason: 'Coverage for profile organization no-op.',
+      }),
+    }));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'User created, but assigning organization failed.',
+    });
   });
 });

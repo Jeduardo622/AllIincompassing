@@ -3,6 +3,36 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 describe('manage_admin_users logging', () => {
+  it('keeps super_admin access explicit while preserving same-org guards for regular admins', () => {
+    const migrationSql = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20260506170000_super_admin_admin_management_authz.sql'),
+      'utf-8',
+    );
+
+    const assignFunctionMatch = migrationSql.match(
+      /create or replace function public\.assign_admin_role[\s\S]*?end;\s*\$\$/i,
+    );
+    expect(assignFunctionMatch, 'assign_admin_role should be redefined for super_admin support').toBeTruthy();
+
+    const manageFunctionMatch = migrationSql.match(
+      /create or replace function public\.manage_admin_users[\s\S]*?end;\s*\$\$/i,
+    );
+    expect(manageFunctionMatch, 'manage_admin_users should be redefined for super_admin support').toBeTruthy();
+
+    const assignFunctionSql = assignFunctionMatch?.[0] ?? '';
+    const manageFunctionSql = manageFunctionMatch?.[0] ?? '';
+
+    expect(assignFunctionSql).toMatch(/public\.current_user_is_super_admin\(\)/i);
+    expect(assignFunctionSql).not.toMatch(/app\.user_has_role\('super_admin'\)/i);
+    expect(assignFunctionSql).toMatch(/if not v_is_super_admin and not exists/i);
+    expect(assignFunctionSql).toMatch(/if not v_is_super_admin then[\s\S]*caller organization mismatch/i);
+
+    expect(manageFunctionSql).toMatch(/public\.current_user_is_super_admin\(\)/i);
+    expect(manageFunctionSql).not.toMatch(/app\.user_has_role\('super_admin'\)/i);
+    expect(manageFunctionSql).toMatch(/if not v_is_service_role and not v_is_super_admin then[\s\S]*target user does not belong to the caller organization/i);
+    expect(manageFunctionSql).toMatch(/cannot remove the last active administrator for the organization/i);
+  });
+
   it('defines admin action logging for add and remove operations', () => {
     const migrationSql = readFileSync(
       join(process.cwd(), 'supabase/migrations/20251025121500_admin_org_enforcement.sql'),

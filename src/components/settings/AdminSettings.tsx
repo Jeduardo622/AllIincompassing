@@ -454,11 +454,16 @@ export function AdminSettings() {
 
   const resetPasswordMutation = useMutation({
     mutationFn: async ({ email, password }: { email: string; password: string }) => {
-      const { error } = await supabase.rpc('reset_user_password', {
-        target_email: email,
-        new_password: password
+      const { error } = await supabase.functions.invoke('admin-reset-user-password', {
+        body: {
+          email,
+          new_password: password,
+        },
       });
-      if (error) throw error;
+
+      if (error) {
+        throw error;
+      }
     },
     onSuccess: () => {
       setIsPasswordModalOpen(false);

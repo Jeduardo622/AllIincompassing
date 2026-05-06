@@ -10,6 +10,13 @@ const ADMIN_LINK_MIGRATION = path.join(
   '20260506153005_admin_therapist_links.sql'
 );
 
+const ADMIN_LINK_ACTIVE_FILTER_FIX_MIGRATION = path.join(
+  process.cwd(),
+  'supabase',
+  'migrations',
+  '20260506190000_fix_admin_therapist_link_active_filter.sql'
+);
+
 const CLIENT_LINK_MIGRATION = path.join(
   process.cwd(),
   'supabase',
@@ -17,7 +24,7 @@ const CLIENT_LINK_MIGRATION = path.join(
   '20260302120000_client_therapist_links.sql'
 );
 
-const readMigration = (migrationPath: string) => fs.readFileSync(migrationPath, 'utf8');
+const readMigration = (migrationPath: string) => fs.readFileSync(migrationPath, 'utf8').replace(/\r\n/g, '\n');
 
 const extractFunction = (sql: string, functionName: string) => {
   const start = sql.indexOf(`create or replace function public.${functionName}(`);
@@ -110,6 +117,19 @@ describe('admin therapist link migration contract', () => {
     expect(sql).toContain('grant execute on function public.set_admin_therapist_link(uuid, uuid, uuid) to authenticated, service_role;');
     expect(sql).toContain('grant execute on function public.delete_admin_therapist_link(uuid, uuid, uuid) to authenticated, service_role;');
     expect(sql).not.toContain('grant execute on function public.set_admin_therapist_link(uuid, uuid, uuid) to anon;');
+  });
+
+  it('uses the actual therapist active fields in the RPC repair migration', () => {
+    const sql = readMigration(ADMIN_LINK_ACTIVE_FILTER_FIX_MIGRATION);
+
+    expect(sql).toContain('create or replace function public.get_admin_linkable_therapists(');
+    expect(sql).toContain('create or replace function public.get_admin_therapist_links(');
+    expect(sql).toContain('create or replace function public.set_admin_therapist_link(');
+    expect(sql).toContain('create or replace function public.delete_admin_therapist_link(');
+    expect(sql).not.toContain('t.is_active');
+    expect(sql).toContain("lower(coalesce(t.status, 'active')) = 'active'");
+    expect(sql).toContain('t.deleted_at is null');
+    expect(sql).toContain('grant execute on function public.get_admin_linkable_therapists(uuid) to authenticated, service_role;');
   });
 });
 

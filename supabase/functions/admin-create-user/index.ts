@@ -177,6 +177,20 @@ const handler = createProtectedRoute(
         return respond(500, { error: "User created, but assigning admin role failed." });
       }
 
+      const { data: profileOrgUpdate, error: profileOrgError } = await supabaseAdmin
+        .from("profiles")
+        .update({ organization_id: resolvedOrganization })
+        .eq("id", createResult.data.user.id)
+        .is("organization_id", null)
+        .select("id, organization_id")
+        .single();
+
+      if (profileOrgError || profileOrgUpdate?.organization_id !== resolvedOrganization) {
+        console.error("Admin profile organization assignment failed", { error: profileOrgError });
+        logApiAccess("POST", "/admin/create-user", userContext, 500);
+        return respond(500, { error: "User created, but assigning organization failed." });
+      }
+
       logApiAccess("POST", "/admin/create-user", userContext, 200);
 
       return respond(200, {

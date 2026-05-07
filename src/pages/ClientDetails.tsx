@@ -50,6 +50,16 @@ export function ClientDetails() {
     enabled: Boolean(clientId && activeOrganizationId),
   });
 
+  const isTherapistViewer = effectiveRole === 'therapist';
+  const isClientViewer = effectiveRole === 'client';
+  const viewingOwnClientRecord = Boolean(isClientViewer && client?.id === profile?.id);
+  const therapistOwnsClient = Boolean(isTherapistViewer && client?.therapist_id === profile?.id);
+  const canViewClientRecord = Boolean(
+    client &&
+      (!isTherapistViewer || therapistOwnsClient) &&
+      (!isClientViewer || viewingOwnClientRecord),
+  );
+
   const { data: nextSession } = useQuery({
     queryKey: ['client-next-session', clientId, activeOrganizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
@@ -74,7 +84,7 @@ export function ClientDetails() {
 
       return data ?? null;
     },
-    enabled: Boolean(clientId && activeOrganizationId),
+    enabled: Boolean(clientId && activeOrganizationId && canViewClientRecord),
   });
 
   const { data: openIssuesCount = 0 } = useQuery({
@@ -97,7 +107,7 @@ export function ClientDetails() {
 
       return count ?? 0;
     },
-    enabled: Boolean(clientId && activeOrganizationId),
+    enabled: Boolean(clientId && activeOrganizationId && canViewClientRecord),
   });
 
   const tabs = [
@@ -193,13 +203,6 @@ export function ClientDetails() {
       </div>
     );
   }
-
-  const isTherapistViewer = effectiveRole === 'therapist';
-  const isClientViewer = effectiveRole === 'client';
-  const viewingOwnClientRecord = isClientViewer && client.id === profile?.id;
-  const therapistOwnsClient = isTherapistViewer
-    ? client.therapist_id === profile?.id
-    : false;
 
   if (isTherapistViewer && !therapistOwnsClient) {
     return (

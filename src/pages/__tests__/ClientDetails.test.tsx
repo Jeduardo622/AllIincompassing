@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import { renderWithProviders, userEvent } from '../../test/utils';
 import { ClientDetails } from '../ClientDetails';
 import { supabase } from '../../lib/supabase';
+import { fetchClientById } from '../../lib/clients/fetchers';
 
 let mockLocationSearch = '';
 
@@ -74,7 +75,14 @@ const createIssuesBuilder = () => {
 
 describe('ClientDetails page', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     mockLocationSearch = '';
+    vi.mocked(fetchClientById).mockResolvedValue({
+      id: 'client-1',
+      full_name: 'Alyana Perez',
+      therapist_id: 'admin-user-id',
+      authorized_hours_per_month: 12,
+    });
     vi.spyOn(supabase, 'from').mockImplementation((table: string) => {
       if (table === 'sessions') {
         return createSessionsBuilder();
@@ -119,7 +127,41 @@ describe('ClientDetails page', () => {
     renderWithProviders(<ClientDetails />);
 
     await waitFor(() => expect(screen.getByText('ProgramsGoalsTabContent')).toBeInTheDocument());
+    await waitFor(() => expect(supabase.from).toHaveBeenCalledWith('sessions'));
+    expect(supabase.from).toHaveBeenCalledWith('client_issues');
     expect(screen.queryByText('ProfileTabContent')).not.toBeInTheDocument();
+  });
+
+  it('does not render Programs & Goals or summary queries for an unassigned therapist deeplink', async () => {
+    mockLocationSearch = '?tab=programs-goals';
+    vi.mocked(fetchClientById).mockResolvedValue({
+      id: 'client-1',
+      full_name: 'Alyana Perez',
+      therapist_id: 'different-therapist-id',
+      authorized_hours_per_month: 12,
+    });
+
+    renderWithProviders(<ClientDetails />, {
+      auth: { role: 'therapist', userId: 'therapist-user-id' },
+    });
+
+    await waitFor(() => expect(screen.getByText('You are not assigned to this client')).toBeInTheDocument());
+
+    expect(screen.queryByText('ProgramsGoalsTabContent')).not.toBeInTheDocument();
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it('does not render Programs & Goals or summary queries for a client viewing another record', async () => {
+    mockLocationSearch = '?tab=programs-goals';
+
+    renderWithProviders(<ClientDetails />, {
+      auth: { role: 'client', userId: 'different-client-id' },
+    });
+
+    await waitFor(() => expect(screen.getByText('You can only view your own record')).toBeInTheDocument());
+
+    expect(screen.queryByText('ProgramsGoalsTabContent')).not.toBeInTheDocument();
+    expect(supabase.from).not.toHaveBeenCalled();
   });
 });
 

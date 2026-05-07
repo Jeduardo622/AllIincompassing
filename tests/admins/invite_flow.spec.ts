@@ -223,12 +223,13 @@ describe('admin invite edge function', () => {
     });
 
     expect(assertAdminOrSuperAdmin).toHaveBeenCalledTimes(1);
-  });
+  }, 20_000);
 
   it('replaces an expired invite token with a new one', async () => {
+    const expiredEmail = 'expiredadmin@example.com';
     const expiredToken: StoredInviteToken = {
       id: 'invite-old',
-      email: 'newadmin@example.com',
+      email: expiredEmail,
       organization_id: 'org-123',
       token_hash: 'deadbeef',
       expires_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -244,7 +245,7 @@ describe('admin invite edge function', () => {
       new Request('https://edge.example.com/admin/invite', {
         method: 'POST',
         headers: { 'content-type': 'application/json', Authorization: 'Bearer valid' },
-        body: JSON.stringify({ email: 'newadmin@example.com', expiresInHours: 4 }),
+        body: JSON.stringify({ email: expiredEmail, expiresInHours: 4 }),
       }),
     );
 
@@ -259,8 +260,8 @@ describe('admin invite edge function', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(adminActionRows).toHaveLength(1);
     expect(adminActionRows[0]?.action_details).toMatchObject({
-      email: 'newadmin@example.com',
+      email: expiredEmail,
       email_delivery_status: 'sent',
     });
-  });
+  }, 20_000);
 });

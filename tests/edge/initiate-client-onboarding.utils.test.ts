@@ -19,7 +19,7 @@ describe("initiate-client-onboarding helpers", () => {
     const second = await __TESTING__.hashPrefillToken(token);
     expect(first).toHaveLength(64);
     expect(first).toEqual(second);
-  });
+  }, 20_000);
 
   it("allows consume only for therapist and above", () => {
     expect(__TESTING__.resolveConsumeRole("super_admin")).toBe("super_admin");

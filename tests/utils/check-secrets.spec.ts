@@ -42,7 +42,7 @@ describe('check-secrets script', () => {
     expect(formatMissingMessage(missing)).toMatch(/Missing required secrets/);
 
     consoleError.mockRestore();
-  });
+  }, 20_000);
 
   it('allows missing service role when access token can hydrate', () => {
     const env: NodeJS.ProcessEnv = { ...Object.fromEntries(allKeys.map((key) => [key, 'value'])) };

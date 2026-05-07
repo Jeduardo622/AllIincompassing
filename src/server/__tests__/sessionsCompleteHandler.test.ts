@@ -238,6 +238,55 @@ describe("sessionsCompleteHandler", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves downstream Retry-After when edge returns a retryable completion conflict", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token-123");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: "Session could not be completed yet",
+          code: "UPDATE_FAILED",
+          retryAfter: "2026-03-31T10:05:03.000Z",
+        }),
+        {
+          status: 409,
+          headers: {
+            "content-type": "application/json",
+            "Retry-After": "3",
+            "Idempotency-Key": "edge-complete-conflict",
+          },
+        },
+      ),
+    );
+
+    const response = await sessionsCompleteHandler(
+      new Request("http://localhost/api/sessions-complete", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer token-123",
+          "Idempotency-Key": "complete-idempotency-key",
+          "x-request-id": "request-complete-conflict",
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          outcome: "completed",
+          notes: null,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get("Retry-After")).toBe("3");
+    expect(response.headers.get("Idempotency-Key")).toBe("edge-complete-conflict");
+    expect(response.headers.get("Content-Type")).toBe("application/json");
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Session could not be completed yet",
+      code: "UPDATE_FAILED",
+      retryAfter: "2026-03-31T10:05:03.000Z",
+    });
+  });
+
   it("falls back to runtime REST when edge fetch has no HTTP response", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token-123");
     const fetchMock = makeFallbackFetchMock({ edgeNetworkFailure: true });

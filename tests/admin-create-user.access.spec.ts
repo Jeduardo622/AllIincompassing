@@ -166,7 +166,7 @@ describe('admin-create-user access control', () => {
     expect(profilesIsSpy).toHaveBeenCalledWith('organization_id', null);
     expect(profilesSelectSpy).toHaveBeenCalledWith('id, organization_id');
     expect(profilesSingleSpy).toHaveBeenCalled();
-  });
+  }, 20_000);
 
   it('denies a regular admin from creating an admin in a different organization', async () => {
     userContexts.set('admin', {

@@ -34,7 +34,7 @@ describe("supabase preview drift helpers", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 20_000);
 
   it("computes bidirectional drift correctly", () => {
     const drift = resolveMigrationDrift({

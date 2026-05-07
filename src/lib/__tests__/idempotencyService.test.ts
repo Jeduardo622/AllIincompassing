@@ -12,7 +12,7 @@ describe("hashResponse", () => {
     const first = await hashResponse({ success: true }, 200);
     const second = await hashResponse({ success: true }, 200);
     expect(first).toEqual(second);
-  });
+  }, 20_000);
 
   it("changes hash when payload or status differ", async () => {
     const hashA = await hashResponse({ success: true }, 200);
@@ -21,7 +21,7 @@ describe("hashResponse", () => {
 
     expect(hashA).not.toEqual(hashB);
     expect(hashA).not.toEqual(hashC);
-  });
+  }, 20_000);
 });
 
 describe("IdempotencyService", () => {

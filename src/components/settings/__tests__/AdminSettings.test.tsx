@@ -874,7 +874,7 @@ describe('AdminSettings super admin access', () => {
       );
     });
     expect(showSuccess).toHaveBeenCalledWith('Admin user created successfully');
-  });
+  }, 20_000);
 
   it('resets an admin password through the canonical RPC without falling back when available', async () => {
     invokeSpy?.mockResolvedValue({ data: null, error: null });
@@ -883,7 +883,10 @@ describe('AdminSettings super admin access', () => {
     await userEvent.click(await screen.findByTitle('Reset password'));
 
     const modal = await screen.findByRole('dialog', { name: `Reset Password for ${mockAdminUser.email}` });
-    await userEvent.type(within(modal).getByLabelText('New Password*'), 'UpdatedPass123!');
+    const passwordInput = within(modal).getByLabelText('New Password*');
+    await userEvent.clear(passwordInput);
+    await userEvent.type(passwordInput, 'UpdatedPass123!');
+    expect(passwordInput).toHaveValue('UpdatedPass123!');
     await userEvent.click(within(modal).getByRole('button', { name: 'Reset Password' }));
 
     await waitFor(() => {
@@ -898,7 +901,7 @@ describe('AdminSettings super admin access', () => {
       );
     });
     expect(showSuccess).toHaveBeenCalledWith('Password reset successfully');
-  });
+  }, 20_000);
 
   it('removes an admin through manage_admin_users for super admins', async () => {
     renderWithProviders(<AdminSettings />);

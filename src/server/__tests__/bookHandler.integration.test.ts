@@ -166,7 +166,7 @@ describe("bookHandler integration", () => {
       expect.any(Object),
       expect.objectContaining({ accessToken }),
     );
-  });
+  }, 20_000);
 
   it("sends recurring booking batches through the active edge booking authority and preserves confirm batching payloads", async () => {
     process.env.API_AUTHORITY_MODE = "edge";

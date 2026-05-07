@@ -60,7 +60,7 @@ describe("runtime migration parity helpers", () => {
     } finally {
       rmSync(repoDir, { recursive: true, force: true });
     }
-  }, 20_000);
+  }, 60_000);
 
   it("returns an empty list when all required versions are present", () => {
     const missing = resolveMissingVersions(

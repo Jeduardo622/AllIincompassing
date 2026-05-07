@@ -103,7 +103,15 @@ export async function assessmentChecklistHandler(request: Request): Promise<Resp
 
     const nextStatus = parsed.data.status;
     if (nextStatus && !canTransitionStatus(existing.status, nextStatus)) {
-      return json({ error: `Invalid status transition: ${existing.status} -> ${nextStatus}` }, 400);
+      return json(
+        {
+          error:
+            existing.status === "approved"
+              ? "Approved checklist rows cannot be downgraded. Edit notes or field value without lowering status."
+              : `Invalid checklist status transition: ${existing.status} -> ${nextStatus}`,
+        },
+        400,
+      );
     }
 
     const actorId = getAccessTokenSubject(accessToken);

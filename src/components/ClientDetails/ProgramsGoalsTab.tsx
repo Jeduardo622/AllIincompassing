@@ -429,7 +429,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     };
   }, [refetchAssessmentDocuments, shouldPollAssessmentDocuments]);
 
-  const { data: checklistItems = EMPTY_CHECKLIST_ITEMS } = useQuery({
+  const {
+    data: checklistItems = EMPTY_CHECKLIST_ITEMS,
+    isError: checklistItemsError,
+    isLoading: checklistItemsLoading,
+  } = useQuery({
     queryKey: ["assessment-checklist", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
     queryFn: async () => {
       if (!selectedAssessmentId) return [];
@@ -474,8 +478,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const selectedAssessmentTemplateLabel = selectedAssessmentDocument
     ? TEMPLATE_LABELS[selectedAssessmentDocument.template_type]
     : TEMPLATE_LABELS[assessmentTemplateType];
+  const checklistReviewUnavailable =
+    ENABLE_CHECKLIST_MAPPING_UI && canQuerySelectedAssessment && (checklistItemsLoading || checklistItemsError);
   const hasPendingRequiredChecklistItems =
-    ENABLE_CHECKLIST_MAPPING_UI && checklistItems.some((item) => item.required && item.status !== "approved");
+    ENABLE_CHECKLIST_MAPPING_UI &&
+    (checklistReviewUnavailable || checklistItems.some((item) => item.required && item.status !== "approved"));
   const hasAcceptedDraftProgram = (assessmentDrafts?.programs ?? []).some(
     (program) => program.accept_state === "accepted" || program.accept_state === "edited",
   );
@@ -507,6 +514,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     : 0;
   const promoteDisabledReason = !canQuerySelectedAssessment
     ? "Select a valid assessment first."
+    : checklistReviewUnavailable
+      ? "Checklist review must load before publishing."
+    : hasPendingRequiredChecklistItems
+      ? `${unresolvedRequiredCount} required checklist row${unresolvedRequiredCount === 1 ? "" : "s"} must be approved before publishing.`
     : !hasAcceptedDraftProgram
         ? "Accept or edit at least one AI proposal program before publishing."
         : !hasAcceptedDraftGoal
@@ -677,7 +688,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         }),
       });
       if (!response.ok) {
-        throw new Error("Failed to update checklist row");
+        throw new Error(await parseApiErrorMessage(response, "Failed to update checklist row"));
       }
     },
     onSuccess: () => {
@@ -1656,6 +1667,12 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               )}
               {!selectedAssessmentId ? (
                 <p className="text-sm text-gray-500">Upload and select an assessment to review checklist items.</p>
+              ) : checklistItemsLoading ? (
+                <p className="text-sm text-gray-500">Loading checklist review...</p>
+              ) : checklistItemsError ? (
+                <p className="text-sm text-rose-600 dark:text-rose-300">
+                  Checklist review failed to load. Publishing stays blocked until checklist rows can be reviewed.
+                </p>
               ) : checklistBySection.length === 0 ? (
                 <p className="text-sm text-gray-500">Checklist not available yet for this assessment.</p>
               ) : (
@@ -1672,6 +1689,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                             reviewNotes: row.review_notes ?? "",
                             valueText: row.value_text ?? "",
                           };
+                          const isApprovedStatusLocked = row.status === "approved";
                           return (
                             <div key={row.id} className="rounded border border-gray-200 dark:border-gray-700 p-2">
                               <div className="text-xs font-medium text-gray-800 dark:text-gray-200">{row.label}</div>
@@ -1682,6 +1700,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                                 <select
                                   value={edit.status}
+                                  disabled={isApprovedStatusLocked}
                                   onChange={(event) =>
                                     setChecklistEdits((current) => ({
                                       ...current,
@@ -1735,6 +1754,11 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                               >
                                 Save Checklist Row
                               </button>
+                              {isApprovedStatusLocked && (
+                                <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
+                                  Approved checklist rows stay approved; update notes or field value without lowering status.
+                                </p>
+                              )}
                             </div>
                           );
                         })}

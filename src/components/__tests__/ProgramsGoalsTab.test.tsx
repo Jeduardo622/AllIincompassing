@@ -2000,6 +2000,194 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(await screen.findByText("Select a valid assessment first.")).toBeInTheDocument();
   });
 
+  it("blocks publish with explicit checklist guidance when required rows are unresolved", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "checklist-item-1",
+              section_key: "assessment_summary",
+              label: "Assessment summary",
+              placeholder_key: "summary",
+              required: true,
+              mode: "ASSISTED",
+              status: "verified",
+              review_notes: null,
+              value_text: "Synthetic assessment summary",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/fba.pdf",
+              status: "drafted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(
+          JSON.stringify({
+            programs: [{ id: "p1", name: "Program A", description: null, accept_state: "accepted", review_notes: null }],
+            goals: buildAcceptedDraftGoals(),
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(await screen.findByText("1 required checklist row must be approved before publishing.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Publish to Live Programs \+ Goals/i })).toBeDisabled();
+  });
+
+  it("shows approved checklist rows as locked from status downgrades", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: "checklist-item-1",
+              section_key: "assessment_summary",
+              label: "Assessment summary",
+              placeholder_key: "summary",
+              required: true,
+              mode: "ASSISTED",
+              status: "approved",
+              review_notes: null,
+              value_text: "Synthetic assessment summary",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/fba.pdf",
+              status: "drafted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(
+      await screen.findByText("Approved checklist rows stay approved; update notes or field value without lowering status."),
+    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue("approved")).toBeDisabled();
+  });
+
+  it("blocks publish while checklist review fails to load", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify({ error: "Checklist unavailable" }), { status: 500 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/fba.pdf",
+              status: "drafted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(
+          JSON.stringify({
+            programs: [{ id: "p1", name: "Program A", description: null, accept_state: "accepted", review_notes: null }],
+            goals: buildAcceptedDraftGoals(),
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(
+      await screen.findByText("Checklist review failed to load. Publishing stays blocked until checklist rows can be reviewed."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Checklist review must load before publishing.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Publish to Live Programs \+ Goals/i })).toBeDisabled();
+  });
+
   it("shows add-goal prerequisites when create goal is disabled", async () => {
     renderWithProviders(
       <ProgramsGoalsTab client={buildClient()} />,

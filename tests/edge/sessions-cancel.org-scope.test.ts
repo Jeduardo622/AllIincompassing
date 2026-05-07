@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as orgHelpers from "../../supabase/functions/_shared/org.ts";
 import { __TESTING__ } from "../../supabase/functions/sessions-cancel/index.ts";
 import { ForbiddenError } from "../../supabase/functions/_shared/org.ts";
+import { supabaseAdmin } from "../../supabase/functions/_shared/database.ts";
 
 type QueryResult = { data: unknown[]; error: null };
 
@@ -166,6 +167,81 @@ describe("sessions-cancel org scoping", () => {
     expect(payload.data.summary.cancelledCount).toBe(0);
   });
 
+  it("allows super_admin cancellation for an in-scope scheduled session", async () => {
+    const selectBuilder = makeSelectBuilder({
+      data: [
+        { id: "session-super", status: "scheduled", therapist_id: "therapist-9" },
+      ],
+      error: null,
+    });
+    vi.spyOn(orgHelpers, "orgScopedQuery").mockImplementation(
+      () => selectBuilder as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
+    );
+
+    const updateBuilder = makeUpdateBuilder();
+    vi.spyOn(supabaseAdmin, "from").mockReturnValue(updateBuilder as never);
+    const mockDb: any = {
+      from: vi.fn(() => updateBuilder),
+      rpc: vi.fn(async () => ({ error: null })),
+    };
+
+    const logger = createStubLogger();
+
+    const response = await __TESTING__.handleSessionCancellation(
+      mockDb,
+      "org-9",
+      {
+        sessionIds: ["session-super"],
+        dateRange: null,
+        therapistId: null,
+        reason: "Scoped super admin cancellation",
+      },
+      "super-admin-user",
+      "super_admin",
+      logger,
+    );
+
+    const payload = await response.json() as {
+      success: boolean;
+      data: { summary: { cancelledCount: number; cancelledSessionIds: string[] } };
+    };
+    expect(payload.success).toBe(true);
+    expect(payload.data.summary.cancelledCount).toBe(1);
+    expect(payload.data.summary.cancelledSessionIds).toEqual(["session-super"]);
+  });
+
+  it("denies super_admin cancellation when the target session is outside the chosen org scope", async () => {
+    const selectBuilder = makeSelectBuilder({
+      data: [],
+      error: null,
+    });
+    vi.spyOn(orgHelpers, "orgScopedQuery").mockImplementation(
+      () => selectBuilder as unknown as ReturnType<typeof orgHelpers.orgScopedQuery>,
+    );
+
+    const mockDb: any = {
+      from: vi.fn(() => makeUpdateBuilder()),
+    };
+
+    const logger = createStubLogger();
+
+    await expect(
+      __TESTING__.handleSessionCancellation(
+        mockDb,
+        "org-a",
+        {
+          sessionIds: ["session-org-b"],
+          dateRange: null,
+          therapistId: null,
+          reason: null,
+        },
+        "super-admin-user",
+        "super_admin",
+        logger,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
   it("treats in_progress sessions as cancellable for lifecycle parity", async () => {
     const selectBuilder = makeSelectBuilder({
       data: [
@@ -231,6 +307,109 @@ describe("sessions-cancel org scoping", () => {
         time_zone: "Mars/Phobos",
       }),
     ).toThrowError("Invalid date or time_zone for cancellation window");
+  });
+
+  it("derives super_admin scheduling org from targeted sessions when direct org context is absent", async () => {
+    const mockDb: any = {
+      rpc: vi.fn(async (fn: string) => {
+        if (fn === "current_user_organization_id") {
+          return { data: null, error: null };
+        }
+        if (fn === "current_user_is_super_admin") {
+          return { data: true, error: null };
+        }
+        return { data: null, error: null };
+      }),
+    };
+    const selectBuilder = {
+      select: vi.fn(() => selectBuilder),
+      in: vi.fn(() => Promise.resolve({
+        data: [{ id: "session-a", organization_id: "org-42" }],
+        error: null,
+      })),
+    } as any;
+    vi.spyOn(supabaseAdmin, "from").mockReturnValue(selectBuilder);
+
+    await expect(
+      __TESTING__.resolveOrgForCancellationRequest(
+        mockDb,
+        { holdKey: null, sessionIds: ["session-a"], therapistId: null },
+      ),
+    ).resolves.toBe("org-42");
+  });
+
+  it("denies super_admin fallback when targeted sessions span multiple organizations", async () => {
+    const mockDb: any = {
+      rpc: vi.fn(async (fn: string) => {
+        if (fn === "current_user_organization_id") {
+          return { data: null, error: null };
+        }
+        if (fn === "current_user_is_super_admin") {
+          return { data: true, error: null };
+        }
+        return { data: null, error: null };
+      }),
+    };
+    const selectBuilder = {
+      select: vi.fn(() => selectBuilder),
+      in: vi.fn(() => Promise.resolve({
+        data: [
+          { id: "session-a", organization_id: "org-42" },
+          { id: "session-b", organization_id: "org-43" },
+        ],
+        error: null,
+      })),
+    } as any;
+    vi.spyOn(supabaseAdmin, "from").mockReturnValue(selectBuilder);
+
+    await expect(
+      __TESTING__.resolveOrgForCancellationRequest(
+        mockDb,
+        { holdKey: null, sessionIds: ["session-a", "session-b"], therapistId: null },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("derives super_admin scheduling org from targeted hold when direct org context is absent", async () => {
+    const mockDb: any = {
+      rpc: vi.fn(async (fn: string) => {
+        if (fn === "current_user_organization_id") {
+          return { data: null, error: null };
+        }
+        if (fn === "current_user_is_super_admin") {
+          return { data: true, error: null };
+        }
+        return { data: null, error: null };
+      }),
+    };
+    const selectBuilder = {
+      select: vi.fn(() => selectBuilder),
+      eq: vi.fn(() => selectBuilder),
+      maybeSingle: vi.fn(() => Promise.resolve({
+        data: { organization_id: "org-hold" },
+        error: null,
+      })),
+    } as any;
+    vi.spyOn(supabaseAdmin, "from").mockReturnValue(selectBuilder);
+
+    await expect(
+      __TESTING__.resolveOrgForCancellationRequest(
+        mockDb,
+        { holdKey: "hold-1", sessionIds: [], therapistId: null },
+      ),
+    ).resolves.toBe("org-hold");
+  });
+
+  it("returns no cancellation role for unauthorized users", async () => {
+    vi.spyOn(orgHelpers, "assertUserHasOrgRole").mockResolvedValue(false);
+
+    const mockDb: any = {
+      rpc: vi.fn(),
+    };
+
+    await expect(
+      __TESTING__.resolveCancellationRole(mockDb, "org-1", "viewer-user"),
+    ).resolves.toBeNull();
   });
 });
 

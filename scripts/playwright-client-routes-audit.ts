@@ -327,14 +327,11 @@ async function run(): Promise<void> {
   const safeTimestamp = timestamp.replace(/[:.]/g, '-');
   const artifactsDir = path.resolve('artifacts', 'latest');
   const reportsDir = path.resolve('reports', 'evidence');
-  const docsAuditDir = path.resolve('docs', 'audits');
   const reportFileName = `client-routes-e2e-audit-${safeTimestamp}.json`;
   const reportPath = path.join(reportsDir, reportFileName);
-  const docsReportPath = path.join(docsAuditDir, reportFileName);
 
   await ensureDir(artifactsDir);
   await ensureDir(reportsDir);
-  await ensureDir(docsAuditDir);
 
   const consoleErrors: string[] = [];
   const networkErrors: Array<{
@@ -478,10 +475,8 @@ async function run(): Promise<void> {
 
   const body = `${JSON.stringify(report, null, 2)}\n`;
   await fs.writeFile(reportPath, body, 'utf-8');
-  await fs.writeFile(docsReportPath, body, 'utf-8');
 
   console.log(`Client routes E2E audit report saved: ${reportPath}`);
-  console.log(`Client routes E2E audit report copied: ${docsReportPath}`);
   console.log(`Summary -> passed=${report.summary.passed}, failed=${report.summary.failed}, skipped=${report.summary.skipped}, blocked=${report.summary.blocked}`);
   if (!report.auth.success) {
     console.log(`Auth note: ${report.auth.reason ?? 'Authentication failed.'}`);

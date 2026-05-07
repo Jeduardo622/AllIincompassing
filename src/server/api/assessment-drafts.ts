@@ -108,6 +108,7 @@ interface AssessmentDocumentScopeRow {
   id: string;
   organization_id: string;
   client_id: string;
+  status: string;
 }
 
 interface AssessmentDraftProgramRow {
@@ -198,7 +199,7 @@ const getAssessmentDocument = async (
   organizationId: string,
   assessmentDocumentId: string,
 ): Promise<AssessmentDocumentScopeRow | null> => {
-  const lookupUrl = `${supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id&id=eq.${encodeURIComponent(
+  const lookupUrl = `${supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id,status&id=eq.${encodeURIComponent(
     assessmentDocumentId,
   )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`;
   const lookup = await fetchJson<AssessmentDocumentScopeRow[]>(lookupUrl, { method: "GET", headers });
@@ -491,6 +492,20 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
       return json({ draft_program_id: result.draftProgramId }, 201);
     }
 
+    const hasExistingDrafts = await draftsAlreadyExistForDocument({
+      supabaseUrl,
+      headers,
+      organizationId,
+      assessmentDocumentId,
+    });
+    if (hasExistingDrafts) {
+      return json({ error: "Drafts already exist for this assessment. Review existing drafts instead of regenerating." }, 409);
+    }
+
+    if (document.status !== "extracted") {
+      return json({ error: "Assessment extraction must complete before AI proposals can be generated." }, 409);
+    }
+
     const checklistResult = await fetchJson<AssessmentChecklistWithStatusValueRow[]>(
       `${supabaseUrl}/rest/v1/assessment_checklist_items?select=section_key,label,placeholder_key,value_text,value_json,required,status&organization_id=eq.${encodeURIComponent(
         organizationId,
@@ -514,16 +529,6 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
     );
     if (!extractionResult.ok) {
       return json({ error: "Failed to load extraction evidence for AI proposal generation." }, extractionResult.status || 500);
-    }
-
-    const hasExistingDrafts = await draftsAlreadyExistForDocument({
-      supabaseUrl,
-      headers,
-      organizationId,
-      assessmentDocumentId,
-    });
-    if (hasExistingDrafts) {
-      return json({ error: "Drafts already exist for this assessment. Review existing drafts instead of regenerating." }, 409);
     }
 
     const clientResult = await fetchJson<Array<{ full_name: string | null }>>(

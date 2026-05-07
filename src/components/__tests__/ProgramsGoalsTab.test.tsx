@@ -1352,11 +1352,135 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
           ([path, init]) =>
             path === "/api/assessment-drafts" &&
             init?.method === "POST" &&
-            String(init.body).includes("\"auto_generate\":true"),
+            JSON.parse(String(init.body)).assessment_document_id === ASSESSMENT_ID &&
+            JSON.parse(String(init.body)).auto_generate === true,
         ),
       ).toBe(true);
     });
     expect(showSuccess).toHaveBeenCalledWith("AI proposal program and goals generated from uploaded FBA.");
+  });
+
+  it("waits for extraction before generating staged drafts from an uploaded assessment", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "synthetic-fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1234,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/synthetic-fba.pdf",
+              status: "extracting",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <ProgramsGoalsTab client={buildClient()} />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    const generateButton = await screen.findByRole("button", { name: /Generate with AI from Uploaded FBA/i });
+    await waitFor(() => {
+      expect(generateButton).toBeDisabled();
+    });
+    expect(await screen.findByText("Wait for extraction to complete before generating AI proposals.")).toBeInTheDocument();
+
+    await user.click(generateButton);
+
+    expect(
+      vi.mocked(callApi).mock.calls.some(
+        ([path, init]) => path === "/api/assessment-drafts" && (init?.method ?? "").toUpperCase() === "POST",
+      ),
+    ).toBe(false);
+  });
+
+  it("shows existing-draft guidance for drafted uploaded assessments", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "synthetic-fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1234,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/synthetic-fba.pdf",
+              status: "drafted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(
+          JSON.stringify({
+            programs: [{ id: "draft-program-1", accept_state: "pending", name: "Draft Program" }],
+            goals: [],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <ProgramsGoalsTab client={buildClient()} />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    const generateButton = await screen.findByRole("button", { name: /Generate with AI from Uploaded FBA/i });
+    await waitFor(() => {
+      expect(generateButton).toBeDisabled();
+    });
+    expect(
+      await screen.findByText("Drafts already exist for this assessment. Review/edit current drafts instead of regenerating."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Wait for extraction to complete before generating AI proposals.")).not.toBeInTheDocument();
   });
 
   it("generates completed CalOptima PDF for selected assessment", async () => {

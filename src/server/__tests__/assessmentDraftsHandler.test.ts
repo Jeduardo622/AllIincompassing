@@ -82,7 +82,7 @@ describe("assessmentDraftsHandler", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1" }],
+        data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extracted" }],
       })
       .mockResolvedValueOnce({ ok: true, status: 201, data: [{ id: "draft-program-1", name: "Communication Program" }] })
       .mockResolvedValueOnce({ ok: true, status: 201, data: null })
@@ -219,7 +219,7 @@ describe("assessmentDraftsHandler", () => {
         return {
           ok: true,
           status: 200,
-          data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1" }],
+          data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extracted" }],
         };
       }
       if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?")) {
@@ -387,7 +387,7 @@ describe("assessmentDraftsHandler", () => {
         return {
           ok: true,
           status: 200,
-          data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1" }],
+          data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extracted" }],
         };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_draft_programs")) {
@@ -506,7 +506,7 @@ describe("assessmentDraftsHandler", () => {
         return {
           ok: true,
           status: 200,
-          data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1" }],
+          data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extracted" }],
         };
       }
       if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?")) {
@@ -584,6 +584,156 @@ describe("assessmentDraftsHandler", () => {
     expect(fetchJson).toHaveBeenCalledWith(
       expect.stringContaining("/rest/v1/assessment_draft_programs?id=in.(draft-program-mismatch-1)"),
       expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("rejects malformed auto-generation request bodies before draft generation", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "not-a-uuid", auto_generate: true }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Invalid request body" });
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid JSON bodies before draft generation", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: "{",
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Invalid JSON body" });
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it("rejects auto-generation until extraction is complete", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extracting" }],
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: [] })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: [] });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          assessment_document_id: "11111111-1111-1111-1111-111111111111",
+          auto_generate: true,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Assessment extraction must complete before AI proposals can be generated.",
+    });
+    expect(fetchJson).toHaveBeenCalledTimes(3);
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_checklist_items"),
+      expect.anything(),
+    );
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/functions/v1/generate-program-goals"),
+      expect.anything(),
+    );
+  });
+
+  it("keeps existing-draft conflict messaging for drafted assessments", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "drafted" }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_programs?")) {
+        return { ok: true, status: 200, data: [{ id: "draft-program-1" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_goals?")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          assessment_document_id: "11111111-1111-1111-1111-111111111111",
+          auto_generate: true,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Drafts already exist for this assessment. Review existing drafts instead of regenerating.",
+    });
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/functions/v1/generate-program-goals"),
+      expect.anything(),
     );
   });
 

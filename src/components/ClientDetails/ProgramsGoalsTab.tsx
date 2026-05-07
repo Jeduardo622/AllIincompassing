@@ -493,6 +493,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     acceptedDraftChildGoalCount >= MIN_CHILD_GOALS && acceptedDraftParentGoalCount >= MIN_PARENT_GOALS;
   const hasStagedDraftChanges = hasExistingDrafts;
   const hasDraftsButNoLivePrograms = hasExistingDrafts && livePrograms.length === 0;
+  const selectedAssessmentReadyForAiGeneration = selectedAssessmentDocument?.status === "extracted";
+  const canGenerateUploadedAssessmentDraft =
+    canQuerySelectedAssessment && selectedAssessmentReadyForAiGeneration && !hasExistingDrafts;
   const canPromoteAssessment =
     canQuerySelectedAssessment &&
     !hasPendingRequiredChecklistItems &&
@@ -511,6 +514,13 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           : !hasRequiredAcceptedGoalMix
             ? `Accepted draft goals must include at least ${MIN_CHILD_GOALS} child and ${MIN_PARENT_GOALS} parent goals before publishing.`
           : null;
+  const uploadedAssessmentGenerateDisabledReason = !canQuerySelectedAssessment
+    ? "Select a valid uploaded assessment before generating AI proposals."
+    : hasExistingDrafts
+      ? "Drafts already exist for this assessment. Review/edit current drafts instead of regenerating."
+    : !selectedAssessmentReadyForAiGeneration
+      ? "Wait for extraction to complete before generating AI proposals."
+      : null;
 
   useEffect(() => {
     const firstAssessmentId = assessmentDocuments[0]?.id ?? null;
@@ -1442,16 +1452,17 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               <button
                 type="button"
                 onClick={() => generateDraftsFromUploadedAssessment.mutate()}
-                disabled={!canQuerySelectedAssessment || hasExistingDrafts || generateDraftsFromUploadedAssessment.isLoading}
+                disabled={!canGenerateUploadedAssessmentDraft || generateDraftsFromUploadedAssessment.isLoading}
+                title={uploadedAssessmentGenerateDisabledReason ?? undefined}
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-cyan-600 rounded-md hover:bg-cyan-700 disabled:opacity-50"
               >
                 {generateDraftsFromUploadedAssessment.isLoading
                   ? "Generating AI Proposal..."
                   : "Generate with AI from Uploaded FBA"}
               </button>
-              {hasExistingDrafts && !generateDraftsFromUploadedAssessment.isLoading && (
+              {uploadedAssessmentGenerateDisabledReason && !generateDraftsFromUploadedAssessment.isLoading && (
                 <p className="text-xs text-gray-500 dark:text-gray-300">
-                  Drafts already exist for this assessment. Review/edit current drafts instead of regenerating.
+                  {uploadedAssessmentGenerateDisabledReason}
                 </p>
               )}
               <button

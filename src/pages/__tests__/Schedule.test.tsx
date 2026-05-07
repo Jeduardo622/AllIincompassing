@@ -379,7 +379,7 @@ describe("Schedule", () => {
     expect(screen.getByText(/Source week/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/End date/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Preview week-forward schedule/i })).toBeInTheDocument();
-    expect(screen.getByText(/Advanced single-session RRULE/i)).toBeInTheDocument();
+    expect(screen.getByText(/Single-session recurrence/i)).toBeInTheDocument();
   }, 15000);
 
   it("previews and applies the visible week with the displayed week payload", async () => {
@@ -484,7 +484,7 @@ describe("Schedule", () => {
     expect(screen.getByText(/Organization context unavailable/i)).toBeInTheDocument();
   }, 15000);
 
-  it("keeps advanced RRULE exception controls accessible", async () => {
+  it("shows a user-friendly weekly recurrence builder for single-session saves", async () => {
     renderWithProviders(<Schedule />);
 
     const recurrenceToggle = await screen.findByRole("checkbox", {
@@ -492,7 +492,32 @@ describe("Schedule", () => {
     });
     await userEvent.click(recurrenceToggle);
 
-    await userEvent.click(screen.getByText(/Advanced single-session RRULE/i));
+    await userEvent.click(screen.getByText(/Single-session recurrence/i));
+    expect(screen.getByLabelText(/Repeat every/i)).toHaveValue(1);
+    expect(screen.getByText(/Weekly recurrence is the supported schedule pattern for this editor/i)).toBeInTheDocument();
+    const weekdayButtons = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) =>
+      screen.getByRole("button", { name: label }),
+    );
+    expect(weekdayButtons.filter((button) => button.getAttribute("aria-pressed") === "true")).toHaveLength(1);
+
+    fireEvent.change(screen.getByLabelText(/Repeat every/i), { target: { value: "2" } });
+    const buttonToEnable = weekdayButtons.find((button) => button.getAttribute("aria-pressed") !== "true");
+    expect(buttonToEnable).toBeTruthy();
+    await userEvent.click(buttonToEnable!);
+
+    expect(screen.getByText(/Repeats every 2 weeks on /i)).toBeInTheDocument();
+    expect(weekdayButtons.filter((button) => button.getAttribute("aria-pressed") === "true")).toHaveLength(2);
+  }, 15000);
+
+  it("keeps recurrence exception controls accessible", async () => {
+    renderWithProviders(<Schedule />);
+
+    const recurrenceToggle = await screen.findByRole("checkbox", {
+      name: /Apply this visible week forward/i,
+    });
+    await userEvent.click(recurrenceToggle);
+
+    await userEvent.click(screen.getByText(/Single-session recurrence/i));
     const addExceptionButton = await screen.findByRole("button", { name: /Add exception/i });
     await userEvent.click(addExceptionButton);
     await userEvent.click(addExceptionButton);

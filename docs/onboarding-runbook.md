@@ -197,12 +197,4 @@
 - Confirmed unauthenticated guard behavior:
   - direct visit to `/clients/new` redirects to `/login`.
   - direct visit to `/therapists/new` redirects to `/login`.
-- Captured evidence artifacts:
-  - `onboarding-admin-clients-new-verified-all-routes.png`
-  - `onboarding-admin-therapists-new-verified-all-routes.png`
-  - `onboarding-superadmin-clients-new-verified.png`
-  - `onboarding-superadmin-therapists-new-verified.png`
-  - `onboarding-therapist-clients-new-allowed.png`
-  - `onboarding-therapist-therapists-new-blocked.png`
-  - `onboarding-unauthenticated-clients-new-redirect-2.png`
-  - `onboarding-unauthenticated-therapists-new-redirect.png`
+- Evidence screenshots were captured during that production MCP run; for new verification cycles, save fresh captures outside the repo (ticket attachments or your team evidence folder). Scripted smoke evidence continues to land under `artifacts/latest/` locally (gitignored).

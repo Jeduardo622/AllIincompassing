@@ -57,6 +57,9 @@ WHITE BIBLE.pdf
 # Local agent / editor scratch (not shipped)
 .claude/
 
+# Playwright MCP plugin scratch artifacts (screenshots, logs)
+.playwright-mcp/
+
 # Timestamped local test outputs (Playwright triage, etc.)
 artifacts/latest/
 # Root-level local Lighthouse exports (timestamped browser downloads)

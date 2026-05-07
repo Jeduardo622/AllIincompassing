@@ -37,12 +37,4 @@ Refer to `docs/tone.md` & `docs/style.md` for stakeholder comms/UI messaging gui
 - Confirmed unauthenticated guard behavior:
   - `/clients/new` redirects to `/login`.
   - `/therapists/new` redirects to `/login`.
-- Evidence screenshots captured:
-  - `onboarding-admin-clients-new-verified-all-routes.png`
-  - `onboarding-admin-therapists-new-verified-all-routes.png`
-  - `onboarding-superadmin-clients-new-verified.png`
-  - `onboarding-superadmin-therapists-new-verified.png`
-  - `onboarding-therapist-clients-new-allowed.png`
-  - `onboarding-therapist-therapists-new-blocked.png`
-  - `onboarding-unauthenticated-clients-new-redirect-2.png`
-  - `onboarding-unauthenticated-therapists-new-redirect.png`
+- Evidence screenshots were captured during that verification window; when you rerun MCP or Playwright verification, attach fresh screenshots to the ticket or evidence store rather than relying on repo filenames from 2026-03-13.

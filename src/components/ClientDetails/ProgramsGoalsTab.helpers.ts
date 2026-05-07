@@ -51,7 +51,7 @@ export interface AssessmentPlanPdfResponse {
 export const EMPTY_ASSESSMENT_DOCUMENTS: AssessmentDocumentRecord[] = [];
 export const EMPTY_CHECKLIST_ITEMS: AssessmentChecklistItem[] = [];
 export const EMPTY_ASSESSMENT_DRAFTS: AssessmentDraftResponse = { programs: [], goals: [] };
-export const ENABLE_CHECKLIST_MAPPING_UI = false;
+export const ENABLE_CHECKLIST_MAPPING_UI = true;
 export const MIN_CHILD_GOALS = 20;
 export const MIN_PARENT_GOALS = 6;
 

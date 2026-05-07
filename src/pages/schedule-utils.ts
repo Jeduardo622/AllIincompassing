@@ -4,6 +4,16 @@ import { toError } from "../lib/logger/normalizeError";
 import type { Session } from "../types";
 import type { SessionRecurrence } from "../server/types";
 
+export const RECURRENCE_WEEKDAY_OPTIONS = [
+  { value: 1, code: "MO", shortLabel: "Mon", longLabel: "Monday" },
+  { value: 2, code: "TU", shortLabel: "Tue", longLabel: "Tuesday" },
+  { value: 3, code: "WE", shortLabel: "Wed", longLabel: "Wednesday" },
+  { value: 4, code: "TH", shortLabel: "Thu", longLabel: "Thursday" },
+  { value: 5, code: "FR", shortLabel: "Fri", longLabel: "Friday" },
+  { value: 6, code: "SA", shortLabel: "Sat", longLabel: "Saturday" },
+  { value: 0, code: "SU", shortLabel: "Sun", longLabel: "Sunday" },
+] as const;
+
 export interface RecurrenceFormState {
   enabled: boolean;
   rule: string;
@@ -125,6 +135,29 @@ export function normalizeRecurrencePayload(
   }
 
   return recurrence;
+}
+
+const recurrenceWeekdayOrder = new Map(
+  RECURRENCE_WEEKDAY_OPTIONS.map((option, index) => [option.value, index] as const),
+);
+
+export function sortRecurrenceWeekdays(weekdays: readonly number[]): number[] {
+  return Array.from(new Set(weekdays))
+    .filter((value) => recurrenceWeekdayOrder.has(value))
+    .sort((left, right) => (recurrenceWeekdayOrder.get(left) ?? 0) - (recurrenceWeekdayOrder.get(right) ?? 0));
+}
+
+export function serializeWeeklyRecurrenceRule(interval: number, weekdays: readonly number[]): string {
+  const normalizedInterval = Number.isFinite(interval) && interval > 0 ? Math.trunc(interval) : 1;
+  const byDay = sortRecurrenceWeekdays(weekdays)
+    .map((weekday) => RECURRENCE_WEEKDAY_OPTIONS.find((option) => option.value === weekday)?.code ?? null)
+    .filter((value): value is string => typeof value === "string");
+
+  const segments = ["FREQ=WEEKLY", `INTERVAL=${normalizedInterval}`];
+  if (byDay.length > 0) {
+    segments.push(`BYDAY=${byDay.join(",")}`);
+  }
+  return segments.join(";");
 }
 
 export function createSessionSlotKey(dateKey: string, timeKey: string): string {

@@ -49,7 +49,10 @@ import {
   createSessionSlotKey,
   buildSessionSlotIndex,
   normalizeRecurrencePayload,
+  RECURRENCE_WEEKDAY_OPTIONS,
   reconcileOptimisticSessionMoves,
+  serializeWeeklyRecurrenceRule,
+  sortRecurrenceWeekdays,
   toPendingScheduleDetail,
   type PendingScheduleDetail,
   type RecurrenceFormState,
@@ -427,7 +430,8 @@ export const Schedule = React.memo(() => {
 
   const [recurrenceEnabled, setRecurrenceEnabled] = useState(false);
   const [advancedRecurrenceEnabled, setAdvancedRecurrenceEnabled] = useState(false);
-  const [recurrenceRule, setRecurrenceRule] = useState("FREQ=WEEKLY;INTERVAL=1");
+  const [recurrenceInterval, setRecurrenceInterval] = useState(1);
+  const [recurrenceWeekdays, setRecurrenceWeekdays] = useState<number[]>(() => [selectedDate.getDay()]);
   const [recurrenceCount, setRecurrenceCount] = useState<number | undefined>();
   const [recurrenceUntil, setRecurrenceUntil] = useState("");
   const [recurrenceExceptions, setRecurrenceExceptions] = useState<string[]>([]);
@@ -444,6 +448,51 @@ export const Schedule = React.memo(() => {
       setRecurrenceEnabled(false);
     }
   }, [selectedSession]);
+
+  const recurrenceAnchorDate = useMemo(() => {
+    if (selectedSession?.start_time) {
+      const selectedSessionStart = parseISO(selectedSession.start_time);
+      if (!Number.isNaN(selectedSessionStart.getTime())) {
+        return selectedSessionStart;
+      }
+    }
+    if (selectedTimeSlot?.date instanceof Date && !Number.isNaN(selectedTimeSlot.date.getTime())) {
+      return selectedTimeSlot.date;
+    }
+    return selectedDate;
+  }, [selectedDate, selectedSession?.start_time, selectedTimeSlot?.date]);
+
+  const recurrenceAnchorWeekday = recurrenceAnchorDate.getDay();
+
+  useEffect(() => {
+    if (!advancedRecurrenceEnabled) {
+      return;
+    }
+    if (recurrenceWeekdays.length > 0) {
+      return;
+    }
+    setRecurrenceWeekdays([recurrenceAnchorWeekday]);
+  }, [advancedRecurrenceEnabled, recurrenceAnchorWeekday, recurrenceWeekdays.length]);
+
+  const recurrenceRule = useMemo(
+    () =>
+      serializeWeeklyRecurrenceRule(
+        recurrenceInterval,
+        recurrenceWeekdays.length > 0 ? recurrenceWeekdays : [recurrenceAnchorWeekday],
+      ),
+    [recurrenceAnchorWeekday, recurrenceInterval, recurrenceWeekdays],
+  );
+
+  const recurrenceSelectedWeekdayOptions = useMemo(() => {
+    const selectedDays = recurrenceWeekdays.length > 0 ? recurrenceWeekdays : [recurrenceAnchorWeekday];
+    return RECURRENCE_WEEKDAY_OPTIONS.filter((option) => selectedDays.includes(option.value));
+  }, [recurrenceAnchorWeekday, recurrenceWeekdays]);
+
+  const recurrenceSummaryText = useMemo(() => {
+    const weekdayLabel = recurrenceSelectedWeekdayOptions.map((option) => option.longLabel).join(", ");
+    const intervalLabel = recurrenceInterval === 1 ? "week" : `${recurrenceInterval} weeks`;
+    return `Repeats every ${intervalLabel} on ${weekdayLabel}.`;
+  }, [recurrenceInterval, recurrenceSelectedWeekdayOptions]);
 
   const recurrenceFormState = useMemo<RecurrenceFormState>(
     () => ({
@@ -1269,6 +1318,15 @@ export const Schedule = React.memo(() => {
 
   const handleRemoveRecurrenceException = useCallback((index: number) => {
     setRecurrenceExceptions((prev) => prev.filter((_, current) => current !== index));
+  }, []);
+
+  const handleToggleRecurrenceWeekday = useCallback((weekday: number) => {
+    setRecurrenceWeekdays((prev) => {
+      if (prev.includes(weekday)) {
+        return prev.length === 1 ? prev : prev.filter((value) => value !== weekday);
+      }
+      return sortRecurrenceWeekdays([...prev, weekday]);
+    });
   }, []);
 
   const handleCloseSessionModal = useCallback(() => {
@@ -2125,7 +2183,7 @@ export const Schedule = React.memo(() => {
 
             <details className="rounded-lg border border-dashed border-gray-300 p-3 dark:border-gray-600">
               <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">
-                Advanced single-session RRULE
+                Single-session recurrence
               </summary>
               <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="md:col-span-2">
@@ -2136,30 +2194,67 @@ export const Schedule = React.memo(() => {
                       checked={advancedRecurrenceEnabled}
                       onChange={(event) => setAdvancedRecurrenceEnabled(event.target.checked)}
                     />
-                    Apply raw RRULE when saving from the session modal
+                    Apply this recurrence when saving from the session modal
                   </label>
                 </div>
 
                 <div className="md:col-span-2">
-                  <label htmlFor="recurrence-rrule" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    RRULE
+                  <label htmlFor="recurrence-interval" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Repeat every
                   </label>
-                  <input
-                    id="recurrence-rrule"
-                    type="text"
-                    value={recurrenceRule}
-                    onChange={(event) => setRecurrenceRule(event.target.value)}
-                    className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
-                    placeholder="FREQ=WEEKLY;BYDAY=MO,WE;INTERVAL=1"
-                  />
+                  <div className="flex items-center gap-3">
+                    <input
+                      id="recurrence-interval"
+                      type="number"
+                      min="1"
+                      value={recurrenceInterval}
+                      onChange={(event) => {
+                        const parsed = Number(event.target.value);
+                        setRecurrenceInterval(Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 1);
+                      }}
+                      className="w-24 rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
+                    />
+                    <span className="text-sm text-gray-600 dark:text-gray-300">
+                      {recurrenceInterval === 1 ? "week" : "weeks"}
+                    </span>
+                  </div>
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Use this only when you need a manual RFC 5545 rule for a single modal save.
+                    Weekly recurrence is the supported schedule pattern for this editor.
+                  </p>
+                </div>
+
+                <div className="md:col-span-2">
+                  <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Repeat on
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {RECURRENCE_WEEKDAY_OPTIONS.map((option) => {
+                      const isSelected = recurrenceSelectedWeekdayOptions.some((selected) => selected.value === option.value);
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          aria-pressed={isSelected}
+                          onClick={() => handleToggleRecurrenceWeekday(option.value)}
+                          className={`inline-flex min-w-14 items-center justify-center rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                            isSelected
+                              ? "border-blue-600 bg-blue-600 text-white"
+                              : "border-gray-300 bg-white text-gray-700 hover:border-blue-400 hover:text-blue-600 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
+                          }`}
+                        >
+                          {option.shortLabel}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    {recurrenceSummaryText}
                   </p>
                 </div>
 
                 <div>
                   <label htmlFor="recurrence-count" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Count
+                    End after total sessions
                   </label>
                   <input
                     id="recurrence-count"
@@ -2178,11 +2273,14 @@ export const Schedule = React.memo(() => {
                     }}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                   />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Count includes the first session you save from the modal.
+                  </p>
                 </div>
 
                 <div>
                   <label htmlFor="recurrence-until" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Until
+                    End on
                   </label>
                   <input
                     id="recurrence-until"
@@ -2191,6 +2289,9 @@ export const Schedule = React.memo(() => {
                     onChange={(event) => setRecurrenceUntil(event.target.value)}
                     className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:text-gray-200"
                   />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Optional end date in the selected time zone.
+                  </p>
                 </div>
 
                 <div className="md:col-span-2">

@@ -310,8 +310,13 @@ describe("Schedule orchestration integration hardening", () => {
     expect(screen.getByTestId("session-modal")).toBeInTheDocument();
   }, 15_000);
 
-  it("manual edit cancel path stays distinct and closes modal", async () => {
-    renderWithProviders(<Schedule />);
+  it.each([
+    ["admin", "admin"],
+    ["super admin", "super_admin"],
+  ] as const)("manual edit cancel path stays distinct and closes modal for %s", async (_label, role) => {
+    renderWithProviders(<Schedule />, {
+      auth: { role, organizationId: "org-1" },
+    });
     await screen.findByRole("heading", { name: /Schedule/i });
     await waitForScheduleGridReady();
 
@@ -322,10 +327,10 @@ describe("Schedule orchestration integration hardening", () => {
     fireEvent.click(screen.getByLabelText("submit-cancel"));
 
     await waitFor(() => {
-      expect(cancelSessionsMock).toHaveBeenCalledWith({
+      expect(cancelSessionsMock).toHaveBeenCalledWith(expect.objectContaining({
         sessionIds: ["session-1"],
         reason: "cancel reason",
-      });
+      }));
     });
     expect(showSuccessMock).toHaveBeenCalled();
   });

@@ -7,11 +7,12 @@ import {
 } from "../_shared/idempotency.ts";
 import { evaluateTherapistAuthorization } from "../_shared/authorization.ts";
 import {
-  requireOrg,
+  requireOrgForScheduling,
   assertUserHasOrgRole,
   orgScopedQuery,
   MissingOrgContextError,
   ForbiddenError,
+  resolveOrgId,
 } from "../_shared/org.ts";
 import { getLogger, type Logger } from "../_shared/logging.ts";
 import { increment } from "../_shared/metrics.ts";
@@ -215,6 +216,104 @@ async function resolveCancellationRole(
     return "therapist";
   }
   return null;
+}
+
+async function currentUserIsSuperAdmin(db: SupabaseClient): Promise<boolean> {
+  const { data, error } = await db.rpc("current_user_is_super_admin");
+  if (error) {
+    console.error("currentUserIsSuperAdmin error", error);
+    throw new MissingOrgContextError();
+  }
+  return data === true;
+}
+
+async function resolveOrgFromHoldKey(holdKey: string): Promise<string> {
+  const { data, error } = await supabaseAdmin
+    .from("session_holds")
+    .select("organization_id")
+    .eq("hold_key", holdKey)
+    .maybeSingle();
+
+  if (error) {
+    console.error("resolveOrgFromHoldKey error", error);
+    throw new MissingOrgContextError();
+  }
+
+  const organizationId =
+    data && typeof (data as { organization_id?: unknown }).organization_id === "string"
+      ? (data as { organization_id: string }).organization_id.trim()
+      : "";
+
+  if (organizationId.length === 0) {
+    throw new ForbiddenError("Forbidden");
+  }
+
+  return organizationId;
+}
+
+async function resolveOrgFromSessionIds(sessionIds: string[]): Promise<string> {
+  const { data, error } = await supabaseAdmin
+    .from("sessions")
+    .select("id, organization_id")
+    .in("id", sessionIds);
+
+  if (error) {
+    console.error("resolveOrgFromSessionIds error", error);
+    throw new MissingOrgContextError();
+  }
+
+  const rows = Array.isArray(data) ? data : [];
+  if (rows.length !== sessionIds.length) {
+    throw new ForbiddenError("Forbidden");
+  }
+
+  const uniqueOrganizationIds = new Set(
+    rows
+      .map((row) =>
+        row && typeof (row as { organization_id?: unknown }).organization_id === "string"
+          ? (row as { organization_id: string }).organization_id.trim()
+          : ""
+      )
+      .filter((organizationId) => organizationId.length > 0),
+  );
+
+  if (uniqueOrganizationIds.size !== 1) {
+    throw new ForbiddenError("Forbidden");
+  }
+
+  return Array.from(uniqueOrganizationIds)[0];
+}
+
+async function resolveOrgForCancellationRequest(
+  db: SupabaseClient,
+  payload: {
+    holdKey: string | null;
+    sessionIds: string[];
+    therapistId: string | null;
+  },
+): Promise<string> {
+  const directOrgId = await resolveOrgId(db);
+  if (directOrgId) {
+    return directOrgId;
+  }
+
+  if (!await currentUserIsSuperAdmin(db)) {
+    throw new MissingOrgContextError();
+  }
+
+  if (payload.holdKey) {
+    return resolveOrgFromHoldKey(payload.holdKey);
+  }
+
+  if (payload.sessionIds.length > 0) {
+    return resolveOrgFromSessionIds(payload.sessionIds);
+  }
+
+  if (payload.therapistId) {
+    return requireOrgForScheduling(db, payload.therapistId);
+  }
+
+  throw new MissingOrgContextError();
 }
 
 async function handleHoldRelease(
@@ -563,7 +662,13 @@ Deno.serve(async (req) => {
     };
     const idempotencyService = createSupabaseIdempotencyService(supabaseAdmin);
 
-    const orgId = await requireOrg(db);
+    const payload = parseCancelPayload(await req.json());
+
+    const orgId = await resolveOrgForCancellationRequest(db, {
+      holdKey: payload.holdKey,
+      sessionIds: payload.sessionIds,
+      therapistId: payload.therapistId,
+    });
     currentOrgId = orgId;
     scopedLogger = userLogger.with({ orgId });
     scopedLogger.info("request.org-scoped");
@@ -594,8 +699,6 @@ Deno.serve(async (req) => {
         );
       }
     }
-
-    const payload = parseCancelPayload(await req.json());
 
     if (payload.therapistId) {
       const authorization = await evaluateTherapistAuthorization(db, payload.therapistId);
@@ -699,4 +802,8 @@ export const __TESTING__ = {
   handleHoldRelease,
   parseCancelPayload,
   buildDateRange,
+  resolveCancellationRole,
+  resolveOrgForCancellationRequest,
+  resolveOrgFromSessionIds,
+  resolveOrgFromHoldKey,
 };

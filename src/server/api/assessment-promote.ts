@@ -32,6 +32,7 @@ interface DraftProgramRow {
 
 interface DraftGoalRow {
   id: string;
+  draft_program_id: string | null;
   title: string;
   description: string;
   original_text: string;
@@ -51,6 +52,8 @@ const normalizeTitle = (value: string): string => value.trim().replace(/\s+/g, "
 
 const isMinGoalQuality = (goal: DraftGoalRow): boolean =>
   goal.title.trim().length >= 3 && goal.description.trim().length >= 10 && goal.original_text.trim().length >= 10;
+
+const buildInFilter = (ids: string[]): string => `in.(${ids.map((id) => encodeURIComponent(id)).join(",")})`;
 
 export async function assessmentPromoteHandler(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
@@ -109,7 +112,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
       { method: "GET", headers },
     ),
     fetchJson<DraftGoalRow[]>(
-      `${supabaseUrl}/rest/v1/assessment_draft_goals?select=id,title,description,original_text,goal_type,target_behavior,measurement_type,baseline_data,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,objective_data_points,accept_state&organization_id=eq.${encodeURIComponent(
+      `${supabaseUrl}/rest/v1/assessment_draft_goals?select=id,draft_program_id,title,description,original_text,goal_type,target_behavior,measurement_type,baseline_data,target_criteria,mastery_criteria,maintenance_criteria,generalization_criteria,objective_data_points,accept_state&organization_id=eq.${encodeURIComponent(
         organizationId,
       )}&assessment_document_id=eq.${encodeURIComponent(parsed.data.assessment_document_id)}&order=created_at.asc`,
       { method: "GET", headers },
@@ -180,28 +183,105 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     );
   }
 
-  const selectedProgram = acceptedPrograms[0];
-  const createProgramResult = await fetchJson<Array<{ id: string }>>(`${supabaseUrl}/rest/v1/programs`, {
-    method: "POST",
-    headers: { ...headers, Prefer: "return=representation" },
-    body: JSON.stringify({
-      organization_id: organizationId,
-      client_id: document.client_id,
-      name: selectedProgram.name,
-      description: selectedProgram.description ?? null,
-      status: "active",
-    }),
-  });
-
-  if (!createProgramResult.ok || !Array.isArray(createProgramResult.data) || !createProgramResult.data[0]) {
-    return json({ error: "Failed to create production program" }, createProgramResult.status || 500);
+  const acceptedProgramByDraftId = new Map(acceptedPrograms.map((program) => [program.id, program]));
+  const acceptedGoalsMappedToRejectedPrograms = acceptedGoals.filter(
+    (goal) => goal.draft_program_id && !acceptedProgramByDraftId.has(goal.draft_program_id),
+  );
+  if (acceptedGoalsMappedToRejectedPrograms.length > 0) {
+    return json({ error: "Accepted goals must belong to an accepted draft program before promotion." }, 409);
   }
 
-  const createdProgramId = createProgramResult.data[0].id;
+  const acceptedGoalsWithoutProgramLink = acceptedGoals.filter((goal) => !goal.draft_program_id);
+  if (acceptedPrograms.length > 1 && acceptedGoalsWithoutProgramLink.length > 0) {
+    return json({ error: "Accepted goals must keep their draft program link when promoting multiple programs." }, 409);
+  }
+
+  const rollbackLivePromotion = async (args: { createdProgramIds: string[]; restoreDocumentStatus: boolean }) => {
+    const { createdProgramIds, restoreDocumentStatus } = args;
+    const failedSteps: string[] = [];
+
+    if (createdProgramIds.length > 0) {
+      const programIdFilter = buildInFilter(createdProgramIds);
+      const deleteGoalsResult = await fetchJson(
+        `${supabaseUrl}/rest/v1/goals?program_id=${programIdFilter}&organization_id=eq.${encodeURIComponent(
+          organizationId,
+        )}&client_id=eq.${encodeURIComponent(document.client_id)}`,
+        { method: "DELETE", headers },
+      );
+      if (!deleteGoalsResult.ok) {
+        failedSteps.push("delete_goals");
+      }
+
+      const deleteProgramsResult = await fetchJson(
+        `${supabaseUrl}/rest/v1/programs?id=${programIdFilter}&organization_id=eq.${encodeURIComponent(
+          organizationId,
+        )}&client_id=eq.${encodeURIComponent(document.client_id)}`,
+        { method: "DELETE", headers },
+      );
+      if (!deleteProgramsResult.ok) {
+        failedSteps.push("delete_programs");
+      }
+    }
+
+    if (restoreDocumentStatus) {
+      const restoreDocumentResult = await fetchJson(
+        `${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}`,
+        {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({
+            status: document.status,
+            approved_at: null,
+            updated_at: new Date().toISOString(),
+          }),
+        },
+      );
+      if (!restoreDocumentResult.ok) {
+        failedSteps.push("restore_document_status");
+      }
+    }
+
+    return { ok: failedSteps.length === 0, failedSteps };
+  };
+
+  const createdProgramIds: string[] = [];
+  const createdProgramIdByDraftProgramId = new Map<string, string>();
+  for (const program of acceptedPrograms) {
+    const createProgramResult = await fetchJson<Array<{ id: string }>>(`${supabaseUrl}/rest/v1/programs`, {
+      method: "POST",
+      headers: { ...headers, Prefer: "return=representation" },
+      body: JSON.stringify({
+        organization_id: organizationId,
+        client_id: document.client_id,
+        name: program.name,
+        description: program.description ?? null,
+        status: "active",
+      }),
+    });
+    if (!createProgramResult.ok || !Array.isArray(createProgramResult.data) || !createProgramResult.data[0]?.id) {
+      const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: false });
+      return json(
+        {
+          error: rollback.ok
+            ? "Failed to create production programs. Promotion rolled back safely."
+            : "Failed to create production programs, and rollback did not complete cleanly.",
+          rollback_failed_steps: rollback.ok ? undefined : rollback.failedSteps,
+        },
+        createProgramResult.status || 500,
+      );
+    }
+    const createdProgramId = createProgramResult.data[0].id;
+    createdProgramIds.push(createdProgramId);
+    createdProgramIdByDraftProgramId.set(program.id, createdProgramId);
+  }
+
+  const fallbackProgramId = acceptedPrograms.length === 1 ? createdProgramIds[0] ?? null : null;
   const createGoalsPayload = acceptedGoals.map((goal) => ({
     organization_id: organizationId,
     client_id: document.client_id,
-    program_id: createdProgramId,
+    program_id: goal.draft_program_id
+      ? createdProgramIdByDraftProgramId.get(goal.draft_program_id) ?? null
+      : fallbackProgramId,
     title: goal.title,
     description: goal.description,
     original_text: goal.original_text,
@@ -217,6 +297,11 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     status: "active",
   }));
 
+  if (createGoalsPayload.some((goal) => !goal.program_id)) {
+    await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: false });
+    return json({ error: "Accepted goals could not be matched to the promoted programs." }, 409);
+  }
+
   const createGoalsResult = await fetchJson<Array<{ id: string }>>(`${supabaseUrl}/rest/v1/goals`, {
     method: "POST",
     headers: { ...headers, Prefer: "return=representation" },
@@ -224,45 +309,79 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
   });
 
   if (!createGoalsResult.ok) {
-    return json({ error: "Failed to create production goals" }, createGoalsResult.status || 500);
+    const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: false });
+    return json(
+      {
+        error: rollback.ok
+          ? "Failed to create production goals. Promotion rolled back safely."
+          : "Failed to create production goals, and rollback did not complete cleanly.",
+        rollback_failed_steps: rollback.ok ? undefined : rollback.failedSteps,
+      },
+      createGoalsResult.status || 500,
+    );
   }
 
   const actorId = getAccessTokenSubject(accessToken);
   const now = new Date().toISOString();
-  await Promise.all([
-    fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}`, {
-      method: "PATCH",
-      headers,
-      body: JSON.stringify({
-        status: "approved",
-        approved_at: now,
-        updated_at: now,
-      }),
+  const updateDocumentResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({
+      status: "approved",
+      approved_at: now,
+      updated_at: now,
     }),
-    fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        assessment_document_id: document.id,
-        organization_id: organizationId,
-        client_id: document.client_id,
-        item_type: "document",
-        item_id: document.id,
-        action: "promoted_to_production",
-        from_status: document.status,
-        to_status: "approved",
-        actor_id: actorId,
-        event_payload: {
-          created_program_id: createdProgramId,
-          created_goal_count: Array.isArray(createGoalsResult.data) ? createGoalsResult.data.length : 0,
-        },
-      }),
+  });
+  if (!updateDocumentResult.ok) {
+    const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: false });
+    return json(
+      {
+        error: rollback.ok
+          ? "Failed to finalize assessment status. Promotion rolled back safely."
+          : "Failed to finalize assessment status, and rollback did not complete cleanly.",
+        rollback_failed_steps: rollback.ok ? undefined : rollback.failedSteps,
+      },
+      updateDocumentResult.status || 500,
+    );
+  }
+
+  const createEventResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_review_events`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      assessment_document_id: document.id,
+      organization_id: organizationId,
+      client_id: document.client_id,
+      item_type: "document",
+      item_id: document.id,
+      action: "promoted_to_production",
+      from_status: document.status,
+      to_status: "approved",
+      actor_id: actorId,
+      event_payload: {
+        created_program_count: createdProgramIds.length,
+        created_program_ids: createdProgramIds,
+        created_goal_count: Array.isArray(createGoalsResult.data) ? createGoalsResult.data.length : acceptedGoals.length,
+      },
     }),
-  ]);
+  });
+  if (!createEventResult.ok) {
+    const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: true });
+    return json(
+      {
+        error: rollback.ok
+          ? "Failed to record promotion event. Promotion rolled back safely."
+          : "Failed to record promotion event, and rollback did not complete cleanly.",
+        rollback_failed_steps: rollback.ok ? undefined : rollback.failedSteps,
+      },
+      createEventResult.status || 500,
+    );
+  }
 
   return json({
     assessment_document_id: document.id,
-    created_program_id: createdProgramId,
-    created_goal_count: Array.isArray(createGoalsResult.data) ? createGoalsResult.data.length : 0,
+    created_program_count: createdProgramIds.length,
+    created_program_ids: createdProgramIds,
+    created_goal_count: Array.isArray(createGoalsResult.data) ? createGoalsResult.data.length : acceptedGoals.length,
   });
 }

@@ -156,6 +156,9 @@ const isSupportedAssessmentFile = (file: File): boolean => {
   return SUPPORTED_ASSESSMENT_FILE_EXTENSIONS.some((extension) => lowerFileName.endsWith(extension));
 };
 
+const formatCountLabel = (count: number, singular: string, plural: string): string =>
+  `${count} ${count === 1 ? singular : plural}`;
+
 interface ProgramsGoalsTabProps {
   client: Client;
 }
@@ -898,7 +901,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!response.ok) {
         throw new Error(await parseApiErrorMessage(response, "Assessment cannot be promoted yet."));
       }
-      return parseJson<{ created_goal_count: number }>(response);
+      return parseJson<{ created_program_count: number; created_goal_count: number }>(response);
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({
@@ -910,7 +913,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       queryClient.invalidateQueries({
         queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
       });
-      showSuccess(`Published to live records. Created production program and ${result.created_goal_count} goals.`);
+      showSuccess(
+        `Published to live records. Created ${formatCountLabel(result.created_program_count, "production program", "production programs")} and ${formatCountLabel(result.created_goal_count, "goal", "goals")}.`,
+      );
     },
     onError: showError,
   });

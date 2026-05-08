@@ -1771,6 +1771,143 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     confirmSpy.mockRestore();
   });
 
+  it("shows plural publish success counts from the live-promotion response", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(
+          JSON.stringify({
+            programs: [
+              { id: "p1", name: "Program A", description: null, accept_state: "accepted", review_notes: null },
+              { id: "p2", name: "Program B", description: null, accept_state: "edited", review_notes: null },
+            ],
+            goals: buildAcceptedDraftGoals(),
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/fba.pdf",
+              status: "drafted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "POST" && path === "/api/assessment-promote") {
+        return new Response(JSON.stringify({ created_program_count: 2, created_goal_count: 26 }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await screen.findByText("fba.pdf");
+    const publishButton = screen.getByRole("button", { name: /Publish to Live Programs \+ Goals/i });
+    await waitFor(() => {
+      expect(publishButton).not.toBeDisabled();
+    });
+    await user.click(publishButton);
+
+    await waitFor(() => {
+      expect(showSuccess).toHaveBeenCalledWith(
+        "Published to live records. Created 2 production programs and 26 goals.",
+      );
+    });
+    confirmSpy.mockRestore();
+  });
+
+  it("shows singular publish success counts for the program label", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(
+          JSON.stringify({
+            programs: [{ id: "p1", name: "Program A", description: null, accept_state: "accepted", review_notes: null }],
+            goals: buildAcceptedDraftGoals(),
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/fba.pdf",
+              status: "drafted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "POST" && path === "/api/assessment-promote") {
+        return new Response(JSON.stringify({ created_program_count: 1, created_goal_count: 26 }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await screen.findByText("fba.pdf");
+    const publishButton = screen.getByRole("button", { name: /Publish to Live Programs \+ Goals/i });
+    await waitFor(() => {
+      expect(publishButton).not.toBeDisabled();
+    });
+    await user.click(publishButton);
+
+    await waitFor(() => {
+      expect(showSuccess).toHaveBeenCalledWith(
+        "Published to live records. Created 1 production program and 26 goals.",
+      );
+    });
+    confirmSpy.mockRestore();
+  });
+
   it("shows draft-vs-live status messaging in review panel", async () => {
     renderWithProviders(
       <ProgramsGoalsTab client={buildClient()} />,

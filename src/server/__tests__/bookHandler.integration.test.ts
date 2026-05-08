@@ -1,3 +1,5 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 
@@ -6,6 +8,7 @@ import { server } from "../../test/setup";
 
 const originalCallEdge = supabaseModule.callEdge;
 const callEdgeMock = vi.spyOn(supabaseModule, "callEdge");
+const ORIGINAL_PROCESS_ENV = { ...process.env };
 
 const importBookHandler = async () => {
   const module = await import("../api/book");
@@ -16,12 +19,22 @@ const TEST_SUPABASE_URL = "https://testing.supabase.co";
 const TEST_SUPABASE_ANON_KEY = "testing-anon-key-12345678901234567890";
 const TEST_SUPABASE_EDGE_URL = "https://testing.supabase.co/functions/v1/";
 
-const ORIGINAL_ENV = {
-  SUPABASE_URL: process.env.SUPABASE_URL,
-  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
-  SUPABASE_EDGE_URL: process.env.SUPABASE_EDGE_URL,
-  DEFAULT_ORGANIZATION_ID: process.env.DEFAULT_ORGANIZATION_ID,
-  API_AUTHORITY_MODE: process.env.API_AUTHORITY_MODE,
+const ISOLATED_MISSING_ENV_PATH = join(
+  tmpdir(),
+  `book-handler-integration-tests-missing-${process.pid}-${Date.now()}.env`,
+);
+
+const clearPublishableSupabaseEnv = (): void => {
+  for (const key of Object.keys(process.env)) {
+    if (key.includes("PUBLISHABLE") && key.endsWith("_SUPABASE_ANON_KEY")) {
+      delete process.env[key];
+    }
+  }
+
+  delete process.env.SUPABASE_PUBLISHABLE_KEY;
+  delete process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  delete process.env.SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY;
+  delete process.env.VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY;
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -51,6 +64,8 @@ describe("bookHandler integration", () => {
     callEdgeMock.mockReset().mockRejectedValue(new Error("callEdgeMock not configured"));
     const runtimeConfig = await import("../../lib/runtimeConfig");
     runtimeConfig.resetRuntimeSupabaseConfigForTests();
+    clearPublishableSupabaseEnv();
+    process.env.CODEX_ENV_PATH = ISOLATED_MISSING_ENV_PATH;
     process.env.SUPABASE_URL = TEST_SUPABASE_URL;
     process.env.SUPABASE_ANON_KEY = TEST_SUPABASE_ANON_KEY;
     process.env.SUPABASE_EDGE_URL = TEST_SUPABASE_EDGE_URL;
@@ -463,29 +478,5 @@ describe("bookHandler integration", () => {
 
 afterAll(() => {
   callEdgeMock.mockRestore();
-  if (typeof ORIGINAL_ENV.SUPABASE_URL === "string") {
-    process.env.SUPABASE_URL = ORIGINAL_ENV.SUPABASE_URL;
-  } else {
-    delete process.env.SUPABASE_URL;
-  }
-  if (typeof ORIGINAL_ENV.SUPABASE_ANON_KEY === "string") {
-    process.env.SUPABASE_ANON_KEY = ORIGINAL_ENV.SUPABASE_ANON_KEY;
-  } else {
-    delete process.env.SUPABASE_ANON_KEY;
-  }
-  if (typeof ORIGINAL_ENV.SUPABASE_EDGE_URL === "string") {
-    process.env.SUPABASE_EDGE_URL = ORIGINAL_ENV.SUPABASE_EDGE_URL;
-  } else {
-    delete process.env.SUPABASE_EDGE_URL;
-  }
-  if (typeof ORIGINAL_ENV.DEFAULT_ORGANIZATION_ID === "string") {
-    process.env.DEFAULT_ORGANIZATION_ID = ORIGINAL_ENV.DEFAULT_ORGANIZATION_ID;
-  } else {
-    delete process.env.DEFAULT_ORGANIZATION_ID;
-  }
-  if (typeof ORIGINAL_ENV.API_AUTHORITY_MODE === "string") {
-    process.env.API_AUTHORITY_MODE = ORIGINAL_ENV.API_AUTHORITY_MODE;
-  } else {
-    delete process.env.API_AUTHORITY_MODE;
-  }
+  process.env = { ...ORIGINAL_PROCESS_ENV } as NodeJS.ProcessEnv;
 });

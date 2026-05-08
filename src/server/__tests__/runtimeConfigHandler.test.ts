@@ -18,23 +18,38 @@ vi.mock('../../lib/logger/server', () => ({
 }));
 
 const originalEnv = { ...process.env };
+const isolatedMissingEnvPath = join(
+  tmpdir(),
+  `runtime-config-handler-tests-missing-${process.pid}-${Date.now()}.env`,
+);
+
+const clearRuntimeConfigEnv = (): void => {
+  for (const key of Object.keys(process.env)) {
+    if (key.includes('PUBLISHABLE') && key.endsWith('_SUPABASE_ANON_KEY')) {
+      delete process.env[key];
+    }
+  }
+
+  delete process.env.SUPABASE_URL;
+  delete process.env.SUPABASE_ANON_KEY;
+  delete process.env.SUPABASE_PUBLISHABLE_KEY;
+  delete process.env.VITE_SUPABASE_URL;
+  delete process.env.VITE_SUPABASE_ANON_KEY;
+  delete process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  delete process.env.SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY;
+  delete process.env.VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY;
+  delete process.env.SUPABASE_EDGE_URL;
+  delete process.env.VITE_SUPABASE_EDGE_URL;
+  delete process.env.DEFAULT_ORGANIZATION_ID;
+};
 
 describe('runtimeConfigHandler', () => {
   const VALID_ANON_KEY = 'anon-key-12345678901234567890';
 
   beforeEach(() => {
     process.env = { ...originalEnv } as NodeJS.ProcessEnv;
-    delete process.env.CODEX_ENV_PATH;
-    delete process.env.SUPABASE_URL;
-    delete process.env.SUPABASE_ANON_KEY;
-    delete process.env.SUPABASE_PUBLISHABLE_KEY;
-    delete process.env.VITE_SUPABASE_URL;
-    delete process.env.VITE_SUPABASE_ANON_KEY;
-    delete process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-    delete process.env.SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY;
-    delete process.env.VITE_SUPABASE_PUBLISHABLE_KEY_SUPABASE_ANON_KEY;
-    delete process.env.VITE_SUPABASE_EDGE_URL;
-    delete process.env.DEFAULT_ORGANIZATION_ID;
+    clearRuntimeConfigEnv();
+    process.env.CODEX_ENV_PATH = isolatedMissingEnvPath;
     resetEnvCacheForTests();
     loggerMock.info.mockReset();
     loggerMock.warn.mockReset();
@@ -57,6 +72,25 @@ describe('runtimeConfigHandler', () => {
     expect(payload.supabaseUrl).toBe('https://example.supabase.co');
     expect(payload.supabaseAnonKey).toBe(VALID_ANON_KEY);
     expect(payload.defaultOrganizationId).toBe('5238e88b-6198-4862-80a2-dbe15bbeabdd');
+  });
+
+  it('isolates tests from generated publishable anon-key environment values', async () => {
+    process.env.MY_TEAM_PUBLISHABLE_SUPABASE_ANON_KEY = 'sb_publishable_contaminant_1234567890';
+    clearRuntimeConfigEnv();
+    expect(process.env.MY_TEAM_PUBLISHABLE_SUPABASE_ANON_KEY).toBeUndefined();
+
+    process.env.SUPABASE_URL = 'https://example.supabase.co';
+    process.env.SUPABASE_ANON_KEY = VALID_ANON_KEY;
+    process.env.DEFAULT_ORGANIZATION_ID = '5238e88b-6198-4862-80a2-dbe15bbeabdd';
+
+    const response = await runtimeConfigHandler(new Request('http://localhost/api/runtime-config'));
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.supabaseAnonKey).toBe(VALID_ANON_KEY);
+    expect(loggerMock.warn).not.toHaveBeenCalledWith(
+      'Using generated publishable anon-key override for runtime Supabase config',
+      expect.anything(),
+    );
   });
 
   it('falls back to baked-in org id when DEFAULT_ORGANIZATION_ID is missing', async () => {

@@ -532,6 +532,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     ? "Select a valid uploaded assessment before generating AI proposals."
     : hasExistingDrafts
       ? "Drafts already exist for this assessment. Review/edit current drafts instead of regenerating."
+    : selectedAssessmentDocument?.status === "extraction_failed"
+      ? "Extraction failed for this assessment. Review the uploaded file and checklist manually, and replace the source document if it needs correction before generating AI proposals."
     : !selectedAssessmentReadyForAiGeneration
       ? "Wait for extraction to complete before generating AI proposals."
       : null;

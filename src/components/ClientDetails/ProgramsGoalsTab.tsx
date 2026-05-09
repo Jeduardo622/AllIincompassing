@@ -533,10 +533,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     : hasExistingDrafts
       ? "Drafts already exist for this assessment. Review/edit current drafts instead of regenerating."
     : selectedAssessmentDocument?.status === "extraction_failed"
-      ? "Extraction failed for this assessment. Review the uploaded file and checklist manually, and replace the source document if it needs correction before generating AI proposals."
+      ? "Extraction failed. Manual review/manual notes fallback or re-upload is required before generating AI proposals."
     : !selectedAssessmentReadyForAiGeneration
       ? "Wait for extraction to complete before generating AI proposals."
-      : null;
+    : null;
 
   useEffect(() => {
     const firstAssessmentId = assessmentDocuments[0]?.id ?? null;

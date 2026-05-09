@@ -1042,7 +1042,7 @@ describe("assessmentDocumentsHandler", () => {
     expect(draftWriteCalls).toHaveLength(0);
   });
 
-  it("marks extraction failure and cleans staged programs on missing_program_match", async () => {
+  it("keeps the document extracted and records draft_generation_failed on missing_program_match", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
@@ -1266,6 +1266,48 @@ describe("assessmentDocumentsHandler", () => {
       .mock.calls.find(([url]) => typeof url === "string" && url.includes("/rest/v1/goals"));
     expect(liveProgramWrite).toBeUndefined();
     expect(liveGoalWrite).toBeUndefined();
+
+    const extractedStatusPatchCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url, init]) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        const body = typeof init?.body === "string" ? init.body : "";
+        return (
+          typeof url === "string" &&
+          method === "PATCH" &&
+          url.includes("/rest/v1/assessment_documents?id=eq.doc-auto-2") &&
+          body.includes("\"status\":\"extracted\"") &&
+          body.includes("missing_program_match")
+        );
+      });
+    expect(extractedStatusPatchCall).toBeDefined();
+    const extractedStatusPatchPayload = JSON.parse(
+      ((extractedStatusPatchCall?.[1] as RequestInit).body ?? "{}") as string,
+    ) as Record<string, unknown>;
+    expect(extractedStatusPatchPayload).toMatchObject({
+      status: "extracted",
+    });
+    expect(typeof extractedStatusPatchPayload.extraction_error).toBe("string");
+    expect(String(extractedStatusPatchPayload.extraction_error)).toContain("missing_program_match");
+
+    const draftGenerationFailedEventCalls = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url, init]) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (typeof url !== "string" || method !== "POST") return false;
+        if (!url.includes("/rest/v1/assessment_review_events")) return false;
+        const body = typeof init?.body === "string" ? init.body : "";
+        return body.includes("\"action\":\"draft_generation_failed\"");
+      });
+    expect(draftGenerationFailedEventCalls).toHaveLength(1);
+    const draftGenerationFailedEventPayload = JSON.parse(
+      ((draftGenerationFailedEventCalls[0]?.[1] as RequestInit).body ?? "{}") as string,
+    ) as Record<string, unknown>;
+    expect(draftGenerationFailedEventPayload).toMatchObject({
+      action: "draft_generation_failed",
+      from_status: "extracted",
+      to_status: "extracted",
+    });
   });
 
   it.each(roleMatrix)("returns 403 for out-of-org assessment document delete as $label without side effects", async ({ role }) => {

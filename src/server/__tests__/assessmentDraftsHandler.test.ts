@@ -199,7 +199,7 @@ describe("assessmentDraftsHandler", () => {
     expect(programPayload[0]?.confidence).toBe("medium");
   });
 
-  it("auto-generates staged drafts from extracted checklist values", async () => {
+  it("auto-generates staged drafts from extracted checklist values even when an extraction error is present", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
@@ -219,7 +219,15 @@ describe("assessmentDraftsHandler", () => {
         return {
           ok: true,
           status: 200,
-          data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extracted" }],
+          data: [
+            {
+              id: "doc-1",
+              organization_id: "org-1",
+              client_id: "client-1",
+              status: "extracted",
+              extraction_error: "Automatic draft generation failed. You can retry with 'Generate with AI from Uploaded FBA'.",
+            },
+          ],
         };
       }
       if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?")) {

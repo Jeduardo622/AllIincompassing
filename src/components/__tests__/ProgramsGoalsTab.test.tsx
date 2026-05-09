@@ -1415,7 +1415,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Extraction failed for this assessment. Review the uploaded file and checklist manually, and replace the source document if it needs correction before generating AI proposals.",
+        "Extraction failed. Manual review/manual notes fallback or re-upload is required before generating AI proposals.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("Wait for extraction to complete before generating AI proposals.")).not.toBeInTheDocument();

@@ -1341,7 +1341,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     );
 
     await screen.findByText("fba.docx");
-    expect(await screen.findByText("Previous extraction warning should not block generation.")).toBeInTheDocument();
+    expect(await screen.findByText(/should not block generation/i)).toBeInTheDocument();
     const generateButton = await screen.findByRole("button", { name: /Generate with AI from Uploaded FBA/i });
     await waitFor(() => {
       expect(generateButton).not.toBeDisabled();
@@ -1415,7 +1415,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Extraction failed for this assessment. Review the uploaded file and checklist manually, and replace the source document if it needs correction before generating AI proposals.",
+        "Extraction failed. Manual review/manual notes fallback or re-upload is required before generating AI proposals.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("Wait for extraction to complete before generating AI proposals.")).not.toBeInTheDocument();
@@ -1482,6 +1482,76 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       expect(generateButton).toBeDisabled();
     });
     expect(await screen.findByText("Wait for extraction to complete before generating AI proposals.")).toBeInTheDocument();
+    expect(generateButton).toHaveAttribute("title", "Wait for extraction to complete before generating AI proposals.");
+
+    await user.click(generateButton);
+
+    expect(
+      vi.mocked(callApi).mock.calls.some(
+        ([path, init]) => path === "/api/assessment-drafts" && (init?.method ?? "").toUpperCase() === "POST",
+      ),
+    ).toBe(false);
+  });
+
+  it("shows extraction-failed guidance and disables uploaded FBA generation", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "synthetic-fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1234,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/synthetic-fba.pdf",
+              status: "extraction_failed",
+              extraction_error: "Extraction failed. Manual notes fallback or re-upload is required.",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <ProgramsGoalsTab client={buildClient()} />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    const generateButton = await screen.findByRole("button", { name: /Generate with AI from Uploaded FBA/i });
+    await waitFor(() => {
+      expect(generateButton).toBeDisabled();
+    });
+    expect(
+      await screen.findByText("Extraction failed. Manual review/manual notes fallback or re-upload is required before generating AI proposals."),
+    ).toBeInTheDocument();
+    expect(generateButton).toHaveAttribute(
+      "title",
+      "Extraction failed. Manual review/manual notes fallback or re-upload is required before generating AI proposals.",
+    );
+    expect(screen.queryByText("Wait for extraction to complete before generating AI proposals.")).not.toBeInTheDocument();
 
     await user.click(generateButton);
 

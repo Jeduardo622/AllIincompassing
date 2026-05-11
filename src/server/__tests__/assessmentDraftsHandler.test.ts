@@ -199,7 +199,7 @@ describe("assessmentDraftsHandler", () => {
     expect(programPayload[0]?.confidence).toBe("medium");
   });
 
-  it("auto-generates staged drafts from extracted checklist values even when an extraction error is present", async () => {
+  it("auto-generates staged drafts from extracted checklist values", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
@@ -219,15 +219,7 @@ describe("assessmentDraftsHandler", () => {
         return {
           ok: true,
           status: 200,
-          data: [
-            {
-              id: "doc-1",
-              organization_id: "org-1",
-              client_id: "client-1",
-              status: "extracted",
-              extraction_error: "Automatic draft generation failed. You can retry with 'Generate with AI from Uploaded FBA'.",
-            },
-          ],
+          data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extracted" }],
         };
       }
       if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?")) {
@@ -692,6 +684,120 @@ describe("assessmentDraftsHandler", () => {
       expect.stringContaining("/functions/v1/generate-program-goals"),
       expect.anything(),
     );
+  });
+
+  it("allows auto-generation retry after extraction failure and records the prior status", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extraction_failed" }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_programs?")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_goals?")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: [{ section_key: "summary", label: "Summary", status: "approved", value_text: "summary text", value_json: null }],
+        };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_extractions?")) {
+        return { ok: true, status: 200, data: [] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name")) {
+        return { ok: true, status: 200, data: [{ full_name: "Client One" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/ai_guidance_documents?")) {
+        return { ok: true, status: 200, data: [{ guidance_text: "Use concise ABA language." }] };
+      }
+      if (method === "POST" && url.includes("/functions/v1/generate-program-goals")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            programs: [
+              {
+                name: "Communication Program",
+                description: "Improve communication skills.",
+                rationale: "Program rationale.",
+                evidence_refs: [{ section_key: "assessment_summary", source_span: "Program evidence snippet" }],
+                review_flags: [],
+              },
+            ],
+            goals: buildTypedGoals(),
+            summary_rationale: "Generated from extracted field values.",
+            confidence: "medium",
+          },
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_draft_programs")) {
+        return { ok: true, status: 201, data: [{ id: "draft-program-retry-1", name: "Communication Program" }] };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_draft_goals")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDraftsHandler(
+      new Request("http://localhost/api/assessment-drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          assessment_document_id: "11111111-1111-1111-1111-111111111111",
+          auto_generate: true,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/functions/v1/generate-program-goals"),
+      expect.objectContaining({ method: "POST" }),
+    );
+    const reviewEventCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url.includes("/rest/v1/assessment_review_events") &&
+          (init?.method ?? "").toUpperCase() === "POST",
+      );
+    expect(reviewEventCall).toBeTruthy();
+    const reviewEventPayload = JSON.parse((reviewEventCall?.[1] as RequestInit).body as string) as Record<string, unknown>;
+    expect(reviewEventPayload).toMatchObject({
+      action: "drafts_generated",
+      from_status: "extraction_failed",
+      to_status: "drafted",
+      actor_id: "user-1",
+    });
   });
 
   it("keeps existing-draft conflict messaging for drafted assessments", async () => {

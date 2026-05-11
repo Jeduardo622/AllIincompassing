@@ -49,6 +49,11 @@ const ACTIVE_ASSESSMENT_POLL_STATUSES: ReadonlySet<AssessmentDocumentRecord["sta
   "uploaded",
   "extracting",
 ]);
+const AI_GENERATION_READY_STATUSES: ReadonlySet<AssessmentDocumentRecord["status"]> = new Set([
+  "extracted",
+  "extraction_failed",
+]);
+const MIN_ASSESSMENT_TEXT_CHARS_FOR_AI_GENERATION = 20;
 
 const withTimeout = async <T,>(
   promise: Promise<T>,
@@ -150,6 +155,12 @@ const callEdgeWithSupabaseFallback = async (params: {
     return fallback();
   }
 };
+
+const hasSufficientChecklistTextForAiGeneration = (items: AssessmentChecklistItem[]): boolean =>
+  items
+    .map((item) => item.value_text?.trim() ?? "")
+    .filter(Boolean)
+    .join("\n").length >= MIN_ASSESSMENT_TEXT_CHARS_FOR_AI_GENERATION;
 
 const isSupportedAssessmentFile = (file: File): boolean => {
   const lowerFileName = file.name.trim().toLowerCase();
@@ -503,9 +514,16 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     acceptedDraftChildGoalCount >= MIN_CHILD_GOALS && acceptedDraftParentGoalCount >= MIN_PARENT_GOALS;
   const hasStagedDraftChanges = hasExistingDrafts;
   const hasDraftsButNoLivePrograms = hasExistingDrafts && livePrograms.length === 0;
-  const selectedAssessmentReadyForAiGeneration = selectedAssessmentDocument?.status === "extracted";
+  const selectedAssessmentReadyForAiGeneration = selectedAssessmentDocument
+    ? AI_GENERATION_READY_STATUSES.has(selectedAssessmentDocument.status)
+    : false;
+  const selectedFailedExtractionHasChecklistEvidence =
+    selectedAssessmentDocument?.status !== "extraction_failed" || hasSufficientChecklistTextForAiGeneration(checklistItems);
   const canGenerateUploadedAssessmentDraft =
-    canQuerySelectedAssessment && selectedAssessmentReadyForAiGeneration && !hasExistingDrafts;
+    canQuerySelectedAssessment &&
+    selectedAssessmentReadyForAiGeneration &&
+    selectedFailedExtractionHasChecklistEvidence &&
+    !hasExistingDrafts;
   const canPromoteAssessment =
     canQuerySelectedAssessment &&
     !hasPendingRequiredChecklistItems &&
@@ -532,11 +550,13 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     ? "Select a valid uploaded assessment before generating AI proposals."
     : hasExistingDrafts
       ? "Drafts already exist for this assessment. Review/edit current drafts instead of regenerating."
+    : selectedAssessmentDocument?.status === "extraction_failed" && !selectedFailedExtractionHasChecklistEvidence
+      ? "Extraction failed for this assessment, but no extracted checklist evidence is available for AI proposal generation. Replace the source document or add checklist evidence before retrying."
     : selectedAssessmentDocument?.status === "extraction_failed"
-      ? "Extraction failed. Manual review/manual notes fallback or re-upload is required before generating AI proposals."
+      ? "Extraction failed for this assessment. Retry AI proposal generation using the extracted checklist evidence, or replace the source document if it needs correction."
     : !selectedAssessmentReadyForAiGeneration
       ? "Wait for extraction to complete before generating AI proposals."
-    : null;
+      : null;
 
   useEffect(() => {
     const firstAssessmentId = assessmentDocuments[0]?.id ?? null;

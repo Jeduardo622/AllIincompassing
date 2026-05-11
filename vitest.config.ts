@@ -4,6 +4,9 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  // Keep local verification deterministic by preventing Vitest from
+  // implicitly loading developer-specific `.env*` files.
+  envDir: false,
   resolve: {
     alias: {
       'npm:zod@3.23.8': 'zod',

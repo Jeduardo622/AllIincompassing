@@ -1,4 +1,11 @@
+// @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('node:child_process', () => ({
+  default: { execSync: vi.fn(() => '') },
+  execSync: vi.fn(() => ''),
+}));
+
 import { checkSecretsAndReport, collectMissingEnvVars, formatMissingMessage, REQUIRED_ENV_GROUPS } from '../../scripts/check-secrets';
 
 describe('check-secrets script', () => {

@@ -111,6 +111,8 @@ interface AssessmentDocumentScopeRow {
   status: string;
 }
 
+const AUTO_GENERATE_READY_DOCUMENT_STATUSES = new Set(["extracted", "extraction_failed"]);
+
 interface AssessmentDraftProgramRow {
   id: string;
   assessment_document_id: string;
@@ -359,7 +361,7 @@ const persistDraftRows = async (args: {
       item_type: "document",
       item_id: document.id,
       action: "drafts_generated",
-      from_status: "extracted",
+      from_status: document.status,
       to_status: "drafted",
       actor_id: actorId,
     }),
@@ -502,7 +504,7 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
       return json({ error: "Drafts already exist for this assessment. Review existing drafts instead of regenerating." }, 409);
     }
 
-    if (document.status !== "extracted") {
+    if (!AUTO_GENERATE_READY_DOCUMENT_STATUSES.has(document.status)) {
       return json({ error: "Assessment extraction must complete before AI proposals can be generated." }, 409);
     }
 

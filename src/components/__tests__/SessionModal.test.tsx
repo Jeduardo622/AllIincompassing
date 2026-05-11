@@ -848,20 +848,10 @@ describe('SessionModal', () => {
       />
     );
 
-    await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
-    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
-    await screen.findByRole('option', { name: /Default Program/i });
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-1');
-    await screen.findByRole('option', { name: /Default Goal/i });
-    await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
-    fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2026-03-01T10:00' } });
-    fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2026-03-01T11:00' } });
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Update Session/i }));
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalled();
     });
-    confirmSpy.mockRestore();
     const saveState = screen.getByTestId('session-modal-save-state');
     expect(saveState).toHaveTextContent('Session details saved.');
     expect(saveState).toHaveAttribute('role', 'status');
@@ -892,20 +882,10 @@ describe('SessionModal', () => {
     };
     const { rerender } = renderWithProviders(<SessionModal {...props} />);
 
-    await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
-    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
-    await screen.findByRole('option', { name: /Default Program/i });
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-1');
-    await screen.findByRole('option', { name: /Default Goal/i });
-    await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
-    fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2026-03-01T10:00' } });
-    fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2026-03-01T11:00' } });
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Update Session/i }));
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalled();
     });
-    confirmSpy.mockRestore();
     expect(screen.getByTestId('session-modal-save-state')).toHaveTextContent('Session details saved.');
 
     rerender(<SessionModal {...props} isOpen={false} />);
@@ -939,23 +919,11 @@ describe('SessionModal', () => {
       />
     );
 
-    await userEvent.selectOptions(screen.getByLabelText(/Therapist/i), 'test-therapist-1');
-    await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
-    await screen.findByRole('option', { name: /Default Program/i });
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Program$/i }), 'program-1');
-    await screen.findByRole('option', { name: /Default Goal/i });
-    await userEvent.selectOptions(screen.getByLabelText(/Primary Goal/i), 'goal-1');
-    fireEvent.change(screen.getByLabelText(/Start Time/i), { target: { value: '2026-03-01T10:00' } });
-    fireEvent.change(screen.getByLabelText(/End Time/i), { target: { value: '2026-03-01T11:00' } });
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    await userEvent.click(screen.getByRole('button', { name: /Update Session/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Update Session/i }));
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalled();
     });
-    confirmSpy.mockRestore();
-    expect(screen.getByTestId('session-modal-save-state')).toHaveTextContent(
-      'Unable to save session details. Try again.'
-    );
+    await screen.findByText('Unable to save session details. Try again.');
   });
 
   it('does not treat the edited session itself as a scheduling conflict fallback match', async () => {

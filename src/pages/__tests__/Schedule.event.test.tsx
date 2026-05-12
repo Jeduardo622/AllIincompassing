@@ -84,7 +84,10 @@ describe("Schedule page event listener", () => {
     });
 
     // Modal should open with default start time populated
-    const input = screen.getByLabelText(/Start Time/i) as HTMLInputElement;
+    const input = screen
+      .getAllByLabelText(/Start Time/i)
+      .find((element) => !element.closest('[style*="display: none"]')) as HTMLInputElement | undefined;
+    expect(input).toBeDefined();
     expect(input.value).not.toBe("");
   });
 

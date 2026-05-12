@@ -8,308 +8,627 @@
         "placeholder_key": "CALOPTIMA_FBA_MEMBER_NAME",
         "mode": "AUTO",
         "source": "clients.full_name",
-        "notes": "Prefer first_name + last_name when available."
+        "notes": "Prefer first_name + last_name when available.",
+        "input_type": "text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "prefill_verify_when_source_exists"
       },
       {
         "label": "Member DOB",
         "placeholder_key": "CALOPTIMA_FBA_MEMBER_DOB",
         "mode": "AUTO",
         "source": "clients.date_of_birth",
-        "notes": "Format MM/DD/YYYY."
+        "notes": "Format MM/DD/YYYY.",
+        "input_type": "date",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "prefill_verify_when_source_exists"
       },
       {
         "label": "CIN #",
         "placeholder_key": "CALOPTIMA_FBA_CIN",
         "mode": "AUTO",
         "source": "authorizations.member_id || clients.cin_number || clients.client_id",
-        "notes": "CalOptima member identifier fallback chain."
+        "notes": "CalOptima member identifier fallback chain.",
+        "input_type": "identifier",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "prefill_verify_when_source_exists"
       },
       {
         "label": "Diagnoses/with ICD Code",
         "placeholder_key": "CALOPTIMA_FBA_DIAGNOSES_ICD",
         "mode": "AUTO",
         "source": "clients.diagnosis[] + optional authorizations.diagnosis_code",
-        "notes": "Join as code + description lines."
+        "notes": "Join as code + description lines.",
+        "input_type": "multiline_text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "prefill_verify_when_source_exists"
       },
       {
         "label": "Guardian Name",
         "placeholder_key": "CALOPTIMA_FBA_GUARDIAN_NAME",
         "mode": "AUTO",
         "source": "clients.parent1_first_name/last_name (fallback parent2)",
-        "notes": "Include relationship if known."
+        "notes": "Include relationship if known.",
+        "input_type": "text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "prefill_verify_when_source_exists"
       },
       {
         "label": "Phone (guardian/member)",
         "placeholder_key": "CALOPTIMA_FBA_CONTACT_PHONE",
         "mode": "AUTO",
         "source": "clients.parent1_phone || clients.phone",
-        "notes": "Prefer guardian contact for this section."
+        "notes": "Prefer guardian contact for this section.",
+        "input_type": "phone",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "prefill_verify_when_source_exists"
       },
       {
         "label": "Primary Care Provider",
         "placeholder_key": "CALOPTIMA_FBA_PCP",
         "mode": "ASSISTED",
         "source": "clients.insurance_info.pcp",
-        "notes": "Not first-class modeled today."
+        "notes": "Not first-class modeled today.",
+        "input_type": "text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_verify_assisted_draft"
       },
       {
         "label": "Known Allergies",
         "placeholder_key": "CALOPTIMA_FBA_KNOWN_ALLERGIES",
         "mode": "ASSISTED",
         "source": "clients.insurance_info.allergies",
-        "notes": "Not first-class modeled today."
+        "notes": "Not first-class modeled today.",
+        "input_type": "multiline_text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_verify_assisted_draft"
       },
       {
         "label": "Current Medications/Dosage",
         "placeholder_key": "CALOPTIMA_FBA_MEDICATIONS",
         "mode": "ASSISTED",
         "source": "clients.insurance_info.medications",
-        "notes": "Editable list."
+        "notes": "Editable list.",
+        "input_type": "multiline_text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_verify_assisted_draft"
       },
       {
         "label": "Dietary Restrictions",
         "placeholder_key": "CALOPTIMA_FBA_DIETARY_RESTRICTIONS",
         "mode": "ASSISTED",
         "source": "clients.insurance_info.dietary_restrictions",
-        "notes": "Editable list."
+        "notes": "Editable list.",
+        "input_type": "multiline_text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_verify_assisted_draft"
       },
       {
         "label": "Service Initiation Date",
         "placeholder_key": "CALOPTIMA_FBA_SERVICE_INITIATION_DATE",
         "mode": "AUTO",
         "source": "earliest ABA start from sessions/authorizations",
-        "notes": "Fallback manual if not derivable."
+        "notes": "Fallback manual if not derivable.",
+        "input_type": "date",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "prefill_verify_when_source_exists"
       },
       {
         "label": "Date ABA first began",
         "placeholder_key": "CALOPTIMA_FBA_DATE_ABA_FIRST_BEGAN",
         "mode": "ASSISTED",
         "source": "intake/history narrative",
-        "notes": "Often differs from current authorization start."
+        "notes": "Often differs from current authorization start.",
+        "input_type": "date",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_verify_assisted_draft"
       },
       {
         "label": "Prior Applied Behavioral Health Agencies",
         "placeholder_key": "CALOPTIMA_FBA_PRIOR_ABH_AGENCIES",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Free text or first-time flag."
+        "notes": "Free text or first-time flag.",
+        "input_type": "multiline_text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_manual_entry_required"
       },
       {
         "label": "Administrative Contact Full Name and Title",
         "placeholder_key": "CALOPTIMA_FBA_ADMIN_CONTACT_NAME_TITLE",
         "mode": "AUTO",
         "source": "company_settings/org profile",
-        "notes": "May need dedicated org contact field."
+        "notes": "May need dedicated org contact field.",
+        "input_type": "text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "prefill_verify_when_source_exists"
       },
       {
         "label": "Administrative Contact Phone Number",
         "placeholder_key": "CALOPTIMA_FBA_ADMIN_CONTACT_PHONE",
         "mode": "AUTO",
         "source": "company_settings.phone",
-        "notes": ""
+        "notes": "",
+        "input_type": "phone",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "prefill_verify_when_source_exists"
       },
       {
         "label": "Administrative Contact Fax Number",
         "placeholder_key": "CALOPTIMA_FBA_ADMIN_CONTACT_FAX",
         "mode": "ASSISTED",
         "source": "company_settings.fax",
-        "notes": "Editable fallback."
+        "notes": "Editable fallback.",
+        "input_type": "phone",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_verify_assisted_draft"
       },
       {
         "label": "Chief Complaint/Reason for Seeking ABA Treatment",
         "placeholder_key": "CALOPTIMA_FBA_CHIEF_COMPLAINT",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Narrative clinical statement."
+        "notes": "Narrative clinical statement.",
+        "input_type": "multiline_text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_manual_entry_required"
       },
       {
         "label": "Records Reviewed (table)",
         "placeholder_key": "CALOPTIMA_FBA_RECORDS_REVIEWED",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Record type, author, date rows."
+        "notes": "Record type, author, date rows.",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "records_reviewed",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required"
       },
       {
         "label": "Initial Interview/Observation",
         "placeholder_key": "CALOPTIMA_FBA_INITIAL_INTERVIEW_OBSERVATION",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Narrative with location/date/attendees."
+        "notes": "Narrative with location/date/attendees.",
+        "input_type": "multiline_text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_manual_entry_required"
       },
       {
         "label": "Second Interview/Observation",
         "placeholder_key": "CALOPTIMA_FBA_SECOND_INTERVIEW_OBSERVATION",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Narrative with location/date/attendees."
+        "notes": "Narrative with location/date/attendees.",
+        "input_type": "multiline_text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_manual_entry_required"
       },
       {
         "label": "Daily schedule of all activities",
         "placeholder_key": "CALOPTIMA_FBA_DAILY_ACTIVITY_SCHEDULE",
         "mode": "ASSISTED",
         "source": "clients.availability_hours + external services",
-        "notes": "Formatting transform required."
+        "notes": "Formatting transform required.",
+        "input_type": "multiline_text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_verify_assisted_draft"
       },
       {
         "label": "Daily school schedule",
         "placeholder_key": "CALOPTIMA_FBA_SCHOOL_SCHEDULE",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "From IEP/school records."
+        "notes": "From IEP/school records.",
+        "input_type": "multiline_text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_manual_entry_required"
       },
       {
         "label": "Current IEP/equivalent",
         "placeholder_key": "CALOPTIMA_FBA_HAS_IEP",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Checkbox value."
+        "notes": "Checkbox value.",
+        "input_type": "checkbox_yes_no",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_manual_entry_required"
       },
       {
         "label": "Date of current IEP/equivalent",
         "placeholder_key": "CALOPTIMA_FBA_IEP_DATE",
         "mode": "ASSISTED",
         "source": "clients.insurance_info.school.last_iep_date",
-        "notes": ""
+        "notes": "",
+        "input_type": "date",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_verify_assisted_draft"
       },
       {
         "label": "Previous interventions",
         "placeholder_key": "CALOPTIMA_FBA_PREVIOUS_INTERVENTIONS",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Provider/service/start/end/termination reason table."
+        "notes": "Provider/service/start/end/termination reason table.",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "previous_interventions",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required"
       },
       {
         "label": "Coordination of care sections",
         "placeholder_key": "CALOPTIMA_FBA_COORDINATION_OF_CARE",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Parent/school/regional center/speech-OT-PT/PCP/MH narratives."
+        "notes": "Parent/school/regional center/speech-OT-PT/PCP/MH narratives.",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "coordination_of_care",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required"
       },
       {
         "label": "Vineland domain score table",
         "placeholder_key": "CALOPTIMA_FBA_VINELAND_DOMAIN_SCORES",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Structured instrument output."
+        "notes": "Structured instrument output.",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "vineland_domain_scores",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required"
       },
       {
         "label": "Current diagnosis code(s)",
         "placeholder_key": "CALOPTIMA_FBA_CURRENT_DIAGNOSIS_CODES",
         "mode": "AUTO",
         "source": "clients.diagnosis[] / authorization diagnosis",
-        "notes": ""
+        "notes": "",
+        "input_type": "multiline_text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "prefill_verify_when_source_exists"
       },
       {
         "label": "Target behavior blocks",
         "placeholder_key": "CALOPTIMA_FBA_TARGET_BEHAVIOR_BLOCKS",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Includes identifying behavior/history/ABC/function."
+        "notes": "Includes identifying behavior/history/ABC/function.",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "target_behavior_blocks",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required"
       },
       {
         "label": "Behavior intervention plan blocks",
         "placeholder_key": "CALOPTIMA_FBA_BIP_BLOCKS",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Ecological/replacement/focused/reactive/data procedures."
+        "notes": "Ecological/replacement/focused/reactive/data procedures.",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "behavior_intervention_plan_blocks",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required"
       },
       {
         "label": "Target and replacement behavior goals",
         "placeholder_key": "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Repeating LT/IT/ST goals plus baseline and settings."
+        "notes": "Repeating LT/IT/ST goals plus baseline and settings.",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "target_replacement_goals",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required"
       },
       {
         "label": "Skill acquisition goals",
         "placeholder_key": "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Communication/daily living/social/self-direction blocks."
+        "notes": "Communication/daily living/social/self-direction blocks.",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "skill_acquisition_goals",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required"
       },
       {
         "label": "Parent/Caregiver goals",
         "placeholder_key": "CALOPTIMA_FBA_PARENT_GOALS",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Repeating LT/IT/ST goals with baseline and setting."
+        "notes": "Repeating LT/IT/ST goals with baseline and setting.",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "parent_caregiver_goals",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required"
       },
       {
         "label": "Generalization and maintenance plan",
         "placeholder_key": "CALOPTIMA_FBA_GENERALIZATION_MAINTENANCE_PLAN",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Includes procedural reliability, reinforcement thinning, family training."
+        "notes": "Includes procedural reliability, reinforcement thinning, family training.",
+        "input_type": "multiline_text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_manual_entry_required"
       },
       {
         "label": "Transition plan and exit criteria",
         "placeholder_key": "CALOPTIMA_FBA_TRANSITION_PLAN",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Checkboxes + required prompts."
+        "notes": "Checkboxes + required prompts.",
+        "input_type": "multiline_text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_manual_entry_required"
       },
       {
         "label": "Crisis plan",
         "placeholder_key": "CALOPTIMA_FBA_CRISIS_PLAN",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Preventative, response, and post-crisis protocol narrative."
+        "notes": "Preventative, response, and post-crisis protocol narrative.",
+        "input_type": "multiline_text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_manual_entry_required"
       },
       {
         "label": "Summary and recommendations",
         "placeholder_key": "CALOPTIMA_FBA_SUMMARY_RECOMMENDATIONS",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Clinical rationale for requested hours."
+        "notes": "Clinical rationale for requested hours.",
+        "input_type": "multiline_text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_manual_entry_required"
       },
       {
         "label": "HCPCS recommendation rows",
         "placeholder_key": "CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS",
         "mode": "ASSISTED",
         "source": "authorization/planning payload",
-        "notes": "Structured code/units/hours/location rows."
+        "notes": "Structured code/units/hours/location rows.",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "hcpcs_recommendation_rows",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required"
       },
       {
         "label": "Telehealth consent confirmation",
         "placeholder_key": "CALOPTIMA_FBA_TELEHEALTH_CONSENT",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Checkbox + consent date."
+        "notes": "Checkbox + consent date.",
+        "input_type": "checkbox_yes_no",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_manual_entry_required"
       },
       {
         "label": "Parent/guardian involvement",
         "placeholder_key": "CALOPTIMA_FBA_PARENT_INVOLVEMENT",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Yes/No responses + explanation."
+        "notes": "Yes/No responses + explanation.",
+        "input_type": "checkbox_yes_no",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "clinician_manual_entry_required"
       },
       {
         "label": "Report written by",
         "placeholder_key": "CALOPTIMA_FBA_REPORT_WRITTEN_BY",
         "mode": "AUTO",
         "source": "therapists.full_name + credentials",
-        "notes": ""
+        "notes": "",
+        "input_type": "text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "prefill_verify_when_source_exists"
       },
       {
         "label": "Title, License/Certificate #",
         "placeholder_key": "CALOPTIMA_FBA_WRITER_CREDENTIALS",
         "mode": "AUTO",
         "source": "therapists.title + therapists.license_number/bcba_number/rbt_number",
-        "notes": ""
+        "notes": "",
+        "input_type": "text",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "prefill_verify_when_source_exists"
       },
       {
         "label": "Date of Report Completed",
         "placeholder_key": "CALOPTIMA_FBA_REPORT_COMPLETED_DATE",
         "mode": "AUTO",
         "source": "today (server)",
-        "notes": ""
+        "notes": "",
+        "input_type": "date",
+        "destination": "assessment_checklist.value_text",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "prefill_verify_when_source_exists"
       },
       {
         "label": "Writer and reviewer signatures",
         "placeholder_key": "CALOPTIMA_FBA_SIGNATURES",
         "mode": "MANUAL",
         "source": "N/A",
-        "notes": "Signature capture/approval workflow."
+        "notes": "Signature capture/approval workflow.",
+        "input_type": "structured_section",
+        "destination": "assessment_checklist.value_json",
+        "structured_section": "signatures",
+        "pdf_render": {
+          "target": "caloptima_fba_pdf_render_map",
+          "not_exported": false
+        },
+        "review_behavior": "structured_clinical_review_required"
       }
     ],
     "existing_placeholders": []

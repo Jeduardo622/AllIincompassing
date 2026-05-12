@@ -32,6 +32,15 @@ interface ChecklistItemRow {
   value_json: unknown | null;
 }
 
+interface StructuredSectionRow {
+  field_key: string;
+  section_key: string;
+  section_index: number;
+  payload: Record<string, unknown> | null;
+  status: "not_started" | "drafted" | "verified" | "approved" | "rejected";
+  required: boolean;
+}
+
 interface DraftProgramRow {
   id: string;
   name: string;
@@ -138,11 +147,19 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
     return json({ error: "PDF generation is currently supported only for CalOptima template assessments." }, 409);
   }
 
-  const [checklistResult, draftProgramsResult, draftGoalsResult, clientResult] = await Promise.all([
+  const [checklistResult, structuredSectionsResult, draftProgramsResult, draftGoalsResult, clientResult] = await Promise.all([
     fetchJson<ChecklistItemRow[]>(
       `${supabaseUrl}/rest/v1/assessment_checklist_items?select=placeholder_key,required,status,value_text,value_json&organization_id=eq.${encodeURIComponent(
         organizationId,
       )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocument.id)}`,
+      { method: "GET", headers },
+    ),
+    fetchJson<StructuredSectionRow[]>(
+      `${supabaseUrl}/rest/v1/assessment_structured_sections?select=field_key,section_key,section_index,payload,status,required&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}&assessment_document_id=eq.${encodeURIComponent(
+        assessmentDocument.id,
+      )}&order=section_key.asc,field_key.asc,section_index.asc`,
       { method: "GET", headers },
     ),
     fetchJson<DraftProgramRow[]>(
@@ -165,18 +182,22 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
     ),
   ]);
 
-  if (!checklistResult.ok || !draftProgramsResult.ok || !draftGoalsResult.ok || !clientResult.ok) {
+  if (!checklistResult.ok || !structuredSectionsResult.ok || !draftProgramsResult.ok || !draftGoalsResult.ok || !clientResult.ok) {
     return json({ error: "Failed to load assessment data for PDF generation" }, 500);
   }
 
   const checklistItems = checklistResult.data ?? [];
-  const requiredPending = checklistItems.filter((item) => item.required && item.status !== "approved");
+  const structuredSections = structuredSectionsResult.data ?? [];
+  const requiredPending = [
+    ...checklistItems.filter((item) => item.required && item.status !== "approved").map((item) => item.placeholder_key),
+    ...structuredSections.filter((item) => item.required && item.status !== "approved").map((item) => item.field_key),
+  ];
   if (requiredPending.length > 0) {
     return json(
       {
-        error: "Required checklist items must be approved before generating the treatment plan PDF.",
+        error: "Required checklist and structured section items must be approved before generating the treatment plan PDF.",
         pending_required_count: requiredPending.length,
-        pending_required_keys: requiredPending.map((item) => item.placeholder_key),
+        pending_required_keys: requiredPending,
       },
       409,
     );
@@ -215,6 +236,7 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
   const renderMap = await loadCalOptimaPdfRenderMap();
   const payloadResult = await buildCalOptimaTemplatePayload({
     checklistItems,
+    structuredSections,
     client,
     writer,
     acceptedProgram,

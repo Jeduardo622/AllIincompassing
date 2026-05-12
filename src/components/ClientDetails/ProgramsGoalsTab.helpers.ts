@@ -12,6 +12,23 @@ export interface AssessmentChecklistItem {
   value_text: string | null;
 }
 
+export interface AssessmentStructuredSection {
+  id: string;
+  section_key: string;
+  field_key: string;
+  section_index: number;
+  payload: Record<string, unknown>;
+  source_span?: Record<string, unknown> | null;
+  status: "not_started" | "drafted" | "verified" | "approved" | "rejected";
+  required: boolean;
+  review_notes: string | null;
+}
+
+export interface AssessmentChecklistResponse {
+  items: AssessmentChecklistItem[];
+  structured_sections: AssessmentStructuredSection[];
+}
+
 export interface AssessmentDraftProgram {
   id: string;
   name: string;
@@ -50,6 +67,11 @@ export interface AssessmentPlanPdfResponse {
 
 export const EMPTY_ASSESSMENT_DOCUMENTS: AssessmentDocumentRecord[] = [];
 export const EMPTY_CHECKLIST_ITEMS: AssessmentChecklistItem[] = [];
+export const EMPTY_STRUCTURED_SECTIONS: AssessmentStructuredSection[] = [];
+export const EMPTY_CHECKLIST_RESPONSE: AssessmentChecklistResponse = {
+  items: EMPTY_CHECKLIST_ITEMS,
+  structured_sections: EMPTY_STRUCTURED_SECTIONS,
+};
 export const EMPTY_ASSESSMENT_DRAFTS: AssessmentDraftResponse = { programs: [], goals: [] };
 export const ENABLE_CHECKLIST_MAPPING_UI = true;
 export const MIN_CHILD_GOALS = 20;

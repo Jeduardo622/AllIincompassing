@@ -1,5 +1,4 @@
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
-import { OpenAI } from "npm:openai@5.5.1";
 import { z } from "npm:zod@3.23.8";
 import { Buffer } from "node:buffer";
 import { resolveAllowedOrigin } from "../_shared/cors.ts";
@@ -41,40 +40,6 @@ const requestSchema = z.object({
     .optional(),
 });
 
-const aiFieldSchema = z.object({
-  placeholder_key: z.string().min(1),
-  value_text: z.string().min(1),
-  confidence: z.number().min(0).max(1).optional(),
-});
-
-const aiResponseSchema = z.object({
-  fields: z.array(aiFieldSchema),
-});
-
-const structuredRecommendationJsonSchema = z.object({
-  title: z.string().min(1).max(240).optional(),
-  target_behavior: z.string().min(1).max(500).optional(),
-  measurement_type: z.string().min(1).max(120).optional(),
-  baseline_data: z.string().min(1).max(700).optional(),
-  target_criteria: z.string().min(1).max(700).optional(),
-  mastery_criteria: z.string().min(1).max(700).optional(),
-  maintenance_criteria: z.string().min(1).max(700).optional(),
-  generalization_criteria: z.string().min(1).max(700).optional(),
-  data_settings: z.record(z.unknown()).optional(),
-  objective_data_points: z.array(z.record(z.unknown())).optional(),
-});
-
-const structuredAiFieldSchema = z.object({
-  placeholder_key: z.string().min(1),
-  value_text: z.string().min(1).optional(),
-  confidence: z.number().min(0).max(1).optional(),
-  value_json: structuredRecommendationJsonSchema.optional(),
-});
-
-const structuredAiResponseSchema = z.object({
-  fields: z.array(structuredAiFieldSchema),
-});
-
 interface ExtractedFieldResult {
   placeholder_key: string;
   value_text: string | null;
@@ -86,21 +51,17 @@ interface ExtractedFieldResult {
   review_notes: string | null;
 }
 
-const STRUCTURED_RECOMMENDATION_KEYS = new Set<string>([
-  "CALOPTIMA_FBA_TARGET_BEHAVIOR_BLOCKS",
-  "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
-  "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
-  "CALOPTIMA_FBA_PARENT_GOALS",
-  "CALOPTIMA_FBA_GENERALIZATION_MAINTENANCE_PLAN",
-  "IEHP_FBA_BEHAVIOR_SKILL_TARGETS",
-  "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS",
-  "IEHP_FBA_SKILL_AND_SCHOOL_GOAL_BLOCKS",
-]);
+interface StructuredSectionResult {
+  section_key: string;
+  field_key: string;
+  section_index: number;
+  payload: Record<string, unknown>;
+  source_span: Record<string, unknown> | null;
+  status: "not_started" | "drafted" | "verified" | "approved";
+  required: boolean;
+  review_notes: string | null;
+}
 
-const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
-const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
-const AI_EXTRACTION_TIMEOUT_MS = 4500;
-const MAX_AI_DOCUMENT_CHARS = 12000;
 const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 
 const json = (req: Request, payload: unknown, status = 200): Response =>
@@ -109,13 +70,6 @@ const json = (req: Request, payload: unknown, status = 200): Response =>
     headers: { "Content-Type": "application/json", ...corsHeaders(req) },
   });
 
-const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> => {
-  const timeoutPromise = new Promise<null>((resolve) => {
-    setTimeout(() => resolve(null), timeoutMs);
-  });
-  return (await Promise.race([promise, timeoutPromise])) as T | null;
-};
-
 const stripXmlTags = (xml: string): string =>
   xml
     .replace(/<w:p[^>]*>/g, "\n")
@@ -123,7 +77,8 @@ const stripXmlTags = (xml: string): string =>
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/\s+/g, " ")
+    .replace(/[ \t\f\v]+/g, " ")
+    .replace(/ *\n+ */g, "\n")
     .trim();
 
 const normalizeText = (value: string): string =>
@@ -220,37 +175,6 @@ const calibrateDeterministicConfidence = (rowLabel: string, valueText: string, t
   return clampConfidence(confidence);
 };
 
-const calibrateAiConfidence = (args: {
-  providedConfidence?: number;
-  rowLabel: string;
-  valueText: string;
-  documentText: string;
-}): number => {
-  const { providedConfidence, rowLabel, valueText, documentText } = args;
-  const normalizedText = normalizeForContains(documentText);
-  const normalizedValue = normalizeForContains(valueText);
-  const normalizedLabel = normalizeForContains(rowLabel);
-  const hasValueInText = normalizedValue.length >= 3 && normalizedText.includes(normalizedValue);
-  const hasLabelInText = normalizedLabel.length >= 3 && normalizedText.includes(normalizedLabel);
-  const nearLabelRegex = new RegExp(
-    `${rowLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*[:\\-]?\\s*${valueText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
-    "i",
-  );
-  const hasNearLabelEvidence = nearLabelRegex.test(documentText);
-
-  let confidence = typeof providedConfidence === "number" ? providedConfidence : 0.78;
-  if (hasValueInText) {
-    confidence += 0.10;
-  }
-  if (hasLabelInText) {
-    confidence += 0.04;
-  }
-  if (hasNearLabelEvidence) {
-    confidence += 0.06;
-  }
-  return clampConfidence(confidence);
-};
-
 const deterministicValueForRow = (
   row: z.infer<typeof checklistRowSchema>,
   text: string,
@@ -321,233 +245,133 @@ const deterministicValueForRow = (
   };
 };
 
-const resolveAiAssistedFields = async (
-  unresolvedRows: z.infer<typeof checklistRowSchema>[],
-  documentText: string,
-): Promise<ExtractedFieldResult[]> => {
-  const trimmedText = documentText.trim();
-  if (!openai || unresolvedRows.length === 0 || trimmedText.length < 20 || trimmedText.length > MAX_AI_DOCUMENT_CHARS) {
-    return [];
-  }
-
-  const prompt = `
-You are a two-stage extraction agent for ABA assessments.
-Stage 1 (reader): locate the strongest candidate value per unresolved row.
-Stage 2 (validator): reject weak guesses and keep only values supported by document evidence.
-
-Task: extract values for unresolved FBA fields from document text.
-Return strict JSON only:
-{"fields":[{"placeholder_key":"...","value_text":"...","confidence":0.0}]}
-
-Rules:
-- Only include keys you can infer with moderate confidence.
-- Omit unknown values.
-- Keep value_text concise and literal.
-- Prefer exact phrases from the source text.
-- If two candidates conflict, choose the one with clearer surrounding evidence.
-
-Unresolved rows:
-${JSON.stringify(unresolvedRows)}
-
-Document text:
-${trimmedText.slice(0, MAX_AI_DOCUMENT_CHARS)}
-`;
-
-  const completion = await withTimeout(
-    openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.1,
-      max_tokens: 700,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an ABA extraction meta-agent. Internally read, validate, and cross-check candidates before returning strict JSON only.",
-        },
-        { role: "user", content: prompt },
-      ],
-    }),
-    AI_EXTRACTION_TIMEOUT_MS,
-  );
-  if (!completion) {
-    return [];
-  }
-  const raw = completion.choices[0]?.message?.content?.trim();
-  if (!raw) {
-    return [];
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim());
-  } catch {
-    return [];
-  }
-  const validated = aiResponseSchema.safeParse(parsed);
-  if (!validated.success) {
-    return [];
-  }
-
-  const rowByKey = new Map(unresolvedRows.map((row) => [row.placeholder_key, row]));
-  return validated.data.fields.map((field) => {
-    const row = rowByKey.get(field.placeholder_key);
-    const calibratedConfidence = calibrateAiConfidence({
-      providedConfidence: field.confidence,
-      rowLabel: row?.label ?? field.placeholder_key,
-      valueText: field.value_text,
-      documentText,
-    });
-    return {
-      placeholder_key: field.placeholder_key,
-      value_text: field.value_text,
-      value_json: null,
-      confidence: calibratedConfidence,
-      mode: "ASSISTED",
-      status: "drafted",
-      source_span: { method: "ai_assist" },
-      review_notes: `AI-assisted extraction for unresolved field. (Calibrated confidence ${calibratedConfidence.toFixed(2)})`,
-    };
-  });
-};
-
-const summarizeStructuredRecommendation = (valueJson: z.infer<typeof structuredRecommendationJsonSchema> | undefined): string | null => {
-  if (!valueJson) {
-    return null;
-  }
-  const parts = [
-    valueJson.title,
-    valueJson.target_behavior,
-    valueJson.measurement_type,
-    valueJson.baseline_data,
-    valueJson.target_criteria,
-    valueJson.mastery_criteria,
-    valueJson.maintenance_criteria,
-    valueJson.generalization_criteria,
-  ].filter((part): part is string => typeof part === "string" && part.trim().length > 0);
-  if (parts.length === 0) {
-    return null;
-  }
-  return parts.join(" | ").slice(0, 700);
-};
-
-const resolveStructuredRecommendationFields = async (
-  rows: z.infer<typeof checklistRowSchema>[],
-  documentText: string,
-): Promise<ExtractedFieldResult[]> => {
-  const trimmedText = documentText.trim();
-  if (!openai || trimmedText.length < 20 || trimmedText.length > MAX_AI_DOCUMENT_CHARS) {
-    return [];
-  }
-  const structuredRows = rows.filter((row) => STRUCTURED_RECOMMENDATION_KEYS.has(row.placeholder_key));
-  if (structuredRows.length === 0) {
-    return [];
-  }
-
-  const prompt = `
-You are a meta-agent for ABA recommendation extraction.
-Use an internal reader->planner->validator loop:
-1) identify candidate recommendation blocks,
-2) map each to the requested schema,
-3) drop unsupported fields.
-
-Extract structured ABA recommendation data from this assessment text.
-Return strict JSON only with this shape:
-{
-  "fields": [
-    {
-      "placeholder_key": "string",
-      "value_text": "short summary",
-      "confidence": 0.0,
-      "value_json": {
-        "title": "string",
-        "target_behavior": "string",
-        "measurement_type": "string",
-        "baseline_data": "string",
-        "target_criteria": "string",
-        "mastery_criteria": "string",
-        "maintenance_criteria": "string",
-        "generalization_criteria": "string",
-        "data_settings": {},
-        "objective_data_points": []
-      }
+const parseKeyValueSegments = (value: string): Record<string, string> => {
+  const payload: Record<string, string> = {};
+  value.split("|").forEach((segment) => {
+    const match = segment.match(/^\s*([^:]+)\s*:\s*(.+?)\s*$/);
+    if (!match?.[1] || !match?.[2]) {
+      return;
     }
-  ]
-}
+    payload[match[1].trim().toLowerCase().replace(/[^a-z0-9]+/g, "_")] = match[2].trim();
+  });
+  return payload;
+};
 
-Rules:
-- Include only fields with moderate confidence or better.
-- Keep values literal and concise from source text when possible.
-- If a value is not present, omit it rather than inventing.
-- objective_data_points should be an array of objects when objective-level rows are present.
-- Prefer conservative extraction over broad inference.
-- Keep summaries short and evidence-aligned.
+const extractStructuredGoalSections = (text: string): StructuredSectionResult[] => {
+  const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const sections: StructuredSectionResult[] = [];
+  let current: {
+    field_key: string;
+    section_key: string;
+    payload: Record<string, unknown>;
+    start_line: number;
+  } | null = null;
 
-Rows to extract:
-${JSON.stringify(structuredRows)}
-
-Document text:
-${trimmedText.slice(0, MAX_AI_DOCUMENT_CHARS)}
-`;
-
-  const completion = await withTimeout(
-    openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.1,
-      max_tokens: 900,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an ABA recommendation extraction meta-agent. Think through candidates and validation internally, then output strict JSON only.",
-        },
-        { role: "user", content: prompt },
-      ],
-    }),
-    AI_EXTRACTION_TIMEOUT_MS,
-  );
-  if (!completion) {
-    return [];
-  }
-
-  const raw = completion.choices[0]?.message?.content?.trim();
-  if (!raw) {
-    return [];
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim());
-  } catch {
-    return [];
-  }
-
-  const validated = structuredAiResponseSchema.safeParse(parsed);
-  if (!validated.success) {
-    return [];
-  }
-
-  const rowByKey = new Map(structuredRows.map((row) => [row.placeholder_key, row]));
-  return validated.data.fields.map((field) => {
-    const row = rowByKey.get(field.placeholder_key);
-    const summary = field.value_text ?? summarizeStructuredRecommendation(field.value_json) ?? "Structured recommendation extracted";
-    const calibratedConfidence = calibrateAiConfidence({
-      providedConfidence: field.confidence,
-      rowLabel: row?.label ?? field.placeholder_key,
-      valueText: summary,
-      documentText,
-    });
-
-    return {
-      placeholder_key: field.placeholder_key,
-      value_text: summary,
-      value_json: field.value_json ? { ...field.value_json } : null,
-      confidence: calibratedConfidence,
-      mode: "ASSISTED",
+  const flush = (endLine: number) => {
+    if (!current) {
+      return;
+    }
+    sections.push({
+      section_key: current.section_key,
+      field_key: current.field_key,
+      section_index: sections.filter((section) => section.field_key === current?.field_key).length,
+      payload: current.payload,
+      source_span: { method: "deterministic_goal_block", start_line: current.start_line, end_line: endLine },
       status: "drafted",
-      source_span: { method: "ai_structured_recommendation" },
-      review_notes: `AI-assisted structured recommendation extraction. (Calibrated confidence ${calibratedConfidence.toFixed(2)})`,
-    };
+      required: true,
+      review_notes: "Deterministic structured goal block extracted from CalOptima document text.",
+    });
+    current = null;
+  };
+
+  lines.forEach((line, index) => {
+    const goalMatch = line.match(/^(child|parent|target\/replacement|target|replacement|skill acquisition|caregiver)\s+goal\s*\d*\s*[:-]\s*(.+)$/i);
+    if (goalMatch?.[1] && goalMatch?.[2]) {
+      flush(index);
+      const label = goalMatch[1].toLowerCase();
+      const isParent = label.includes("parent") || label.includes("caregiver");
+      const isSkill = label.includes("skill");
+      current = {
+        field_key: isParent
+          ? "CALOPTIMA_FBA_PARENT_GOALS"
+          : isSkill
+            ? "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS"
+            : "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+        section_key: "goals_treatment_planning",
+        start_line: index + 1,
+        payload: {
+          title: goalMatch[2].trim(),
+          goal_type: isParent ? "parent" : "child",
+          program_name: isParent ? "Parent Training" : "Behavior Treatment",
+          original_text: line,
+        },
+      };
+      return;
+    }
+    if (!current) {
+      return;
+    }
+    const fieldMatch = line.match(/^(program|description|target behavior|behavior|skill|measurement type|measure|baseline|target criteria|criteria|mastery criteria|maintenance criteria|generalization criteria|rationale|objective data points?)\s*[:-]\s*(.+)$/i);
+    if (!fieldMatch?.[1] || !fieldMatch?.[2]) {
+      current.payload.original_text = `${String(current.payload.original_text ?? "")}\n${line}`.trim();
+      return;
+    }
+    const key = fieldMatch[1].toLowerCase().replace(/\s+/g, "_").replace(/^measure$/, "measurement_type");
+    const value = fieldMatch[2].trim();
+    if (key.startsWith("objective_data_point")) {
+      const currentRows = Array.isArray(current.payload.objective_data_points)
+        ? current.payload.objective_data_points as Record<string, unknown>[]
+        : [];
+      current.payload.objective_data_points = [...currentRows, { ...parseKeyValueSegments(value), raw_text: value }];
+      return;
+    }
+    current.payload[key === "behavior" || key === "skill" ? "target_behavior" : key] = value;
+  });
+  flush(lines.length);
+  return sections;
+};
+
+const extractStructuredTableSections = (text: string): StructuredSectionResult[] => {
+  const tableSpecs = [
+    { field_key: "CALOPTIMA_FBA_RECORDS_REVIEWED", section_key: "records_reviewed", prefix: /^record reviewed\s*[:-]\s*(.+)$/i },
+    { field_key: "CALOPTIMA_FBA_VINELAND_DOMAIN_SCORES", section_key: "assessment_results", prefix: /^vineland domain\s*[:-]\s*(.+)$/i },
+    { field_key: "CALOPTIMA_FBA_HCPCS_RECOMMENDATIONS", section_key: "service_recommendations", prefix: /^hcpcs\s*[:-]\s*(.+)$/i },
+    { field_key: "CALOPTIMA_FBA_DAILY_SCHEDULES", section_key: "daily_schedules", prefix: /^daily schedule\s*[:-]\s*(.+)$/i },
+  ];
+  const rowsByKey = new Map<string, Record<string, unknown>[]>();
+  text.split(/\n+/).forEach((line) => {
+    const trimmed = line.trim();
+    for (const spec of tableSpecs) {
+      const match = trimmed.match(spec.prefix);
+      if (!match?.[1]) {
+        continue;
+      }
+      const existing = rowsByKey.get(spec.field_key) ?? [];
+      rowsByKey.set(spec.field_key, [...existing, { ...parseKeyValueSegments(match[1]), raw_text: match[1].trim() }]);
+    }
+  });
+  return tableSpecs.flatMap((spec) => {
+    const rows = rowsByKey.get(spec.field_key) ?? [];
+    if (rows.length === 0) {
+      return [];
+    }
+    return [{
+      section_key: spec.section_key,
+      field_key: spec.field_key,
+      section_index: 0,
+      payload: { rows },
+      source_span: { method: "deterministic_table_lines", row_count: rows.length },
+      status: "drafted" as const,
+      required: true,
+      review_notes: "Deterministic structured table rows extracted from CalOptima document text.",
+    }];
   });
 };
+
+const extractStructuredSections = (text: string): StructuredSectionResult[] => [
+  ...extractStructuredGoalSections(text),
+  ...extractStructuredTableSections(text),
+];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -620,24 +444,37 @@ Deno.serve(async (req) => {
     const textQuality = summarizeTextQuality(documentText);
 
     const deterministic = data.checklist_rows.map((row) => deterministicValueForRow(row, documentText, data.client_snapshot));
-    const unresolvedRows = data.checklist_rows.filter(
-      (row) => !deterministic.find((field) => field.placeholder_key === row.placeholder_key && field.value_text),
-    );
-
-    const [aiAssisted, structuredRecommendations] = await Promise.all([
-      resolveAiAssistedFields(unresolvedRows, documentText),
-      resolveStructuredRecommendationFields(data.checklist_rows, documentText),
-    ]);
-    const aiByKey = new Map(aiAssisted.map((field) => [field.placeholder_key, field]));
-    const structuredByKey = new Map(structuredRecommendations.map((field) => [field.placeholder_key, field]));
-    const merged = deterministic.map(
-      (field) => structuredByKey.get(field.placeholder_key) ?? aiByKey.get(field.placeholder_key) ?? field,
-    );
+    const structuredSections = extractStructuredSections(documentText);
+    const structuredSummaryByKey = new Map<string, { count: number; firstPayload: Record<string, unknown> }>();
+    structuredSections.forEach((section) => {
+      const current = structuredSummaryByKey.get(section.field_key);
+      structuredSummaryByKey.set(section.field_key, {
+        count: (current?.count ?? 0) + 1,
+        firstPayload: current?.firstPayload ?? section.payload,
+      });
+    });
+    const merged = deterministic.map((field) => {
+      const structuredSummary = structuredSummaryByKey.get(field.placeholder_key);
+      if (!structuredSummary) {
+        return field;
+      }
+      return {
+        ...field,
+        value_text: `${structuredSummary.count} structured section${structuredSummary.count === 1 ? "" : "s"} extracted`,
+        value_json: structuredSummary.firstPayload,
+        confidence: 0.9,
+        mode: "AUTO" as const,
+        status: "drafted" as const,
+        source_span: { method: "deterministic_structured_section_summary" },
+        review_notes: "Deterministic structured extraction summary. Review full structured section payloads before approval.",
+      };
+    });
 
     return json(req, {
       assessment_document_id: data.assessment_document_id,
       template_type: data.template_type,
       fields: merged,
+      structured_sections: structuredSections,
       unresolved_keys: merged.filter((field) => !field.value_text).map((field) => field.placeholder_key),
       extracted_count: merged.filter((field) => field.value_text).length,
       unresolved_count: merged.filter((field) => !field.value_text).length,

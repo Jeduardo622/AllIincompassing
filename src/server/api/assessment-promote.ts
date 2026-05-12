@@ -44,7 +44,7 @@ interface DraftGoalRow {
   mastery_criteria: string | null;
   maintenance_criteria: string | null;
   generalization_criteria: string | null;
-  objective_data_points: Array<Record<string, unknown>> | null;
+  objective_data_points: Array<Record<string, unknown> | string> | null;
   accept_state: "pending" | "accepted" | "rejected" | "edited";
 }
 
@@ -54,6 +54,23 @@ const isMinGoalQuality = (goal: DraftGoalRow): boolean =>
   goal.title.trim().length >= 3 && goal.description.trim().length >= 10 && goal.original_text.trim().length >= 10;
 
 const buildInFilter = (ids: string[]): string => `in.(${ids.map((id) => encodeURIComponent(id)).join(",")})`;
+
+const toNumberOrNull = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const toStringOrNull = (value: unknown): string | null =>
+  typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+
+const normalizeGoalDataPoint = (point: Record<string, unknown> | string): Record<string, unknown> =>
+  typeof point === "string" ? { label: point, raw_text: point } : point;
 
 export async function assessmentPromoteHandler(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
@@ -302,7 +319,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     return json({ error: "Accepted goals could not be matched to the promoted programs." }, 409);
   }
 
-  const createGoalsResult = await fetchJson<Array<{ id: string }>>(`${supabaseUrl}/rest/v1/goals`, {
+  const createGoalsResult = await fetchJson<Array<{ id: string; title: string }>>(`${supabaseUrl}/rest/v1/goals`, {
     method: "POST",
     headers: { ...headers, Prefer: "return=representation" },
     body: JSON.stringify(createGoalsPayload),
@@ -323,6 +340,67 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
 
   const actorId = getAccessTokenSubject(accessToken);
   const now = new Date().toISOString();
+  const createdGoals = Array.isArray(createGoalsResult.data) ? createGoalsResult.data : [];
+  const createdGoalByTitle = new Map(createdGoals.map((goal) => [normalizeTitle(goal.title), goal]));
+  const missingCreatedGoal = acceptedGoals.find((goal) => !createdGoalByTitle.has(normalizeTitle(goal.title)));
+  if (missingCreatedGoal) {
+    const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: false });
+    return json(
+      {
+        error: rollback.ok
+          ? "Created production goals could not be correlated to accepted draft goals. Promotion rolled back safely."
+          : "Created production goals could not be correlated, and rollback did not complete cleanly.",
+        rollback_failed_steps: rollback.ok ? undefined : rollback.failedSteps,
+      },
+      500,
+    );
+  }
+  const goalDataPointPayload = acceptedGoals.flatMap((draftGoal) => {
+    const createdGoal = createdGoalByTitle.get(normalizeTitle(draftGoal.title));
+    if (!createdGoal?.id || !Array.isArray(draftGoal.objective_data_points)) {
+      return [];
+    }
+    return draftGoal.objective_data_points
+      .filter((point): point is Record<string, unknown> | string =>
+        (typeof point === "string" && point.trim().length > 0) ||
+        (!!point && typeof point === "object" && !Array.isArray(point)),
+      )
+      .map((rawPoint) => {
+        const point = normalizeGoalDataPoint(rawPoint);
+        return {
+        organization_id: organizationId,
+        client_id: document.client_id,
+        goal_id: createdGoal.id,
+        assessment_document_id: document.id,
+        source: "assessment_extraction",
+        metric_name: toStringOrNull(point.metric_name) ?? toStringOrNull(point.label) ?? toStringOrNull(point.name) ?? "objective_data_point",
+        metric_value: toNumberOrNull(point.metric_value ?? point.value ?? point.baseline_value),
+        metric_unit: toStringOrNull(point.metric_unit ?? point.unit),
+        metric_payload: point,
+        observed_at: toStringOrNull(point.observed_at ?? point.date) ?? now,
+        created_by: actorId,
+      };
+      });
+  });
+  if (goalDataPointPayload.length > 0) {
+    const createGoalDataPointsResult = await fetchJson(`${supabaseUrl}/rest/v1/goal_data_points`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(goalDataPointPayload),
+    });
+    if (!createGoalDataPointsResult.ok) {
+      const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: false });
+      return json(
+        {
+          error: rollback.ok
+            ? "Failed to create production goal data points. Promotion rolled back safely."
+            : "Failed to create production goal data points, and rollback did not complete cleanly.",
+          rollback_failed_steps: rollback.ok ? undefined : rollback.failedSteps,
+        },
+        createGoalDataPointsResult.status || 500,
+      );
+    }
+  }
   const updateDocumentResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(document.id)}`, {
     method: "PATCH",
     headers,
@@ -361,7 +439,8 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
       event_payload: {
         created_program_count: createdProgramIds.length,
         created_program_ids: createdProgramIds,
-        created_goal_count: Array.isArray(createGoalsResult.data) ? createGoalsResult.data.length : acceptedGoals.length,
+        created_goal_count: createdGoals.length || acceptedGoals.length,
+        created_goal_data_point_count: goalDataPointPayload.length,
       },
     }),
   });
@@ -382,6 +461,7 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     assessment_document_id: document.id,
     created_program_count: createdProgramIds.length,
     created_program_ids: createdProgramIds,
-    created_goal_count: Array.isArray(createGoalsResult.data) ? createGoalsResult.data.length : acceptedGoals.length,
+    created_goal_count: createdGoals.length || acceptedGoals.length,
+    created_goal_data_point_count: goalDataPointPayload.length,
   });
 }

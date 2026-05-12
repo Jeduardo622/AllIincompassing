@@ -16,7 +16,7 @@ import { supabase } from "../../lib/supabase";
 import {
   EMPTY_ASSESSMENT_DOCUMENTS,
   EMPTY_ASSESSMENT_DRAFTS,
-  EMPTY_CHECKLIST_ITEMS,
+  EMPTY_CHECKLIST_RESPONSE,
   ENABLE_CHECKLIST_MAPPING_UI,
   MIN_CHILD_GOALS,
   MIN_PARENT_GOALS,
@@ -28,6 +28,8 @@ import {
   statusToneByAssessment,
   TEMPLATE_LABELS,
   type AssessmentChecklistItem,
+  type AssessmentChecklistResponse,
+  type AssessmentStructuredSection,
   type AssessmentDraftGoal,
   type AssessmentDraftProgram,
   type AssessmentDraftResponse,
@@ -203,6 +205,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const [draftPlan, setDraftPlan] = useState<ProgramGoalDraftResponse | null>(null);
   const [checklistEdits, setChecklistEdits] = useState<
     Record<string, { status: AssessmentChecklistItem["status"]; reviewNotes: string; valueText: string }>
+  >({});
+  const [structuredSectionEdits, setStructuredSectionEdits] = useState<
+    Record<string, { status: AssessmentStructuredSection["status"]; reviewNotes: string; payload: string }>
   >({});
   const [draftProgramEdits, setDraftProgramEdits] = useState<
     Record<string, { acceptState: AssessmentDraftProgram["accept_state"]; reviewNotes: string; name: string; description: string }>
@@ -444,23 +449,31 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   }, [refetchAssessmentDocuments, shouldPollAssessmentDocuments]);
 
   const {
-    data: checklistItems = EMPTY_CHECKLIST_ITEMS,
+    data: checklistReview = EMPTY_CHECKLIST_RESPONSE,
     isError: checklistItemsError,
     isLoading: checklistItemsLoading,
   } = useQuery({
     queryKey: ["assessment-checklist", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
     queryFn: async () => {
-      if (!selectedAssessmentId) return [];
+      if (!selectedAssessmentId) return EMPTY_CHECKLIST_RESPONSE;
       const response = await callApi(
         `/api/assessment-checklist?assessment_document_id=${encodeURIComponent(selectedAssessmentId)}`,
       );
       if (!response.ok) {
         throw new Error("Failed to load checklist");
       }
-      return parseJson<AssessmentChecklistItem[]>(response);
+      const parsed = await parseJson<AssessmentChecklistItem[] | AssessmentChecklistResponse>(response);
+      return Array.isArray(parsed)
+        ? { items: parsed, structured_sections: [] }
+        : {
+            items: Array.isArray(parsed.items) ? parsed.items : [],
+            structured_sections: Array.isArray(parsed.structured_sections) ? parsed.structured_sections : [],
+          };
     },
     enabled: canQuerySelectedAssessment && ENABLE_CHECKLIST_MAPPING_UI,
   });
+  const checklistItems = checklistReview.items;
+  const structuredSections = checklistReview.structured_sections;
 
   const { data: assessmentDrafts } = useQuery({
     queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
@@ -484,6 +497,15 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     });
     return Array.from(grouped.entries());
   }, [checklistItems]);
+  const structuredSectionsBySection = useMemo(() => {
+    const grouped = new Map<string, AssessmentStructuredSection[]>();
+    structuredSections.forEach((section) => {
+      const existing = grouped.get(section.section_key) ?? [];
+      existing.push(section);
+      grouped.set(section.section_key, existing);
+    });
+    return Array.from(grouped.entries());
+  }, [structuredSections]);
 
   const selectedAssessmentDocument = useMemo(
     () => assessmentDocuments.find((document) => document.id === selectedAssessmentId) ?? null,
@@ -496,7 +518,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     ENABLE_CHECKLIST_MAPPING_UI && canQuerySelectedAssessment && (checklistItemsLoading || checklistItemsError);
   const hasPendingRequiredChecklistItems =
     ENABLE_CHECKLIST_MAPPING_UI &&
-    (checklistReviewUnavailable || checklistItems.some((item) => item.required && item.status !== "approved"));
+    (checklistReviewUnavailable ||
+      checklistItems.some((item) => item.required && item.status !== "approved") ||
+      structuredSections.some((section) => section.required && section.status !== "approved"));
   const hasAcceptedDraftProgram = (assessmentDrafts?.programs ?? []).some(
     (program) => program.accept_state === "accepted" || program.accept_state === "edited",
   );
@@ -519,10 +543,20 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     : false;
   const selectedFailedExtractionHasChecklistEvidence =
     selectedAssessmentDocument?.status !== "extraction_failed" || hasSufficientChecklistTextForAiGeneration(checklistItems);
+  const hasApprovedStructuredGoalSections = structuredSections.some(
+    (section) =>
+      section.status === "approved" &&
+      [
+        "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+        "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+        "CALOPTIMA_FBA_PARENT_GOALS",
+      ].includes(section.field_key),
+  );
   const canGenerateUploadedAssessmentDraft =
     canQuerySelectedAssessment &&
     selectedAssessmentReadyForAiGeneration &&
     selectedFailedExtractionHasChecklistEvidence &&
+    hasApprovedStructuredGoalSections &&
     !hasExistingDrafts;
   const canPromoteAssessment =
     canQuerySelectedAssessment &&
@@ -531,7 +565,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     hasAcceptedDraftGoal &&
     hasRequiredAcceptedGoalMix;
   const unresolvedRequiredCount = ENABLE_CHECKLIST_MAPPING_UI
-    ? checklistItems.filter((item) => item.required && item.status !== "approved").length
+    ? checklistItems.filter((item) => item.required && item.status !== "approved").length +
+      structuredSections.filter((section) => section.required && section.status !== "approved").length
     : 0;
   const promoteDisabledReason = !canQuerySelectedAssessment
     ? "Select a valid assessment first."
@@ -540,22 +575,24 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     : hasPendingRequiredChecklistItems
       ? `${unresolvedRequiredCount} required checklist row${unresolvedRequiredCount === 1 ? "" : "s"} must be approved before publishing.`
     : !hasAcceptedDraftProgram
-        ? "Accept or edit at least one AI proposal program before publishing."
+        ? "Accept or edit at least one draft program before publishing."
         : !hasAcceptedDraftGoal
-          ? "Accept or edit at least one AI proposal goal before publishing."
+          ? "Accept or edit at least one draft goal before publishing."
           : !hasRequiredAcceptedGoalMix
             ? `Accepted draft goals must include at least ${MIN_CHILD_GOALS} child and ${MIN_PARENT_GOALS} parent goals before publishing.`
           : null;
   const uploadedAssessmentGenerateDisabledReason = !canQuerySelectedAssessment
-    ? "Select a valid uploaded assessment before generating AI proposals."
+    ? "Select a valid uploaded assessment before creating deterministic drafts."
     : hasExistingDrafts
       ? "Drafts already exist for this assessment. Review/edit current drafts instead of regenerating."
     : selectedAssessmentDocument?.status === "extraction_failed" && !selectedFailedExtractionHasChecklistEvidence
-      ? "Extraction failed for this assessment, but no extracted checklist evidence is available for AI proposal generation. Replace the source document or add checklist evidence before retrying."
+      ? "Extraction failed for this assessment, but no extracted checklist evidence is available for draft generation. Replace the source document or add checklist evidence before retrying."
     : selectedAssessmentDocument?.status === "extraction_failed"
-      ? "Extraction failed for this assessment. Retry AI proposal generation using the extracted checklist evidence, or replace the source document if it needs correction."
+      ? "Extraction failed for this assessment. Retry deterministic draft generation using the extracted checklist evidence, or replace the source document if it needs correction."
     : !selectedAssessmentReadyForAiGeneration
-      ? "Wait for extraction to complete before generating AI proposals."
+      ? "Wait for extraction to complete before generating drafts."
+    : !hasApprovedStructuredGoalSections
+      ? "Approve at least one structured CalOptima goal section before generating drafts."
       : null;
 
   useEffect(() => {
@@ -589,6 +626,18 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     });
     setChecklistEdits(next);
   }, [checklistItems]);
+
+  useEffect(() => {
+    const next: Record<string, { status: AssessmentStructuredSection["status"]; reviewNotes: string; payload: string }> = {};
+    structuredSections.forEach((section) => {
+      next[section.id] = {
+        status: section.status,
+        reviewNotes: section.review_notes ?? "",
+        payload: JSON.stringify(section.payload ?? {}, null, 2),
+      };
+    });
+    setStructuredSectionEdits(next);
+  }, [structuredSections]);
 
   useEffect(() => {
     const nextPrograms: Record<
@@ -725,6 +774,45 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     onError: showError,
   });
 
+  const updateStructuredSection = useMutation({
+    mutationFn: async (sectionId: string) => {
+      const edit = structuredSectionEdits[sectionId];
+      if (!edit) {
+        throw new Error("Structured section edit state not found.");
+      }
+      let payload: Record<string, unknown>;
+      try {
+        const parsed = JSON.parse(edit.payload);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("Structured section payload must be a JSON object.");
+        }
+        payload = parsed as Record<string, unknown>;
+      } catch (error) {
+        throw error instanceof Error ? error : new Error("Structured section payload must be valid JSON.");
+      }
+
+      const response = await callApi("/api/assessment-checklist", {
+        method: "PATCH",
+        body: JSON.stringify({
+          structured_section_id: sectionId,
+          status: edit.status,
+          review_notes: edit.reviewNotes,
+          payload,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await parseApiErrorMessage(response, "Failed to update structured section"));
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["assessment-checklist", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
+      });
+      showSuccess("Structured section updated.");
+    },
+    onError: showError,
+  });
+
   const deleteAssessmentDocument = useMutation({
     mutationFn: async (document: AssessmentDocumentRecord) => {
       const { error: storageError } = await supabase.storage.from(document.bucket_id).remove([document.object_path]);
@@ -831,7 +919,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       queryClient.invalidateQueries({
         queryKey: ["assessment-documents", client.id, organizationId ?? "MISSING_ORG"],
       });
-      showSuccess("AI proposal program and goals generated from uploaded FBA.");
+      showSuccess("Draft program and goals generated from reviewed structured FBA data.");
     },
     onError: showError,
   });
@@ -1335,7 +1423,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         </div>
         {hasDraftsButNoLivePrograms && (
           <p className="mt-2 text-xs text-sky-800/90 dark:text-sky-100/90">
-            Uploaded assessments and AI proposals stay in draft review until you publish them to live Programs & Goals.
+            Uploaded assessments and draft proposals stay in review until you publish them to live Programs & Goals.
           </p>
         )}
       </div>
@@ -1495,8 +1583,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-cyan-600 rounded-md hover:bg-cyan-700 disabled:opacity-50"
               >
                 {generateDraftsFromUploadedAssessment.isLoading
-                  ? "Generating AI Proposal..."
-                  : "Generate with AI from Uploaded FBA"}
+                  ? "Generating Drafts..."
+                  : "Generate Drafts from Uploaded FBA"}
               </button>
               {uploadedAssessmentGenerateDisabledReason && !generateDraftsFromUploadedAssessment.isLoading && (
                 <p className="text-xs text-gray-500 dark:text-gray-300">
@@ -1506,7 +1594,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               <button
                 type="button"
                 onClick={() => generateAssessmentPlanPdf.mutate()}
-                disabled={!canQuerySelectedAssessment || generateAssessmentPlanPdf.isLoading}
+                disabled={!canQuerySelectedAssessment || hasPendingRequiredChecklistItems || generateAssessmentPlanPdf.isLoading}
+                title={hasPendingRequiredChecklistItems ? "Approve all required checklist and structured fields before export." : undefined}
                 className="w-full px-3 py-2 text-sm font-medium text-white bg-violet-600 rounded-md hover:bg-violet-700 disabled:opacity-50"
               >
                 {generateAssessmentPlanPdf.isLoading ? "Generating..." : "Optional: Export Completed CalOptima PDF"}
@@ -1792,6 +1881,106 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                       </div>
                     </div>
                   ))}
+                  {structuredSectionsBySection.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                        Structured CalOptima Sections
+                      </h4>
+                      {structuredSectionsBySection.map(([section, rows]) => (
+                        <div key={section} className="rounded-md border border-cyan-200 dark:border-cyan-900/60 p-3">
+                          <h5 className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">
+                            {section.replace(/_/g, " ")}
+                          </h5>
+                          <div className="space-y-3">
+                            {rows.map((row) => {
+                              const edit = structuredSectionEdits[row.id] ?? {
+                                status: row.status,
+                                reviewNotes: row.review_notes ?? "",
+                                payload: JSON.stringify(row.payload ?? {}, null, 2),
+                              };
+                              const isApprovedStatusLocked = row.status === "approved";
+                              return (
+                                <div key={row.id} className="rounded border border-gray-200 dark:border-gray-700 p-2">
+                                  <div className="text-xs font-medium text-gray-800 dark:text-gray-200">
+                                    {row.field_key} #{row.section_index + 1}
+                                  </div>
+                                  <div className="text-[11px] text-gray-500 mb-2">
+                                    required: {String(row.required)}
+                                    {row.review_notes ? ` • ${row.review_notes}` : ""}
+                                  </div>
+                                  <div className="grid grid-cols-1 gap-2">
+                                    <select
+                                      value={edit.status}
+                                      disabled={isApprovedStatusLocked}
+                                      onChange={(event) =>
+                                        setStructuredSectionEdits((current) => ({
+                                          ...current,
+                                          [row.id]: {
+                                            ...edit,
+                                            status: event.target.value as AssessmentStructuredSection["status"],
+                                          },
+                                        }))
+                                      }
+                                      className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                                    >
+                                      <option value="not_started">not_started</option>
+                                      <option value="drafted">drafted</option>
+                                      <option value="verified">verified</option>
+                                      <option value="approved">approved</option>
+                                      <option value="rejected">rejected</option>
+                                    </select>
+                                    <input
+                                      value={edit.reviewNotes}
+                                      disabled={isApprovedStatusLocked}
+                                      onChange={(event) =>
+                                        setStructuredSectionEdits((current) => ({
+                                          ...current,
+                                          [row.id]: {
+                                            ...edit,
+                                            reviewNotes: event.target.value,
+                                          },
+                                        }))
+                                      }
+                                      placeholder="Review notes"
+                                      className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
+                                    />
+                                    <textarea
+                                      value={edit.payload}
+                                      rows={8}
+                                      disabled={isApprovedStatusLocked}
+                                      onChange={(event) =>
+                                        setStructuredSectionEdits((current) => ({
+                                          ...current,
+                                          [row.id]: {
+                                            ...edit,
+                                            payload: event.target.value,
+                                          },
+                                        }))
+                                      }
+                                      className="font-mono rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-xs"
+                                    />
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateStructuredSection.mutate(row.id)}
+                                    disabled={updateStructuredSection.isLoading || isApprovedStatusLocked}
+                                    className="mt-2 px-3 py-1 text-xs font-medium text-white bg-cyan-700 rounded hover:bg-cyan-800 disabled:opacity-50"
+                                  >
+                                    Save Structured Section
+                                  </button>
+                                  {isApprovedStatusLocked && (
+                                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
+                                      Approved structured sections are locked because they can feed drafts and PDF export.
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1799,7 +1988,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
 
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
-              AI Proposal Review (Approve / Reject / Edit)
+              Draft Review (Approve / Reject / Edit)
             </h3>
             <p className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-300" role="status" aria-live="polite">
               {hasStagedDraftChanges ? "Draft changes pending publication." : "All changes published."}

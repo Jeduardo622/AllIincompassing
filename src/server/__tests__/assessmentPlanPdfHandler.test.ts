@@ -81,6 +81,7 @@ describe("assessmentPlanPdfHandler", () => {
       })
       .mockResolvedValueOnce({ ok: true, status: 200, data: [] })
       .mockResolvedValueOnce({ ok: true, status: 200, data: [] })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: [] })
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -119,6 +120,7 @@ describe("assessmentPlanPdfHandler", () => {
           },
         ],
       })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: [] })
       .mockResolvedValueOnce({
         ok: true,
         status: 200,

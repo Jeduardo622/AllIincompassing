@@ -148,7 +148,24 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         return new Response(JSON.stringify([]), { status: 200 });
       }
       if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
-        return new Response(JSON.stringify([]), { status: 200 });
+        return new Response(
+          JSON.stringify({
+            items: [],
+            structured_sections: [
+              {
+                id: "structured-goal-1",
+                section_key: "goals_treatment_planning",
+                field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+                section_index: 0,
+                payload: { title: "Goal" },
+                status: "approved",
+                required: true,
+                review_notes: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
       }
       if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
         return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
@@ -716,7 +733,24 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         return new Response(JSON.stringify([]), { status: 200 });
       }
       if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
-        return new Response(JSON.stringify([]), { status: 200 });
+        return new Response(
+          JSON.stringify({
+            items: [],
+            structured_sections: [
+              {
+                id: "structured-goal-1",
+                section_key: "goals_treatment_planning",
+                field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+                section_index: 0,
+                payload: { title: "Goal" },
+                status: "approved",
+                required: true,
+                review_notes: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
       }
       if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
         return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
@@ -1318,7 +1352,24 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         );
       }
       if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
-        return new Response(JSON.stringify([]), { status: 200 });
+        return new Response(
+          JSON.stringify({
+            items: [],
+            structured_sections: [
+              {
+                id: "structured-goal-1",
+                section_key: "goals_treatment_planning",
+                field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+                section_index: 0,
+                payload: { title: "Goal" },
+                status: "approved",
+                required: true,
+                review_notes: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
       }
       if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
         return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
@@ -1342,7 +1393,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     await screen.findByText("fba.docx");
     expect(await screen.findByText("Previous extraction warning should not block generation.")).toBeInTheDocument();
-    const generateButton = await screen.findByRole("button", { name: /Generate with AI from Uploaded FBA/i });
+    const generateButton = await screen.findByRole("button", { name: /Generate Drafts from Uploaded FBA/i });
     await waitFor(() => {
       expect(generateButton).not.toBeDisabled();
     });
@@ -1359,7 +1410,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         ),
       ).toBe(true);
     });
-    expect(showSuccess).toHaveBeenCalledWith("AI proposal program and goals generated from uploaded FBA.");
+    expect(showSuccess).toHaveBeenCalledWith("Draft program and goals generated from reviewed structured FBA data.");
   });
 
   it("allows retry generation after extraction failure and shows retry guidance", async () => {
@@ -1391,19 +1442,33 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       }
       if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
         return new Response(
-          JSON.stringify([
-            {
-              id: "checklist-item-1",
-              section_key: "behavior_summary",
-              label: "Behavior Summary",
-              placeholder_key: "behavior_summary",
-              required: true,
-              mode: "AUTO",
-              status: "verified",
-              review_notes: null,
-              value_text: "Aggression occurs during transitions and denied access.",
-            },
-          ]),
+          JSON.stringify({
+            items: [
+              {
+                id: "checklist-item-1",
+                section_key: "behavior_summary",
+                label: "Behavior Summary",
+                placeholder_key: "behavior_summary",
+                required: true,
+                mode: "AUTO",
+                status: "verified",
+                review_notes: null,
+                value_text: "Aggression occurs during transitions and denied access.",
+              },
+            ],
+            structured_sections: [
+              {
+                id: "structured-goal-1",
+                section_key: "goals_treatment_planning",
+                field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+                section_index: 0,
+                payload: { title: "Goal" },
+                status: "approved",
+                required: true,
+                review_notes: null,
+              },
+            ],
+          }),
           { status: 200 },
         );
       }
@@ -1433,12 +1498,12 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     ).toBeInTheDocument();
     expect(
       await screen.findByText(
-        "Extraction failed for this assessment. Retry AI proposal generation using the extracted checklist evidence, or replace the source document if it needs correction.",
+        "Extraction failed for this assessment. Retry deterministic draft generation using the extracted checklist evidence, or replace the source document if it needs correction.",
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Wait for extraction to complete before generating AI proposals.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Wait for extraction to complete before generating drafts.")).not.toBeInTheDocument();
 
-    const generateButton = await screen.findByRole("button", { name: /Generate with AI from Uploaded FBA/i });
+    const generateButton = await screen.findByRole("button", { name: /Generate Drafts from Uploaded FBA/i });
     await waitFor(() => {
       expect(generateButton).not.toBeDisabled();
     });
@@ -1454,7 +1519,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         ),
       ).toBe(true);
     });
-    expect(showSuccess).toHaveBeenCalledWith("AI proposal program and goals generated from uploaded FBA.");
+    expect(showSuccess).toHaveBeenCalledWith("Draft program and goals generated from reviewed structured FBA data.");
   });
 
   it("keeps extraction failure retry disabled when no checklist evidence is available", async () => {
@@ -1522,11 +1587,11 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     await screen.findByText("empty-failed-fba.pdf");
     expect(
       await screen.findByText(
-        "Extraction failed for this assessment, but no extracted checklist evidence is available for AI proposal generation. Replace the source document or add checklist evidence before retrying.",
+        "Extraction failed for this assessment, but no extracted checklist evidence is available for draft generation. Replace the source document or add checklist evidence before retrying.",
       ),
     ).toBeInTheDocument();
 
-    const generateButton = await screen.findByRole("button", { name: /Generate with AI from Uploaded FBA/i });
+    const generateButton = await screen.findByRole("button", { name: /Generate Drafts from Uploaded FBA/i });
     expect(generateButton).toBeDisabled();
     expect(
       vi.mocked(callApi).mock.calls.some(([path, init]) => path === "/api/assessment-drafts" && init?.method === "POST"),
@@ -1579,11 +1644,11 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     );
 
-    const generateButton = await screen.findByRole("button", { name: /Generate with AI from Uploaded FBA/i });
+    const generateButton = await screen.findByRole("button", { name: /Generate Drafts from Uploaded FBA/i });
     await waitFor(() => {
       expect(generateButton).toBeDisabled();
     });
-    expect(await screen.findByText("Wait for extraction to complete before generating AI proposals.")).toBeInTheDocument();
+    expect(await screen.findByText("Wait for extraction to complete before generating drafts.")).toBeInTheDocument();
 
     await user.click(generateButton);
 
@@ -1592,6 +1657,73 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         ([path, init]) => path === "/api/assessment-drafts" && (init?.method ?? "").toUpperCase() === "POST",
       ),
     ).toBe(false);
+  });
+
+  it("keeps draft generation disabled until a structured goal section is approved", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "synthetic-fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1234,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/synthetic-fba.pdf",
+              status: "extracted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(
+          JSON.stringify({
+            items: [],
+            structured_sections: [
+              {
+                id: "structured-goal-1",
+                section_key: "goals_treatment_planning",
+                field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+                section_index: 0,
+                payload: { title: "Goal" },
+                status: "verified",
+                required: true,
+                review_notes: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    const generateButton = await screen.findByRole("button", { name: /Generate Drafts from Uploaded FBA/i });
+    await waitFor(() => {
+      expect(generateButton).toBeDisabled();
+    });
+    expect(await screen.findByText("Approve at least one structured CalOptima goal section before generating drafts.")).toBeInTheDocument();
   });
 
   it("shows existing-draft guidance for drafted uploaded assessments", async () => {
@@ -1646,14 +1778,14 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     );
 
-    const generateButton = await screen.findByRole("button", { name: /Generate with AI from Uploaded FBA/i });
+    const generateButton = await screen.findByRole("button", { name: /Generate Drafts from Uploaded FBA/i });
     await waitFor(() => {
       expect(generateButton).toBeDisabled();
     });
     expect(
       await screen.findByText("Drafts already exist for this assessment. Review/edit current drafts instead of regenerating."),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Wait for extraction to complete before generating AI proposals.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Wait for extraction to complete before generating drafts.")).not.toBeInTheDocument();
   });
 
   it("generates completed CalOptima PDF for selected assessment", async () => {

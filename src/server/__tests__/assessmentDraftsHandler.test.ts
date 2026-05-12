@@ -60,6 +60,21 @@ const buildTypedGoals = (): Array<Record<string, unknown>> => [
   })),
 ];
 
+const buildStructuredGoalSections = (programName = "Communication Program") =>
+  buildTypedGoals().map((goal, index) => ({
+    id: `structured-goal-${index + 1}`,
+    section_key: "goals_treatment_planning",
+    field_key: goal.goal_type === "parent" ? "CALOPTIMA_FBA_PARENT_GOALS" : "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+    section_index: index,
+    payload: {
+      ...goal,
+      program_name: programName,
+      objective_data_points: [{ metric_name: "Point A", metric_value: 1 }],
+    },
+    status: "approved",
+    required: true,
+  }));
+
 describe("assessmentDraftsHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -199,7 +214,7 @@ describe("assessmentDraftsHandler", () => {
     expect(programPayload[0]?.confidence).toBe("medium");
   });
 
-  it("auto-generates staged drafts from extracted checklist values", async () => {
+  it("deterministically creates staged drafts from approved structured sections", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
@@ -222,77 +237,11 @@ describe("assessmentDraftsHandler", () => {
           data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extracted" }],
         };
       }
-      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?")) {
         return {
           ok: true,
           status: 200,
-          data: [
-            {
-              section_key: "clinical_summary",
-              label: "Summary",
-              placeholder_key: "CALOPTIMA_SUMMARY",
-              value_text: "Client presents with communication deficits.",
-              value_json: null,
-              required: true,
-              status: "approved",
-            },
-            {
-              section_key: "goals_treatment_planning",
-              label: "Skill Acquisition Goal 1",
-              placeholder_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
-              value_text: "Client will follow one-step directions.",
-              value_json: {
-                mastery_criteria: "80% across 4 consecutive weeks",
-                maintenance_criteria: "80% during maintenance probes",
-                generalization_criteria: "Across home and community with parent and staff",
-              },
-              required: true,
-              status: "approved",
-            },
-          ],
-        };
-      }
-      if (method === "GET" && url.includes("/rest/v1/assessment_extractions?")) {
-        return {
-          ok: true,
-          status: 200,
-          data: [
-            {
-              section_key: "goals_treatment_planning",
-              field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
-              label: "Skill Acquisition Goal 1",
-              value_text: "Client will follow one-step directions.",
-              value_json: null,
-              source_span: { page: 3, line: "Skill acquisition recommendations documented." },
-              status: "approved",
-            },
-          ],
-        };
-      }
-      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name")) {
-        return { ok: true, status: 200, data: [{ full_name: "Client One" }] };
-      }
-      if (method === "GET" && url.includes("/rest/v1/ai_guidance_documents?")) {
-        return { ok: true, status: 200, data: [{ guidance_text: "Use concise ABA language." }] };
-      }
-      if (method === "POST" && url.includes("/functions/v1/generate-program-goals")) {
-        return {
-          ok: true,
-          status: 200,
-          data: {
-            programs: [
-              {
-                name: "Communication Program",
-                description: "Improve communication skills.",
-                rationale: "Program rationale.",
-                evidence_refs: [{ section_key: "assessment_summary", source_span: "Program evidence snippet" }],
-                review_flags: [],
-              },
-            ],
-            goals: buildTypedGoals(),
-            summary_rationale: "Generated from extracted field values.",
-            confidence: "medium",
-          },
+          data: buildStructuredGoalSections(),
         };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_draft_programs")) {
@@ -322,9 +271,9 @@ describe("assessmentDraftsHandler", () => {
     );
 
     expect(response.status).toBe(201);
-    expect(fetchJson).toHaveBeenCalledWith(
+    expect(fetchJson).not.toHaveBeenCalledWith(
       expect.stringContaining("/functions/v1/generate-program-goals"),
-      expect.objectContaining({ method: "POST" }),
+      expect.anything(),
     );
     const goalCreateCall = vi
       .mocked(fetchJson)
@@ -340,23 +289,10 @@ describe("assessmentDraftsHandler", () => {
     const parentGoalCount = goalPayload.filter((goal) => goal.goal_type === "parent").length;
     expect(childGoalCount).toBe(20);
     expect(parentGoalCount).toBe(6);
-    const generationCall = vi
-      .mocked(fetchJson)
-      .mock.calls.find(
-        ([url, init]) =>
-          typeof url === "string" &&
-          url.includes("/functions/v1/generate-program-goals") &&
-          (init?.method ?? "").toUpperCase() === "POST",
-      );
-    expect(generationCall).toBeTruthy();
-    const generationPayload = JSON.parse((generationCall?.[1] as RequestInit).body as string) as {
-      assessment_summary?: string;
-      source_evidence_snippets?: Array<{ section_key: string; snippet: string }>;
-      approved_checklist_rows?: Array<{ section_key: string }>;
-    };
-    expect(generationPayload.assessment_summary).toContain("mastery_criteria: 80% across 4 consecutive weeks");
-    expect(Array.isArray(generationPayload.source_evidence_snippets)).toBe(true);
-    expect(Array.isArray(generationPayload.approved_checklist_rows)).toBe(true);
+    expect(goalPayload[0]?.mastery_criteria).toBe("Mastery criteria noted");
+    expect(goalPayload[0]?.evidence_refs).toEqual([
+      { section_key: "goals_treatment_planning", source_span: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS#0" },
+    ]);
     const liveProgramWrite = vi
       .mocked(fetchJson)
       .mock.calls.find(([url]) => typeof url === "string" && url.includes("/rest/v1/programs"));
@@ -486,7 +422,7 @@ describe("assessmentDraftsHandler", () => {
     );
   });
 
-  it("returns missing_program_match and cleans up inserted programs", async () => {
+  it("rejects deterministic draft creation when approved structured goal sections are missing", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
@@ -509,54 +445,8 @@ describe("assessmentDraftsHandler", () => {
           data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "extracted" }],
         };
       }
-      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?")) {
-        return {
-          ok: true,
-          status: 200,
-          data: [{ section_key: "summary", label: "Summary", status: "approved", value_text: "summary text", value_json: null }],
-        };
-      }
-      if (method === "GET" && url.includes("/rest/v1/assessment_extractions?")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?")) {
         return { ok: true, status: 200, data: [] };
-      }
-      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name")) {
-        return { ok: true, status: 200, data: [{ full_name: "Client One" }] };
-      }
-      if (method === "GET" && url.includes("/rest/v1/ai_guidance_documents?")) {
-        return { ok: true, status: 200, data: [{ guidance_text: "Use concise ABA language." }] };
-      }
-      if (method === "POST" && url.includes("/functions/v1/generate-program-goals")) {
-        return {
-          ok: true,
-          status: 200,
-          data: {
-            programs: [
-              {
-                name: "Communication Program",
-                description: "Improve communication skills.",
-                rationale: "Program rationale.",
-                evidence_refs: [{ section_key: "assessment_summary", source_span: "Program evidence snippet" }],
-                review_flags: [],
-              },
-            ],
-            goals: [
-              ...Array.from({ length: 20 }, (_, index) => ({
-                ...buildTypedGoals()[0],
-                title: `Child Goal ${index + 1}`,
-                program_name: index === 0 ? "Unknown Program" : "Communication Program",
-                goal_type: "child",
-              })),
-              ...Array.from({ length: 6 }, (_, index) => ({
-                ...buildTypedGoals()[20],
-                title: `Parent Goal ${index + 1}`,
-                program_name: "Communication Program",
-                goal_type: "parent",
-              })),
-            ],
-            summary_rationale: "Generated from extracted field values.",
-            confidence: "medium",
-          },
-        };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_draft_programs")) {
         return { ok: true, status: 201, data: [{ id: "draft-program-mismatch-1", name: "Communication Program" }] };
@@ -580,10 +470,10 @@ describe("assessmentDraftsHandler", () => {
 
     expect(response.status).toBe(409);
     const payload = (await response.json()) as { error?: string };
-    expect(payload.error).toContain("missing_program_match");
-    expect(fetchJson).toHaveBeenCalledWith(
-      expect.stringContaining("/rest/v1/assessment_draft_programs?id=in.(draft-program-mismatch-1)"),
-      expect.objectContaining({ method: "DELETE" }),
+    expect(payload.error).toContain("No approved structured CalOptima goal sections");
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_draft_programs"),
+      expect.objectContaining({ method: "POST" }),
     );
   });
 
@@ -673,11 +563,11 @@ describe("assessmentDraftsHandler", () => {
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
-      error: "Assessment extraction must complete before AI proposals can be generated.",
+      error: "Assessment extraction must complete before deterministic drafts can be generated.",
     });
     expect(fetchJson).toHaveBeenCalledTimes(3);
     expect(fetchJson).not.toHaveBeenCalledWith(
-      expect.stringContaining("/rest/v1/assessment_checklist_items"),
+      expect.stringContaining("/rest/v1/assessment_structured_sections"),
       expect.anything(),
     );
     expect(fetchJson).not.toHaveBeenCalledWith(
@@ -686,7 +576,7 @@ describe("assessmentDraftsHandler", () => {
     );
   });
 
-  it("allows auto-generation retry after extraction failure and records the prior status", async () => {
+  it("allows deterministic draft retry after extraction failure and records the prior status", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
@@ -715,40 +605,11 @@ describe("assessmentDraftsHandler", () => {
       if (method === "GET" && url.includes("/rest/v1/assessment_draft_goals?")) {
         return { ok: true, status: 200, data: [] };
       }
-      if (method === "GET" && url.includes("/rest/v1/assessment_checklist_items?")) {
+      if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?")) {
         return {
           ok: true,
           status: 200,
-          data: [{ section_key: "summary", label: "Summary", status: "approved", value_text: "summary text", value_json: null }],
-        };
-      }
-      if (method === "GET" && url.includes("/rest/v1/assessment_extractions?")) {
-        return { ok: true, status: 200, data: [] };
-      }
-      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name")) {
-        return { ok: true, status: 200, data: [{ full_name: "Client One" }] };
-      }
-      if (method === "GET" && url.includes("/rest/v1/ai_guidance_documents?")) {
-        return { ok: true, status: 200, data: [{ guidance_text: "Use concise ABA language." }] };
-      }
-      if (method === "POST" && url.includes("/functions/v1/generate-program-goals")) {
-        return {
-          ok: true,
-          status: 200,
-          data: {
-            programs: [
-              {
-                name: "Communication Program",
-                description: "Improve communication skills.",
-                rationale: "Program rationale.",
-                evidence_refs: [{ section_key: "assessment_summary", source_span: "Program evidence snippet" }],
-                review_flags: [],
-              },
-            ],
-            goals: buildTypedGoals(),
-            summary_rationale: "Generated from extracted field values.",
-            confidence: "medium",
-          },
+          data: buildStructuredGoalSections(),
         };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_draft_programs")) {
@@ -778,9 +639,9 @@ describe("assessmentDraftsHandler", () => {
     );
 
     expect(response.status).toBe(201);
-    expect(fetchJson).toHaveBeenCalledWith(
+    expect(fetchJson).not.toHaveBeenCalledWith(
       expect.stringContaining("/functions/v1/generate-program-goals"),
-      expect.objectContaining({ method: "POST" }),
+      expect.anything(),
     );
     const reviewEventCall = vi
       .mocked(fetchJson)

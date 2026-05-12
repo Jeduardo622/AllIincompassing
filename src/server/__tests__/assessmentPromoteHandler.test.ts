@@ -22,6 +22,9 @@ const buildAcceptedGoals = (): Array<Record<string, unknown>> => [
     description: `Child goal description ${index + 1} with enough detail.`,
     original_text: `Child goal original text ${index + 1} with enough detail for validation.`,
     goal_type: "child",
+    objective_data_points: index === 0
+      ? [{ metric_name: "baseline", metric_value: 2, metric_unit: "responses" }, "Legacy manual objective note"]
+      : [],
     accept_state: "accepted",
   })),
   ...Array.from({ length: 6 }, (_, index) => ({
@@ -30,6 +33,7 @@ const buildAcceptedGoals = (): Array<Record<string, unknown>> => [
     description: `Parent goal description ${index + 1} with enough detail.`,
     original_text: `Parent goal original text ${index + 1} with enough detail for validation.`,
     goal_type: "parent",
+    objective_data_points: [],
     accept_state: "accepted",
   })),
 ];
@@ -92,8 +96,11 @@ describe("assessmentPromoteHandler", () => {
         return {
           ok: true,
           status: 201,
-          data: buildAcceptedGoals().map((_, index) => ({ id: `prod-goal-${index + 1}` })),
+          data: buildAcceptedGoals().map((goal, index) => ({ id: `prod-goal-${index + 1}`, title: goal.title })),
         };
+      }
+      if (method === "POST" && url.includes("/rest/v1/goal_data_points")) {
+        return { ok: true, status: 201, data: null };
       }
       if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) {
         return { ok: true, status: 200, data: null };
@@ -128,6 +135,21 @@ describe("assessmentPromoteHandler", () => {
     expect(createGoalsPayload.filter((goal) => goal.goal_type === "parent")).toHaveLength(6);
     expect(createGoalsPayload.slice(0, 13).every((goal) => goal.program_id === "prod-program-1")).toBe(true);
     expect(createGoalsPayload.slice(13).every((goal) => goal.program_id === "prod-program-2")).toBe(true);
+    const dataPointCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url, init]) => typeof url === "string" && url.includes("/rest/v1/goal_data_points") && init?.method === "POST");
+    expect(dataPointCall).toBeTruthy();
+    const dataPointPayload = JSON.parse((dataPointCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
+    expect(dataPointPayload[0]).toMatchObject({
+      goal_id: "prod-goal-1",
+      metric_name: "baseline",
+      source: "assessment_extraction",
+    });
+    expect(dataPointPayload[1]).toMatchObject({
+      goal_id: "prod-goal-1",
+      metric_name: "Legacy manual objective note",
+      metric_payload: { label: "Legacy manual objective note", raw_text: "Legacy manual objective note" },
+    });
   });
 
   it("blocks promotion when accepted goals contain duplicate titles", async () => {
@@ -536,8 +558,11 @@ describe("assessmentPromoteHandler", () => {
         return {
           ok: true,
           status: 201,
-          data: buildAcceptedGoals().map((_, index) => ({ id: `prod-goal-${index + 1}` })),
+          data: buildAcceptedGoals().map((goal, index) => ({ id: `prod-goal-${index + 1}`, title: goal.title })),
         };
+      }
+      if (method === "POST" && url.includes("/rest/v1/goal_data_points")) {
+        return { ok: true, status: 201, data: null };
       }
       if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1")) {
         return { ok: true, status: 200, data: null };

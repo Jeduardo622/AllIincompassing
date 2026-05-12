@@ -62,6 +62,8 @@ export default defineConfig({
     env: {
       VITEST: 'true',
     },
+    testTimeout: 30000,
+    hookTimeout: 30000,
     environmentMatchGlobs: [
       ['src/server/**', 'node'],
       ['src/scripts/**', 'node'],

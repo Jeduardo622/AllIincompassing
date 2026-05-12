@@ -474,7 +474,7 @@ describe("assessmentDocumentsHandler", () => {
     },
   );
 
-  it("auto-generates staged drafts with structured payload and no live publish", async () => {
+  it("extracts uploaded CalOptima fields without auto-generating drafts or live publish", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
@@ -687,15 +687,7 @@ describe("assessmentDocumentsHandler", () => {
           url.includes("/functions/v1/generate-program-goals") &&
           (init?.method ?? "").toUpperCase() === "POST",
       );
-    expect(generationCall).toBeTruthy();
-    const generationPayload = JSON.parse((generationCall?.[1] as RequestInit).body as string) as {
-      approved_checklist_rows?: Array<{ section_key: string }>;
-      assessment_summary?: string;
-      source_evidence_snippets?: Array<{ section_key: string; snippet: string }>;
-    };
-    expect(Array.isArray(generationPayload.approved_checklist_rows)).toBe(true);
-    expect(typeof generationPayload.assessment_summary).toBe("string");
-    expect(Array.isArray(generationPayload.source_evidence_snippets)).toBe(true);
+    expect(generationCall).toBeUndefined();
     const stagedGoalCreateCall = vi
       .mocked(fetchJson)
       .mock.calls.find(
@@ -704,9 +696,7 @@ describe("assessmentDocumentsHandler", () => {
           url.includes("/rest/v1/assessment_draft_goals") &&
           (init?.method ?? "").toUpperCase() === "POST",
       );
-    const stagedGoalPayload = JSON.parse((stagedGoalCreateCall?.[1] as RequestInit).body as string) as Array<Record<string, unknown>>;
-    expect(Array.isArray(stagedGoalPayload[0]?.evidence_refs)).toBe(true);
-    expect(Array.isArray(stagedGoalPayload[0]?.review_flags)).toBe(true);
+    expect(stagedGoalCreateCall).toBeUndefined();
 
     const liveProgramWrite = vi
       .mocked(fetchJson)
@@ -880,6 +870,120 @@ describe("assessmentDocumentsHandler", () => {
     expect(draftWriteCalls).toHaveLength(0);
   });
 
+  it("marks extraction failed when structured section persistence fails", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(loadChecklistTemplateRows).mockReturnValue([
+      {
+        section: "goals_treatment_planning",
+        label: "Skill Acquisition Goal",
+        placeholder_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+        mode: "AUTO",
+        source: "uploaded_fba",
+        required: true,
+        extraction_method: "deterministic_extract",
+        validation_rule: "non_empty_text",
+        status: "not_started",
+        extraction_owner: null,
+        review_owner: null,
+        review_notes: null,
+      },
+    ]);
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "client-1" }] };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_documents")) {
+        return {
+          ok: true,
+          status: 201,
+          data: [{ id: "doc-structured-fail", organization_id: "org-1", client_id: "11111111-1111-1111-1111-111111111111" }],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_checklist_items")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_extractions")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "GET" && url.includes("/rest/v1/clients?select=full_name")) {
+        return { ok: true, status: 200, data: [{ full_name: "Client One" }] };
+      }
+      if (method === "POST" && url.includes("/functions/v1/extract-assessment-fields")) {
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            fields: [],
+            structured_sections: [
+              {
+                section_key: "goals_treatment_planning",
+                field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+                section_index: 0,
+                payload: { title: "Goal" },
+                source_span: null,
+                status: "drafted",
+                required: true,
+                review_notes: null,
+              },
+            ],
+            unresolved_keys: [],
+            extracted_count: 0,
+            unresolved_count: 0,
+          },
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_structured_sections")) {
+        return { ok: false, status: 500, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-structured-fail")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/client-1/assessments/fba.pdf",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const statusPatch = vi.mocked(fetchJson).mock.calls.find(([url, init]) => {
+      const body = typeof init?.body === "string" ? init.body : "";
+      return typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-structured-fail") && body.includes("extraction_failed");
+    });
+    expect(statusPatch).toBeDefined();
+    const successEvent = vi.mocked(fetchJson).mock.calls.find(([url, init]) => {
+      const body = typeof init?.body === "string" ? init.body : "";
+      return typeof url === "string" && url.includes("/rest/v1/assessment_review_events") && body.includes("extraction_completed");
+    });
+    expect(successEvent).toBeUndefined();
+  });
+
   it("records extraction_failed audit event when extraction workflow throws", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
@@ -1042,7 +1146,7 @@ describe("assessmentDocumentsHandler", () => {
     expect(draftWriteCalls).toHaveLength(0);
   });
 
-  it("keeps the document extracted and records draft_generation_failed on missing_program_match", async () => {
+  it("keeps the document extracted and does not run legacy draft generation on extraction completion", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
@@ -1247,16 +1351,13 @@ describe("assessmentDocumentsHandler", () => {
     expect(response.status).toBe(201);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(fetchJson).toHaveBeenCalledWith(
-      expect.stringContaining("/rest/v1/assessment_draft_programs?id=in.(draft-program-mismatch-2)"),
-      expect.objectContaining({ method: "DELETE" }),
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/functions/v1/generate-program-goals"),
+      expect.anything(),
     );
-    expect(fetchJson).toHaveBeenCalledWith(
-      expect.stringContaining("/rest/v1/assessment_documents?id=eq.doc-auto-2"),
-      expect.objectContaining({
-        method: "PATCH",
-        body: expect.stringContaining("missing_program_match"),
-      }),
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_draft_programs"),
+      expect.objectContaining({ method: "POST" }),
     );
     const liveProgramWrite = vi
       .mocked(fetchJson)
@@ -1276,8 +1377,7 @@ describe("assessmentDocumentsHandler", () => {
           typeof url === "string" &&
           method === "PATCH" &&
           url.includes("/rest/v1/assessment_documents?id=eq.doc-auto-2") &&
-          body.includes("\"status\":\"extracted\"") &&
-          body.includes("missing_program_match")
+          body.includes("\"status\":\"extracted\"")
         );
       });
     expect(extractedStatusPatchCall).toBeDefined();
@@ -1287,8 +1387,6 @@ describe("assessmentDocumentsHandler", () => {
     expect(extractedStatusPatchPayload).toMatchObject({
       status: "extracted",
     });
-    expect(typeof extractedStatusPatchPayload.extraction_error).toBe("string");
-    expect(String(extractedStatusPatchPayload.extraction_error)).toContain("missing_program_match");
 
     const draftGenerationFailedEventCalls = vi
       .mocked(fetchJson)
@@ -1298,16 +1396,8 @@ describe("assessmentDocumentsHandler", () => {
         if (!url.includes("/rest/v1/assessment_review_events")) return false;
         const body = typeof init?.body === "string" ? init.body : "";
         return body.includes("\"action\":\"draft_generation_failed\"");
-      });
-    expect(draftGenerationFailedEventCalls).toHaveLength(1);
-    const draftGenerationFailedEventPayload = JSON.parse(
-      ((draftGenerationFailedEventCalls[0]?.[1] as RequestInit).body ?? "{}") as string,
-    ) as Record<string, unknown>;
-    expect(draftGenerationFailedEventPayload).toMatchObject({
-      action: "draft_generation_failed",
-      from_status: "extracted",
-      to_status: "extracted",
     });
+    expect(draftGenerationFailedEventCalls).toHaveLength(0);
   });
 
   it.each(roleMatrix)("returns 403 for out-of-org assessment document delete as $label without side effects", async ({ role }) => {

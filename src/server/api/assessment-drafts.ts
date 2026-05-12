@@ -8,18 +8,9 @@ import {
   json,
   resolveOrgAndRole,
 } from "./shared";
-import {
-  composeAssessmentTextFromChecklist,
-  type AssessmentChecklistValueRow,
-} from "./assessment-text-composer";
-import {
-  buildGenerateProgramGoalsPayload,
-  type AssessmentExtractionGenerationRow,
-} from "./assessment-generation-payload";
 
 const MIN_CHILD_GOALS = 20;
 const MIN_PARENT_GOALS = 6;
-const MAX_GENERATION_ASSESSMENT_TEXT_CHARS = 12000;
 
 const evidenceRefSchema = z.object({
   section_key: z.string().trim().min(1),
@@ -129,11 +120,6 @@ interface AssessmentDraftGoalRow {
   accept_state: "pending" | "accepted" | "rejected" | "edited";
 }
 
-interface AssessmentChecklistWithStatusValueRow extends AssessmentChecklistValueRow {
-  required: boolean;
-  status: "not_started" | "drafted" | "verified" | "approved";
-}
-
 interface GeneratedDraftPayload {
   programs: Array<{
     name: string;
@@ -163,7 +149,7 @@ interface GeneratedDraftPayload {
     mastery_criteria: string;
     maintenance_criteria: string;
     generalization_criteria: string;
-    objective_data_points: string[];
+    objective_data_points: Array<Record<string, unknown>>;
     rationale: string;
     evidence_refs: Array<{ section_key: string; source_span: string }>;
     review_flags: Array<
@@ -180,9 +166,112 @@ interface GeneratedDraftPayload {
   confidence: "low" | "medium" | "high";
 }
 
-interface GeneratedDraftErrorPayload {
-  error?: string;
+interface AssessmentStructuredSectionRow {
+  id: string;
+  section_key: string;
+  field_key: string;
+  section_index: number;
+  payload: Record<string, unknown> | null;
+  status: "not_started" | "drafted" | "verified" | "approved" | "rejected";
+  required: boolean;
 }
+
+const stringifyPayloadValue = (value: unknown): string => {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "";
+};
+
+const getPayloadString = (payload: Record<string, unknown>, keys: string[], fallback = ""): string => {
+  for (const key of keys) {
+    const value = stringifyPayloadValue(payload[key]);
+    if (value.length > 0) {
+      return value;
+    }
+  }
+  return fallback;
+};
+
+const getPayloadRows = (payload: Record<string, unknown>, keys: string[]): Array<Record<string, unknown>> => {
+  for (const key of keys) {
+    const value = payload[key];
+    if (Array.isArray(value)) {
+      return value.filter((item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item));
+    }
+  }
+  return [];
+};
+
+const buildDeterministicDraftPayload = (
+  structuredSections: AssessmentStructuredSectionRow[],
+): GeneratedDraftPayload | null => {
+  const approvedGoalSections = structuredSections.filter(
+    (section) =>
+      section.status === "approved" &&
+      section.payload &&
+      [
+        "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+        "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+        "CALOPTIMA_FBA_PARENT_GOALS",
+      ].includes(section.field_key),
+  );
+  if (approvedGoalSections.length === 0) {
+    return null;
+  }
+
+  const programNames = new Set<string>();
+  const goals = approvedGoalSections.map((section, index) => {
+    const payload = section.payload ?? {};
+    const isParentGoal =
+      section.field_key === "CALOPTIMA_FBA_PARENT_GOALS" ||
+      getPayloadString(payload, ["goal_type"]).toLowerCase() === "parent";
+    const programName = getPayloadString(payload, ["program_name", "program", "domain"], isParentGoal ? "Parent Training" : "Behavior Treatment");
+    programNames.add(programName);
+    const title = getPayloadString(payload, ["title", "goal", "goal_title"], `${isParentGoal ? "Parent" : "Child"} Goal ${index + 1}`);
+    const description = getPayloadString(payload, ["description", "goal_description", "objective"], title);
+    const originalText = getPayloadString(payload, ["original_text", "source_text", "raw_text"], description);
+    return {
+      program_name: programName,
+      title,
+      description,
+      original_text: originalText,
+      goal_type: isParentGoal ? ("parent" as const) : ("child" as const),
+      target_behavior: getPayloadString(payload, ["target_behavior", "behavior", "skill"], title),
+      measurement_type: getPayloadString(payload, ["measurement_type", "measure", "data_collection"], "frequency"),
+      baseline_data: getPayloadString(payload, ["baseline_data", "baseline"], "Baseline pending staff review"),
+      target_criteria: getPayloadString(payload, ["target_criteria", "criteria", "objective"], description),
+      mastery_criteria: getPayloadString(payload, ["mastery_criteria", "mastery"], "Mastery criteria pending staff review"),
+      maintenance_criteria: getPayloadString(payload, ["maintenance_criteria", "maintenance"], "Maintenance criteria pending staff review"),
+      generalization_criteria: getPayloadString(payload, ["generalization_criteria", "generalization"], "Generalization criteria pending staff review"),
+      objective_data_points: getPayloadRows(payload, ["objective_data_points", "measurement_rows", "data_points"]),
+      rationale: getPayloadString(payload, ["rationale"], "Derived deterministically from approved CalOptima structured section."),
+      evidence_refs: [
+        {
+          section_key: section.section_key,
+          source_span: `${section.field_key}#${section.section_index}`,
+        },
+      ],
+      review_flags: [] as GeneratedDraftPayload["goals"][number]["review_flags"],
+    };
+  });
+
+  return {
+    programs: Array.from(programNames).map((name) => ({
+      name,
+      description: `Program derived from approved CalOptima structured goal sections for ${name}.`,
+      rationale: "Deterministic conversion from staff-approved CalOptima FBA sections.",
+      evidence_refs: [{ section_key: "caloptima_structured_sections", source_span: name }],
+      review_flags: [],
+    })),
+    goals,
+    summary_rationale: "Drafts were created from approved CalOptima structured sections without AI generation.",
+    confidence: "high",
+  };
+};
 
 const validateGoalMinimums = (
   goals: Array<{ goal_type: "child" | "parent" }>,
@@ -505,80 +594,29 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
     }
 
     if (!AUTO_GENERATE_READY_DOCUMENT_STATUSES.has(document.status)) {
-      return json({ error: "Assessment extraction must complete before AI proposals can be generated." }, 409);
+      return json({ error: "Assessment extraction must complete before deterministic drafts can be generated." }, 409);
     }
 
-    const checklistResult = await fetchJson<AssessmentChecklistWithStatusValueRow[]>(
-      `${supabaseUrl}/rest/v1/assessment_checklist_items?select=section_key,label,placeholder_key,value_text,value_json,required,status&organization_id=eq.${encodeURIComponent(
+    const structuredResult = await fetchJson<AssessmentStructuredSectionRow[]>(
+      `${supabaseUrl}/rest/v1/assessment_structured_sections?select=id,section_key,field_key,section_index,payload,status,required&organization_id=eq.${encodeURIComponent(
         organizationId,
-      )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocumentId)}&order=section_key.asc,created_at.asc`,
+      )}&assessment_document_id=eq.${encodeURIComponent(
+        assessmentDocumentId,
+      )}&order=section_key.asc,field_key.asc,section_index.asc`,
       { method: "GET", headers },
     );
-    if (!checklistResult.ok) {
-      return json({ error: "Failed to load extracted checklist values for AI proposal generation." }, checklistResult.status || 500);
+    if (!structuredResult.ok) {
+      return json({ error: "Failed to load structured assessment sections for deterministic draft generation." }, structuredResult.status || 500);
     }
-    const checklistRows = checklistResult.data ?? [];
-    const assessmentText = composeAssessmentTextFromChecklist(checklistRows).slice(0, MAX_GENERATION_ASSESSMENT_TEXT_CHARS);
-    if (assessmentText.length < 20) {
-      return json({ error: "Insufficient extracted checklist content to generate AI proposals." }, 409);
+    const generatedPayload = buildDeterministicDraftPayload(structuredResult.data ?? []);
+    if (!generatedPayload) {
+      return json({ error: "No approved structured CalOptima goal sections are available for deterministic draft generation." }, 409);
     }
-
-    const extractionResult = await fetchJson<AssessmentExtractionGenerationRow[]>(
-      `${supabaseUrl}/rest/v1/assessment_extractions?select=section_key,field_key,label,value_text,value_json,source_span,status&organization_id=eq.${encodeURIComponent(
-        organizationId,
-      )}&assessment_document_id=eq.${encodeURIComponent(assessmentDocumentId)}&order=section_key.asc,created_at.asc`,
-      { method: "GET", headers },
-    );
-    if (!extractionResult.ok) {
-      return json({ error: "Failed to load extraction evidence for AI proposal generation." }, extractionResult.status || 500);
-    }
-
-    const clientResult = await fetchJson<Array<{ full_name: string | null }>>(
-      `${supabaseUrl}/rest/v1/clients?select=full_name&id=eq.${encodeURIComponent(
-        document.client_id,
-      )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
-      { method: "GET", headers },
-    );
-    const clientName = Array.isArray(clientResult.data) ? clientResult.data[0]?.full_name ?? undefined : undefined;
-
-    const guidanceResult = await fetchJson<Array<{ guidance_text: string | null }>>(
-      `${supabaseUrl}/rest/v1/ai_guidance_documents?select=guidance_text&guidance_key=eq.white_bible_core&is_active=eq.true&order=updated_at.desc&limit=1`,
-      { method: "GET", headers },
-    );
-    const organizationGuidance = Array.isArray(guidanceResult.data) ? guidanceResult.data[0]?.guidance_text ?? "" : "";
-
-    const generationPayload = buildGenerateProgramGoalsPayload({
-      assessmentDocumentId,
-      clientId: document.client_id,
-      organizationId,
-      clientDisplayName: clientName,
-      organizationGuidance,
-      checklistRows,
-      extractionRows: extractionResult.data ?? [],
-    });
-
-    const generatedResult = await fetchJson<GeneratedDraftPayload>(`${supabaseUrl}/functions/v1/generate-program-goals`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(generationPayload),
-    });
-    if (!generatedResult.ok || !generatedResult.data) {
-      const generatedError = (generatedResult.data as unknown as GeneratedDraftErrorPayload | null)?.error;
-      return json(
-        {
-          error:
-            typeof generatedError === "string" && generatedError.trim().length > 0
-              ? generatedError
-              : "Failed to auto-generate AI proposal program/goals from extracted fields.",
-        },
-        generatedResult.status || 500,
-      );
-    }
-    const minimumValidation = validateGoalMinimums(generatedResult.data.goals);
+    const minimumValidation = validateGoalMinimums(generatedPayload.goals);
     if (!minimumValidation.valid) {
       return json(
         {
-          error: `Auto-generated draft must include at least ${MIN_CHILD_GOALS} child goals and ${MIN_PARENT_GOALS} parent goals.`,
+          error: `Deterministic draft must include at least ${MIN_CHILD_GOALS} child goals and ${MIN_PARENT_GOALS} parent goals.`,
           child_goal_count: minimumValidation.childCount,
           parent_goal_count: minimumValidation.parentCount,
         },
@@ -593,13 +631,13 @@ export async function assessmentDraftsHandler(request: Request): Promise<Respons
       actorId,
       document,
       assessmentDocumentId,
-      payload: generatedResult.data,
+      payload: generatedPayload,
     });
     if (!persisted.ok) {
       return json({ error: persisted.error }, persisted.status);
     }
 
-    return json({ draft_program_id: persisted.draftProgramId, auto_generated: true }, 201);
+    return json({ draft_program_id: persisted.draftProgramId, auto_generated: false, deterministic: true }, 201);
   }
 
   if (request.method === "PATCH") {

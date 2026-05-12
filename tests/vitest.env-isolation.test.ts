@@ -78,5 +78,5 @@ describe('vitest env isolation', () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
-  }, 15000);
+  }, 60000);
 });

@@ -26,7 +26,14 @@
       "status": "not_started",
       "extraction_owner": "IntakeCoordinator",
       "review_owner": "ClinicalReviewer",
-      "review_notes": "Prefer first_name + last_name when available."
+      "review_notes": "Prefer first_name + last_name when available.",
+      "input_type": "text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "prefill_verify_when_source_exists"
     },
     {
       "section": "identification_admin",
@@ -40,7 +47,14 @@
       "status": "not_started",
       "extraction_owner": "IntakeCoordinator",
       "review_owner": "ClinicalReviewer",
-      "review_notes": "Format MM/DD/YYYY."
+      "review_notes": "Format MM/DD/YYYY.",
+      "input_type": "date",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "prefill_verify_when_source_exists"
     },
     {
       "section": "identification_admin",
@@ -54,7 +68,14 @@
       "status": "not_started",
       "extraction_owner": "IntakeCoordinator",
       "review_owner": "ClinicalReviewer",
-      "review_notes": "CalOptima member identifier fallback chain."
+      "review_notes": "CalOptima member identifier fallback chain.",
+      "input_type": "identifier",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "prefill_verify_when_source_exists"
     },
     {
       "section": "identification_admin",
@@ -68,7 +89,14 @@
       "status": "not_started",
       "extraction_owner": "IntakeCoordinator",
       "review_owner": "ClinicalReviewer",
-      "review_notes": "Join as code + description lines."
+      "review_notes": "Join as code + description lines.",
+      "input_type": "multiline_text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "prefill_verify_when_source_exists"
     },
     {
       "section": "identification_admin",
@@ -82,7 +110,14 @@
       "status": "not_started",
       "extraction_owner": "IntakeCoordinator",
       "review_owner": "ClinicalReviewer",
-      "review_notes": "Include relationship if known."
+      "review_notes": "Include relationship if known.",
+      "input_type": "text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "prefill_verify_when_source_exists"
     },
     {
       "section": "identification_admin",
@@ -96,7 +131,14 @@
       "status": "not_started",
       "extraction_owner": "IntakeCoordinator",
       "review_owner": "ClinicalReviewer",
-      "review_notes": "Prefer guardian contact for this section."
+      "review_notes": "Prefer guardian contact for this section.",
+      "input_type": "phone",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "prefill_verify_when_source_exists"
     },
     {
       "section": "identification_admin",
@@ -110,7 +152,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Not first-class modeled today."
+      "review_notes": "Not first-class modeled today.",
+      "input_type": "text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_verify_assisted_draft"
     },
     {
       "section": "identification_admin",
@@ -124,7 +173,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Not first-class modeled today."
+      "review_notes": "Not first-class modeled today.",
+      "input_type": "multiline_text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_verify_assisted_draft"
     },
     {
       "section": "identification_admin",
@@ -138,7 +194,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Editable list."
+      "review_notes": "Editable list.",
+      "input_type": "multiline_text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_verify_assisted_draft"
     },
     {
       "section": "identification_admin",
@@ -152,7 +215,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Editable list."
+      "review_notes": "Editable list.",
+      "input_type": "multiline_text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_verify_assisted_draft"
     },
     {
       "section": "identification_admin",
@@ -166,7 +236,14 @@
       "status": "not_started",
       "extraction_owner": "IntakeCoordinator",
       "review_owner": "ClinicalReviewer",
-      "review_notes": "Fallback manual if not derivable."
+      "review_notes": "Fallback manual if not derivable.",
+      "input_type": "date",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "prefill_verify_when_source_exists"
     },
     {
       "section": "identification_admin",
@@ -180,7 +257,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Often differs from current authorization start."
+      "review_notes": "Often differs from current authorization start.",
+      "input_type": "date",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_verify_assisted_draft"
     },
     {
       "section": "identification_admin",
@@ -194,7 +278,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Free text or first-time flag."
+      "review_notes": "Free text or first-time flag.",
+      "input_type": "multiline_text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_manual_entry_required"
     },
     {
       "section": "identification_admin",
@@ -208,7 +299,14 @@
       "status": "not_started",
       "extraction_owner": "IntakeCoordinator",
       "review_owner": "ClinicalReviewer",
-      "review_notes": "May need dedicated org contact field."
+      "review_notes": "May need dedicated org contact field.",
+      "input_type": "text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "prefill_verify_when_source_exists"
     },
     {
       "section": "identification_admin",
@@ -222,7 +320,14 @@
       "status": "not_started",
       "extraction_owner": "IntakeCoordinator",
       "review_owner": "ClinicalReviewer",
-      "review_notes": ""
+      "review_notes": "",
+      "input_type": "phone",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "prefill_verify_when_source_exists"
     },
     {
       "section": "identification_admin",
@@ -236,7 +341,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Editable fallback."
+      "review_notes": "Editable fallback.",
+      "input_type": "phone",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_verify_assisted_draft"
     },
     {
       "section": "identification_admin",
@@ -250,7 +362,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Narrative clinical statement."
+      "review_notes": "Narrative clinical statement.",
+      "input_type": "multiline_text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_manual_entry_required"
     },
     {
       "section": "data_sources_interviews",
@@ -264,7 +383,15 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Record type, author, date rows."
+      "review_notes": "Record type, author, date rows.",
+      "input_type": "structured_section",
+      "destination": "assessment_checklist.value_json",
+      "structured_section": "records_reviewed",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "structured_clinical_review_required"
     },
     {
       "section": "data_sources_interviews",
@@ -278,7 +405,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Narrative with location/date/attendees."
+      "review_notes": "Narrative with location/date/attendees.",
+      "input_type": "multiline_text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_manual_entry_required"
     },
     {
       "section": "data_sources_interviews",
@@ -292,7 +426,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Narrative with location/date/attendees."
+      "review_notes": "Narrative with location/date/attendees.",
+      "input_type": "multiline_text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_manual_entry_required"
     },
     {
       "section": "background_school_history",
@@ -306,7 +447,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Formatting transform required."
+      "review_notes": "Formatting transform required.",
+      "input_type": "multiline_text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_verify_assisted_draft"
     },
     {
       "section": "background_school_history",
@@ -320,7 +468,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "From IEP/school records."
+      "review_notes": "From IEP/school records.",
+      "input_type": "multiline_text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_manual_entry_required"
     },
     {
       "section": "background_school_history",
@@ -334,7 +489,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Checkbox value."
+      "review_notes": "Checkbox value.",
+      "input_type": "checkbox_yes_no",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_manual_entry_required"
     },
     {
       "section": "background_school_history",
@@ -348,7 +510,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": ""
+      "review_notes": "",
+      "input_type": "date",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_verify_assisted_draft"
     },
     {
       "section": "background_school_history",
@@ -362,7 +531,15 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Provider/service/start/end/termination reason table."
+      "review_notes": "Provider/service/start/end/termination reason table.",
+      "input_type": "structured_section",
+      "destination": "assessment_checklist.value_json",
+      "structured_section": "previous_interventions",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "structured_clinical_review_required"
     },
     {
       "section": "coordination_adaptive_testing",
@@ -376,7 +553,15 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Parent/school/regional center/speech-OT-PT/PCP/MH narratives."
+      "review_notes": "Parent/school/regional center/speech-OT-PT/PCP/MH narratives.",
+      "input_type": "structured_section",
+      "destination": "assessment_checklist.value_json",
+      "structured_section": "coordination_of_care",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "structured_clinical_review_required"
     },
     {
       "section": "coordination_adaptive_testing",
@@ -390,7 +575,15 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Structured instrument output."
+      "review_notes": "Structured instrument output.",
+      "input_type": "structured_section",
+      "destination": "assessment_checklist.value_json",
+      "structured_section": "vineland_domain_scores",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "structured_clinical_review_required"
     },
     {
       "section": "diagnostic_behavior_analysis",
@@ -404,7 +597,14 @@
       "status": "not_started",
       "extraction_owner": "IntakeCoordinator",
       "review_owner": "ClinicalReviewer",
-      "review_notes": ""
+      "review_notes": "",
+      "input_type": "multiline_text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "prefill_verify_when_source_exists"
     },
     {
       "section": "diagnostic_behavior_analysis",
@@ -418,7 +618,15 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "AI-assisted structured extraction for behavior/history/ABC/function, with clinician verification."
+      "review_notes": "AI-assisted structured extraction for behavior/history/ABC/function, with clinician verification.",
+      "input_type": "structured_section",
+      "destination": "assessment_checklist.value_json",
+      "structured_section": "target_behavior_blocks",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "structured_clinical_review_required"
     },
     {
       "section": "diagnostic_behavior_analysis",
@@ -432,7 +640,15 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Ecological/replacement/focused/reactive/data procedures."
+      "review_notes": "Ecological/replacement/focused/reactive/data procedures.",
+      "input_type": "structured_section",
+      "destination": "assessment_checklist.value_json",
+      "structured_section": "behavior_intervention_plan_blocks",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "structured_clinical_review_required"
     },
     {
       "section": "goals_treatment_planning",
@@ -446,7 +662,15 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "AI-assisted extraction for goals, baseline, criteria, and data settings; BCBA review required."
+      "review_notes": "AI-assisted extraction for goals, baseline, criteria, and data settings; BCBA review required.",
+      "input_type": "structured_section",
+      "destination": "assessment_checklist.value_json",
+      "structured_section": "target_replacement_goals",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "structured_clinical_review_required"
     },
     {
       "section": "goals_treatment_planning",
@@ -460,7 +684,15 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "AI-assisted extraction for skill goals and objective data points; BCBA review required."
+      "review_notes": "AI-assisted extraction for skill goals and objective data points; BCBA review required.",
+      "input_type": "structured_section",
+      "destination": "assessment_checklist.value_json",
+      "structured_section": "skill_acquisition_goals",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "structured_clinical_review_required"
     },
     {
       "section": "goals_treatment_planning",
@@ -474,7 +706,15 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "AI-assisted extraction for caregiver goals with baseline/settings and data-point context."
+      "review_notes": "AI-assisted extraction for caregiver goals with baseline/settings and data-point context.",
+      "input_type": "structured_section",
+      "destination": "assessment_checklist.value_json",
+      "structured_section": "parent_caregiver_goals",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "structured_clinical_review_required"
     },
     {
       "section": "goals_treatment_planning",
@@ -488,7 +728,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "AI-assisted extraction for maintenance/generalization criteria and plan details."
+      "review_notes": "AI-assisted extraction for maintenance/generalization criteria and plan details.",
+      "input_type": "multiline_text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_verify_assisted_draft"
     },
     {
       "section": "goals_treatment_planning",
@@ -502,7 +749,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Checkboxes + required prompts."
+      "review_notes": "Checkboxes + required prompts.",
+      "input_type": "multiline_text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_manual_entry_required"
     },
     {
       "section": "diagnostic_behavior_analysis",
@@ -516,7 +770,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Preventative, response, and post-crisis protocol narrative."
+      "review_notes": "Preventative, response, and post-crisis protocol narrative.",
+      "input_type": "multiline_text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_manual_entry_required"
     },
     {
       "section": "summary_recommendations_signatures",
@@ -530,7 +791,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Clinical rationale for requested hours."
+      "review_notes": "Clinical rationale for requested hours.",
+      "input_type": "multiline_text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_manual_entry_required"
     },
     {
       "section": "summary_recommendations_signatures",
@@ -544,7 +812,15 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Structured code/units/hours/location rows."
+      "review_notes": "Structured code/units/hours/location rows.",
+      "input_type": "structured_section",
+      "destination": "assessment_checklist.value_json",
+      "structured_section": "hcpcs_recommendation_rows",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "structured_clinical_review_required"
     },
     {
       "section": "summary_recommendations_signatures",
@@ -558,7 +834,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Checkbox + consent date."
+      "review_notes": "Checkbox + consent date.",
+      "input_type": "checkbox_yes_no",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_manual_entry_required"
     },
     {
       "section": "summary_recommendations_signatures",
@@ -572,7 +855,14 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Yes/No responses + explanation."
+      "review_notes": "Yes/No responses + explanation.",
+      "input_type": "checkbox_yes_no",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "clinician_manual_entry_required"
     },
     {
       "section": "summary_recommendations_signatures",
@@ -586,7 +876,14 @@
       "status": "not_started",
       "extraction_owner": "IntakeCoordinator",
       "review_owner": "ClinicalReviewer",
-      "review_notes": ""
+      "review_notes": "",
+      "input_type": "text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "prefill_verify_when_source_exists"
     },
     {
       "section": "summary_recommendations_signatures",
@@ -600,7 +897,14 @@
       "status": "not_started",
       "extraction_owner": "IntakeCoordinator",
       "review_owner": "ClinicalReviewer",
-      "review_notes": ""
+      "review_notes": "",
+      "input_type": "text",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "prefill_verify_when_source_exists"
     },
     {
       "section": "summary_recommendations_signatures",
@@ -614,7 +918,14 @@
       "status": "not_started",
       "extraction_owner": "IntakeCoordinator",
       "review_owner": "ClinicalReviewer",
-      "review_notes": ""
+      "review_notes": "",
+      "input_type": "date",
+      "destination": "assessment_checklist.value_text",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "prefill_verify_when_source_exists"
     },
     {
       "section": "summary_recommendations_signatures",
@@ -628,7 +939,15 @@
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "Signature capture/approval workflow."
+      "review_notes": "Signature capture/approval workflow.",
+      "input_type": "structured_section",
+      "destination": "assessment_checklist.value_json",
+      "structured_section": "signatures",
+      "pdf_render": {
+        "target": "caloptima_fba_pdf_render_map",
+        "not_exported": false
+      },
+      "review_behavior": "structured_clinical_review_required"
     }
   ]
 }

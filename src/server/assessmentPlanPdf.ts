@@ -31,6 +31,15 @@ export interface AssessmentChecklistValueRow {
   value_json: unknown | null;
 }
 
+export interface AssessmentStructuredSectionValueRow {
+  field_key: string;
+  section_key: string;
+  section_index: number;
+  payload: Record<string, unknown> | null;
+  status: "not_started" | "drafted" | "verified" | "approved" | "rejected";
+  required: boolean;
+}
+
 export interface AssessmentClientSnapshot {
   full_name: string;
   first_name?: string | null;
@@ -74,6 +83,7 @@ export interface DraftGoalSnapshot {
 
 export interface BuildTemplatePayloadArgs {
   checklistItems: AssessmentChecklistValueRow[];
+  structuredSections?: AssessmentStructuredSectionValueRow[];
   client: AssessmentClientSnapshot;
   writer: AssessmentWriterSnapshot;
   acceptedProgram: DraftProgramSnapshot | null;
@@ -193,6 +203,54 @@ const formatAcceptedGoals = (goals: DraftGoalSnapshot[]): string => {
     .join("\n");
 };
 
+const formatStructuredPayload = (payload: Record<string, unknown> | null): string => {
+  if (!payload) return "";
+  if (Array.isArray(payload.rows)) {
+    return payload.rows
+      .map((row, index) => `${index + 1}. ${toText(row)}`)
+      .filter((entry) => entry.trim().length > 3)
+      .join("\n");
+  }
+  const orderedKeys = [
+    "title",
+    "description",
+    "program_name",
+    "goal_type",
+    "target_behavior",
+    "measurement_type",
+    "baseline_data",
+    "target_criteria",
+    "mastery_criteria",
+    "maintenance_criteria",
+    "generalization_criteria",
+    "rationale",
+  ];
+  const lines = orderedKeys
+    .map((key) => {
+      const value = toText(payload[key]);
+      return value ? `${key.replace(/_/g, " ")}: ${value}` : "";
+    })
+    .filter(Boolean);
+  const objectiveRows = Array.isArray(payload.objective_data_points)
+    ? payload.objective_data_points.map((row, index) => `objective ${index + 1}: ${toText(row)}`)
+    : [];
+  return [...lines, ...objectiveRows].join("\n");
+};
+
+const formatStructuredSectionsForKey = (placeholderKey: string, args: BuildTemplatePayloadArgs): string => {
+  const sections = (args.structuredSections ?? [])
+    .filter((section) => section.field_key === placeholderKey && section.status === "approved")
+    .sort((left, right) => left.section_index - right.section_index);
+  if (sections.length === 0) return "";
+  return sections
+    .map((section, index) => {
+      const formatted = formatStructuredPayload(section.payload);
+      return formatted ? `${index + 1}. ${formatted}` : "";
+    })
+    .filter(Boolean)
+    .join("\n\n");
+};
+
 const formatAddress = (client: AssessmentClientSnapshot): string => {
   return [client.address_line1, client.address_line2, client.city, client.state, client.zip_code]
     .map((item) => (typeof item === "string" ? item.trim() : ""))
@@ -205,6 +263,10 @@ const getDerivedValue = (
   args: BuildTemplatePayloadArgs,
   checklistValue: AssessmentChecklistValueRow | undefined,
 ): string => {
+  const structuredText = formatStructuredSectionsForKey(placeholderKey, args);
+  if (structuredText.length > 0) {
+    return structuredText;
+  }
   const checklistText = checklistValue ? toText(checklistValue.value_text ?? checklistValue.value_json) : "";
   if (checklistText.length > 0) {
     return checklistText;
@@ -262,6 +324,12 @@ export async function buildCalOptimaTemplatePayload(args: BuildTemplatePayloadAr
 
     if (checklistValue?.required && value.trim().length === 0) {
       missingRequiredKeys.push(entry.placeholder_key);
+    }
+  });
+
+  (args.structuredSections ?? []).forEach((section) => {
+    if (section.required && section.status === "approved" && !values[section.field_key]?.trim()) {
+      missingRequiredKeys.push(section.field_key);
     }
   });
 

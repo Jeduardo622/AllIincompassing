@@ -138,7 +138,11 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "prefill_verify_when_source_exists"
+      "review_behavior": "prefill_verify_when_source_exists",
+      "extraction_aliases": [
+        "Phone",
+        "Guardian Name Phone"
+      ]
     },
     {
       "section": "identification_admin",
@@ -306,7 +310,11 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "prefill_verify_when_source_exists"
+      "review_behavior": "prefill_verify_when_source_exists",
+      "extraction_aliases": [
+        "Administrative Contact for Current Authorization Request Full Name and Title",
+        "Full Name and Title"
+      ]
     },
     {
       "section": "identification_admin",
@@ -327,7 +335,11 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "prefill_verify_when_source_exists"
+      "review_behavior": "prefill_verify_when_source_exists",
+      "extraction_aliases": [
+        "Administrative Contact for Current Authorization Request Phone Number",
+        "Phone Number"
+      ]
     },
     {
       "section": "identification_admin",
@@ -348,7 +360,11 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "clinician_verify_assisted_draft"
+      "review_behavior": "clinician_verify_assisted_draft",
+      "extraction_aliases": [
+        "Administrative Contact for Current Authorization Request Fax Number",
+        "Fax Number"
+      ]
     },
     {
       "section": "identification_admin",
@@ -369,7 +385,11 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "clinician_manual_entry_required"
+      "review_behavior": "clinician_manual_entry_required",
+      "extraction_aliases": [
+        "Chief Complaint/Reason for Seeking Applied Behavior Analysis (ABA) Treatment",
+        "Chief Complaint/Reason for Seeking ABA Treatment"
+      ]
     },
     {
       "section": "data_sources_interviews",
@@ -391,7 +411,10 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "structured_clinical_review_required"
+      "review_behavior": "structured_clinical_review_required",
+      "extraction_aliases": [
+        "Records Reviewed"
+      ]
     },
     {
       "section": "data_sources_interviews",
@@ -496,7 +519,10 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "clinician_manual_entry_required"
+      "review_behavior": "clinician_manual_entry_required",
+      "extraction_aliases": [
+        "Does the member have a current Individualized Educational Plan (IEP/equivalent)?"
+      ]
     },
     {
       "section": "background_school_history",
@@ -517,7 +543,11 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "clinician_verify_assisted_draft"
+      "review_behavior": "clinician_verify_assisted_draft",
+      "extraction_aliases": [
+        "Date of the current IEP/equivalent",
+        "Date of current IEP/equivalent"
+      ]
     },
     {
       "section": "background_school_history",
@@ -548,7 +578,7 @@
       "mode": "MANUAL",
       "source": "N/A",
       "required": true,
-      "extraction_method": "clinician_manual_entry",
+      "extraction_method": "deterministic_structured_extraction_plus_review",
       "validation_rule": "non_empty_text",
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
@@ -561,7 +591,14 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "structured_clinical_review_required"
+      "review_behavior": "structured_clinical_review_required",
+      "extraction_aliases": [
+        "IV. COORDINATION OF CARE",
+        "COORDINATION OF CARE",
+        "Parent/Caregiver:",
+        "Speech/OT/PT:",
+        "Primary Care Provider/Specialist:"
+      ]
     },
     {
       "section": "coordination_adaptive_testing",
@@ -570,7 +607,7 @@
       "mode": "MANUAL",
       "source": "N/A",
       "required": true,
-      "extraction_method": "clinician_manual_entry",
+      "extraction_method": "deterministic_structured_extraction_plus_review",
       "validation_rule": "structured_payload_required",
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
@@ -583,7 +620,13 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "structured_clinical_review_required"
+      "review_behavior": "structured_clinical_review_required",
+      "extraction_aliases": [
+        "Vineland Adaptive Behavior Scales, Third Edition",
+        "Domain Raw Score Standard Score V-Scale Score Age Equivalent",
+        "Vineland-3 Scoring Information",
+        "Domain Raw Score Standard Score/V-Scale Score Age Equivalent"
+      ]
     },
     {
       "section": "diagnostic_behavior_analysis",
@@ -604,21 +647,27 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "prefill_verify_when_source_exists"
+      "review_behavior": "prefill_verify_when_source_exists",
+      "extraction_aliases": [
+        "Diagnosis description Date of diagnosis/report Diagnosed by",
+        "Diagnosed by (Full Name & credential)",
+        "F84.0 Autism",
+        "Current diagnosis code"
+      ]
     },
     {
       "section": "diagnostic_behavior_analysis",
       "label": "Target behavior blocks",
       "placeholder_key": "CALOPTIMA_FBA_TARGET_BEHAVIOR_BLOCKS",
-      "mode": "ASSISTED",
-      "source": "uploaded_assessment_document",
+      "mode": "MANUAL",
+      "source": "N/A",
       "required": true,
-      "extraction_method": "ai_structured_recommendation",
+      "extraction_method": "deterministic_structured_extraction_plus_review",
       "validation_rule": "structured_payload_required",
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "AI-assisted structured extraction for behavior/history/ABC/function, with clinician verification.",
+      "review_notes": "Includes identifying behavior/history/ABC/function.",
       "input_type": "structured_section",
       "destination": "assessment_checklist.value_json",
       "structured_section": "target_behavior_blocks",
@@ -626,7 +675,13 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "structured_clinical_review_required"
+      "review_behavior": "structured_clinical_review_required",
+      "extraction_aliases": [
+        "X. FUNCTIONAL ASSESSMENT OR ANALYSIS OF TARGET BEHAVIORS",
+        "Target Behavior 1:",
+        "Operational Definition",
+        "Antecedent Analysis"
+      ]
     },
     {
       "section": "diagnostic_behavior_analysis",
@@ -635,7 +690,7 @@
       "mode": "MANUAL",
       "source": "N/A",
       "required": true,
-      "extraction_method": "clinician_manual_entry",
+      "extraction_method": "deterministic_structured_extraction_plus_review",
       "validation_rule": "structured_payload_required",
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
@@ -648,21 +703,27 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "structured_clinical_review_required"
+      "review_behavior": "structured_clinical_review_required",
+      "extraction_aliases": [
+        "XI. BEHAVIOR INTERVENTION PLAN",
+        "Ecological interventions",
+        "Focused intervention strategies",
+        "Data collection procedures"
+      ]
     },
     {
       "section": "goals_treatment_planning",
       "label": "Target and replacement behavior goals",
       "placeholder_key": "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
-      "mode": "ASSISTED",
-      "source": "uploaded_assessment_document",
+      "mode": "MANUAL",
+      "source": "N/A",
       "required": true,
-      "extraction_method": "ai_structured_recommendation",
+      "extraction_method": "deterministic_structured_extraction_plus_review",
       "validation_rule": "structured_payload_required",
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "AI-assisted extraction for goals, baseline, criteria, and data settings; BCBA review required.",
+      "review_notes": "Repeating LT/IT/ST goals plus baseline and settings.",
       "input_type": "structured_section",
       "destination": "assessment_checklist.value_json",
       "structured_section": "target_replacement_goals",
@@ -670,21 +731,26 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "structured_clinical_review_required"
+      "review_behavior": "structured_clinical_review_required",
+      "extraction_aliases": [
+        "XIV. TARGET AND REPLACEMENT BEHAVIOR GOALS",
+        "Target Behavior Goal",
+        "Replacement Behavior Goal"
+      ]
     },
     {
       "section": "goals_treatment_planning",
       "label": "Skill acquisition goals",
       "placeholder_key": "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
-      "mode": "ASSISTED",
-      "source": "uploaded_assessment_document",
+      "mode": "MANUAL",
+      "source": "N/A",
       "required": true,
-      "extraction_method": "ai_structured_recommendation",
+      "extraction_method": "deterministic_structured_extraction_plus_review",
       "validation_rule": "structured_payload_required",
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "AI-assisted extraction for skill goals and objective data points; BCBA review required.",
+      "review_notes": "Communication/daily living/social/self-direction blocks.",
       "input_type": "structured_section",
       "destination": "assessment_checklist.value_json",
       "structured_section": "skill_acquisition_goals",
@@ -692,21 +758,26 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "structured_clinical_review_required"
+      "review_behavior": "structured_clinical_review_required",
+      "extraction_aliases": [
+        "Skill Acquisition Goal",
+        "A. Intervention Area",
+        "Location/setting of skill acquisition goal"
+      ]
     },
     {
       "section": "goals_treatment_planning",
       "label": "Parent/Caregiver goals",
       "placeholder_key": "CALOPTIMA_FBA_PARENT_GOALS",
-      "mode": "ASSISTED",
-      "source": "uploaded_assessment_document",
+      "mode": "MANUAL",
+      "source": "N/A",
       "required": true,
-      "extraction_method": "ai_structured_recommendation",
+      "extraction_method": "deterministic_structured_extraction_plus_review",
       "validation_rule": "structured_payload_required",
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "AI-assisted extraction for caregiver goals with baseline/settings and data-point context.",
+      "review_notes": "Repeating LT/IT/ST goals with baseline and setting.",
       "input_type": "structured_section",
       "destination": "assessment_checklist.value_json",
       "structured_section": "parent_caregiver_goals",
@@ -714,28 +785,38 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "structured_clinical_review_required"
+      "review_behavior": "structured_clinical_review_required",
+      "extraction_aliases": [
+        "XVI. PARENT/CAREGIVER GOALS",
+        "Parent/Caregiver Goal",
+        "Participants in Parent Training"
+      ]
     },
     {
       "section": "goals_treatment_planning",
       "label": "Generalization and maintenance plan",
       "placeholder_key": "CALOPTIMA_FBA_GENERALIZATION_MAINTENANCE_PLAN",
-      "mode": "ASSISTED",
-      "source": "uploaded_assessment_document",
+      "mode": "MANUAL",
+      "source": "N/A",
       "required": true,
-      "extraction_method": "ai_structured_recommendation",
+      "extraction_method": "clinician_manual_entry",
       "validation_rule": "non_empty_text",
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
       "review_owner": "BCBAReviewer",
-      "review_notes": "AI-assisted extraction for maintenance/generalization criteria and plan details.",
+      "review_notes": "Includes procedural reliability, reinforcement thinning, family training.",
       "input_type": "multiline_text",
       "destination": "assessment_checklist.value_text",
       "pdf_render": {
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "clinician_verify_assisted_draft"
+      "review_behavior": "clinician_manual_entry_required",
+      "extraction_aliases": [
+        "PLAN FOR GENERALIZATION",
+        "Generalization and Maintenance Plan",
+        "Transition to Natural Mediators"
+      ]
     },
     {
       "section": "goals_treatment_planning",
@@ -756,7 +837,12 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "clinician_manual_entry_required"
+      "review_behavior": "clinician_manual_entry_required",
+      "extraction_aliases": [
+        "XIII. TRANSITION PLAN",
+        "Please list exit plan/criteria",
+        "Final treatment report"
+      ]
     },
     {
       "section": "diagnostic_behavior_analysis",
@@ -807,7 +893,7 @@
       "mode": "ASSISTED",
       "source": "authorization/planning payload",
       "required": true,
-      "extraction_method": "assisted_draft_plus_review",
+      "extraction_method": "deterministic_structured_extraction_plus_review",
       "validation_rule": "structured_payload_required",
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
@@ -820,7 +906,12 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "structured_clinical_review_required"
+      "review_behavior": "structured_clinical_review_required",
+      "extraction_aliases": [
+        "HCPCS Code and Modifiers Description",
+        "Total Hours Requested Per Month",
+        "Total Units Requested Per 6 Month"
+      ]
     },
     {
       "section": "summary_recommendations_signatures",
@@ -862,7 +953,12 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "clinician_manual_entry_required"
+      "review_behavior": "clinician_manual_entry_required",
+      "extraction_aliases": [
+        "XXI. PARENT/CAREGIVER OR LEGAL GUARDIAN INVOLVEMENT",
+        "Was the Parent/guardian involved in the development of the treatment plan",
+        "Is the parent/guardian in agreement with the submitted treatment plan"
+      ]
     },
     {
       "section": "summary_recommendations_signatures",
@@ -934,7 +1030,7 @@
       "mode": "MANUAL",
       "source": "N/A",
       "required": true,
-      "extraction_method": "clinician_manual_entry",
+      "extraction_method": "deterministic_structured_extraction_plus_review",
       "validation_rule": "signature_and_date_present",
       "status": "not_started",
       "extraction_owner": "ClinicalAuthor",
@@ -947,7 +1043,14 @@
         "target": "caloptima_fba_pdf_render_map",
         "not_exported": false
       },
-      "review_behavior": "structured_clinical_review_required"
+      "review_behavior": "structured_clinical_review_required",
+      "extraction_aliases": [
+        "XVIII. SIGNATURES",
+        "Report written by:",
+        "Report reviewed by:",
+        "Signature:",
+        "Date of Report Completed"
+      ]
     }
   ]
 }

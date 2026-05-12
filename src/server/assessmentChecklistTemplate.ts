@@ -14,6 +14,7 @@ export interface AssessmentChecklistSeedRow {
   extraction_owner?: string;
   review_owner?: string;
   review_notes?: string;
+  extraction_aliases?: string[];
 }
 
 interface ChecklistTemplateFile {
@@ -70,6 +71,9 @@ const normalizeRow = (row: unknown): AssessmentChecklistSeedRow | null => {
     extraction_owner: typeof candidate.extraction_owner === "string" ? candidate.extraction_owner : undefined,
     review_owner: typeof candidate.review_owner === "string" ? candidate.review_owner : undefined,
     review_notes: typeof candidate.review_notes === "string" ? candidate.review_notes : undefined,
+    extraction_aliases: Array.isArray(candidate.extraction_aliases)
+      ? candidate.extraction_aliases.filter((alias): alias is string => typeof alias === "string" && alias.trim().length > 0)
+      : undefined,
   };
 };
 

@@ -148,6 +148,7 @@ const runCaloptimaExtractionWorkflow = async (args: {
           label: row.label,
           placeholder_key: row.placeholder_key,
           required: row.required,
+          extraction_aliases: row.extraction_aliases ?? [],
         })),
         client_snapshot: clientSnapshot,
       }),

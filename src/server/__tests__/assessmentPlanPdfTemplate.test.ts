@@ -7,6 +7,7 @@ import { buildCalOptimaTemplatePayload, loadCalOptimaPdfRenderMap } from "../ass
 const registryPath = resolve(process.cwd(), "docs", "fill_docs", "caloptima_fba_template_field_map.json");
 const checklistPath = resolve(process.cwd(), "docs", "fill_docs", "caloptima_fba_field_extraction_checklist.json");
 const renderMapPath = resolve(process.cwd(), "docs", "fill_docs", "caloptima_fba_pdf_render_map.json");
+const extractorPath = resolve(process.cwd(), "supabase", "functions", "extract-assessment-fields", "index.ts");
 
 const readJsonFile = async (path: string): Promise<Record<string, unknown>> => {
   return JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
@@ -18,6 +19,10 @@ const asRecord = (value: unknown): Record<string, unknown> => {
 
 const asRecordArray = (value: unknown): Record<string, unknown>[] => {
   return Array.isArray(value) ? value.map(asRecord) : [];
+};
+
+const asStringArray = (value: unknown): string[] => {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
 };
 
 const placeholderKeys = (entries: Record<string, unknown>[]): string[] => {
@@ -67,6 +72,72 @@ describe("CalOptima PDF render map", () => {
       expect(typeof pdfRender.not_exported).toBe("boolean");
       expect(label.review_behavior).toEqual(expect.any(String));
     });
+  });
+
+  it("keeps CalOptima extraction metadata deterministic and alias-backed for redacted report headings", async () => {
+    const [registry, checklist] = await Promise.all([readJsonFile(registryPath), readJsonFile(checklistPath)]);
+    const registryLabels = asRecordArray(asRecord(registry.FBA).labels);
+    const checklistRows = asRecordArray(checklist.rows);
+    const rowsByKey = new Map(checklistRows.map((row) => [row.placeholder_key, row]));
+    const aliasRequiredKeys = [
+      "CALOPTIMA_FBA_ADMIN_CONTACT_NAME_TITLE",
+      "CALOPTIMA_FBA_CHIEF_COMPLAINT",
+      "CALOPTIMA_FBA_RECORDS_REVIEWED",
+      "CALOPTIMA_FBA_HAS_IEP",
+      "CALOPTIMA_FBA_IEP_DATE",
+      "CALOPTIMA_FBA_COORDINATION_OF_CARE",
+      "CALOPTIMA_FBA_VINELAND_DOMAIN_SCORES",
+      "CALOPTIMA_FBA_TARGET_BEHAVIOR_BLOCKS",
+      "CALOPTIMA_FBA_BIP_BLOCKS",
+      "CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS",
+      "CALOPTIMA_FBA_PARENT_INVOLVEMENT",
+      "CALOPTIMA_FBA_SIGNATURES",
+    ];
+
+    checklistRows.forEach((row) => {
+      expect(JSON.stringify(row).toLowerCase()).not.toContain("openai");
+      expect(String(row.extraction_method).toLowerCase()).not.toContain("ai");
+    });
+
+    aliasRequiredKeys.forEach((key) => {
+      const registryLabel = asRecord(registryLabels.find((label) => label.placeholder_key === key));
+      const checklistRow = asRecord(rowsByKey.get(key));
+
+      expect(asStringArray(registryLabel.extraction_aliases).length).toBeGreaterThan(0);
+      expect(asStringArray(checklistRow.extraction_aliases).length).toBeGreaterThan(0);
+    });
+  });
+
+  it("keeps deterministic structured extraction metadata aligned with runtime structured outputs", async () => {
+    const checklist = await readJsonFile(checklistPath);
+    const rowsByKey = new Map(asRecordArray(checklist.rows).map((row) => [row.placeholder_key, row]));
+    const deterministicStructuredKeys = [
+      "CALOPTIMA_FBA_COORDINATION_OF_CARE",
+      "CALOPTIMA_FBA_VINELAND_DOMAIN_SCORES",
+      "CALOPTIMA_FBA_TARGET_BEHAVIOR_BLOCKS",
+      "CALOPTIMA_FBA_BIP_BLOCKS",
+      "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+      "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+      "CALOPTIMA_FBA_PARENT_GOALS",
+      "CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS",
+      "CALOPTIMA_FBA_SIGNATURES",
+    ];
+
+    deterministicStructuredKeys.forEach((key) => {
+      expect(asRecord(rowsByKey.get(key)).extraction_method).toBe("deterministic_structured_extraction_plus_review");
+    });
+  });
+
+  it("guards CalOptima parser section boundaries for redacted-template headings", async () => {
+    const extractorSource = await readFile(extractorPath, "utf8");
+
+    expect(extractorSource).not.toContain("isTargetBehaviorBlock");
+    expect(extractorSource).not.toContain('field_key: "CALOPTIMA_FBA_TRANSITION_PLAN"');
+    expect(extractorSource).toContain('/XII\\.\\s+/i');
+    expect(extractorSource).toContain('/\\*\\*\\s+By\\s+signing/i');
+    expect(extractorSource).toContain('"CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS"');
+    expect(extractorSource).not.toContain("CALOPTIMA_FBA_HCPCS_RECOMMENDATIONS");
+    expect(extractorSource).not.toContain("CALOPTIMA_FBA_DAILY_SCHEDULES");
   });
 
   it("represents structured section keys consistently across registry, checklist, and render map", async () => {

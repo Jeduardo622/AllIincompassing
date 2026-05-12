@@ -16,6 +16,7 @@ const checklistRowSchema = z.object({
   label: z.string().min(1),
   placeholder_key: z.string().min(1),
   required: z.boolean(),
+  extraction_aliases: z.array(z.string().min(1)).optional(),
 });
 
 const requestSchema = z.object({
@@ -158,12 +159,59 @@ const normalizeForContains = (value: string): string =>
     .replace(/\s+/g, " ")
     .trim();
 
+const compactForContains = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+
+const normalizeInlineText = (value: string): string =>
+  value
+    .replace(/\r/g, "\n")
+    .replace(/[ \t\f\v]+/g, " ")
+    .replace(/ *\n+ */g, "\n")
+    .trim();
+
+const compactDocumentText = (text: string): string => normalizeInlineText(text).replace(/\s+/g, " ").trim();
+
+const findAnchor = (text: string, anchors: RegExp[]): RegExpMatchArray | null => {
+  for (const anchor of anchors) {
+    const match = text.match(anchor);
+    if (match) {
+      return match;
+    }
+  }
+  return null;
+};
+
+const extractSectionText = (text: string, startAnchors: RegExp[], endAnchors: RegExp[]): string | null => {
+  const normalized = compactDocumentText(text);
+  const start = findAnchor(normalized, startAnchors);
+  if (!start || start.index === undefined) {
+    return null;
+  }
+  const startIndex = start.index;
+  const afterStart = normalized.slice(startIndex);
+  let endIndex = afterStart.length;
+  for (const endAnchor of endAnchors) {
+    const match = afterStart.match(endAnchor);
+    if (match?.index !== undefined && match.index > 0) {
+      endIndex = Math.min(endIndex, match.index);
+    }
+  }
+  const sectionText = afterStart.slice(0, endIndex).trim();
+  return sectionText.length >= 20 ? sectionText : null;
+};
+
 const calibrateDeterministicConfidence = (rowLabel: string, valueText: string, text: string): number => {
   const normalizedText = normalizeForContains(text);
   const normalizedValue = normalizeForContains(valueText);
   const normalizedLabel = normalizeForContains(rowLabel);
+  const compactText = compactForContains(text);
+  const compactLabel = compactForContains(rowLabel);
   const hasValueInText = normalizedValue.length >= 3 && normalizedText.includes(normalizedValue);
-  const hasLabelInText = normalizedLabel.length >= 3 && normalizedText.includes(normalizedLabel);
+  const hasLabelInText =
+    (normalizedLabel.length >= 3 && normalizedText.includes(normalizedLabel)) ||
+    (compactLabel.length >= 3 && compactText.includes(compactLabel));
 
   let confidence = 0.88;
   if (hasValueInText) {
@@ -175,23 +223,46 @@ const calibrateDeterministicConfidence = (rowLabel: string, valueText: string, t
   return clampConfidence(confidence);
 };
 
+const extractLineNearLabels = (text: string, labels: string[]): { value: string; label: string } | null => {
+  const normalizedText = compactDocumentText(text);
+  for (const label of labels) {
+    const direct = extractLineNearLabel(text, label);
+    if (direct) {
+      return { value: direct, label };
+    }
+
+    const escapedLabel = label
+      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      .replace(/\s+/g, "\\s+");
+    const normalizedMatch = normalizedText.match(new RegExp(`${escapedLabel}\\s*[:\\-]?\\s*(.{2,220})`, "i"));
+    if (normalizedMatch?.[1]) {
+      const value = normalizedMatch[1].trim();
+      if (value.length > 0) {
+        return { value, label };
+      }
+    }
+  }
+  return null;
+};
+
 const deterministicValueForRow = (
   row: z.infer<typeof checklistRowSchema>,
   text: string,
   clientSnapshot?: z.infer<typeof requestSchema.shape.client_snapshot>,
 ): ExtractedFieldResult => {
   const key = row.placeholder_key;
-  const fromLabel = extractLineNearLabel(text, row.label);
+  const labels = [row.label, ...(row.extraction_aliases ?? [])];
+  const fromLabel = extractLineNearLabels(text, labels);
   if (fromLabel) {
-    const confidence = calibrateDeterministicConfidence(row.label, fromLabel, text);
+    const confidence = calibrateDeterministicConfidence(fromLabel.label, fromLabel.value, text);
     return {
       placeholder_key: key,
-      value_text: fromLabel,
+      value_text: fromLabel.value,
       value_json: null,
       confidence,
       mode: "AUTO",
       status: "drafted",
-      source_span: { method: "label_regex", label: row.label },
+      source_span: { method: "label_regex", label: fromLabel.label },
       review_notes: `Deterministic extraction from document label match. (Calibrated confidence ${confidence.toFixed(2)})`,
     };
   }
@@ -285,7 +356,9 @@ const extractStructuredGoalSections = (text: string): StructuredSectionResult[] 
   };
 
   lines.forEach((line, index) => {
-    const goalMatch = line.match(/^(child|parent|target\/replacement|target|replacement|skill acquisition|caregiver)\s+goal\s*\d*\s*[:-]\s*(.+)$/i);
+    const goalMatch = line.match(
+      /^(?:[A-Z]\.\s*)?(?:\d+\.\s*)?(child|parent\/caregiver|parent|target and replacement|target\/replacement|target behavior|replacement behavior|target|replacement|skill acquisition|caregiver)\s+goal\s*\d*\s*(?:\([^)]*\))?\s*[:-]\s*(.+)$/i,
+    );
     if (goalMatch?.[1] && goalMatch?.[2]) {
       flush(index);
       const label = goalMatch[1].toLowerCase();
@@ -335,8 +408,9 @@ const extractStructuredTableSections = (text: string): StructuredSectionResult[]
   const tableSpecs = [
     { field_key: "CALOPTIMA_FBA_RECORDS_REVIEWED", section_key: "records_reviewed", prefix: /^record reviewed\s*[:-]\s*(.+)$/i },
     { field_key: "CALOPTIMA_FBA_VINELAND_DOMAIN_SCORES", section_key: "assessment_results", prefix: /^vineland domain\s*[:-]\s*(.+)$/i },
-    { field_key: "CALOPTIMA_FBA_HCPCS_RECOMMENDATIONS", section_key: "service_recommendations", prefix: /^hcpcs\s*[:-]\s*(.+)$/i },
-    { field_key: "CALOPTIMA_FBA_DAILY_SCHEDULES", section_key: "daily_schedules", prefix: /^daily schedule\s*[:-]\s*(.+)$/i },
+    { field_key: "CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS", section_key: "service_recommendations", prefix: /^hcpcs\s*[:-]\s*(.+)$/i },
+    { field_key: "CALOPTIMA_FBA_DAILY_ACTIVITY_SCHEDULE", section_key: "daily_schedules", prefix: /^daily activity schedule\s*[:-]\s*(.+)$/i },
+    { field_key: "CALOPTIMA_FBA_SCHOOL_SCHEDULE", section_key: "daily_schedules", prefix: /^school schedule\s*[:-]\s*(.+)$/i },
   ];
   const rowsByKey = new Map<string, Record<string, unknown>[]>();
   text.split(/\n+/).forEach((line) => {
@@ -368,10 +442,107 @@ const extractStructuredTableSections = (text: string): StructuredSectionResult[]
   });
 };
 
+const extractHcpcsRowsFromNarrative = (text: string): StructuredSectionResult[] => {
+  const sectionText = extractSectionText(
+    text,
+    [/HCPCS\s+Code\s+and\s+Modifiers\s+Description/i],
+    [/Telehealth\s+Consent\s+Confirmation/i, /XXI\.\s+PARENT\/CAREGIVER/i, /XVIII\.\s+SIGNATURES/i],
+  );
+  if (!sectionText) {
+    return [];
+  }
+  const knownCodePattern = /\b(H0032-HN|H0032-HO|H2014-HQ|H2019|S5108|S5110)\b\s+([\s\S]*?)(?=\b(?:H0032-HN|H0032-HO|H2014-HQ|H2019|S5108|S5110)\b|Telehealth\s+Consent|$)/gi;
+  const rows: Record<string, unknown>[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = knownCodePattern.exec(sectionText)) !== null) {
+    rows.push({
+      hcpcs_code: match[1],
+      raw_text: `${match[1]} ${match[2] ?? ""}`.replace(/\s+/g, " ").trim(),
+    });
+  }
+  if (rows.length === 0) {
+    rows.push({ raw_text: sectionText });
+  }
+  return [{
+    section_key: "service_recommendations",
+    field_key: "CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS",
+    section_index: 0,
+    payload: { rows },
+    source_span: { method: "deterministic_hcpcs_section", row_count: rows.length },
+    status: "drafted",
+    required: true,
+    review_notes: "Deterministic HCPCS recommendation section extracted from CalOptima document text.",
+  }];
+};
+
+const extractNarrativeStructuredSections = (text: string): StructuredSectionResult[] => {
+  const specs = [
+    {
+      field_key: "CALOPTIMA_FBA_COORDINATION_OF_CARE",
+      section_key: "coordination_of_care",
+      start: [/IV\.\s+COORDINATION\s+OF\s+CARE/i],
+      end: [/VII\.\s+ADAPTIVE\s+TESTING/i, /Vineland\s+Adaptive/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_VINELAND_DOMAIN_SCORES",
+      section_key: "assessment_results",
+      start: [/Vineland\s+Adaptive\s+Behavior\s+Scales/i, /Domain\s+Raw\s+Score\s+Standard\s+Score/i],
+      end: [/IX\.\s+DIAGNOSTIC\s+INFORMATION/i, /X\.\s+FUNCTIONAL\s+ASSESSMENT/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_TARGET_BEHAVIOR_BLOCKS",
+      section_key: "diagnostic_behavior_analysis",
+      start: [/X\.\s+FUNCTIONAL\s+ASSESSMENT\s+OR\s+ANALYSIS\s+OF\s+TARGET\s+BEHAVIORS/i],
+      end: [/XI\.\s+BEHAVIOR\s+INTERVENTION\s+PLAN/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_BIP_BLOCKS",
+      section_key: "diagnostic_behavior_analysis",
+      start: [/XI\.\s+BEHAVIOR\s+INTERVENTION\s+PLAN/i],
+      end: [
+        /XII\.\s+/i,
+        /XIII\.\s+/i,
+        /XIV\.\s+TARGET\s+AND\s+REPLACEMENT\s+BEHAVIOR\s+GOALS/i,
+        /XV\.\s+SKILL\s+ACQUISITION/i,
+      ],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_SIGNATURES",
+      section_key: "signatures",
+      start: [/XVIII\.\s+SIGNATURES/i],
+      end: [/\*\*\s+By\s+signing/i],
+    },
+  ] as const;
+
+  return specs.flatMap((spec) => {
+    const sectionText = extractSectionText(text, [...spec.start], [...spec.end]);
+    if (!sectionText) {
+      return [];
+    }
+    return [{
+      section_key: spec.section_key,
+      field_key: spec.field_key,
+      section_index: 0,
+      payload: { raw_text: sectionText },
+      source_span: { method: "deterministic_section_anchor", anchor_count: spec.start.length },
+      status: "drafted" as const,
+      required: true,
+      review_notes: "Deterministic anchored section extracted from CalOptima document text.",
+    }];
+  });
+};
+
 const extractStructuredSections = (text: string): StructuredSectionResult[] => [
+  ...extractNarrativeStructuredSections(text),
   ...extractStructuredGoalSections(text),
   ...extractStructuredTableSections(text),
+  ...extractHcpcsRowsFromNarrative(text),
 ];
+
+export const __TESTING__ = {
+  deterministicValueForRow,
+  extractStructuredSections,
+};
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {

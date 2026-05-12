@@ -123,6 +123,23 @@ def infer_extraction_method(mode: str) -> str:
     return "clinician_manual_entry"
 
 
+def override_extraction_method(placeholder_key: str, inferred_method: str) -> str:
+    deterministic_structured_keys = {
+        "CALOPTIMA_FBA_COORDINATION_OF_CARE",
+        "CALOPTIMA_FBA_VINELAND_DOMAIN_SCORES",
+        "CALOPTIMA_FBA_TARGET_BEHAVIOR_BLOCKS",
+        "CALOPTIMA_FBA_BIP_BLOCKS",
+        "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+        "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+        "CALOPTIMA_FBA_PARENT_GOALS",
+        "CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS",
+        "CALOPTIMA_FBA_SIGNATURES",
+    }
+    if placeholder_key in deterministic_structured_keys:
+        return "deterministic_structured_extraction_plus_review"
+    return inferred_method
+
+
 def infer_required(mode: str, source: str) -> bool:
     if mode in {"ASSISTED", "MANUAL"}:
         return True
@@ -154,12 +171,18 @@ def build_rows(labels: list[dict[str, str]]) -> list[dict[str, object]]:
                 "mode": mode,
                 "source": source,
                 "required": infer_required(mode, source),
-                "extraction_method": infer_extraction_method(mode),
+                "extraction_method": override_extraction_method(placeholder_key, infer_extraction_method(mode)),
                 "validation_rule": infer_validation_rule(label, placeholder_key),
                 "status": "not_started",
                 "extraction_owner": extraction_owner,
                 "review_owner": review_owner,
                 "review_notes": item.get("notes", ""),
+                "input_type": item.get("input_type", ""),
+                "destination": item.get("destination", ""),
+                **({"structured_section": item["structured_section"]} if item.get("structured_section") else {}),
+                "pdf_render": item.get("pdf_render", {"target": "caloptima_fba_pdf_render_map", "not_exported": False}),
+                "review_behavior": item.get("review_behavior", ""),
+                **({"extraction_aliases": item["extraction_aliases"]} if item.get("extraction_aliases") else {}),
             }
         )
     return rows

@@ -214,6 +214,7 @@ describe("assessmentDocumentsHandler", () => {
         extraction_method: "database_prefill",
         validation_rule: "non_empty_text",
         status: "not_started",
+        extraction_aliases: ["Member full legal name"],
       },
     ]);
 
@@ -246,6 +247,13 @@ describe("assessmentDocumentsHandler", () => {
       expect.stringContaining("/functions/v1/extract-assessment-fields"),
       expect.objectContaining({ method: "POST" }),
     );
+    const extractionCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url]) => typeof url === "string" && url.includes("/functions/v1/extract-assessment-fields"));
+    const extractionPayload = JSON.parse(String((extractionCall?.[1] as RequestInit | undefined)?.body ?? "{}")) as {
+      checklist_rows?: Array<{ extraction_aliases?: string[] }>;
+    };
+    expect(extractionPayload.checklist_rows?.[0]?.extraction_aliases).toEqual(["Member full legal name"]);
     expect(loadChecklistTemplateRows).toHaveBeenCalledWith("caloptima_fba");
   });
 

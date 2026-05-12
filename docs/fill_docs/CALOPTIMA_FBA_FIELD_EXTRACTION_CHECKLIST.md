@@ -4,7 +4,6 @@ Template: `CalOptima Health Functional Behavior Assessment / Initial Treatment P
 
 Source mapping: `docs/fill_docs/caloptima_fba_template_field_map.json`
 Source document reviewed: `7.21.2025_RoVa_CalOptima_FBA_FINAL (1).Redacted.docx.pdf`
-PDF render map (for completed PDF output): `docs/fill_docs/caloptima_fba_pdf_render_map.json`
 
 ## Checklist schema and workflow rules
 
@@ -65,25 +64,25 @@ PDF render map (for completed PDF output): `docs/fill_docs/caloptima_fba_pdf_ren
 
 | Label | Placeholder key | Mode | Required | Extraction method | Validation rule | Extraction owner | Review owner | Status | Review notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Coordination of care sections | `CALOPTIMA_FBA_COORDINATION_OF_CARE` | MANUAL | true | clinician_manual_entry | non_empty_text | ClinicalAuthor | BCBAReviewer | not_started | Parent/school/regional center/speech-OT-PT/PCP/MH narratives. |
-| Vineland domain score table | `CALOPTIMA_FBA_VINELAND_DOMAIN_SCORES` | MANUAL | true | clinician_manual_entry | structured_payload_required | ClinicalAuthor | BCBAReviewer | not_started | Structured instrument output. |
+| Coordination of care sections | `CALOPTIMA_FBA_COORDINATION_OF_CARE` | MANUAL | true | deterministic_structured_extraction_plus_review | non_empty_text | ClinicalAuthor | BCBAReviewer | not_started | Parent/school/regional center/speech-OT-PT/PCP/MH narratives. |
+| Vineland domain score table | `CALOPTIMA_FBA_VINELAND_DOMAIN_SCORES` | MANUAL | true | deterministic_structured_extraction_plus_review | structured_payload_required | ClinicalAuthor | BCBAReviewer | not_started | Structured instrument output. |
 
 ## Diagnostic and Behavior Analysis
 
 | Label | Placeholder key | Mode | Required | Extraction method | Validation rule | Extraction owner | Review owner | Status | Review notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Current diagnosis code(s) | `CALOPTIMA_FBA_CURRENT_DIAGNOSIS_CODES` | AUTO | true | database_prefill | non_empty_text | IntakeCoordinator | ClinicalReviewer | not_started |  |
-| Target behavior blocks | `CALOPTIMA_FBA_TARGET_BEHAVIOR_BLOCKS` | MANUAL | true | clinician_manual_entry | structured_payload_required | ClinicalAuthor | BCBAReviewer | not_started | Includes identifying behavior/history/ABC/function. |
-| Behavior intervention plan blocks | `CALOPTIMA_FBA_BIP_BLOCKS` | MANUAL | true | clinician_manual_entry | structured_payload_required | ClinicalAuthor | BCBAReviewer | not_started | Ecological/replacement/focused/reactive/data procedures. |
+| Target behavior blocks | `CALOPTIMA_FBA_TARGET_BEHAVIOR_BLOCKS` | MANUAL | true | deterministic_structured_extraction_plus_review | structured_payload_required | ClinicalAuthor | BCBAReviewer | not_started | Includes identifying behavior/history/ABC/function. |
+| Behavior intervention plan blocks | `CALOPTIMA_FBA_BIP_BLOCKS` | MANUAL | true | deterministic_structured_extraction_plus_review | structured_payload_required | ClinicalAuthor | BCBAReviewer | not_started | Ecological/replacement/focused/reactive/data procedures. |
 | Crisis plan | `CALOPTIMA_FBA_CRISIS_PLAN` | MANUAL | true | clinician_manual_entry | non_empty_text | ClinicalAuthor | BCBAReviewer | not_started | Preventative, response, and post-crisis protocol narrative. |
 
 ## Goals and Treatment Planning
 
 | Label | Placeholder key | Mode | Required | Extraction method | Validation rule | Extraction owner | Review owner | Status | Review notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Target and replacement behavior goals | `CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS` | MANUAL | true | clinician_manual_entry | structured_payload_required | ClinicalAuthor | BCBAReviewer | not_started | Repeating LT/IT/ST goals plus baseline and settings. |
-| Skill acquisition goals | `CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS` | MANUAL | true | clinician_manual_entry | structured_payload_required | ClinicalAuthor | BCBAReviewer | not_started | Communication/daily living/social/self-direction blocks. |
-| Parent/Caregiver goals | `CALOPTIMA_FBA_PARENT_GOALS` | MANUAL | true | clinician_manual_entry | structured_payload_required | ClinicalAuthor | BCBAReviewer | not_started | Repeating LT/IT/ST goals with baseline and setting. |
+| Target and replacement behavior goals | `CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS` | MANUAL | true | deterministic_structured_extraction_plus_review | structured_payload_required | ClinicalAuthor | BCBAReviewer | not_started | Repeating LT/IT/ST goals plus baseline and settings. |
+| Skill acquisition goals | `CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS` | MANUAL | true | deterministic_structured_extraction_plus_review | structured_payload_required | ClinicalAuthor | BCBAReviewer | not_started | Communication/daily living/social/self-direction blocks. |
+| Parent/Caregiver goals | `CALOPTIMA_FBA_PARENT_GOALS` | MANUAL | true | deterministic_structured_extraction_plus_review | structured_payload_required | ClinicalAuthor | BCBAReviewer | not_started | Repeating LT/IT/ST goals with baseline and setting. |
 | Generalization and maintenance plan | `CALOPTIMA_FBA_GENERALIZATION_MAINTENANCE_PLAN` | MANUAL | true | clinician_manual_entry | non_empty_text | ClinicalAuthor | BCBAReviewer | not_started | Includes procedural reliability, reinforcement thinning, family training. |
 | Transition plan and exit criteria | `CALOPTIMA_FBA_TRANSITION_PLAN` | MANUAL | true | clinician_manual_entry | non_empty_text | ClinicalAuthor | BCBAReviewer | not_started | Checkboxes + required prompts. |
 
@@ -92,11 +91,11 @@ PDF render map (for completed PDF output): `docs/fill_docs/caloptima_fba_pdf_ren
 | Label | Placeholder key | Mode | Required | Extraction method | Validation rule | Extraction owner | Review owner | Status | Review notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Summary and recommendations | `CALOPTIMA_FBA_SUMMARY_RECOMMENDATIONS` | MANUAL | true | clinician_manual_entry | non_empty_text | ClinicalAuthor | BCBAReviewer | not_started | Clinical rationale for requested hours. |
-| HCPCS recommendation rows | `CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS` | ASSISTED | true | assisted_draft_plus_review | structured_payload_required | ClinicalAuthor | BCBAReviewer | not_started | Structured code/units/hours/location rows. |
+| HCPCS recommendation rows | `CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS` | ASSISTED | true | deterministic_structured_extraction_plus_review | structured_payload_required | ClinicalAuthor | BCBAReviewer | not_started | Structured code/units/hours/location rows. |
 | Telehealth consent confirmation | `CALOPTIMA_FBA_TELEHEALTH_CONSENT` | MANUAL | true | clinician_manual_entry | checkbox_yes_no_or_na | ClinicalAuthor | BCBAReviewer | not_started | Checkbox + consent date. |
 | Parent/guardian involvement | `CALOPTIMA_FBA_PARENT_INVOLVEMENT` | MANUAL | true | clinician_manual_entry | checkbox_yes_no_or_na | ClinicalAuthor | BCBAReviewer | not_started | Yes/No responses + explanation. |
 | Report written by | `CALOPTIMA_FBA_REPORT_WRITTEN_BY` | AUTO | true | database_prefill | non_empty_text | IntakeCoordinator | ClinicalReviewer | not_started |  |
 | Title, License/Certificate # | `CALOPTIMA_FBA_WRITER_CREDENTIALS` | AUTO | true | database_prefill | non_empty_text | IntakeCoordinator | ClinicalReviewer | not_started |  |
 | Date of Report Completed | `CALOPTIMA_FBA_REPORT_COMPLETED_DATE` | AUTO | true | database_prefill | date_mm_dd_yyyy_or_na | IntakeCoordinator | ClinicalReviewer | not_started |  |
-| Writer and reviewer signatures | `CALOPTIMA_FBA_SIGNATURES` | MANUAL | true | clinician_manual_entry | signature_and_date_present | ClinicalAuthor | BCBAReviewer | not_started | Signature capture/approval workflow. |
+| Writer and reviewer signatures | `CALOPTIMA_FBA_SIGNATURES` | MANUAL | true | deterministic_structured_extraction_plus_review | signature_and_date_present | ClinicalAuthor | BCBAReviewer | not_started | Signature capture/approval workflow. |
 

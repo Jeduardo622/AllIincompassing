@@ -85,7 +85,11 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "prefill_verify_when_source_exists"
+        "review_behavior": "prefill_verify_when_source_exists",
+        "extraction_aliases": [
+          "Phone",
+          "Guardian Name Phone"
+        ]
       },
       {
         "label": "Primary Care Provider",
@@ -197,7 +201,11 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "prefill_verify_when_source_exists"
+        "review_behavior": "prefill_verify_when_source_exists",
+        "extraction_aliases": [
+          "Administrative Contact for Current Authorization Request Full Name and Title",
+          "Full Name and Title"
+        ]
       },
       {
         "label": "Administrative Contact Phone Number",
@@ -211,7 +219,11 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "prefill_verify_when_source_exists"
+        "review_behavior": "prefill_verify_when_source_exists",
+        "extraction_aliases": [
+          "Administrative Contact for Current Authorization Request Phone Number",
+          "Phone Number"
+        ]
       },
       {
         "label": "Administrative Contact Fax Number",
@@ -225,7 +237,11 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "clinician_verify_assisted_draft"
+        "review_behavior": "clinician_verify_assisted_draft",
+        "extraction_aliases": [
+          "Administrative Contact for Current Authorization Request Fax Number",
+          "Fax Number"
+        ]
       },
       {
         "label": "Chief Complaint/Reason for Seeking ABA Treatment",
@@ -239,7 +255,11 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "clinician_manual_entry_required"
+        "review_behavior": "clinician_manual_entry_required",
+        "extraction_aliases": [
+          "Chief Complaint/Reason for Seeking Applied Behavior Analysis (ABA) Treatment",
+          "Chief Complaint/Reason for Seeking ABA Treatment"
+        ]
       },
       {
         "label": "Records Reviewed (table)",
@@ -254,7 +274,10 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "structured_clinical_review_required"
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "Records Reviewed"
+        ]
       },
       {
         "label": "Initial Interview/Observation",
@@ -324,7 +347,10 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "clinician_manual_entry_required"
+        "review_behavior": "clinician_manual_entry_required",
+        "extraction_aliases": [
+          "Does the member have a current Individualized Educational Plan (IEP/equivalent)?"
+        ]
       },
       {
         "label": "Date of current IEP/equivalent",
@@ -338,7 +364,11 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "clinician_verify_assisted_draft"
+        "review_behavior": "clinician_verify_assisted_draft",
+        "extraction_aliases": [
+          "Date of the current IEP/equivalent",
+          "Date of current IEP/equivalent"
+        ]
       },
       {
         "label": "Previous interventions",
@@ -368,7 +398,14 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "structured_clinical_review_required"
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "IV. COORDINATION OF CARE",
+          "COORDINATION OF CARE",
+          "Parent/Caregiver:",
+          "Speech/OT/PT:",
+          "Primary Care Provider/Specialist:"
+        ]
       },
       {
         "label": "Vineland domain score table",
@@ -383,7 +420,13 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "structured_clinical_review_required"
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "Vineland Adaptive Behavior Scales, Third Edition",
+          "Domain Raw Score Standard Score V-Scale Score Age Equivalent",
+          "Vineland-3 Scoring Information",
+          "Domain Raw Score Standard Score/V-Scale Score Age Equivalent"
+        ]
       },
       {
         "label": "Current diagnosis code(s)",
@@ -397,7 +440,13 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "prefill_verify_when_source_exists"
+        "review_behavior": "prefill_verify_when_source_exists",
+        "extraction_aliases": [
+          "Diagnosis description Date of diagnosis/report Diagnosed by",
+          "Diagnosed by (Full Name & credential)",
+          "F84.0 Autism",
+          "Current diagnosis code"
+        ]
       },
       {
         "label": "Target behavior blocks",
@@ -412,7 +461,13 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "structured_clinical_review_required"
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "X. FUNCTIONAL ASSESSMENT OR ANALYSIS OF TARGET BEHAVIORS",
+          "Target Behavior 1:",
+          "Operational Definition",
+          "Antecedent Analysis"
+        ]
       },
       {
         "label": "Behavior intervention plan blocks",
@@ -427,7 +482,13 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "structured_clinical_review_required"
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "XI. BEHAVIOR INTERVENTION PLAN",
+          "Ecological interventions",
+          "Focused intervention strategies",
+          "Data collection procedures"
+        ]
       },
       {
         "label": "Target and replacement behavior goals",
@@ -442,7 +503,12 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "structured_clinical_review_required"
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "XIV. TARGET AND REPLACEMENT BEHAVIOR GOALS",
+          "Target Behavior Goal",
+          "Replacement Behavior Goal"
+        ]
       },
       {
         "label": "Skill acquisition goals",
@@ -457,7 +523,12 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "structured_clinical_review_required"
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "Skill Acquisition Goal",
+          "A. Intervention Area",
+          "Location/setting of skill acquisition goal"
+        ]
       },
       {
         "label": "Parent/Caregiver goals",
@@ -472,7 +543,12 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "structured_clinical_review_required"
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "XVI. PARENT/CAREGIVER GOALS",
+          "Parent/Caregiver Goal",
+          "Participants in Parent Training"
+        ]
       },
       {
         "label": "Generalization and maintenance plan",
@@ -486,7 +562,12 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "clinician_manual_entry_required"
+        "review_behavior": "clinician_manual_entry_required",
+        "extraction_aliases": [
+          "PLAN FOR GENERALIZATION",
+          "Generalization and Maintenance Plan",
+          "Transition to Natural Mediators"
+        ]
       },
       {
         "label": "Transition plan and exit criteria",
@@ -500,7 +581,12 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "clinician_manual_entry_required"
+        "review_behavior": "clinician_manual_entry_required",
+        "extraction_aliases": [
+          "XIII. TRANSITION PLAN",
+          "Please list exit plan/criteria",
+          "Final treatment report"
+        ]
       },
       {
         "label": "Crisis plan",
@@ -543,7 +629,12 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "structured_clinical_review_required"
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "HCPCS Code and Modifiers Description",
+          "Total Hours Requested Per Month",
+          "Total Units Requested Per 6 Month"
+        ]
       },
       {
         "label": "Telehealth consent confirmation",
@@ -571,7 +662,12 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "clinician_manual_entry_required"
+        "review_behavior": "clinician_manual_entry_required",
+        "extraction_aliases": [
+          "XXI. PARENT/CAREGIVER OR LEGAL GUARDIAN INVOLVEMENT",
+          "Was the Parent/guardian involved in the development of the treatment plan",
+          "Is the parent/guardian in agreement with the submitted treatment plan"
+        ]
       },
       {
         "label": "Report written by",
@@ -628,7 +724,14 @@
           "target": "caloptima_fba_pdf_render_map",
           "not_exported": false
         },
-        "review_behavior": "structured_clinical_review_required"
+        "review_behavior": "structured_clinical_review_required",
+        "extraction_aliases": [
+          "XVIII. SIGNATURES",
+          "Report written by:",
+          "Report reviewed by:",
+          "Signature:",
+          "Date of Report Completed"
+        ]
       }
     ],
     "existing_placeholders": []

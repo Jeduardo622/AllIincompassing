@@ -2,7 +2,7 @@ import { PDFCheckBox, PDFDocument, PDFTextField, StandardFonts, rgb } from "npm:
 import { z } from "npm:zod@3.23.8";
 import { createProtectedRoute, corsHeaders, RouteOptions } from "../_shared/auth-middleware.ts";
 import { supabaseAdmin } from "../_shared/database.ts";
-import { sanitizePdfText } from "./pdf-text.ts";
+import { resolvePdfCheckboxValue, sanitizePdfText } from "./pdf-text.ts";
 
 const renderMapEntrySchema = z.object({
   placeholder_key: z.string().trim().min(1),
@@ -55,11 +55,6 @@ const wrapText = (text: string, maxWidth: number, font: { widthOfTextAtSize: (va
   return lines;
 };
 
-const normalizeCheckboxValue = (value: string): boolean => {
-  const normalized = value.trim().toLowerCase();
-  return normalized === "yes" || normalized === "true" || normalized === "checked" || normalized === "1";
-};
-
 export default createProtectedRoute(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
   if (req.method !== "POST") {
@@ -97,27 +92,32 @@ export default createProtectedRoute(async (req) => {
 
     for (const entry of parsed.data.render_map_entries) {
       const rawValue = parsed.data.field_values[entry.placeholder_key];
-      const value = typeof rawValue === "string" ? sanitizePdfText(rawValue) : "";
-      if (!value) continue;
+      const rawText = typeof rawValue === "string" ? rawValue : "";
 
       const match = entry.form_field_candidates
         .map((candidate) => fieldsByName.get(candidate))
         .find((field) => Boolean(field));
       if (!match) continue;
 
-      if (match instanceof PDFTextField) {
-        match.setText(value);
-        filledAcroFormCount += 1;
-        continue;
-      }
-
       if (match instanceof PDFCheckBox) {
-        if (normalizeCheckboxValue(value)) {
+        const checkboxValue = resolvePdfCheckboxValue(rawText);
+        if (checkboxValue === null) continue;
+        if (checkboxValue) {
           match.check();
         } else {
           match.uncheck();
         }
         filledAcroFormCount += 1;
+        continue;
+      }
+
+      const value = sanitizePdfText(rawText);
+      if (!value) continue;
+
+      if (match instanceof PDFTextField) {
+        match.setText(value);
+        filledAcroFormCount += 1;
+        continue;
       }
     }
 

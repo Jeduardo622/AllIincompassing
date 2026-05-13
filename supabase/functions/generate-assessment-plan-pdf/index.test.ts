@@ -1,6 +1,6 @@
 import { expect } from "jsr:@std/expect";
 
-import { sanitizePdfText } from "./pdf-text.ts";
+import { resolvePdfCheckboxValue, sanitizePdfText } from "./pdf-text.ts";
 
 Deno.test("sanitizePdfText normalizes unsupported glyphs for PDF rendering", () => {
   const raw =
@@ -15,4 +15,10 @@ Deno.test("sanitizePdfText preserves supported Latin-1 characters", () => {
   const raw = "José François Åsa Zoë Crème brûlée";
 
   expect(sanitizePdfText(raw)).toBe(raw);
+});
+
+Deno.test("resolvePdfCheckboxValue preserves explicit unchecked behavior for unsupported glyphs", () => {
+  expect(resolvePdfCheckboxValue("☐")).toBe(false);
+  expect(resolvePdfCheckboxValue("✗")).toBe(false);
+  expect(resolvePdfCheckboxValue("   ")).toBeNull();
 });

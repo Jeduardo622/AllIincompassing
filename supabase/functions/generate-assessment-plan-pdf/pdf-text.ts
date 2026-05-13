@@ -20,3 +20,16 @@ export const sanitizePdfText = (value: string): string =>
     .replace(/[ \t]+/g, " ")
     .replace(/ *\n */g, "\n")
     .trim();
+
+const normalizeCheckboxValue = (value: string): boolean => {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "yes" || normalized === "true" || normalized === "checked" || normalized === "1";
+};
+
+export const resolvePdfCheckboxValue = (rawValue: string): boolean | null => {
+  const trimmedRawValue = rawValue.trim();
+  if (!trimmedRawValue) return null;
+
+  const sanitizedValue = sanitizePdfText(trimmedRawValue);
+  return normalizeCheckboxValue(sanitizedValue || trimmedRawValue);
+};

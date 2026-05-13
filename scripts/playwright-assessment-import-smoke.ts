@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
 
+import { cleanupAssessmentImportArtifacts } from './lib/assessment-import-cleanup';
 import { loadPlaywrightEnv } from './lib/load-playwright-env';
 import {
   captureFailureScreenshot,
@@ -15,6 +16,7 @@ type AssessmentDocumentRecord = {
   id: string;
   client_id: string;
   file_name: string;
+  bucket_id?: string | null;
   object_path: string;
   status: 'uploaded' | 'extracting' | 'extracted' | 'drafted' | 'approved' | 'rejected' | 'extraction_failed';
   extraction_error?: string | null;
@@ -54,6 +56,33 @@ const pause = async (ms: number): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, ms));
 };
 
+const writeCleanupFailureManifest = (args: {
+  latestDir: string;
+  assessment: AssessmentDocumentRecord;
+  cleanupError: Error;
+  runError?: Error | null;
+}): string => {
+  const manifestPath = path.join(args.latestDir, `assessment-import-cleanup-failure-${Date.now()}.json`);
+  writeFileSync(
+    manifestPath,
+    JSON.stringify(
+      {
+        createdAt: new Date().toISOString(),
+        assessmentDocumentId: args.assessment.id,
+        clientId: args.assessment.client_id,
+        fileName: args.assessment.file_name,
+        bucketId: args.assessment.bucket_id?.trim() || 'client-documents',
+        objectPath: args.assessment.object_path,
+        cleanupError: args.cleanupError.message,
+        runError: args.runError?.message ?? null,
+      },
+      null,
+      2,
+    ),
+  );
+  return manifestPath;
+};
+
 const fetchAssessmentDocuments = async (
   baseUrl: string,
   accessToken: string,
@@ -70,27 +99,6 @@ const fetchAssessmentDocuments = async (
   }
 
   return (await response.json()) as AssessmentDocumentRecord[];
-};
-
-const deleteAssessmentDocument = async (
-  baseUrl: string,
-  accessToken: string,
-  assessmentDocumentId: string,
-): Promise<void> => {
-  const response = await fetch(
-    `${baseUrl}/api/assessment-documents?assessment_document_id=${encodeURIComponent(assessmentDocumentId)}`,
-    {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
-  );
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Cleanup failed for ${assessmentDocumentId}: ${response.status} ${body}`);
-  }
 };
 
 const selectClientForSmoke = async (
@@ -141,6 +149,8 @@ async function run() {
   loadPlaywrightEnv();
 
   const baseUrl = (process.env.PW_BASE_URL?.trim() || DEFAULT_BASE_URL).replace(/\/$/, '');
+  const supabaseUrl = resolveSupabaseUrl();
+  const supabaseAnonKey = resolveSupabaseAnonKey();
   const sampleFilePath = process.env.PW_ASSESSMENT_SAMPLE_FILE?.trim()
     ? path.resolve(process.cwd(), process.env.PW_ASSESSMENT_SAMPLE_FILE.trim())
     : DEFAULT_SAMPLE_FILE;
@@ -156,8 +166,8 @@ async function run() {
     },
   ]);
   const { accessToken, clientId, clientName } = await selectClientForSmoke(
-    resolveSupabaseUrl(),
-    resolveSupabaseAnonKey(),
+    supabaseUrl,
+    supabaseAnonKey,
     credentials.email,
     credentials.password,
   );
@@ -168,6 +178,10 @@ async function run() {
   const latestDir = ensureArtifactsDir();
 
   let createdAssessment: AssessmentDocumentRecord | null = null;
+  let cleanupFailure: Error | null = null;
+  let runFailure: Error | null = null;
+  let cleanupFailureManifestPath: string | null = null;
+  let cleanupFailureManifestError: Error | null = null;
 
   try {
     await loginAndAssertSession(page, baseUrl, credentials.email, credentials.password);
@@ -235,15 +249,59 @@ async function run() {
   } catch (error) {
     const screenshot = await captureFailureScreenshot(page, 'playwright-assessment-import-smoke-failure');
     console.error(`Assessment import smoke failed. Screenshot: ${screenshot}`);
-    throw error;
+    runFailure = error instanceof Error ? error : new Error(String(error));
   } finally {
     if (createdAssessment) {
-      await deleteAssessmentDocument(baseUrl, accessToken, createdAssessment.id).catch((cleanupError) => {
-        console.error('Assessment import smoke cleanup failed', cleanupError);
+      await cleanupAssessmentImportArtifacts({
+        accessToken,
+        baseUrl,
+        supabaseAnonKey,
+        supabaseUrl,
+        target: {
+          assessmentDocumentId: createdAssessment.id,
+          bucketId: createdAssessment.bucket_id?.trim() || 'client-documents',
+          objectPath: createdAssessment.object_path,
+        },
+      }).catch((cleanupError) => {
+        cleanupFailure = cleanupError instanceof Error ? cleanupError : new Error(String(cleanupError));
+        console.error('Assessment import smoke cleanup failed', cleanupFailure);
       });
     }
     await context.close();
     await browser.close();
+    if (cleanupFailure && createdAssessment) {
+      try {
+        cleanupFailureManifestPath = writeCleanupFailureManifest({
+          latestDir,
+          assessment: createdAssessment,
+          cleanupError: cleanupFailure,
+          runError: runFailure,
+        });
+        console.error(`Assessment import smoke cleanup manifest written to ${cleanupFailureManifestPath}`);
+      } catch (manifestError) {
+        cleanupFailureManifestError =
+          manifestError instanceof Error ? manifestError : new Error(String(manifestError));
+        console.error('Assessment import smoke could not write cleanup manifest', cleanupFailureManifestError);
+      }
+    }
+    if (runFailure && cleanupFailure) {
+      throw new AggregateError(
+        [runFailure, cleanupFailure],
+        `Assessment import smoke failed and cleanup also failed: ${runFailure.message}; ${cleanupFailure.message}${
+          cleanupFailureManifestPath ? `; cleanup manifest: ${cleanupFailureManifestPath}` : ''
+        }${cleanupFailureManifestError ? `; cleanup manifest write failed: ${cleanupFailureManifestError.message}` : ''}`,
+      );
+    }
+    if (runFailure) {
+      throw runFailure;
+    }
+    if (cleanupFailure) {
+      throw new Error(
+        `${cleanupFailure.message}${
+          cleanupFailureManifestPath ? ` (cleanup manifest: ${cleanupFailureManifestPath})` : ''
+        }${cleanupFailureManifestError ? ` (cleanup manifest write failed: ${cleanupFailureManifestError.message})` : ''}`,
+      );
+    }
   }
 }
 

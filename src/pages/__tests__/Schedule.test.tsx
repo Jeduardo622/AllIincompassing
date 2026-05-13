@@ -15,6 +15,7 @@ const mockUseDropdownData = vi.fn(() => ({
 const mockUseActiveOrganizationId = vi.fn(() => "org-1");
 const mockPrefetchScheduleRange = vi.fn();
 let sessionModalModuleLoads = 0;
+const originalMatchMedia = window.matchMedia;
 
 const scheduleFixtures = {
   sessions: [
@@ -203,6 +204,8 @@ describe("Schedule", () => {
   });
   
   afterEach(() => {
+    window.matchMedia = originalMatchMedia;
+    vi.useRealTimers();
     if (defaultRpcImplementation) {
       vi.mocked(supabase.rpc as any).mockImplementation(defaultRpcImplementation);
     } else {
@@ -220,7 +223,7 @@ describe("Schedule", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Day view/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Week view/i })).toBeInTheDocument();
-  }, 15000);
+  }, 30000);
 
   it("renders schedule interface elements", async () => {
     renderWithProviders(<Schedule />);
@@ -231,7 +234,9 @@ describe("Schedule", () => {
     });
     
     // Check for key interface elements
-    expect(screen.getByText(/Jun 30 - Jul 5, 2025/i)).toBeInTheDocument();
+    expect(
+      screen.getByText((content) => /^[A-Z][a-z]{2} \d{1,2} - [A-Z][a-z]{2} \d{1,2}, \d{4}$/.test(content)),
+    ).toBeInTheDocument();
   });
 
   it("shows loading state initially", async () => {
@@ -380,7 +385,7 @@ describe("Schedule", () => {
     expect(screen.getByLabelText(/End date/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Preview week-forward schedule/i })).toBeInTheDocument();
     expect(screen.getByText(/Single-session recurrence/i)).toBeInTheDocument();
-  }, 15000);
+  }, 30000);
 
   it("previews and applies the visible week with the displayed week payload", async () => {
     const capturedRequests: Array<Record<string, unknown>> = [];

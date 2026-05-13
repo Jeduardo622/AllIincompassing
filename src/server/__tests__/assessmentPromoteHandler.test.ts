@@ -125,6 +125,20 @@ describe("assessmentPromoteHandler", () => {
       created_goal_count: 26,
       created_program_ids: ["prod-program-1", "prod-program-2"],
     });
+    const createEventCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url, init]) => typeof url === "string" && url.includes("/rest/v1/assessment_review_events") && init?.method === "POST");
+    expect(createEventCall).toBeTruthy();
+    const createEventPayload = JSON.parse((createEventCall?.[1] as RequestInit).body as string) as {
+      event_payload: Record<string, unknown>;
+    };
+    expect(createEventPayload.event_payload).toMatchObject({
+      created_program_count: 2,
+      created_goal_count: 26,
+      created_program_ids: ["prod-program-1", "prod-program-2"],
+      promoted_program_count: 2,
+      promoted_goal_count: 26,
+    });
     const createGoalsCall = vi
       .mocked(fetchJson)
       .mock.calls.find(([url, init]) => typeof url === "string" && url.includes("/rest/v1/goals") && init?.method === "POST");
@@ -367,6 +381,89 @@ describe("assessmentPromoteHandler", () => {
     );
   });
 
+  it("returns created and promoted goal counts separately when the goal insert response includes extra live rows", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status")) {
+        return { ok: true, status: 200, data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "drafted" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_programs?")) {
+        return { ok: true, status: 200, data: [{ id: "draft-program-1", name: "Draft Program", description: "x", accept_state: "accepted" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_goals?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: buildAcceptedGoals().map((goal) => ({ ...goal, draft_program_id: "draft-program-1" })),
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/programs")) {
+        return { ok: true, status: 201, data: [{ id: "prod-program-1" }] };
+      }
+      if (method === "POST" && url.includes("/rest/v1/goals")) {
+        return {
+          ok: true,
+          status: 201,
+          data: [
+            ...buildAcceptedGoals().map((goal, index) => ({ id: `prod-goal-${index + 1}`, title: goal.title })),
+            { id: "prod-goal-extra", title: "Unexpected extra goal" },
+          ],
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/goal_data_points")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: true, status: 201, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      created_program_count: 1,
+      created_goal_count: 27,
+      promoted_program_count: 1,
+      promoted_goal_count: 26,
+    });
+    const createEventCall = vi
+      .mocked(fetchJson)
+      .mock.calls.find(([url, init]) => typeof url === "string" && url.includes("/rest/v1/assessment_review_events") && init?.method === "POST");
+    expect(createEventCall).toBeTruthy();
+    const createEventPayload = JSON.parse((createEventCall?.[1] as RequestInit).body as string) as {
+      event_payload: Record<string, unknown>;
+    };
+    expect(createEventPayload.event_payload).toMatchObject({
+      created_program_count: 1,
+      created_goal_count: 27,
+      promoted_program_count: 1,
+      promoted_goal_count: 26,
+    });
+  });
+
   it("rolls back already-created programs when a later program create fails", async () => {
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
@@ -597,5 +694,75 @@ describe("assessmentPromoteHandler", () => {
         body: expect.stringContaining('"status":"drafted"'),
       }),
     );
+  });
+
+  it("surfaces rollback failure details when review-event cleanup cannot fully unwind live writes", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/assessment_documents?select=id,organization_id,client_id,status")) {
+        return { ok: true, status: 200, data: [{ id: "doc-1", organization_id: "org-1", client_id: "client-1", status: "drafted" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_programs?")) {
+        return { ok: true, status: 200, data: [{ id: "draft-program-1", name: "Draft Program", description: "x", accept_state: "accepted" }] };
+      }
+      if (method === "GET" && url.includes("/rest/v1/assessment_draft_goals?")) {
+        return {
+          ok: true,
+          status: 200,
+          data: buildAcceptedGoals().map((goal) => ({ ...goal, draft_program_id: "draft-program-1" })),
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/programs")) {
+        return { ok: true, status: 201, data: [{ id: "prod-program-1" }] };
+      }
+      if (method === "POST" && url.includes("/rest/v1/goals")) {
+        return {
+          ok: true,
+          status: 201,
+          data: buildAcceptedGoals().map((goal, index) => ({ id: `prod-goal-${index + 1}`, title: goal.title })),
+        };
+      }
+      if (method === "POST" && url.includes("/rest/v1/goal_data_points")) {
+        return { ok: true, status: 201, data: null };
+      }
+      if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-1")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "POST" && url.includes("/rest/v1/assessment_review_events")) {
+        return { ok: false, status: 500, data: null };
+      }
+      if (method === "DELETE" && url.includes("/rest/v1/goals?program_id=in.(prod-program-1)&organization_id=eq.org-1&client_id=eq.client-1")) {
+        return { ok: true, status: 200, data: null };
+      }
+      if (method === "DELETE" && url.includes("/rest/v1/programs?id=in.(prod-program-1)&organization_id=eq.org-1&client_id=eq.client-1")) {
+        return { ok: false, status: 500, data: null };
+      }
+      return { ok: false, status: 500, data: null };
+    });
+
+    const response = await assessmentPromoteHandler(
+      new Request("http://localhost/api/assessment-promote", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    const body = await response.json();
+    expect(response.status).toBe(500);
+    expect(body.error).toContain("rollback did not complete cleanly");
+    expect(body.rollback_failed_steps).toEqual(["delete_programs"]);
   });
 });

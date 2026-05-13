@@ -146,6 +146,8 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
   const acceptedGoals = (draftGoalsResult.data ?? []).filter(
     (goal) => goal.accept_state === "accepted" || goal.accept_state === "edited",
   );
+  const promotedProgramCount = acceptedPrograms.length;
+  const promotedGoalCount = acceptedGoals.length;
 
   if (acceptedPrograms.length === 0) {
     return json({ error: "At least one accepted draft program is required before promotion." }, 409);
@@ -315,8 +317,16 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
   }));
 
   if (createGoalsPayload.some((goal) => !goal.program_id)) {
-    await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: false });
-    return json({ error: "Accepted goals could not be matched to the promoted programs." }, 409);
+    const rollback = await rollbackLivePromotion({ createdProgramIds, restoreDocumentStatus: false });
+    return json(
+      {
+        error: rollback.ok
+          ? "Accepted goals could not be matched to the promoted programs. Promotion rolled back safely."
+          : "Accepted goals could not be matched to the promoted programs, and rollback did not complete cleanly.",
+        rollback_failed_steps: rollback.ok ? undefined : rollback.failedSteps,
+      },
+      409,
+    );
   }
 
   const createGoalsResult = await fetchJson<Array<{ id: string; title: string }>>(`${supabaseUrl}/rest/v1/goals`, {
@@ -440,6 +450,8 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
         created_program_count: createdProgramIds.length,
         created_program_ids: createdProgramIds,
         created_goal_count: createdGoals.length || acceptedGoals.length,
+        promoted_program_count: promotedProgramCount,
+        promoted_goal_count: promotedGoalCount,
         created_goal_data_point_count: goalDataPointPayload.length,
       },
     }),
@@ -462,6 +474,8 @@ export async function assessmentPromoteHandler(request: Request): Promise<Respon
     created_program_count: createdProgramIds.length,
     created_program_ids: createdProgramIds,
     created_goal_count: createdGoals.length || acceptedGoals.length,
+    promoted_program_count: promotedProgramCount,
+    promoted_goal_count: promotedGoalCount,
     created_goal_data_point_count: goalDataPointPayload.length,
   });
 }

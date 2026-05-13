@@ -10,8 +10,13 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { config as loadEnv } from 'dotenv';
 import { readFileSync } from 'fs';
-import { basename } from 'path';
+import { basename, extname, resolve } from 'path';
+
+for (const envPath of ['.env', '.env.local', '.env.codex']) {
+  loadEnv({ path: resolve(process.cwd(), envPath), override: false });
+}
 
 const resolveRequiredEnv = (name: string): string => {
   const value = process.env[name];
@@ -24,6 +29,18 @@ const resolveRequiredEnv = (name: string): string => {
 const resolveSupabaseUrl = (): string => process.env.VITE_SUPABASE_URL || resolveRequiredEnv('SUPABASE_URL');
 const resolveSupabaseAnonKey = (): string =>
   process.env.VITE_SUPABASE_ANON_KEY || resolveRequiredEnv('SUPABASE_ANON_KEY');
+const resolveApiBaseUrl = (): string => (process.env.PW_BASE_URL || process.env.APP_BASE_URL || 'https://app.allincompassing.ai').trim();
+
+const resolveFileMimeType = (filePath: string): string => {
+  const extension = extname(filePath).toLowerCase();
+  if (extension === '.pdf') {
+    return 'application/pdf';
+  }
+  if (extension === '.docx') {
+    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  }
+  return 'application/octet-stream';
+};
 
 type AssessmentTemplateType = 'caloptima_fba' | 'iehp_fba';
 
@@ -38,10 +55,13 @@ async function main() {
     process.exit(1);
   }
 
-  const testUserEmail = resolveRequiredEnv('TEST_USER_EMAIL');
-  const testUserPassword = resolveRequiredEnv('TEST_USER_PASSWORD');
+  const testUserEmail = process.env.TEST_USER_EMAIL?.trim() || process.env.PW_ADMIN_EMAIL?.trim() || resolveRequiredEnv('TEST_USER_EMAIL');
+  const testUserPassword =
+    process.env.TEST_USER_PASSWORD?.trim() || process.env.PW_ADMIN_PASSWORD?.trim() || resolveRequiredEnv('TEST_USER_PASSWORD');
   const supabaseUrl = resolveSupabaseUrl();
   const supabaseAnonKey = resolveSupabaseAnonKey();
+  const apiBaseUrl = resolveApiBaseUrl();
+  const mimeType = resolveFileMimeType(filePath);
 
   console.log('=== Assessment Upload Test ===');
   console.log(`Client ID: ${clientId}`);
@@ -91,7 +111,7 @@ async function main() {
   const { error: uploadError } = await supabase.storage
     .from('client-documents')
     .upload(objectPath, fileBuffer, {
-      contentType: 'application/pdf',
+      contentType: mimeType,
       upsert: false,
     });
 
@@ -107,7 +127,6 @@ async function main() {
 
   // Register assessment document
   console.log('[4/5] Registering assessment document...');
-  const apiBaseUrl = 'https://app.allincompassing.ai';
   const response = await fetch(`${apiBaseUrl}/api/assessment-documents`, {
     method: 'POST',
     headers: {
@@ -117,7 +136,7 @@ async function main() {
     body: JSON.stringify({
       client_id: clientId,
       file_name: fileName,
-      mime_type: 'application/pdf',
+      mime_type: mimeType,
       file_size: fileBuffer.length,
       bucket_id: 'client-documents',
       object_path: objectPath,

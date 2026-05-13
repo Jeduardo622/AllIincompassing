@@ -135,15 +135,13 @@ const summarizeTextQuality = (text: string): "high" | "medium" | "low" => {
   return "high";
 };
 
-const extractLineNearLabel = (text: string, label: string): string | null => {
-  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`${escapedLabel}\\s*[:\\-]?\\s*([^\\n]{2,180})`, "i");
+const extractLineNearLabel = (text: string, label: string, stopLabels: string[] = []): string | null => {
+  const pattern = new RegExp(`${flexibleLabelPattern(label)}\\s*[:\\-]?\\s*([^\\n]{2,260})`, "i");
   const match = text.match(pattern);
   if (!match?.[1]) {
     return null;
   }
-  const value = match[1].trim();
-  return value.length > 0 ? value : null;
+  return trimAtInlineBoundary(match[1], stopLabels);
 };
 
 const clampConfidence = (value: number): number => {
@@ -164,6 +162,10 @@ const compactForContains = (value: string): string =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "");
 
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const flexibleLabelPattern = (label: string): string => escapeRegExp(label.trim()).replace(/\s+/g, "\\s+");
+
 const normalizeInlineText = (value: string): string =>
   value
     .replace(/\r/g, "\n")
@@ -172,6 +174,86 @@ const normalizeInlineText = (value: string): string =>
     .trim();
 
 const compactDocumentText = (text: string): string => normalizeInlineText(text).replace(/\s+/g, " ").trim();
+
+const normalizeExtractedValue = (value: string): string =>
+  value
+    .replace(/\s+/g, " ")
+    .replace(/^[\s:|-]+/g, "")
+    .replace(/[\s|,;:.-]+$/g, "")
+    .trim();
+
+const CALOPTIMA_INLINE_STOP_LABELS = [
+  "Member Name",
+  "Member DOB",
+  "CIN #",
+  "Diagnoses/with ICD Code",
+  "Guardian Name",
+  "Phone",
+  "Primary Care Provider",
+  "Known Allergies",
+  "Current Medications/Dosage",
+  "Dietary Restrictions",
+  "LMHP",
+  "Contact Number",
+  "Service Initiation Date",
+  "Date ABA first began",
+  "Prior Applied Behavioral Health Agencies",
+  "Full Name and Title",
+  "Phone Number",
+  "Fax Number",
+  "Chief Complaint/Reason for Seeking Applied Behavior Analysis (ABA) Treatment",
+  "Chief Complaint/Reason for Seeking ABA Treatment",
+  "Records Reviewed",
+  "Interviews Conducted",
+  "Daily School Schedule",
+  "Date of the current IEP/equivalent",
+  "Individualized Educational Plan (IEP/equivalent) Information",
+  "Title, License/Certificate #",
+  "Date of Report Completed",
+];
+
+const CALOPTIMA_SECTION_STOP_PATTERNS = [
+  /\b[IVX]{1,6}\.\s+[A-Z][A-Z /-]{3,}/i,
+  /\b\d+\.\s+(?:Are|Does|If|Date|Did|Was|Is)\b/i,
+];
+
+const collectStopLabels = (
+  currentLabels: string[],
+  allRows?: Array<z.infer<typeof checklistRowSchema>>,
+): string[] => {
+  const current = new Set(currentLabels.map((label) => normalizeForContains(label)));
+  const labels = new Set(CALOPTIMA_INLINE_STOP_LABELS);
+  for (const row of allRows ?? []) {
+    [row.label, ...(row.extraction_aliases ?? [])].forEach((label) => {
+      const normalized = normalizeForContains(label);
+      if (normalized.length >= 3 && !current.has(normalized)) {
+        labels.add(label);
+      }
+    });
+  }
+  return [...labels].filter((label) => !current.has(normalizeForContains(label)));
+};
+
+const trimAtInlineBoundary = (value: string, stopLabels: string[]): string | null => {
+  let earliest = value.length;
+  for (const label of stopLabels) {
+    if (label.trim().length < 3) {
+      continue;
+    }
+    const match = value.match(new RegExp(`(?:^|\\s)${flexibleLabelPattern(label)}\\s*[:\\-]?`, "i"));
+    if (match?.index !== undefined && match.index >= 0) {
+      earliest = Math.min(earliest, match.index);
+    }
+  }
+  for (const pattern of CALOPTIMA_SECTION_STOP_PATTERNS) {
+    const match = value.match(pattern);
+    if (match?.index !== undefined && match.index >= 0) {
+      earliest = Math.min(earliest, match.index);
+    }
+  }
+  const trimmed = normalizeExtractedValue(value.slice(0, earliest));
+  return trimmed.length > 0 ? trimmed : null;
+};
 
 const findAnchor = (text: string, anchors: RegExp[]): RegExpMatchArray | null => {
   for (const anchor of anchors) {
@@ -202,6 +284,167 @@ const extractSectionText = (text: string, startAnchors: RegExp[], endAnchors: Re
   return sectionText.length >= 20 ? sectionText : null;
 };
 
+const makeAutoField = (
+  row: z.infer<typeof checklistRowSchema>,
+  valueText: string,
+  sourceSpan: Record<string, unknown>,
+  text: string,
+): ExtractedFieldResult => {
+  const confidence = calibrateDeterministicConfidence(row.label, valueText, text);
+  return {
+    placeholder_key: row.placeholder_key,
+    value_text: valueText,
+    value_json: null,
+    confidence,
+    mode: "AUTO",
+    status: "drafted",
+    source_span: sourceSpan,
+    review_notes: `Deterministic extraction from document text. (Calibrated confidence ${confidence.toFixed(2)})`,
+  };
+};
+
+const extractSelectedYesNo = (afterQuestion: string): "Yes" | "No" | null => {
+  const normalized = afterQuestion.replace(/\s+/g, " ");
+  const markerPattern = "(☒|â˜’|þ|\\[x\\]|x|☐|â˜|□|\\[\\s\\])";
+  const pair = normalized.match(new RegExp(`${markerPattern}\\s*Yes\\s+${markerPattern}\\s*No`, "i"));
+  const isSelected = (marker: string): boolean => /^(?:☒|â˜’|þ|\[x\]|x)$/i.test(marker.trim());
+  if (pair?.[1] && pair?.[2]) {
+    if (isSelected(pair[1]) && !isSelected(pair[2])) {
+      return "Yes";
+    }
+    if (!isSelected(pair[1]) && isSelected(pair[2])) {
+      return "No";
+    }
+  }
+  const noOnly = normalized.match(new RegExp(`Yes\\s+${markerPattern}\\s*No`, "i"));
+  if (noOnly?.[1]) {
+    return isSelected(noOnly[1]) ? "No" : "Yes";
+  }
+  return null;
+};
+
+const extractCheckboxScalarByKey = (key: string, text: string): string | null => {
+  const compact = compactDocumentText(text);
+  const questionSpecs = [
+    {
+      key: "CALOPTIMA_FBA_HAS_IEP",
+      question: /Does\s+the\s+member\s+have\s+a\s+current\s+Individualized\s+Educational\s+Plan\s+\(IEP\/equivalent\)\?/i,
+      end: /If\s+No,\s+please\s+explain|3\.\s+If\s+yes/i,
+    },
+    {
+      key: "CALOPTIMA_FBA_PARENT_INVOLVEMENT",
+      question: /Was\s+the\s+Parent\/guardian\s+involved\s+in\s+the\s+development\s+of\s+the\s+treatment\s+plan\?/i,
+      end: /If\s+No\s+to\s+any\s+response|XVIII\.\s+SIGNATURES/i,
+      followUpQuestion: /Is\s+the\s+parent\/guardian\s+in\s+agreement\s+with\s+the\s+submitted\s+treatment\s+plan\?/i,
+    },
+    {
+      key: "CALOPTIMA_FBA_TELEHEALTH_CONSENT",
+      question: /Telehealth\s+Consent\s+Confirmation/i,
+      end: /XXI\.\s+PARENT\/CAREGIVER|XVIII\.\s+SIGNATURES/i,
+    },
+  ] as const;
+  const spec = questionSpecs.find((candidate) => candidate.key === key);
+  if (!spec) {
+    return null;
+  }
+  const questionMatch = compact.match(spec.question);
+  if (!questionMatch || questionMatch.index === undefined) {
+    return null;
+  }
+  const afterQuestion = compact.slice(questionMatch.index + questionMatch[0].length);
+  const endMatch = afterQuestion.match(spec.end);
+  const bounded = afterQuestion.slice(0, endMatch?.index ?? Math.min(afterQuestion.length, 600));
+  const primary = extractSelectedYesNo(bounded);
+  if (!primary) {
+    return null;
+  }
+  if (!("followUpQuestion" in spec)) {
+    return primary;
+  }
+  const followUpMatch = bounded.match(spec.followUpQuestion);
+  if (!followUpMatch || followUpMatch.index === undefined) {
+    return `development: ${primary}`;
+  }
+  const secondary = extractSelectedYesNo(bounded.slice(followUpMatch.index + followUpMatch[0].length));
+  return secondary ? `development: ${primary}; agreement: ${secondary}` : `development: ${primary}`;
+};
+
+const extractScalarSectionByKey = (key: string, text: string): string | null => {
+  const specs: Record<string, { start: RegExp[]; end: RegExp[] }> = {
+    CALOPTIMA_FBA_CHIEF_COMPLAINT: {
+      start: [/Chief\s+Complaint\/Reason\s+for\s+Seeking\s+Applied\s+Behavior\s+Analysis\s+\(ABA\)\s+Treatment:?\s*/i],
+      end: [/II\.\s+DATA\s+SOURCES/i, /Records\s+Reviewed/i],
+    },
+    CALOPTIMA_FBA_GENERALIZATION_MAINTENANCE_PLAN: {
+      start: [
+        /XVII\.\s+PLAN\s+FOR\s+GENERALIZATION\s+\(INCLUDING\s+TRANSITION\s+TO\s+NATURAL\s+MEDIATORS\)\s+AND\s+MAINTENANCE/i,
+        /PLAN\s+FOR\s+GENERALIZATION\s+\(INCLUDING\s+TRANSITION\s+TO\s+NATURAL\s+MEDIATORS\)\s+AND\s+MAINTENANCE/i,
+        /PLAN\s+FOR\s+GENERALIZATION/i,
+      ],
+      end: [/XVIII\.\s+CRISIS\s+PLAN/i, /CRISIS\s+PLAN/i, /XX\.\s+SERVICE\s+RECOMMENDATIONS/i],
+    },
+    CALOPTIMA_FBA_TRANSITION_PLAN: {
+      start: [/XIII\.\s+TRANSITION\s+PLAN/i, /\bTRANSITION\s+PLAN\s+AND\s+EXIT\s+CRITERIA\b/i],
+      end: [/XIV\.\s+/i, /CRISIS\s+PLAN/i, /SERVICE\s+RECOMMENDATIONS/i],
+    },
+  };
+  const spec = specs[key];
+  if (!spec) {
+    return null;
+  }
+  const sectionText = extractSectionText(text, spec.start, spec.end);
+  if (!sectionText) {
+    return null;
+  }
+  const withoutHeading = spec.start.reduce((current, pattern) => current.replace(pattern, ""), sectionText);
+  const cleaned = normalizeExtractedValue(withoutHeading);
+  return cleaned.length >= 10 ? cleaned : null;
+};
+
+const extractSignatureScalarByKey = (key: string, text: string): string | null => {
+  const sectionText = extractSectionText(
+    text,
+    [/XVIII\.\s+SIGNATURES/i],
+    [/\*\*\s+By\s+signing/i],
+  );
+  if (!sectionText) {
+    return null;
+  }
+  const compact = compactDocumentText(sectionText);
+  if (key === "CALOPTIMA_FBA_REPORT_COMPLETED_DATE") {
+    const match = compact.match(/Date\s+of\s+Report\s+Completed\s*:\s*([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{2,4})/i);
+    return match?.[1] ? normalizeExtractedValue(match[1]) : null;
+  }
+  if (key === "CALOPTIMA_FBA_REPORT_WRITTEN_BY") {
+    const match = compact.match(/Report\s+written\s+by:\s*(?:\([^)]*\)\s*)?(?:(?:BCa?BA\/BMA\s+or\s+)?BCBA\/BMC\s+professional\s+level\s*)?(.+?)(?=Title,\s+License\/Certificate|Date\s+of\s+Report\s+Completed|Signature:)/i);
+    return match?.[1] ? normalizeExtractedValue(match[1]) : null;
+  }
+  return null;
+};
+
+const extractSpecialScalarByKey = (
+  row: z.infer<typeof checklistRowSchema>,
+  text: string,
+): ExtractedFieldResult | null => {
+  const key = row.placeholder_key;
+  const checkbox = extractCheckboxScalarByKey(key, text);
+  if (checkbox) {
+    return makeAutoField(row, checkbox, { method: "checkbox_yes_no", key }, text);
+  }
+  const signature = extractSignatureScalarByKey(key, text);
+  if (signature) {
+    return makeAutoField(row, signature, { method: "signature_section", key }, text);
+  }
+  const section = extractScalarSectionByKey(key, text);
+  if (section) {
+    return makeAutoField(row, section, { method: "section_anchor", key }, text);
+  }
+  if (key === "CALOPTIMA_FBA_TRANSITION_PLAN") {
+    return null;
+  }
+  return null;
+};
+
 const calibrateDeterministicConfidence = (rowLabel: string, valueText: string, text: string): number => {
   const normalizedText = normalizeForContains(text);
   const normalizedValue = normalizeForContains(valueText);
@@ -223,21 +466,22 @@ const calibrateDeterministicConfidence = (rowLabel: string, valueText: string, t
   return clampConfidence(confidence);
 };
 
-const extractLineNearLabels = (text: string, labels: string[]): { value: string; label: string } | null => {
+const extractLineNearLabels = (
+  text: string,
+  labels: string[],
+  stopLabels: string[] = [],
+): { value: string; label: string } | null => {
   const normalizedText = compactDocumentText(text);
   for (const label of labels) {
-    const direct = extractLineNearLabel(text, label);
+    const direct = extractLineNearLabel(text, label, stopLabels);
     if (direct) {
       return { value: direct, label };
     }
 
-    const escapedLabel = label
-      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-      .replace(/\s+/g, "\\s+");
-    const normalizedMatch = normalizedText.match(new RegExp(`${escapedLabel}\\s*[:\\-]?\\s*(.{2,220})`, "i"));
+    const normalizedMatch = normalizedText.match(new RegExp(`${flexibleLabelPattern(label)}\\s*[:\\-]?\\s*(.{2,320})`, "i"));
     if (normalizedMatch?.[1]) {
-      const value = normalizedMatch[1].trim();
-      if (value.length > 0) {
+      const value = trimAtInlineBoundary(normalizedMatch[1], stopLabels);
+      if (value) {
         return { value, label };
       }
     }
@@ -249,10 +493,27 @@ const deterministicValueForRow = (
   row: z.infer<typeof checklistRowSchema>,
   text: string,
   clientSnapshot?: z.infer<typeof requestSchema.shape.client_snapshot>,
+  allRows?: Array<z.infer<typeof checklistRowSchema>>,
 ): ExtractedFieldResult => {
   const key = row.placeholder_key;
+  const special = extractSpecialScalarByKey(row, text);
+  if (special) {
+    return special;
+  }
+  if (key === "CALOPTIMA_FBA_TRANSITION_PLAN") {
+    return {
+      placeholder_key: key,
+      value_text: null,
+      value_json: null,
+      confidence: null,
+      mode: "MANUAL",
+      status: "not_started",
+      source_span: null,
+      review_notes: null,
+    };
+  }
   const labels = [row.label, ...(row.extraction_aliases ?? [])];
-  const fromLabel = extractLineNearLabels(text, labels);
+  const fromLabel = extractLineNearLabels(text, labels, collectStopLabels(labels, allRows));
   if (fromLabel) {
     const confidence = calibrateDeterministicConfidence(fromLabel.label, fromLabel.value, text);
     return {
@@ -442,6 +703,68 @@ const extractStructuredTableSections = (text: string): StructuredSectionResult[]
   });
 };
 
+const extractScheduleSections = (text: string): StructuredSectionResult[] => {
+  const specs = [
+    {
+      field_key: "CALOPTIMA_FBA_DAILY_ACTIVITY_SCHEDULE",
+      section_key: "daily_schedules",
+      start: [/Daily\s+schedule\s+of\s+all\s+activities/i],
+      end: [/IV\.\s+SCHOOL\s+INFORMATION/i, /Currently\s+being\s+assessed/i],
+    },
+    {
+      field_key: "CALOPTIMA_FBA_SCHOOL_SCHEDULE",
+      section_key: "daily_schedules",
+      start: [/Daily\s+School\s+Schedule/i],
+      end: [/\b1\.\s+Are\s+ABA\s+services/i, /Individualized\s+Educational\s+Plan\s+\(IEP\/equivalent\)\s+Information/i],
+    },
+  ] as const;
+
+  return specs.flatMap((spec) => {
+    const sectionText = extractSectionText(text, [...spec.start], [...spec.end]);
+    if (!sectionText) {
+      return [];
+    }
+    const rawText = normalizeExtractedValue(spec.start.reduce((current, pattern) => current.replace(pattern, ""), sectionText));
+    if (rawText.length < 5) {
+      return [];
+    }
+    return [{
+      section_key: spec.section_key,
+      field_key: spec.field_key,
+      section_index: 0,
+      payload: { rows: [{ raw_text: rawText }], raw_text: rawText },
+      source_span: { method: "deterministic_schedule_section" },
+      status: "drafted" as const,
+      required: true,
+      review_notes: "Deterministic schedule section extracted from CalOptima document text for manual table review.",
+    }];
+  });
+};
+
+const parseSignaturePayload = (rawText: string): Record<string, unknown> => {
+  const compact = compactDocumentText(rawText);
+  const writerMatch = compact.match(/Report\s+written\s+by:\s*(?:\([^)]*\)\s*)?(?:(?:BCa?BA\/BMA\s+or\s+)?BCBA\/BMC\s+professional\s+level\s*)?(.+?)(?=Title,\s+License\/Certificate|Date\s+of\s+Report\s+Completed|Signature:)/i);
+  const writerTitleMatch = compact.match(/Title,\s+License\/Certificate\s+#:\s*(.+?)(?=Date\s+of\s+Report\s+Completed|Signature:|B\.\s+Report\s+reviewed\s+by:)/i);
+  const completedDates = [...compact.matchAll(/Date\s+of\s+Report\s+Completed\s*:\s*([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{2,4})?/gi)]
+    .map((match) => normalizeExtractedValue(match[1] ?? ""))
+    .filter(Boolean);
+  const signatureDates = [...compact.matchAll(/Signature:\s*(?:\*\*)?\s*Date:\s*([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{2,4})?/gi)]
+    .map((match) => normalizeExtractedValue(match[1] ?? ""))
+    .filter(Boolean);
+  const reviewerMatch = compact.match(/Report\s+reviewed\s+by:\s*(?:\([^)]*\)\s*)?(?:BCBA\/BMC\s+professional\s+level\s*)?(.+?)(?=Title,\s+License\/Certificate|Date\s+of\s+Report\s+Completed|Signature:|$)/i);
+
+  return {
+    raw_text: rawText,
+    written_by: writerMatch?.[1] ? normalizeExtractedValue(writerMatch[1]) : null,
+    writer_title_license: writerTitleMatch?.[1] ? normalizeExtractedValue(writerTitleMatch[1]) : null,
+    report_completed_date: completedDates[0] ?? null,
+    writer_signature_date: signatureDates[0] ?? null,
+    reviewed_by: reviewerMatch?.[1] ? normalizeExtractedValue(reviewerMatch[1]) : null,
+    reviewer_completed_date: completedDates[1] ?? null,
+    reviewer_signature_date: signatureDates[1] ?? null,
+  };
+};
+
 const extractHcpcsRowsFromNarrative = (text: string): StructuredSectionResult[] => {
   const sectionText = extractSectionText(
     text,
@@ -519,11 +842,14 @@ const extractNarrativeStructuredSections = (text: string): StructuredSectionResu
     if (!sectionText) {
       return [];
     }
+    const payload = spec.field_key === "CALOPTIMA_FBA_SIGNATURES"
+      ? parseSignaturePayload(sectionText)
+      : { raw_text: sectionText };
     return [{
       section_key: spec.section_key,
       field_key: spec.field_key,
       section_index: 0,
-      payload: { raw_text: sectionText },
+      payload,
       source_span: { method: "deterministic_section_anchor", anchor_count: spec.start.length },
       status: "drafted" as const,
       required: true,
@@ -536,8 +862,24 @@ const extractStructuredSections = (text: string): StructuredSectionResult[] => [
   ...extractNarrativeStructuredSections(text),
   ...extractStructuredGoalSections(text),
   ...extractStructuredTableSections(text),
+  ...extractScheduleSections(text),
   ...extractHcpcsRowsFromNarrative(text),
-];
+].reduce<StructuredSectionResult[]>((deduped, section) => {
+  const existingIndex = deduped.findIndex((existing) =>
+    existing.field_key === section.field_key && existing.section_index === section.section_index
+  );
+  if (existingIndex === -1) {
+    deduped.push(section);
+    return deduped;
+  }
+  const existing = deduped[existingIndex];
+  const existingRaw = typeof existing.payload.raw_text === "string" ? existing.payload.raw_text : "";
+  const incomingRaw = typeof section.payload.raw_text === "string" ? section.payload.raw_text : "";
+  if (incomingRaw.length > existingRaw.length) {
+    deduped[existingIndex] = section;
+  }
+  return deduped;
+}, []);
 
 export const __TESTING__ = {
   deterministicValueForRow,
@@ -614,7 +956,9 @@ Deno.serve(async (req) => {
       : await decodePdfText(fileBytes);
     const textQuality = summarizeTextQuality(documentText);
 
-    const deterministic = data.checklist_rows.map((row) => deterministicValueForRow(row, documentText, data.client_snapshot));
+    const deterministic = data.checklist_rows.map((row) =>
+      deterministicValueForRow(row, documentText, data.client_snapshot, data.checklist_rows)
+    );
     const structuredSections = extractStructuredSections(documentText);
     const structuredSummaryByKey = new Map<string, { count: number; firstPayload: Record<string, unknown> }>();
     structuredSections.forEach((section) => {

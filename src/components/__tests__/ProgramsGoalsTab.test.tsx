@@ -1862,6 +1862,90 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     openSpy.mockRestore();
   });
 
+  it("warns operators when generated CalOptima PDF has layout overflow warnings", async () => {
+    const user = userEvent.setup();
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify({ items: [], structured_sections: [] }), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1000,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/fba.pdf",
+              status: "uploaded",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "POST" && path === "/api/assessment-plan-pdf") {
+        return new Response(
+          JSON.stringify({
+            fill_mode: "overlay",
+            signed_url: "https://example.com/generated-plan.pdf",
+            object_path: "clients/client-1/assessments/generated.pdf",
+            overflow_keys: ["CALOPTIMA_FBA_CHIEF_COMPLAINT"],
+            layout_warnings: [
+              {
+                placeholder_key: "CALOPTIMA_FBA_CHIEF_COMPLAINT",
+                page: 2,
+                reason: "overflow",
+                rendered_line_count: 3,
+                total_line_count: 5,
+                max_lines: 3,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    await screen.findByText("fba.pdf");
+    const exportPdfButton = screen.getByRole("button", { name: /Optional: Export Completed CalOptima PDF/i });
+    await waitFor(() => {
+      expect(exportPdfButton).not.toBeDisabled();
+    });
+    await user.click(exportPdfButton);
+
+    await waitFor(() => {
+      expect(showInfo).toHaveBeenCalledWith(
+        "Completed CalOptima PDF generated (overlay mode) with 1 layout warning(s). Review before sending.",
+      );
+    });
+    expect(showSuccess).not.toHaveBeenCalledWith("Completed CalOptima PDF generated (overlay mode).");
+    expect(openSpy).toHaveBeenCalledWith("https://example.com/generated-plan.pdf", "_blank", "noopener,noreferrer");
+    openSpy.mockRestore();
+  });
+
   it("shows a visible extracting indicator for assessment processing", async () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();

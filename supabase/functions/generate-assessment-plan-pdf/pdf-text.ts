@@ -33,3 +33,8 @@ export const resolvePdfCheckboxValue = (rawValue: string): boolean | null => {
   const sanitizedValue = sanitizePdfText(trimmedRawValue);
   return normalizeCheckboxValue(sanitizedValue || trimmedRawValue);
 };
+
+export const isPdfCheckboxNotApplicableValue = (rawValue: string): boolean => {
+  const normalized = rawValue.trim().toLowerCase();
+  return normalized === "n/a" || normalized === "na" || normalized === "not applicable";
+};

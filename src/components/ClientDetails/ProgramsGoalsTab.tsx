@@ -1076,7 +1076,15 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (typeof window !== "undefined" && result.signed_url) {
         window.open(result.signed_url, "_blank", "noopener,noreferrer");
       }
-      const modeLabel = result.fill_mode === "acroform" ? "AcroForm" : "overlay";
+      const modeLabel =
+        result.fill_mode === "acroform" ? "AcroForm" : result.fill_mode === "mixed" ? "mixed AcroForm/overlay" : "overlay";
+      const overflowKeys = result.overflow_keys ?? result.layout_warnings?.map((warning) => warning.placeholder_key) ?? [];
+      if (overflowKeys.length > 0) {
+        showInfo(
+          `Completed CalOptima PDF generated (${modeLabel} mode) with ${overflowKeys.length} layout warning(s). Review before sending.`,
+        );
+        return;
+      }
       showSuccess(`Completed CalOptima PDF generated (${modeLabel} mode).`);
     },
     onError: showError,

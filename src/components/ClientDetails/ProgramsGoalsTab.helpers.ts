@@ -60,9 +60,18 @@ export interface AssessmentDraftResponse {
 }
 
 export interface AssessmentPlanPdfResponse {
-  fill_mode: "acroform" | "overlay";
+  fill_mode: "acroform" | "overlay" | "mixed";
   signed_url: string;
   object_path: string;
+  layout_warnings?: Array<{
+    placeholder_key: string;
+    page: number;
+    reason: "overflow";
+    rendered_line_count: number;
+    total_line_count: number;
+    max_lines: number;
+  }>;
+  overflow_keys?: string[];
 }
 
 export const EMPTY_ASSESSMENT_DOCUMENTS: AssessmentDocumentRecord[] = [];

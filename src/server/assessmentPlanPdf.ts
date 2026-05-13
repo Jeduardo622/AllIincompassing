@@ -7,6 +7,10 @@ interface PdfFallbackCoordinates {
   y: number;
   font_size: number;
   max_width: number;
+  height?: number;
+  line_height?: number;
+  max_lines?: number;
+  field_kind?: string;
 }
 
 export interface PdfRenderMapEntry {
@@ -134,7 +138,11 @@ const normalizeMapEntry = (entry: unknown): PdfRenderMapEntry | null => {
     typeof fallback.x !== "number" ||
     typeof fallback.y !== "number" ||
     typeof fallback.font_size !== "number" ||
-    typeof fallback.max_width !== "number"
+    typeof fallback.max_width !== "number" ||
+    (fallback.height !== undefined && typeof fallback.height !== "number") ||
+    (fallback.line_height !== undefined && typeof fallback.line_height !== "number") ||
+    (fallback.max_lines !== undefined && typeof fallback.max_lines !== "number") ||
+    (fallback.field_kind !== undefined && typeof fallback.field_kind !== "string")
   ) {
     return null;
   }
@@ -153,6 +161,10 @@ const normalizeMapEntry = (entry: unknown): PdfRenderMapEntry | null => {
       y: fallback.y,
       font_size: fallback.font_size,
       max_width: fallback.max_width,
+      ...(typeof fallback.height === "number" ? { height: fallback.height } : {}),
+      ...(typeof fallback.line_height === "number" ? { line_height: fallback.line_height } : {}),
+      ...(typeof fallback.max_lines === "number" ? { max_lines: fallback.max_lines } : {}),
+      ...(typeof fallback.field_kind === "string" ? { field_kind: fallback.field_kind } : {}),
     },
   };
 };

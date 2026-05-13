@@ -46,7 +46,7 @@ describe("assessmentPlanPdfHandler", () => {
       {
         placeholder_key: "CALOPTIMA_FBA_MEMBER_NAME",
         form_field_candidates: ["Member Name"],
-        fallback: { page: 1, x: 10, y: 10, font_size: 10, max_width: 100 },
+        fallback: { page: 1, x: 10, y: 10, font_size: 10, max_width: 100, height: 14, line_height: 12, max_lines: 1 },
       },
     ]);
   });
@@ -162,6 +162,17 @@ describe("assessmentPlanPdfHandler", () => {
           bucket_id: "client-documents",
           object_path: "clients/client-1/assessments/generated.pdf",
           signed_url: "https://example.com/generated.pdf",
+          layout_warnings: [
+            {
+              placeholder_key: "CALOPTIMA_FBA_CHIEF_COMPLAINT",
+              page: 2,
+              reason: "overflow",
+              rendered_line_count: 3,
+              total_line_count: 5,
+              max_lines: 3,
+            },
+          ],
+          overflow_keys: ["CALOPTIMA_FBA_CHIEF_COMPLAINT"],
         },
       })
       .mockResolvedValueOnce({ ok: true, status: 201, data: null });
@@ -178,5 +189,13 @@ describe("assessmentPlanPdfHandler", () => {
     const body = await response.json();
     expect(body.signed_url).toBe("https://example.com/generated.pdf");
     expect(body.fill_mode).toBe("overlay");
+    expect(body.overflow_keys).toEqual(["CALOPTIMA_FBA_CHIEF_COMPLAINT"]);
+    expect(body.layout_warnings).toHaveLength(1);
+    expect(fetchJson).toHaveBeenLastCalledWith(
+      "https://example.supabase.co/rest/v1/assessment_review_events",
+      expect.objectContaining({
+        body: expect.stringContaining("layout_warning_count"),
+      }),
+    );
   });
 });

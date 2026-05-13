@@ -43,6 +43,22 @@ describe("CalOptima PDF render map", () => {
     expect(missingKeys).toEqual([]);
   });
 
+  it("bounds every exported PDF overlay fallback so rendered text cannot cross template fields", async () => {
+    const renderMap = await loadCalOptimaPdfRenderMap();
+
+    renderMap.forEach((entry) => {
+      expect(entry.fallback.page).toBeGreaterThanOrEqual(1);
+      expect(entry.fallback.page).toBeLessThanOrEqual(28);
+      expect(entry.fallback.x).toBeGreaterThanOrEqual(0);
+      expect(entry.fallback.y).toBeGreaterThanOrEqual(0);
+      expect(entry.fallback.max_width).toBeGreaterThan(0);
+      expect(entry.fallback.height).toBeGreaterThan(0);
+      expect(entry.fallback.line_height).toBeGreaterThan(0);
+      expect(entry.fallback.max_lines).toBeGreaterThan(0);
+      expect(entry.fallback.field_kind).toEqual(expect.any(String));
+    });
+  });
+
   it("keeps registry, checklist, and render placeholder keys in parity", async () => {
     const [registry, checklist, renderMap] = await Promise.all([
       readJsonFile(registryPath),

@@ -2,7 +2,7 @@
   "template_type": "caloptima_fba",
   "template_name": "CalOptima Health Functional Behavior Assessment / Initial Treatment Plan",
   "source_document": "CalOptima Health FBA Template (2).pdf",
-  "version": "2026-02-19",
+  "version": "2026-05-13",
   "entries": [
     {
       "placeholder_key": "CALOPTIMA_FBA_MEMBER_NAME",
@@ -15,7 +15,11 @@
         "x": 95,
         "y": 694,
         "font_size": 10,
-        "max_width": 210
+        "max_width": 210,
+        "height": 14,
+        "line_height": 12,
+        "max_lines": 1,
+        "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -31,7 +35,11 @@
         "x": 95,
         "y": 678,
         "font_size": 10,
-        "max_width": 120
+        "max_width": 120,
+        "height": 14,
+        "line_height": 12,
+        "max_lines": 1,
+        "field_kind": "date"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -48,7 +56,11 @@
         "x": 245,
         "y": 678,
         "font_size": 10,
-        "max_width": 120
+        "max_width": 120,
+        "height": 14,
+        "line_height": 12,
+        "max_lines": 1,
+        "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -64,7 +76,11 @@
         "x": 95,
         "y": 647,
         "font_size": 9,
-        "max_width": 430
+        "max_width": 430,
+        "height": 36,
+        "line_height": 11,
+        "max_lines": 3,
+        "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -80,7 +96,11 @@
         "x": 95,
         "y": 618,
         "font_size": 10,
-        "max_width": 230
+        "max_width": 230,
+        "height": 14,
+        "line_height": 12,
+        "max_lines": 1,
+        "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -97,7 +117,11 @@
         "x": 350,
         "y": 618,
         "font_size": 10,
-        "max_width": 160
+        "max_width": 160,
+        "height": 14,
+        "line_height": 12,
+        "max_lines": 1,
+        "field_kind": "phone"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -113,7 +137,11 @@
         "x": 95,
         "y": 602,
         "font_size": 10,
-        "max_width": 230
+        "max_width": 230,
+        "height": 14,
+        "line_height": 12,
+        "max_lines": 1,
+        "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -129,7 +157,11 @@
         "x": 350,
         "y": 602,
         "font_size": 10,
-        "max_width": 160
+        "max_width": 160,
+        "height": 14,
+        "line_height": 12,
+        "max_lines": 1,
+        "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -145,7 +177,11 @@
         "x": 95,
         "y": 586,
         "font_size": 9,
-        "max_width": 230
+        "max_width": 230,
+        "height": 36,
+        "line_height": 11,
+        "max_lines": 3,
+        "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -161,7 +197,11 @@
         "x": 350,
         "y": 586,
         "font_size": 9,
-        "max_width": 160
+        "max_width": 160,
+        "height": 36,
+        "line_height": 11,
+        "max_lines": 3,
+        "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -174,10 +214,14 @@
       ],
       "fallback": {
         "page": 2,
-        "x": 95,
-        "y": 665,
+        "x": 64,
+        "y": 655,
         "font_size": 10,
-        "max_width": 170
+        "max_width": 208,
+        "height": 12,
+        "max_lines": 1,
+        "field_kind": "date",
+        "line_height": 12
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -190,10 +234,14 @@
       ],
       "fallback": {
         "page": 2,
-        "x": 280,
-        "y": 665,
+        "x": 306,
+        "y": 655,
         "font_size": 10,
-        "max_width": 170
+        "max_width": 210,
+        "height": 12,
+        "max_lines": 1,
+        "field_kind": "date",
+        "line_height": 12
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -206,10 +254,14 @@
       ],
       "fallback": {
         "page": 2,
-        "x": 95,
-        "y": 634,
-        "font_size": 9,
-        "max_width": 430
+        "x": 64,
+        "y": 628,
+        "font_size": 8,
+        "max_width": 455,
+        "height": 13,
+        "max_lines": 1,
+        "field_kind": "text",
+        "line_height": 10
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -222,10 +274,14 @@
       ],
       "fallback": {
         "page": 2,
-        "x": 95,
-        "y": 603,
-        "font_size": 10,
-        "max_width": 190
+        "x": 64,
+        "y": 591,
+        "font_size": 8,
+        "max_width": 214,
+        "height": 12,
+        "max_lines": 1,
+        "field_kind": "text",
+        "line_height": 10
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -238,10 +294,14 @@
       ],
       "fallback": {
         "page": 2,
-        "x": 300,
-        "y": 603,
-        "font_size": 10,
-        "max_width": 110
+        "x": 302,
+        "y": 591,
+        "font_size": 8,
+        "max_width": 104,
+        "height": 12,
+        "max_lines": 1,
+        "field_kind": "phone",
+        "line_height": 10
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -254,10 +314,14 @@
       ],
       "fallback": {
         "page": 2,
-        "x": 420,
-        "y": 603,
-        "font_size": 10,
-        "max_width": 110
+        "x": 417,
+        "y": 591,
+        "font_size": 8,
+        "max_width": 102,
+        "height": 12,
+        "max_lines": 1,
+        "field_kind": "phone",
+        "line_height": 10
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -270,10 +334,14 @@
       ],
       "fallback": {
         "page": 2,
-        "x": 95,
-        "y": 560,
-        "font_size": 9,
-        "max_width": 430
+        "x": 64,
+        "y": 541,
+        "font_size": 7,
+        "max_width": 455,
+        "height": 26,
+        "max_lines": 3,
+        "line_height": 8,
+        "field_kind": "multiline_text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -286,10 +354,14 @@
       ],
       "fallback": {
         "page": 2,
-        "x": 95,
-        "y": 470,
-        "font_size": 8,
-        "max_width": 430
+        "x": 64,
+        "y": 457,
+        "font_size": 7,
+        "max_width": 455,
+        "height": 47,
+        "max_lines": 5,
+        "line_height": 8,
+        "field_kind": "structured_section"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -302,10 +374,14 @@
       ],
       "fallback": {
         "page": 2,
-        "x": 95,
-        "y": 380,
-        "font_size": 8,
-        "max_width": 430
+        "x": 64,
+        "y": 361,
+        "font_size": 7,
+        "max_width": 455,
+        "height": 48,
+        "max_lines": 6,
+        "line_height": 8,
+        "field_kind": "multiline_text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -318,10 +394,14 @@
       ],
       "fallback": {
         "page": 2,
-        "x": 95,
-        "y": 306,
-        "font_size": 8,
-        "max_width": 430
+        "x": 64,
+        "y": 287,
+        "font_size": 7,
+        "max_width": 455,
+        "height": 48,
+        "max_lines": 6,
+        "line_height": 8,
+        "field_kind": "multiline_text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -337,7 +417,11 @@
         "x": 95,
         "y": 336,
         "font_size": 8,
-        "max_width": 430
+        "max_width": 430,
+        "height": 120,
+        "line_height": 10,
+        "max_lines": 12,
+        "field_kind": "structured_section"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -353,7 +437,11 @@
         "x": 95,
         "y": 584,
         "font_size": 8,
-        "max_width": 430
+        "max_width": 430,
+        "height": 120,
+        "line_height": 10,
+        "max_lines": 12,
+        "field_kind": "structured_section"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -369,7 +457,11 @@
         "x": 95,
         "y": 508,
         "font_size": 10,
-        "max_width": 200
+        "max_width": 200,
+        "height": 14,
+        "line_height": 12,
+        "max_lines": 1,
+        "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -385,7 +477,11 @@
         "x": 95,
         "y": 480,
         "font_size": 10,
-        "max_width": 200
+        "max_width": 200,
+        "height": 14,
+        "line_height": 12,
+        "max_lines": 1,
+        "field_kind": "date"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -401,7 +497,11 @@
         "x": 95,
         "y": 236,
         "font_size": 8,
-        "max_width": 430
+        "max_width": 430,
+        "height": 120,
+        "line_height": 10,
+        "max_lines": 12,
+        "field_kind": "structured_section"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -417,7 +517,11 @@
         "x": 95,
         "y": 380,
         "font_size": 8,
-        "max_width": 430
+        "max_width": 430,
+        "height": 120,
+        "line_height": 10,
+        "max_lines": 12,
+        "field_kind": "structured_section"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -433,7 +537,11 @@
         "x": 95,
         "y": 480,
         "font_size": 8,
-        "max_width": 430
+        "max_width": 430,
+        "height": 120,
+        "line_height": 10,
+        "max_lines": 12,
+        "field_kind": "structured_section"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -449,7 +557,11 @@
         "x": 95,
         "y": 690,
         "font_size": 10,
-        "max_width": 430
+        "max_width": 430,
+        "height": 14,
+        "line_height": 12,
+        "max_lines": 1,
+        "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -465,7 +577,11 @@
         "x": 95,
         "y": 620,
         "font_size": 8,
-        "max_width": 430
+        "max_width": 430,
+        "height": 120,
+        "line_height": 10,
+        "max_lines": 12,
+        "field_kind": "structured_section"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -481,7 +597,11 @@
         "x": 95,
         "y": 650,
         "font_size": 8,
-        "max_width": 430
+        "max_width": 430,
+        "height": 120,
+        "line_height": 10,
+        "max_lines": 12,
+        "field_kind": "structured_section"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -497,7 +617,11 @@
         "x": 95,
         "y": 650,
         "font_size": 8,
-        "max_width": 430
+        "max_width": 430,
+        "height": 120,
+        "line_height": 10,
+        "max_lines": 12,
+        "field_kind": "structured_section"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -513,7 +637,11 @@
         "x": 95,
         "y": 650,
         "font_size": 8,
-        "max_width": 430
+        "max_width": 430,
+        "height": 120,
+        "line_height": 10,
+        "max_lines": 12,
+        "field_kind": "structured_section"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -529,7 +657,11 @@
         "x": 95,
         "y": 650,
         "font_size": 8,
-        "max_width": 430
+        "max_width": 430,
+        "height": 120,
+        "line_height": 10,
+        "max_lines": 12,
+        "field_kind": "structured_section"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -545,7 +677,11 @@
         "x": 95,
         "y": 562,
         "font_size": 8,
-        "max_width": 430
+        "max_width": 430,
+        "height": 120,
+        "line_height": 10,
+        "max_lines": 12,
+        "field_kind": "structured_section"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -561,7 +697,11 @@
         "x": 95,
         "y": 610,
         "font_size": 8,
-        "max_width": 430
+        "max_width": 430,
+        "height": 120,
+        "line_height": 10,
+        "max_lines": 12,
+        "field_kind": "structured_section"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -577,7 +717,11 @@
         "x": 95,
         "y": 486,
         "font_size": 8,
-        "max_width": 430
+        "max_width": 430,
+        "height": 120,
+        "line_height": 10,
+        "max_lines": 12,
+        "field_kind": "structured_section"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -593,7 +737,11 @@
         "x": 95,
         "y": 574,
         "font_size": 8,
-        "max_width": 430
+        "max_width": 430,
+        "height": 120,
+        "line_height": 10,
+        "max_lines": 12,
+        "field_kind": "structured_section"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -609,7 +757,11 @@
         "x": 95,
         "y": 416,
         "font_size": 8,
-        "max_width": 430
+        "max_width": 430,
+        "height": 36,
+        "line_height": 10,
+        "max_lines": 3,
+        "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -625,7 +777,11 @@
         "x": 95,
         "y": 388,
         "font_size": 10,
-        "max_width": 430
+        "max_width": 430,
+        "height": 14,
+        "line_height": 12,
+        "max_lines": 1,
+        "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -641,7 +797,11 @@
         "x": 95,
         "y": 366,
         "font_size": 10,
-        "max_width": 430
+        "max_width": 430,
+        "height": 14,
+        "line_height": 12,
+        "max_lines": 1,
+        "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -657,7 +817,11 @@
         "x": 95,
         "y": 248,
         "font_size": 10,
-        "max_width": 220
+        "max_width": 220,
+        "height": 14,
+        "line_height": 12,
+        "max_lines": 1,
+        "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -673,7 +837,11 @@
         "x": 330,
         "y": 248,
         "font_size": 10,
-        "max_width": 190
+        "max_width": 190,
+        "height": 14,
+        "line_height": 12,
+        "max_lines": 1,
+        "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -689,7 +857,11 @@
         "x": 95,
         "y": 231,
         "font_size": 10,
-        "max_width": 140
+        "max_width": 140,
+        "height": 14,
+        "line_height": 12,
+        "max_lines": 1,
+        "field_kind": "date"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false
@@ -705,7 +877,11 @@
         "x": 95,
         "y": 206,
         "font_size": 8,
-        "max_width": 430
+        "max_width": 430,
+        "height": 36,
+        "line_height": 10,
+        "max_lines": 3,
+        "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
       "not_exported": false

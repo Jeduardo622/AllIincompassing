@@ -89,13 +89,17 @@ npx vitest run \
   src/server/__tests__/assessmentPlanPdfHandler.test.ts \
   src/server/__tests__/assessmentPlanPdfTemplate.test.ts \
   src/components/__tests__/ProgramsGoalsTab.test.tsx
+npm run playwright:assessment-pdf-smoke
 ```
 
 This covers:
 
 - API precondition gating for `/api/assessment-plan-pdf`
 - checklist-to-render-map parity validation
-- UI trigger behavior for `Generate Completed CalOptima PDF`
+- overlay warning propagation for `Generate Completed CalOptima PDF`
+- visual placement smoke for generated CalOptima PDF pages with mapped fields
+
+`npm run playwright:assessment-pdf-smoke` requires authenticated Playwright/Supabase env plus `PW_ASSESSMENT_DOCUMENT_ID` for an approved CalOptima assessment with accepted program/goals.
 
 ## Agent eval smoke (edge functions)
 

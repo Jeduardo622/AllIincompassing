@@ -87,10 +87,19 @@ interface TherapistRow {
 }
 
 interface GeneratePdfFunctionResponse {
-  fill_mode: "acroform" | "overlay";
+  fill_mode: "acroform" | "overlay" | "mixed";
   bucket_id: string;
   object_path: string;
   signed_url: string;
+  layout_warnings?: Array<{
+    placeholder_key: string;
+    page: number;
+    reason: "overflow";
+    rendered_line_count: number;
+    total_line_count: number;
+    max_lines: number;
+  }>;
+  overflow_keys?: string[];
 }
 
 const CALOPTIMA_TEMPLATE_PATH = resolve(process.cwd(), "CalOptima Health FBA Template (2).pdf");
@@ -294,15 +303,20 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
         generated_bucket_id: functionResult.data.bucket_id,
         generated_object_path: functionResult.data.object_path,
         missing_required_count: payloadResult.missing_required_keys.length,
+        layout_warning_count: functionResult.data.layout_warnings?.length ?? 0,
+        overflow_keys: functionResult.data.overflow_keys ?? [],
       },
     }),
   });
 
+  const layoutWarnings = functionResult.data.layout_warnings ?? [];
   return json({
     assessment_document_id: assessmentDocument.id,
     fill_mode: functionResult.data.fill_mode,
     bucket_id: functionResult.data.bucket_id,
     object_path: functionResult.data.object_path,
     signed_url: functionResult.data.signed_url,
+    layout_warnings: layoutWarnings,
+    overflow_keys: functionResult.data.overflow_keys ?? layoutWarnings.map((warning) => warning.placeholder_key),
   });
 }

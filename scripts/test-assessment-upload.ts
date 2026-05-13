@@ -203,7 +203,7 @@ async function main() {
         }
         
         process.exit(0);
-      } else if (statusData.status === 'failed') {
+      } else if (statusData.status === 'extraction_failed') {
         console.error('❌ Extraction failed');
         console.error(`  Error: ${statusData.extraction_error || 'Unknown error'}`);
         process.exit(1);

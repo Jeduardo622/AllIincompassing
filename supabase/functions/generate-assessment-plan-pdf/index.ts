@@ -2,6 +2,7 @@ import { PDFCheckBox, PDFDocument, PDFTextField, StandardFonts, rgb } from "npm:
 import { z } from "npm:zod@3.23.8";
 import { createProtectedRoute, corsHeaders, RouteOptions } from "../_shared/auth-middleware.ts";
 import { supabaseAdmin } from "../_shared/database.ts";
+import { sanitizePdfText } from "./pdf-text.ts";
 
 const renderMapEntrySchema = z.object({
   placeholder_key: z.string().trim().min(1),
@@ -96,7 +97,7 @@ export default createProtectedRoute(async (req) => {
 
     for (const entry of parsed.data.render_map_entries) {
       const rawValue = parsed.data.field_values[entry.placeholder_key];
-      const value = typeof rawValue === "string" ? rawValue.trim() : "";
+      const value = typeof rawValue === "string" ? sanitizePdfText(rawValue) : "";
       if (!value) continue;
 
       const match = entry.form_field_candidates
@@ -126,7 +127,7 @@ export default createProtectedRoute(async (req) => {
 
       for (const entry of parsed.data.render_map_entries) {
         const rawValue = parsed.data.field_values[entry.placeholder_key];
-        const value = typeof rawValue === "string" ? rawValue.trim() : "";
+        const value = typeof rawValue === "string" ? sanitizePdfText(rawValue) : "";
         if (!value) continue;
 
         const pageIndex = entry.fallback.page - 1;

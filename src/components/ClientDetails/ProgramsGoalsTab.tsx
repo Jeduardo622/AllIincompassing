@@ -1011,7 +1011,12 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       if (!response.ok) {
         throw new Error(await parseApiErrorMessage(response, "Assessment cannot be promoted yet."));
       }
-      return parseJson<{ created_program_count: number; created_goal_count: number }>(response);
+      return parseJson<{
+        created_program_count: number;
+        created_goal_count: number;
+        promoted_program_count?: number;
+        promoted_goal_count?: number;
+      }>(response);
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({
@@ -1023,8 +1028,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       queryClient.invalidateQueries({
         queryKey: ["program-goals", resolvedProgramId, organizationId ?? "MISSING_ORG"],
       });
+      const publishedProgramCount = result.promoted_program_count ?? result.created_program_count;
+      const publishedGoalCount = result.promoted_goal_count ?? result.created_goal_count;
       showSuccess(
-        `Published to live records. Created ${formatCountLabel(result.created_program_count, "production program", "production programs")} and ${formatCountLabel(result.created_goal_count, "goal", "goals")}.`,
+        `Published to live records. Created ${formatCountLabel(publishedProgramCount, "production program", "production programs")} and ${formatCountLabel(publishedGoalCount, "goal", "goals")}.`,
       );
     },
     onError: showError,

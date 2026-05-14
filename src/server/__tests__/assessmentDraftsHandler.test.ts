@@ -243,6 +243,13 @@ describe("assessmentDraftsHandler", () => {
           ...structuredGoals[1],
           payload: {
             ...(structuredGoals[1]?.payload as Record<string, unknown>),
+            title: "Child Goal 1 (2)",
+          },
+        };
+        structuredGoals[2] = {
+          ...structuredGoals[2],
+          payload: {
+            ...(structuredGoals[2]?.payload as Record<string, unknown>),
             title: "Child Goal 1",
           },
         };
@@ -299,6 +306,7 @@ describe("assessmentDraftsHandler", () => {
     expect(parentGoalCount).toBe(6);
     expect(goalPayload[0]?.title).toBe("Child Goal 1");
     expect(goalPayload[1]?.title).toBe("Child Goal 1 (2)");
+    expect(goalPayload[2]?.title).toBe("Child Goal 1 (3)");
     expect(goalPayload[0]?.mastery_criteria).toBe("Mastery criteria noted");
     expect(goalPayload[0]?.evidence_refs).toEqual([
       { section_key: "goals_treatment_planning", source_span: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS#0" },

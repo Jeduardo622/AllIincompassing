@@ -206,11 +206,43 @@ const getPayloadRows = (payload: Record<string, unknown>, keys: string[]): Array
   return [];
 };
 
+const normalizeGoalTitleKey = (title: string): string => title.trim().replace(/\s+/g, " ").toLowerCase();
+
+const splitGoalTitleSuffix = (title: string): { baseTitle: string; suffixIndex: number } => {
+  const trimmedTitle = title.trim();
+  const suffixMatch = trimmedTitle.match(/^(.*)\s+\((\d+)\)$/);
+  if (!suffixMatch) {
+    return { baseTitle: trimmedTitle, suffixIndex: 1 };
+  }
+
+  const parsedSuffix = Number.parseInt(suffixMatch[2] ?? "", 10);
+  if (!Number.isFinite(parsedSuffix) || parsedSuffix < 2) {
+    return { baseTitle: trimmedTitle, suffixIndex: 1 };
+  }
+
+  return { baseTitle: (suffixMatch[1] ?? trimmedTitle).trim(), suffixIndex: parsedSuffix };
+};
+
 const ensureUniqueGoalTitle = (title: string, seenTitles: Map<string, number>): string => {
-  const normalized = title.trim().toLowerCase();
-  const seenCount = seenTitles.get(normalized) ?? 0;
-  seenTitles.set(normalized, seenCount + 1);
-  return seenCount === 0 ? title : `${title} (${seenCount + 1})`;
+  const { baseTitle, suffixIndex } = splitGoalTitleSuffix(title);
+  const baseKey = `base:${normalizeGoalTitleKey(baseTitle)}`;
+  const titleKeyFor = (candidate: string) => `title:${normalizeGoalTitleKey(candidate)}`;
+  const formatTitle = (index: number) => (index === 1 ? baseTitle : `${baseTitle} (${index})`);
+
+  let candidateIndex = suffixIndex;
+  let candidateTitle = formatTitle(candidateIndex);
+  if (seenTitles.has(titleKeyFor(candidateTitle))) {
+    candidateIndex = Math.max((seenTitles.get(baseKey) ?? 1) + 1, suffixIndex + 1);
+    candidateTitle = formatTitle(candidateIndex);
+    while (seenTitles.has(titleKeyFor(candidateTitle))) {
+      candidateIndex += 1;
+      candidateTitle = formatTitle(candidateIndex);
+    }
+  }
+
+  seenTitles.set(titleKeyFor(candidateTitle), candidateIndex);
+  seenTitles.set(baseKey, Math.max(seenTitles.get(baseKey) ?? 0, candidateIndex));
+  return candidateTitle;
 };
 
 const buildDeterministicDraftPayload = (

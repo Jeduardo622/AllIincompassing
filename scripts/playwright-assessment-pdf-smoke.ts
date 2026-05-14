@@ -24,6 +24,7 @@ type GeneratePdfResponse = {
   object_path: string;
   layout_warnings?: Array<{ placeholder_key: string; page: number; reason: string }>;
   overflow_keys?: string[];
+  filled_pages?: number[];
 };
 
 type PageReport = {
@@ -40,6 +41,7 @@ const PDF_PAGE_HEIGHT_POINTS = 792;
 const SCREENSHOT_WIDTH = 816;
 const SCREENSHOT_HEIGHT = 1056;
 const OUTSIDE_ALLOWED_PIXEL_TOLERANCE = 350;
+const MIN_CHANGED_PIXELS_PER_FILLED_PAGE = 25;
 
 const getRequiredEnv = (name: string): string => {
   const value = process.env[name]?.trim();
@@ -76,17 +78,20 @@ const compareScreenshots = async (
 ) => {
   const blankUrl = dataUrlForFile(blankScreenshot, 'image/png');
   const generatedUrl = dataUrlForFile(generatedScreenshot, 'image/png');
-  return page.evaluate(
-    async ({ blankUrl: blank, generatedUrl: generated, entries: fieldEntries, diffPath: ignoredDiffPath, pageWidth, pageHeight }) => {
-      const browserGlobal = globalThis as Record<string, any>;
-      const loadImage = async (src: string): Promise<any> => {
+  const compareInBrowser = new Function(
+    'arg',
+    `
+    return (async () => {
+      const { blankUrl: blank, generatedUrl: generated, entries: fieldEntries, diffPath: ignoredDiffPath, pageWidth, pageHeight } = arg;
+      const browserGlobal = globalThis;
+      const loadImage = async (src) => {
         const response = await browserGlobal.fetch(src);
         const blob = await response.blob();
         return browserGlobal.createImageBitmap(blob);
       };
       const [blankImage, generatedImage] = await Promise.all([loadImage(blank), loadImage(generated)]);
-      const width = Number((generatedImage as { width: number }).width);
-      const height = Number((generatedImage as { height: number }).height);
+      const width = Number(generatedImage.width);
+      const height = Number(generatedImage.height);
       const canvas = new browserGlobal.OffscreenCanvas(width, height);
       const context = canvas.getContext('2d');
       if (!context) throw new Error('Could not create screenshot comparison canvas.');
@@ -136,7 +141,7 @@ const compareScreenshots = async (
 
       context.putImageData(diffPixels, 0, 0);
       const blob = await canvas.convertToBlob({ type: 'image/png' });
-      const diffDataUrl = await new Promise<string>((resolve, reject) => {
+      const diffDataUrl = await new Promise((resolve, reject) => {
         const reader = new browserGlobal.FileReader();
         reader.onload = () => resolve(String(reader.result));
         reader.onerror = () => reject(reader.error ?? new Error('Could not encode diff image.'));
@@ -148,13 +153,37 @@ const compareScreenshots = async (
         diffDataUrl,
         diffPath: ignoredDiffPath,
       };
+    })();
+    `,
+  ) as (
+    arg: {
+      blankUrl: string;
+      generatedUrl: string;
+      entries: RenderMapEntry[];
+      diffPath: string;
+      pageWidth: number;
+      pageHeight: number;
     },
+  ) => Promise<{
+    changedPixels: number;
+    outsideAllowedPixels: number;
+    diffDataUrl: string;
+    diffPath: string;
+  }>;
+  return page.evaluate(
+    compareInBrowser,
     { blankUrl, generatedUrl, entries, diffPath, pageWidth: PDF_PAGE_WIDTH_POINTS, pageHeight: PDF_PAGE_HEIGHT_POINTS },
   );
 };
 
 async function run() {
   loadPlaywrightEnv();
+
+  if (process.env.HEADLESS !== 'false') {
+    throw new Error(
+      'Assessment PDF visual smoke must run with HEADLESS=false because Chromium headless does not render PDF viewer screenshots reliably.',
+    );
+  }
 
   const baseUrl = (process.env.PW_BASE_URL?.trim() || DEFAULT_BASE_URL).replace(/\/$/, '');
   const assessmentDocumentId =
@@ -208,12 +237,16 @@ async function run() {
   const renderMap = JSON.parse(readFileSync(path.resolve(process.cwd(), 'docs/fill_docs/caloptima_fba_pdf_render_map.json'), 'utf8')) as {
     entries: RenderMapEntry[];
   };
+  const expectedFilledPages = new Set(generated.filled_pages ?? []);
+  if (expectedFilledPages.size === 0) {
+    throw new Error('PDF visual smoke expected at least one filled page from the generation response.');
+  }
   const pages = Array.from(new Set(renderMap.entries.map((entry) => entry.fallback.page))).sort((left, right) => left - right);
   if (!pages.includes(2)) {
     throw new Error('CalOptima PDF visual smoke requires page 2 coverage.');
   }
 
-  const browser = await chromium.launch({ headless: process.env.HEADLESS !== 'false' });
+  const browser = await chromium.launch({ headless: false });
   const page = await browser.newPage();
   const templateDataUrl = dataUrlForFile(templatePath, 'application/pdf');
   const generatedDataUrl = dataUrlForFile(generatedPdfPath, 'application/pdf');
@@ -242,18 +275,35 @@ async function run() {
   }
 
   const failingPages = reportPages.filter((entry) => entry.outsideAllowedPixels > OUTSIDE_ALLOWED_PIXEL_TOLERANCE);
+  const totalChangedPixels = reportPages.reduce((sum, entry) => sum + entry.changedPixels, 0);
+  const missingFilledPages = reportPages.filter(
+    (entry) => expectedFilledPages.has(entry.page) && entry.changedPixels < MIN_CHANGED_PIXELS_PER_FILLED_PAGE,
+  );
   const report = {
-    ok: failingPages.length === 0,
+    ok: failingPages.length === 0 && missingFilledPages.length === 0 && totalChangedPixels > 0,
     assessmentDocumentId,
     fillMode: generated.fill_mode,
     objectPath: generated.object_path,
     outputDir,
     outsideAllowedPixelTolerance: OUTSIDE_ALLOWED_PIXEL_TOLERANCE,
+    minChangedPixelsPerFilledPage: MIN_CHANGED_PIXELS_PER_FILLED_PAGE,
+    totalChangedPixels,
+    expectedFilledPages: Array.from(expectedFilledPages).sort((left, right) => left - right),
     pages: reportPages,
   };
   const reportPath = path.join(outputDir, 'report.json');
   writeFileSync(reportPath, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
+  if (totalChangedPixels === 0) {
+    throw new Error(`PDF visual smoke could not detect rendered PDF changes. Report: ${reportPath}`);
+  }
+  if (missingFilledPages.length > 0) {
+    throw new Error(
+      `PDF visual smoke found mapped pages with non-empty fields but no rendered evidence: ${missingFilledPages
+        .map((entry) => entry.page)
+        .join(', ')}. Report: ${reportPath}`,
+    );
+  }
   if (failingPages.length > 0) {
     throw new Error(`PDF visual smoke found changed pixels outside mapped boxes. Report: ${reportPath}`);
   }

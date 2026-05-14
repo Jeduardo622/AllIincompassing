@@ -131,5 +131,7 @@ export function orgScopedQuery(
   table: string,
   orgId: string,
 ) {
-  return db.from(table).eq("organization_id", orgId);
+  return (db.from(table) as unknown as {
+    eq: (column: string, value: string) => unknown;
+  }).eq("organization_id", orgId);
 }

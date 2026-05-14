@@ -208,7 +208,7 @@ const getPayloadRows = (payload: Record<string, unknown>, keys: string[]): Array
 
 const normalizeGoalTitleKey = (title: string): string => title.trim().replace(/\s+/g, " ").toLowerCase();
 
-const splitGoalTitleSuffix = (title: string): { baseTitle: string; suffixIndex: number } => {
+const splitGoalTitleSuffix = (title: string, seenTitles: Map<string, number>): { baseTitle: string; suffixIndex: number } => {
   const trimmedTitle = title.trim();
   const suffixMatch = trimmedTitle.match(/^(.*)\s+\((\d+)\)$/);
   if (!suffixMatch) {
@@ -220,11 +220,18 @@ const splitGoalTitleSuffix = (title: string): { baseTitle: string; suffixIndex: 
     return { baseTitle: trimmedTitle, suffixIndex: 1 };
   }
 
-  return { baseTitle: (suffixMatch[1] ?? trimmedTitle).trim(), suffixIndex: parsedSuffix };
+  const baseTitle = (suffixMatch[1] ?? trimmedTitle).trim();
+  const baseTitleKey = `title:${normalizeGoalTitleKey(baseTitle)}`;
+  const baseCounterKey = `base:${normalizeGoalTitleKey(baseTitle)}`;
+  if (!seenTitles.has(baseTitleKey) && !seenTitles.has(baseCounterKey)) {
+    return { baseTitle: trimmedTitle, suffixIndex: 1 };
+  }
+
+  return { baseTitle, suffixIndex: parsedSuffix };
 };
 
 const ensureUniqueGoalTitle = (title: string, seenTitles: Map<string, number>): string => {
-  const { baseTitle, suffixIndex } = splitGoalTitleSuffix(title);
+  const { baseTitle, suffixIndex } = splitGoalTitleSuffix(title, seenTitles);
   const baseKey = `base:${normalizeGoalTitleKey(baseTitle)}`;
   const titleKeyFor = (candidate: string) => `title:${normalizeGoalTitleKey(candidate)}`;
   const formatTitle = (index: number) => (index === 1 ? baseTitle : `${baseTitle} (${index})`);

@@ -47,7 +47,7 @@ Implement a staged workflow where uploaded payer assessments (PDF/DOCX) produce 
 ### 4) `ui-staged-review` (implemented)
 
 - `ProgramsGoalsTab` now includes:
-  - assessment upload action (PDF/DOC/DOCX)
+  - assessment upload action (PDF/DOCX)
   - assessment queue panel with status display
   - checklist section review/editor UI
   - draft program/goal review editor with accept/reject/edit states
@@ -64,6 +64,11 @@ Implement a staged workflow where uploaded payer assessments (PDF/DOCX) produce 
   - stores generated PDF and returns signed URL for download
 - Mapping artifact:
   - `docs/fill_docs/caloptima_fba_pdf_render_map.json`
+- Extraction behavior:
+  - uploaded PDF assessments use Adobe PDF Extract API only
+  - uploaded DOCX assessments continue to use the local DOCX text decoder
+  - Adobe is not used for completed-PDF generation, signing, embedded viewing, or overlay rendering
+  - missing Adobe credentials or Adobe API failures mark the document `extraction_failed` with a redacted operator-facing error
 
 ### 6) `tests-and-docs` (implemented)
 

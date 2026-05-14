@@ -134,6 +134,9 @@ describe("assessmentDocumentsHandler", () => {
           ok: true,
           status: 200,
           data: {
+            extraction_provider: "adobe_pdf_extract",
+            adobe_element_count: 42,
+            adobe_table_count: 3,
             fields: [
               {
                 placeholder_key: "CALOPTIMA_FBA_MEMBER_NAME",
@@ -229,7 +232,7 @@ describe("assessmentDocumentsHandler", () => {
           file_name: "fba.pdf",
           mime_type: "application/pdf",
           file_size: 1234,
-          object_path: "clients/client-1/assessments/fba.pdf",
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
         }),
       }),
     );
@@ -255,6 +258,17 @@ describe("assessmentDocumentsHandler", () => {
     };
     expect(extractionPayload.checklist_rows?.[0]?.extraction_aliases).toEqual(["Member full legal name"]);
     expect(loadChecklistTemplateRows).toHaveBeenCalledWith("caloptima_fba");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const completedEventCall = vi.mocked(fetchJson).mock.calls.find(([url, init]) => {
+      const body = String((init as RequestInit | undefined)?.body ?? "");
+      return typeof url === "string" && url.includes("/assessment_review_events") && body.includes("extraction_completed");
+    });
+    const completedEventPayload = JSON.parse(String((completedEventCall?.[1] as RequestInit | undefined)?.body ?? "{}"));
+    expect(completedEventPayload.event_payload).toMatchObject({
+      extraction_provider: "adobe_pdf_extract",
+      adobe_element_count: 42,
+      adobe_table_count: 3,
+    });
   });
 
   it("creates assessment document with IEHP template rows", async () => {
@@ -295,7 +309,7 @@ describe("assessmentDocumentsHandler", () => {
           file_name: "iehp-fba.docx",
           mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
           file_size: 2200,
-          object_path: "clients/client-1/assessments/iehp-fba.docx",
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/iehp-fba.docx",
           template_type: "iehp_fba",
         }),
       }),
@@ -327,13 +341,96 @@ describe("assessmentDocumentsHandler", () => {
           file_name: "fba.pdf",
           mime_type: "application/pdf",
           file_size: 1234,
-          object_path: "clients/client-1/assessments/fba.pdf",
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
           template_type: "unknown_template",
         }),
       }),
     );
 
     expect(response.status).toBe(400);
+  });
+
+  it("rejects assessment uploads outside the approved storage bucket", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "client-1" }] };
+      }
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          bucket_id: "private-documents",
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_documents"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("rejects assessment uploads outside the canonical client assessment path", async () => {
+    vi.mocked(getAccessToken).mockReturnValue("token");
+    vi.mocked(resolveOrgAndRole).mockResolvedValue({
+      organizationId: "org-1",
+      isTherapist: true,
+      isAdmin: false,
+      isSuperAdmin: false,
+    });
+    vi.mocked(getSupabaseConfig).mockReturnValue({
+      supabaseUrl: "https://example.supabase.co",
+      anonKey: "anon",
+    });
+    vi.mocked(fetchJson).mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.includes("/rest/v1/clients?select=id")) {
+        return { ok: true, status: 200, data: [{ id: "client-1" }] };
+      }
+      return { ok: true, status: 200, data: null };
+    });
+
+    const response = await assessmentDocumentsHandler(
+      new Request("http://localhost/api/assessment-documents", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({
+          client_id: "11111111-1111-1111-1111-111111111111",
+          file_name: "fba.pdf",
+          mime_type: "application/pdf",
+          file_size: 1234,
+          object_path: "clients/other-client/assessments/fba.pdf",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/assessment_documents"),
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it.each(roleMatrix)("returns 403 for out-of-org assessment document POST as $label without side effects", async ({ role }) => {
@@ -364,7 +461,7 @@ describe("assessmentDocumentsHandler", () => {
           file_name: "fba.pdf",
           mime_type: "application/pdf",
           file_size: 1234,
-          object_path: "clients/client-1/assessments/fba.pdf",
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
         }),
       }),
     );
@@ -679,7 +776,7 @@ describe("assessmentDocumentsHandler", () => {
           file_name: "fba.pdf",
           mime_type: "application/pdf",
           file_size: 1234,
-          object_path: "clients/client-1/assessments/fba.pdf",
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
         }),
       }),
     );
@@ -750,7 +847,11 @@ describe("assessmentDocumentsHandler", () => {
         return { ok: true, status: 201, data: null };
       }
       if (method === "POST" && url.includes("/functions/v1/extract-assessment-fields")) {
-        return { ok: false, status: 502, data: null };
+        return {
+          ok: false,
+          status: 502,
+          data: { error: "Adobe PDF extraction failed. Review checklist manually." },
+        };
       }
       if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-extract-non-ok")) {
         return { ok: true, status: 200, data: null };
@@ -770,7 +871,7 @@ describe("assessmentDocumentsHandler", () => {
           file_name: "fba.pdf",
           mime_type: "application/pdf",
           file_size: 1234,
-          object_path: "clients/client-1/assessments/fba.pdf",
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
         }),
       }),
     );
@@ -803,7 +904,7 @@ describe("assessmentDocumentsHandler", () => {
     ) as Record<string, unknown>;
     expectExtractionFailedStatusWriteInvariants(
       extractionFailedDocumentPatchPayload,
-      "Field extraction failed. Review checklist manually.",
+      "Adobe PDF extraction failed. Review checklist manually.",
     );
     const extractionFailedReviewEventCalls = vi
       .mocked(fetchJson)
@@ -973,7 +1074,7 @@ describe("assessmentDocumentsHandler", () => {
           file_name: "fba.pdf",
           mime_type: "application/pdf",
           file_size: 1234,
-          object_path: "clients/client-1/assessments/fba.pdf",
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
         }),
       }),
     );
@@ -1046,7 +1147,7 @@ describe("assessmentDocumentsHandler", () => {
           file_name: "fba.pdf",
           mime_type: "application/pdf",
           file_size: 1234,
-          object_path: "clients/client-1/assessments/fba.pdf",
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
         }),
       }),
     );
@@ -1351,7 +1452,7 @@ describe("assessmentDocumentsHandler", () => {
           file_name: "fba.pdf",
           mime_type: "application/pdf",
           file_size: 1234,
-          object_path: "clients/client-1/assessments/fba.pdf",
+          object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
         }),
       }),
     );
@@ -1477,7 +1578,7 @@ describe("assessmentDocumentsHandler", () => {
               organization_id: "org-1",
               client_id: "client-1",
               bucket_id: "client-documents",
-              object_path: "clients/client-1/assessments/fba.pdf",
+              object_path: "clients/11111111-1111-1111-1111-111111111111/assessments/fba.pdf",
             },
           ],
         };

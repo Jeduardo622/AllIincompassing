@@ -48,6 +48,37 @@ const buildAcceptedDraftGoals = () => [
   })),
 ];
 
+const buildStructuredGoalSections = (status: "approved" | "verified" | "drafted" = "approved") => [
+  ...Array.from({ length: 20 }, (_, index) => ({
+    id: `structured-child-${index + 1}`,
+    section_key: "goals_treatment_planning",
+    field_key: index % 2 === 0 ? "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS" : "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+    section_index: index,
+    payload: {
+      title: `Child Goal ${index + 1}`,
+      goal_type: "child",
+      program_name: index % 2 === 0 ? "Skill Acquisition" : "Behavior Treatment",
+    },
+    status,
+    required: true,
+    review_notes: null,
+  })),
+  ...Array.from({ length: 6 }, (_, index) => ({
+    id: `structured-parent-${index + 1}`,
+    section_key: "goals_treatment_planning",
+    field_key: "CALOPTIMA_FBA_PARENT_GOALS",
+    section_index: index,
+    payload: {
+      title: `Parent Goal ${index + 1}`,
+      goal_type: "parent",
+      program_name: "Parent Training",
+    },
+    status,
+    required: true,
+    review_notes: null,
+  })),
+];
+
 vi.mock("../../lib/ai", async () => {
   const actual = await vi.importActual<typeof import("../../lib/ai")>("../../lib/ai");
   return {
@@ -152,16 +183,26 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
           JSON.stringify({
             items: [],
             structured_sections: [
-              {
-                id: "structured-goal-1",
+              ...Array.from({ length: 20 }, (_, index) => ({
+                id: `structured-child-goal-${index}`,
                 section_key: "goals_treatment_planning",
                 field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
-                section_index: 0,
-                payload: { title: "Goal" },
+                section_index: index,
+                payload: { title: `Child Goal ${index + 1}`, goal_type: "child" },
                 status: "approved",
                 required: true,
                 review_notes: null,
-              },
+              })),
+              ...Array.from({ length: 6 }, (_, index) => ({
+                id: `structured-parent-goal-${index}`,
+                section_key: "goals_treatment_planning",
+                field_key: "CALOPTIMA_FBA_PARENT_GOALS",
+                section_index: index,
+                payload: { title: `Parent Goal ${index + 1}`, goal_type: "parent" },
+                status: "approved",
+                required: true,
+                review_notes: null,
+              })),
             ],
           }),
           { status: 200 },
@@ -736,18 +777,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         return new Response(
           JSON.stringify({
             items: [],
-            structured_sections: [
-              {
-                id: "structured-goal-1",
-                section_key: "goals_treatment_planning",
-                field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
-                section_index: 0,
-                payload: { title: "Goal" },
-                status: "approved",
-                required: true,
-                review_notes: null,
-              },
-            ],
+            structured_sections: buildStructuredGoalSections("approved"),
           }),
           { status: 200 },
         );
@@ -1355,18 +1385,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         return new Response(
           JSON.stringify({
             items: [],
-            structured_sections: [
-              {
-                id: "structured-goal-1",
-                section_key: "goals_treatment_planning",
-                field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
-                section_index: 0,
-                payload: { title: "Goal" },
-                status: "approved",
-                required: true,
-                review_notes: null,
-              },
-            ],
+            structured_sections: buildStructuredGoalSections("approved"),
           }),
           { status: 200 },
         );
@@ -1456,18 +1475,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
                 value_text: "Aggression occurs during transitions and denied access.",
               },
             ],
-            structured_sections: [
-              {
-                id: "structured-goal-1",
-                section_key: "goals_treatment_planning",
-                field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
-                section_index: 0,
-                payload: { title: "Goal" },
-                status: "approved",
-                required: true,
-                review_notes: null,
-              },
-            ],
+            structured_sections: buildStructuredGoalSections("approved"),
           }),
           { status: 200 },
         );
@@ -1596,6 +1604,80 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(
       vi.mocked(callApi).mock.calls.some(([path, init]) => path === "/api/assessment-drafts" && init?.method === "POST"),
     ).toBe(false);
+  });
+
+  it("shows structured goal readiness counts and blocks draft generation below minimums", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1234,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/fba.pdf",
+              status: "extracted",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "checklist-item-1",
+                section_key: "behavior_summary",
+                label: "Behavior Summary",
+                placeholder_key: "behavior_summary",
+                required: true,
+                mode: "AUTO",
+                status: "drafted",
+                review_notes: null,
+                value_text: "Extracted behavior summary",
+              },
+            ],
+            structured_sections: [],
+          }),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: {
+        role: "therapist",
+        organizationId: ORG_ID,
+        accessToken: "test-access-token",
+      },
+    });
+
+    expect(
+      await screen.findByText((_content, node) => node?.textContent === "Checklist values: 1/1"),
+    ).toBeInTheDocument();
+    expect(screen.getByText((_content, node) => node?.textContent === "Child goals: 0/20")).toBeInTheDocument();
+    expect(screen.getByText((_content, node) => node?.textContent === "Parent goals: 0/6")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Adobe extraction found 0/20 child goals and 0/6 parent goals. Upload a richer source document or improve extraction before generating drafts.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Generate Drafts from Uploaded FBA/i })).toBeDisabled();
   });
 
   it("shows extraction-failed guidance instead of generic waiting copy for uploaded assessments", async () => {
@@ -1753,18 +1835,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
         return new Response(
           JSON.stringify({
             items: [],
-            structured_sections: [
-              {
-                id: "structured-goal-1",
-                section_key: "goals_treatment_planning",
-                field_key: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
-                section_index: 0,
-                payload: { title: "Goal" },
-                status: "verified",
-                required: true,
-                review_notes: null,
-              },
-            ],
+            structured_sections: buildStructuredGoalSections("verified"),
           }),
           { status: 200 },
         );

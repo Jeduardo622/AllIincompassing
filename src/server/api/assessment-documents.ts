@@ -87,6 +87,9 @@ interface ExtractionFunctionResponse {
   extraction_provider?: string;
   adobe_element_count?: number | null;
   adobe_table_count?: number | null;
+  structured_section_count?: number;
+  structured_child_goal_count?: number;
+  structured_parent_goal_count?: number;
   fields: ExtractionFieldResult[];
   structured_sections?: Array<{
     section_key: string;

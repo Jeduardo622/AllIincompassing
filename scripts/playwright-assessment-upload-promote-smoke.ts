@@ -331,7 +331,13 @@ const approveChecklistAndStructuredSections = async (args: {
   baseUrl: string;
   accessToken: string;
   checklist: ChecklistResponse;
-}): Promise<{ checklistApproved: number; structuredApproved: number; goalStructuredSectionCount: number }> => {
+}): Promise<{
+  checklistApproved: number;
+  structuredApproved: number;
+  goalStructuredSectionCount: number;
+  childGoalStructuredSectionCount: number;
+  parentGoalStructuredSectionCount: number;
+}> => {
   let checklistApproved = 0;
   for (const item of args.checklist.items) {
     if (!item.required || item.status === "approved") continue;
@@ -352,6 +358,19 @@ const approveChecklistAndStructuredSections = async (args: {
   );
   if (goalSections.length === 0) {
     throw new Error("No structured CalOptima goal sections were extracted from the fixture.");
+  }
+  const childGoalStructuredSectionCount = goalSections.filter((section) =>
+    section.field_key === "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS" ||
+    section.field_key === "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS" ||
+    section.payload?.goal_type === "child"
+  ).length;
+  const parentGoalStructuredSectionCount = goalSections.filter((section) =>
+    section.field_key === "CALOPTIMA_FBA_PARENT_GOALS" || section.payload?.goal_type === "parent"
+  ).length;
+  if (childGoalStructuredSectionCount < MIN_CHILD_GOALS || parentGoalStructuredSectionCount < MIN_PARENT_GOALS) {
+    throw new Error(
+      `Structured goal extraction produced ${childGoalStructuredSectionCount}/${MIN_CHILD_GOALS} child goals and ${parentGoalStructuredSectionCount}/${MIN_PARENT_GOALS} parent goals.`,
+    );
   }
 
   let structuredApproved = 0;
@@ -376,6 +395,8 @@ const approveChecklistAndStructuredSections = async (args: {
     checklistApproved,
     structuredApproved,
     goalStructuredSectionCount: goalSections.length,
+    childGoalStructuredSectionCount,
+    parentGoalStructuredSectionCount,
   };
 };
 
@@ -768,6 +789,8 @@ async function run() {
           checklistRowCount: checklist.items.length,
           extractionRowCount: extractionRows.length,
           goalStructuredSectionCount: approvalSummary.goalStructuredSectionCount,
+          childGoalStructuredSectionCount: approvalSummary.childGoalStructuredSectionCount,
+          parentGoalStructuredSectionCount: approvalSummary.parentGoalStructuredSectionCount,
           checklistApproved: approvalSummary.checklistApproved,
           structuredApproved: approvalSummary.structuredApproved,
           draftProgramCount: drafts.programs.length,

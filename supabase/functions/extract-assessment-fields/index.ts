@@ -2,6 +2,10 @@ import { createClient } from "npm:@supabase/supabase-js@2.50.0";
 import { z } from "npm:zod@3.23.8";
 import { resolveAllowedOrigin } from "../_shared/cors.ts";
 import { AdobePdfExtractError, extractPdfWithAdobe, type NormalizedAdobePdfExtract } from "./adobe-pdf-extract.ts";
+import {
+  extractStructuredGoalSections,
+  summarizeStructuredGoalSections,
+} from "./structured-goals.ts";
 
 const corsHeaders = (req: Request) => ({
   "Access-Control-Allow-Origin": resolveAllowedOrigin(req.headers.get("origin")),
@@ -585,82 +589,6 @@ const parseKeyValueSegments = (value: string): Record<string, string> => {
   return payload;
 };
 
-const extractStructuredGoalSections = (text: string): StructuredSectionResult[] => {
-  const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-  const sections: StructuredSectionResult[] = [];
-  let current: {
-    field_key: string;
-    section_key: string;
-    payload: Record<string, unknown>;
-    start_line: number;
-  } | null = null;
-
-  const flush = (endLine: number) => {
-    if (!current) {
-      return;
-    }
-    sections.push({
-      section_key: current.section_key,
-      field_key: current.field_key,
-      section_index: sections.filter((section) => section.field_key === current?.field_key).length,
-      payload: current.payload,
-      source_span: { method: "deterministic_goal_block", start_line: current.start_line, end_line: endLine },
-      status: "drafted",
-      required: true,
-      review_notes: "Deterministic structured goal block extracted from CalOptima document text.",
-    });
-    current = null;
-  };
-
-  lines.forEach((line, index) => {
-    const goalMatch = line.match(
-      /^(?:[A-Z]\.\s*)?(?:\d+\.\s*)?(child|parent\/caregiver|parent|target and replacement|target\/replacement|target behavior|replacement behavior|target|replacement|skill acquisition|caregiver)\s+goal\s*\d*\s*(?:\([^)]*\))?\s*[:-]\s*(.+)$/i,
-    );
-    if (goalMatch?.[1] && goalMatch?.[2]) {
-      flush(index);
-      const label = goalMatch[1].toLowerCase();
-      const isParent = label.includes("parent") || label.includes("caregiver");
-      const isSkill = label.includes("skill");
-      current = {
-        field_key: isParent
-          ? "CALOPTIMA_FBA_PARENT_GOALS"
-          : isSkill
-            ? "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS"
-            : "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
-        section_key: "goals_treatment_planning",
-        start_line: index + 1,
-        payload: {
-          title: goalMatch[2].trim(),
-          goal_type: isParent ? "parent" : "child",
-          program_name: isParent ? "Parent Training" : "Behavior Treatment",
-          original_text: line,
-        },
-      };
-      return;
-    }
-    if (!current) {
-      return;
-    }
-    const fieldMatch = line.match(/^(program|description|target behavior|behavior|skill|measurement type|measure|baseline|target criteria|criteria|mastery criteria|maintenance criteria|generalization criteria|rationale|objective data points?)\s*[:-]\s*(.+)$/i);
-    if (!fieldMatch?.[1] || !fieldMatch?.[2]) {
-      current.payload.original_text = `${String(current.payload.original_text ?? "")}\n${line}`.trim();
-      return;
-    }
-    const key = fieldMatch[1].toLowerCase().replace(/\s+/g, "_").replace(/^measure$/, "measurement_type");
-    const value = fieldMatch[2].trim();
-    if (key.startsWith("objective_data_point")) {
-      const currentRows = Array.isArray(current.payload.objective_data_points)
-        ? current.payload.objective_data_points as Record<string, unknown>[]
-        : [];
-      current.payload.objective_data_points = [...currentRows, { ...parseKeyValueSegments(value), raw_text: value }];
-      return;
-    }
-    current.payload[key === "behavior" || key === "skill" ? "target_behavior" : key] = value;
-  });
-  flush(lines.length);
-  return sections;
-};
-
 const extractStructuredTableSections = (text: string): StructuredSectionResult[] => {
   const tableSpecs = [
     { field_key: "CALOPTIMA_FBA_RECORDS_REVIEWED", section_key: "records_reviewed", prefix: /^record reviewed\s*[:-]\s*(.+)$/i },
@@ -970,6 +898,7 @@ Deno.serve(async (req) => {
     const structuredSections = extractStructuredSections(documentText).map((section) =>
       withExtractionProviderSource(section, extractionProvider)
     );
+    const structuredGoalSummary = summarizeStructuredGoalSections(structuredSections);
     const structuredSummaryByKey = new Map<string, { count: number; firstPayload: Record<string, unknown> }>();
     structuredSections.forEach((section) => {
       const current = structuredSummaryByKey.get(section.field_key);
@@ -1001,6 +930,9 @@ Deno.serve(async (req) => {
       extraction_provider: extractionProvider,
       adobe_element_count: adobeExtraction?.element_count ?? null,
       adobe_table_count: adobeExtraction?.table_count ?? null,
+      structured_section_count: structuredSections.length,
+      structured_child_goal_count: structuredGoalSummary.childGoalCount,
+      structured_parent_goal_count: structuredGoalSummary.parentGoalCount,
       fields: merged,
       structured_sections: structuredSections,
       unresolved_keys: merged.filter((field) => !field.value_text).map((field) => field.placeholder_key),

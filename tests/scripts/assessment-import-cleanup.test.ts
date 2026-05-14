@@ -45,6 +45,20 @@ describe('cleanupAssessmentImportArtifacts', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it('continues when Supabase Storage reports a missing object as a 400 not_found payload', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ statusCode: '404', error: 'not_found', message: 'Object not found' }), {
+          status: 400,
+        }),
+      );
+
+    await expect(cleanupAssessmentImportArtifacts({ ...baseArgs, fetchImpl })).resolves.toBeUndefined();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it('fails and leaves storage untouched when DB cleanup cannot complete', async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()

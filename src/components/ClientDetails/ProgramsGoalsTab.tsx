@@ -56,6 +56,19 @@ const AI_GENERATION_READY_STATUSES: ReadonlySet<AssessmentDocumentRecord["status
   "extraction_failed",
 ]);
 const MIN_ASSESSMENT_TEXT_CHARS_FOR_AI_GENERATION = 20;
+const STRUCTURED_GOAL_FIELD_KEYS = new Set([
+  "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
+  "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
+  "CALOPTIMA_FBA_PARENT_GOALS",
+]);
+
+const isStructuredChildGoalSection = (section: AssessmentStructuredSection): boolean =>
+  section.field_key === "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS" ||
+  section.field_key === "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS" ||
+  section.payload?.goal_type === "child";
+
+const isStructuredParentGoalSection = (section: AssessmentStructuredSection): boolean =>
+  section.field_key === "CALOPTIMA_FBA_PARENT_GOALS" || section.payload?.goal_type === "parent";
 
 const withTimeout = async <T,>(
   promise: Promise<T>,
@@ -528,6 +541,19 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     (goal) => goal.accept_state === "accepted" || goal.accept_state === "edited",
   );
   const hasExistingDrafts = (assessmentDrafts?.programs?.length ?? 0) > 0 || (assessmentDrafts?.goals?.length ?? 0) > 0;
+  const extractedChecklistValueCount = checklistItems.filter((item) => item.value_text?.trim()).length;
+  const structuredChildGoalCount = structuredSections.filter(isStructuredChildGoalSection).length;
+  const structuredParentGoalCount = structuredSections.filter(isStructuredParentGoalSection).length;
+  const approvedStructuredChildGoalCount = structuredSections.filter(
+    (section) => section.status === "approved" && isStructuredChildGoalSection(section),
+  ).length;
+  const approvedStructuredParentGoalCount = structuredSections.filter(
+    (section) => section.status === "approved" && isStructuredParentGoalSection(section),
+  ).length;
+  const hasExtractedStructuredGoalMinimums =
+    structuredChildGoalCount >= MIN_CHILD_GOALS && structuredParentGoalCount >= MIN_PARENT_GOALS;
+  const hasApprovedStructuredGoalMinimums =
+    approvedStructuredChildGoalCount >= MIN_CHILD_GOALS && approvedStructuredParentGoalCount >= MIN_PARENT_GOALS;
   const acceptedDraftChildGoalCount = (assessmentDrafts?.goals ?? []).filter(
     (goal) => (goal.accept_state === "accepted" || goal.accept_state === "edited") && goal.goal_type === "child",
   ).length;
@@ -546,17 +572,14 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const hasApprovedStructuredGoalSections = structuredSections.some(
     (section) =>
       section.status === "approved" &&
-      [
-        "CALOPTIMA_FBA_TARGET_REPLACEMENT_GOALS",
-        "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS",
-        "CALOPTIMA_FBA_PARENT_GOALS",
-      ].includes(section.field_key),
+      STRUCTURED_GOAL_FIELD_KEYS.has(section.field_key),
   );
   const canGenerateUploadedAssessmentDraft =
     canQuerySelectedAssessment &&
     selectedAssessmentReadyForAiGeneration &&
     selectedFailedExtractionHasChecklistEvidence &&
     hasApprovedStructuredGoalSections &&
+    hasApprovedStructuredGoalMinimums &&
     !hasExistingDrafts;
   const canPromoteAssessment =
     canQuerySelectedAssessment &&
@@ -591,8 +614,12 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       ? "Extraction failed for this assessment. Retry deterministic draft generation using the extracted checklist evidence, or replace the source document if it needs correction."
     : !selectedAssessmentReadyForAiGeneration
       ? "Wait for extraction to complete before generating drafts."
+    : !hasExtractedStructuredGoalMinimums
+      ? `Adobe extraction found ${structuredChildGoalCount}/${MIN_CHILD_GOALS} child goals and ${structuredParentGoalCount}/${MIN_PARENT_GOALS} parent goals. Upload a richer source document or improve extraction before generating drafts.`
     : !hasApprovedStructuredGoalSections
       ? "Approve at least one structured CalOptima goal section before generating drafts."
+    : !hasApprovedStructuredGoalMinimums
+      ? `Approve at least ${MIN_CHILD_GOALS} child goals and ${MIN_PARENT_GOALS} parent goals before generating drafts.`
       : null;
 
   useEffect(() => {
@@ -1787,14 +1814,27 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 {selectedAssessmentTemplateLabel} Checklist Review
               </h3>
               {selectedAssessmentDocument && (
-                <p className="mb-3 text-xs text-gray-500 dark:text-gray-300">
-                  Document status:{" "}
-                  <span className={`rounded px-1.5 py-0.5 font-semibold ${statusToneByAssessment[selectedAssessmentDocument.status].className}`}>
-                    {statusToneByAssessment[selectedAssessmentDocument.status].label}
-                  </span>
-                  {" • "}
-                  Unresolved required rows: {unresolvedRequiredCount}
-                </p>
+                <div className="mb-3 space-y-2 text-xs text-gray-500 dark:text-gray-300">
+                  <p>
+                    Document status:{" "}
+                    <span className={`rounded px-1.5 py-0.5 font-semibold ${statusToneByAssessment[selectedAssessmentDocument.status].className}`}>
+                      {statusToneByAssessment[selectedAssessmentDocument.status].label}
+                    </span>
+                    {" • "}
+                    Unresolved required rows: {unresolvedRequiredCount}
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
+                      Checklist values: <span className="font-semibold">{extractedChecklistValueCount}/{checklistItems.length}</span>
+                    </div>
+                    <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
+                      Child goals: <span className="font-semibold">{structuredChildGoalCount}/{MIN_CHILD_GOALS}</span>
+                    </div>
+                    <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
+                      Parent goals: <span className="font-semibold">{structuredParentGoalCount}/{MIN_PARENT_GOALS}</span>
+                    </div>
+                  </div>
+                </div>
               )}
               {!selectedAssessmentId ? (
                 <p className="text-sm text-gray-500">Upload and select an assessment to review checklist items.</p>

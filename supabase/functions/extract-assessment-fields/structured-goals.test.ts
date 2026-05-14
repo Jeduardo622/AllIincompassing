@@ -25,8 +25,26 @@ Deno.test("extractStructuredGoalSections parses embedded CalOptima goal headings
   expect(sections[2].payload.goal_type).toBe("parent");
   expect(sections[2].payload.program_name).toBe("Parent Training");
   expect(sections[0].payload.baseline_data).toContain("0%");
-  expect(sections[0].payload.objective_data_points).toEqual(["date: 07/01/2025", "value: 8", "unit: episodes"]);
+  expect(sections[0].payload.objective_data_points).toEqual([
+    { date: "07/01/2025", value: "8", unit: "episodes" },
+  ]);
   expect(sections[0].payload.measurement_type).toContain("Percent");
+});
+
+Deno.test("extractStructuredGoalSections keeps multiple objective data points object-typed", () => {
+  const sections = extractStructuredGoalSections(`
+    Replacement Behavior Goal 1: Long-term The client will request help using functional communication.
+    Program: Behavior Treatment
+    Baseline: 0% of opportunities
+    Objective data points: date: 07/01/2025 | value: 8 | unit: episodes; date: 07/08/2025 | value: 6 | unit: episodes
+    Measurement Type: Frequency
+    Target Criteria: 80% across 4 consecutive weeks.
+  `);
+
+  expect(sections[0].payload.objective_data_points).toEqual([
+    { date: "07/01/2025", value: "8", unit: "episodes" },
+    { date: "07/08/2025", value: "6", unit: "episodes" },
+  ]);
 });
 
 Deno.test("summarizeStructuredGoalSections counts child and parent sections", () => {

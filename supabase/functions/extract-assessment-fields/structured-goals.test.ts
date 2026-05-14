@@ -47,6 +47,18 @@ Deno.test("extractStructuredGoalSections keeps multiple objective data points ob
   ]);
 });
 
+Deno.test("extractStructuredGoalSections falls back from service-location checkbox titles", () => {
+  const sections = extractStructuredGoalSections(`
+    Skill Acquisition Goal 4: ☐ Telehealth ☒ Home ☐ School ☐ Clinic ☐ Community
+    Program: Skill Acquisition
+    Baseline: 0% independent responses
+    Measurement Type: Percent opportunities
+    Target Criteria: 80% across 4 consecutive weeks.
+  `);
+
+  expect(sections[0].payload.title).toBe("Skill Acquisition Goal 4");
+});
+
 Deno.test("summarizeStructuredGoalSections counts child and parent sections", () => {
   const sections = extractStructuredGoalSections(`
     Replacement Behavior Goal 1: Child target with enough narrative detail for extraction.

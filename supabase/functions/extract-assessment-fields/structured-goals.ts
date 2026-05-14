@@ -54,6 +54,32 @@ const titleFromGoalBody = (body: string): string => {
   return beforeMetadata.trim() || normalized;
 };
 
+const titleLooksLikeServiceLocation = (title: string): boolean => {
+  const normalized = title.toLowerCase();
+  return (
+    /^[☐☑☒✓x\s]+/i.test(title) &&
+    ["telehealth", "home", "school", "clinic", "community"].some((location) => normalized.includes(location))
+  );
+};
+
+const titleFromHeading = (heading: string, headingNumber: string, sectionIndex: number): string => {
+  const normalizedHeading = normalizeText(heading)
+    .replace(/\btarget(?:\s+and\s+replacement)?(?:\s+behavior)?\s+goal\b/i, "Replacement Behavior Goal")
+    .replace(/\bskill\s+acquisition\s+goal\b/i, "Skill Acquisition Goal")
+    .replace(/\bparent\/caregiver\s+goal\b/i, "Parent/Caregiver Goal")
+    .replace(/\bparent\s+goal\b/i, "Parent/Caregiver Goal")
+    .replace(/\bcaregiver\s+goal\b/i, "Parent/Caregiver Goal");
+  return `${normalizedHeading} ${headingNumber || sectionIndex + 1}`.trim();
+};
+
+const resolveGoalTitle = (body: string, heading: string, headingNumber: string, sectionIndex: number): string => {
+  const parsedTitle = titleFromGoalBody(body);
+  if (!parsedTitle || titleLooksLikeServiceLocation(parsedTitle)) {
+    return titleFromHeading(heading, headingNumber, sectionIndex);
+  }
+  return parsedTitle;
+};
+
 const normalizeObjectKey = (value: string): string =>
   value
     .toLowerCase()
@@ -138,7 +164,7 @@ export const extractStructuredGoalSections = (text: string): StructuredGoalSecti
       field_key: classification.field_key,
       section_index: sections.filter((section) => section.field_key === classification.field_key).length,
       payload: {
-        title: titleFromGoalBody(body),
+        title: resolveGoalTitle(body, heading, headingNumber, index),
         goal_type: classification.goal_type,
         program_name: typeof parsedFields.program === "string" ? parsedFields.program : classification.program_name,
         original_text: originalText,

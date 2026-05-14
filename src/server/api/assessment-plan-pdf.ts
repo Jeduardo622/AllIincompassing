@@ -100,6 +100,7 @@ interface GeneratePdfFunctionResponse {
     max_lines: number;
   }>;
   overflow_keys?: string[];
+  filled_pages?: number[];
 }
 
 const CALOPTIMA_TEMPLATE_PATH = resolve(process.cwd(), "CalOptima Health FBA Template (2).pdf");
@@ -310,17 +311,6 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
   });
 
   const layoutWarnings = functionResult.data.layout_warnings ?? [];
-  const filledPages = Array.from(
-    new Set(
-      renderMap
-        .filter((entry) => {
-          const value = payloadResult.values[entry.placeholder_key];
-          return typeof value === "string" ? value.trim().length > 0 : Boolean(value);
-        })
-        .map((entry) => entry.fallback.page),
-    ),
-  ).sort((left, right) => left - right);
-
   return json({
     assessment_document_id: assessmentDocument.id,
     fill_mode: functionResult.data.fill_mode,
@@ -329,6 +319,6 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
     signed_url: functionResult.data.signed_url,
     layout_warnings: layoutWarnings,
     overflow_keys: functionResult.data.overflow_keys ?? layoutWarnings.map((warning) => warning.placeholder_key),
-    filled_pages: filledPages,
+    filled_pages: functionResult.data.filled_pages ?? [],
   });
 }

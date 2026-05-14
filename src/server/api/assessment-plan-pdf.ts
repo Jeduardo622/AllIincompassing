@@ -105,6 +105,21 @@ interface GeneratePdfFunctionResponse {
 
 const CALOPTIMA_TEMPLATE_PATH = resolve(process.cwd(), "CalOptima Health FBA Template (2).pdf");
 
+const deriveFilledPagesFallback = (
+  renderMap: Awaited<ReturnType<typeof loadCalOptimaPdfRenderMap>>,
+  fieldValues: Record<string, string>,
+): number[] =>
+  Array.from(
+    new Set(
+      renderMap
+        .filter((entry) => {
+          const value = fieldValues[entry.placeholder_key];
+          return typeof value === "string" ? value.trim().length > 0 : Boolean(value);
+        })
+        .map((entry) => entry.fallback.page),
+    ),
+  ).sort((left, right) => left - right);
+
 export async function assessmentPlanPdfHandler(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: { ...CORS_HEADERS } });
@@ -311,6 +326,10 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
   });
 
   const layoutWarnings = functionResult.data.layout_warnings ?? [];
+  const filledPages = Array.isArray(functionResult.data.filled_pages)
+    ? functionResult.data.filled_pages
+    : deriveFilledPagesFallback(renderMap, payloadResult.values);
+
   return json({
     assessment_document_id: assessmentDocument.id,
     fill_mode: functionResult.data.fill_mode,
@@ -319,6 +338,6 @@ export async function assessmentPlanPdfHandler(request: Request): Promise<Respon
     signed_url: functionResult.data.signed_url,
     layout_warnings: layoutWarnings,
     overflow_keys: functionResult.data.overflow_keys ?? layoutWarnings.map((warning) => warning.placeholder_key),
-    filled_pages: functionResult.data.filled_pages ?? [],
+    filled_pages: filledPages,
   });
 }

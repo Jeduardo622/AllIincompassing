@@ -200,4 +200,143 @@ describe("assessmentPlanPdfHandler", () => {
       }),
     );
   });
+
+  it("derives filled_pages when an older edge function omits them", async () => {
+    vi.mocked(buildCalOptimaTemplatePayload).mockResolvedValue({
+      values: { CALOPTIMA_FBA_MEMBER_NAME: "Client One" },
+      missing_required_keys: [],
+    });
+
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "drafted",
+            template_type: "caloptima_fba",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: [] })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: [] })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "draft-program-1", name: "Program A", description: "Desc", accept_state: "accepted" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "goal-1", title: "Goal A", description: "Desc", original_text: "Original", accept_state: "accepted" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ full_name: "Client One" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ full_name: "Therapist One", title: "BCBA" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: {
+          fill_mode: "overlay",
+          bucket_id: "client-documents",
+          object_path: "clients/client-1/assessments/generated.pdf",
+          signed_url: "https://example.com/generated.pdf",
+          layout_warnings: [],
+          overflow_keys: [],
+        },
+      })
+      .mockResolvedValueOnce({ ok: true, status: 201, data: null });
+
+    const response = await assessmentPlanPdfHandler(
+      new Request("http://localhost/api/assessment-plan-pdf", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.filled_pages).toEqual([1]);
+  });
+
+  it("preserves explicit edge filled_pages even when the array is empty", async () => {
+    vi.mocked(buildCalOptimaTemplatePayload).mockResolvedValue({
+      values: { CALOPTIMA_FBA_MEMBER_NAME: "Client One" },
+      missing_required_keys: [],
+    });
+
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [
+          {
+            id: "doc-1",
+            organization_id: "org-1",
+            client_id: "client-1",
+            status: "drafted",
+            template_type: "caloptima_fba",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: [] })
+      .mockResolvedValueOnce({ ok: true, status: 200, data: [] })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "draft-program-1", name: "Program A", description: "Desc", accept_state: "accepted" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ id: "goal-1", title: "Goal A", description: "Desc", original_text: "Original", accept_state: "accepted" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ full_name: "Client One" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: [{ full_name: "Therapist One", title: "BCBA" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: {
+          fill_mode: "overlay",
+          bucket_id: "client-documents",
+          object_path: "clients/client-1/assessments/generated.pdf",
+          signed_url: "https://example.com/generated.pdf",
+          layout_warnings: [],
+          overflow_keys: [],
+          filled_pages: [],
+        },
+      })
+      .mockResolvedValueOnce({ ok: true, status: 201, data: null });
+
+    const response = await assessmentPlanPdfHandler(
+      new Request("http://localhost/api/assessment-plan-pdf", {
+        method: "POST",
+        headers: { Authorization: "Bearer token" },
+        body: JSON.stringify({ assessment_document_id: "11111111-1111-1111-1111-111111111111" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.filled_pages).toEqual([]);
+  });
 });

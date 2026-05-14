@@ -38,6 +38,20 @@ type AssessmentDocumentRecord = {
   extraction_error?: string | null;
 };
 
+class AssessmentExtractionStatusError extends Error {
+  assessment: AssessmentDocumentRecord;
+
+  constructor(assessment: AssessmentDocumentRecord) {
+    super(
+      `Assessment extraction ended with ${assessment.status}${
+        assessment.extraction_error ? `: ${assessment.extraction_error}` : ""
+      }`,
+    );
+    this.name = "AssessmentExtractionStatusError";
+    this.assessment = assessment;
+  }
+}
+
 type ChecklistResponse = {
   items: Array<{
     id: string;
@@ -102,10 +116,6 @@ type LiveGoal = {
 };
 
 const DEFAULT_BASE_URL = "https://app.allincompassing.ai";
-const DEFAULT_SAMPLE_FILE = path.resolve(
-  process.cwd(),
-  "7.21.2025_RoVa_CalOptima_FBA_FINAL (1).Redacted.docx.pdf",
-);
 const EXTRACTION_TIMEOUT_MS = 180_000;
 const MIN_CHILD_GOALS = 20;
 const MIN_PARENT_GOALS = 6;
@@ -136,6 +146,62 @@ const resolveMimeType = (filePath: string): string => {
   if (extension === ".pdf") return "application/pdf";
   if (extension === ".docx") return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   return "application/octet-stream";
+};
+
+const buildSyntheticAssessmentPdf = async (): Promise<Buffer> => {
+  const lines: string[] = [
+    "Synthetic CalOptima FBA smoke fixture",
+    "Service Initiation Date: 07/21/2025",
+    "Date ABA First Began: 07/21/2025",
+    "Chief Complaint: Synthetic smoke fixture for upload, extraction, draft, and promotion validation.",
+    "XIV. TARGET AND REPLACEMENT BEHAVIOR GOALS",
+  ];
+  for (let index = 1; index <= 10; index += 1) {
+    lines.push(
+      `Replacement Behavior Goal ${index}: By August 2026, the client will request help or access using functional communication in 80% of opportunities across people and settings.`,
+    );
+    lines.push(`Program: Behavior Treatment`);
+    lines.push(`Baseline: Synthetic baseline ${index} is 0% of opportunities.`);
+    lines.push(`Measurement Type: Percent opportunities`);
+    lines.push(`Target Criteria: 80% across 4 consecutive weeks.`);
+  }
+  lines.push("XV. SKILL ACQUISITION GOALS");
+  for (let index = 1; index <= 10; index += 1) {
+    lines.push(
+      `Skill Acquisition Goal ${index}: By August 2026, the client will complete synthetic adaptive skill ${index} in 80% of opportunities across people and settings.`,
+    );
+    lines.push(`Program: Skill Acquisition`);
+    lines.push(`Baseline: Synthetic baseline ${index} is 0% of opportunities.`);
+    lines.push(`Measurement Type: Percent opportunities`);
+    lines.push(`Target Criteria: 80% across 4 consecutive weeks.`);
+  }
+  lines.push("XVI. PARENT/CAREGIVER GOALS");
+  for (let index = 1; index <= 6; index += 1) {
+    lines.push(
+      `Parent/Caregiver Goal ${index}: By August 2026, the caregiver will implement synthetic parent training strategy ${index} in 90% of opportunities across 4 consecutive weeks.`,
+    );
+    lines.push(`Program: Parent Training`);
+    lines.push(`Baseline: Synthetic baseline ${index} is 0% of opportunities.`);
+    lines.push(`Measurement Type: Percent opportunities`);
+    lines.push(`Target Criteria: 90% across 4 consecutive weeks.`);
+  }
+
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(
+      `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;font-size:11px;line-height:1.35;padding:32px;}p{margin:0 0 6px;}h1{font-size:16px;}h2{font-size:13px;margin-top:18px;}</style></head><body>${lines
+        .map((line) =>
+          /^X[IV]+\./.test(line)
+            ? `<h2>${line}</h2>`
+            : `<p>${line.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</p>`
+        )
+        .join("")}</body></html>`,
+    );
+    return await page.pdf({ format: "Letter", printBackground: true });
+  } finally {
+    await browser.close();
+  }
 };
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -245,9 +311,7 @@ const waitForExtractedAssessment = async (args: {
     throw new Error(`Uploaded assessment document ${args.uploadFileName} was not found in the queue.`);
   }
   if (latest.status !== "extracted") {
-    throw new Error(
-      `Assessment extraction ended with ${latest.status}${latest.extraction_error ? `: ${latest.extraction_error}` : ""}`,
-    );
+    throw new AssessmentExtractionStatusError(latest);
   }
   return latest;
 };
@@ -548,13 +612,13 @@ async function run() {
   const baseUrl = (process.env.PW_BASE_URL?.trim() || DEFAULT_BASE_URL).replace(/\/$/, "");
   const supabaseUrl = resolveSupabaseUrl();
   const supabaseAnonKey = resolveSupabaseAnonKey();
-  const sampleFilePath = process.env.PW_ASSESSMENT_SAMPLE_FILE?.trim()
-    ? path.resolve(process.cwd(), process.env.PW_ASSESSMENT_SAMPLE_FILE.trim())
-    : DEFAULT_SAMPLE_FILE;
-  const sourceFileBuffer = readFileSync(sampleFilePath);
-  const sourceExtension = path.extname(sampleFilePath).toLowerCase();
-  const uploadFileName = `${path.basename(sampleFilePath, sourceExtension)}-promote-smoke-${Date.now()}${sourceExtension}`;
-  const uploadMimeType = resolveMimeType(sampleFilePath);
+  const configuredSampleFile = process.env.PW_ASSESSMENT_SAMPLE_FILE?.trim();
+  const sampleFilePath = configuredSampleFile ? path.resolve(process.cwd(), configuredSampleFile) : null;
+  const sourceFileBuffer = sampleFilePath ? readFileSync(sampleFilePath) : await buildSyntheticAssessmentPdf();
+  const sourceExtension = sampleFilePath ? path.extname(sampleFilePath).toLowerCase() : ".pdf";
+  const sourceBaseName = sampleFilePath ? path.basename(sampleFilePath, sourceExtension) : "synthetic-caloptima-fba";
+  const uploadFileName = `${sourceBaseName}-promote-smoke-${Date.now()}${sourceExtension}`;
+  const uploadMimeType = sampleFilePath ? resolveMimeType(sampleFilePath) : "application/pdf";
   const credentials = preflightCredentials([
     {
       email: process.env.PW_ADMIN_EMAIL ?? process.env.PLAYWRIGHT_ADMIN_EMAIL,
@@ -709,6 +773,9 @@ async function run() {
   } catch (error) {
     const screenshot = await captureFailureScreenshot(page, "playwright-assessment-upload-promote-smoke-failure");
     console.error(`Assessment upload promote smoke failed. Screenshot: ${screenshot}`);
+    if (error instanceof AssessmentExtractionStatusError) {
+      createdAssessment = error.assessment;
+    }
     runFailure = error instanceof Error ? error : new Error(String(error));
   } finally {
     try {

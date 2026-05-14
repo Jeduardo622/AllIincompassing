@@ -324,13 +324,15 @@ const resolveDownloadUri = (body: Record<string, unknown>): string | null => {
 
   const direct = body.downloadUri ?? body.dowloadUri;
   if (typeof direct === "string" && direct.trim()) return direct.trim();
+  const resourceDownloadUri = readDownloadUri(body.resource);
+  if (resourceDownloadUri) return resourceDownloadUri;
   const assetDownloadUri = readDownloadUri(body.asset);
   if (assetDownloadUri) return assetDownloadUri;
   const result = body.result;
   if (result && typeof result === "object") {
     const resource = (result as Record<string, unknown>).resource;
-    const resourceDownloadUri = readDownloadUri(resource);
-    if (resourceDownloadUri) return resourceDownloadUri;
+    const nestedResourceDownloadUri = readDownloadUri(resource);
+    if (nestedResourceDownloadUri) return nestedResourceDownloadUri;
   }
   return null;
 };

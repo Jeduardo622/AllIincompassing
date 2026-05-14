@@ -210,6 +210,7 @@ export const createGenerateAssessmentPlanPdfHandler =
       );
       let filledAcroFormCount = 0;
       const acroFormFilledKeys = new Set<string>();
+      const filledPages = new Set<number>();
 
       for (const entry of parsed.data.render_map_entries) {
         const rawValue = parsed.data.field_values[entry.placeholder_key];
@@ -229,6 +230,7 @@ export const createGenerateAssessmentPlanPdfHandler =
           if (checkboxValue === null) continue;
           if (checkboxValue) {
             match.check();
+            filledPages.add(entry.fallback.page);
           } else {
             match.uncheck();
           }
@@ -244,6 +246,7 @@ export const createGenerateAssessmentPlanPdfHandler =
           match.setText(value);
           filledAcroFormCount += 1;
           acroFormFilledKeys.add(entry.placeholder_key);
+          filledPages.add(entry.fallback.page);
           continue;
         }
       }
@@ -273,6 +276,7 @@ export const createGenerateAssessmentPlanPdfHandler =
           }
           if (layout.lines.length > 0) {
             overlayFilledCount += 1;
+            filledPages.add(entry.fallback.page);
           }
           layout.lines.forEach((line, lineIndex) => {
             page.drawText(line, {
@@ -332,6 +336,9 @@ export const createGenerateAssessmentPlanPdfHandler =
           layout_warnings: layoutWarnings,
           overflow_keys: layoutWarnings.map((warning) =>
             warning.placeholder_key
+          ),
+          filled_pages: Array.from(filledPages).sort((left, right) =>
+            left - right
           ),
         }),
         {

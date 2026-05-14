@@ -1,4 +1,5 @@
 import { expect } from "jsr:@std/expect";
+import { PDFDocument } from "npm:pdf-lib@1.17.1";
 
 import { layoutOverlayText, wrapOverlayText } from "./overlay-layout.ts";
 import {
@@ -86,6 +87,38 @@ const createAdminStorage = () => ({
     }),
   },
 });
+
+const createPdfWithFieldsBase64 = async (): Promise<string> => {
+  const pdfDoc = await PDFDocument.create();
+  const textPage = pdfDoc.addPage([612, 792]);
+  const checkboxPage = pdfDoc.addPage([612, 792]);
+  pdfDoc.addPage([612, 792]);
+  pdfDoc.addPage([612, 792]);
+
+  const form = pdfDoc.getForm();
+  const textField = form.createTextField("Member Name");
+  textField.addToPage(textPage, {
+    x: 10,
+    y: 740,
+    width: 120,
+    height: 20,
+  });
+
+  const checkbox = form.createCheckBox("Has IEP");
+  checkbox.addToPage(checkboxPage, {
+    x: 10,
+    y: 740,
+    width: 12,
+    height: 12,
+  });
+
+  const bytes = await pdfDoc.save();
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+};
 
 type TestDocumentResult = {
   data: {
@@ -276,4 +309,87 @@ Deno.test("generateAssessmentPlanPdfHandler rejects invalid generated PDF storag
   expect(await response.json()).toEqual({
     error: "Invalid generated PDF storage target.",
   });
+});
+
+Deno.test("generateAssessmentPlanPdfHandler reports filled_pages from visible rendered fields only", async () => {
+  const templatePdfBase64 = await createPdfWithFieldsBase64();
+  const payload = {
+    ...validPayload,
+    template_pdf_base64: templatePdfBase64,
+    render_map_entries: [
+      {
+        placeholder_key: "VISIBLE_TEXT",
+        form_field_candidates: ["Member Name"],
+        fallback: {
+          page: 1,
+          x: 10,
+          y: 740,
+          font_size: 10,
+          max_width: 120,
+          height: 20,
+          line_height: 12,
+          max_lines: 1,
+          field_kind: "text",
+        },
+      },
+      {
+        placeholder_key: "UNCHECKED_BOX",
+        form_field_candidates: ["Has IEP"],
+        fallback: {
+          page: 2,
+          x: 10,
+          y: 740,
+          font_size: 10,
+          max_width: 12,
+          height: 12,
+          line_height: 12,
+          max_lines: 1,
+          field_kind: "checkbox",
+        },
+      },
+      {
+        placeholder_key: "SANITIZED_EMPTY_OVERLAY",
+        form_field_candidates: ["Missing Sanitized Empty"],
+        fallback: {
+          page: 3,
+          x: 10,
+          y: 740,
+          font_size: 10,
+          max_width: 120,
+          height: 20,
+          line_height: 12,
+          max_lines: 1,
+          field_kind: "text",
+        },
+      },
+      {
+        placeholder_key: "VISIBLE_OVERLAY",
+        form_field_candidates: ["Missing Overlay"],
+        fallback: {
+          page: 4,
+          x: 10,
+          y: 740,
+          font_size: 10,
+          max_width: 120,
+          height: 20,
+          line_height: 12,
+          max_lines: 1,
+          field_kind: "text",
+        },
+      },
+    ],
+    field_values: {
+      VISIBLE_TEXT: "Client One",
+      UNCHECKED_BOX: "no",
+      SANITIZED_EMPTY_OVERLAY: "☢",
+      VISIBLE_OVERLAY: "Overlay text",
+    },
+  };
+  const handler = createTestHandler();
+  const response = await handler(postRequest(payload));
+
+  expect(response.status).toBe(200);
+  const body = await response.json();
+  expect(body.filled_pages).toEqual([1, 4]);
+  expect(body.fill_mode).toBe("mixed");
 });

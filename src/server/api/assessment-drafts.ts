@@ -206,6 +206,13 @@ const getPayloadRows = (payload: Record<string, unknown>, keys: string[]): Array
   return [];
 };
 
+const ensureUniqueGoalTitle = (title: string, seenTitles: Map<string, number>): string => {
+  const normalized = title.trim().toLowerCase();
+  const seenCount = seenTitles.get(normalized) ?? 0;
+  seenTitles.set(normalized, seenCount + 1);
+  return seenCount === 0 ? title : `${title} (${seenCount + 1})`;
+};
+
 const buildDeterministicDraftPayload = (
   structuredSections: AssessmentStructuredSectionRow[],
 ): GeneratedDraftPayload | null => {
@@ -224,6 +231,7 @@ const buildDeterministicDraftPayload = (
   }
 
   const programNames = new Set<string>();
+  const seenGoalTitles = new Map<string, number>();
   const goals = approvedGoalSections.map((section, index) => {
     const payload = section.payload ?? {};
     const isParentGoal =
@@ -231,7 +239,10 @@ const buildDeterministicDraftPayload = (
       getPayloadString(payload, ["goal_type"]).toLowerCase() === "parent";
     const programName = getPayloadString(payload, ["program_name", "program", "domain"], isParentGoal ? "Parent Training" : "Behavior Treatment");
     programNames.add(programName);
-    const title = getPayloadString(payload, ["title", "goal", "goal_title"], `${isParentGoal ? "Parent" : "Child"} Goal ${index + 1}`);
+    const title = ensureUniqueGoalTitle(
+      getPayloadString(payload, ["title", "goal", "goal_title"], `${isParentGoal ? "Parent" : "Child"} Goal ${index + 1}`),
+      seenGoalTitles,
+    );
     const description = getPayloadString(payload, ["description", "goal_description", "objective"], title);
     const originalText = getPayloadString(payload, ["original_text", "source_text", "raw_text"], description);
     return {

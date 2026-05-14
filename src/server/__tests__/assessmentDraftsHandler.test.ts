@@ -238,10 +238,18 @@ describe("assessmentDraftsHandler", () => {
         };
       }
       if (method === "GET" && url.includes("/rest/v1/assessment_structured_sections?")) {
+        const structuredGoals = buildStructuredGoalSections();
+        structuredGoals[1] = {
+          ...structuredGoals[1],
+          payload: {
+            ...(structuredGoals[1]?.payload as Record<string, unknown>),
+            title: "Child Goal 1",
+          },
+        };
         return {
           ok: true,
           status: 200,
-          data: buildStructuredGoalSections(),
+          data: structuredGoals,
         };
       }
       if (method === "POST" && url.includes("/rest/v1/assessment_draft_programs")) {
@@ -289,6 +297,8 @@ describe("assessmentDraftsHandler", () => {
     const parentGoalCount = goalPayload.filter((goal) => goal.goal_type === "parent").length;
     expect(childGoalCount).toBe(20);
     expect(parentGoalCount).toBe(6);
+    expect(goalPayload[0]?.title).toBe("Child Goal 1");
+    expect(goalPayload[1]?.title).toBe("Child Goal 1 (2)");
     expect(goalPayload[0]?.mastery_criteria).toBe("Mastery criteria noted");
     expect(goalPayload[0]?.evidence_refs).toEqual([
       { section_key: "goals_treatment_planning", source_span: "CALOPTIMA_FBA_SKILL_ACQUISITION_GOALS#0" },

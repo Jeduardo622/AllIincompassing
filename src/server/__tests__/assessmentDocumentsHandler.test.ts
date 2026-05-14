@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { assessmentDocumentsHandler } from "../api/assessment-documents";
 
 vi.mock("../api/shared", async () => {
@@ -26,9 +26,19 @@ import {
 } from "../api/shared";
 import { loadChecklistTemplateRows } from "../assessmentChecklistTemplate";
 
+const ORIGINAL_SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
 describe("assessmentDocumentsHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+  });
+
+  afterEach(() => {
+    if (typeof ORIGINAL_SUPABASE_SERVICE_ROLE_KEY === "string") {
+      process.env.SUPABASE_SERVICE_ROLE_KEY = ORIGINAL_SUPABASE_SERVICE_ROLE_KEY;
+    } else {
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    }
   });
 
   const roleMatrix = [
@@ -980,6 +990,7 @@ describe("assessmentDocumentsHandler", () => {
   });
 
   it("marks extraction failed when structured section persistence fails", async () => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(getAccessTokenSubject).mockReturnValue("user-1");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
@@ -1086,6 +1097,15 @@ describe("assessmentDocumentsHandler", () => {
       return typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-structured-fail") && body.includes("extraction_failed");
     });
     expect(statusPatch).toBeDefined();
+    const structuredInsert = vi.mocked(fetchJson).mock.calls.find(([url, init]) =>
+      typeof url === "string" &&
+      url.includes("/rest/v1/assessment_structured_sections") &&
+      init?.method === "POST"
+    );
+    expect(structuredInsert?.[1]?.headers).toMatchObject({
+      apikey: "service-role",
+      Authorization: "Bearer service-role",
+    });
     const successEvent = vi.mocked(fetchJson).mock.calls.find(([url, init]) => {
       const body = typeof init?.body === "string" ? init.body : "";
       return typeof url === "string" && url.includes("/rest/v1/assessment_review_events") && body.includes("extraction_completed");

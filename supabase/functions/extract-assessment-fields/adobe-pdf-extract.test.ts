@@ -266,6 +266,75 @@ Deno.test("extractPdfWithAdobe accepts Adobe Europe storage download hosts", asy
   expect(extracted.text).toBe("Europe region result");
 });
 
+Deno.test("extractPdfWithAdobe accepts top-level Adobe resource download URI", async () => {
+  const zipBytes = await zipStructuredData({
+    elements: [{ Path: "//Document/P", Text: "Top-level resource result" }],
+  });
+  const downloadUri =
+    "https://dcplatformstorageservice-prod-us-east-1.s3-accelerate.amazonaws.com/result.zip?X-Amz-Signature=test";
+  const fetchImpl = async (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const url = String(input);
+    if (url.endsWith("/token")) {
+      return Response.json({ access_token: "token-1" });
+    }
+    if (url.endsWith("/assets")) {
+      return Response.json({
+        uploadUri: ADOBE_US_STORAGE_URL,
+        assetID: "asset-1",
+      });
+    }
+    if (url === ADOBE_US_STORAGE_URL) {
+      return new Response(null, { status: 200 });
+    }
+    if (url.endsWith("/operation/extractpdf")) {
+      return new Response(null, {
+        status: 201,
+        headers: {
+          location:
+            "https://pdf-services-ue1.adobe.io/operation/extractpdf/job-1/status",
+        },
+      });
+    }
+    if (url.endsWith("/job-1/status")) {
+      return Response.json({
+        status: "done",
+        resource: {
+          metadata: { type: "application/zip", size: zipBytes.byteLength },
+          downloadUri,
+          assetID: "urn:aaid:AS:UE1:result-asset",
+        },
+      });
+    }
+    if (url === downloadUri) {
+      return new Response(
+        zipBytes.buffer.slice(
+          zipBytes.byteOffset,
+          zipBytes.byteOffset + zipBytes.byteLength,
+        ) as ArrayBuffer,
+        { status: 200 },
+      );
+    }
+    return new Response(`unexpected ${init?.method ?? "GET"} ${url}`, {
+      status: 500,
+    });
+  };
+
+  const extracted = await extractPdfWithAdobe(new Uint8Array([1, 2, 3]), {
+    env: envFrom({
+      PDF_SERVICES_CLIENT_ID: "client-id",
+      PDF_SERVICES_CLIENT_SECRET: "client-secret",
+    }),
+    fetchImpl,
+    sleep: () => Promise.resolve(),
+    maxPollAttempts: 1,
+  });
+
+  expect(extracted.text).toBe("Top-level resource result");
+});
+
 Deno.test("extractPdfWithAdobe accepts Adobe service result download hosts", async () => {
   const zipBytes = await zipStructuredData({
     elements: [{ Path: "//Document/P", Text: "Adobe service result" }],

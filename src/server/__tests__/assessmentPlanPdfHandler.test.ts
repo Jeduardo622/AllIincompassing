@@ -191,6 +191,7 @@ describe("assessmentPlanPdfHandler", () => {
     expect(body.fill_mode).toBe("overlay");
     expect(body.overflow_keys).toEqual(["CALOPTIMA_FBA_CHIEF_COMPLAINT"]);
     expect(body.layout_warnings).toHaveLength(1);
+    expect(body.filled_pages).toEqual([1]);
     expect(fetchJson).toHaveBeenLastCalledWith(
       "https://example.supabase.co/rest/v1/assessment_review_events",
       expect.objectContaining({

@@ -147,7 +147,7 @@ export async function createSupabaseClientForRequest(req: Request): Promise<{
         }
       : undefined
   );
-  return { supabase, token };
+  return { supabase: supabase as ReturnType<SupabaseModule["createClient"]>, token };
 }
 
 /**
@@ -200,8 +200,9 @@ export async function getUserContext(req: Request): Promise<UserContext | null> 
         email: user.email ?? null,
       },
       profile: {
-        ...profile,
-        email: profile.email ?? null,
+        id: user.id,
+        email: typeof profile.email === "string" ? profile.email : null,
+        is_active: profile.is_active === true,
         role,
       },
     };

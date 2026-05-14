@@ -59,6 +59,20 @@ describe("CalOptima PDF render map", () => {
     });
   });
 
+  it("keeps tail-section overlay fields anchored to their actual template pages", async () => {
+    const renderMap = await loadCalOptimaPdfRenderMap();
+    const entriesByKey = new Map(renderMap.map((entry) => [entry.placeholder_key, entry]));
+
+    expect(entriesByKey.get("CALOPTIMA_FBA_SUMMARY_RECOMMENDATIONS")?.fallback.page).toBe(27);
+    expect(entriesByKey.get("CALOPTIMA_FBA_HCPCS_RECOMMENDATION_ROWS")?.fallback.page).toBe(27);
+    expect(entriesByKey.get("CALOPTIMA_FBA_TELEHEALTH_CONSENT")?.fallback.page).toBe(27);
+    expect(entriesByKey.get("CALOPTIMA_FBA_PARENT_INVOLVEMENT")?.fallback.page).toBe(28);
+    expect(entriesByKey.get("CALOPTIMA_FBA_REPORT_WRITTEN_BY")?.fallback.page).toBe(28);
+    expect(entriesByKey.get("CALOPTIMA_FBA_WRITER_CREDENTIALS")?.fallback.page).toBe(28);
+    expect(entriesByKey.get("CALOPTIMA_FBA_REPORT_COMPLETED_DATE")?.fallback.page).toBe(28);
+    expect(entriesByKey.get("CALOPTIMA_FBA_SIGNATURES")?.fallback.page).toBe(28);
+  });
+
   it("keeps registry, checklist, and render placeholder keys in parity", async () => {
     const [registry, checklist, renderMap] = await Promise.all([
       readJsonFile(registryPath),

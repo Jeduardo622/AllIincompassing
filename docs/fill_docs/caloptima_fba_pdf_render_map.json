@@ -733,14 +733,14 @@
         "summary_recommendations"
       ],
       "fallback": {
-        "page": 26,
+        "page": 27,
         "x": 95,
-        "y": 574,
+        "y": 520,
         "font_size": 8,
         "max_width": 430,
-        "height": 120,
+        "height": 110,
         "line_height": 10,
-        "max_lines": 12,
+        "max_lines": 11,
         "field_kind": "structured_section"
       },
       "target": "caloptima_fba_pdf_overlay",
@@ -753,14 +753,14 @@
         "hcpcs_rows"
       ],
       "fallback": {
-        "page": 26,
+        "page": 27,
         "x": 95,
-        "y": 416,
-        "font_size": 8,
+        "y": 345,
+        "font_size": 6,
         "max_width": 430,
-        "height": 36,
-        "line_height": 10,
-        "max_lines": 3,
+        "height": 160,
+        "line_height": 8,
+        "max_lines": 20,
         "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
@@ -773,14 +773,14 @@
         "telehealth_consent"
       ],
       "fallback": {
-        "page": 26,
+        "page": 27,
         "x": 95,
-        "y": 388,
-        "font_size": 10,
+        "y": 72,
+        "font_size": 8,
         "max_width": 430,
-        "height": 14,
-        "line_height": 12,
-        "max_lines": 1,
+        "height": 18,
+        "line_height": 9,
+        "max_lines": 2,
         "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
@@ -793,14 +793,14 @@
         "parent_involvement"
       ],
       "fallback": {
-        "page": 26,
+        "page": 28,
         "x": 95,
-        "y": 366,
-        "font_size": 10,
+        "y": 535,
+        "font_size": 8,
         "max_width": 430,
-        "height": 14,
-        "line_height": 12,
-        "max_lines": 1,
+        "height": 40,
+        "line_height": 10,
+        "max_lines": 4,
         "field_kind": "text"
       },
       "target": "caloptima_fba_pdf_overlay",
@@ -813,7 +813,7 @@
         "report_written_by"
       ],
       "fallback": {
-        "page": 27,
+        "page": 28,
         "x": 95,
         "y": 248,
         "font_size": 10,
@@ -833,7 +833,7 @@
         "writer_credentials"
       ],
       "fallback": {
-        "page": 27,
+        "page": 28,
         "x": 330,
         "y": 248,
         "font_size": 10,
@@ -853,7 +853,7 @@
         "report_completed_date"
       ],
       "fallback": {
-        "page": 27,
+        "page": 28,
         "x": 95,
         "y": 231,
         "font_size": 10,
@@ -873,7 +873,7 @@
         "signatures"
       ],
       "fallback": {
-        "page": 27,
+        "page": 28,
         "x": 95,
         "y": 206,
         "font_size": 8,

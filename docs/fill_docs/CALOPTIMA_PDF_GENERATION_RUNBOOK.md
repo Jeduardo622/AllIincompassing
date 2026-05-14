@@ -15,6 +15,7 @@ This runbook describes how to generate and troubleshoot the **completed CalOptim
 Before generation can succeed:
 
 - An assessment document exists for the client in `assessment_documents`.
+- PDF assessment extraction completed through Adobe PDF Extract API; DOCX assessment extraction completed through the local DOCX decoder.
 - Required checklist rows in `assessment_checklist_items` are `approved`.
 - At least one draft program and one draft goal are in `accepted` or `edited` state.
 - The CalOptima render map exists and is valid:
@@ -72,6 +73,9 @@ If any precondition fails, API returns `409` with details.
   - Populate missing checklist values listed in `missing_required_keys`.
 - `500 Failed to generate completed treatment plan PDF`
   - Check edge function logs and confirm template base64 payload and render map validity.
+- `extraction_failed` before checklist review
+  - For PDFs, confirm server-only Adobe PDF Services credentials are configured and Adobe PDF Extract API is operational. Do not bypass this with legacy PDF text parsing.
+  - For DOCX, confirm the uploaded document contains readable Word document text.
 - `500 Failed to create download URL`
   - Validate storage bucket permissions and service role access.
 - PDF opens but app reports layout warnings

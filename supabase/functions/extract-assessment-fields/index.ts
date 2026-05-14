@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
 import { z } from "npm:zod@3.23.8";
-import { Buffer } from "node:buffer";
 import { resolveAllowedOrigin } from "../_shared/cors.ts";
+import { AdobePdfExtractError, extractPdfWithAdobe, type NormalizedAdobePdfExtract } from "./adobe-pdf-extract.ts";
 
 const corsHeaders = (req: Request) => ({
   "Access-Control-Allow-Origin": resolveAllowedOrigin(req.headers.get("origin")),
@@ -64,6 +64,23 @@ interface StructuredSectionResult {
 }
 
 const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+const ASSESSMENT_DOCUMENT_BUCKET_ID = "client-documents";
+
+const isAllowedAssessmentDocumentStorageTarget = (
+  bucketId: string,
+  objectPath: string,
+  clientId: string,
+): boolean => {
+  const allowedObjectPathPattern = new RegExp(
+    `^clients/${escapeRegExp(clientId)}/assessments/[^/]+\\.(pdf|docx)$`,
+    "i",
+  );
+  return bucketId === ASSESSMENT_DOCUMENT_BUCKET_ID &&
+    !objectPath.includes("..") &&
+    !objectPath.includes("\\") &&
+    objectPath.startsWith(`clients/${clientId}/`) &&
+    allowedObjectPathPattern.test(objectPath);
+};
 
 const json = (req: Request, payload: unknown, status = 200): Response =>
   new Response(JSON.stringify(payload), {
@@ -97,27 +114,6 @@ const decodeDocxText = async (bytes: Uint8Array): Promise<string> => {
     return "";
   }
   return normalizeText(stripXmlTags(documentXml));
-};
-
-const decodePdfFallbackText = (bytes: Uint8Array): string => {
-  const decoded = new TextDecoder("latin1").decode(bytes);
-  return normalizeText(decoded.replace(/[^\x20-\x7E\n]/g, " "));
-};
-
-const decodePdfText = async (bytes: Uint8Array): Promise<string> => {
-  try {
-    const parsePdfModule = await import("npm:pdf-parse@1.1.1");
-    const parsePdf = parsePdfModule.default as (value: Buffer) => Promise<{ text?: string }>;
-    const parsed = await parsePdf(Buffer.from(bytes));
-    const text = typeof parsed?.text === "string" ? parsed.text : "";
-    const normalized = normalizeText(text);
-    if (normalized.length >= 80) {
-      return normalized;
-    }
-  } catch {
-    // Fall through to legacy fallback.
-  }
-  return decodePdfFallbackText(bytes);
 };
 
 const summarizeTextQuality = (text: string): "high" | "medium" | "low" => {
@@ -881,9 +877,21 @@ const extractStructuredSections = (text: string): StructuredSectionResult[] => [
   return deduped;
 }, []);
 
+const withExtractionProviderSource = <T extends { source_span: Record<string, unknown> | null }>(
+  item: T,
+  extractionProvider: string,
+): T => ({
+  ...item,
+  source_span: {
+    ...(item.source_span ?? {}),
+    extraction_provider: extractionProvider,
+  },
+});
+
 export const __TESTING__ = {
   deterministicValueForRow,
   extractStructuredSections,
+  isAllowedAssessmentDocumentStorageTarget,
 };
 
 Deno.serve(async (req) => {
@@ -930,9 +938,7 @@ Deno.serve(async (req) => {
     if (scopedAssessment.bucket_id !== data.bucket_id || scopedAssessment.object_path !== data.object_path) {
       return json(req, { error: "Assessment document storage location mismatch." }, 403);
     }
-
-    const expectedClientPrefix = `clients/${scopedAssessment.client_id}/`;
-    if (!data.object_path.startsWith(expectedClientPrefix)) {
+    if (!isAllowedAssessmentDocumentStorageTarget(data.bucket_id, data.object_path, scopedAssessment.client_id)) {
       return json(req, { error: "Assessment document path is outside the allowed client scope." }, 403);
     }
 
@@ -951,15 +957,19 @@ Deno.serve(async (req) => {
     }
 
     const fileBytes = new Uint8Array(await download.data.arrayBuffer());
+    let adobeExtraction: NormalizedAdobePdfExtract | null = null;
     const documentText = objectPathLower.endsWith(".docx")
       ? await decodeDocxText(fileBytes)
-      : await decodePdfText(fileBytes);
+      : (adobeExtraction = await extractPdfWithAdobe(fileBytes)).text;
+    const extractionProvider = adobeExtraction ? "adobe_pdf_extract" : "local_docx";
     const textQuality = summarizeTextQuality(documentText);
 
     const deterministic = data.checklist_rows.map((row) =>
       deterministicValueForRow(row, documentText, data.client_snapshot, data.checklist_rows)
     );
-    const structuredSections = extractStructuredSections(documentText);
+    const structuredSections = extractStructuredSections(documentText).map((section) =>
+      withExtractionProviderSource(section, extractionProvider)
+    );
     const structuredSummaryByKey = new Map<string, { count: number; firstPayload: Record<string, unknown> }>();
     structuredSections.forEach((section) => {
       const current = structuredSummaryByKey.get(section.field_key);
@@ -971,9 +981,9 @@ Deno.serve(async (req) => {
     const merged = deterministic.map((field) => {
       const structuredSummary = structuredSummaryByKey.get(field.placeholder_key);
       if (!structuredSummary) {
-        return field;
+        return withExtractionProviderSource(field, extractionProvider);
       }
-      return {
+      return withExtractionProviderSource({
         ...field,
         value_text: `${structuredSummary.count} structured section${structuredSummary.count === 1 ? "" : "s"} extracted`,
         value_json: structuredSummary.firstPayload,
@@ -982,12 +992,15 @@ Deno.serve(async (req) => {
         status: "drafted" as const,
         source_span: { method: "deterministic_structured_section_summary" },
         review_notes: "Deterministic structured extraction summary. Review full structured section payloads before approval.",
-      };
+      }, extractionProvider);
     });
 
     return json(req, {
       assessment_document_id: data.assessment_document_id,
       template_type: data.template_type,
+      extraction_provider: extractionProvider,
+      adobe_element_count: adobeExtraction?.element_count ?? null,
+      adobe_table_count: adobeExtraction?.table_count ?? null,
       fields: merged,
       structured_sections: structuredSections,
       unresolved_keys: merged.filter((field) => !field.value_text).map((field) => field.placeholder_key),
@@ -997,6 +1010,14 @@ Deno.serve(async (req) => {
       text_quality: textQuality,
     });
   } catch (error) {
+    if (error instanceof AdobePdfExtractError) {
+      console.error("extract-assessment-fields adobe extraction error", {
+        code: error.code,
+        status: error.status,
+        message: error.message,
+      });
+      return json(req, { error: error.publicMessage, code: error.code }, error.status);
+    }
     console.error("extract-assessment-fields error", error);
     return json(req, { error: "Failed to extract assessment fields." }, 500);
   }

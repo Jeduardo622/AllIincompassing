@@ -3,6 +3,35 @@ import { describe, expect, it } from "vitest";
 import { __TESTING__ } from "../../supabase/functions/extract-assessment-fields/index.ts";
 
 describe("extract-assessment-fields CalOptima parser", () => {
+  it("allows only the canonical assessment document storage target", () => {
+    const clientId = "11111111-1111-1111-1111-111111111111";
+    const objectPath = `clients/${clientId}/assessments/fba.pdf`;
+
+    expect(__TESTING__.isAllowedAssessmentDocumentStorageTarget("client-documents", objectPath, clientId)).toBe(true);
+    expect(__TESTING__.isAllowedAssessmentDocumentStorageTarget("private-documents", objectPath, clientId)).toBe(false);
+    expect(
+      __TESTING__.isAllowedAssessmentDocumentStorageTarget(
+        "client-documents",
+        "clients/other-client/assessments/fba.pdf",
+        clientId,
+      ),
+    ).toBe(false);
+    expect(
+      __TESTING__.isAllowedAssessmentDocumentStorageTarget(
+        "client-documents",
+        `clients/${clientId}/other/fba.pdf`,
+        clientId,
+      ),
+    ).toBe(false);
+    expect(
+      __TESTING__.isAllowedAssessmentDocumentStorageTarget(
+        "client-documents",
+        `clients/${clientId}/assessments/../secret.pdf`,
+        clientId,
+      ),
+    ).toBe(false);
+  });
+
   const inlineRows = [
     {
       section: "identification_admin",

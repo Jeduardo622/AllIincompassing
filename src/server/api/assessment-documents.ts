@@ -16,6 +16,7 @@ import {
 import { serverLogger } from "../../lib/logger/server";
 
 const SUPPORTED_TEMPLATE_TYPES = ["caloptima_fba", "iehp_fba"] as const;
+const ASSESSMENT_DOCUMENT_BUCKET_ID = "client-documents";
 
 const templateTypeSchema = z.enum(SUPPORTED_TEMPLATE_TYPES);
 
@@ -30,6 +31,13 @@ const assessmentDocumentCreateSchema = z.object({
 });
 
 const isUuid = (value: string): boolean => z.string().uuid().safeParse(value).success;
+
+const isAllowedAssessmentObjectPath = (objectPath: string, clientId: string): boolean => {
+  const normalized = objectPath.trim();
+  if (normalized.includes("..") || normalized.includes("\\")) return false;
+  return /^clients\/[^/]+\/assessments\/[^/]+\.(pdf|docx)$/i.test(normalized) &&
+    normalized.startsWith(`clients/${clientId}/assessments/`);
+};
 
 interface AssessmentDocumentRow {
   id: string;
@@ -75,6 +83,10 @@ interface ExtractionFieldResult {
 }
 
 interface ExtractionFunctionResponse {
+  error?: string;
+  extraction_provider?: string;
+  adobe_element_count?: number | null;
+  adobe_table_count?: number | null;
   fields: ExtractionFieldResult[];
   structured_sections?: Array<{
     section_key: string;
@@ -260,13 +272,19 @@ const runCaloptimaExtractionWorkflow = async (args: {
             unresolved_count: extractionResult.data.unresolved_count,
             unresolved_keys: extractionResult.data.unresolved_keys,
             structured_section_count: structuredSections.length,
+            extraction_provider: extractionResult.data.extraction_provider ?? null,
+            adobe_element_count: extractionResult.data.adobe_element_count ?? null,
+            adobe_table_count: extractionResult.data.adobe_table_count ?? null,
           },
         }),
       });
       return;
     }
 
-    const extractionError = "Field extraction failed. Review checklist manually.";
+    const extractionError =
+      typeof extractionResult.data?.error === "string" && extractionResult.data.error.trim().length > 0
+        ? extractionResult.data.error
+        : "Field extraction failed. Review checklist manually.";
     await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(createdDocumentId)}`, {
       method: "PATCH",
       headers,
@@ -412,6 +430,12 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
     if (!clientExists) {
       return jsonForRequest(request, { error: "client_id is not in scope for this organization" }, 403);
     }
+    if (parsed.data.bucket_id && parsed.data.bucket_id !== ASSESSMENT_DOCUMENT_BUCKET_ID) {
+      return jsonForRequest(request, { error: "Assessment documents must be uploaded to the approved bucket." }, 400);
+    }
+    if (!isAllowedAssessmentObjectPath(parsed.data.object_path, parsed.data.client_id)) {
+      return jsonForRequest(request, { error: "Assessment document path is outside the allowed client scope." }, 400);
+    }
 
     const actorId = getAccessTokenSubject(accessToken);
     const templateType = parsed.data.template_type ?? "caloptima_fba";
@@ -423,7 +447,7 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
       file_name: parsed.data.file_name,
       mime_type: parsed.data.mime_type,
       file_size: parsed.data.file_size,
-      bucket_id: parsed.data.bucket_id ?? "client-documents",
+      bucket_id: ASSESSMENT_DOCUMENT_BUCKET_ID,
       object_path: parsed.data.object_path,
       status: "uploaded",
     };

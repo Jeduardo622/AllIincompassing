@@ -54,8 +54,47 @@ const titleFromGoalBody = (body: string): string => {
   return beforeMetadata.trim() || normalized;
 };
 
-const parseGoalFields = (body: string): Record<string, string | string[]> => {
-  const fields: Record<string, string | string[]> = {};
+const normalizeObjectKey = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+const parseObjectiveDataPoints = (value: string): Array<Record<string, string>> => {
+  const normalized = normalizeText(value);
+  const rowTexts = normalized
+    .split(/\s*(?:;|\n)\s*/)
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean);
+
+  const rows = rowTexts.map((rowText) => {
+    const row: Record<string, string> = {};
+    const parts = rowText
+      .split(/\s*\|\s*/)
+      .map((part) => normalizeText(part))
+      .filter(Boolean);
+
+    for (const part of parts.length > 0 ? parts : [rowText]) {
+      const match = /^([A-Za-z][A-Za-z0-9 _/-]{0,40})\s*:\s*(.+)$/.exec(part);
+      if (match) {
+        const key = normalizeObjectKey(match[1] ?? "");
+        const fieldValue = normalizeText(match[2] ?? "");
+        if (key && fieldValue) {
+          row[key] = fieldValue;
+        }
+        continue;
+      }
+      row.raw_text = row.raw_text ? `${row.raw_text} | ${part}` : part;
+    }
+
+    return Object.keys(row).length > 0 ? row : { raw_text: rowText };
+  });
+
+  return rows.length > 0 ? rows : [{ raw_text: normalized }];
+};
+
+const parseGoalFields = (body: string): Record<string, string | Array<Record<string, string>>> => {
+  const fields: Record<string, string | Array<Record<string, string>>> = {};
   let match: RegExpExecArray | null;
   while ((match = FIELD_PATTERN.exec(body)) !== null) {
     const rawKey = match[1]?.toLowerCase().replace(/\s+/g, "_") ?? "";
@@ -68,11 +107,7 @@ const parseGoalFields = (body: string): Record<string, string | string[]> => {
       .replace(/^baseline(?:_data)?(?:_and_date|_with_dates)?$/, "baseline_data")
       .replace(/^objective_data_points?$/, "objective_data_points");
     if (key === "objective_data_points") {
-      const rows = value
-        .split(/\s*(?:\||;|\n)\s*/)
-        .map((entry) => normalizeText(entry))
-        .filter(Boolean);
-      fields.objective_data_points = rows.length > 0 ? rows : [value];
+      fields.objective_data_points = parseObjectiveDataPoints(value);
       continue;
     }
     fields[key === "behavior" || key === "skill" ? "target_behavior" : key] = value;

@@ -1393,7 +1393,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     await screen.findByText("fba.docx");
     expect(await screen.findByText("Previous extraction warning should not block generation.")).toBeInTheDocument();
-    const generateButton = await screen.findByRole("button", { name: /Generate Drafts from Uploaded FBA/i });
+    const generateButton = await screen.findByRole("button", { name: /(Generate|Retry).*Uploaded FBA/i });
     await waitFor(() => {
       expect(generateButton).not.toBeDisabled();
     });
@@ -1595,6 +1595,70 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(generateButton).toBeDisabled();
     expect(
       vi.mocked(callApi).mock.calls.some(([path, init]) => path === "/api/assessment-drafts" && init?.method === "POST"),
+    ).toBe(false);
+  });
+
+  it("shows extraction-failed guidance instead of generic waiting copy for uploaded assessments", async () => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: ASSESSMENT_ID,
+              organization_id: ORG_ID,
+              client_id: "client-1",
+              template_type: "caloptima_fba",
+              file_name: "failed-fba.pdf",
+              mime_type: "application/pdf",
+              file_size: 1234,
+              bucket_id: "client-documents",
+              object_path: "clients/client-1/assessments/failed-fba.pdf",
+              status: "extraction_failed",
+              extraction_error: "Extraction failed. Review the checklist manually or upload a cleaner FBA.",
+              created_at: "2026-02-11T00:00:00.000Z",
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) {
+        return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(
+      <ProgramsGoalsTab client={buildClient()} />,
+      {
+        auth: {
+          role: "therapist",
+          organizationId: ORG_ID,
+          accessToken: "test-access-token",
+        },
+      },
+    );
+
+    await screen.findByText("failed-fba.pdf");
+    expect(
+      await screen.findByText("Extraction failed. Review the checklist manually or upload a cleaner FBA."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Wait for extraction to complete before generating AI proposals.")).not.toBeInTheDocument();
+
+    const generateButton = await screen.findByRole("button", { name: /(Generate|Retry).*Uploaded FBA/i });
+    await waitFor(() => {
+      expect(generateButton).toBeDisabled();
+    });
+    expect(
+      vi.mocked(callApi).mock.calls.some(
+        ([path, init]) => path === "/api/assessment-drafts" && (init?.method ?? "").toUpperCase() === "POST",
+      ),
     ).toBe(false);
   });
 

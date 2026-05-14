@@ -606,6 +606,19 @@ const assertPromotedRecordsVisible = async (args: {
   return screenshotPath;
 };
 
+const selectVisibleProgramGoalPair = (liveRecords: {
+  programs: LiveProgram[];
+  goals: LiveGoal[];
+}): { program: LiveProgram; goal: LiveGoal } => {
+  for (const program of liveRecords.programs) {
+    const goal = liveRecords.goals.find((candidate) => candidate.program_id === program.id);
+    if (goal) {
+      return { program, goal };
+    }
+  }
+  throw new Error("No promoted live goal matched any promoted live program.");
+};
+
 async function run() {
   loadPlaywrightEnv();
 
@@ -734,13 +747,14 @@ async function run() {
       throw new Error(`Expected at least ${MIN_CHILD_GOALS + MIN_PARENT_GOALS} live goals, found ${liveRecords.goals.length}.`);
     }
     promotedGoalIds = liveRecords.goals.map((goal) => goal.id);
+    const visiblePair = selectVisibleProgramGoalPair(liveRecords);
 
     const screenshotPath = await assertPromotedRecordsVisible({
       page,
       baseUrl,
       clientId,
-      programName: liveRecords.programs[0].name,
-      goalTitle: liveRecords.goals[0].title,
+      programName: visiblePair.program.name,
+      goalTitle: visiblePair.goal.title,
     });
 
     console.log(

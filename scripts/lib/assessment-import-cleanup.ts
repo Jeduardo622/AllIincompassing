@@ -83,6 +83,9 @@ export const deleteAssessmentStorageObject = async (
   }
 
   const body = await response.text().catch(() => response.statusText);
+  if (response.status === 400 && /"statusCode"\s*:\s*"404"|"error"\s*:\s*"not_found"/i.test(body)) {
+    return;
+  }
   throw new Error(`Storage cleanup failed for ${bucketId}/${objectPath}: ${response.status} ${body}`);
 };
 

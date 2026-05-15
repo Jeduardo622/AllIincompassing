@@ -49,6 +49,16 @@ interface AssessmentDocumentRow {
   created_at: string;
 }
 
+interface AssessmentDocumentExtractionRow {
+  id: string;
+  organization_id: string;
+  client_id: string;
+  status: string;
+  template_type: AssessmentTemplateType;
+  bucket_id: string | null;
+  object_path: string | null;
+}
+
 interface AssessmentDocumentDeleteRow {
   id: string;
   organization_id: string;
@@ -150,6 +160,33 @@ type ExtractionWorkflowResult = {
   extractionError: string | null;
 };
 
+type CaloptimaExtractionWorkflowArgs = {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+  actorId: string | null;
+  createdDocumentId: string;
+  clientId: string;
+  checklistRows: AssessmentChecklistSeedRow[];
+  bucketId: string;
+  objectPath: string;
+  signal?: AbortSignal;
+};
+
+type CaloptimaExtractionScheduleArgs = Omit<CaloptimaExtractionWorkflowArgs, "signal"> & {
+  request: Request;
+  accessToken: string;
+};
+
+type CaloptimaExtractionScheduleResult = {
+  ok: boolean;
+  status?: number;
+};
+
+type AssessmentDocumentsHandlerOptions = {
+  scheduleCaloptimaExtraction?: (args: CaloptimaExtractionScheduleArgs) => Promise<CaloptimaExtractionScheduleResult>;
+};
+
 class ExtractionWorkflowError extends Error {
   readonly reasonCode: string;
   readonly status?: number;
@@ -195,6 +232,40 @@ const processInBatches = async <T,>(
     const batch = items.slice(index, index + batchSize);
     await Promise.all(batch.map((item) => handler(item)));
   }
+};
+
+const runBoundedCaloptimaExtractionWorkflow = async (args: Omit<CaloptimaExtractionWorkflowArgs, "signal">): Promise<void> => {
+  const extractionController = new AbortController();
+  const extractionTimeoutId = setTimeout(() => {
+    extractionController.abort(
+      new ExtractionWorkflowError(
+        "extraction_workflow_timeout",
+        "extraction_workflow_timeout",
+        504,
+        "Extraction timed out before completion.",
+      ),
+    );
+  }, EXTRACTION_WORKFLOW_TIMEOUT_MS);
+
+  try {
+    await runCaloptimaExtractionWorkflow({ ...args, signal: extractionController.signal });
+  } finally {
+    clearTimeout(extractionTimeoutId);
+  }
+};
+
+const scheduleInProcessCaloptimaExtraction = async (
+  args: CaloptimaExtractionScheduleArgs,
+): Promise<CaloptimaExtractionScheduleResult> => {
+  setTimeout(() => {
+    void runBoundedCaloptimaExtractionWorkflow(args).catch((error) => {
+      serverLogger.error("assessment-documents scheduled extraction failed", {
+        reasonCode: error instanceof ExtractionWorkflowError ? error.reasonCode : "scheduled_extraction_failed",
+      });
+    });
+  }, 0);
+
+  return { ok: true, status: 202 };
 };
 
 const templateTypeToDisplayLabel = (templateType: AssessmentTemplateType): string => {
@@ -255,18 +326,20 @@ const persistExtractionFailure = async (args: {
   return { status: "extraction_failed", extractionError };
 };
 
-const runCaloptimaExtractionWorkflow = async (args: {
-  supabaseUrl: string;
-  headers: Record<string, string>;
-  organizationId: string;
-  actorId: string | null;
-  createdDocumentId: string;
-  clientId: string;
-  checklistRows: AssessmentChecklistSeedRow[];
-  bucketId: string;
-  objectPath: string;
-  signal?: AbortSignal;
-}): Promise<ExtractionWorkflowResult> => {
+export const persistCaloptimaExtractionScheduleFailure = async (
+  args: Omit<CaloptimaExtractionWorkflowArgs, "checklistRows" | "bucketId" | "objectPath" | "signal">,
+): Promise<ExtractionWorkflowResult> =>
+  persistExtractionFailure({
+    ...args,
+    error: new ExtractionWorkflowError(
+      "extraction_background_schedule_failed",
+      "extraction_background_schedule_failed",
+      500,
+      "Unable to start extraction. Retry the upload or contact support.",
+    ),
+  });
+
+const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowArgs): Promise<ExtractionWorkflowResult> => {
   const { supabaseUrl, headers, organizationId, actorId, createdDocumentId, clientId, checklistRows, bucketId, objectPath, signal } =
     args;
   try {
@@ -465,7 +538,101 @@ const runCaloptimaExtractionWorkflow = async (args: {
   }
 };
 
-export async function assessmentDocumentsHandler(request: Request): Promise<Response> {
+export async function assessmentDocumentsExtractionBackgroundHandler(request: Request): Promise<Response> {
+  if (request.method !== "POST") {
+    return jsonForRequest(request, { error: "Method not allowed" }, 405);
+  }
+
+  const accessToken = getAccessToken(request);
+  if (!accessToken) {
+    return jsonForRequest(request, { error: "Missing authorization token" }, 401, { "WWW-Authenticate": "Bearer" });
+  }
+
+  const { organizationId, isTherapist, isAdmin, isSuperAdmin } = await resolveOrgAndRole(accessToken);
+  if (!organizationId || (!isTherapist && !isAdmin && !isSuperAdmin)) {
+    return jsonForRequest(request, { error: "Forbidden" }, 403);
+  }
+
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
+    return jsonForRequest(request, { error: "Invalid JSON body" }, 400);
+  }
+
+  const parsed = z.object({ assessment_document_id: z.string().uuid() }).safeParse(payload);
+  if (!parsed.success) {
+    return jsonForRequest(request, { error: "Invalid request body" }, 400);
+  }
+
+  const { supabaseUrl, anonKey } = getSupabaseConfig();
+  const headers = {
+    "Content-Type": "application/json",
+    apikey: anonKey,
+    Authorization: `Bearer ${accessToken}`,
+  };
+
+  const documentResult = await fetchJson<AssessmentDocumentExtractionRow[]>(
+    `${supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path&id=eq.${encodeURIComponent(
+      parsed.data.assessment_document_id,
+    )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
+    { method: "GET", headers },
+  );
+  if (!documentResult.ok) {
+    return jsonForRequest(request, { error: "Failed to load assessment document" }, documentResult.status || 500);
+  }
+
+  const document = Array.isArray(documentResult.data) ? documentResult.data[0] ?? null : null;
+  if (!document) {
+    return jsonForRequest(request, { error: "assessment_document_id is not in scope for this organization" }, 403);
+  }
+  if (document.template_type !== "caloptima_fba") {
+    return jsonForRequest(request, { error: "Only CalOptima FBA extraction can be run by this worker." }, 400);
+  }
+  if (document.status !== "extracting") {
+    return jsonForRequest(request, { skipped: true, status: document.status }, 202);
+  }
+  if (!document.bucket_id || !document.object_path) {
+    const actorId = getAccessTokenSubject(accessToken);
+    const failure = new ExtractionWorkflowError(
+      "assessment_document_storage_missing",
+      "assessment_document_storage_missing",
+      400,
+      "Assessment document storage metadata is missing.",
+    );
+    await persistExtractionFailure({
+      supabaseUrl,
+      headers,
+      organizationId,
+      actorId,
+      createdDocumentId: document.id,
+      clientId: document.client_id,
+      error: failure,
+    });
+    return jsonForRequest(request, { error: failure.publicMessage }, 400);
+  }
+
+  const actorId = getAccessTokenSubject(accessToken);
+  const checklistRows = await loadChecklistTemplateRows(document.template_type);
+  await runBoundedCaloptimaExtractionWorkflow({
+    supabaseUrl,
+    headers,
+    organizationId,
+    actorId,
+    createdDocumentId: document.id,
+    clientId: document.client_id,
+    checklistRows,
+    bucketId: document.bucket_id,
+    objectPath: document.object_path,
+  });
+
+  return jsonForRequest(request, { accepted: true }, 202);
+}
+
+export async function assessmentDocumentsHandler(
+  request: Request,
+  options: AssessmentDocumentsHandlerOptions = {},
+): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: { ...corsHeadersForRequest(request) } });
   }
@@ -688,8 +855,6 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
       return jsonForRequest(request, { error: "Failed to record assessment upload event" }, uploadedEventResult.status || 500);
     }
 
-    let finalStatus: string = "uploaded";
-    let extractionError: string | null = null;
     if (templateType === "caloptima_fba") {
       const extractingStatusResult = await fetchJson(`${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(createdDocument.id)}`, {
         method: "PATCH",
@@ -700,36 +865,47 @@ export async function assessmentDocumentsHandler(request: Request): Promise<Resp
         return jsonForRequest(request, { error: "Failed to mark assessment document extracting" }, extractingStatusResult.status || 500);
       }
 
-      const extractionController = new AbortController();
-      const extractionTimeoutId = setTimeout(() => {
-        extractionController.abort(
-          new ExtractionWorkflowError(
-            "extraction_workflow_timeout",
-            "extraction_workflow_timeout",
-            504,
-            "Extraction timed out before completion.",
-          ),
+      let scheduleResult: CaloptimaExtractionScheduleResult;
+      try {
+        scheduleResult = await (options.scheduleCaloptimaExtraction ?? scheduleInProcessCaloptimaExtraction)({
+            request,
+            accessToken,
+            supabaseUrl,
+            headers,
+            organizationId,
+            actorId,
+            createdDocumentId: createdDocument.id,
+            clientId: parsed.data.client_id,
+            checklistRows,
+            bucketId: createPayload.bucket_id,
+            objectPath: createPayload.object_path,
+        });
+      } catch {
+        scheduleResult = { ok: false, status: 500 };
+      }
+      if (!scheduleResult.ok) {
+        const failure = new ExtractionWorkflowError(
+          "extraction_background_schedule_failed",
+          "extraction_background_schedule_failed",
+          scheduleResult.status,
+          "Unable to start extraction. Retry the upload or contact support.",
         );
-      }, EXTRACTION_WORKFLOW_TIMEOUT_MS);
-      const extractionWorkflowResult = await runCaloptimaExtractionWorkflow({
+        await persistExtractionFailure({
           supabaseUrl,
           headers,
           organizationId,
           actorId,
           createdDocumentId: createdDocument.id,
           clientId: parsed.data.client_id,
-          checklistRows,
-          bucketId: createPayload.bucket_id,
-          objectPath: createPayload.object_path,
-          signal: extractionController.signal,
-      }).finally(() => {
-        clearTimeout(extractionTimeoutId);
-      });
-      finalStatus = extractionWorkflowResult.status;
-      extractionError = extractionWorkflowResult.extractionError;
+          error: failure,
+        });
+        return jsonForRequest(request, { error: failure.publicMessage }, scheduleResult.status || 500);
+      }
+
+      return jsonForRequest(request, { ...createdDocument, status: "extracting", extraction_error: null }, 201);
     }
 
-    return jsonForRequest(request, { ...createdDocument, status: finalStatus, extraction_error: extractionError }, 201);
+    return jsonForRequest(request, { ...createdDocument, status: "uploaded", extraction_error: null }, 201);
   }
 
   if (request.method === "DELETE") {

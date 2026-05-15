@@ -1,5 +1,8 @@
-import { Handler } from "@netlify/functions";
-import { assessmentDocumentsHandler } from "../../src/server/api/assessment-documents";
+import { Handler, HandlerContext } from "@netlify/functions";
+import {
+  assessmentDocumentsHandler,
+  persistCaloptimaExtractionScheduleFailure,
+} from "../../src/server/api/assessment-documents";
 
 const toNetlifyResponse = async (response: Response) => {
   const headers: Record<string, string> = {};
@@ -15,7 +18,43 @@ const toNetlifyResponse = async (response: Response) => {
   };
 };
 
-export const handler: Handler = async (event) => {
+const scheduleBackgroundExtraction = (
+  context: HandlerContext,
+  request: Request,
+  args: Parameters<NonNullable<Parameters<typeof assessmentDocumentsHandler>[1]["scheduleCaloptimaExtraction"]>>[0],
+): boolean => {
+  if (typeof context.waitUntil !== "function") {
+    return false;
+  }
+
+  const origin = new URL(request.url).origin;
+  const trigger = fetch(`${origin}/.netlify/functions/assessment-documents-extract-background`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${args.accessToken}`,
+    },
+    body: JSON.stringify({ assessment_document_id: args.createdDocumentId }),
+  }).then((response) => {
+    if (!response.ok) {
+      throw new Error("background extraction trigger failed");
+    }
+  }).catch(() =>
+    persistCaloptimaExtractionScheduleFailure({
+      supabaseUrl: args.supabaseUrl,
+      headers: args.headers,
+      organizationId: args.organizationId,
+      actorId: args.actorId,
+      createdDocumentId: args.createdDocumentId,
+      clientId: args.clientId,
+    }),
+  );
+
+  context.waitUntil(trigger);
+  return true;
+};
+
+export const handler: Handler = async (event, context) => {
   try {
     const bodyNeeded = event.httpMethod !== "GET" && event.httpMethod !== "HEAD";
     const body =
@@ -31,7 +70,12 @@ export const handler: Handler = async (event) => {
       body,
     });
 
-    const response = await assessmentDocumentsHandler(request);
+    const response = await assessmentDocumentsHandler(request, {
+      scheduleCaloptimaExtraction: async (args) => {
+        const scheduled = scheduleBackgroundExtraction(context, request, args);
+        return { ok: scheduled, status: scheduled ? 202 : 500 };
+      },
+    });
     return toNetlifyResponse(response);
   } catch {
     return {

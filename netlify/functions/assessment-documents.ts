@@ -34,12 +34,14 @@ const scheduleBackgroundExtraction = (
       "Content-Type": "application/json",
       Authorization: `Bearer ${args.accessToken}`,
     },
-    body: JSON.stringify({ assessment_document_id: args.createdDocumentId }),
+    body: JSON.stringify({ assessment_document_id: args.createdDocumentId, client_id: args.clientId }),
   }).then((response) => {
     if (!response.ok) {
-      throw new Error("background extraction trigger failed");
+      throw new Error("background extraction enqueue failed");
     }
   }).catch(() =>
+    // The -background endpoint response only proves enqueue/transport status.
+    // Worker-handled document failures persist their own terminal reason.
     persistCaloptimaExtractionScheduleFailure({
       supabaseUrl: args.supabaseUrl,
       headers: args.headers,

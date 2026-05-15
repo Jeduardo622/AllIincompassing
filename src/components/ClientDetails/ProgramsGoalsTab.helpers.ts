@@ -95,6 +95,7 @@ export const statusToneByAssessment: Record<
 > = {
   uploaded: { label: "uploaded", className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200" },
   extracting: { label: "extracting", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200" },
+  extraction_running: { label: "extracting", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200" },
   extracted: { label: "extracted", className: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-200" },
   drafted: { label: "ai proposal ready", className: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200" },
   approved: { label: "approved", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200" },

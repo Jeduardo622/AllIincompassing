@@ -856,7 +856,12 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
               file_size: 1000,
               bucket_id: "client-documents",
               object_path: "clients/client-1/assessments/iehp-fba.docx",
-              status: assessmentFetchCount === 1 ? "extracting" : "drafted",
+              status:
+                assessmentFetchCount === 1
+                  ? "extracting"
+                  : assessmentFetchCount === 2
+                    ? "extraction_running"
+                    : "drafted",
               created_at: "2026-02-11T00:00:00.000Z",
             },
           ]),
@@ -875,10 +880,10 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText(/Extracting fields from uploaded file/i);
-    await new Promise((resolve) => setTimeout(resolve, 3_300));
+    await new Promise((resolve) => setTimeout(resolve, 6_600));
 
     await waitFor(() => {
-      expect(assessmentFetchCount).toBeGreaterThanOrEqual(2);
+      expect(assessmentFetchCount).toBeGreaterThanOrEqual(3);
     });
 
     const completedPollCount = assessmentFetchCount;

@@ -19,6 +19,8 @@ import { serverLogger } from "../../lib/logger/server";
 const SUPPORTED_TEMPLATE_TYPES = ["caloptima_fba", "iehp_fba"] as const;
 const ASSESSMENT_DOCUMENT_BUCKET_ID = "client-documents";
 const EXTRACTION_WORKFLOW_TIMEOUT_MS = 55_000;
+const EXTRACTION_RUNNING_STATUS = "extraction_running";
+const EXTRACTION_RUNNING_STALE_MS = EXTRACTION_WORKFLOW_TIMEOUT_MS * 2;
 
 const templateTypeSchema = z.enum(SUPPORTED_TEMPLATE_TYPES);
 
@@ -57,6 +59,7 @@ interface AssessmentDocumentExtractionRow {
   template_type: AssessmentTemplateType;
   bucket_id: string | null;
   object_path: string | null;
+  updated_at: string | null;
 }
 
 interface AssessmentDocumentDeleteRow {
@@ -170,6 +173,7 @@ type CaloptimaExtractionWorkflowArgs = {
   checklistRows: AssessmentChecklistSeedRow[];
   bucketId: string;
   objectPath: string;
+  fromStatus?: string;
   signal?: AbortSignal;
 };
 
@@ -283,8 +287,9 @@ const persistExtractionFailure = async (args: {
   createdDocumentId: string;
   clientId: string;
   error: ExtractionWorkflowError;
+  fromStatus?: string;
 }): Promise<ExtractionWorkflowResult> => {
-  const { supabaseUrl, headers, organizationId, actorId, createdDocumentId, clientId, error } = args;
+  const { supabaseUrl, headers, organizationId, actorId, createdDocumentId, clientId, error, fromStatus = "extracting" } = args;
   const extractionError = error.publicMessage;
   const updatedAt = new Date().toISOString();
 
@@ -312,7 +317,7 @@ const persistExtractionFailure = async (args: {
       item_type: "document",
       item_id: createdDocumentId,
       action: "extraction_failed",
-      from_status: "extracting",
+      from_status: fromStatus,
       to_status: "extraction_failed",
       actor_id: actorId,
       event_payload: {
@@ -340,7 +345,7 @@ export const persistCaloptimaExtractionScheduleFailure = async (
   });
 
 const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowArgs): Promise<ExtractionWorkflowResult> => {
-  const { supabaseUrl, headers, organizationId, actorId, createdDocumentId, clientId, checklistRows, bucketId, objectPath, signal } =
+  const { supabaseUrl, headers, organizationId, actorId, createdDocumentId, clientId, checklistRows, bucketId, objectPath, fromStatus = "extracting", signal } =
     args;
   try {
     assertExtractionNotAborted(signal);
@@ -504,7 +509,7 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
           item_type: "document",
           item_id: createdDocumentId,
           action: "extraction_completed",
-          from_status: "extracting",
+          from_status: fromStatus,
           to_status: "extracted",
           actor_id: actorId,
           event_payload: {
@@ -534,8 +539,48 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
       reasonCode: workflowError.reasonCode,
       status: workflowError.status ?? null,
     });
-    return persistExtractionFailure({ ...args, error: workflowError });
+    return persistExtractionFailure({ ...args, error: workflowError, fromStatus });
   }
+};
+
+const isExtractionRunningStale = (updatedAt: string | null, now = Date.now()): boolean => {
+  if (!updatedAt) return false;
+  const updatedAtMs = Date.parse(updatedAt);
+  return Number.isFinite(updatedAtMs) && now - updatedAtMs >= EXTRACTION_RUNNING_STALE_MS;
+};
+
+const claimCaloptimaExtractionDocument = async (args: {
+  supabaseUrl: string;
+  headers: Record<string, string>;
+  organizationId: string;
+  document: AssessmentDocumentExtractionRow;
+}): Promise<AssessmentDocumentExtractionRow | null> => {
+  const { supabaseUrl, headers, organizationId, document } = args;
+  const claimableStatus =
+    document.status === "extracting" || (document.status === EXTRACTION_RUNNING_STATUS && isExtractionRunningStale(document.updated_at))
+      ? document.status
+      : null;
+
+  if (!claimableStatus) {
+    return null;
+  }
+
+  const claimUrl = `${supabaseUrl}/rest/v1/assessment_documents?id=eq.${encodeURIComponent(
+    document.id,
+  )}&organization_id=eq.${encodeURIComponent(organizationId)}&status=eq.${encodeURIComponent(claimableStatus)}${
+    document.updated_at ? `&updated_at=eq.${encodeURIComponent(document.updated_at)}` : ""
+  }`;
+  const claimResult = await fetchJson<AssessmentDocumentExtractionRow[]>(claimUrl, {
+    method: "PATCH",
+    headers: { ...headers, Prefer: "return=representation" },
+    body: JSON.stringify({
+      status: EXTRACTION_RUNNING_STATUS,
+      extraction_error: null,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+  assertFetchOk(claimResult, "extraction_claim_failed");
+  return Array.isArray(claimResult.data) ? claimResult.data[0] ?? null : null;
 };
 
 export async function assessmentDocumentsExtractionBackgroundHandler(request: Request): Promise<Response> {
@@ -560,7 +605,10 @@ export async function assessmentDocumentsExtractionBackgroundHandler(request: Re
     return jsonForRequest(request, { error: "Invalid JSON body" }, 400);
   }
 
-  const parsed = z.object({ assessment_document_id: z.string().uuid() }).safeParse(payload);
+  const parsed = z.object({
+    assessment_document_id: z.string().uuid(),
+    client_id: z.string().uuid().optional(),
+  }).safeParse(payload);
   if (!parsed.success) {
     return jsonForRequest(request, { error: "Invalid request body" }, 400);
   }
@@ -573,12 +621,23 @@ export async function assessmentDocumentsExtractionBackgroundHandler(request: Re
   };
 
   const documentResult = await fetchJson<AssessmentDocumentExtractionRow[]>(
-    `${supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path&id=eq.${encodeURIComponent(
+    `${supabaseUrl}/rest/v1/assessment_documents?select=id,organization_id,client_id,status,template_type,bucket_id,object_path,updated_at&id=eq.${encodeURIComponent(
       parsed.data.assessment_document_id,
     )}&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
     { method: "GET", headers },
   );
   if (!documentResult.ok) {
+    if (parsed.data.client_id) {
+      await persistCaloptimaExtractionScheduleFailure({
+        supabaseUrl,
+        headers,
+        organizationId,
+        actorId: getAccessTokenSubject(accessToken),
+        createdDocumentId: parsed.data.assessment_document_id,
+        clientId: parsed.data.client_id,
+      });
+      return jsonForRequest(request, { accepted: true, error: "Failed to load assessment document" }, 202);
+    }
     return jsonForRequest(request, { error: "Failed to load assessment document" }, documentResult.status || 500);
   }
 
@@ -586,14 +645,59 @@ export async function assessmentDocumentsExtractionBackgroundHandler(request: Re
   if (!document) {
     return jsonForRequest(request, { error: "assessment_document_id is not in scope for this organization" }, 403);
   }
+  const actorId = getAccessTokenSubject(accessToken);
   if (document.template_type !== "caloptima_fba") {
-    return jsonForRequest(request, { error: "Only CalOptima FBA extraction can be run by this worker." }, 400);
+    if (document.status === "extracting" || document.status === EXTRACTION_RUNNING_STATUS) {
+      const failure = new ExtractionWorkflowError(
+        "unsupported_assessment_template",
+        "unsupported_assessment_template",
+        400,
+        "Only CalOptima FBA extraction is currently supported.",
+      );
+      await persistExtractionFailure({
+        supabaseUrl,
+        headers,
+        organizationId,
+        actorId,
+        createdDocumentId: document.id,
+        clientId: document.client_id,
+        error: failure,
+        fromStatus: document.status,
+      });
+    }
+    return jsonForRequest(request, { accepted: true, error: "Only CalOptima FBA extraction can be run by this worker." }, 202);
   }
-  if (document.status !== "extracting") {
+  let claimedDocument: AssessmentDocumentExtractionRow | null;
+  try {
+    claimedDocument = await claimCaloptimaExtractionDocument({
+      supabaseUrl,
+      headers,
+      organizationId,
+      document,
+    });
+  } catch {
+    const failure = new ExtractionWorkflowError(
+      "extraction_claim_failed",
+      "extraction_claim_failed",
+      500,
+      "Unable to start extraction. Retry the upload or contact support.",
+    );
+    await persistExtractionFailure({
+      supabaseUrl,
+      headers,
+      organizationId,
+      actorId,
+      createdDocumentId: document.id,
+      clientId: document.client_id,
+      error: failure,
+      fromStatus: document.status,
+    });
+    return jsonForRequest(request, { accepted: true, error: failure.publicMessage }, 202);
+  }
+  if (!claimedDocument) {
     return jsonForRequest(request, { skipped: true, status: document.status }, 202);
   }
-  if (!document.bucket_id || !document.object_path) {
-    const actorId = getAccessTokenSubject(accessToken);
+  if (!claimedDocument.bucket_id || !claimedDocument.object_path) {
     const failure = new ExtractionWorkflowError(
       "assessment_document_storage_missing",
       "assessment_document_storage_missing",
@@ -605,25 +709,26 @@ export async function assessmentDocumentsExtractionBackgroundHandler(request: Re
       headers,
       organizationId,
       actorId,
-      createdDocumentId: document.id,
-      clientId: document.client_id,
+      createdDocumentId: claimedDocument.id,
+      clientId: claimedDocument.client_id,
       error: failure,
+      fromStatus: EXTRACTION_RUNNING_STATUS,
     });
-    return jsonForRequest(request, { error: failure.publicMessage }, 400);
+    return jsonForRequest(request, { accepted: true, error: failure.publicMessage }, 202);
   }
 
-  const actorId = getAccessTokenSubject(accessToken);
-  const checklistRows = await loadChecklistTemplateRows(document.template_type);
+  const checklistRows = await loadChecklistTemplateRows(claimedDocument.template_type);
   await runBoundedCaloptimaExtractionWorkflow({
     supabaseUrl,
     headers,
     organizationId,
     actorId,
-    createdDocumentId: document.id,
-    clientId: document.client_id,
+    createdDocumentId: claimedDocument.id,
+    clientId: claimedDocument.client_id,
     checklistRows,
-    bucketId: document.bucket_id,
-    objectPath: document.object_path,
+    bucketId: claimedDocument.bucket_id,
+    objectPath: claimedDocument.object_path,
+    fromStatus: EXTRACTION_RUNNING_STATUS,
   });
 
   return jsonForRequest(request, { accepted: true }, 202);

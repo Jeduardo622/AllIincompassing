@@ -49,6 +49,7 @@ const ASSESSMENT_DOCUMENT_POLL_INTERVAL_MS = 3_000;
 const ACTIVE_ASSESSMENT_POLL_STATUSES: ReadonlySet<AssessmentDocumentRecord["status"]> = new Set([
   "uploaded",
   "extracting",
+  "extraction_running",
 ]);
 const AI_GENERATION_READY_STATUSES: ReadonlySet<AssessmentDocumentRecord["status"]> = new Set([
   "extracted",
@@ -1532,7 +1533,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                             ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200"
                             : "border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
                         } ${
-                          doc.status === "extracting"
+                          doc.status === "extracting" || doc.status === "extraction_running"
                             ? "border-amber-300 bg-amber-50/40 dark:border-amber-700/60 dark:bg-amber-900/20"
                             : ""
                         }`}
@@ -1546,7 +1547,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                             </span>
                             <span>• {new Date(doc.created_at).toLocaleDateString()}</span>
                           </div>
-                          {doc.status === "extracting" && (
+                          {(doc.status === "extracting" || doc.status === "extraction_running") && (
                             <div
                               className="mt-1 inline-flex animate-pulse items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300"
                               role="status"
